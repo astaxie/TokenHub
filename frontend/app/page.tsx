@@ -682,6 +682,10 @@ const translations: Record<Exclude<AppLanguage, "zh-CN">, Record<string, string>
   en: {
     "请填写此字段": "Please fill out this field",
     "总览": "Overview",
+    "所属团队": "Team",
+    "项目负责人": "Project Owner",
+    "管理员分配项目归属团队；团队 Leader 创建时会自动固定为自己的团队。": "Admins assign the project's owning team; a team leader creating a project is automatically fixed to their own team.",
+    "负责人默认拥有该项目的 Key 管理权限。": "The owner has Key management permissions for this project by default.",
     "网关概览": "Gateway Overview",
     "开始使用": "Get Started",
     "我的资源": "My Resources",
@@ -1812,6 +1816,10 @@ const translations: Record<Exclude<AppLanguage, "zh-CN">, Record<string, string>
   ja: {
     "请填写此字段": "このフィールドを入力してください",
     "总览": "概要",
+    "所属团队": "所属チーム",
+    "项目负责人": "プロジェクト責任者",
+    "管理员分配项目归属团队；团队 Leader 创建时会自动固定为自己的团队。": "管理者がプロジェクトの所属チームを割り当てます。チームリーダーが作成する場合は自分のチームに自動的に固定されます。",
+    "负责人默认拥有该项目的 Key 管理权限。": "責任者はデフォルトでこのプロジェクトの Key 管理権限を持ちます。",
     "网关概览": "ゲートウェイ概要",
     "开始使用": "はじめに",
     "我的资源": "自分のリソース",
