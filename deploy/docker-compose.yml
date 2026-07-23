@@ -1,6 +1,7 @@
 services:
   tokenhub-backend:
     container_name: tokenhub-backend
+    image: tokenhub-backend:latest
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -41,6 +42,7 @@ services:
 
   tokenhub-frontend:
     container_name: tokenhub-frontend
+    image: tokenhub-frontend:latest
     build:
       context: ../frontend
       args:
