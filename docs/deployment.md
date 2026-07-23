@@ -76,10 +76,9 @@ Edit `deploy/.env` before starting:
 - `TOKENHUB_ADMIN_TOKEN`: Admin API bootstrap token. Use a random value of at least 32 bytes.
 - `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: Password used only when creating the initial `admin` user. Use at least 12 bytes.
 - `TOKENHUB_SECRET_KEY`: Backend secret key. Use a random value of at least 32 bytes and keep it stable.
-- `TOKENHUB_PUBLIC_BASE_URL`: Public backend URL shown to users.
-- `NEXT_PUBLIC_API_BASE_URL`: Backend URL used by the browser admin console.
-- `TOKENHUB_BACKEND_PORT`: Host port for the backend. Default: `8080`.
-- `TOKENHUB_FRONTEND_PORT`: Host port for the admin console. Default: `3000`.
+- `TOKENHUB_PUBLIC_BASE_URL`: Public TokenHub entrypoint URL shown to users.
+- `TOKENHUB_GATEWAY_PORT`: Host port for the Caddy entrypoint. Default: `3000`.
+- `NEXT_PUBLIC_API_BASE_URL`: Leave empty so the browser admin console uses same-origin API paths through Caddy.
 
 Start the stack from the repository root:
 
@@ -127,10 +126,12 @@ These commands configure the server or build environment. Do not add them direct
 
 The compose file starts:
 
-- Backend on `http://localhost:8080`
-- Frontend on `http://localhost:3000`
+- Caddy gateway on `http://localhost:3000` (set `TOKENHUB_GATEWAY_PORT` to use another port)
+- TokenHub frontend and backend on the internal Docker network only
 - SQLite data stored in the named Docker volume `tokenhub-data`
 - Model catalog mounted from `data/model-catalog.yaml`
+
+For company-intranet access, set `TOKENHUB_PUBLIC_BASE_URL` to the gateway URL, for example `http://172.25.88.170:4003`, set `TOKENHUB_GATEWAY_PORT=4003`, and allow that single TCP port through the host firewall. Do not set `NEXT_PUBLIC_API_BASE_URL`: the admin console uses same-origin `/api` requests through Caddy, which also proxies `/v1` requests to the backend.
 
 Check status:
 
@@ -171,7 +172,7 @@ Only use `down -v` when you intentionally want to delete local data.
 | --- | --- | --- |
 | `TOKENHUB_ENV` | `prod` | Runtime environment label |
 | `TOKENHUB_HTTP_ADDR` | `:8080` | Backend listen address |
-| `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:8080` | Public backend URL shown to users |
+| `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:3000` | Public TokenHub gateway URL shown to users |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | empty | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For` |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | public URL | Comma-separated browser origins allowed to call the backend |
 | `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Bootstrap admin token for Admin API access |
@@ -196,7 +197,7 @@ Only use `down -v` when you intentionally want to delete local data.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8080` | Backend Admin API URL |
+| `NEXT_PUBLIC_API_BASE_URL` | empty | Leave empty to use same-origin API paths through Caddy |
 | `NEXT_PUBLIC_APP_NAME` | `TokenHub` | Display name |
 
 ## Data and Backups
@@ -230,12 +231,9 @@ To update the standard catalog:
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart tokenhub-backend
 ```
 
-## Reverse Proxy
+## Caddy Gateway
 
-For production, place TokenHub behind HTTPS and forward:
-
-- Admin console traffic to the frontend service.
-- `/v1/*` and `/api/admin/*` traffic to the backend service.
+The default Compose deployment includes Caddy as the only host-published service. It serves the admin console and proxies `/api/*` and `/v1/*` to the internal TokenHub backend without rewriting paths. The included configuration is HTTP-only for trusted intranets. Add TLS and any access restrictions in Caddy when your deployment requires them.
 
 Set request body and streaming timeouts high enough for long model responses.
 

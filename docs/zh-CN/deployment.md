@@ -76,10 +76,9 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_ADMIN_TOKEN`：Admin API 启动 Token，请使用至少 32 字节的随机值。
 - `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`：仅用于创建初始 `admin` 用户，请设置至少 12 字节的密码。
 - `TOKENHUB_SECRET_KEY`：后端密钥，请使用至少 32 字节的随机值并保持稳定。
-- `TOKENHUB_PUBLIC_BASE_URL`：展示给用户的后端访问地址。
-- `NEXT_PUBLIC_API_BASE_URL`：浏览器管理后台访问后端的地址。
-- `TOKENHUB_BACKEND_PORT`：后端宿主机端口，默认 `8080`。
-- `TOKENHUB_FRONTEND_PORT`：管理后台宿主机端口，默认 `3000`。
+- `TOKENHUB_PUBLIC_BASE_URL`：展示给用户的 TokenHub 网关访问地址。
+- `TOKENHUB_GATEWAY_PORT`：Caddy 网关宿主机端口，默认 `3000`。
+- `NEXT_PUBLIC_API_BASE_URL`：保持为空，使浏览器管理后台通过 Caddy 使用同源 API 路径。
 
 在仓库根目录启动：
 
@@ -127,10 +126,12 @@ npm config set registry https://registry.npmmirror.com
 
 Compose 会启动：
 
-- 后端：`http://localhost:8080`
-- 前端：`http://localhost:3000`
+- Caddy 网关：`http://localhost:3000`（通过 `TOKENHUB_GATEWAY_PORT` 设置其他端口）
+- TokenHub 前端和后端：仅在内部 Docker 网络中访问
 - SQLite 数据：保存在 Docker named volume `tokenhub-data`
 - 模型目录：从 `data/model-catalog.yaml` 挂载
+
+供公司内网访问时，将 `TOKENHUB_PUBLIC_BASE_URL` 设为网关地址，例如 `http://172.25.88.170:4003`，设置 `TOKENHUB_GATEWAY_PORT=4003`，并在宿主机防火墙中仅放通该 TCP 端口。不要设置 `NEXT_PUBLIC_API_BASE_URL`：管理后台通过 Caddy 使用同源的 `/api` 请求，Caddy 也会将 `/v1` 请求代理到后端。
 
 查看状态：
 
@@ -171,7 +172,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | --- | --- | --- |
 | `TOKENHUB_ENV` | `prod` | 运行环境标识 |
 | `TOKENHUB_HTTP_ADDR` | `:8080` | 后端监听地址 |
-| `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:8080` | 展示给用户的后端地址 |
+| `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:3000` | 展示给用户的 TokenHub 网关地址 |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | 允许提供 `X-Forwarded-For` 的代理 IP 或 CIDR，逗号分隔 |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公网地址 | 允许调用后端的浏览器 Origin，逗号分隔 |
 | `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Admin API 启动访问 Token |
@@ -193,7 +194,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8080` | 后端 Admin API 地址 |
+| `NEXT_PUBLIC_API_BASE_URL` | 空 | 保持为空，通过 Caddy 使用同源 API 路径 |
 | `NEXT_PUBLIC_APP_NAME` | `TokenHub` | 页面展示名称 |
 
 ## 数据和备份
@@ -227,12 +228,9 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart tokenhub-backend
 ```
 
-## 反向代理
+## Caddy 网关
 
-生产环境建议使用 HTTPS，并转发：
-
-- 管理后台流量到前端服务。
-- `/v1/*` 和 `/api/admin/*` 流量到后端服务。
+默认 Compose 部署将 Caddy 作为唯一发布宿主机端口的服务。它提供管理后台，并将 `/api/*` 和 `/v1/*` 原样代理到内部 TokenHub 后端。随附配置仅面向受信任内网的 HTTP；如部署需要，请在 Caddy 中增加 TLS 和访问限制。
 
 长文本生成和流式响应可能耗时较长，请合理设置请求体大小和超时时间。
 

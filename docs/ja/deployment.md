@@ -76,10 +76,9 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_ADMIN_TOKEN`: Admin API の初期 Token。32 バイト以上のランダム値を使用してください。
 - `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: 初期 `admin` ユーザーの作成時にのみ使用するパスワード。12 バイト以上にしてください。
 - `TOKENHUB_SECRET_KEY`: バックエンド秘密鍵。32 バイト以上のランダム値を使用し、安定して保持してください。
-- `TOKENHUB_PUBLIC_BASE_URL`: ユーザーに表示するバックエンド URL。
-- `NEXT_PUBLIC_API_BASE_URL`: ブラウザの管理コンソールが使用するバックエンド URL。
-- `TOKENHUB_BACKEND_PORT`: バックエンドのホスト側ポート。デフォルトは `8080`。
-- `TOKENHUB_FRONTEND_PORT`: 管理コンソールのホスト側ポート。デフォルトは `3000`。
+- `TOKENHUB_PUBLIC_BASE_URL`: ユーザーに表示する TokenHub ゲートウェイ URL。
+- `TOKENHUB_GATEWAY_PORT`: Caddy ゲートウェイのホスト側ポート。デフォルトは `3000`。
+- `NEXT_PUBLIC_API_BASE_URL`: 空のままにして、ブラウザの管理コンソールから Caddy 経由の同一オリジン API パスを使用します。
 
 リポジトリルートから起動します。
 
@@ -127,10 +126,12 @@ npm config set registry https://registry.npmmirror.com
 
 Compose は次を起動します。
 
-- バックエンド: `http://localhost:8080`
-- フロントエンド: `http://localhost:3000`
+- Caddy ゲートウェイ: `http://localhost:3000`（別のポートは `TOKENHUB_GATEWAY_PORT` で設定）
+- TokenHub フロントエンドとバックエンド: 内部 Docker ネットワークからのみアクセス可能
 - SQLite データ: Docker named volume `tokenhub-data`
 - モデルカタログ: `data/model-catalog.yaml` からマウント
+
+社内ネットワークからアクセスする場合は、`TOKENHUB_PUBLIC_BASE_URL` を `http://172.25.88.170:4003` のようなゲートウェイ URL に設定し、`TOKENHUB_GATEWAY_PORT=4003` を設定して、ホストファイアウォールではこの TCP ポートのみ許可します。`NEXT_PUBLIC_API_BASE_URL` は設定しないでください。管理コンソールは Caddy 経由の同一オリジン `/api` リクエストを使用し、Caddy は `/v1` リクエストもバックエンドへプロキシします。
 
 状態を確認します。
 
@@ -171,7 +172,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | --- | --- | --- |
 | `TOKENHUB_ENV` | `prod` | ランタイム環境名 |
 | `TOKENHUB_HTTP_ADDR` | `:8080` | バックエンド待受アドレス |
-| `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:8080` | ユーザーに表示するバックエンド URL |
+| `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:3000` | ユーザーに表示する TokenHub ゲートウェイ URL |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For` を提供できるプロキシ IP または CIDR（カンマ区切り） |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せるブラウザー Origin（カンマ区切り） |
 | `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Admin API 用の初期 Token |
@@ -193,7 +194,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 | 変数 | デフォルト | 説明 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8080` | バックエンド Admin API URL |
+| `NEXT_PUBLIC_API_BASE_URL` | 空 | Caddy 経由の同一オリジン API パスを使うため空のままにする |
 | `NEXT_PUBLIC_APP_NAME` | `TokenHub` | 表示名 |
 
 ## データとバックアップ
@@ -227,12 +228,9 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart tokenhub-backend
 ```
 
-## リバースプロキシ
+## Caddy ゲートウェイ
 
-本番環境では HTTPS の背後に置き、次のように転送してください。
-
-- 管理コンソールのトラフィックはフロントエンドサービスへ。
-- `/v1/*` と `/api/admin/*` はバックエンドサービスへ。
+デフォルトの Compose デプロイでは、Caddy がホスト側ポートを公開する唯一のサービスです。管理コンソールを提供し、パスを書き換えずに `/api/*` と `/v1/*` を内部 TokenHub バックエンドへプロキシします。付属設定は信頼できる社内ネットワーク向けの HTTP のみです。必要に応じて Caddy に TLS とアクセス制限を追加してください。
 
 長いモデル応答に備えて、リクエストボディサイズとストリーミングタイムアウトを十分に設定してください。
 

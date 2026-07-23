@@ -1,6 +1,7 @@
 services:
   tokenhub-backend:
     container_name: tokenhub-backend
+    image: tokenhub-backend:latest
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -10,9 +11,9 @@ services:
     environment:
       TOKENHUB_ENV: ${TOKENHUB_ENV:-prod}
       TOKENHUB_HTTP_ADDR: :8080
-      TOKENHUB_PUBLIC_BASE_URL: ${TOKENHUB_PUBLIC_BASE_URL:-http://localhost:8080}
+      TOKENHUB_PUBLIC_BASE_URL: ${TOKENHUB_PUBLIC_BASE_URL:-http://localhost:3000}
       TOKENHUB_TRUSTED_PROXY_CIDRS: ${TOKENHUB_TRUSTED_PROXY_CIDRS:-}
-      TOKENHUB_CORS_ALLOWED_ORIGINS: ${TOKENHUB_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      TOKENHUB_CORS_ALLOWED_ORIGINS: ${TOKENHUB_CORS_ALLOWED_ORIGINS:-}
       TOKENHUB_ADMIN_TOKEN: ${TOKENHUB_ADMIN_TOKEN:-change-me-tokenhub-admin-token}
       TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD: ${TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD:-change-me-tokenhub-admin-password}
       TOKENHUB_SECRET_KEY: ${TOKENHUB_SECRET_KEY:-change-me-tokenhub-secret-key}
@@ -26,8 +27,6 @@ services:
       TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS: ${TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS:-300}
       TOKENHUB_CLUSTER_LOCK_TTL_SECONDS: ${TOKENHUB_CLUSTER_LOCK_TTL_SECONDS:-180}
       TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS: ${TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS:-150}
-    ports:
-      - "${TOKENHUB_BACKEND_PORT:-8080}:8080"
     volumes:
       - tokenhub-data:/app/data
       - ../data/model-catalog.yaml:/app/catalog/model-catalog.yaml:ro
@@ -43,17 +42,15 @@ services:
 
   tokenhub-frontend:
     container_name: tokenhub-frontend
+    image: tokenhub-frontend:latest
     build:
       context: ../frontend
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-TokenHub}
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
       NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-TokenHub}
-    ports:
-      - "${TOKENHUB_FRONTEND_PORT:-3000}:3000"
     depends_on:
       tokenhub-backend:
         condition: service_healthy
@@ -63,6 +60,22 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+    networks:
+      - tokenhub
+
+  tokenhub-gateway:
+    container_name: tokenhub-gateway
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${TOKENHUB_GATEWAY_PORT:-3000}:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      tokenhub-backend:
+        condition: service_healthy
+      tokenhub-frontend:
+        condition: service_healthy
     networks:
       - tokenhub
 
