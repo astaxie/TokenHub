@@ -330,6 +330,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("cache-control", "no-cache")
 		w.Header().Set("x-request-id", routed.Call.RequestID)
 		s.writeRouteHeaders(w, routed.Call, route, 1)
+		w.WriteHeader(http.StatusOK)
 		usage, err := adapter.ChatStream(leaseCtx, route.Provider, route.ProviderModel, req, w)
 		if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
 			err = leaseErr
@@ -6486,7 +6487,18 @@ func (s *Server) cors(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS")
-		w.Header().Set("access-control-allow-headers", "authorization,content-type")
+		allowHeaders := "authorization,content-type"
+		if reqHeaders := r.Header.Get("access-control-request-headers"); reqHeaders != "" {
+			seen := map[string]bool{"authorization": true, "content-type": true}
+			for _, h := range strings.Split(reqHeaders, ",") {
+				h = strings.ToLower(strings.TrimSpace(h))
+				if h != "" && !seen[h] {
+					allowHeaders += "," + h
+					seen[h] = true
+				}
+			}
+		}
+		w.Header().Set("access-control-allow-headers", allowHeaders)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
