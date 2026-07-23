@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sqlite3 "github.com/mattn/go-sqlite3"
@@ -260,7 +261,7 @@ type Store interface {
 
 type GormStore struct {
 	db                   *gorm.DB
-	mu                   *sync.Mutex
+	mu                   *sync.RWMutex
 	leaseHeartbeats      *sync.Map
 	secretKey            string
 	metrics              *GatewayMetrics
@@ -276,10 +277,11 @@ type GormStore struct {
 }
 
 type leaseHeartbeat struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-	stop   chan struct{}
-	done   chan struct{}
+	ctx     context.Context
+	cancel  context.CancelCauseFunc
+	stop    chan struct{}
+	done    chan struct{}
+	stopped atomic.Bool
 }
 
 // MemoryStore is kept as a compatibility alias for existing tests and callers.
@@ -521,7 +523,7 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 
 	return &GormStore{
 		db:                   db,
-		mu:                   &sync.Mutex{},
+		mu:                   &sync.RWMutex{},
 		leaseHeartbeats:      &sync.Map{},
 		secretKey:            config.SecretKey,
 		failureThreshold:     defaultInt(config.ResourceFailureThreshold, 3),
@@ -795,9 +797,25 @@ func stopLeaseHeartbeat(heartbeat *leaseHeartbeat) error {
 	if heartbeat == nil {
 		return nil
 	}
+	if !heartbeat.stopped.CompareAndSwap(false, true) {
+		// Already stopped by another goroutine 鈥?don't close the channel twice.
+		<-heartbeat.done
+		cause := context.Cause(heartbeat.ctx)
+		if errors.Is(cause, ErrCoordinationLeaseLost) {
+			return ErrCoordinationLeaseLost
+		}
+		return nil
+	}
 	close(heartbeat.stop)
 	heartbeat.cancel(context.Canceled)
-	<-heartbeat.done
+	// Wait for the heartbeat goroutine to exit, with a timeout to prevent
+	// a permanent hang when the goroutine is stuck on a non-cancellable
+	// database operation (e.g., TCP-level stall that ignores context).
+	select {
+	case <-heartbeat.done:
+	case <-time.After(5 * time.Second):
+		log.Printf("[tokenhub] WARNING: lease heartbeat did not stop within 5s, abandoning wait")
+	}
 	cause := context.Cause(heartbeat.ctx)
 	if errors.Is(cause, ErrCoordinationLeaseLost) {
 		return ErrCoordinationLeaseLost
@@ -921,6 +939,9 @@ func (s *GormStore) withClusterLease(ctx context.Context, name string, fn func(c
 	leaseErr := stopLeaseHeartbeat(heartbeat)
 	_ = s.db.Delete(&ClusterLease{}, "name = ? AND owner_id = ?", name, ownerID).Error
 	if leaseErr != nil {
+		if fnErr != nil {
+			return fmt.Errorf("lease lost during operation: %w (original error: %v)", leaseErr, fnErr)
+		}
 		return leaseErr
 	}
 	return fnErr
@@ -1037,7 +1058,9 @@ func (s *GormStore) createProject(project Project, requireActiveTeam bool) (Proj
 
 func (s *GormStore) ListProjects() []Project {
 	var items []Project
-	_ = s.db.Order("created_at asc").Find(&items).Error
+	if err := s.db.Order("created_at asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListProjects failed: %v", err)
+	}
 	_ = s.loadProjectTeamsFor(items)
 	return items
 }
@@ -1392,7 +1415,9 @@ func (s *GormStore) generateAPIKeySecret() string {
 
 func (s *GormStore) apiKeyGenerationConfig() (string, int) {
 	var settings []AdminResource
-	_ = s.db.Where("kind = ? AND status = ?", "settings", StatusActive).Order("created_at asc").Find(&settings).Error
+	if err := s.db.Where("kind = ? AND status = ?", "settings", StatusActive).Order("created_at asc").Find(&settings).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: apiKeyGenerationConfig failed to load settings: %v", err)
+	}
 	var fields map[string]any
 	for _, item := range settings {
 		if item.ID == "cfg_gateway" {
@@ -1415,13 +1440,17 @@ func (s *GormStore) apiKeyGenerationConfig() (string, int) {
 
 func (s *GormStore) ListProjectKeys(projectID string) []APIKey {
 	var items []APIKey
-	_ = s.db.Where("project_id = ?", projectID).Order("created_at asc").Find(&items).Error
+	if err := s.db.Where("project_id = ?", projectID).Order("created_at asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListProjectKeys failed: %v", err)
+	}
 	return publicKeys(items)
 }
 
 func (s *GormStore) ListAPIKeys() []APIKey {
 	var items []APIKey
-	_ = s.db.Order("created_at asc").Find(&items).Error
+	if err := s.db.Order("created_at asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListAPIKeys failed: %v", err)
+	}
 	return publicKeys(items)
 }
 
@@ -1531,8 +1560,8 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 }
 
 func (s *GormStore) ValidateAPIKey(rawSecret string, clientIP string) (Project, APIKey, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	var key APIKey
 	if err := s.db.First(&key, "key_hash = ?", HashSecret(rawSecret)).Error; err != nil {
@@ -1584,14 +1613,22 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 			provider.BaseURL = openAICodexBaseURL
 		}
 	}
-	provider.APIKey = s.encryptSecret(provider.APIKey)
+	encrypted, encErr := s.encryptSecret(provider.APIKey)
+	if encErr != nil {
+		log.Printf("[tokenhub] ERROR: AddProvider failed to encrypt API key for provider %s: %v", provider.ID, encErr)
+		provider.APIKey = ""
+	} else {
+		provider.APIKey = encrypted
+	}
 	_ = s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&provider).Error
 	return provider
 }
 
 func (s *GormStore) ListProviders() []Provider {
 	var items []Provider
-	_ = s.db.Order("priority asc").Find(&items).Error
+	if err := s.db.Order("priority asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListProviders failed: %v", err)
+	}
 	for i := range items {
 		items[i].APIKey = ""
 	}
@@ -1654,7 +1691,13 @@ func (s *GormStore) GetProvider(id string) (Provider, bool) {
 	if err := s.db.First(&provider, "id = ?", id).Error; err != nil {
 		return Provider{}, false
 	}
-	provider.APIKey = s.decryptSecret(provider.APIKey)
+	decrypted, err := s.decryptSecret(provider.APIKey)
+	if err != nil {
+		log.Printf("[tokenhub] ERROR: GetProvider failed to decrypt API key for provider %s: %v", id, err)
+		provider.APIKey = ""
+	} else {
+		provider.APIKey = decrypted
+	}
 	return provider, true
 }
 
@@ -1680,7 +1723,11 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 		if firstNonEmpty(patch.Type, provider.Type) == ProviderOpenAICodex {
 			return Provider{}, NewHTTPError(409, "provider_adapter_credential_conflict", "Codex Subscription credentials must be stored on account resources")
 		}
-		provider.APIKey = s.encryptSecret(patch.APIKey)
+		encrypted, err := s.encryptSecret(patch.APIKey)
+		if err != nil {
+			return Provider{}, fmt.Errorf("encrypt API key: %w", err)
+		}
+		provider.APIKey = encrypted
 	}
 	if patch.Status != "" {
 		provider.Status = patch.Status
@@ -1799,8 +1846,14 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 		resource.CreatedAt = now
 	}
 	resource.UpdatedAt = now
-	s.prepareProviderResourceForCreate(&resource)
-	resource.APIKey = s.encryptSecret(resource.APIKey)
+	if err := s.prepareProviderResourceForCreate(&resource); err != nil {
+		return ProviderResource{}, fmt.Errorf("prepare resource for create: %w", err)
+	}
+	encrypted, encErr := s.encryptSecret(resource.APIKey)
+	if encErr != nil {
+		return ProviderResource{}, fmt.Errorf("encrypt API key: %w", encErr)
+	}
+	resource.APIKey = encrypted
 	if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
 		return ProviderResource{}, err
 	}
@@ -1810,9 +1863,13 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 
 func (s *GormStore) ListProviderResources() []ProviderResource {
 	var items []ProviderResource
-	_ = s.db.Order("provider_id asc, priority asc, weight desc, created_at asc").Find(&items).Error
+	if err := s.db.Order("provider_id asc, priority asc, weight desc, created_at asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListProviderResources failed: %v", err)
+	}
 	var observations []ProviderResourceObservation
-	_ = s.db.Find(&observations).Error
+	if err := s.db.Find(&observations).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListProviderResources observations failed: %v", err)
+	}
 	observationByResource := make(map[string]ProviderResourceObservation, len(observations))
 	for _, observation := range observations {
 		observationByResource[observation.ResourceID] = observation
@@ -1889,12 +1946,18 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 		return ProviderResource{}, err
 	}
 	resource.UpdatedAt = time.Now().UTC()
-	s.prepareProviderResourceForUpdate(&resource, patch)
+	if err := s.prepareProviderResourceForUpdate(&resource, patch); err != nil {
+		return ProviderResource{}, fmt.Errorf("prepare resource for update: %w", err)
+	}
 	if patch.Credentials != nil && strings.TrimSpace(patch.Credentials.AccessToken) != "" {
 		shouldEncryptAPIKey = true
 	}
 	if shouldEncryptAPIKey {
-		resource.APIKey = s.encryptSecret(resource.APIKey)
+		encrypted, encErr := s.encryptSecret(resource.APIKey)
+		if encErr != nil {
+			return ProviderResource{}, fmt.Errorf("encrypt API key: %w", encErr)
+		}
+		resource.APIKey = encrypted
 	}
 	if err := s.db.Save(&resource).Error; err != nil {
 		return ProviderResource{}, err
@@ -2062,11 +2125,19 @@ func (s *GormStore) BulkOperateProviderResources(action string, ids []string) (P
 			resource.FailureCount = 0
 			resource.CooldownUntil = nil
 			resource.LastCheckedAt = &now
+			// Release all in-flight concurrency leases so new requests can proceed immediately.
+			if err := s.db.Where("scope_type = ? AND scope_id = ?", "provider_resource", resource.ID).Delete(&InFlightLease{}).Error; err != nil {
+				log.Printf("[tokenhub] WARNING: clear_error failed to release in-flight leases for resource %s: %v", resource.ID, err)
+			}
 		case "reset_usage":
 			if err := s.db.Where("resource_id = ?", resource.ID).Delete(&ProviderResourceBucket{}).Error; err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, id+": "+err.Error())
 				continue
+			}
+			// Release all in-flight concurrency leases so new requests can proceed immediately.
+			if err := s.db.Where("scope_type = ? AND scope_id = ?", "provider_resource", resource.ID).Delete(&InFlightLease{}).Error; err != nil {
+				log.Printf("[tokenhub] WARNING: reset_usage failed to release in-flight leases for resource %s: %v", resource.ID, err)
 			}
 		}
 		if err := s.db.Model(&ProviderResource{}).Where("id = ?", resource.ID).Updates(updates).Error; err != nil {
@@ -2132,8 +2203,18 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			resource.CreatedAt = now
 		}
 		resource.UpdatedAt = now
-		s.prepareProviderResourceForCreate(&resource)
-		resource.APIKey = s.encryptSecret(resource.APIKey)
+		if err := s.prepareProviderResourceForCreate(&resource); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, "row "+row+": prep error: "+err.Error())
+			continue
+		}
+		encrypted, encErr := s.encryptSecret(resource.APIKey)
+		if encErr != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, "row "+row+": encrypt error: "+encErr.Error())
+			continue
+		}
+		resource.APIKey = encrypted
 		if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
@@ -2623,7 +2704,9 @@ func (s *GormStore) AddModel(model Model) Model {
 
 func (s *GormStore) ListModels() []Model {
 	var items []Model
-	_ = s.db.Order("name asc").Find(&items).Error
+	if err := s.db.Order("name asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListModels failed: %v", err)
+	}
 	return items
 }
 
@@ -2739,7 +2822,9 @@ func (s *GormStore) AddRoute(route ModelRoute) ModelRoute {
 
 func (s *GormStore) ListRoutes() []ModelRoute {
 	var items []ModelRoute
-	_ = s.db.Order("model_name asc, priority asc").Find(&items).Error
+	if err := s.db.Order("model_name asc, priority asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListRoutes failed: %v", err)
+	}
 	for index := range items {
 		items[index].ProjectScope, items[index].ProjectIDs = normalizeRouteProjectScope(items[index].ProjectScope, items[index].ProjectIDs)
 	}
@@ -2868,8 +2953,8 @@ func (s *GormStore) SelectRoute(modelName string) (RouteSelection, error) {
 }
 
 func (s *GormStore) SelectRouteCandidates(modelName string) ([]RouteSelection, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	var routes []ModelRoute
 	if err := s.db.Where("model_name = ? AND status = ?", modelName, StatusActive).
@@ -2879,17 +2964,50 @@ func (s *GormStore) SelectRouteCandidates(modelName string) ([]RouteSelection, e
 	}
 	now := time.Now().UTC()
 	selections := make([]RouteSelection, 0, len(routes))
+
+	// Batch load all referenced providers
+	providerIDs := make([]string, 0, len(routes))
 	for _, route := range routes {
-		var provider Provider
-		if err := s.db.First(&provider, "id = ?", route.ProviderID).Error; err != nil {
+		providerIDs = append(providerIDs, route.ProviderID)
+	}
+	var allProviders []Provider
+	if err := s.db.Where("id IN ?", providerIDs).Find(&allProviders).Error; err != nil {
+		return nil, err
+	}
+	providerMap := make(map[string]Provider, len(allProviders))
+	for _, p := range allProviders {
+		providerMap[p.ID] = p
+	}
+
+	// Batch load all referenced ProviderResources
+	resourceIDs := make([]string, 0, len(routes))
+	for _, route := range routes {
+		if route.ProviderResourceID != "" {
+			resourceIDs = append(resourceIDs, route.ProviderResourceID)
+		}
+	}
+	var allResources []ProviderResource
+	if len(resourceIDs) > 0 {
+		if err := s.db.Where("id IN ?", resourceIDs).Find(&allResources).Error; err != nil {
+			return nil, err
+		}
+	}
+	resourceMap := make(map[string]ProviderResource, len(allResources))
+	for _, r := range allResources {
+		resourceMap[r.ID] = r
+	}
+
+	for _, route := range routes {
+		provider, ok := providerMap[route.ProviderID]
+		if !ok {
 			continue
 		}
 		if provider.Status != StatusActive || !provider.Healthy {
 			continue
 		}
 		if route.ProviderResourceID != "" {
-			var resource ProviderResource
-			if err := s.db.First(&resource, "id = ? AND provider_id = ?", route.ProviderResourceID, provider.ID).Error; err != nil {
+			resource, exists := resourceMap[route.ProviderResourceID]
+			if !exists || resource.ProviderID != provider.ID {
 				continue
 			}
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
@@ -2990,7 +3108,11 @@ func routeRuntimeStatsKey(routeID string, resourceID string) string {
 }
 
 func (s *GormStore) routeSelection(provider Provider, resource *ProviderResource, route ModelRoute) RouteSelection {
-	provider.APIKey = s.decryptSecret(provider.APIKey)
+	if decrypted, err := s.decryptSecret(provider.APIKey); err != nil {
+		log.Printf("[tokenhub] WARNING: routeSelection failed to decrypt provider API key for provider %s: %v", provider.ID, err)
+	} else {
+		provider.APIKey = decrypted
+	}
 	if resource == nil {
 		return RouteSelection{
 			Provider:      provider,
@@ -3003,7 +3125,11 @@ func (s *GormStore) routeSelection(provider Provider, resource *ProviderResource
 		effective.BaseURL = resource.BaseURL
 	}
 	if resource.APIKey != "" {
-		effective.APIKey = s.decryptSecret(resource.APIKey)
+		if decrypted, err := s.decryptSecret(resource.APIKey); err != nil {
+			log.Printf("[tokenhub] WARNING: routeSelection failed to decrypt resource API key for resource %s: %v", resource.ID, err)
+		} else {
+			effective.APIKey = decrypted
+		}
 	}
 	if len(resource.Headers) > 0 {
 		headers := map[string]string{}
@@ -3664,8 +3790,12 @@ func (s *GormStore) GetImageAsset(id string) (ImageAsset, bool) {
 func (s *GormStore) UsageSummary() map[string]any {
 	var records []UsageRecord
 	var logs []RequestLog
-	_ = s.db.Find(&records).Error
-	_ = s.db.Find(&logs).Error
+	if err := s.db.Find(&records).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: UsageSummary failed to load usage records: %v", err)
+	}
+	if err := s.db.Find(&logs).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: UsageSummary failed to load request logs: %v", err)
+	}
 
 	var input, cachedInput, cacheWrite, output, reasoningOutput, total int64
 	var cost float64
@@ -3717,20 +3847,26 @@ func isPlaygroundRequestLog(log RequestLog) bool {
 
 func (s *GormStore) ListUsageRecords() []UsageRecord {
 	var records []UsageRecord
-	_ = s.db.Find(&records).Error
+	if err := s.db.Find(&records).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListUsageRecords failed: %v", err)
+	}
 	return records
 }
 
 func (s *GormStore) UsageBreakdown() map[string]any {
 	var records []UsageRecord
-	_ = s.db.Find(&records).Error
+	if err := s.db.Find(&records).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: UsageBreakdown failed: %v", err)
+	}
 	return s.usageBreakdownFromRecords(records)
 }
 
 func (s *GormStore) UsageBreakdownForPeriod(period string) map[string]any {
 	period = normalizeBillingPeriod(period, time.Now().UTC())
 	var records []UsageRecord
-	_ = s.db.Where("created_at >= ? AND created_at < ?", periodStart(period), periodEnd(period)).Find(&records).Error
+	if err := s.db.Where("created_at >= ? AND created_at < ?", periodStart(period), periodEnd(period)).Find(&records).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: UsageBreakdownForPeriod failed: %v", err)
+	}
 	return s.usageBreakdownFromRecords(records)
 }
 
@@ -3776,7 +3912,9 @@ func (s *GormStore) UsageTimeseries(days int) []map[string]any {
 		})
 	}
 	var records []UsageRecord
-	_ = s.db.Where("created_at >= ?", now.AddDate(0, 0, -days+1)).Find(&records).Error
+	if err := s.db.Where("created_at >= ?", now.AddDate(0, 0, -days+1)).Find(&records).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: UsageTimeseries failed: %v", err)
+	}
 	for _, record := range records {
 		day := record.CreatedAt.UTC().Format("2006-01-02")
 		idx, ok := indexByDay[day]
@@ -3859,8 +3997,8 @@ func (s *GormStore) GenerateBillingPeriod(period string) (map[string]any, error)
 			if err := tx.Create(&AdminResource{
 				ID:          NewID(resourcePrefix("chargebacks")),
 				Kind:        "chargebacks",
-				Name:        fmt.Sprintf("%s %s %s 分摊", period, item.CostCenter, item.ProjectID),
-				Description: "由 TokenHub 用量记录自动生成",
+				Name:        fmt.Sprintf("%s %s %s 鍒嗘憡", period, item.CostCenter, item.ProjectID),
+				Description: "鐢?TokenHub 鐢ㄩ噺璁板綍鑷姩鐢熸垚",
 				Status:      StatusActive,
 				Fields: map[string]any{
 					"period":              period,
@@ -3922,7 +4060,9 @@ func (s *GormStore) GenerateBillingPeriod(period string) (map[string]any, error)
 
 func (s *GormStore) ListRequestLogs() []RequestLog {
 	var items []RequestLog
-	_ = s.db.Order("created_at desc").Find(&items).Error
+	if err := s.db.Order("created_at desc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListRequestLogs failed: %v", err)
+	}
 	return items
 }
 
@@ -3975,21 +4115,25 @@ func (s *GormStore) SaveProviderResourceQuota(resourceID string, adapterType str
 }
 
 func (s *GormStore) GetRequestDetail(requestID string) (map[string]any, error) {
-	var log RequestLog
-	if err := s.db.First(&log, "request_id = ?", requestID).Error; err != nil {
+	var requestLog RequestLog
+	if err := s.db.First(&requestLog, "request_id = ?", requestID).Error; err != nil {
 		return nil, notFound(err, "request_not_found", "Request not found")
 	}
 	var usage []UsageRecord
-	_ = s.db.Where("request_id = ?", requestID).Find(&usage).Error
+	if err := s.db.Where("request_id = ?", requestID).Find(&usage).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: GetRequestDetail failed to load usage for request %s: %v", requestID, err)
+	}
 	var attempts []RouteAttemptLog
-	_ = s.db.Where("request_id = ?", requestID).Order("attempt_index asc").Find(&attempts).Error
+	if err := s.db.Where("request_id = ?", requestID).Order("attempt_index asc").Find(&attempts).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: GetRequestDetail failed to load attempts for request %s: %v", requestID, err)
+	}
 	var payload RequestPayloadLog
 	var payloadValue any
 	if err := s.db.First(&payload, "request_id = ?", requestID).Error; err == nil {
 		payloadValue = payload
 	}
 	return map[string]any{
-		"log":      log,
+		"log":      requestLog,
 		"usage":    usage,
 		"attempts": attempts,
 		"payload":  payloadValue,
@@ -3998,7 +4142,9 @@ func (s *GormStore) GetRequestDetail(requestID string) (map[string]any, error) {
 
 func (s *GormStore) ListAlerts() []AlertEvent {
 	var items []AlertEvent
-	_ = s.db.Order("created_at desc").Find(&items).Error
+	if err := s.db.Order("created_at desc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListAlerts failed: %v", err)
+	}
 	return items
 }
 
@@ -4012,7 +4158,9 @@ func (s *GormStore) GetAlert(id string) (AlertEvent, error) {
 
 func (s *GormStore) ListAlertDeliveries() []AlertDelivery {
 	var items []AlertDelivery
-	_ = s.db.Order("created_at desc").Limit(500).Find(&items).Error
+	if err := s.db.Order("created_at desc").Limit(500).Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListAlertDeliveries failed: %v", err)
+	}
 	return items
 }
 
@@ -4032,7 +4180,9 @@ func (s *GormStore) RecordAlertDelivery(delivery AlertDelivery) AlertDelivery {
 
 func (s *GormStore) ListAuditEvents() []AuditEvent {
 	var items []AuditEvent
-	_ = s.db.Order("created_at desc").Limit(500).Find(&items).Error
+	if err := s.db.Order("created_at desc").Limit(500).Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListAuditEvents failed: %v", err)
+	}
 	return items
 }
 
@@ -4074,7 +4224,9 @@ func (s *GormStore) CreateResource(kind string, resource AdminResource) AdminRes
 
 func (s *GormStore) ListResources(kind string) []AdminResource {
 	var items []AdminResource
-	_ = s.db.Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	if err := s.db.Where("kind = ?", kind).Order("created_at asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListResources failed: %v", err)
+	}
 	return items
 }
 
@@ -4223,11 +4375,11 @@ func (s *GormStore) RunMonitor(id string) (MonitorRunResult, error) {
 		}
 	default:
 		result.Status = "failed"
-		result.Message = "不支持的监控目标"
+		result.Message = "涓嶆敮鎸佺殑鐩戞帶鐩爣"
 	}
 	result.LatencyMS = time.Since(started).Milliseconds()
 	if result.Message == "" {
-		result.Message = "监控执行完成"
+		result.Message = "鐩戞帶鎵ц瀹屾垚"
 	}
 	fields["target_type"] = result.TargetType
 	fields["last_status"] = result.Status
@@ -4281,7 +4433,9 @@ func (s *GormStore) CreateApprovalRequest(request ApprovalRequest) ApprovalReque
 
 func (s *GormStore) ListApprovalRequests() []ApprovalRequest {
 	var items []ApprovalRequest
-	_ = s.db.Order("created_at desc").Limit(500).Find(&items).Error
+	if err := s.db.Order("created_at desc").Limit(500).Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListApprovalRequests failed: %v", err)
+	}
 	return items
 }
 
@@ -4333,7 +4487,9 @@ func (s *GormStore) CreateAdminUser(user AdminUser, password string) (AdminUser,
 
 func (s *GormStore) ListAdminUsers() []AdminUser {
 	var items []AdminUser
-	_ = s.db.Order("created_at asc").Find(&items).Error
+	if err := s.db.Order("created_at asc").Find(&items).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListAdminUsers failed: %v", err)
+	}
 	for i := range items {
 		items[i] = publicAdminUser(items[i])
 	}
@@ -4494,8 +4650,12 @@ func (s *GormStore) ResetAdminUserPassword(token string, password string) (Admin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if strings.TrimSpace(token) == "" || strings.TrimSpace(password) == "" {
+	password = strings.TrimSpace(password)
+	if strings.TrimSpace(token) == "" || password == "" {
 		return AdminUser{}, NewHTTPError(400, "invalid_reset_request", "token and password are required")
+	}
+	if len(password) < 8 {
+		return AdminUser{}, NewHTTPError(400, "weak_password", "Password must be at least 8 characters")
 	}
 	var item AdminPasswordResetToken
 	if err := s.db.First(&item, "token_hash = ?", HashSecret(token)).Error; err != nil {
@@ -4701,7 +4861,9 @@ func (s *GormStore) ListSQLiteBackups() []SQLiteBackupRecord {
 	defer s.mu.Unlock()
 
 	var records []SQLiteBackupRecord
-	_ = s.db.Order("created_at desc").Find(&records).Error
+	if err := s.db.Order("created_at desc").Find(&records).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: ListSQLiteBackups failed: %v", err)
+	}
 	return records
 }
 
@@ -5057,7 +5219,9 @@ func raiseQuotaAlerts(tx *gorm.DB, key APIKey, dayCounter, monthCounter *QuotaCo
 
 func quotaPolicyLimits(tx *gorm.DB, project Project, key APIKey) QuotaLimits {
 	var resources []AdminResource
-	_ = tx.Where("kind = ? AND status = ?", "quota-policies", StatusActive).Find(&resources).Error
+	if err := tx.Where("kind = ? AND status = ?", "quota-policies", StatusActive).Find(&resources).Error; err != nil {
+		log.Printf("[tokenhub] ERROR: quotaPolicyLimits failed: %v", err)
+	}
 	var limits QuotaLimits
 	for _, resource := range resources {
 		scope := strings.ToLower(strings.TrimSpace(stringField(resource.Fields, "scope")))
@@ -5641,52 +5805,54 @@ func writeConflict(err error, code, message string) error {
 	return err
 }
 
-func (s *GormStore) encryptSecret(secret string) string {
+func (s *GormStore) encryptSecret(secret string) (string, error) {
 	if strings.TrimSpace(secret) == "" || strings.HasPrefix(secret, "enc:v1:") {
-		return secret
+		return secret, nil
 	}
-	block, err := aes.NewCipher(secretKeyBytes(s.secretKey))
+	key := secretKeyBytes(s.secretKey)
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return secret
+		return "", fmt.Errorf("encrypt: init AES cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return secret
+		return "", fmt.Errorf("encrypt: init GCM: %w", err)
 	}
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return secret
+		return "", fmt.Errorf("encrypt: generate nonce: %w", err)
 	}
 	ciphertext := gcm.Seal(nil, nonce, []byte(secret), nil)
-	return "enc:v1:" + base64.RawURLEncoding.EncodeToString(append(nonce, ciphertext...))
+	return "enc:v1:" + base64.RawURLEncoding.EncodeToString(append(nonce, ciphertext...)), nil
 }
 
-func (s *GormStore) decryptSecret(secret string) string {
+func (s *GormStore) decryptSecret(secret string) (string, error) {
 	if !strings.HasPrefix(secret, "enc:v1:") {
-		return secret
+		return secret, nil
 	}
 	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(secret, "enc:v1:"))
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("decrypt: decode base64: %w", err)
 	}
-	block, err := aes.NewCipher(secretKeyBytes(s.secretKey))
+	key := secretKeyBytes(s.secretKey)
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("decrypt: init AES cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("decrypt: init GCM: %w", err)
 	}
 	if len(data) < gcm.NonceSize() {
-		return ""
+		return "", fmt.Errorf("decrypt: ciphertext too short (%d bytes)", len(data))
 	}
 	nonce := data[:gcm.NonceSize()]
 	ciphertext := data[gcm.NonceSize():]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("decrypt: AEAD open: %w", err)
 	}
-	return string(plaintext)
+	return string(plaintext), nil
 }
 
 func secretKeyBytes(secret string) []byte {

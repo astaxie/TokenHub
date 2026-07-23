@@ -1764,7 +1764,7 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(400, "invalid_reset_request", "token and password are required"))
 		return
 	}
-	if len(req.Password) < 8 {
+	if len(strings.TrimSpace(req.Password)) < 8 {
 		writeError(w, r, NewHTTPError(400, "weak_password", "Password must be at least 8 characters"))
 		return
 	}
@@ -2632,14 +2632,9 @@ func oauthRedirectWithFragment(returnURL string, values url.Values) string {
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		target, _ = url.Parse("http://localhost:3000/overview")
 	}
-	query := target.Query()
-	for key, items := range values {
-		query.Del(key)
-		for _, item := range items {
-			query.Add(key, item)
-		}
-	}
-	target.RawQuery = query.Encode()
+	// Only place OAuth tokens in the URL fragment (never in the query string).
+	// Query strings are logged by proxies and load balancers; fragments stay
+	// client-side and are never transmitted to servers.
 	target.Fragment = values.Encode()
 	return target.String()
 }
@@ -3123,11 +3118,6 @@ func (s *Server) handleAdminUsersImport(w http.ResponseWriter, r *http.Request) 
 			}
 			importedUsers = append(importedUsers, user)
 			updated++
-			if err := s.sendAdminPasswordResetEmail(r, mailChannel, user, actor.ID); err != nil {
-				errors = append(errors, fmt.Sprintf("row %d: reset email failed: %s", index+1, err.Error()))
-			} else {
-				resetEmailsSent++
-			}
 			for i := range existing {
 				if existing[i].ID == user.ID {
 					existing[i] = user
