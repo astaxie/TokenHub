@@ -1,0 +1,5 @@
+:80 {
+	@backend path /api/* /v1/*
+	reverse_proxy @backend tokenhub-backend:8080
+	reverse_proxy tokenhub-frontend:3000
+}
