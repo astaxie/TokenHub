@@ -132,6 +132,10 @@ type ProviderCatalogEntry = {
   models_count: number;
   source: string;
   models?: ProviderCatalogModel[];
+  requires_acknowledgement?: boolean;
+  acknowledgement_title?: string;
+  acknowledgement_message?: string;
+  acknowledgement_version?: string;
 };
 
 type ProviderResource = {
@@ -13398,6 +13402,7 @@ function ProviderUpsertModal({
   const [modelError, setModelError] = useState("");
   const [catalogReloadKey, setCatalogReloadKey] = useState(0);
   const [selectedModels, setSelectedModels] = useState<Record<string, boolean>>({});
+  const [acknowledgedCatalogTerms, setAcknowledgedCatalogTerms] = useState(false);
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
     name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name ?? "",
@@ -13553,6 +13558,7 @@ function ProviderUpsertModal({
   const autoRouteEnabled = values.create_routes === "true";
   const selectedRouteCount = autoRouteEnabled ? selectedModelIDs.length : 0;
   const selectedEntry = detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
+  const requiresCatalogAcknowledgement = mode === "create" && selectedEntry?.requires_acknowledgement === true;
   const showProviderCatalog = mode === "edit" || (mode === "create" && createStep === 1 && credentialMode !== "account_integration");
   const providerBodyClassName = mode === "create" && !showProviderCatalog ? "provider-modal-body provider-wizard-single" : "provider-modal-body";
   const accountRuntimeFields = useMemo(() => providerCreateAccountRuntimeFields(), []);
@@ -13770,6 +13776,7 @@ function ProviderUpsertModal({
     setCatalogReloadKey((current) => current + 1);
     setDetail(null);
     setSelectedModels({});
+    setAcknowledgedCatalogTerms(false);
     setModelQuery("");
     setModelError("");
     setValues((current) => ({
@@ -13786,6 +13793,7 @@ function ProviderUpsertModal({
     setCatalogReloadKey((current) => current + 1);
     setDetail(customCatalogEntry);
     setSelectedModels({});
+    setAcknowledgedCatalogTerms(false);
     setModelQuery("");
     setModelError("");
     setValues((current) => ({
@@ -13808,6 +13816,10 @@ function ProviderUpsertModal({
     return true;
   }
 
+  function catalogTermsReady() {
+    return !requiresCatalogAcknowledgement || acknowledgedCatalogTerms;
+  }
+
   function validateCreateStep(targetStep = createStep) {
     if (mode !== "create") return true;
     if (targetStep === 0 && !credentialMode) {
@@ -13820,6 +13832,10 @@ function ProviderUpsertModal({
     }
     if (targetStep === 1 && !values.name?.trim()) {
       setError(tx(credentialMode === "account_integration" ? "请填写通道名称。" : "请填写渠道名称。"));
+      return false;
+    }
+    if (targetStep === 2 && !catalogTermsReady()) {
+      setError(tx("请先确认个人套餐的适用性与风险。"));
       return false;
     }
     if (targetStep === 2 && credentialMode === "account_integration") {
@@ -13841,6 +13857,10 @@ function ProviderUpsertModal({
       setCreateStep((current) => Math.min(current + 1, lastCreateStep));
       return;
     }
+    if (mode === "create" && !catalogTermsReady()) {
+      setError(tx("请先确认个人套餐的适用性与风险。"));
+      return;
+    }
     setLoading(true);
     setError("");
     setNotice("");
@@ -13855,6 +13875,7 @@ function ProviderUpsertModal({
         catalog_id: catalogID,
         model_category: modelCategory,
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
+        acknowledged_catalog_terms: acknowledgedCatalogTerms ? "true" : "false",
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
@@ -14063,6 +14084,7 @@ function ProviderUpsertModal({
                   <ReviewItem label="凭据方式" value={providerCredentialModeLabel(credentialMode)} />
                   <ReviewItem label="自动路由" value={autoRouteEnabled ? tx("开启") : tx("关闭开关")} />
                   <ReviewItem label="已选模型" value={selectedRouteCount ? String(selectedRouteCount) : tx("无")} />
+                  {requiresCatalogAcknowledgement ? <ReviewItem label="个人套餐确认" value={acknowledgedCatalogTerms ? tx("已确认") : tx("未确认")} /> : null}
                 </div>
               </section>
             ) : null}
@@ -14074,6 +14096,20 @@ function ProviderUpsertModal({
                     <span>{tx("选择 Provider 使用哪一种上游凭据。账号集成会把账号作为资源池管理，适合 OpenAI subscription 或多个账号轮询。")}</span>
                   </div>
                 </div>
+                {requiresCatalogAcknowledgement ? (
+                  <section className="provider-terms-notice" role="alert">
+                    <strong>{tx(selectedEntry?.acknowledgement_title || "个人 Token Plan 使用确认")}</strong>
+                    <p>{tx(selectedEntry?.acknowledgement_message || "该套餐适用性、使用方式和相关风险由录入此 Key 的管理员自行确认。")}</p>
+                    <label>
+                      <input
+                        checked={acknowledgedCatalogTerms}
+                        onChange={(event) => setAcknowledgedCatalogTerms(event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>{tx("我已阅读并确认由本组织自行判断该套餐的适用性与风险。")}</span>
+                    </label>
+                  </section>
+                ) : null}
                 <div className="provider-credential-options" role="radiogroup" aria-label={tx("认证与账号来源")}>
                   {providerCredentialOptions().map((option) => {
                     const Icon = option.icon;
@@ -14318,7 +14354,7 @@ function ProviderUpsertModal({
               {tx("上一步")}
             </button>
           ) : null}
-          <button className="button" disabled={loading} type="submit">
+          <button className="button" disabled={loading || (mode === "create" && createStep >= 2 && !catalogTermsReady())} type="submit">
             {mode === "create"
               ? createStep === lastCreateStep
                 ? loading ? tx("保存中") : tx("保存 Provider")
@@ -16376,6 +16412,7 @@ function providerPayload(values: Record<string, string>) {
     model_category: values.model_category,
     create_routes: values.create_routes === "true",
     selected_models: splitList(values.selected_models),
+    acknowledged_catalog_terms: values.acknowledged_catalog_terms === "true",
   };
 }
 

@@ -2753,6 +2753,112 @@ func TestAdminProviderCatalogAndTemplateRouteMapping(t *testing.T) {
 	}
 }
 
+func TestTencentTokenPlanCatalogEntries(t *testing.T) {
+	entries := tencentTokenPlanCatalogEntries()
+	if len(entries) != 4 {
+		t.Fatalf("expected four Tencent Token Plan entries, got %d", len(entries))
+	}
+
+	expected := []struct {
+		id       string
+		baseURL  string
+		requires bool
+		modelID  string
+	}{
+		{"tencent-token-plan-enterprise-pro", "https://tokenhub.tencentmaas.com/plan/v3", false, "glm-5.2"},
+		{"tencent-token-plan-enterprise-auto", "https://tokenhub.tencentmaas.com/plan/v3", false, "auto"},
+		{"tencent-token-plan-general-personal", "https://api.lkeap.cloud.tencent.com/plan/v3", true, "tc-code-latest"},
+		{"tencent-token-plan-hy-personal", "https://api.lkeap.cloud.tencent.com/plan/v3", true, "hy3"},
+	}
+	for _, test := range expected {
+		entry, ok := findProviderCatalogEntry(entries, test.id)
+		if !ok {
+			t.Fatalf("missing catalog entry %q", test.id)
+		}
+		if entry.BaseURL != test.baseURL || entry.RequiresAcknowledgement != test.requires {
+			t.Fatalf("unexpected catalog entry %#v", entry)
+		}
+		if test.requires && (entry.AcknowledgementTitle == "" || entry.AcknowledgementMessage == "" || entry.AcknowledgementVersion == "") {
+			t.Fatalf("expected acknowledgement copy for %q: %#v", test.id, entry)
+		}
+		if _, ok := findProviderCatalogModel(entry.Models, test.modelID); !ok {
+			t.Fatalf("missing %q model from %q", test.modelID, test.id)
+		}
+	}
+}
+
+func TestPersonalTokenPlanProviderRequiresAcknowledgement(t *testing.T) {
+	withProviderCatalogCache(t, tencentTokenPlanCatalogEntries())
+	app := newTestServer()
+
+	missingAcknowledgement := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id": "tencent-token-plan-general-personal",
+		"name":       "Tencent Personal Token Plan",
+		"status":     "active",
+	}, "")
+	if missingAcknowledgement.Code != http.StatusBadRequest || !strings.Contains(missingAcknowledgement.Body, "provider_terms_acknowledgement_required") {
+		t.Fatalf("expected acknowledgement error, got %d: %s", missingAcknowledgement.Code, missingAcknowledgement.Body)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":                 "tencent-token-plan-general-personal",
+		"name":                       "Tencent Personal Token Plan",
+		"status":                     "active",
+		"acknowledged_catalog_terms": true,
+		"create_routes":              false,
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected acknowledged provider creation, got %d: %s", created.Code, created.Body)
+	}
+	if !strings.Contains(created.Body, `"catalog_terms_acknowledged":"true"`) || !strings.Contains(created.Body, `"catalog_terms_acknowledged_at"`) {
+		t.Fatalf("expected acknowledgement metadata, got %s", created.Body)
+	}
+
+	enterprise := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":    "tencent-token-plan-enterprise-auto",
+		"name":          "Tencent Enterprise Token Plan",
+		"status":        "active",
+		"create_routes": false,
+	}, "")
+	if enterprise.Code != http.StatusCreated {
+		t.Fatalf("expected enterprise provider creation without acknowledgement, got %d: %s", enterprise.Code, enterprise.Body)
+	}
+}
+
+func findProviderCatalogEntry(entries []ProviderCatalogEntry, id string) (ProviderCatalogEntry, bool) {
+	for _, entry := range entries {
+		if entry.ID == id {
+			return entry, true
+		}
+	}
+	return ProviderCatalogEntry{}, false
+}
+
+func findProviderCatalogModel(models []ProviderCatalogModel, id string) (ProviderCatalogModel, bool) {
+	for _, model := range models {
+		if model.ID == id {
+			return model, true
+		}
+	}
+	return ProviderCatalogModel{}, false
+}
+
+func withProviderCatalogCache(t *testing.T, entries []ProviderCatalogEntry) {
+	t.Helper()
+	catalogCache.Lock()
+	previousEntries := catalogCache.entries
+	previousFetchedAt := catalogCache.fetchedAt
+	catalogCache.entries = cloneCatalogEntries(entries, true)
+	catalogCache.fetchedAt = time.Now()
+	catalogCache.Unlock()
+	t.Cleanup(func() {
+		catalogCache.Lock()
+		catalogCache.entries = previousEntries
+		catalogCache.fetchedAt = previousFetchedAt
+		catalogCache.Unlock()
+	})
+}
+
 func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	entries := []ProviderCatalogEntry{
 		{

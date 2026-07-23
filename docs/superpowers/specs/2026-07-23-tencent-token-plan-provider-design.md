@@ -6,7 +6,7 @@
 
 ## 范围
 
-- 新增四个内置 Provider Catalog 条目，使用腾讯云中国站的 OpenAI-compatible 地址 `https://tokenhub.tencentmaas.com/plan/v3`。
+- 新增四个内置 Provider Catalog 条目。企业版使用 `https://tokenhub.tencentmaas.com/plan/v3`，个人版使用 `https://api.lkeap.cloud.tencent.com/plan/v3`。
 - 为 Catalog 条目增加可选的确认声明字段：标题、内容和是否需要确认。
 - Provider 创建请求增加 `acknowledged_catalog_terms`。当所选 Catalog 需要确认且该字段不是 `true` 时，服务端返回 `provider_terms_acknowledgement_required`。
 - 成功创建个人套餐 Provider 时，把套餐类型、确认时间和确认声明版本保存到 Provider `options`，并包含在既有的 `create provider` 审计事件中。

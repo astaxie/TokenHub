@@ -6859,6 +6859,47 @@ th:last-child {
   font-weight: 740;
 }
 
+.provider-terms-notice {
+  border: 1px solid color-mix(in srgb, var(--warn) 36%, var(--border));
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 12px 13px;
+  display: grid;
+  gap: 6px;
+  background: var(--warn-weak);
+}
+
+.provider-terms-notice strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.provider-terms-notice p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.provider-terms-notice label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.provider-terms-notice input {
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+  accent-color: var(--warn);
+}
+
 .provider-create-review {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

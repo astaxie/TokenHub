@@ -2575,6 +2575,11 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, err)
 			return
 		}
+		if err := validateProviderCatalogAcknowledgement(catalog, req.AcknowledgedCatalogTerms); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		applyProviderCatalogAcknowledgement(&provider, catalog, time.Now())
 		if provider.Name == "" || provider.Type == "" {
 			writeError(w, r, NewHTTPError(400, "invalid_provider", "name and type are required"))
 			return
@@ -2592,6 +2597,25 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 	}
+}
+
+func validateProviderCatalogAcknowledgement(catalog ProviderCatalogEntry, acknowledged bool) error {
+	if catalog.RequiresAcknowledgement && !acknowledged {
+		return NewHTTPError(http.StatusBadRequest, "provider_terms_acknowledgement_required", "Provider terms must be acknowledged before creating this provider")
+	}
+	return nil
+}
+
+func applyProviderCatalogAcknowledgement(provider *Provider, catalog ProviderCatalogEntry, now time.Time) {
+	if provider == nil || !catalog.RequiresAcknowledgement {
+		return
+	}
+	if provider.Options == nil {
+		provider.Options = map[string]string{}
+	}
+	provider.Options["catalog_terms_acknowledged"] = "true"
+	provider.Options["catalog_terms_acknowledged_at"] = now.UTC().Format(time.RFC3339)
+	provider.Options["catalog_terms_version"] = catalog.AcknowledgementVersion
 }
 
 func (s *Server) handleAdminProviderCatalog(w http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,14 @@ import (
 
 const publicProviderConfAllURL = "https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/main/dist/all.json"
 
+const (
+	tencentTokenPlanEnterpriseBaseURL = "https://tokenhub.tencentmaas.com/plan/v3"
+	tencentTokenPlanPersonalBaseURL   = "https://api.lkeap.cloud.tencent.com/plan/v3"
+	tencentTokenPlanTermsVersion      = "2026-07-23"
+	tencentTokenPlanEnterpriseDocURL  = "https://cloud.tencent.com/document/product/1823/130660"
+	tencentTokenPlanPersonalDocURL    = "https://cloud.tencent.com/document/product/1823/130060"
+)
+
 var catalogCache = struct {
 	sync.Mutex
 	entries   []ProviderCatalogEntry
@@ -69,6 +77,7 @@ func LoadProviderCatalog(ctx context.Context, client *http.Client, refresh bool)
 		return cloneCatalogEntries(entries, false), "builtin", nil
 	}
 
+	entries = mergeProviderCatalogEntries(entries, tencentTokenPlanCatalogEntries())
 	entries = append(entries, customProviderCatalogEntry())
 	sortCatalogEntries(entries)
 
@@ -289,12 +298,80 @@ func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
 		builtinCatalogEntry("qwen", "Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://help.aliyun.com/zh/model-studio", []string{"qwen-max", "qwen-plus"}),
 		{ID: "siliconflow", Name: "SiliconFlow", DisplayName: "SiliconFlow", Type: ProviderOpenAICompatible, BaseURL: "https://api.siliconflow.cn/v1", DocURL: "https://cloud.siliconflow.com/models", Source: "builtin"},
 		{ID: "ollama", Name: "Ollama", DisplayName: "Ollama", Type: "local", BaseURL: "http://127.0.0.1:11434/v1", DocURL: "https://ollama.com", Source: "builtin"},
-		customProviderCatalogEntry(),
 	}
+	entries = append(entries, tencentTokenPlanCatalogEntries()...)
+	entries = append(entries, customProviderCatalogEntry())
 	if includeModels {
 		return entries
 	}
 	return cloneCatalogEntries(entries, false)
+}
+
+func tencentTokenPlanCatalogEntries() []ProviderCatalogEntry {
+	professional := tencentTokenPlanCatalogEntry(
+		"tencent-token-plan-enterprise-pro",
+		"腾讯云 Token Plan / Token Plan 企业版专业套餐",
+		tencentTokenPlanEnterpriseBaseURL,
+		tencentTokenPlanEnterpriseDocURL,
+		[]string{
+			"auto", "glm-5.2", "glm-5", "glm-5.1", "glm-5-turbo",
+			"kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6", "kimi-k2.5",
+			"minimax-m3", "minimax-m2.7", "minimax-m2.5",
+			"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-202605", "deepseek-v4-pro-202606",
+		},
+	)
+	lightweight := tencentTokenPlanCatalogEntry(
+		"tencent-token-plan-enterprise-auto",
+		"腾讯云 Token Plan / Token Plan 企业版轻享套餐",
+		tencentTokenPlanEnterpriseBaseURL,
+		tencentTokenPlanEnterpriseDocURL,
+		[]string{"auto"},
+	)
+	general := tencentTokenPlanCatalogEntry(
+		"tencent-token-plan-general-personal",
+		"腾讯云 Token Plan / 通用 Token Plan（个人版）",
+		tencentTokenPlanPersonalBaseURL,
+		tencentTokenPlanPersonalDocURL,
+		[]string{"tc-code-latest", "glm-5", "glm-5.1", "kimi-k2.5", "minimax-m2.5", "minimax-m2.7", "deepseek-v4-flash-202605", "deepseek-v4-pro-202606"},
+	)
+	hy := tencentTokenPlanCatalogEntry(
+		"tencent-token-plan-hy-personal",
+		"腾讯云 Token Plan / Hy Token Plan（个人版）",
+		tencentTokenPlanPersonalBaseURL,
+		tencentTokenPlanPersonalDocURL,
+		[]string{"hy3", "hy3-preview"},
+	)
+
+	for _, entry := range []*ProviderCatalogEntry{&general, &hy} {
+		entry.RequiresAcknowledgement = true
+		entry.AcknowledgementTitle = "个人 Token Plan 使用确认"
+		entry.AcknowledgementMessage = "该套餐适用性、使用方式和相关风险由录入此 Key 的管理员自行确认。确认后，TokenHub 将把该 Key 作为上游渠道参与路由。"
+		entry.AcknowledgementVersion = tencentTokenPlanTermsVersion
+	}
+
+	return []ProviderCatalogEntry{professional, lightweight, general, hy}
+}
+
+func tencentTokenPlanCatalogEntry(id string, name string, baseURL string, docURL string, modelIDs []string) ProviderCatalogEntry {
+	entry := builtinCatalogEntry(id, name, ProviderOpenAICompatible, baseURL, docURL, modelIDs)
+	entry.Source = "builtin"
+	return entry
+}
+
+func mergeProviderCatalogEntries(entries []ProviderCatalogEntry, additions []ProviderCatalogEntry) []ProviderCatalogEntry {
+	indexes := make(map[string]int, len(entries))
+	for index, entry := range entries {
+		indexes[entry.ID] = index
+	}
+	for _, entry := range additions {
+		if index, ok := indexes[entry.ID]; ok {
+			entries[index] = entry
+			continue
+		}
+		indexes[entry.ID] = len(entries)
+		entries = append(entries, entry)
+	}
+	return entries
 }
 
 func builtinCatalogEntry(id string, name string, providerType string, baseURL string, docURL string, modelIDs []string) ProviderCatalogEntry {
