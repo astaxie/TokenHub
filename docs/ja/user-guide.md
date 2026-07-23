@@ -82,9 +82,36 @@ curl --request POST \
 | `messages` | はい | `system`、`user`、`assistant` のメッセージ配列 |
 | `max_tokens` | いいえ | 最大生成 tokens |
 | `temperature` | いいえ | サンプリング温度 |
+| `reasoning_effort` | いいえ | 対応するモデルとルートで使用する推論強度 |
 | `stream` | いいえ | `true` の場合 SSE stream |
 | `tools` | いいえ | 上流モデル対応時の関数ツール |
 | `response_format` | いいえ | 上流モデル対応時の JSON object または JSON schema |
+
+### 推論強度
+
+Chat Completions は OpenAI 互換の `reasoning_effort` フィールドを受け付けます。
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "messages": [{"role": "user", "content": "Analyze the trade-offs."}],
+  "reasoning_effort": "high"
+}
+```
+
+Responses は OpenAI 互換のネスト形式を受け付けます。
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "input": "Analyze the trade-offs.",
+  "reasoning": {"effort": "high"}
+}
+```
+
+TokenHub は推論強度をベストエフォートのヒントとして扱い、ルートの順序を変更しません。OpenAI 互換 Provider には値をそのまま渡します。Anthropic のネイティブルートでは対応する値を `output_config.effort` に変換します。Gemini のネイティブルートでは、モデル固有の対応表に従って Gemini 3 以降の `thinkingLevel`、または Gemini 2.5 の公式 `thinkingBudget` に変換します。対応しない値や空値は省略され、上流モデルのデフォルト動作が使われます。上流 Provider が推論強度フィールドを明示する `400` または `422` のパラメーターエラーを返した場合、TokenHub は同じルートでそのフィールドを除いて一度再試行し、その後は従来のフェイルオーバー処理を適用します。物理的な再試行はそれぞれ Provider Resource RPM に加算され、ルート試行として記録されます。
+
+Responses の推論強度は OpenAI 互換、Anthropic、Gemini の各ルートで利用できます。Azure OpenAI Responses と Responses のストリーミングは未実装で、`501 provider_capability_not_supported` を返します。
 
 ## SDK 設定
 

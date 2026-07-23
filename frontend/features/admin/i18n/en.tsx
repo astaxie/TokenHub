@@ -801,6 +801,8 @@ export const enTranslations: Record<string, string> = {
     "条路由": "routes",
     "未配置路由": "No route configured",
     "响应格式": "Response Format",
+    "推理强度": "Reasoning Effort",
+    "模型默认": "Model Default",
     "系统提示": "System Prompt",
     "函数": "Functions",
     "函数调用配置待接入": "Function calling config is not connected yet",

@@ -156,6 +156,7 @@ type Store interface {
 	DeleteSQLiteBackup(id string) error
 	AccessibleModels(key APIKey) []Model
 	CheckProviderResourceCapacity(ctx context.Context, resourceID string) (string, context.Context, error)
+	CheckProviderResourceRetryCapacity(ctx context.Context, resourceID string, leaseID string) error
 	ReleaseProviderResourceCapacity(resourceID string, leaseID string)
 	FinishProviderResourceAttempt(resourceID string, leaseID string, success bool, usage Usage)
 	RefreshProviderResourceCredentials(ctx context.Context, resourceID string, force bool) (ProviderResourceCredentials, error)
@@ -1645,6 +1646,25 @@ func (s *GormStore) providerResourceBucketForUpdate(tx *gorm.DB, resourceID stri
 	return item, nil
 }
 
+func (s *GormStore) consumeProviderResourceRequestCapacity(tx *gorm.DB, resource ProviderResource, now time.Time) error {
+	if resource.RateLimitRPM <= 0 && resource.TokenLimitTPM <= 0 {
+		return nil
+	}
+	bucket, err := s.providerResourceBucketForUpdate(tx, resource.ID, minuteBucket(now))
+	if err != nil {
+		return err
+	}
+	if resource.RateLimitRPM > 0 && bucket.Requests >= resource.RateLimitRPM {
+		return NewHTTPError(http.StatusTooManyRequests, "provider_resource_rpm_exceeded", "Provider resource RPM limit exceeded")
+	}
+	if resource.TokenLimitTPM > 0 && bucket.Tokens >= resource.TokenLimitTPM {
+		return NewHTTPError(http.StatusTooManyRequests, "provider_resource_tpm_exceeded", "Provider resource TPM limit exceeded")
+	}
+	bucket.Requests++
+	bucket.UpdatedAt = now
+	return tx.Save(&bucket).Error
+}
+
 func (s *GormStore) CheckProviderResourceCapacity(ctx context.Context, resourceID string) (string, context.Context, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -1688,22 +1708,8 @@ func (s *GormStore) CheckProviderResourceCapacity(ctx context.Context, resourceI
 			leaseConfirmedFor = confirmedFor
 			acquiredLease = true
 		}
-		if resource.RateLimitRPM > 0 || resource.TokenLimitTPM > 0 {
-			bucket, err := s.providerResourceBucketForUpdate(tx, resource.ID, minuteBucket(now))
-			if err != nil {
-				return err
-			}
-			if resource.RateLimitRPM > 0 && bucket.Requests >= resource.RateLimitRPM {
-				return NewHTTPError(http.StatusTooManyRequests, "provider_resource_rpm_exceeded", "Provider resource RPM limit exceeded")
-			}
-			if resource.TokenLimitTPM > 0 && bucket.Tokens >= resource.TokenLimitTPM {
-				return NewHTTPError(http.StatusTooManyRequests, "provider_resource_tpm_exceeded", "Provider resource TPM limit exceeded")
-			}
-			bucket.Requests++
-			bucket.UpdatedAt = now
-			if err := tx.Save(&bucket).Error; err != nil {
-				return err
-			}
+		if err := s.consumeProviderResourceRequestCapacity(tx, resource, now); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -1715,6 +1721,49 @@ func (s *GormStore) CheckProviderResourceCapacity(ctx context.Context, resourceI
 		return leaseID, leaseCtx, nil
 	}
 	return "", ctx, nil
+}
+
+// CheckProviderResourceRetryCapacity accounts for another physical upstream
+// request while retaining the concurrency lease acquired for the logical call.
+func (s *GormStore) CheckProviderResourceRetryCapacity(ctx context.Context, resourceID string, leaseID string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if resourceID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "provider_resource", resourceID); err != nil {
+			return err
+		}
+		query := tx
+		if s.dbDriver == "postgres" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var resource ProviderResource
+		if err := query.First(&resource, "id = ?", resourceID).Error; err != nil {
+			return notFound(err, "provider_resource_not_found", "Provider resource not found")
+		}
+		now, err := s.databaseNow(tx)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(leaseID) != "" {
+			var count int64
+			if err := tx.Model(&InFlightLease{}).
+				Where("id = ? AND scope_type = ? AND scope_id = ? AND expires_at > ?", leaseID, "provider_resource", resourceID, now).
+				Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				return ErrCoordinationLeaseLost
+			}
+		}
+		return s.consumeProviderResourceRequestCapacity(tx, resource, now)
+	})
 }
 
 func (s *GormStore) FinishProviderResourceAttempt(resourceID string, leaseID string, success bool, usage Usage) {

@@ -165,6 +165,7 @@ export function gatewayChineseLLMUsageDocs(stats: GatewayDocStats, role: AppRole
                 ["messages", "array", "是", "由 system、user、assistant 组成的消息数组。"],
                 ["max_tokens", "integer", "否", "最大生成 token 数。"],
                 ["temperature", "number", "否", "采样温度。"],
+                ["reasoning_effort", "string", "否", "推理强度；当前路由不支持时省略。"],
                 ["stream", "boolean", "否", "true 时返回 SSE 流，结束标记为 data: [DONE]。"],
                 ["tools", "array", "否", "兼容上游模型的函数工具。"],
                 ["response_format", "object", "否", "上游支持时可指定 JSON object 或 JSON schema。"],
@@ -199,7 +200,8 @@ export function gatewayChineseLLMUsageDocs(stats: GatewayDocStats, role: AppRole
               rows: [
                 ["model", "string", "是", "可调用模型 ID。"],
                 ["input", "string | array", "是", "输入文本或结构化输入内容。"],
-                ["stream", "boolean", "否", "是否流式返回。"],
+                ["reasoning.effort", "string", "否", "嵌套推理强度；支持 OpenAI 兼容、Anthropic 和 Gemini 路由。"],
+                ["stream", "boolean", "否", "暂不支持；true 时返回 501。"],
               ],
             },
             examplesTitle: "示例",

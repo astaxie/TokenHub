@@ -82,9 +82,36 @@ curl --request POST \
 | `messages` | 是 | `system`、`user`、`assistant` 消息数组 |
 | `max_tokens` | 否 | 最大生成 tokens |
 | `temperature` | 否 | 采样温度 |
+| `reasoning_effort` | 否 | 支持该参数的模型和路由所使用的推理强度 |
 | `stream` | 否 | `true` 时返回 SSE 流 |
 | `tools` | 否 | 上游模型支持时可传函数工具 |
 | `response_format` | 否 | 上游模型支持时可传 JSON object 或 JSON schema |
+
+### 推理强度
+
+Chat Completions 接受 OpenAI 兼容的 `reasoning_effort` 字段：
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "messages": [{"role": "user", "content": "Analyze the trade-offs."}],
+  "reasoning_effort": "high"
+}
+```
+
+Responses 接受 OpenAI 兼容的嵌套格式：
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "input": "Analyze the trade-offs.",
+  "reasoning": {"effort": "high"}
+}
+```
+
+TokenHub 将推理强度作为尽力应用的提示字段，不改变路由顺序。OpenAI 兼容 Provider 接收原值；原生 Anthropic 路由将支持的值转换为 `output_config.effort`；原生 Gemini 路由根据具体模型的支持矩阵转换为 Gemini 3 及以上模型的 `thinkingLevel`，或 Gemini 2.5 模型的官方 `thinkingBudget`。不支持的值或空值会被省略，继续使用上游模型的默认行为。如果上游返回 `400` 或 `422` 参数错误，并且错误信息明确指向推理强度字段，TokenHub 会在同一路由内移除该字段并重试一次，之后再按原有故障转移逻辑处理。每次物理重试均计入 Provider Resource RPM，并记录为一次路由尝试。
+
+Responses 推理强度支持 OpenAI 兼容、Anthropic 和 Gemini 路由。Azure OpenAI Responses 与 Responses 流式响应尚未实现，此类请求返回 `501 provider_capability_not_supported`。
 
 ## SDK 配置
 

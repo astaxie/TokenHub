@@ -264,6 +264,7 @@ export function gatewayEnglishLLMUsageDocs(stats: GatewayDocStats, role: AppRole
                 ["messages", "array", "Yes", "Conversation messages with system, user, or assistant roles."],
                 ["max_tokens", "integer", "No", "Maximum generated tokens."],
                 ["temperature", "number", "No", "Sampling temperature."],
+                ["reasoning_effort", "string", "No", "Reasoning effort; omitted when the selected route cannot represent it."],
                 ["stream", "boolean", "No", "When true, returns Server-Sent Events ending with data: [DONE]."],
                 ["tools", "array", "No", "Function tools supported by compatible upstream models."],
                 ["response_format", "object", "No", "JSON object or JSON schema output when supported."],
@@ -298,7 +299,8 @@ export function gatewayEnglishLLMUsageDocs(stats: GatewayDocStats, role: AppRole
               rows: [
                 ["model", "string", "Yes", "A callable model ID."],
                 ["input", "string | array", "Yes", "Input text or structured input content."],
-                ["stream", "boolean", "No", "Whether to return a streaming response."],
+                ["reasoning.effort", "string", "No", "Nested reasoning effort for OpenAI-compatible, Anthropic, and Gemini routes."],
+                ["stream", "boolean", "No", "Not implemented; true returns 501."],
               ],
             },
             examplesTitle: "Example",

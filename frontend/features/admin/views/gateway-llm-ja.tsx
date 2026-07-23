@@ -165,6 +165,7 @@ export function gatewayJapaneseLLMUsageDocs(stats: GatewayDocStats, role: AppRol
                 ["messages", "array", "はい", "system、user、assistant のメッセージ配列。"],
                 ["max_tokens", "integer", "いいえ", "最大生成 tokens。"],
                 ["temperature", "number", "いいえ", "サンプリング温度。"],
+                ["reasoning_effort", "string", "いいえ", "推論強度。選択されたルートが対応しない場合は省略します。"],
                 ["stream", "boolean", "いいえ", "true の場合は SSE で返し、data: [DONE] で終了します。"],
                 ["tools", "array", "いいえ", "互換上流モデルの関数ツール。"],
                 ["response_format", "object", "いいえ", "対応モデルでは JSON object または JSON schema を指定できます。"],
@@ -199,7 +200,8 @@ export function gatewayJapaneseLLMUsageDocs(stats: GatewayDocStats, role: AppRol
               rows: [
                 ["model", "string", "はい", "呼び出し可能なモデル ID。"],
                 ["input", "string | array", "はい", "入力テキストまたは構造化入力。"],
-                ["stream", "boolean", "いいえ", "ストリーミングで返すかどうか。"],
+                ["reasoning.effort", "string", "いいえ", "OpenAI 互換、Anthropic、Gemini ルート向けのネストされた推論強度。"],
+                ["stream", "boolean", "いいえ", "未実装です。true の場合は 501 を返します。"],
               ],
             },
             examplesTitle: "例",

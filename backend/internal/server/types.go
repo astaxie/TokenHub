@@ -54,9 +54,10 @@ var (
 )
 
 type HTTPError struct {
-	Status  int
-	Code    string
-	Message string
+	Status         int
+	Code           string
+	Message        string
+	UpstreamStatus int `json:"-"`
 }
 
 func (e *HTTPError) Error() string {
@@ -510,14 +511,19 @@ type ChatMessage struct {
 	Content any    `json:"content"`
 }
 
+type ReasoningOptions struct {
+	Effort *string `json:"effort,omitempty"`
+}
+
 type ChatCompletionRequest struct {
-	Model         string         `json:"model"`
-	Messages      []ChatMessage  `json:"messages"`
-	Stream        bool           `json:"stream,omitempty"`
-	StreamOptions map[string]any `json:"stream_options,omitempty"`
-	MaxTokens     int            `json:"max_tokens,omitempty"`
-	Temperature   *float64       `json:"temperature,omitempty"`
-	Metadata      map[string]any `json:"metadata,omitempty"`
+	Model           string         `json:"model"`
+	Messages        []ChatMessage  `json:"messages"`
+	Stream          bool           `json:"stream,omitempty"`
+	StreamOptions   map[string]any `json:"stream_options,omitempty"`
+	MaxTokens       int            `json:"max_tokens,omitempty"`
+	Temperature     *float64       `json:"temperature,omitempty"`
+	ReasoningEffort *string        `json:"reasoning_effort,omitempty"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
 }
 
 type PlaygroundChatResponse struct {
@@ -551,11 +557,12 @@ type PlaygroundRouteAttempt struct {
 }
 
 type ResponsesRequest struct {
-	Model       string   `json:"model"`
-	Input       any      `json:"input"`
-	Stream      bool     `json:"stream,omitempty"`
-	MaxTokens   int      `json:"max_output_tokens,omitempty"`
-	Temperature *float64 `json:"temperature,omitempty"`
+	Model       string            `json:"model"`
+	Input       any               `json:"input"`
+	Stream      bool              `json:"stream,omitempty"`
+	MaxTokens   int               `json:"max_output_tokens,omitempty"`
+	Temperature *float64          `json:"temperature,omitempty"`
+	Reasoning   *ReasoningOptions `json:"reasoning,omitempty"`
 }
 
 type EmbeddingsRequest struct {
