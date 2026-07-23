@@ -624,9 +624,6 @@ export type ConfirmState<T> = {
 
 export type SettingsTabKey = "settings" | "role-configs" | "identity-providers";
 
-export const defaultBaseURL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
-
 export const sessionStorageKey = "tokenhub.admin.session";
 
 export const oauthBaseURLStorageKey = "tokenhub.admin.oauth.base_url";

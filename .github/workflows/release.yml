@@ -50,7 +50,10 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v7.0.1
         with:
           name: tokenhub-binaries
-          path: dist/*
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
           if-no-files-found: error
           retention-days: 7
 
