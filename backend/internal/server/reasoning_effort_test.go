@@ -308,6 +308,31 @@ func TestAnthropicAdapterTranslatesReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestAnthropicReasoningEffortUsesModelSupportMatrix(t *testing.T) {
+	tests := []struct {
+		name      string
+		model     string
+		effort    string
+		supported bool
+	}{
+		{name: "Sonnet 5 xhigh", model: "claude-sonnet-5", effort: "xhigh", supported: true},
+		{name: "Bedrock-style Sonnet 4.6 max", model: "anthropic.claude-sonnet-4-6-20260217-v1:0", effort: "max", supported: true},
+		{name: "Opus 4.6 xhigh", model: "claude-opus-4-6", effort: "xhigh"},
+		{name: "Opus 4.5 max", model: "claude-opus-4-5", effort: "max"},
+		{name: "legacy model", model: "claude-3-5-sonnet", effort: "high"},
+		{name: "model family boundary", model: "claude-sonnet-50", effort: "high"},
+		{name: "unknown alias", model: "company-reasoning-model", effort: "high"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := anthropicReasoningEffortSupported(test.model, test.effort); got != test.supported {
+				t.Fatalf("anthropicReasoningEffortSupported(%q, %q) = %v, want %v", test.model, test.effort, got, test.supported)
+			}
+		})
+	}
+}
+
 func TestGeminiAdapterTranslatesReasoningEffort(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -405,6 +430,8 @@ func TestNativeAdaptersOmitUnmappableReasoningEffort(t *testing.T) {
 		anthropic     bool
 	}{
 		{name: "Anthropic minimal", adapter: AnthropicAdapter{}, providerModel: "claude-sonnet-5", effort: "minimal", anthropic: true},
+		{name: "Anthropic legacy model", adapter: AnthropicAdapter{}, providerModel: "claude-3-5-sonnet", effort: "high", anthropic: true},
+		{name: "Anthropic unsupported model level", adapter: AnthropicAdapter{}, providerModel: "claude-opus-4-6", effort: "xhigh", anthropic: true},
 		{name: "Gemini xhigh", adapter: GeminiAdapter{}, providerModel: "gemini-3.5-flash", effort: "xhigh"},
 		{name: "Gemini legacy model", adapter: GeminiAdapter{}, providerModel: "gemini-2.0-flash", effort: "high"},
 		{name: "Gemini 2.5 Pro none", adapter: GeminiAdapter{}, providerModel: "gemini-2.5-pro", effort: "none"},
@@ -454,6 +481,54 @@ func TestNativeAdaptersOmitUnmappableReasoningEffort(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUnsupportedAnthropicModelOmitsEffortWithoutRetry(t *testing.T) {
+	var upstreamRequests []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+			return
+		}
+		upstreamRequests = append(upstreamRequests, payload)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":   map[string]any{},
+		})
+	}))
+	defer upstream.Close()
+
+	server, store, secret := newReasoningEffortGateway(t, upstream.URL, ProviderAnthropic)
+	resource := addReasoningProviderResource(t, store, upstream.URL, 1, 0)
+	if _, err := store.UpdateRoute("route_reasoning_0", ModelRoute{
+		ProviderResourceID: resource.ID,
+		ProviderModel:      "claude-3-5-sonnet",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model":            "reasoning-model",
+		"messages":         []map[string]any{{"role": "user", "content": "reason"}},
+		"reasoning_effort": "high",
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unsupported model should use its default effort without retry, got %d: %s", resp.Code, resp.Body)
+	}
+	if len(upstreamRequests) != 1 {
+		t.Fatalf("expected exactly one upstream request, got %d", len(upstreamRequests))
+	}
+	if _, exists := upstreamRequests[0]["output_config"]; exists {
+		t.Fatalf("unsupported model should not receive output_config: %#v", upstreamRequests[0])
+	}
+	var bucket ProviderResourceBucket
+	if err := store.db.First(&bucket, "resource_id = ?", resource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bucket.Requests != 1 {
+		t.Fatalf("expected one physical request to consume RPM, got %d", bucket.Requests)
 	}
 }
 
@@ -1171,16 +1246,57 @@ func TestGatewayFallsBackToBackupAfterEffortRetryFails(t *testing.T) {
 }
 
 func TestResponsesStreamingIsExplicitlyRejected(t *testing.T) {
-	server, _, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
-	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
-		"model":     "reasoning-model",
-		"input":     "reason",
-		"stream":    true,
-		"reasoning": map[string]any{"effort": "high"},
-	}, secret)
-	if resp.Code != http.StatusNotImplemented {
-		t.Fatalf("expected explicit 501 for Responses streaming, got %d: %s", resp.Code, resp.Body)
+	server, store, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
+	assertAuditedError := func(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, wantCode string) {
+		t.Helper()
+		if resp.Code != wantStatus {
+			t.Fatalf("expected %d, got %d: %s", wantStatus, resp.Code, resp.Body.String())
+		}
+		var responseBody map[string]any
+		if err := json.Unmarshal(resp.Body.Bytes(), &responseBody); err != nil {
+			t.Fatalf("decode gateway error: %v", err)
+		}
+		errorBody, _ := responseBody["error"].(map[string]any)
+		if errorBody["code"] != wantCode {
+			t.Fatalf("expected error code %q, got %#v", wantCode, responseBody)
+		}
+		requestID, _ := responseBody["request_id"].(string)
+		if requestID == "" || requestID != resp.Header().Get("x-request-id") {
+			t.Fatalf("expected matching request IDs, header=%q body=%q", resp.Header().Get("x-request-id"), requestID)
+		}
+		var requestLog RequestLog
+		if err := store.db.First(&requestLog, "request_id = ?", requestID).Error; err != nil {
+			t.Fatalf("expected request ID %q to resolve to an audit record: %v", requestID, err)
+		}
+		if requestLog.StatusCode != wantStatus || requestLog.ErrorCode != wantCode {
+			t.Fatalf("unexpected request log: %#v", requestLog)
+		}
 	}
+
+	t.Run("authorized model", func(t *testing.T) {
+		resp := doReasoningJSON(t, server.Handler(), "/v1/responses", map[string]any{
+			"model":     "reasoning-model",
+			"input":     "reason",
+			"stream":    true,
+			"reasoning": map[string]any{"effort": "high"},
+		}, secret)
+		assertAuditedError(t, resp, http.StatusNotImplemented, "provider_capability_not_supported")
+	})
+
+	t.Run("model permission is checked first", func(t *testing.T) {
+		store.AddModel(Model{
+			Name:         "restricted-reasoning-model",
+			Modality:     "chat",
+			Capabilities: []string{"chat", "reasoning"},
+			Status:       StatusActive,
+		})
+		resp := doReasoningJSON(t, server.Handler(), "/v1/responses", map[string]any{
+			"model":  "restricted-reasoning-model",
+			"input":  "reason",
+			"stream": true,
+		}, secret)
+		assertAuditedError(t, resp, http.StatusForbidden, "model_not_allowed")
+	})
 }
 
 func newReasoningEffortGateway(t *testing.T, upstreamURL string, providerTypes ...string) (*Server, *GormStore, string) {

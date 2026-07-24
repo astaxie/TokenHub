@@ -335,7 +335,7 @@ type AnthropicAdapter struct {
 
 func (a AnthropicAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
 	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
-	if reasoningEffort != nil && !anthropicReasoningEffortSupported(*reasoningEffort) {
+	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
 		reasoningEffort = nil
 	}
 	payload := anthropicPayload(providerModel, req.Messages, req.MaxTokens, reasoningEffort)
@@ -677,9 +677,48 @@ func isReasoningEffortRejection(err error) bool {
 	return false
 }
 
-func anthropicReasoningEffortSupported(effort string) bool {
-	switch strings.TrimSpace(effort) {
-	case "low", "medium", "high", "xhigh", "max":
+func anthropicReasoningEffortSupported(model string, effort string) bool {
+	effort = strings.TrimSpace(effort)
+	switch anthropicReasoningEffortModelFamily(model) {
+	case "claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5":
+		return effort == "low" || effort == "medium" || effort == "high" || effort == "xhigh" || effort == "max"
+	case "claude-mythos-preview", "claude-opus-4-6", "claude-sonnet-4-6":
+		return effort == "low" || effort == "medium" || effort == "high" || effort == "max"
+	case "claude-opus-4-5":
+		return effort == "low" || effort == "medium" || effort == "high"
+	default:
+		return false
+	}
+}
+
+func anthropicReasoningEffortModelFamily(model string) string {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	for _, family := range []string{
+		"claude-mythos-preview",
+		"claude-fable-5",
+		"claude-mythos-5",
+		"claude-opus-4-8",
+		"claude-opus-4-7",
+		"claude-opus-4-6",
+		"claude-opus-4-5",
+		"claude-sonnet-5",
+		"claude-sonnet-4-6",
+	} {
+		index := strings.LastIndex(normalized, family)
+		if index < 0 || !anthropicModelBoundary(normalized, index-1) || !anthropicModelBoundary(normalized, index+len(family)) {
+			continue
+		}
+		return family
+	}
+	return ""
+}
+
+func anthropicModelBoundary(model string, index int) bool {
+	if index < 0 || index >= len(model) {
+		return true
+	}
+	switch model[index] {
+	case '-', '_', '.', '/', ':', '@':
 		return true
 	default:
 		return false

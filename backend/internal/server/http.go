@@ -426,16 +426,19 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
 		return
 	}
+	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req)
+	if !ok {
+		return
+	}
 	if req.Stream {
-		writeError(w, r, NewHTTPError(
+		err := NewHTTPError(
 			http.StatusNotImplemented,
 			"provider_capability_not_supported",
 			"Streaming responses are not supported",
-		))
-		return
-	}
-	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req)
-	if !ok {
+		)
+		s.finishFailedRoutedCall(r, routed, nil, err)
+		s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
 		return
 	}
 	resp, route, usage, attempts, err := s.executeRoutedResponses(r, routed, req)
