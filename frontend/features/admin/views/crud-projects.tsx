@@ -1,0 +1,1176 @@
+import { Plus, RefreshCw, Search, Trash2, UserRoundCheck, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { appRole } from "../core/navigation";
+import { type AdminResource, type AdminUser, type ApiContext, type AppData, type AuditEvent, type OpenAIAccountQuota, type OpenAIQuotaWindow, type Project, type Provider, type ProviderMonitoringSnapshot, type ProviderQuotaSummary, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type ToolbarAction } from "../core/types";
+import { notificationChannelLabel } from "../domain/catalog";
+import { projectMembersForProject, providerDisplayName, providerDisplayType, providerRoutesFor, stringifyValue } from "../domain/entities";
+import { activeRouteCount, formatNumber, formatTime } from "../domain/formatting";
+import { approvalTriggerLabel, enumValueLabel, providerTypeLabel, reportDatasetLabel, roleLabel } from "../domain/labels";
+import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
+import { reportExportDefinitions } from "../resources/governance-config";
+import { adminFetch, pendingProjectQuotaApproval, projectQuotaIssue, projectQuotaPolicy, projectQuotaValues, readAdminError, requestProjectQuotaIncrease, saveProjectQuota } from "../resources/payloads";
+import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
+import { APIKeyEmptyState } from "./api-key-empty-state";
+import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
+import { latencyDisplay, requestLogFailed } from "./overview";
+import { APIKeyFlowHint, EntityTable, PaginationControls, type PaginationState, resultCountLabel, RouteStrategyHint } from "./settings-table";
+
+export function CrudView<T>({
+  config,
+  data,
+  api,
+  user,
+  items,
+  monitorItems = items,
+  totalItems,
+  loading = false,
+  query,
+  pagination,
+  categoryFilter,
+  onCategoryFilter,
+  onQuery,
+  onCreate,
+  onEdit,
+  onDelete,
+  onAction,
+  onProjectMemberCreate,
+  onProjectMemberEdit,
+  onProjectMemberDelete,
+  onToolbarAction,
+}: {
+  config: ResourceConfig<T>;
+  data: AppData;
+  api?: ApiContext;
+  user?: AdminUser;
+  items: T[];
+  monitorItems?: T[];
+  totalItems: number;
+  loading?: boolean;
+  query: string;
+  pagination: PaginationState;
+  categoryFilter: string;
+  onCategoryFilter: (value: string) => void;
+  onQuery: (value: string) => void;
+  onCreate: () => void;
+  onEdit: (item: T) => void;
+  onDelete: (item: T) => void;
+  onAction: (action: ResourceAction<T>, item: T) => void;
+  onProjectMemberCreate?: (project: Project) => void;
+  onProjectMemberEdit?: (member: AdminResource) => void;
+  onProjectMemberDelete?: (member: AdminResource) => void;
+  onToolbarAction: (action: ToolbarAction) => void;
+}) {
+  const [selectedTeamID, setSelectedTeamID] = useState("");
+  const [selectedProjectID, setSelectedProjectID] = useState("");
+  const isTeamView = config.view === "teams";
+  const isProjectView = config.view === "projects";
+  const isPersonalKeyView = config.view === "api-keys" && Boolean(user && appRole(user.role) === "user");
+  const tableConfig = isPersonalKeyView
+    ? { ...config, columns: config.columns.filter((column) => !["project_id", "project_owner", "project_team"].includes(String(column.key))) }
+    : config;
+  const selectedTeam = isTeamView
+    ? (items as AdminResource[]).find((item) => item.id === selectedTeamID)
+    : undefined;
+  const selectedProject = isProjectView
+    ? (items as Project[]).find((item) => item.id === selectedProjectID)
+    : undefined;
+
+  useEffect(() => {
+    if (!isTeamView) return;
+    const teamItems = items as AdminResource[];
+    if (!selectedTeamID || !teamItems.some((item) => item.id === selectedTeamID)) {
+      setSelectedTeamID("");
+    }
+  }, [isTeamView, items, selectedTeamID]);
+
+  useEffect(() => {
+    if (!isProjectView) return;
+    const projectItems = items as Project[];
+    if (!selectedProjectID || !projectItems.some((item) => item.id === selectedProjectID)) {
+      setSelectedProjectID("");
+    }
+  }, [isProjectView, items, selectedProjectID]);
+
+  const detailPanelOpen = (isTeamView && selectedTeam) || (isProjectView && selectedProject);
+
+  if (config.view === "api-keys" && data.keys.length === 0 && !loading && !query.trim()) {
+    return (
+      <DataSection title={config.eyebrow}>
+        <APIKeyEmptyState onCreate={onCreate} />
+      </DataSection>
+    );
+  }
+
+  return (
+    <DataSection title={config.eyebrow}>
+      {config.view === "api-keys" && !isPersonalKeyView ? <APIKeyFlowHint data={data} /> : null}
+      {config.view === "routes" ? <RouteStrategyHint data={data} /> : null}
+      {config.view === "providers" || config.view === "models" ? (
+        <ModelCategoryTabs
+          data={data}
+          view={config.view}
+          active={categoryFilter}
+          onChange={onCategoryFilter}
+        />
+      ) : null}
+      {config.view === "providers" ? <ProviderAvailabilityMonitor api={api} data={data} providers={monitorItems as Provider[]} /> : null}
+      {config.view === "notification-channels" ? (
+        <NotificationChannelTabs
+          data={data}
+          active={categoryFilter}
+          onChange={onCategoryFilter}
+        />
+      ) : null}
+      <div className="table-toolbar">
+        <div className="search-box">
+          <Search size={16} />
+          <input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={tx("搜索名称、ID、状态")} />
+        </div>
+        <div className="table-toolbar-actions">
+          <span className="table-result-count">{resultCountLabel(totalItems, query)}</span>
+          {config.create ? (
+            <button className="button" onClick={onCreate} type="button">
+              <Plus size={17} />
+              {isPersonalKeyView
+                ? tx("创建 Key")
+                : config.view === "notification-channels"
+                  ? `${tx("配置")} ${notificationChannelLabel(categoryFilter)}`
+                  : tx(config.createLabel ?? "新增")}
+            </button>
+          ) : null}
+          {(config.toolbarActions ?? []).map((action) => (
+            <button className="secondary-button" key={action.label} onClick={() => onToolbarAction(action)} title={tx(action.title ?? action.label)} type="button">
+              {tx(action.label)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={detailPanelOpen ? "resource-detail-layout with-panel" : "resource-detail-layout"}>
+        <div className="resource-table-pane">
+          <EntityTable
+            config={tableConfig}
+            data={data}
+            apiBaseURL={api?.baseURL}
+            items={items}
+            loading={loading}
+            query={query}
+            onCreate={config.create ? onCreate : undefined}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onAction={onAction}
+            onRowClick={
+              isTeamView
+                ? (item) => setSelectedTeamID((item as AdminResource).id)
+                : isProjectView
+                  ? (item) => setSelectedProjectID((item as Project).id)
+                  : undefined
+            }
+            selectedRowID={isTeamView ? selectedTeam?.id : isProjectView ? selectedProject?.id : undefined}
+          />
+          <PaginationControls pagination={pagination} totalItems={totalItems} />
+        </div>
+        {isTeamView && selectedTeam ? (
+          <TeamMembersPanel data={data} team={selectedTeam} onClose={() => setSelectedTeamID("")} />
+        ) : null}
+        {isProjectView && selectedProject ? (
+          <ProjectQuotaPanel
+            data={data}
+            project={selectedProject}
+            onClose={() => setSelectedProjectID("")}
+            onAction={(action) => onAction(action as unknown as ResourceAction<T>, selectedProject as T)}
+            onCreateMember={() => onProjectMemberCreate?.(selectedProject)}
+            onEditMember={(member) => onProjectMemberEdit?.(member)}
+            onDeleteMember={(member) => onProjectMemberDelete?.(member)}
+          />
+        ) : null}
+      </div>
+    </DataSection>
+  );
+}
+
+export type ProviderMonitorTone = "healthy" | "degraded" | "down" | "unknown";
+
+export type ProviderProbeTone = "ok" | "warn" | "down" | "na";
+
+export type ProviderTrendTone = "success" | "warning" | "failure" | "none";
+
+export type ProviderMonitorSampleSource = "codex_test" | "gateway_request";
+
+export type ProviderMonitorSample = {
+  created_at: string;
+  success: boolean;
+  latency_ms: number;
+  error_code?: string;
+};
+
+export type ProviderMonitorRow = {
+  provider: Provider;
+  resources: ProviderResource[];
+  routeCount: number;
+  activeRouteCount: number;
+  statusTone: ProviderMonitorTone;
+  statusLabel: string;
+  statusDetail: string;
+  basicPrimaryTone: ProviderProbeTone;
+  basicPrimaryDetail: string;
+  basicSecondaryTone: ProviderProbeTone;
+  basicSecondaryDetail: string;
+  realTone: ProviderProbeTone;
+  realDetail: string;
+  latencyMS: number;
+  availability24h: number;
+  observed24h: boolean;
+  sampleSource: ProviderMonitorSampleSource;
+  quota: ProviderQuotaSummary;
+  qualityScore: number;
+  trend: ProviderTrendTone[];
+};
+
+export function ProviderAvailabilityMonitor({ api, data, providers }: { api?: ApiContext; data: AppData; providers: Provider[] }) {
+  const [quotaOverrides, setQuotaOverrides] = useState<Record<string, ProviderQuotaSummary>>({});
+  const [quotaRefreshing, setQuotaRefreshing] = useState<Record<string, boolean>>({});
+
+  async function refreshQuota(resource: ProviderResource) {
+    if (!api) return;
+    setQuotaRefreshing((current) => ({ ...current, [resource.id]: true }));
+    try {
+      const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/quota?refresh=true`);
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询 Codex 套餐")));
+      const quota = (await resp.json()) as OpenAIAccountQuota;
+      const snapshot = data.providerMonitoring.find((item) => item.provider.id === resource.provider_id);
+      if (snapshot) {
+        setQuotaOverrides((current) => ({
+          ...current,
+          [resource.provider_id]: updateProviderQuotaSummary(
+            current[resource.provider_id] ?? snapshot.quota,
+            resource,
+            quota,
+          ),
+        }));
+      }
+    } catch (error) {
+      const snapshot = data.providerMonitoring.find((item) => item.provider.id === resource.provider_id);
+      if (snapshot) {
+        setQuotaOverrides((current) => ({
+          ...current,
+          [resource.provider_id]: updateProviderQuotaSummaryError(
+            current[resource.provider_id] ?? snapshot.quota,
+            resource,
+            error instanceof Error ? error.message : tx("套餐查询失败"),
+          ),
+        }));
+      }
+    } finally {
+      setQuotaRefreshing((current) => ({ ...current, [resource.id]: false }));
+    }
+  }
+
+  if (providers.length === 0) return null;
+
+  const rows = providerMonitorRowsFromSnapshots(data, providers, quotaOverrides);
+  const summary = providerMonitorSummary(rows);
+  return (
+    <section className="provider-monitor-card" aria-label={tx("Provider 可用性监控")}>
+      <div className="provider-monitor-head">
+        <div>
+          <p className="eyebrow">Provider Availability</p>
+          <h2>{tx("Provider 可用性监控")}</h2>
+          <span>{tx("Codex 订阅使用专用真实测试记录；其他通道使用真实网关请求日志。")}</span>
+        </div>
+        <div className="provider-monitor-summary" aria-label={tx("Provider 健康摘要")}>
+          <span><strong>{summary.healthy}</strong>{tx("正常")}</span>
+          <span><strong>{summary.degraded}</strong>{tx("降级")}</span>
+          <span><strong>{summary.down}</strong>{tx("故障")}</span>
+          <span><strong>{summary.unknown}</strong>{tx("待观测")}</span>
+        </div>
+      </div>
+      <div className="provider-monitor-table-wrap">
+        <table className="provider-monitor-table">
+          <thead>
+            <tr>
+              <th>{tx("服务商 / 通道")}</th>
+              <th>{tx("综合状态")}</th>
+              <th>{tx("基础监控 · L1/L2")}</th>
+              <th>{tx("Codex 套餐")}</th>
+              <th>{tx("真实监控 · L3")}</th>
+              <th>{tx("真实延迟")}</th>
+              <th>{tx("24H 可用率")}</th>
+              <th>{tx("质量评分")}</th>
+              <th>{tx("近30天趋势")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.provider.id}>
+                <td>
+                  <div className="provider-monitor-name">
+                    <span className={`provider-monitor-avatar ${row.statusTone}`}>{providerDisplayName(row.provider, row.resources).slice(0, 1).toUpperCase()}</span>
+                    <div>
+                      <strong>{providerDisplayName(row.provider, row.resources)}</strong>
+                      <span>{providerTypeLabel(providerDisplayType(row.provider, row.resources))} · {row.activeRouteCount}/{row.routeCount || 0} {tx("启用路由")} · {row.resources.length || 0} {tx("账号资源")}</span>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div className="provider-monitor-status-cell">
+                    <span className={`provider-monitor-status ${row.statusTone}`}>
+                      <i />
+                      {tx(row.statusLabel)}
+                    </span>
+                    <small>{row.statusDetail}</small>
+                  </div>
+                </td>
+                <td>
+                  <ProviderProbeLine tone={row.basicPrimaryTone} detail={row.basicPrimaryDetail} />
+                  <ProviderProbeLine tone={row.basicSecondaryTone} detail={row.basicSecondaryDetail} />
+                </td>
+                <td><ProviderCodexQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
+                <td>
+                  <ProviderProbeLine tone={row.realTone} detail={row.realDetail} />
+                  <small className="provider-monitor-subtle">
+                    {tx(row.observed24h ? "后端统一观测快照" : "等待真实测试或网关请求")}
+                  </small>
+                </td>
+                <td><strong className="provider-monitor-metric">{latencyDisplay(row.latencyMS)}</strong></td>
+                <td><strong className="provider-monitor-metric">{row.observed24h ? providerPercent(row.availability24h) : "-"}</strong></td>
+                <td>
+                  <div className="provider-quality-score">
+                    <strong>{row.qualityScore}</strong>
+                    <span><i style={{ width: `${row.qualityScore}%` }} /></span>
+                  </div>
+                </td>
+                <td>
+                  <div className="provider-trend-bars" aria-label={tx("近30天趋势")}>
+                    {row.trend.map((tone, index) => <span className={tone} key={`${row.provider.id}-trend-${index}`} />)}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="provider-monitor-legend">
+        <span><i className="success" />{tx("正常")}</span>
+        <span><i className="warning" />{tx("降级/慢响应")}</span>
+        <span><i className="failure" />{tx("故障")}</span>
+        <em>{tx("综合状态由后端区分配置、主动测试、真实请求与套餐来源。")}</em>
+      </div>
+    </section>
+  );
+}
+
+export function ProviderCodexQuota({
+  quota,
+  refreshing,
+  resources,
+  onRefresh,
+}: {
+  quota: ProviderQuotaSummary;
+  refreshing: Record<string, boolean>;
+  resources: ProviderResource[];
+  onRefresh: (resource: ProviderResource) => void;
+}) {
+  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number }>();
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const showPopover = (element: HTMLElement) => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    const rect = element.getBoundingClientRect();
+    setPopoverPosition({
+      left: Math.min(rect.left, window.innerWidth - 336),
+      top: rect.bottom + 8,
+    });
+  };
+  const keepPopover = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  };
+  const schedulePopoverClose = () => {
+    closeTimer.current = setTimeout(() => setPopoverPosition(undefined), 120);
+  };
+
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
+
+  if (!quota.supported) return <span className="provider-codex-quota na">-</span>;
+  const accounts = quota.accounts ?? [];
+  if (accounts.length === 0 || quota.successful_accounts === 0) {
+    const error = accounts.find((account) => account.error_code)?.error_code;
+    return <span className="provider-codex-quota error" title={error}>{tx("查询失败")}</span>;
+  }
+  const remaining = quota.remaining_percent ?? 100;
+  const plan = quota.plan_type || "-";
+  const limited = quota.limit_reached;
+  return (
+    <div className="provider-codex-quota-wrap" onMouseLeave={schedulePopoverClose}>
+      <button
+        className={`provider-codex-quota ${limited ? "limited" : "available"}`}
+        onBlur={schedulePopoverClose}
+        onFocus={(event) => showPopover(event.currentTarget)}
+        onMouseEnter={(event) => showPopover(event.currentTarget)}
+        type="button"
+      >
+        <strong>{formatQuotaPercent(remaining)}%</strong>
+        <span>{plan} · {quotaSummaryResetLabel(quota.earliest_reset_at)}</span>
+        <small>{accounts.length} {tx("个账号，显示最低余量")}</small>
+      </button>
+      {popoverPosition && typeof document !== "undefined" ? createPortal(
+        <div
+          className="provider-codex-accounts-popover"
+          onFocus={keepPopover}
+          onMouseEnter={keepPopover}
+          onMouseLeave={schedulePopoverClose}
+          role="tooltip"
+          style={popoverPosition}
+        >
+          {accounts.map((account) => {
+            const resource = resources.find((item) => item.id === account.resource_id);
+            const accountQuota = account.quota;
+            const accountLabel = resource?.credential_summary?.account_email || resource?.credential_summary?.account_id || account.resource_name;
+            const accountPlan = accountQuota?.plan_type || resource?.credential_summary?.plan_type || "-";
+            const accountLimited = accountQuota?.rate_limit?.limit_reached || accountQuota?.rate_limit?.allowed === false;
+            return (
+              <div className="provider-codex-account" key={account.resource_id}>
+                <div>
+                  <strong title={accountLabel}>{accountLabel}</strong>
+                  {accountQuota ? (
+                    <span className={accountLimited ? "limited" : ""}>
+                      {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(accountQuota.rate_limit?.primary_window)}
+                    </span>
+                  ) : (
+                    <span className="limited" title={account.error_code}>
+                      {refreshing[account.resource_id] ? tx("查询中") : account.error_code || tx("查询失败")}
+                    </span>
+                  )}
+                </div>
+                <button
+                  aria-label={`${tx("刷新额度")} ${accountLabel}`}
+                  disabled={!resource || refreshing[account.resource_id]}
+                  onClick={() => resource && onRefresh(resource)}
+                  type="button"
+                >
+                  <RefreshCw size={13} />
+                </button>
+              </div>
+            );
+          })}
+        </div>,
+        document.body,
+      ) : null}
+    </div>
+  );
+}
+
+function quotaRemainingPercent(quota: OpenAIAccountQuota) {
+  const used = quota.rate_limit?.primary_window?.used_percent;
+  if (!Number.isFinite(used)) return quota.rate_limit?.allowed === false ? 0 : 100;
+  return clampNumber(100 - Number(used), 0, 100);
+}
+
+function quotaResetLabel(window?: OpenAIQuotaWindow) {
+  if (!window) return tx("无重置信息");
+  if (window.reset_at > 0) {
+    return new Date(window.reset_at * 1000).toLocaleString(languageLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+  if (window.reset_after_seconds > 0) {
+    const hours = Math.ceil(window.reset_after_seconds / 3600);
+    return hours > 1 ? `${hours} ${tx("小时后重置")}` : tx("1 小时内重置");
+  }
+  return tx("即将重置");
+}
+
+function quotaSummaryResetLabel(resetAt?: number) {
+  if (!resetAt) return tx("无重置信息");
+  return new Date(resetAt * 1000).toLocaleString(languageLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatQuotaPercent(value: number) {
+  return String(Math.round(value * 10) / 10);
+}
+
+function updateProviderQuotaSummary(summary: ProviderQuotaSummary, resource: ProviderResource, quota: OpenAIAccountQuota): ProviderQuotaSummary {
+  const accounts = (summary.accounts ?? []).filter((account) => account.resource_id !== resource.id);
+  accounts.push({ resource_id: resource.id, resource_name: resource.name, quota });
+  return recalculateProviderQuotaSummary({ ...summary, accounts });
+}
+
+function updateProviderQuotaSummaryError(summary: ProviderQuotaSummary, resource: ProviderResource, errorCode: string): ProviderQuotaSummary {
+  const accounts = (summary.accounts ?? []).filter((account) => account.resource_id !== resource.id);
+  accounts.push({ resource_id: resource.id, resource_name: resource.name, error_code: errorCode });
+  return recalculateProviderQuotaSummary({ ...summary, accounts });
+}
+
+function recalculateProviderQuotaSummary(summary: ProviderQuotaSummary): ProviderQuotaSummary {
+  const successful = (summary.accounts ?? []).filter((account) => account.quota);
+  const limiting = successful.reduce<typeof successful[number] | undefined>((lowest, current) => {
+    if (!lowest) return current;
+    return quotaRemainingPercent(current.quota!) < quotaRemainingPercent(lowest.quota!) ? current : lowest;
+  }, undefined);
+  return {
+    ...summary,
+    successful_accounts: successful.length,
+    failed_accounts: (summary.accounts?.length ?? 0) - successful.length,
+    remaining_percent: limiting?.quota ? quotaRemainingPercent(limiting.quota) : undefined,
+    limit_reached: successful.some((account) => account.quota?.rate_limit?.limit_reached || account.quota?.rate_limit?.allowed === false),
+    plan_type: limiting?.quota?.plan_type,
+  };
+}
+
+export function ProviderProbeLine({ tone, detail }: { tone: ProviderProbeTone; detail: string }) {
+  return (
+    <span className={`provider-probe-line ${tone}`}>
+      <i />
+      {tx(providerProbeLabel(tone))}
+      <small>{detail}</small>
+    </span>
+  );
+}
+
+export function providerMonitorRowsFromSnapshots(
+  data: AppData,
+  providers: Provider[],
+  quotaOverrides: Record<string, ProviderQuotaSummary> = {},
+): ProviderMonitorRow[] {
+  const providerIDs = new Set(providers.map((provider) => provider.id));
+  return data.providerMonitoring
+    .filter((snapshot) => providerIDs.has(snapshot.provider.id))
+    .map((snapshot) => providerMonitorRowFromSnapshot(data, snapshot, quotaOverrides[snapshot.provider.id]))
+    .sort((left, right) => (left.provider.priority - right.provider.priority) || left.provider.name.localeCompare(right.provider.name));
+}
+
+function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitoringSnapshot, quotaOverride?: ProviderQuotaSummary): ProviderMonitorRow {
+  const resources = data.providerResources.filter((resource) => resource.provider_id === snapshot.provider.id);
+  const observedSignal = snapshot.gateway.samples > 0 ? snapshot.gateway : snapshot.active_probe;
+  const observed = observedSignal.samples > 0;
+  return {
+    provider: snapshot.provider,
+    resources,
+    routeCount: snapshot.route_count,
+    activeRouteCount: snapshot.active_route_count,
+    statusTone: snapshot.state,
+    statusLabel: snapshot.status_label,
+    statusDetail: monitoringDetail(snapshot.status_detail),
+    basicPrimaryTone: monitoringProbeTone(snapshot.configuration.state),
+    basicPrimaryDetail: monitoringDetail(snapshot.configuration.detail),
+    basicSecondaryTone: monitoringProbeTone(snapshot.resources.state),
+    basicSecondaryDetail: `${snapshot.healthy_resource_count}/${snapshot.active_resource_count} ${tx("资源健康")}`,
+    realTone: monitoringProbeTone(observedSignal.state),
+    realDetail: observed
+      ? `${providerPercent(observedSignal.success_rate ?? 0)} · ${formatNumber(observedSignal.samples)} ${tx(observedSignal.source === "active_probe" ? "次测试" : "次请求")}`
+      : tx("等待真实测试或网关请求"),
+    latencyMS: observedSignal.latency_ms ?? 0,
+    availability24h: observedSignal.success_rate ?? 0,
+    observed24h: observed,
+    sampleSource: observedSignal.source === "active_probe" ? "codex_test" : "gateway_request",
+    quota: quotaOverride ?? snapshot.quota,
+    qualityScore: snapshot.quality_score,
+    trend: snapshot.trend,
+  };
+}
+
+function monitoringProbeTone(state: ProviderMonitoringSnapshot["configuration"]["state"]): ProviderProbeTone {
+  if (state === "healthy") return "ok";
+  if (state === "degraded") return "warn";
+  if (state === "down") return "down";
+  return "na";
+}
+
+function monitoringDetail(value?: string) {
+  if (!value) return "-";
+  const [source, detail] = value.split(":", 2);
+  const labels: Record<string, string> = {
+    configuration: tx("配置"),
+    active_probe: tx("主动测试"),
+    gateway_request: tx("真实请求"),
+    provider_online: tx("Provider 在线"),
+    resources_healthy: tx("资源健康"),
+    no_active_resources: tx("未配置账号资源"),
+    no_healthy_resources: tx("无健康资源"),
+    some_resources_unhealthy: tx("部分资源异常"),
+    awaiting_observation: tx("等待测试或真实请求"),
+    ok: "ok",
+  };
+  if (detail) return `${labels[source] ?? source} · ${labels[detail] ?? detail}`;
+  return labels[value] ?? value;
+}
+
+export function providerMonitorRows(data: AppData, providers: Provider[]): ProviderMonitorRow[] {
+  return providers
+    .slice()
+    .sort((left, right) => (left.priority - right.priority) || left.name.localeCompare(right.name))
+    .map((provider) => providerMonitorRow(data, provider));
+}
+
+export function providerMonitorRow(data: AppData, provider: Provider): ProviderMonitorRow {
+  const resources = data.providerResources.filter((resource) => resource.provider_id === provider.id);
+  const routes = providerRoutesFor(provider, data);
+  const logs = providerLogsFor(data, provider, resources);
+  const { source: sampleSource, samples } = providerMonitorSamples(data, provider, resources);
+  const now = Date.now();
+  const recent24h = samples.filter((sample) => now - safeTime(sample.created_at) <= 24 * 60 * 60 * 1000);
+  const success24h = recent24h.filter((sample) => sample.success);
+  const warning24h = recent24h.filter((sample) => sample.success && sample.latency_ms >= 5000);
+  const failed24h = recent24h.length - success24h.length;
+  const observed24h = recent24h.length > 0;
+  const activeResources = resources.filter((resource) => resource.status === "active");
+  const healthyResources = activeResources.filter((resource) => resource.healthy);
+  const healthyProvider = provider.status === "active" && provider.healthy;
+  const resourceScore = activeResources.length > 0 ? (healthyResources.length / activeResources.length) * 100 : (healthyProvider ? 100 : 0);
+  const availability24h = observed24h ? (success24h.length / recent24h.length) * 100 : (healthyProvider ? 100 : 0);
+  const latencySamples = (success24h.length ? success24h : samples.filter((sample) => sample.success)).filter((sample) => sample.latency_ms > 0);
+  const latencyMS = percentileLatency(latencySamples, 0.5);
+  const statusTone = providerMonitorTone(provider, observed24h, availability24h, warning24h.length, failed24h, activeResources.length, healthyResources.length);
+  const activeRouteCount = routes.filter((route) => route.status === "active").length;
+  return {
+    provider,
+    resources,
+    routeCount: routes.length,
+    activeRouteCount,
+    statusTone,
+    statusLabel: providerStatusLabel(statusTone),
+    statusDetail: sampleSource === "codex_test"
+      ? providerCodexTestStatusDetail(samples, resources)
+      : providerStatusDetail(provider, logs, resources),
+    basicPrimaryTone: healthyProvider ? "ok" : "down",
+    basicPrimaryDetail: provider.status === "active" ? tx("Provider 在线") : enumValueLabel(provider.status),
+    basicSecondaryTone: providerResourceProbeTone(activeResources.length, healthyResources.length),
+    basicSecondaryDetail: activeResources.length > 0
+      ? `${formatNumber(healthyResources.length)}/${formatNumber(activeResources.length)} ${tx("资源健康")}`
+      : tx("未配置账号资源"),
+    realTone: providerRealProbeTone(observed24h, availability24h, warning24h.length, failed24h),
+    realDetail: observed24h
+      ? `${providerPercent(availability24h)} · ${formatNumber(recent24h.length)} ${tx(sampleSource === "codex_test" ? "次测试" : "次请求")}`
+      : tx(sampleSource === "codex_test" ? "无 Codex 测试" : "无真实请求"),
+    latencyMS,
+    availability24h,
+    observed24h,
+    sampleSource,
+    quota: { supported: false, limit_reached: false, successful_accounts: 0, failed_accounts: 0 },
+    qualityScore: providerQualityScore(availability24h, latencyMS, resourceScore, observed24h, healthyProvider),
+    trend: providerTrend(samples),
+  };
+}
+
+export function providerMonitorSamples(data: AppData, provider: Provider, resources: ProviderResource[]): { source: ProviderMonitorSampleSource; samples: ProviderMonitorSample[] } {
+  const codexResources = resources.filter((resource) => resource.resource_type === "openai_subscription");
+  if (codexResources.length > 0) {
+    return { source: "codex_test", samples: providerCodexTestSamples(data.auditEvents, codexResources) };
+  }
+  const samples = providerLogsFor(data, provider, resources).map((log) => ({
+    created_at: log.created_at,
+    success: !requestLogFailed(log),
+    latency_ms: log.latency_ms,
+    error_code: log.error_code,
+  }));
+  return { source: "gateway_request", samples };
+}
+
+export function providerCodexTestSamples(events: AuditEvent[], resources: ProviderResource[]): ProviderMonitorSample[] {
+  const resourceIDs = new Set(resources.map((resource) => resource.id));
+  return events
+    .filter((event) => event.action === "test" && event.resource_type === "provider_resource" && resourceIDs.has(event.resource_id))
+    .map((event) => {
+      const snapshot = auditSnapshot(event.after_snapshot);
+      return {
+        created_at: event.created_at,
+        success: event.status === "success" && snapshot.healthy !== false,
+        latency_ms: finiteNumber(snapshot.latency_ms),
+        error_code: stringValue(snapshot.error_code) || event.message,
+      };
+    })
+    .sort((left, right) => safeTime(left.created_at) - safeTime(right.created_at));
+}
+
+export function providerCodexTestStatusDetail(samples: ProviderMonitorSample[], resources: ProviderResource[]) {
+  const latest = samples[samples.length - 1];
+  if (latest?.error_code) return `${timeLabel(latest.created_at)} · ${latest.error_code}`;
+  if (latest) return timeLabel(latest.created_at);
+  const latestResourceCheck = resources
+    .map((resource) => resource.last_checked_at || resource.updated_at || "")
+    .filter(Boolean)
+    .sort((left, right) => safeTime(right) - safeTime(left))[0];
+  return latestResourceCheck ? timeLabel(latestResourceCheck) : tx("等待 Codex 测试");
+}
+
+export function auditSnapshot(value: string | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+export function finiteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+export function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+export function providerMonitorSummary(rows: ProviderMonitorRow[]) {
+  return rows.reduce(
+    (summary, row) => {
+      summary[row.statusTone] += 1;
+      return summary;
+    },
+    { healthy: 0, degraded: 0, down: 0, unknown: 0 } as Record<ProviderMonitorTone, number>,
+  );
+}
+
+export function providerLogsFor(data: AppData, provider: Provider, resources: ProviderResource[]) {
+  const resourceIDs = new Set(resources.map((resource) => resource.id));
+  return data.logs
+    .filter((log) => log.provider_id === provider.id || (log.provider_resource_id ? resourceIDs.has(log.provider_resource_id) : false))
+    .sort((left, right) => safeTime(left.created_at) - safeTime(right.created_at));
+}
+
+export function providerMonitorTone(provider: Provider, observed: boolean, availability: number, warnings: number, failures: number, activeResources: number, healthyResources: number): ProviderMonitorTone {
+  if (provider.status !== "active" || !provider.healthy) return "down";
+  if (observed && (availability < 90 || failures > 0 && availability < 95)) return "down";
+  if (activeResources > 0 && healthyResources === 0) return "down";
+  if ((observed && availability < 99) || warnings > 0 || (activeResources > 0 && healthyResources < activeResources)) return "degraded";
+  return "healthy";
+}
+
+export function providerStatusLabel(tone: ProviderMonitorTone) {
+  if (tone === "healthy") return "Healthy";
+  if (tone === "degraded") return "Degraded";
+  if (tone === "unknown") return "Awaiting Test";
+  return "Functional Down";
+}
+
+export function providerStatusDetail(provider: Provider, logs: RequestLog[], resources: ProviderResource[]) {
+  const latestLog = logs.slice().sort((left, right) => safeTime(right.created_at) - safeTime(left.created_at))[0];
+  if (latestLog?.error_code) return `${timeLabel(latestLog.created_at)} · ${latestLog.error_code}`;
+  if (latestLog) return timeLabel(latestLog.created_at);
+  const latestResourceCheck = resources
+    .map((resource) => resource.last_checked_at || resource.updated_at || "")
+    .filter(Boolean)
+    .sort((left, right) => safeTime(right) - safeTime(left))[0];
+  if (latestResourceCheck) return timeLabel(latestResourceCheck);
+  return enumValueLabel(provider.status);
+}
+
+export function providerResourceProbeTone(total: number, healthy: number): ProviderProbeTone {
+  if (total === 0) return "na";
+  if (healthy === total) return "ok";
+  if (healthy > 0) return "warn";
+  return "down";
+}
+
+export function providerRealProbeTone(observed: boolean, availability: number, warnings: number, failures: number): ProviderProbeTone {
+  if (!observed) return "na";
+  if (availability < 90 || failures > 0 && availability < 95) return "down";
+  if (availability < 99 || warnings > 0 || failures > 0) return "warn";
+  return "ok";
+}
+
+export function providerProbeLabel(tone: ProviderProbeTone) {
+  if (tone === "ok") return "ok";
+  if (tone === "warn") return "warn";
+  if (tone === "down") return "down";
+  return "na";
+}
+
+export function percentileLatency(logs: Array<{ latency_ms: number }>, percentile: number) {
+  const values = logs.map((log) => log.latency_ms || 0).filter((value) => value > 0).sort((left, right) => left - right);
+  if (values.length === 0) return 0;
+  const index = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * percentile)));
+  return values[index];
+}
+
+export function providerQualityScore(availability: number, latencyMS: number, resourceScore: number, observed: boolean, healthyProvider: boolean) {
+  const availabilityScore = observed ? availability : (healthyProvider ? 95 : 20);
+  const latencyScore = latencyMS === 0
+    ? (healthyProvider ? 86 : 25)
+    : latencyMS <= 250
+      ? 100
+      : latencyMS <= 800
+        ? 94
+        : latencyMS <= 1800
+          ? 84
+          : latencyMS <= 3500
+            ? 68
+            : latencyMS <= 6000
+              ? 48
+              : 30;
+  return Math.round(clampNumber(availabilityScore * 0.62 + latencyScore * 0.24 + resourceScore * 0.14, 0, 100));
+}
+
+export function providerTrend(samples: ProviderMonitorSample[]) {
+  const days = 30;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Array.from({ length: days }, (_, index) => {
+    const dayStart = today - (days - 1 - index) * 24 * 60 * 60 * 1000;
+    const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+    const daySamples = samples.filter((sample) => {
+      const time = safeTime(sample.created_at);
+      return time >= dayStart && time < dayEnd;
+    });
+    if (daySamples.length === 0) return "none" as ProviderTrendTone;
+    const failures = daySamples.filter((sample) => !sample.success).length;
+    const slow = daySamples.filter((sample) => sample.success && sample.latency_ms >= 5000).length;
+    const availability = ((daySamples.length - failures) / daySamples.length) * 100;
+    if (availability < 90) return "failure" as ProviderTrendTone;
+    if (failures > 0 || slow > 0 || availability < 99) return "warning" as ProviderTrendTone;
+    return "success" as ProviderTrendTone;
+  });
+}
+
+export function providerInitial(provider: Provider) {
+  return (provider.name || provider.type || provider.id || "P").trim().slice(0, 1).toUpperCase();
+}
+
+export function providerPercent(value: number) {
+  return `${clampNumber(value, 0, 100).toFixed(1)}%`;
+}
+
+export function safeTime(value: string | undefined) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+export function timeLabel(value: string | undefined) {
+  const time = safeTime(value);
+  if (!time) return "-";
+  return new Intl.DateTimeFormat(languageLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(time));
+}
+
+export function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+export function TeamMembersPanel({ data, team, onClose }: { data: AppData; team: AdminResource; onClose: () => void }) {
+  const users = data.users
+    .filter((user) => user.team_id === team.id)
+    .sort((left, right) => (left.name || left.username).localeCompare(right.name || right.username));
+  return (
+    <div className="team-members-panel">
+      <div className="team-members-head">
+        <div>
+          <span>{tx("团队用户")}</span>
+          <strong>{team.name || team.id}</strong>
+        </div>
+        <span>{countWithUnit(users.length, "人", "member", "人")}</span>
+        <button className="icon-button subtle" onClick={onClose} type="button" title={tx("关闭成员列表")}>
+          <X size={15} />
+        </button>
+      </div>
+      <SimpleTable
+        columns={["姓名", "邮箱", "用户名", "角色", "状态", "最近登录"]}
+        rows={users.map((user) => [
+          user.name || "-",
+          user.email || "-",
+          user.username || "-",
+          roleLabel(user.role),
+          <StatusPill key={user.id} status={user.status} />,
+          formatTime(user.last_login_at ?? ""),
+        ])}
+      />
+    </div>
+  );
+}
+
+export type ProjectQuotaValues = {
+  status: string;
+  daily_requests: string;
+  monthly_requests: string;
+  daily_tokens: string;
+  monthly_tokens: string;
+  daily_cost_usd: string;
+  monthly_cost_usd: string;
+  max_concurrency: string;
+};
+
+export const projectQuotaFields: Array<{ key: keyof ProjectQuotaValues; label: string; suffix?: string }> = [
+  { key: "daily_requests", label: "日请求" },
+  { key: "monthly_requests", label: "月请求" },
+  { key: "daily_tokens", label: "日 Token" },
+  { key: "monthly_tokens", label: "月 Token" },
+  { key: "daily_cost_usd", label: "日成本", suffix: "USD" },
+  { key: "monthly_cost_usd", label: "月成本", suffix: "USD" },
+  { key: "max_concurrency", label: "最大并发" },
+];
+
+export function ProjectQuotaPanel({
+  data,
+  project,
+  onClose,
+  onAction,
+  onCreateMember,
+  onEditMember,
+  onDeleteMember,
+}: {
+  data: AppData;
+  project: Project;
+  onClose: () => void;
+  onAction: (action: ResourceAction<Project>) => void;
+  onCreateMember?: () => void;
+  onEditMember?: (member: AdminResource) => void;
+  onDeleteMember?: (member: AdminResource) => void;
+}) {
+  const quota = projectQuotaPolicy(data, project);
+  const [values, setValues] = useState<ProjectQuotaValues>(() => projectQuotaValues(quota));
+
+  useEffect(() => {
+    setValues(projectQuotaValues(quota));
+  }, [project.id, quota?.id]);
+
+  const hasQuota = Boolean(quota);
+  const quotaIssue = projectQuotaIssue(data, project);
+  const pendingApproval = pendingProjectQuotaApproval(data, project);
+  const members = projectMembersForProject(data, project.id);
+  return (
+    <div className="project-quota-panel project-detail-panel">
+      <div className="project-quota-head">
+        <div>
+          <span>{tx("项目详情")}</span>
+          <strong>{project.name || project.id}</strong>
+        </div>
+        <button className="icon-button subtle" onClick={onClose} type="button" title={tx("关闭项目详情")}>
+          <X size={15} />
+        </button>
+      </div>
+      <div className="project-quota-body">
+        <div className="project-panel-section-head">
+          <div>
+            <strong>{tx("项目成员")}</strong>
+            <span>{countWithUnit(members.length, "人", "member", "人")}</span>
+          </div>
+          <button className="secondary-button compact-button" onClick={onCreateMember} type="button">
+            <Plus size={15} />
+            {tx("添加成员")}
+          </button>
+        </div>
+        <div className="project-member-list">
+          {members.length === 0 ? (
+            <div className="empty compact-empty">{tx("暂无项目成员")}</div>
+          ) : members.map((member) => (
+            <ProjectMemberRow
+              key={member.id}
+              data={data}
+              member={member}
+              onEdit={() => onEditMember?.(member)}
+              onDelete={() => onDeleteMember?.(member)}
+            />
+          ))}
+        </div>
+
+        <div className="project-panel-section-head">
+          <div>
+            <strong>{tx("项目额度")}</strong>
+            <span>{hasQuota ? tx("已配置项目专属额度") : tx("未配置项目专属额度")}</span>
+          </div>
+        </div>
+        <div className="quota-status-row">
+          <div>
+            <strong>{hasQuota ? tx("已配置项目专属额度") : tx("未配置项目专属额度")}</strong>
+            <span>{tx("留空或填 0 表示该项不限额；Key 自身额度仍会叠加生效。")}</span>
+          </div>
+          <StatusPill status={values.status || "active"} />
+        </div>
+
+        {quotaIssue || pendingApproval ? (
+          <div className="quota-request-banner">
+            <div>
+              <strong>{pendingApproval ? tx("已有额度提升申请待审批") : tx("最近触发了项目额度限制")}</strong>
+              <span>
+                {pendingApproval
+                  ? `${approvalTriggerLabel(pendingApproval.trigger)} ${pendingApproval.id}，${tx("可在审批记录中处理。")}`
+                  : `${formatNumber(quotaIssue?.count ?? 0)} ${tx("次额度不足，请填写希望提升后的目标额度再提交审批。")}`}
+              </span>
+            </div>
+            {pendingApproval ? <StatusPill status="pending" label="待审批" /> : <StatusPill status="warning" label="需提升" />}
+          </div>
+        ) : null}
+
+        <label className="field">
+          <span>{tx("状态")}</span>
+          <select value={values.status} onChange={(event) => setValues((current) => ({ ...current, status: event.target.value }))}>
+            <option value="active">{tx("启用")}</option>
+            <option value="disabled">{tx("停用")}</option>
+          </select>
+        </label>
+
+        <div className="project-quota-grid">
+          {projectQuotaFields.map((field) => (
+            <label className="field" key={field.key}>
+              <span>{tx(field.label)}</span>
+              <input
+                min="0"
+                type="number"
+                value={values[field.key]}
+                onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
+              />
+              {field.suffix ? <small>{field.suffix}</small> : null}
+            </label>
+          ))}
+        </div>
+
+        <div className="project-quota-actions">
+          {quotaIssue && !pendingApproval ? (
+            <button
+              className="secondary-button"
+              onClick={() =>
+                onAction({
+                  label: "提升额度申请",
+                  title: "提交项目额度提升审批",
+                  run: (ctx) => requestProjectQuotaIncrease(ctx, project, quota, values),
+                  doneMessage: () => `${project.name || project.id} 的额度提升申请已提交`,
+                })
+              }
+              type="button"
+            >
+              {tx("提升额度申请")}
+            </button>
+          ) : null}
+          <button
+            className="button"
+            onClick={() =>
+              onAction({
+                label: "保存额度",
+                title: "保存项目额度",
+                run: (ctx) => saveProjectQuota(ctx, project, quota, values),
+                doneMessage: () => `${project.name || project.id} 的额度已保存`,
+              })
+            }
+            type="button"
+          >
+            {tx("保存额度")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ProjectMemberRow({
+  data,
+  member,
+  onEdit,
+  onDelete,
+}: {
+  data: AppData;
+  member: AdminResource;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const userID = stringifyValue(member.fields?.user_id);
+  const user = data.users.find((item) => item.id === userID);
+  const title = user ? user.name || user.username : userID || "-";
+  const subtitle = user ? [user.email, user.username].filter(Boolean).join(" / ") : userID;
+  return (
+    <div className="project-member-row">
+      <div className="project-member-user">
+        <span className="project-member-avatar"><UserRoundCheck size={16} /></span>
+        <div>
+          <strong>{title}</strong>
+          <span>{subtitle || "-"}</span>
+        </div>
+      </div>
+      <div className="project-member-actions">
+        <button className="text-button" onClick={onEdit} type="button">{tx("编辑")}</button>
+        <button className="danger-button" onClick={onDelete} type="button" title={tx("删除")}>
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function ReportsView({
+  config,
+  data,
+  history,
+  loading,
+  onCreate,
+  onEdit,
+  onDelete,
+  onAction,
+  onExport,
+}: {
+  config: ResourceConfig<AdminResource>;
+  data: AppData;
+  history: ReportExportHistoryItem[];
+  loading: boolean;
+  onCreate: () => void;
+  onEdit: (item: AdminResource) => void;
+  onDelete: (item: AdminResource) => void;
+  onAction: (action: ResourceAction<AdminResource>, item: AdminResource) => void;
+  onExport: (dataset: string) => void;
+}) {
+  const savedReports = config.list(data);
+  const exports = reportExportDefinitions();
+  return (
+    <div className="reports-center">
+      <div className="reports-export-head">
+        <div>
+          <h2>{tx("按需导出")}</h2>
+          <span>CSV</span>
+        </div>
+      </div>
+      <div className="reports-export-grid">
+        {exports.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              className={`report-export-card ${item.tone}`}
+              disabled={loading}
+              key={item.dataset}
+              onClick={() => onExport(item.dataset)}
+              title={`${tx("导出")} ${item.label}`}
+              type="button"
+            >
+              <span className="report-export-icon">
+                <Icon size={18} />
+              </span>
+              <span className="report-export-copy">
+                <strong>{item.label}</strong>
+                <span>{tx(item.description)}</span>
+              </span>
+              <em>CSV</em>
+            </button>
+          );
+        })}
+      </div>
+
+      {history.length > 0 ? (
+        <DataSection title="最近导出">
+          <SimpleTable
+            columns={["数据集", "文件", "时间", "账期"]}
+            rows={history.map((item) => [
+              reportDatasetLabel(item.dataset),
+              item.file_name,
+              formatTime(item.exported_at),
+              item.period || "-",
+            ])}
+          />
+        </DataSection>
+      ) : null}
+
+      {savedReports.length > 0 ? (
+        <DataSection title="自动导出配置">
+          <div className="reports-config-toolbar">
+            <button className="button" onClick={onCreate} type="button">
+              <Plus size={16} />
+              {tx("新增配置")}
+            </button>
+          </div>
+          <EntityTable
+            config={config}
+            data={data}
+            items={savedReports}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onAction={onAction}
+          />
+        </DataSection>
+      ) : null}
+    </div>
+  );
+}

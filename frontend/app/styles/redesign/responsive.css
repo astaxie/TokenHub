@@ -1,0 +1,533 @@
+
+@media (max-width: 1440px) {
+  .app-shell {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .content-panel {
+    padding: 24px 26px 38px;
+  }
+
+  .overview-report-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(310px, 0.9fr);
+  }
+
+  .api-doc-shell {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .api-doc-quick-grid,
+  .api-doc-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .login-shell {
+    align-items: center;
+    padding: 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .login-theme-toggle {
+    top: 24px;
+    right: 24px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .login-stage {
+    width: min(860px, 100%);
+    min-height: 480px;
+    height: auto;
+    grid-template-columns: minmax(330px, 1.06fr) minmax(280px, 0.94fr);
+    border-radius: 24px;
+  }
+
+  .login-hero-panel {
+    min-height: 0;
+    border-right: 1px solid rgba(224, 218, 207, 0.78);
+    border-bottom: 0;
+    background-size: 126px 74px;
+  }
+
+  .login-hero-orbit::before {
+    width: min(34vw, 280px);
+  }
+
+  .login-flow-scene {
+    transform: scale(0.92);
+    transform-origin: center;
+  }
+
+  .login-signal-strip {
+    bottom: 34px;
+  }
+
+  .login-card {
+    width: min(280px, calc(100% - 40px));
+    padding: 28px 0;
+  }
+
+  .login-card-head {
+    margin-bottom: 20px;
+  }
+
+  .login-card .field input {
+    min-height: 46px;
+  }
+
+  .password-toggle {
+    top: 6px;
+    right: 7px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .app-shell,
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .topbar {
+    height: auto;
+    flex: 0 0 auto;
+    padding: 12px 14px;
+    flex-wrap: nowrap;
+  }
+
+  .top-search-wrap {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .top-search-panel {
+    width: calc(100vw - 28px);
+  }
+
+  .top-quick-actions {
+    display: none;
+  }
+
+  .top-scope-pill strong {
+    display: none;
+  }
+
+  .page-context-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .page-context-main {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .page-breadcrumb {
+    max-width: 100%;
+  }
+
+  .page-context-side {
+    justify-content: flex-start;
+  }
+
+  .table-toolbar,
+  .table-toolbar-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .table-toolbar .search-box {
+    width: 100%;
+    height: 36px;
+    flex: 0 0 auto;
+  }
+
+  .table-result-count {
+    width: fit-content;
+  }
+
+  .topbar-spacer {
+    display: none;
+  }
+
+  .content-panel {
+    padding: 20px 16px 30px;
+  }
+
+  .metrics,
+  .overview-report-grid,
+  .two-column,
+  .modal-body,
+  .identity-provider-grid,
+  .identity-provider-grid.compact,
+  .identity-template-grid,
+  .identity-template-summary,
+  .wizard-stepper,
+  .wizard-project-grid,
+  .wizard-choice-row,
+  .wizard-form-grid,
+  .wizard-model-list,
+  .wizard-review-grid,
+  .provider-modal-body,
+  .provider-form-grid,
+  .provider-access-options,
+  .provider-credential-options,
+  .provider-account-auth-grid,
+  .provider-account-fields,
+  .provider-account-detail-grid,
+  .provider-quota-summary,
+  .provider-quota-highlights,
+  .provider-account-selector,
+  .playground-shell,
+  .playground-detail-strip,
+  .model-catalog,
+  .route-matrix,
+  .request-history-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-account-selector {
+    align-items: stretch;
+  }
+
+  .playground-shell {
+    height: auto;
+    min-height: 0;
+  }
+
+  .playground-page {
+    min-height: 0;
+  }
+
+  .overview-report-head,
+  .overview-panel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .overview-range-tabs,
+  .overview-metric-tabs {
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .overview-side-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-trend-panel {
+    min-height: 380px;
+  }
+
+  .api-doc-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .api-doc-nav {
+    position: static;
+    max-height: none;
+  }
+
+  .api-doc-nav-list {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .api-doc-nav-group {
+    min-width: 238px;
+  }
+
+  .api-doc-main-head,
+  .api-doc-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-doc-main-head a,
+  .api-doc-endpoint {
+    width: fit-content;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-shell {
+    padding: 12px;
+    align-items: start;
+    overflow: auto;
+  }
+
+  .login-theme-toggle {
+    top: 18px;
+    right: 18px;
+  }
+
+  .login-stage {
+    height: auto;
+    min-height: calc(100dvh - 24px);
+    grid-template-columns: 1fr;
+    border-radius: 22px;
+  }
+
+  .login-hero-panel {
+    min-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(224, 218, 207, 0.78);
+    background-size: 118px 70px;
+  }
+
+  .login-flow-scene {
+    width: 440px;
+    height: 260px;
+    transform: translateX(-32px) scale(0.74);
+    transform-origin: center;
+  }
+
+  .login-signal-strip {
+    display: none;
+  }
+
+  .login-card {
+    width: calc(100% - 32px);
+    padding: 30px 0 34px;
+  }
+
+  .login-card-head {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .login-card-head h1 {
+    font-size: 32px;
+  }
+
+  .login-language-switcher {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .login-card .field {
+    margin-bottom: 20px;
+  }
+
+  .login-card .field input {
+    min-height: 58px;
+    border-radius: 14px;
+    padding: 0 18px;
+    font-size: 18px;
+  }
+
+  .password-field input {
+    padding-right: 58px;
+  }
+
+  .password-toggle {
+    top: 7px;
+    right: 7px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .login-helper-row {
+    gap: 12px;
+    margin: 2px 0 26px;
+    flex-wrap: wrap;
+  }
+
+  .login-checkmark {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+
+  .login-submit {
+    height: 60px;
+    border-radius: 15px;
+  }
+
+  .login-helper-row,
+  .table-toolbar,
+  .request-history-toolbar,
+  .pagination {
+    align-items: stretch;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-step strong {
+    white-space: normal;
+  }
+
+  .api-key-wizard-body {
+    padding: 14px;
+  }
+
+  .wizard-panel {
+    min-height: 0;
+  }
+
+  .identity-template-card {
+    min-height: 0;
+  }
+
+  .overview-share-content {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .overview-share-list {
+    width: 100%;
+  }
+
+  .overview-chart {
+    min-height: 260px;
+  }
+
+  .api-doc-main,
+  .api-doc-content-card {
+    padding: 16px;
+  }
+
+  .api-doc-main-head {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .api-doc-quick-grid,
+  .api-doc-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .api-doc-nav-list {
+    display: grid;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .api-doc-nav-group {
+    min-width: 0;
+  }
+
+  .api-doc-nav-item {
+    grid-template-columns: 50px minmax(0, 1fr);
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .executive-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .executive-report-head,
+  .executive-panel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .executive-report-tools {
+    justify-content: flex-start;
+  }
+
+  .executive-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .executive-chart {
+    min-width: 720px;
+  }
+
+  .executive-chart-wrap {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .executive-report-head,
+  .executive-chart-panel,
+  .executive-department-panel,
+  .executive-member-panel {
+    padding: 16px;
+  }
+
+  .executive-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .executive-kpi {
+    min-height: 96px;
+  }
+
+  .executive-kpi strong {
+    font-size: 24px;
+  }
+
+  .executive-legend {
+    justify-content: flex-start;
+  }
+
+  .executive-rank-table {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .overview-workbench-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .overview-workbench-main,
+  .overview-primary-action {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-workbench-main {
+    display: grid;
+  }
+
+  .overview-primary-action {
+    display: grid;
+    align-items: stretch;
+  }
+
+  .overview-primary-action .button {
+    width: 100%;
+  }
+
+  .overview-readiness {
+    width: 100%;
+  }
+
+  .overview-workbench-controls {
+    grid-template-columns: minmax(0, 1fr) 32px;
+  }
+
+  .overview-workbench-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,447 @@
+
+.api-doc-shell {
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.api-doc-nav,
+.api-doc-main,
+.api-doc-content-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.api-doc-nav {
+  position: sticky;
+  top: 82px;
+  max-height: calc(100vh - 104px);
+  overflow: auto;
+  padding: 14px;
+}
+
+.api-doc-nav-head {
+  border-bottom: 1px solid var(--border);
+  margin: -2px -2px 12px;
+  padding: 0 2px 12px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.api-doc-nav-head svg {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  padding: 6px;
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.api-doc-nav-head strong,
+.api-doc-title h2,
+.api-doc-main-head h2,
+.api-doc-panel h3,
+.api-doc-code-card > strong {
+  color: var(--ink);
+}
+
+.api-doc-nav-head strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.api-doc-nav-head span {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.api-doc-search {
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 14px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+
+.api-doc-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.api-doc-search input::placeholder {
+  color: var(--ink-3);
+}
+
+.api-doc-empty {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: center;
+}
+
+.api-doc-nav-list {
+  display: grid;
+  gap: 14px;
+}
+
+.api-doc-nav-group h3 {
+  margin: 0 0 7px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+}
+
+.api-doc-nav-item {
+  width: 100%;
+  min-height: 54px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 9px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.api-doc-nav-item:hover,
+.api-doc-nav-item.active {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: var(--accent-weak-2);
+}
+
+.api-doc-nav-item.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.api-doc-nav-item strong,
+.api-doc-nav-item em {
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.api-doc-nav-item strong {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 720;
+}
+
+.api-doc-nav-item em {
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-style: normal;
+}
+
+.api-method {
+  min-width: 48px;
+  height: 24px;
+  border-radius: 8px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 760;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.api-method.get {
+  background: var(--pos-weak);
+  color: var(--pos);
+}
+
+.api-method.post,
+.api-method.mixed {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.api-method.muted {
+  background: var(--surface-3);
+  color: var(--ink-3);
+}
+
+.api-doc-main {
+  min-width: 0;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.api-doc-main-head {
+  min-height: 132px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  background: var(--surface-2);
+}
+
+.api-doc-main-head h2 {
+  margin: 0 0 7px;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 760;
+}
+
+.api-doc-main-head p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.api-doc-main-head code,
+.api-doc-endpoint code {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.api-doc-main-head a {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.api-doc-main-head a:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  color: var(--accent);
+}
+
+.api-doc-language-switcher {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.api-doc-language-switcher button {
+  min-height: 28px;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.api-doc-language-switcher button:hover,
+.api-doc-language-switcher button.active {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.api-doc-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.api-doc-config-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.api-doc-content-card {
+  min-width: 0;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.api-doc-title {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.api-doc-title > div {
+  min-width: 0;
+}
+
+.api-doc-title span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.api-doc-title h2 {
+  margin: 5px 0 7px;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 760;
+}
+
+.api-doc-title p {
+  max-width: 780px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.api-doc-endpoint {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.api-doc-endpoint code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.api-doc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.api-doc-detail-grid div {
+  min-height: 74px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  background: var(--surface-2);
+}
+
+.api-doc-detail-grid span {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.api-doc-detail-grid strong {
+  min-width: 0;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.api-doc-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.api-doc-panel h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.api-doc-notes {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  list-style: none;
+}
+
+.api-doc-notes li {
+  position: relative;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.api-doc-notes li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.api-doc-code-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.api-doc-code-card {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.api-doc-code-card > strong {
+  font-size: 12.5px;
+  font-weight: 720;
+}
+
+.api-doc-model-list {
+  margin-top: 0;
+}

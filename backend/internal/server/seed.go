@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -8,8 +9,31 @@ import (
 
 const defaultProjectID = "prj_default"
 
+// RunStartupBootstrap reapplies idempotent startup data on every process start
+// while serializing replicas through a cluster-wide lease. The contextual
+// store makes lease loss cancel the database operations still in progress.
+func RunStartupBootstrap(ctx context.Context, store *GormStore, config Config) error {
+	operation := "bootstrap-base"
+	seed := BootstrapBaseDataWithConfig
+	if config.SeedDemo {
+		operation = "bootstrap-demo"
+		seed = SeedDemoDataWithConfig
+	}
+	return store.RunClusterOperation(ctx, operation, func(leaseCtx context.Context) error {
+		contextual := store.WithContext(leaseCtx)
+		if err := contextual.NormalizeProviderAdapterTypes(leaseCtx); err != nil {
+			return err
+		}
+		return seed(contextual, config)
+	})
+}
+
 func SeedDemoData(store Store) error {
-	if err := BootstrapBaseData(store); err != nil {
+	return SeedDemoDataWithConfig(store, ConfigFromEnv())
+}
+
+func SeedDemoDataWithConfig(store Store, config Config) error {
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
 		return err
 	}
 
@@ -116,6 +140,10 @@ func SeedDemoData(store Store) error {
 }
 
 func BootstrapBaseData(store Store) error {
+	return BootstrapBaseDataWithConfig(store, ConfigFromEnv())
+}
+
+func BootstrapBaseDataWithConfig(store Store, config Config) error {
 	if _, err := store.CreateAdminUser(AdminUser{
 		ID:       "usr_admin",
 		Username: "admin",
@@ -124,7 +152,7 @@ func BootstrapBaseData(store Store) error {
 		Role:     "admin",
 		TeamID:   "team_platform",
 		Status:   StatusActive,
-	}, "admin123456"); err != nil {
+	}, config.BootstrapAdminPassword); err != nil {
 		if AsHTTPError(err).Code != "admin_user_conflict" {
 			return err
 		}
@@ -132,7 +160,7 @@ func BootstrapBaseData(store Store) error {
 	seedDefaultOrgResources(store)
 	seedDefaultProject(store)
 	pruneProviderImportedModelCatalog(store)
-	if err := seedDefaultModelCatalog(store, ConfigFromEnv().ModelCatalogFile); err != nil {
+	if err := seedDefaultModelCatalog(store, config.ModelCatalogFile); err != nil {
 		return err
 	}
 	return nil
@@ -433,6 +461,10 @@ func seedAdminResources(store Store) {
 }
 
 func seedMockData(store Store) error {
+	mockPasswordHash, err := hashPassword("mock123456")
+	if err != nil {
+		return err
+	}
 	for i := 1; i <= 80; i++ {
 		teamID := fmt.Sprintf("team_mock_%02d", ((i-1)%24)+1)
 		projectID := fmt.Sprintf("prj_mock_%03d", i)
@@ -566,14 +598,15 @@ func seedMockData(store Store) error {
 
 	for i := 1; i <= 72; i++ {
 		_, err := store.CreateAdminUser(AdminUser{
-			ID:       fmt.Sprintf("usr_mock_%03d", i),
-			Username: fmt.Sprintf("mock.user%03d", i),
-			Name:     fmt.Sprintf("Mock User %03d", i),
-			Email:    fmt.Sprintf("mock.user%03d@tokenhub.local", i),
-			Role:     mockRole(i),
-			TeamID:   fmt.Sprintf("team_mock_%02d", ((i-1)%24)+1),
-			Status:   activeEvery(i, 16),
-		}, "mock123456")
+			ID:           fmt.Sprintf("usr_mock_%03d", i),
+			Username:     fmt.Sprintf("mock.user%03d", i),
+			Name:         fmt.Sprintf("Mock User %03d", i),
+			Email:        fmt.Sprintf("mock.user%03d@tokenhub.local", i),
+			Role:         mockRole(i),
+			TeamID:       fmt.Sprintf("team_mock_%02d", ((i-1)%24)+1),
+			Status:       activeEvery(i, 16),
+			PasswordHash: mockPasswordHash,
+		}, "")
 		if err != nil && AsHTTPError(err).Code != "admin_user_conflict" {
 			return err
 		}
@@ -704,7 +737,7 @@ func seedMockUsage(store Store) {
 			continue
 		}
 		modelName := "gpt-4.1-mini"
-		call, err := store.StartCall(project, key, modelName)
+		call, err := store.StartCall(context.Background(), project, key, modelName)
 		if err != nil {
 			store.RecordRejectedRequest(project, key, modelName, http.StatusTooManyRequests, "quota_exceeded", mockIP(i), "mock-seed/1.0")
 			continue

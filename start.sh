@@ -6,11 +6,21 @@ BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
 TOKENHUB_HTTP_ADDR="${TOKENHUB_HTTP_ADDR:-:8080}"
+TOKENHUB_ENV="${TOKENHUB_ENV:-dev}"
 TOKENHUB_PUBLIC_BASE_URL="${TOKENHUB_PUBLIC_BASE_URL:-http://localhost:8080}"
+TOKENHUB_TRUSTED_PROXY_CIDRS="${TOKENHUB_TRUSTED_PROXY_CIDRS:-}"
+TOKENHUB_CORS_ALLOWED_ORIGINS="${TOKENHUB_CORS_ALLOWED_ORIGINS:-http://localhost:3000}"
 TOKENHUB_ADMIN_TOKEN="${TOKENHUB_ADMIN_TOKEN:-dev_admin_token}"
-TOKENHUB_DATABASE_URL="${TOKENHUB_DATABASE_URL:-sqlite://$BACKEND_DIR/data/tokenhub.db}"
-NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-$TOKENHUB_PUBLIC_BASE_URL}"
-NEXT_PUBLIC_ADMIN_TOKEN="${NEXT_PUBLIC_ADMIN_TOKEN:-$TOKENHUB_ADMIN_TOKEN}"
+TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD="${TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD:-admin123456}"
+TOKENHUB_SECRET_KEY="${TOKENHUB_SECRET_KEY:-dev_tokenhub_secret_key}"
+TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS="${TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS:-300}"
+TOKENHUB_CLUSTER_LOCK_TTL_SECONDS="${TOKENHUB_CLUSTER_LOCK_TTL_SECONDS:-180}"
+TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS="${TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS:-150}"
+# Don't force a default database URL here. If not explicitly set in shell,
+# let backend's godotenv load from backend/.env, so PostgreSQL config in .env can take effect.
+# If neither exists, backend falls back to its own default (SQLite).
+TOKENHUB_DATABASE_URL="${TOKENHUB_DATABASE_URL:-}"
+TOKENHUB_API_BASE_URL="${TOKENHUB_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-$TOKENHUB_PUBLIC_BASE_URL}}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 BACKEND_BIN="$ROOT_DIR/.tmp/tokenhub-backend"
@@ -39,13 +49,13 @@ find_go() {
     return
   fi
 
-  log "未找到 Go。请安装 Go，或通过 GO_BIN=/path/to/go 指定。"
+  log "Go not found. Please install Go, or specify via GO_BIN=/path/to/go."
   exit 1
 }
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    log "未找到命令：$1"
+    log "Command not found: $1"
     exit 1
   fi
 }
@@ -70,12 +80,12 @@ cleanup() {
   trap - INT TERM EXIT
 
   if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" >/dev/null 2>&1; then
-    log "停止前端服务 PID=$FRONTEND_PID"
+    log "Stopping frontend service PID=$FRONTEND_PID"
     kill_tree "$FRONTEND_PID"
   fi
 
   if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" >/dev/null 2>&1; then
-    log "停止后端服务 PID=$BACKEND_PID"
+    log "Stopping backend service PID=$BACKEND_PID"
     kill_tree "$BACKEND_PID"
   fi
 
@@ -91,56 +101,68 @@ GO_CMD="$(find_go)"
 require_command npm
 
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
-  log "前端依赖不存在，执行 npm install"
+  log "Frontend dependencies not found, running npm install"
   (cd "$FRONTEND_DIR" && npm install)
 fi
 
 mkdir -p "$(dirname "$BACKEND_BIN")"
 
-log "编译后端二进制"
+log "Building backend binary"
 (cd "$BACKEND_DIR" && "$GO_CMD" build -o "$BACKEND_BIN" ./cmd/tokenhub)
 
-log "启动后端: $TOKENHUB_HTTP_ADDR"
+log "Starting backend: $TOKENHUB_HTTP_ADDR"
 (
   cd "$BACKEND_DIR"
-  exec env \
-    TOKENHUB_HTTP_ADDR="$TOKENHUB_HTTP_ADDR" \
-    TOKENHUB_PUBLIC_BASE_URL="$TOKENHUB_PUBLIC_BASE_URL" \
-    TOKENHUB_ADMIN_TOKEN="$TOKENHUB_ADMIN_TOKEN" \
-    TOKENHUB_DATABASE_URL="$TOKENHUB_DATABASE_URL" \
-    "$BACKEND_BIN"
+  # Only pass TOKENHUB_DATABASE_URL if non-empty (explicitly set in shell),
+  # otherwise let backend godotenv read from backend/.env to avoid overriding .env config.
+  backend_env=(
+    TOKENHUB_ENV="$TOKENHUB_ENV"
+    TOKENHUB_HTTP_ADDR="$TOKENHUB_HTTP_ADDR"
+    TOKENHUB_PUBLIC_BASE_URL="$TOKENHUB_PUBLIC_BASE_URL"
+    TOKENHUB_TRUSTED_PROXY_CIDRS="$TOKENHUB_TRUSTED_PROXY_CIDRS"
+    TOKENHUB_CORS_ALLOWED_ORIGINS="$TOKENHUB_CORS_ALLOWED_ORIGINS"
+    TOKENHUB_ADMIN_TOKEN="$TOKENHUB_ADMIN_TOKEN"
+    TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD="$TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD"
+    TOKENHUB_SECRET_KEY="$TOKENHUB_SECRET_KEY"
+    TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS="$TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS"
+    TOKENHUB_CLUSTER_LOCK_TTL_SECONDS="$TOKENHUB_CLUSTER_LOCK_TTL_SECONDS"
+    TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS="$TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS"
+  )
+  if [ -n "$TOKENHUB_DATABASE_URL" ]; then
+    backend_env+=(TOKENHUB_DATABASE_URL="$TOKENHUB_DATABASE_URL")
+  fi
+  exec env "${backend_env[@]}" "$BACKEND_BIN"
 ) &
 BACKEND_PID=$!
 
-log "启动前端: http://localhost:$FRONTEND_PORT"
+log "Starting frontend: http://localhost:$FRONTEND_PORT"
 (
   cd "$FRONTEND_DIR"
   exec env \
-    NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
-    NEXT_PUBLIC_ADMIN_TOKEN="$NEXT_PUBLIC_ADMIN_TOKEN" \
+    TOKENHUB_API_BASE_URL="$TOKENHUB_API_BASE_URL" \
     "$NEXT_BIN" dev --hostname "$FRONTEND_HOST" --port "$FRONTEND_PORT"
 ) &
 FRONTEND_PID=$!
 
 cat <<EOF
 
-TokenHub 已启动：
-  后端 API:  $TOKENHUB_PUBLIC_BASE_URL
-  前端后台: http://localhost:$FRONTEND_PORT
-  Admin Token: $TOKENHUB_ADMIN_TOKEN
+TokenHub started:
+  Backend API:  $TOKENHUB_PUBLIC_BASE_URL
+  Frontend:     http://localhost:$FRONTEND_PORT
+  Admin Token:  $TOKENHUB_ADMIN_TOKEN
 
-按 Ctrl-C 同时停止前后端。
+Press Ctrl-C to stop both services.
 EOF
 
 while true; do
   if ! kill -0 "$BACKEND_PID" >/dev/null 2>&1; then
-    log "后端服务已退出"
+    log "Backend service exited"
     wait "$BACKEND_PID" || exit $?
     exit 0
   fi
 
   if ! kill -0 "$FRONTEND_PID" >/dev/null 2>&1; then
-    log "前端服务已退出"
+    log "Frontend service exited"
     wait "$FRONTEND_PID" || exit $?
     exit 0
   fi

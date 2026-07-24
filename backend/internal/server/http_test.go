@@ -1,19 +1,23 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -133,6 +137,23 @@ func TestGatewayModelsExposeJieKouCompatibleFields(t *testing.T) {
 	}
 	if model.Title != "gpt-4.1-mini" || model.Description == "" || model.ContextSize != 128000 {
 		t.Fatalf("unexpected model metadata fields: %+v", model)
+	}
+}
+
+func TestGatewayModelsExposeCodexCompatibleEnvelope(t *testing.T) {
+	resp := doJSON(t, newTestServer(), http.MethodGet, "/v1/models", nil, "thk_demo_local")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	var payload struct {
+		Data   []modelListItem `json:"data"`
+		Models []any           `json:"models"`
+	}
+	if err := json.Unmarshal([]byte(resp.Body), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Data) == 0 || payload.Models == nil || len(payload.Models) != 0 {
+		t.Fatalf("expected standard model data and an empty Codex-compatible models list, got %+v", payload)
 	}
 }
 
@@ -428,6 +449,66 @@ func TestAdminCreatesAPIKeyUnderDefaultProject(t *testing.T) {
 	}
 }
 
+func TestUserCreatesPersonalAPIKeyWithoutProjectMembership(t *testing.T) {
+	store := NewMemoryStore()
+	if err := BootstrapBaseData(store); err != nil {
+		t.Fatal(err)
+	}
+	user, err := store.CreateAdminUser(AdminUser{
+		Username: "personal-key-user",
+		Name:     "Personal Key User",
+		Email:    "personal-key-user@tokenhub.local",
+		Role:     "user",
+		Status:   StatusActive,
+	}, "user123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	login := doJSON(t, app, http.MethodPost, "/api/admin/auth/login", map[string]any{
+		"identity": user.Username,
+		"password": "user123456",
+	}, "")
+	var session struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(login.Body), &session); err != nil {
+		t.Fatal(err)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/api-keys", map[string]any{
+		"name": "Personal Key",
+	}, session.Token)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("ordinary user should create a personal key without project membership, got %d: %s", created.Code, created.Body)
+	}
+	if !strings.Contains(created.Body, `"project_id":"`+defaultProjectID+`"`) || !strings.Contains(created.Body, `"api_key"`) {
+		t.Fatalf("personal key should fall back to the default project: %s", created.Body)
+	}
+	keys := store.ListProjectKeys(defaultProjectID)
+	if len(keys) != 1 || keys[0].Metadata["created_by"] != user.ID {
+		t.Fatalf("personal key should remain attributable to its creator: %+v", keys)
+	}
+
+	assignedProject := store.CreateProject(Project{Name: "Assigned Project", Status: StatusActive})
+	store.CreateResource("project-members", AdminResource{
+		Name:   "Personal Key User Membership",
+		Status: StatusActive,
+		Fields: map[string]any{
+			"project_id": assignedProject.ID,
+			"user_id":    user.ID,
+			"role":       "developer",
+		},
+	})
+	assigned := doJSON(t, app, http.MethodPost, "/api/admin/api-keys", map[string]any{
+		"name": "Assigned Project Key",
+	}, session.Token)
+	if assigned.Code != http.StatusCreated || !strings.Contains(assigned.Body, `"project_id":"`+assignedProject.ID+`"`) {
+		t.Fatalf("personal key should prefer an assigned project, got %d: %s", assigned.Code, assigned.Body)
+	}
+}
+
 func TestUserCanReadRoutedAdminModels(t *testing.T) {
 	store := NewMemoryStore()
 	if _, err := store.CreateAdminUser(AdminUser{
@@ -542,6 +623,7 @@ func TestAdminImportsUsersFromExistingSystemCSV(t *testing.T) {
 	if err := BootstrapBaseData(store); err != nil {
 		t.Fatal(err)
 	}
+	messages := configureTestSMTPChannel(t, store)
 	app := New(store).Handler()
 
 	content := "username,name,email,role,team_id,status\nimported_user,导入用户,imported@example.com,user,team_platform,active\n"
@@ -556,6 +638,7 @@ func TestAdminImportsUsersFromExistingSystemCSV(t *testing.T) {
 	if !strings.Contains(resp.Body, `"created":1`) || !strings.Contains(resp.Body, `"updated":0`) {
 		t.Fatalf("expected one created user: %s", resp.Body)
 	}
+	assertPasswordResetEmail(t, messages, "imported@example.com")
 
 	update := "username,name,email,role,team_id,status\nimported_user,导入用户已更新,imported@example.com,team_leader,team_platform,active\n"
 	updated := doJSON(t, app, http.MethodPost, "/api/admin/users/import", map[string]any{
@@ -569,6 +652,7 @@ func TestAdminImportsUsersFromExistingSystemCSV(t *testing.T) {
 	if !strings.Contains(updated.Body, `"created":0`) || !strings.Contains(updated.Body, `"updated":1`) {
 		t.Fatalf("expected one updated user: %s", updated.Body)
 	}
+	assertPasswordResetEmail(t, messages, "imported@example.com")
 	users := store.ListAdminUsers()
 	var found AdminUser
 	for _, user := range users {
@@ -582,11 +666,28 @@ func TestAdminImportsUsersFromExistingSystemCSV(t *testing.T) {
 	}
 }
 
+func TestBootstrapUsesConfiguredAdminPassword(t *testing.T) {
+	store := NewMemoryStore()
+	config := ConfigFromEnv()
+	config.BootstrapAdminPassword = "configured-bootstrap-password"
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := store.AuthenticateAdminUser("admin", config.BootstrapAdminPassword, time.Hour); err != nil {
+		t.Fatalf("expected configured bootstrap password to authenticate: %v", err)
+	}
+	if _, _, err := store.AuthenticateAdminUser("admin", "admin123456", time.Hour); AsHTTPError(err).Code != "invalid_credentials" {
+		t.Fatalf("expected hard-coded default password to be rejected, got %v", err)
+	}
+}
+
 func TestAdminImportsUsersFromHeaderlessCSV(t *testing.T) {
 	store := NewMemoryStore()
 	if err := BootstrapBaseData(store); err != nil {
 		t.Fatal(err)
 	}
+	messages := configureTestSMTPChannel(t, store)
 	app := New(store).Handler()
 
 	content := "xiemengjun,谢孟军,xiemengjun@e-lead.cn,admin,team_UK8jwEcIIoFmNVmJ,active\n" +
@@ -602,6 +703,8 @@ func TestAdminImportsUsersFromHeaderlessCSV(t *testing.T) {
 	if !strings.Contains(resp.Body, `"created":2`) || !strings.Contains(resp.Body, `"skipped":0`) {
 		t.Fatalf("expected two created users: %s", resp.Body)
 	}
+	assertPasswordResetEmail(t, messages, "xiemengjun@e-lead.cn")
+	assertPasswordResetEmail(t, messages, "lisk@e-lead.cn")
 }
 
 func TestGatewayRejectsUnauthorizedModel(t *testing.T) {
@@ -2943,6 +3046,133 @@ func TestAdminCreatesProviderResource(t *testing.T) {
 	}
 }
 
+func TestAdminDeletesProviderAccountRuntimeData(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		Name:    "Delete Account Provider",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID:   provider.ID,
+		Name:         "Delete Account Resource",
+		ResourceType: ProviderResourceOpenAISubscription,
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials: &ProviderResourceCredentials{
+			AccessToken:  "delete-account-access-token",
+			RefreshToken: "delete-account-refresh-token",
+			AccountID:    "delete-account-id",
+			Email:        "delete.account@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := store.AddRoute(ModelRoute{
+		ModelName:          "delete-account-model",
+		ProviderID:         provider.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      "delete-account-model",
+		Status:             StatusActive,
+	})
+	now := time.Now().UTC()
+	for _, record := range []any{
+		&InFlightLease{ID: "lease_delete_account", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(time.Minute)},
+		&ProviderResourceBucket{ResourceID: resource.ID, Bucket: "minute", Requests: 1, Tokens: 2, UpdatedAt: now},
+		&ProviderResourceObservation{ResourceID: resource.ID, AdapterType: ProviderOpenAICodex, QuotaSnapshot: `{"plan_type":"pro"}`, QuotaFetchedAt: &now, UpdatedAt: now},
+		&ProviderObservation{ID: "obs_delete_account", ProviderID: provider.ID, ResourceID: resource.ID, AdapterType: ProviderOpenAICodex, Source: "real_request", Operation: "responses", Success: true, ObservedAt: now},
+		&AdapterSessionBinding{ID: "binding_delete_account", AdapterType: ProviderOpenAICodex, AffinityKind: AffinityKindCodexSession, ProviderID: provider.ID, AffinityKeyHash: "delete-account-affinity", ResourceID: resource.ID, LastUsedAt: now},
+	} {
+		if err := store.db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	app := New(store).Handler()
+	resp := doJSON(t, app, http.MethodDelete, "/api/admin/provider-resources/"+resource.ID, nil, "")
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("expected account delete 204, got %d: %s", resp.Code, resp.Body)
+	}
+
+	checks := []struct {
+		name  string
+		model any
+		where string
+		args  []any
+	}{
+		{name: "provider resource", model: &ProviderResource{}, where: "id = ?", args: []any{resource.ID}},
+		{name: "in-flight lease", model: &InFlightLease{}, where: "scope_type = ? AND scope_id = ?", args: []any{"provider_resource", resource.ID}},
+		{name: "rate-limit bucket", model: &ProviderResourceBucket{}, where: "resource_id = ?", args: []any{resource.ID}},
+		{name: "resource observation", model: &ProviderResourceObservation{}, where: "resource_id = ?", args: []any{resource.ID}},
+		{name: "provider observation", model: &ProviderObservation{}, where: "resource_id = ?", args: []any{resource.ID}},
+		{name: "session binding", model: &AdapterSessionBinding{}, where: "resource_id = ?", args: []any{resource.ID}},
+	}
+	for _, check := range checks {
+		var count int64
+		if err := store.db.Model(check.model).Where(check.where, check.args...).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("expected %s data to be deleted, found %d row(s)", check.name, count)
+		}
+	}
+	var detachedRoute ModelRoute
+	if err := store.db.First(&detachedRoute, "id = ?", route.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if detachedRoute.ProviderResourceID != "" {
+		t.Fatalf("expected route to be detached from deleted account, got %q", detachedRoute.ProviderResourceID)
+	}
+}
+
+func TestAdminRejectsDuplicateProviderResourceName(t *testing.T) {
+	app := newTestServer()
+	for index, name := range []string{"OpenAI Codex Primary Account", "  openai codex primary account  "} {
+		resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+			"id":            "rsrc_openai_account_" + strconv.Itoa(index+1),
+			"provider_id":   "prv_mock",
+			"name":          name,
+			"resource_type": ProviderResourceOpenAISubscription,
+			"status":        StatusActive,
+			"healthy":       true,
+		}, "")
+		if index == 0 && resp.Code != http.StatusCreated {
+			t.Fatalf("expected first provider resource created, got %d: %s", resp.Code, resp.Body)
+		}
+		if index == 1 {
+			if resp.Code != http.StatusConflict {
+				t.Fatalf("expected duplicate provider resource name conflict, got %d: %s", resp.Code, resp.Body)
+			}
+			if !strings.Contains(resp.Body, `"code":"provider_resource_name_conflict"`) {
+				t.Fatalf("expected provider resource name conflict code, got: %s", resp.Body)
+			}
+		}
+	}
+
+	secondary := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+		"id":            "rsrc_openai_account_secondary",
+		"provider_id":   "prv_mock",
+		"name":          "OpenAI Codex Secondary Account",
+		"resource_type": ProviderResourceOpenAISubscription,
+		"status":        StatusActive,
+		"healthy":       true,
+	}, "")
+	if secondary.Code != http.StatusCreated {
+		t.Fatalf("expected secondary provider resource created, got %d: %s", secondary.Code, secondary.Body)
+	}
+	rename := doJSON(t, app, http.MethodPatch, "/api/admin/provider-resources/rsrc_openai_account_secondary", map[string]any{
+		"name": " OPENAI CODEX PRIMARY ACCOUNT ",
+	}, "")
+	if rename.Code != http.StatusConflict || !strings.Contains(rename.Body, `"code":"provider_resource_name_conflict"`) {
+		t.Fatalf("expected provider resource rename conflict, got %d: %s", rename.Code, rename.Body)
+	}
+}
+
 func TestAdminCreatesOpenAISubscriptionProviderResource(t *testing.T) {
 	store := NewMemoryStore()
 	store.AddProvider(Provider{
@@ -3118,6 +3348,7 @@ func TestOpenAISubscriptionResourceSuppliesRouteCredentials(t *testing.T) {
 		ResourceType: ProviderResourceOpenAISubscription,
 		Status:       StatusActive,
 		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("gpt-4.1-mini"),
 		Credentials: &ProviderResourceCredentials{
 			AuthType:       "oauth",
 			AccessToken:    "openai-access-token",
@@ -3212,6 +3443,7 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 		ResourceType: ProviderResourceOpenAISubscription,
 		Status:       StatusActive,
 		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("gpt-4.1-mini"),
 		Credentials: &ProviderResourceCredentials{
 			AuthType:     "oauth",
 			AccessToken:  "access-expired",
@@ -3279,6 +3511,7 @@ func TestOpenAIProviderAccountOAuthGenerateAuthURLAndCallback(t *testing.T) {
 	}
 	if authURL.Host != "auth.openai.com" ||
 		authURL.Query().Get("client_id") != openAIAccountOAuthClientID ||
+		authURL.Query().Get("redirect_uri") != openAIAccountOAuthRedirectURI ||
 		authURL.Query().Get("code_challenge_method") != "S256" ||
 		authURL.Query().Get("codex_cli_simplified_flow") != "true" ||
 		authURL.Query().Get("state") != payload.State {
@@ -3305,6 +3538,79 @@ func TestOpenAIProviderAccountOAuthGenerateAuthURLAndCallback(t *testing.T) {
 	}
 }
 
+func TestOpenAIProviderAccountOAuthCallbackSurfacesDatabaseFailure(t *testing.T) {
+	store := NewMemoryStore()
+	session := providerAccountOAuthSession{
+		ID:           "oauth-db-error",
+		State:        "oauth-db-error-state",
+		CodeVerifier: "oauth-db-error-verifier",
+		CreatedAt:    time.Now().UTC(),
+	}
+	if err := store.SaveProviderAccountOAuthSession(session); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	sqlDB, err := store.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	callback := httptest.NewRequest(http.MethodGet, "/api/admin/provider-account-oauth/openai/oauth/callback?code=oauth-code&state="+url.QueryEscape(session.State), nil)
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, callback)
+	if rr.Code != http.StatusInternalServerError || !strings.Contains(rr.Body.String(), "internal_error") {
+		t.Fatalf("expected database failure to surface as 500, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+type oauthRestoreFailureStore struct {
+	Store
+	saveCalls int
+}
+
+func (s *oauthRestoreFailureStore) SaveProviderAccountOAuthSession(session providerAccountOAuthSession) error {
+	s.saveCalls++
+	if s.saveCalls > 1 {
+		return errors.New("restore failed")
+	}
+	return s.Store.SaveProviderAccountOAuthSession(session)
+}
+
+func TestOpenAIProviderAccountOAuthExchangeSurfacesSessionRestoreFailure(t *testing.T) {
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "token endpoint unavailable", http.StatusBadGateway)
+	}))
+	defer tokenServer.Close()
+	previousEndpoint := openAIAccountOAuthTokenEndpoint
+	openAIAccountOAuthTokenEndpoint = tokenServer.URL
+	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
+
+	baseStore := NewMemoryStore()
+	store := &oauthRestoreFailureStore{Store: baseStore}
+	app := New(store).Handler()
+	generated := doJSON(t, app, http.MethodPost, "/api/admin/provider-account-oauth/openai/generate-auth-url", map[string]any{
+		"return_url": "http://localhost:3001/providers",
+	}, "")
+	if generated.Code != http.StatusOK {
+		t.Fatalf("expected generate 200, got %d: %s", generated.Code, generated.Body)
+	}
+	var auth providerAccountOAuthGenerateResponse
+	if err := json.Unmarshal([]byte(generated.Body), &auth); err != nil {
+		t.Fatal(err)
+	}
+	exchanged := doJSON(t, app, http.MethodPost, "/api/admin/provider-account-oauth/openai/exchange-code", map[string]any{
+		"session_id": auth.SessionID,
+		"state":      auth.State,
+		"code":       "oauth-code",
+	}, "")
+	if exchanged.Code != http.StatusInternalServerError || !strings.Contains(exchanged.Body, "internal_error") {
+		t.Fatalf("expected restore failure to surface as 500, got %d: %s", exchanged.Code, exchanged.Body)
+	}
+}
+
 func TestOpenAIProviderAccountOAuthExchangeCode(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -3319,7 +3625,7 @@ func TestOpenAIProviderAccountOAuthExchangeCode(t *testing.T) {
 		if r.FormValue("grant_type") != "authorization_code" ||
 			r.FormValue("client_id") != openAIAccountOAuthClientID ||
 			r.FormValue("code") != "oauth-code" ||
-			!strings.Contains(r.FormValue("redirect_uri"), "/api/admin/provider-account-oauth/openai/oauth/callback") ||
+			r.FormValue("redirect_uri") != openAIAccountOAuthRedirectURI ||
 			r.FormValue("code_verifier") == "" {
 			t.Fatalf("unexpected token form: %s", r.Form.Encode())
 		}
@@ -3419,10 +3725,10 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.FinishProviderResourceAttempt(resource.ID, false, Usage{})
-	store.FinishProviderResourceAttempt(resource.ID, false, Usage{})
-	store.FinishProviderResourceAttempt(resource.ID, false, Usage{})
-	if err := store.CheckProviderResourceCapacity(resource.ID); AsHTTPError(err).Code != "provider_resource_cooling_down" {
+	store.FinishProviderResourceAttempt(resource.ID, "", false, Usage{})
+	store.FinishProviderResourceAttempt(resource.ID, "", false, Usage{})
+	store.FinishProviderResourceAttempt(resource.ID, "", false, Usage{})
+	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_cooling_down" {
 		t.Fatalf("expected cooldown before clear_error, got %v", err)
 	}
 	app := New(store).Handler()
@@ -3446,11 +3752,12 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if cleared.Code != http.StatusOK || !strings.Contains(cleared.Body, `"success":1`) {
 		t.Fatalf("clear error failed: %d %s", cleared.Code, cleared.Body)
 	}
-	if err := store.CheckProviderResourceCapacity(resource.ID); err != nil {
+	leaseID, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID)
+	if err != nil {
 		t.Fatalf("capacity should be available after clear_error: %v", err)
 	}
-	store.FinishProviderResourceAttempt(resource.ID, true, Usage{TotalTokens: 5})
-	if err := store.CheckProviderResourceCapacity(resource.ID); AsHTTPError(err).Code != "provider_resource_rpm_exceeded" {
+	store.FinishProviderResourceAttempt(resource.ID, leaseID, true, Usage{TotalTokens: 5})
+	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_rpm_exceeded" {
 		t.Fatalf("expected rpm limit before reset, got %v", err)
 	}
 	reset := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
@@ -3460,10 +3767,11 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if reset.Code != http.StatusOK || !strings.Contains(reset.Body, `"success":1`) {
 		t.Fatalf("reset usage failed: %d %s", reset.Code, reset.Body)
 	}
-	if err := store.CheckProviderResourceCapacity(resource.ID); err != nil {
+	leaseID, _, err = store.CheckProviderResourceCapacity(context.Background(), resource.ID)
+	if err != nil {
 		t.Fatalf("capacity should be available after reset_usage: %v", err)
 	}
-	store.FinishProviderResourceAttempt(resource.ID, true, Usage{})
+	store.FinishProviderResourceAttempt(resource.ID, leaseID, true, Usage{})
 }
 
 func TestProviderResourceImport(t *testing.T) {
@@ -3968,12 +4276,173 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestReadinessFailsWhenDatabaseIsUnavailableButLivenessRemainsHealthy(t *testing.T) {
+	store := NewMemoryStore()
+	app := New(store).Handler()
+	sqlDB, err := store.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ready := doJSON(t, app, http.MethodGet, "/readyz", nil, "")
+	if ready.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected readiness 503 after database close, got %d: %s", ready.Code, ready.Body)
+	}
+	live := doJSON(t, app, http.MethodGet, "/livez", nil, "")
+	if live.Code != http.StatusOK {
+		t.Fatalf("expected liveness 200 after database close, got %d: %s", live.Code, live.Body)
+	}
+}
+
+func TestClientIPIgnoresForwardedHeaderFromUntrustedPeer(t *testing.T) {
+	server := &Server{config: Config{TrustedProxyCIDRs: []string{"10.0.0.0/8"}}}
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.RemoteAddr = "198.51.100.7:4321"
+	request.Header.Set("X-Forwarded-For", "203.0.113.25")
+
+	if got := server.clientIP(request); got != "198.51.100.7" {
+		t.Fatalf("expected direct peer IP, got %q", got)
+	}
+}
+
+func TestClientIPUsesForwardedChainFromTrustedProxy(t *testing.T) {
+	server := &Server{config: Config{TrustedProxyCIDRs: []string{"10.0.0.0/8", "192.0.2.10"}}}
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.RemoteAddr = "10.0.0.8:4321"
+	request.Header.Set("X-Forwarded-For", "203.0.113.25, 192.0.2.10")
+
+	if got := server.clientIP(request); got != "203.0.113.25" {
+		t.Fatalf("expected first untrusted address from the right, got %q", got)
+	}
+}
+
+func TestClientIPRejectsMalformedForwardedChain(t *testing.T) {
+	server := &Server{config: Config{TrustedProxyCIDRs: []string{"10.0.0.0/8"}}}
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.RemoteAddr = "10.0.0.8:4321"
+	request.Header.Set("X-Forwarded-For", "203.0.113.25, not-an-ip")
+
+	if got := server.clientIP(request); got != "10.0.0.8" {
+		t.Fatalf("expected malformed chain to fall back to direct peer, got %q", got)
+	}
+}
+
 func newTestServer() http.Handler {
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {
 		panic(err)
 	}
 	return New(store).Handler()
+}
+
+func configureTestSMTPChannel(t *testing.T, store *GormStore) <-chan string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	messages := make(chan string, 10)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go serveTestSMTPConnection(conn, messages)
+		}
+	}()
+
+	host, portText, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("notification-channels", AdminResource{
+		Name:   "Test SMTP",
+		Status: StatusActive,
+		Fields: map[string]any{
+			"type":      "email",
+			"smtp_host": host,
+			"smtp_port": port,
+			"smtp_from": "tokenhub@example.com",
+		},
+	})
+	return messages
+}
+
+func serveTestSMTPConnection(conn net.Conn, messages chan<- string) {
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+	write := func(response string) bool {
+		if _, err := writer.WriteString(response + "\r\n"); err != nil {
+			return false
+		}
+		return writer.Flush() == nil
+	}
+	if !write("220 localhost ESMTP") {
+		return
+	}
+	var message strings.Builder
+	readingData := false
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return
+		}
+		command := strings.TrimRight(line, "\r\n")
+		if readingData {
+			if command == "." {
+				messages <- message.String()
+				message.Reset()
+				readingData = false
+				if !write("250 queued") {
+					return
+				}
+				continue
+			}
+			message.WriteString(strings.TrimPrefix(command, "."))
+			message.WriteByte('\n')
+			continue
+		}
+		switch {
+		case strings.HasPrefix(command, "EHLO "), strings.HasPrefix(command, "HELO "):
+			if !write("250 localhost") {
+				return
+			}
+		case command == "DATA":
+			readingData = true
+			if !write("354 end with <CRLF>.<CRLF>") {
+				return
+			}
+		case command == "QUIT":
+			_ = write("221 bye")
+			return
+		default:
+			if !write("250 ok") {
+				return
+			}
+		}
+	}
+}
+
+func assertPasswordResetEmail(t *testing.T, messages <-chan string, recipient string) {
+	t.Helper()
+	select {
+	case message := <-messages:
+		if !strings.Contains(message, "To: "+recipient) || !strings.Contains(message, "reset_token=") {
+			t.Fatalf("unexpected password reset email: %s", message)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for password reset email to %s", recipient)
+	}
 }
 
 type responseBody struct {

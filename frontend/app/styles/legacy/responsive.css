@@ -1,0 +1,371 @@
+
+@media (max-width: 1440px) {
+  .app-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .top-links {
+    display: none;
+  }
+
+  .content-panel {
+    padding: 26px 30px 42px;
+  }
+
+  .playground-content-panel {
+    padding: 0;
+  }
+
+  .gateway-quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reports-export-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .login-shell {
+    padding: 14px;
+  }
+
+  .login-card {
+    width: 100%;
+  }
+
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .workspace {
+    padding: 0 12px;
+  }
+
+  .topbar {
+    height: auto;
+    padding: 12px 0;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .content-panel {
+    margin: 0;
+    padding: 20px 16px 28px;
+  }
+
+  .playground-content-panel {
+    padding: 0;
+  }
+
+  .gateway-hero {
+    padding: 18px;
+    flex-direction: column;
+  }
+
+  .gateway-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-detail-layout.with-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .team-members-panel,
+  .project-quota-panel {
+    max-height: none;
+  }
+
+  .project-quota-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics,
+  .two-column,
+  .modal-body,
+  .identity-provider-grid,
+  .identity-provider-grid.compact,
+  .identity-template-grid,
+  .identity-template-summary,
+  .wizard-stepper,
+  .wizard-project-grid,
+  .wizard-choice-row,
+  .wizard-form-grid,
+  .wizard-model-list,
+  .wizard-review-grid,
+  .provider-modal-body,
+  .provider-form-grid,
+  .provider-access-options,
+  .provider-credential-options,
+  .provider-account-auth-grid,
+  .provider-account-fields,
+  .playground-shell,
+  .playground-detail-strip,
+  .model-catalog,
+  .route-matrix,
+  .request-history-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-export-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .request-history-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .request-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .request-filter-tabs {
+    overflow-x: auto;
+  }
+
+  .request-detail-panel {
+    min-height: 0;
+  }
+
+  .playground-shell {
+    height: auto;
+    min-height: 0;
+  }
+
+  .playground-config {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .playground-main {
+    min-height: 560px;
+  }
+
+  .playground-page {
+    min-height: 0;
+  }
+
+  .playground-model-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .playground-actions {
+    justify-content: flex-start;
+  }
+
+  .playground-composer-actions {
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+
+  .playground-composer-actions .playground-foot {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .playground-message {
+    width: 100%;
+  }
+
+  .provider-catalog-list,
+  .provider-model-list {
+    max-height: 260px;
+  }
+
+  .provider-model-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provider-model-tools {
+    min-width: 0;
+    justify-content: stretch;
+  }
+
+  .multi-select-tools {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .multi-select-tools input {
+    grid-column: 1 / -1;
+  }
+
+  .multi-select-list {
+    max-height: 220px;
+  }
+
+  .provider-model-tools input {
+    width: 100%;
+  }
+
+  .workflow-hint {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workflow-hint-stats {
+    flex-wrap: wrap;
+  }
+
+  .search-box {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .model-provider-list {
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    max-height: none;
+  }
+
+  .model-category-strip {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .model-category-tabs {
+    overflow-x: auto;
+  }
+
+  .model-filterbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .model-capability-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .model-catalog-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .model-catalog-table-mode .model-catalog-actions .button {
+    width: fit-content;
+    align-self: flex-start;
+  }
+
+  .model-search {
+    width: 100%;
+  }
+
+  .route-model-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .route-model-stats {
+    justify-items: start;
+  }
+
+  .route-provider-row {
+    grid-template-columns: 26px 30px minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .route-provider-main,
+  .route-upstream-model {
+    grid-column: 3 / -1;
+  }
+
+  .route-provider-row > .pill {
+    grid-column: 3 / 4;
+    justify-self: start;
+  }
+
+  .route-row-actions {
+    grid-column: 4 / 5;
+    grid-row: 3;
+    align-self: center;
+  }
+
+  .table-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .table-toolbar-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pagination-controls {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 640px) {
+  h1 {
+    font-size: 22px;
+  }
+
+  .metric {
+    min-height: 96px;
+  }
+
+  .metric-value {
+    margin-top: 20px;
+  }
+
+  .request-detail-grid,
+  .request-usage-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .request-list-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .request-row-tail {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: space-between;
+  }
+
+  .model-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .model-card {
+    padding: 12px;
+  }
+
+  .model-card-pricing {
+    gap: 9px;
+  }
+
+  .wizard-step strong {
+    white-space: normal;
+  }
+
+  .api-key-wizard-body {
+    padding: 14px;
+  }
+
+  .wizard-panel {
+    min-height: 0;
+  }
+
+  .identity-template-card {
+    min-height: 0;
+  }
+}

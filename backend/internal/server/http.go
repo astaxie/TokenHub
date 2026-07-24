@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -27,11 +28,13 @@ import (
 )
 
 type Server struct {
-	store                    Store
-	adapters                 map[string]ProviderAdapter
-	mux                      *http.ServeMux
-	config                   Config
-	providerAccountOAuthFlow *providerAccountOAuthSessionStore
+	store             Store
+	adapters          map[string]ProviderAdapter
+	adapterRegistry   *AdapterRegistry
+	integrations      *IntegrationService
+	codexSubscription *CodexSubscriptionAdapter
+	mux               *http.ServeMux
+	config            Config
 }
 
 func New(store Store) *Server {
@@ -40,38 +43,60 @@ func New(store Store) *Server {
 
 func NewWithConfig(store Store, config Config) *Server {
 	client := &http.Client{Timeout: 120 * time.Second}
+	codexClient := &http.Client{}
 	openai := OpenAICompatibleAdapter{Client: client}
+	codexSubscription := &CodexSubscriptionAdapter{
+		Client:             codexClient,
+		RefreshCredentials: store.RefreshProviderResourceCredentials,
+	}
+	adapters := map[string]ProviderAdapter{
+		ProviderMock:             MockAdapter{},
+		ProviderOpenAI:           openai,
+		ProviderOpenAICompatible: openai,
+		"deepseek":               openai,
+		"qwen":                   openai,
+		"local":                  openai,
+		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client},
+		ProviderAnthropic:        AnthropicAdapter{Client: client},
+		ProviderGemini:           GeminiAdapter{Client: client},
+	}
+	registry := NewAdapterRegistry(adapters)
+	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
+	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact)
+	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
+	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
+		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	}
 	s := &Server{
-		store: store,
-		adapters: map[string]ProviderAdapter{
-			ProviderMock:             MockAdapter{},
-			ProviderOpenAI:           openai,
-			ProviderOpenAICompatible: openai,
-			"deepseek":               openai,
-			"qwen":                   openai,
-			"local":                  openai,
-			ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client},
-			ProviderAnthropic:        AnthropicAdapter{Client: client},
-			ProviderGemini:           GeminiAdapter{Client: client},
-		},
-		mux:                      http.NewServeMux(),
-		config:                   config,
-		providerAccountOAuthFlow: newProviderAccountOAuthSessionStore(),
+		store:             store,
+		adapters:          adapters,
+		adapterRegistry:   registry,
+		integrations:      NewIntegrationService(store, registry),
+		codexSubscription: codexSubscription,
+		mux:               http.NewServeMux(),
+		config:            config,
 	}
 	s.routes()
 	return s
 }
 
 func (s *Server) Handler() http.Handler {
-	return cors(s.mux)
+	return s.cors(s.mux)
 }
 
 func (s *Server) routes() {
+	s.mux.HandleFunc("/livez", s.handleLive)
+	s.mux.HandleFunc("/readyz", s.handleHealth)
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/v1/models", s.handleModels)
 	s.mux.HandleFunc("/v1/models/", s.handleModel)
 	s.mux.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.HandleFunc("/v1/responses", s.handleResponses)
+	s.mux.HandleFunc("/v1/responses/compact", s.handleResponsesCompact)
 	s.mux.HandleFunc("/v1/embeddings", s.handleEmbeddings)
 
 	s.mux.HandleFunc("/api/admin/auth/login", s.handleAdminLogin)
@@ -90,12 +115,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/users/", s.handleAdminUserItem)
 	s.mux.HandleFunc("/api/admin/provider-catalog", s.handleAdminProviderCatalog)
 	s.mux.HandleFunc("/api/admin/provider-catalog/", s.handleAdminProviderCatalogItem)
+	s.mux.HandleFunc("/api/admin/provider-adapters", s.handleAdminProviderAdapters)
 	s.mux.HandleFunc("/api/admin/provider-account-oauth/openai/generate-auth-url", s.handleAdminOpenAIAccountOAuthGenerateAuthURL)
 	s.mux.HandleFunc("/api/admin/provider-account-oauth/openai/exchange-code", s.handleAdminOpenAIAccountOAuthExchangeCode)
 	s.mux.HandleFunc("/api/admin/provider-account-oauth/openai/oauth/callback", s.handleOpenAIAccountOAuthCallback)
 	s.mux.HandleFunc("/api/admin/api-keys", s.handleAdminAPIKeys)
 	s.mux.HandleFunc("/api/admin/api-keys/", s.handleAdminAPIKeyItem)
 	s.mux.HandleFunc("/api/admin/providers", s.handleAdminProviders)
+	s.mux.HandleFunc("/api/admin/providers/monitoring", s.handleAdminProviderMonitoring)
 	s.mux.HandleFunc("/api/admin/providers/", s.handleAdminProviderNested)
 	s.mux.HandleFunc("/api/admin/provider-resources", s.handleAdminProviderResources)
 	s.mux.HandleFunc("/api/admin/provider-resources/", s.handleAdminProviderResourceNested)
@@ -119,11 +146,37 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/alert-deliveries", s.handleAdminAlertDeliveries)
 	s.mux.HandleFunc("/api/admin/approvals", s.handleAdminApprovals)
 	s.mux.HandleFunc("/api/admin/approvals/", s.handleAdminApprovalItem)
+	s.mux.HandleFunc("/api/admin/system/db-status", s.handleAdminSystemDBStatus)
+}
+
+func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.adapterRegistry.List()})
+}
+
+func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "tokenhub-backend"})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.store.Ping(ctx); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unavailable", "service": "tokenhub-backend"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "tokenhub-backend"})
@@ -144,7 +197,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	for _, model := range models {
 		data = append(data, buildModelListItem(model))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"object": "list",
+		"data":   data,
+		"models": []any{},
+	})
 }
 
 func (s *Server) handleModel(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +330,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if req.Stream {
 		route := routed.Routes[0]
 		resourceID := routeResourceID(route)
-		if err := s.store.CheckProviderResourceCapacity(resourceID); err != nil {
+		leaseID, leaseCtx, err := s.store.CheckProviderResourceCapacity(r.Context(), resourceID)
+		if err != nil {
 			s.finishFailedRoutedCall(r, routed, []RouteAttempt{{
 				Selection: route,
 				Status:    AsHTTPError(err).Status,
@@ -284,11 +342,14 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, err)
 			return
 		}
-		preparedRoute, err := s.prepareRouteForUpstream(r.Context(), route)
+		preparedRoute, err := s.prepareRouteForUpstream(leaseCtx, route)
 		if err != nil {
-			s.store.FinishProviderResourceAttempt(resourceID, false, Usage{})
+			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
+				err = leaseErr
+			}
+			finishProviderResourceAttempt(s.store, resourceID, leaseID, err, Usage{})
 			httpErr := AsHTTPError(err)
-			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, clientIP(r), r.UserAgent())
+			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
 			writeError(w, r, err)
 			return
@@ -296,9 +357,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		route = preparedRoute
 		adapter, err := s.adapterForRoute(route)
 		if err != nil {
-			s.store.FinishProviderResourceAttempt(resourceID, false, Usage{})
+			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
+				err = leaseErr
+			}
+			finishProviderResourceAttempt(s.store, resourceID, leaseID, err, Usage{})
 			httpErr := AsHTTPError(err)
-			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, clientIP(r), r.UserAgent())
+			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
 			writeError(w, r, err)
 			return
@@ -307,21 +371,63 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("cache-control", "no-cache")
 		w.Header().Set("x-request-id", routed.Call.RequestID)
 		s.writeRouteHeaders(w, routed.Call, route, 1)
-		usage, err := adapter.ChatStream(r.Context(), route.Provider, route.ProviderModel, req, w)
-		s.store.FinishProviderResourceAttempt(resourceID, err == nil, usage)
+		streamReq := req
+		allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
+		attempts := make([]RouteAttempt, 0, 2)
+		streamWriter := &streamWriteTracker{writer: w}
+		var usage Usage
+		for {
+			usage, err = adapter.ChatStream(leaseCtx, route.Provider, route.ProviderModel, streamReq, streamWriter)
+			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
+				err = leaseErr
+			}
+			retryWithoutEffort := allowEffortFallback &&
+				streamReq.ReasoningEffort != nil &&
+				!streamWriter.Wrote() &&
+				isReasoningEffortRejection(err)
+			if !retryWithoutEffort {
+				finishProviderResourceAttempt(s.store, resourceID, leaseID, err, usage)
+			}
+			status, code := routeAttemptStatusAndCode(err, retryWithoutEffort)
+			attempts = append(attempts, RouteAttempt{
+				Selection: route,
+				Status:    status,
+				ErrorCode: code,
+				Error:     errorMessage(err),
+			})
+			if !retryWithoutEffort {
+				break
+			}
+
+			streamReq.ReasoningEffort = nil
+			if retryErr := s.store.CheckProviderResourceRetryCapacity(leaseCtx, resourceID, leaseID); retryErr != nil {
+				s.store.ReleaseProviderResourceCapacity(resourceID, leaseID)
+				err = retryErr
+				status, code = statusAndCode(retryErr)
+				attempts = append(attempts, RouteAttempt{
+					Selection: route,
+					Status:    status,
+					ErrorCode: code,
+					Error:     errorMessage(retryErr),
+				})
+				s.writeRouteHeaders(w, routed.Call, route, len(attempts))
+				usage = Usage{}
+				break
+			}
+			s.writeRouteHeaders(w, routed.Call, route, len(attempts)+1)
+		}
 		status, code := statusAndCode(err)
 		if err == nil {
 			s.store.MarkRouteUsed(route.Route.ID)
 			s.store.MarkProviderResourceUsed(routeResourceID(route))
 		}
-		s.store.RecordRouteAttempts(routed.Call.RequestID, []RouteAttempt{{
-			Selection: route,
-			Status:    status,
-			ErrorCode: code,
-			Error:     errorMessage(err),
-		}})
-		s.store.FinishCall(routed.Call, route, usage, status, code, clientIP(r), r.UserAgent())
+		s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
+		s.store.FinishCall(routed.Call, route, usage, status, code, s.clientIP(r), r.UserAgent())
 		s.recordRequestPayload(routed.Call.RequestID, req, auditStreamPayload(status, code, err))
+		if err != nil && !streamWriter.Wrote() {
+			w.Header().Del("cache-control")
+			writeError(w, r, err)
+		}
 		return
 	}
 
@@ -335,7 +441,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", clientIP(r), r.UserAgent())
+	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
 	s.recordRequestPayload(routed.Call.RequestID, req, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -365,6 +471,36 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if req.Stream {
+		routed.Routes = s.routesWithAdapterCapability(routed.Routes, AdapterCapabilityResponseStream)
+		if len(routed.Routes) == 0 {
+			err := NewHTTPError(
+				http.StatusNotImplemented,
+				"provider_capability_not_supported",
+				"Streaming responses are not supported",
+			)
+			s.finishFailedRoutedCall(r, routed, nil, err)
+			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
+			writeError(w, r, err)
+			return
+		}
+	}
+	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, err)
+		s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
+		routed.Affinity = affinity
+		routed.Call.Affinity = affinity
+		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+	}
+	if req.Stream {
+		s.handleStreamingResponses(w, r, routed, req)
+		return
+	}
 	resp, route, usage, attempts, err := s.executeRoutedResponses(r, routed, req)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, err)
@@ -375,11 +511,71 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", clientIP(r), r.UserAgent())
+	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
 	s.recordRequestPayload(routed.Call.RequestID, req, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
+	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	project, key, err := s.authenticate(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	var request map[string]json.RawMessage
+	if err := decodeJSON(r, &request); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		return
+	}
+	var model string
+	if value, ok := request["model"]; ok {
+		_ = json.Unmarshal(value, &model)
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "missing_model", "model is required"))
+		return
+	}
+	routed, ok := s.startRoutedCall(w, r, project, key, model, request)
+	if !ok {
+		return
+	}
+	affinityRequest := ResponsesRequest{Model: model, raw: request}
+	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, affinityRequest)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, err)
+		s.recordRequestPayload(routed.Call.RequestID, request, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
+		routed.Affinity = affinity
+		routed.Call.Affinity = affinity
+		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+	}
+	response, route, usage, attempts, err := s.executeRoutedCompact(r, routed, request)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, err)
+		s.recordRequestPayload(routed.Call.RequestID, request, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	s.store.MarkRouteUsed(route.Route.ID)
+	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
+	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
+	s.recordRequestPayload(routed.Call.RequestID, request, response)
+	w.Header().Set("x-request-id", routed.Call.RequestID)
+	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
+	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
@@ -415,7 +611,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", clientIP(r), r.UserAgent())
+	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
 	s.recordRequestPayload(routed.Call.RequestID, req, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -423,18 +619,31 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, requestPayload any) (RoutedCall, bool) {
-	call, err := s.store.StartCall(project, key, model)
+	call, err := s.store.StartCall(r.Context(), project, key, model)
 	if err != nil {
 		httpErr := AsHTTPError(err)
-		requestID := s.store.RecordRejectedRequest(project, key, model, httpErr.Status, httpErr.Code, clientIP(r), r.UserAgent())
+		requestID := s.store.RecordRejectedRequest(project, key, model, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		w.Header().Set("x-request-id", requestID)
 		s.recordRequestPayload(requestID, requestPayload, auditErrorPayload(err, requestID))
 		writeError(w, r, err)
 		return RoutedCall{}, false
 	}
+	w.Header().Set("x-request-id", call.RequestID)
+	if call.requestContext != nil {
+		*r = *r.WithContext(call.requestContext)
+	}
 	routes, err := s.store.SelectRouteCandidates(model)
 	if err != nil {
 		httpErr := AsHTTPError(err)
-		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, clientIP(r), r.UserAgent())
+		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		s.recordRequestPayload(call.RequestID, requestPayload, auditErrorPayload(err, call.RequestID))
+		writeError(w, r, err)
+		return RoutedCall{}, false
+	}
+	routes, err = s.filterCodexRoutesByModel(r.Context(), model, routes)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 		s.recordRequestPayload(call.RequestID, requestPayload, auditErrorPayload(err, call.RequestID))
 		writeError(w, r, err)
 		return RoutedCall{}, false
@@ -443,8 +652,9 @@ func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project
 }
 
 func (s *Server) executeRoutedChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(s.store, routed, func(route RouteSelection) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(r.Context(), route)
+	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
+	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool) (any, Usage, error) {
+		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
 		}
@@ -452,27 +662,70 @@ func (s *Server) executeRoutedChat(r *http.Request, routed RoutedCall, req ChatC
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return adapter.Chat(r.Context(), route.Provider, route.ProviderModel, req)
+		upstreamReq := req
+		if omitReasoningEffort {
+			upstreamReq.ReasoningEffort = nil
+		}
+		return adapter.Chat(ctx, route.Provider, route.ProviderModel, upstreamReq)
 	})
 }
 
 func (s *Server) executeRoutedResponses(r *http.Request, routed RoutedCall, req ResponsesRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(s.store, routed, func(route RouteSelection) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(r.Context(), route)
+	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(req)) != nil
+	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool) (any, Usage, error) {
+		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		adapter, err := s.adapterForRoute(route)
+		adapter, err := s.responsesAdapterForRoute(route)
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return adapter.Responses(r.Context(), route.Provider, route.ProviderModel, req)
+		upstreamReq := req
+		if omitReasoningEffort {
+			upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
+		}
+		var resp any
+		var usage Usage
+		if envelopeAdapter, ok := adapter.(ResponsesEnvelopeAdapter); ok {
+			resp, usage, err = envelopeAdapter.ResponsesWithHeaders(ctx, route.Provider, route.ProviderModel, upstreamReq, r.Header)
+		} else if responsesAdapter, ok := adapter.(ResponsesInvoker); ok {
+			resp, usage, err = responsesAdapter.Responses(ctx, route.Provider, route.ProviderModel, upstreamReq)
+		} else {
+			err = NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses")
+		}
+		if isCodexModelUnsupportedError(err) {
+			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+		}
+		return resp, usage, err
+	})
+}
+
+func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, request map[string]json.RawMessage) (any, RouteSelection, Usage, []RouteAttempt, error) {
+	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool) (any, Usage, error) {
+		prepared, err := s.prepareRouteForUpstream(ctx, route)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		adapter, err := s.responsesAdapterForRoute(prepared)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		compactAdapter, ok := adapter.(ResponsesCompactAdapter)
+		if !ok {
+			return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses compact")
+		}
+		body := make(map[string]json.RawMessage, len(request))
+		for key, value := range request {
+			body[key] = append(json.RawMessage(nil), value...)
+		}
+		return compactAdapter.CompactWithHeaders(ctx, prepared.Provider, prepared.ProviderModel, body, r.Header)
 	})
 }
 
 func (s *Server) executeRoutedEmbeddings(r *http.Request, routed RoutedCall, req EmbeddingsRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(s.store, routed, func(route RouteSelection) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(r.Context(), route)
+	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool) (any, Usage, error) {
+		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
 		}
@@ -480,7 +733,7 @@ func (s *Server) executeRoutedEmbeddings(r *http.Request, routed RoutedCall, req
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return adapter.Embeddings(r.Context(), route.Provider, route.ProviderModel, req)
+		return adapter.Embeddings(ctx, route.Provider, route.ProviderModel, req)
 	})
 }
 
@@ -520,6 +773,11 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		writeError(w, r, err)
 		return
 	}
+	routes, err = s.filterCodexRoutesByModel(r.Context(), req.Model, routes)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
 	requestID := NewID("pg")
 	routed := RoutedCall{
 		Call: CallContext{
@@ -536,7 +794,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		httpErr := AsHTTPError(err)
 		route = lastAttemptRoute(attempts)
 		s.store.RecordRouteAttempts(requestID, attempts)
-		s.store.RecordPlaygroundRequest(routed.Call, route, httpErr.Status, httpErr.Code, clientIP(r), r.UserAgent())
+		s.store.RecordPlaygroundRequest(routed.Call, route, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 		s.recordRequestPayload(requestID, req, auditErrorPayload(err, requestID))
 		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
 			"model":    req.Model,
@@ -549,7 +807,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	s.store.RecordRouteAttempts(requestID, attempts)
-	s.store.RecordPlaygroundRequest(routed.Call, route, http.StatusOK, "", clientIP(r), r.UserAgent())
+	s.store.RecordPlaygroundRequest(routed.Call, route, http.StatusOK, "", s.clientIP(r), r.UserAgent())
 	s.recordAdminAudit(r, user, "chat", "playground", req.Model, "", map[string]any{
 		"model":    req.Model,
 		"route":    playgroundRouteSummary(route),
@@ -567,13 +825,31 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func executeRoutedWithStore[T any](store Store, routed RoutedCall, call func(RouteSelection) (T, Usage, error)) (T, RouteSelection, Usage, []RouteAttempt, error) {
+func executeRoutedWithStore[T any](
+	ctx context.Context,
+	store Store,
+	routed RoutedCall,
+	allowReasoningEffortFallback bool,
+	call func(context.Context, RouteSelection, bool) (T, Usage, error),
+) (T, RouteSelection, Usage, []RouteAttempt, error) {
 	var zero T
 	var lastErr error = ErrProviderMissing
-	attempts := make([]RouteAttempt, 0, len(routed.Routes))
+	var affinityBindings map[string]AdapterSessionBinding
+	var err error
+	routed, affinityBindings, err = applyAdapterSessionAffinity(ctx, store, routed)
+	if err != nil {
+		return zero, RouteSelection{}, Usage{}, nil, err
+	}
+	attempts := make([]RouteAttempt, 0, len(routed.Routes)+1)
 	for _, route := range routed.Routes {
+		if leaseErr := coordinationLeaseError(ctx); leaseErr != nil {
+			return zero, route, Usage{}, attempts, leaseErr
+		}
 		resourceID := routeResourceID(route)
-		if err := store.CheckProviderResourceCapacity(resourceID); err != nil {
+		binding, hasBinding := affinityBindings[route.Provider.ID]
+		routeIsBound := hasBinding && binding.ResourceID == resourceID
+		leaseID, leaseCtx, err := store.CheckProviderResourceCapacity(ctx, resourceID)
+		if err != nil {
 			status, code := statusAndCode(err)
 			attempts = append(attempts, RouteAttempt{
 				Selection: route,
@@ -582,46 +858,149 @@ func executeRoutedWithStore[T any](store Store, routed RoutedCall, call func(Rou
 				Error:     errorMessage(err),
 			})
 			lastErr = err
-			if !shouldFailoverProviderError(err) {
+			if !shouldFailoverRoutedError(err, routeIsBound) {
 				return zero, route, Usage{}, attempts, err
 			}
 			continue
 		}
-		resp, usage, err := call(route)
-		if resourceID != "" {
-			store.FinishProviderResourceAttempt(resourceID, err == nil, usage)
-		}
-		status, code := statusAndCode(err)
-		attempts = append(attempts, RouteAttempt{
-			Selection: route,
-			Status:    status,
-			ErrorCode: code,
-			Error:     errorMessage(err),
-		})
-		if err == nil {
-			return resp, route, usage, attempts, nil
-		}
-		lastErr = err
-		if !shouldFailoverProviderError(err) {
-			return zero, route, usage, attempts, err
+		omitReasoningEffort := false
+		for {
+			resp, usage, err := call(leaseCtx, route, omitReasoningEffort)
+			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
+				err = leaseErr
+			}
+			retryWithoutEffort := allowReasoningEffortFallback &&
+				!omitReasoningEffort &&
+				isReasoningEffortRejection(err)
+			if !retryWithoutEffort {
+				finishProviderResourceAttempt(store, resourceID, leaseID, err, usage)
+			}
+			status, code := routeAttemptStatusAndCode(err, retryWithoutEffort)
+			attempts = append(attempts, RouteAttempt{
+				Selection: route,
+				Status:    status,
+				ErrorCode: code,
+				Error:     errorMessage(err),
+			})
+			if err == nil {
+				rebindReason := ""
+				if binding, ok := affinityBindings[route.Provider.ID]; ok && binding.ResourceID != resourceID {
+					rebindReason = "resource_failover"
+				}
+				if bindErr := commitAdapterSessionAffinity(ctx, store, routed, affinityBindings, route, rebindReason); bindErr != nil {
+					return zero, route, usage, attempts, bindErr
+				}
+				return resp, route, usage, attempts, nil
+			}
+			lastErr = err
+			if retryWithoutEffort {
+				if retryErr := store.CheckProviderResourceRetryCapacity(leaseCtx, resourceID, leaseID); retryErr != nil {
+					store.ReleaseProviderResourceCapacity(resourceID, leaseID)
+					status, code = statusAndCode(retryErr)
+					attempts = append(attempts, RouteAttempt{
+						Selection: route,
+						Status:    status,
+						ErrorCode: code,
+						Error:     errorMessage(retryErr),
+					})
+					lastErr = retryErr
+					if !shouldFailoverRoutedError(retryErr, routeIsBound) {
+						return zero, route, Usage{}, attempts, retryErr
+					}
+					break
+				}
+				omitReasoningEffort = true
+				continue
+			}
+			if !shouldFailoverRoutedError(err, routeIsBound) {
+				return zero, route, usage, attempts, err
+			}
+			break
 		}
 	}
 	return zero, RouteSelection{}, Usage{}, attempts, lastErr
+}
+
+func routeAttemptStatusAndCode(err error, reasoningEffortRejected bool) (int, string) {
+	if !reasoningEffortRejected {
+		return statusAndCode(err)
+	}
+	httpErr := AsHTTPError(err)
+	return httpErr.UpstreamStatus, "reasoning_effort_rejected"
+}
+
+func coordinationLeaseError(ctx context.Context) error {
+	if ctx != nil && errors.Is(context.Cause(ctx), ErrCoordinationLeaseLost) {
+		return ErrCoordinationLeaseLost
+	}
+	return nil
+}
+
+func finishProviderResourceAttempt(store Store, resourceID string, leaseID string, err error, usage Usage) {
+	if resourceID == "" {
+		return
+	}
+	if errors.Is(err, ErrCoordinationLeaseLost) {
+		store.ReleaseProviderResourceCapacity(resourceID, leaseID)
+		return
+	}
+	store.FinishProviderResourceAttempt(resourceID, leaseID, providerAttemptCountsAsHealthy(err), usage)
+}
+
+type streamWriteTracker struct {
+	writer io.Writer
+	wrote  bool
+}
+
+func (w *streamWriteTracker) Write(data []byte) (int, error) {
+	if !w.wrote {
+		if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
+			responseWriter.WriteHeader(http.StatusOK)
+			if flusher, ok := responseWriter.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}
+	}
+	w.wrote = true
+	return w.writer.Write(data)
+}
+
+func (w *streamWriteTracker) Wrote() bool {
+	return w != nil && w.wrote
 }
 
 func (s *Server) finishFailedRoutedCall(r *http.Request, routed RoutedCall, attempts []RouteAttempt, err error) {
 	httpErr := AsHTTPError(err)
 	route := lastAttemptRoute(attempts)
 	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, clientIP(r), r.UserAgent())
+	s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 }
 
 func (s *Server) adapterForRoute(route RouteSelection) (ProviderAdapter, error) {
-	adapter, ok := s.adapters[route.Provider.Type]
-	if !ok {
-		return nil, NewHTTPError(503, "provider_adapter_missing", "Provider adapter is not registered")
+	adapter, err := s.adapterRegistry.Resolve(route.Provider.Type)
+	if err != nil {
+		return nil, err
 	}
-	return adapter, nil
+	legacy, ok := adapter.(ProviderAdapter)
+	if !ok {
+		return nil, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support this operation")
+	}
+	return legacy, nil
+}
+
+func (s *Server) responsesAdapterForRoute(route RouteSelection) (any, error) {
+	return s.adapterRegistry.Resolve(route.Provider.Type)
+}
+
+func (s *Server) routesWithAdapterCapability(routes []RouteSelection, capability AdapterCapability) []RouteSelection {
+	filtered := make([]RouteSelection, 0, len(routes))
+	for _, route := range routes {
+		descriptor, ok := s.adapterRegistry.Describe(route.Provider.Type)
+		if ok && adapterSupports(descriptor, capability) {
+			filtered = append(filtered, route)
+		}
+	}
+	return filtered
 }
 
 func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []RouteSelection {
@@ -666,8 +1045,25 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 				planned = append(planned, group[index])
 				group = append(group[:index], group[index+1:]...)
 			}
+			routingKey := call.RequestID
+			if call.Affinity != nil && call.Affinity.KeyHash != "" {
+				routingKey = call.Affinity.KeyHash
+			}
+			if call.Affinity != nil && call.Affinity.KeyHash != "" {
+				sort.SliceStable(group, func(i, j int) bool {
+					left := weightedRendezvousScore(routingKey, group[i])
+					right := weightedRendezvousScore(routingKey, group[j])
+					if left != right {
+						return left > right
+					}
+					return routeSortID(group[i]) < routeSortID(group[j])
+				})
+				planned = append(planned, group...)
+				priorityGroup = priorityGroup[groupEnd:]
+				continue
+			}
 			for len(group) > 0 {
-				index := weightedRouteIndex(call.RequestID, len(planned), group)
+				index := weightedRouteIndex(routingKey, len(planned), group)
 				planned = append(planned, group[index])
 				group = append(group[:index], group[index+1:]...)
 			}
@@ -676,6 +1072,24 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 		ordered = ordered[end:]
 	}
 	return planned
+}
+
+func weightedRendezvousScore(key string, route RouteSelection) float64 {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(key))
+	_, _ = hash.Write([]byte{0})
+	_, _ = hash.Write([]byte(routeSortID(route)))
+	unit := (float64(hash.Sum64()) + 1) / (float64(^uint64(0)) + 2)
+	return float64(routeEffectiveWeight(route.Route)) / -math.Log(unit)
+}
+
+func routesContainAdapterType(routes []RouteSelection, adapterType string) bool {
+	for _, route := range routes {
+		if route.Provider.Type == adapterType {
+			return true
+		}
+	}
+	return false
 }
 
 func sortRouteGroupByStrategy(strategy string, routes []RouteSelection) {
@@ -814,16 +1228,55 @@ func routeStrategy(route ModelRoute) string {
 }
 
 func shouldFailoverProviderError(err error) bool {
+	return shouldFailoverRoutedError(err, false)
+}
+
+func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 	if err == nil {
 		return false
 	}
+	if errors.Is(err, ErrCoordinationLeaseLost) {
+		return false
+	}
+	switch providerErrorDisposition(err) {
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted:
+		return false
+	case ProviderErrorTransientSame:
+		return !routeIsBound
+	case ProviderErrorQuotaExhausted, ProviderErrorAuthBroken, ProviderErrorResourceBroken:
+		return true
+	case ProviderErrorModelUnsupported:
+		return !routeIsBound
+	}
+	if isCodexModelUnsupportedError(err) {
+		return !routeIsBound
+	}
 	httpErr := AsHTTPError(err)
+	if routeIsBound {
+		return false
+	}
 	switch httpErr.Status {
 	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return httpErr.Status >= 500
 	}
+}
+
+func isCodexModelUnsupportedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Code == "codex_model_unsupported" || providerErrorDisposition(err) == ProviderErrorModelUnsupported {
+		return true
+	}
+	if httpErr.Code != "codex_upstream_error" {
+		return false
+	}
+	message := strings.ToLower(httpErr.Message)
+	return strings.Contains(message, "model is not supported") ||
+		(strings.Contains(message, "model") && strings.Contains(message, "not supported") && strings.Contains(message, "chatgpt account"))
 }
 
 func lastAttemptRoute(attempts []RouteAttempt) RouteSelection {
@@ -893,7 +1346,7 @@ func (s *Server) authenticate(r *http.Request) (Project, APIKey, error) {
 	if !strings.HasPrefix(auth, prefix) {
 		return Project{}, APIKey{}, ErrInvalidAPIKey
 	}
-	return s.store.ValidateAPIKey(strings.TrimSpace(strings.TrimPrefix(auth, prefix)), clientIP(r))
+	return s.store.ValidateAPIKey(strings.TrimSpace(strings.TrimPrefix(auth, prefix)), s.clientIP(r))
 }
 
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
@@ -1967,58 +2420,7 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 			writeError(w, r, NewHTTPError(403, "project_forbidden", "Project is not available for this user"))
 			return
 		}
-		var req struct {
-			Name          string      `json:"name"`
-			Group         string      `json:"group"`
-			AllowedModels []string    `json:"allowed_models"`
-			IPAllowlist   []string    `json:"ip_allowlist"`
-			Limits        QuotaLimits `json:"limits"`
-			ExpiresAt     *time.Time  `json:"expires_at"`
-		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
-			return
-		}
-		payload := map[string]any{
-			"project_id":       projectID,
-			"name":             req.Name,
-			"group":            req.Group,
-			"allowed_models":   req.AllowedModels,
-			"ip_allowlist":     req.IPAllowlist,
-			"limits":           req.Limits,
-			"expires_at":       req.ExpiresAt,
-			"requested_action": "api_key_create",
-		}
-		if approval, required := s.approvalRequired(user, "api_key_create", "api_key", "", payload); required {
-			s.recordAdminAudit(r, user, "request_approval", "api_key", approval.ID, "", approval)
-			writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
-			return
-		}
-		key, secret, err := s.store.CreateAPIKey(projectID, APIKey{
-			Name:        req.Name,
-			Group:       req.Group,
-			Allowed:     req.AllowedModels,
-			IPAllowlist: req.IPAllowlist,
-			Limits:      req.Limits,
-			ExpiresAt:   req.ExpiresAt,
-			Status:      StatusActive,
-			Metadata: map[string]string{
-				"created_by":      user.ID,
-				"created_by_role": normalizeAdminRole(user.Role),
-			},
-		}, "")
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "create", "api_key", key.ID, "", map[string]any{"project_id": key.ProjectID, "name": key.Name})
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"id":                      key.ID,
-			"api_key":                 secret,
-			"name":                    key.Name,
-			"project_id":              key.ProjectID,
-			"plain_text_visible_once": true,
-		})
+		s.handleAdminAPIKeyCreate(w, r, user, projectID)
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 	}
@@ -2469,11 +2871,93 @@ func (s *Server) handleAdminAPIKeys(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"data": s.filterAPIKeysForUser(user, s.store.ListAPIKeys())})
+	case http.MethodPost:
+		project, err := s.personalAPIKeyProject(user)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.handleAdminAPIKeyCreate(w, r, user, project.ID)
+	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+	}
+}
+
+func (s *Server) personalAPIKeyProject(user AdminUser) (Project, error) {
+	if normalizeAdminRole(user.Role) != "user" {
+		return Project{}, NewHTTPError(400, "project_required", "Project ID is required")
+	}
+	for _, project := range s.store.ListProjects() {
+		if project.ID == defaultProjectID || (project.Status != "" && project.Status != StatusActive) {
+			continue
+		}
+		if s.canUseProjectForAPIKey(user, project.ID) {
+			return project, nil
+		}
+	}
+	project, ok := s.store.GetProject(defaultProjectID)
+	if !ok || (project.Status != "" && project.Status != StatusActive) {
+		return Project{}, NewHTTPError(409, "default_project_unavailable", "Default project is unavailable")
+	}
+	return project, nil
+}
+
+func (s *Server) handleAdminAPIKeyCreate(w http.ResponseWriter, r *http.Request, user AdminUser, projectID string) {
+	var req struct {
+		Name          string      `json:"name"`
+		Group         string      `json:"group"`
+		AllowedModels []string    `json:"allowed_models"`
+		IPAllowlist   []string    `json:"ip_allowlist"`
+		Limits        QuotaLimits `json:"limits"`
+		ExpiresAt     *time.Time  `json:"expires_at"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.filterAPIKeysForUser(user, s.store.ListAPIKeys())})
+	payload := map[string]any{
+		"project_id":       projectID,
+		"name":             req.Name,
+		"group":            req.Group,
+		"allowed_models":   req.AllowedModels,
+		"ip_allowlist":     req.IPAllowlist,
+		"limits":           req.Limits,
+		"expires_at":       req.ExpiresAt,
+		"requested_action": "api_key_create",
+	}
+	if approval, required := s.approvalRequired(user, "api_key_create", "api_key", "", payload); required {
+		s.recordAdminAudit(r, user, "request_approval", "api_key", approval.ID, "", approval)
+		writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
+		return
+	}
+	key, secret, err := s.store.CreateAPIKey(projectID, APIKey{
+		Name:        req.Name,
+		Group:       req.Group,
+		Allowed:     req.AllowedModels,
+		IPAllowlist: req.IPAllowlist,
+		Limits:      req.Limits,
+		ExpiresAt:   req.ExpiresAt,
+		Status:      StatusActive,
+		Metadata: map[string]string{
+			"created_by":      user.ID,
+			"created_by_role": normalizeAdminRole(user.Role),
+		},
+	}, "")
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "create", "api_key", key.ID, "", map[string]any{"project_id": key.ProjectID, "name": key.Name})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":                      key.ID,
+		"api_key":                 secret,
+		"name":                    key.Name,
+		"project_id":              key.ProjectID,
+		"plain_text_visible_once": true,
+	})
 }
 
 func (s *Server) handleAdminAPIKeyItem(w http.ResponseWriter, r *http.Request) {
@@ -2618,6 +3102,17 @@ func applyProviderCatalogAcknowledgement(provider *Provider, catalog ProviderCat
 	provider.Options["catalog_terms_version"] = catalog.AcknowledgementVersion
 }
 
+func (s *Server) handleAdminProviderMonitoring(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.providerMonitoringSnapshots(r.Context(), "")})
+}
+
 func (s *Server) handleAdminProviderCatalog(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
 		return
@@ -2639,13 +3134,55 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/provider-catalog/"), "/")
 	if id == "" || strings.Contains(id, "/") {
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
+		return
+	}
+	if id == codexProviderCatalogID {
+		var (
+			entry ProviderCatalogEntry
+			err   error
+		)
+		switch r.Method {
+		case http.MethodGet:
+			resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id"))
+			if resourceID == "" {
+				for _, resource := range s.store.ListProviderResources() {
+					if isOpenAIAccountResource(resource.ResourceType) && resource.Status == StatusActive {
+						resourceID = resource.ID
+						break
+					}
+				}
+			}
+			if resourceID == "" {
+				writeError(w, r, NewHTTPError(http.StatusConflict, "codex_account_required", "Connect an OpenAI Codex subscription account before loading its models"))
+				return
+			}
+			entry, err = s.queryOpenAICodexModels(r.Context(), resourceID)
+		case http.MethodPost:
+			var credentials ProviderResourceCredentials
+			if decodeErr := decodeJSON(r, &credentials); decodeErr != nil {
+				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", decodeErr.Error()))
+				return
+			}
+			entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
+			if err == nil {
+				s.syncOpenAICodexModels(entry.Models)
+			}
+		default:
+			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+			return
+		}
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
 	refresh := r.URL.Query().Get("refresh") == "true"
@@ -2665,7 +3202,10 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	var catalog ProviderCatalogEntry
 	catalogSource := ""
 	catalogID := strings.TrimSpace(req.CatalogID)
-	if catalogID != "" {
+	if catalogID == codexProviderCatalogID {
+		catalog = s.codexProviderCatalogFromStandardModels(req.SelectedModels)
+		catalogSource = catalog.Source
+	} else if catalogID != "" {
 		entry, source, ok, err := GetProviderCatalogEntry(ctx, http.DefaultClient, catalogID, false)
 		if err != nil {
 			return Provider{}, ProviderCatalogEntry{}, source, err
@@ -2763,21 +3303,22 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 			continue
 		}
 		models = append(models, ProviderCatalogModel{
-			ID:                  model.Name,
-			Name:                model.Name,
-			DisplayName:         model.Name,
-			CanonicalName:       model.Name,
-			Category:            modelCategory,
-			Family:              model.Family,
-			Type:                model.Modality,
-			ContextWindow:       model.ContextWindow,
-			InputPriceUSDPer1M:  model.InputPriceUSDPer1M,
-			OutputPriceUSDPer1M: model.OutputPriceUSDPer1M,
-			InputModalities:     append([]string(nil), model.InputModalities...),
-			OutputModalities:    append([]string(nil), model.OutputModalities...),
-			Capabilities:        append([]string(nil), model.Capabilities...),
-			SupportedParameters: append([]string(nil), model.SupportedParameters...),
-			Metadata:            map[string]string{"source": "tokenhub-standard-catalog"},
+			ID:                     model.Name,
+			Name:                   model.Name,
+			DisplayName:            model.Name,
+			CanonicalName:          model.Name,
+			Category:               modelCategory,
+			Family:                 model.Family,
+			Type:                   model.Modality,
+			ContextWindow:          model.ContextWindow,
+			InputPriceUSDPer1M:     model.InputPriceUSDPer1M,
+			CacheReadPriceUSDPer1M: model.CacheReadPriceUSDPer1M,
+			OutputPriceUSDPer1M:    model.OutputPriceUSDPer1M,
+			InputModalities:        append([]string(nil), model.InputModalities...),
+			OutputModalities:       append([]string(nil), model.OutputModalities...),
+			Capabilities:           append([]string(nil), model.Capabilities...),
+			SupportedParameters:    append([]string(nil), model.SupportedParameters...),
+			Metadata:               map[string]string{"source": "tokenhub-standard-catalog"},
 		})
 	}
 	categories, categoryCounts := catalogCategorySummary(models)
@@ -2914,13 +3455,13 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if parts[1] == "test" {
-		provider, err := s.store.TestProvider(parts[0])
+		result, err := s.integrations.TestProvider(r.Context(), parts[0])
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "test", "provider", parts[0], "", map[string]any{"healthy": provider.Healthy})
-		writeJSON(w, http.StatusOK, provider)
+		s.recordAdminAudit(r, user, "test", "provider", parts[0], "", result)
+		writeJSON(w, http.StatusOK, result)
 		return
 	}
 	var req struct {
@@ -3010,8 +3551,22 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		}
 		return
 	}
-	if len(parts) != 2 || (parts[1] != "health" && parts[1] != "test") {
+	if len(parts) != 2 || (parts[1] != "health" && parts[1] != "test" && parts[1] != "refresh-token" && parts[1] != "quota") {
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
+		return
+	}
+	if parts[1] == "quota" {
+		if r.Method != http.MethodGet {
+			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+			return
+		}
+		quota, err := s.queryOpenAIAccountQuotaCached(r.Context(), parts[0], r.URL.Query().Get("refresh") == "true")
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.recordAdminAudit(r, user, "query_quota", "provider_resource", parts[0], "", quota)
+		writeJSON(w, http.StatusOK, quota)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -3019,13 +3574,54 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		return
 	}
 	if parts[1] == "test" {
-		resource, err := s.store.TestProviderResource(parts[0])
+		resource, resourceOK := s.providerResourceByID(parts[0])
+		provider, providerOK := s.providerByID(resource.ProviderID)
+		adapter, adapterErr := s.adapterRegistry.Resolve(provider.Type)
+		_, usesStructuredProbe := adapter.(ProviderResourceProber)
+		if resourceOK && providerOK && adapterErr == nil && usesStructuredProbe {
+			var req codexSubscriptionTestRequest
+			if err := decodeJSON(r, &req); err != nil {
+				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+				return
+			}
+			startedAt := time.Now()
+			rawResult, err := s.integrations.TestProviderResource(r.Context(), parts[0], &req)
+			if err != nil {
+				httpErr := AsHTTPError(err)
+				s.recordAdminAuditWithStatus(r, user, "test", "provider_resource", parts[0], "failed", httpErr.Code, "", map[string]any{
+					"healthy":          false,
+					"model":            strings.TrimSpace(req.Model),
+					"reasoning_effort": strings.ToLower(strings.TrimSpace(req.ReasoningEffort)),
+					"speed":            strings.ToLower(strings.TrimSpace(req.Speed)),
+					"latency_ms":       time.Since(startedAt).Milliseconds(),
+					"error_code":       httpErr.Code,
+				})
+				writeError(w, r, err)
+				return
+			}
+			result, ok := rawResult.(ProviderProbeResult)
+			if !ok {
+				writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_probe_invalid_result", "Provider probe returned an invalid result"))
+				return
+			}
+			s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", map[string]any{
+				"healthy":          true,
+				"model":            result.Model,
+				"reasoning_effort": result.ReasoningEffort,
+				"speed":            result.Speed,
+				"latency_ms":       result.LatencyMS,
+				"usage":            result.Usage,
+			})
+			writeJSON(w, http.StatusOK, result)
+			return
+		}
+		tested, err := s.integrations.TestProviderResource(r.Context(), parts[0], nil)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", map[string]any{"healthy": resource.Healthy})
-		writeJSON(w, http.StatusOK, resource)
+		s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", tested)
+		writeJSON(w, http.StatusOK, tested)
 		return
 	}
 	if parts[1] == "refresh-token" {
@@ -3191,6 +3787,10 @@ func (s *Server) handleAdminRoutes(w http.ResponseWriter, r *http.Request) {
 		if req.Priority <= 0 {
 			req.Priority = takeNextRoutePriority(routePriorityByModel(s.store.ListRoutes()), req.ModelName)
 		}
+		if err := s.validateRouteAdapter(req); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		route := s.store.AddRoute(req)
 		s.recordAdminAudit(r, user, "create", "routing_rule", route.ID, "", route)
 		writeJSON(w, http.StatusCreated, route)
@@ -3257,6 +3857,16 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 			return
 		}
+		current, found := modelRouteByID(s.store.ListRoutes(), routeID)
+		if !found {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "route_not_found", "Route not found"))
+			return
+		}
+		candidate := mergedModelRoute(current, req)
+		if err := s.validateRouteAdapter(candidate); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		route, err := s.store.UpdateRoute(routeID, req)
 		if err != nil {
 			writeError(w, r, err)
@@ -3274,6 +3884,48 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 	}
+}
+
+func (s *Server) validateRouteAdapter(route ModelRoute) error {
+	provider, ok := s.providerByID(route.ProviderID)
+	if !ok {
+		return NewHTTPError(http.StatusBadRequest, "route_provider_not_found", "Route provider does not exist")
+	}
+	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
+		return NewHTTPError(http.StatusBadRequest, "provider_adapter_missing", "Route provider adapter is not registered")
+	}
+	if strings.TrimSpace(route.ProviderResourceID) == "" {
+		return nil
+	}
+	resource, ok := s.providerResourceByID(route.ProviderResourceID)
+	if !ok || resource.ProviderID != provider.ID {
+		return NewHTTPError(http.StatusBadRequest, "route_resource_mismatch", "Route resource must belong to the selected Provider")
+	}
+	return nil
+}
+
+func modelRouteByID(routes []ModelRoute, routeID string) (ModelRoute, bool) {
+	for _, route := range routes {
+		if route.ID == routeID {
+			return route, true
+		}
+	}
+	return ModelRoute{}, false
+}
+
+func mergedModelRoute(current ModelRoute, patch ModelRoute) ModelRoute {
+	if patch.ModelName != "" {
+		current.ModelName = patch.ModelName
+	}
+	if patch.ProviderID != "" {
+		current.ProviderID = patch.ProviderID
+	}
+	current.ProviderResourceID = patch.ProviderResourceID
+	current.ResourceGroup = patch.ResourceGroup
+	if patch.ProviderModel != "" {
+		current.ProviderModel = patch.ProviderModel
+	}
+	return current
 }
 
 func (s *Server) handleAdminResources(w http.ResponseWriter, r *http.Request) {
@@ -4029,7 +4681,7 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	case "usage":
-		_ = writer.Write([]string{"dimension", "id", "request_count", "input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd"})
+		_ = writer.Write([]string{"dimension", "id", "request_count", "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd"})
 		records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
 		if periodFilter != "" {
 			filtered := make([]UsageRecord, 0, len(records))
@@ -4051,6 +4703,7 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 					stringifyCSV(row["id"]),
 					stringifyCSV(row["request_count"]),
 					stringifyCSV(row["input_tokens"]),
+					stringifyCSV(row["cached_input_tokens"]),
 					stringifyCSV(row["output_tokens"]),
 					stringifyCSV(row["total_tokens"]),
 					stringifyCSV(row["estimated_cost_usd"]),
@@ -4091,6 +4744,7 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 			{Header: "allocated_cost_usd", Field: "allocated_cost_usd"},
 			{Header: "request_count", Field: "request_count"},
 			{Header: "input_tokens", Field: "input_tokens"},
+			{Header: "cached_input_tokens", Field: "cached_input_tokens"},
 			{Header: "output_tokens", Field: "output_tokens"},
 			{Header: "total_tokens", Field: "total_tokens"},
 			{Header: "allocation_rule", Field: "allocation_rule"},
@@ -5401,11 +6055,12 @@ func (s *Server) linkProjectQuotaPolicy(quota AdminResource, payload map[string]
 func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
 	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
 	logs := s.filterRequestLogsForUser(user, s.store.ListRequestLogs())
-	var input, output, total int64
+	var input, cachedInput, output, total int64
 	var cost float64
 	errorsCount := 0
 	for _, record := range records {
 		input += record.InputTokens
+		cachedInput += record.CachedInputTokens
 		output += record.OutputTokens
 		total += record.TotalTokens
 		cost += record.CostUSD
@@ -5419,13 +6074,14 @@ func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
 		}
 	}
 	return map[string]any{
-		"request_count":      billableRequestLogCount(logs),
-		"usage_record_count": len(records),
-		"input_tokens":       input,
-		"output_tokens":      output,
-		"total_tokens":       total,
-		"estimated_cost_usd": cost,
-		"errors":             errorsCount,
+		"request_count":       billableRequestLogCount(logs),
+		"usage_record_count":  len(records),
+		"input_tokens":        input,
+		"cached_input_tokens": cachedInput,
+		"output_tokens":       output,
+		"total_tokens":        total,
+		"estimated_cost_usd":  cost,
+		"errors":              errorsCount,
 	}
 }
 
@@ -5518,12 +6174,13 @@ func (s *Server) usageTimeseriesForUser(user AdminUser, days int) []map[string]a
 		day := now.AddDate(0, 0, -i).Format("2006-01-02")
 		indexByDay[day] = len(series)
 		series = append(series, map[string]any{
-			"date":               day,
-			"request_count":      int64(0),
-			"input_tokens":       int64(0),
-			"output_tokens":      int64(0),
-			"total_tokens":       int64(0),
-			"estimated_cost_usd": float64(0),
+			"date":                day,
+			"request_count":       int64(0),
+			"input_tokens":        int64(0),
+			"cached_input_tokens": int64(0),
+			"output_tokens":       int64(0),
+			"total_tokens":        int64(0),
+			"estimated_cost_usd":  float64(0),
 		})
 	}
 	for _, record := range s.filterUsageRecordsForUser(user, s.store.ListUsageRecords()) {
@@ -5537,6 +6194,7 @@ func (s *Server) usageTimeseriesForUser(user AdminUser, days int) []map[string]a
 		}
 		series[idx]["request_count"] = series[idx]["request_count"].(int64) + 1
 		series[idx]["input_tokens"] = series[idx]["input_tokens"].(int64) + record.InputTokens
+		series[idx]["cached_input_tokens"] = series[idx]["cached_input_tokens"].(int64) + record.CachedInputTokens
 		series[idx]["output_tokens"] = series[idx]["output_tokens"].(int64) + record.OutputTokens
 		series[idx]["total_tokens"] = series[idx]["total_tokens"].(int64) + record.TotalTokens
 		series[idx]["estimated_cost_usd"] = series[idx]["estimated_cost_usd"].(float64) + record.CostUSD
@@ -6171,6 +6829,10 @@ func adminResourcePermission(path string) string {
 }
 
 func (s *Server) recordAdminAudit(r *http.Request, user AdminUser, action string, resourceType string, resourceID string, before any, after any) {
+	s.recordAdminAuditWithStatus(r, user, action, resourceType, resourceID, "success", "", before, after)
+}
+
+func (s *Server) recordAdminAuditWithStatus(r *http.Request, user AdminUser, action string, resourceType string, resourceID string, status string, message string, before any, after any) {
 	s.store.RecordAuditEvent(AuditEvent{
 		ActorUserID:    user.ID,
 		ActorName:      user.Name,
@@ -6178,10 +6840,11 @@ func (s *Server) recordAdminAudit(r *http.Request, user AdminUser, action string
 		Action:         action,
 		ResourceType:   resourceType,
 		ResourceID:     resourceID,
-		Status:         "success",
+		Status:         status,
+		Message:        message,
 		BeforeSnapshot: snapshotJSON(before),
 		AfterSnapshot:  snapshotJSON(after),
-		IP:             clientIP(r),
+		IP:             s.clientIP(r),
 		UserAgent:      r.UserAgent(),
 	})
 }
@@ -6237,13 +6900,18 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	httpErr := AsHTTPError(err)
+	requestID := strings.TrimSpace(w.Header().Get("x-request-id"))
+	if requestID == "" {
+		requestID = NewID("req")
+	}
+	w.Header().Set("x-request-id", requestID)
 	writeJSON(w, httpErr.Status, map[string]any{
 		"error": map[string]any{
 			"message": httpErr.Message,
 			"type":    httpErr.Code,
 			"code":    httpErr.Code,
 		},
-		"request_id": NewID("req"),
+		"request_id": requestID,
 	})
 }
 
@@ -6352,27 +7020,152 @@ func statusAndCode(err error) (int, string) {
 	return httpErr.Status, httpErr.Code
 }
 
-func clientIP(r *http.Request) string {
-	forwarded := r.Header.Get("x-forwarded-for")
-	if forwarded != "" {
-		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
+func (s *Server) clientIP(r *http.Request) string {
+	remoteIP := requestRemoteIP(r)
+	if !ipMatchesTrustedProxy(remoteIP, s.config.TrustedProxyCIDRs) {
+		return remoteIP
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	forwarded := strings.Split(r.Header.Get("x-forwarded-for"), ",")
+	parsed := make([]string, 0, len(forwarded))
+	for _, value := range forwarded {
+		value = strings.TrimSpace(value)
+		ip := net.ParseIP(value)
+		if value == "" || ip == nil {
+			return remoteIP
+		}
+		parsed = append(parsed, ip.String())
+	}
+	for index := len(parsed) - 1; index >= 0; index-- {
+		if !ipMatchesTrustedProxy(parsed[index], s.config.TrustedProxyCIDRs) {
+			return parsed[index]
+		}
+	}
+	if len(parsed) > 0 {
+		return parsed[0]
+	}
+	return remoteIP
+}
+
+func requestRemoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
 	if err == nil {
 		return host
 	}
-	return r.RemoteAddr
+	return strings.Trim(strings.TrimSpace(r.RemoteAddr), "[]")
 }
 
-func cors(next http.Handler) http.Handler {
+func ipMatchesTrustedProxy(rawIP string, trusted []string) bool {
+	ip := net.ParseIP(strings.TrimSpace(rawIP))
+	if ip == nil {
+		return false
+	}
+	for _, entry := range trusted {
+		entry = strings.TrimSpace(entry)
+		if candidate := net.ParseIP(entry); candidate != nil && candidate.Equal(ip) {
+			return true
+		}
+		if _, network, err := net.ParseCIDR(entry); err == nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func isDevEnvironment(environment string) bool {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "dev", "development", "local", "test":
+		return true
+	}
+	return false
+}
+
+func (s *Server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("access-control-allow-origin", "*")
+		origin := r.Header.Get("Origin")
+
+		// Determine allowed origins: use explicit config if set, otherwise derive from PublicBaseURL
+		allowedOrigins := s.config.CORSAllowedOrigins
+		if len(allowedOrigins) == 0 && s.config.PublicBaseURL != "" {
+			allowedOrigins = []string{s.config.PublicBaseURL}
+		}
+
+		// If request has Origin header and we have an allowed origins list, validate it
+		if origin != "" && len(allowedOrigins) > 0 {
+			allowed := false
+			for _, allowedOrigin := range allowedOrigins {
+				if origin == strings.TrimSpace(allowedOrigin) {
+					allowed = true
+					break
+				}
+			}
+			if allowed {
+				w.Header().Set("access-control-allow-origin", origin)
+				w.Header().Set("access-control-allow-credentials", "true")
+				w.Header().Add("Vary", "Origin")
+			} else {
+				// Origin not in allowlist, deny credentials but allow simple requests
+				w.Header().Set("access-control-allow-origin", "*")
+			}
+		} else if origin != "" && isDevEnvironment(s.config.Environment) {
+			// Dev environment without an allowlist: echo origin with credentials
+			// for convenience. Never do this in production, where an explicit
+			// allowlist (or PublicBaseURL) is required to authorize credentials.
+			w.Header().Set("access-control-allow-origin", origin)
+			w.Header().Set("access-control-allow-credentials", "true")
+			w.Header().Add("Vary", "Origin")
+		} else {
+			// No Origin header, or production with no configured allowlist:
+			// allow simple cross-origin requests but never credentials.
+			w.Header().Set("access-control-allow-origin", "*")
+			if origin != "" {
+				w.Header().Add("Vary", "Origin")
+			}
+		}
+
 		w.Header().Set("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS")
-		w.Header().Set("access-control-allow-headers", "authorization,content-type")
+		allowHeaders := "authorization,content-type"
+		if reqHeaders := r.Header.Get("access-control-request-headers"); reqHeaders != "" {
+			seen := map[string]bool{"authorization": true, "content-type": true}
+			for _, h := range strings.Split(reqHeaders, ",") {
+				h = strings.ToLower(strings.TrimSpace(h))
+				if h != "" && !seen[h] {
+					allowHeaders += "," + h
+					seen[h] = true
+				}
+			}
+		}
+		w.Header().Set("access-control-allow-headers", allowHeaders)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) handleAdminSystemDBStatus(w http.ResponseWriter, r *http.Request) {
+	// Only allow GET requests.
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Verify administrator permissions.
+	if _, ok := s.requireAdmin(w, r, "system", r.Method); !ok {
+		return
+	}
+
+	// Retrieve the database status.
+	status, err := s.store.GetDatabaseStatus()
+	if err != nil {
+		log.Printf("[tokenhub] failed to get database status: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Return the JSON response.
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		log.Printf("[tokenhub] failed to encode database status response: %v", err)
+	}
 }

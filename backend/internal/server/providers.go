@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,6 +20,27 @@ type ProviderAdapter interface {
 	ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error)
 	Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error)
 	Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error)
+}
+
+type ResponsesEnvelopeAdapter interface {
+	ResponsesWithHeaders(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, incoming http.Header) (any, Usage, error)
+}
+
+type ResponsesInvoker interface {
+	Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error)
+}
+
+type ResponsesStreamOpener interface {
+	OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, incoming http.Header) (*http.Response, error)
+}
+
+type ProviderResourceProber interface {
+	DefaultProbeRequest() ProviderProbeRequest
+	Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error)
+}
+
+type ResponsesCompactAdapter interface {
+	CompactWithHeaders(ctx context.Context, provider Provider, providerModel string, body map[string]json.RawMessage, incoming http.Header) (any, Usage, error)
 }
 
 type MockAdapter struct{}
@@ -143,6 +166,7 @@ type OpenAICompatibleAdapter struct {
 
 func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
 	req.Model = providerModel
+	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	var body map[string]any
 	if err := a.doJSON(ctx, provider, http.MethodPost, "/chat/completions", req, &body); err != nil {
 		return nil, Usage{}, err
@@ -153,17 +177,19 @@ func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, pr
 func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
 	req.Model = providerModel
 	req.Stream = true
+	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
+	req = includeOpenAIStreamUsage(req)
 	resp, err := a.doRaw(ctx, provider, http.MethodPost, "/chat/completions", req)
 	if err != nil {
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	_, err = io.Copy(w, resp.Body)
-	return Usage{}, err
+	return copyOpenAIStreamAndUsage(w, resp.Body)
 }
 
 func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	req.Model = providerModel
+	req = normalizedResponsesReasoning(req)
 	var body map[string]any
 	if err := a.doJSON(ctx, provider, http.MethodPost, "/responses", req, &body); err != nil {
 		return nil, Usage{}, err
@@ -220,7 +246,7 @@ func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, m
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, NewHTTPError(statusForProvider(resp.StatusCode), "provider_error", strings.TrimSpace(string(data)))
+		return nil, newProviderHTTPError(resp.StatusCode, data)
 	}
 	return resp, nil
 }
@@ -246,6 +272,7 @@ type AzureOpenAIAdapter struct {
 
 func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
 	req.Model = providerModel
+	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	var body map[string]any
 	if err := a.doJSON(ctx, provider, providerModel, "/chat/completions", req, &body); err != nil {
 		return nil, Usage{}, err
@@ -256,13 +283,14 @@ func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, provide
 func (a AzureOpenAIAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
 	req.Model = providerModel
 	req.Stream = true
+	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
+	req = includeOpenAIStreamUsage(req)
 	resp, err := a.doRaw(ctx, provider, providerModel, "/chat/completions", req)
 	if err != nil {
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	_, err = io.Copy(w, resp.Body)
-	return Usage{}, err
+	return copyOpenAIStreamAndUsage(w, resp.Body)
 }
 
 func (a AzureOpenAIAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -317,7 +345,7 @@ func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deploy
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, NewHTTPError(statusForProvider(resp.StatusCode), "provider_error", strings.TrimSpace(string(data)))
+		return nil, newProviderHTTPError(resp.StatusCode, data)
 	}
 	return resp, nil
 }
@@ -327,7 +355,11 @@ type AnthropicAdapter struct {
 }
 
 func (a AnthropicAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	payload := anthropicPayload(providerModel, req.Messages, req.MaxTokens)
+	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
+	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
+		reasoningEffort = nil
+	}
+	payload := anthropicPayload(providerModel, req.Messages, req.MaxTokens, reasoningEffort)
 	var body map[string]any
 	if err := a.doJSON(ctx, provider, "/v1/messages", payload, &body); err != nil {
 		return nil, Usage{}, err
@@ -362,9 +394,10 @@ func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, pro
 
 func (a AnthropicAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	chatReq := ChatCompletionRequest{
-		Model:     req.Model,
-		Messages:  []ChatMessage{{Role: "user", Content: req.Input}},
-		MaxTokens: req.MaxTokens,
+		Model:           req.Model,
+		Messages:        []ChatMessage{{Role: "user", Content: req.Input}},
+		MaxTokens:       req.MaxTokens,
+		ReasoningEffort: responsesReasoningEffort(req),
 	}
 	resp, usage, err := a.Chat(ctx, provider, providerModel, chatReq)
 	if err != nil {
@@ -411,7 +444,7 @@ func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoin
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return NewHTTPError(statusForProvider(resp.StatusCode), "provider_error", strings.TrimSpace(string(data)))
+		return newProviderHTTPError(resp.StatusCode, data)
 	}
 	return json.NewDecoder(resp.Body).Decode(target)
 }
@@ -421,7 +454,7 @@ type GeminiAdapter struct {
 }
 
 func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	payload := geminiPayload(req.Messages, req.MaxTokens)
+	payload := geminiPayload(req.Messages, req.MaxTokens, providerModel, req.ReasoningEffort)
 	var body map[string]any
 	if err := a.doJSON(ctx, provider, providerModel, ":generateContent", payload, &body); err != nil {
 		return nil, Usage{}, err
@@ -456,9 +489,10 @@ func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, provid
 
 func (a GeminiAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	chatReq := ChatCompletionRequest{
-		Model:     req.Model,
-		Messages:  []ChatMessage{{Role: "user", Content: req.Input}},
-		MaxTokens: req.MaxTokens,
+		Model:           req.Model,
+		Messages:        []ChatMessage{{Role: "user", Content: req.Input}},
+		MaxTokens:       req.MaxTokens,
+		ReasoningEffort: responsesReasoningEffort(req),
 	}
 	resp, usage, err := a.Chat(ctx, provider, providerModel, chatReq)
 	if err != nil {
@@ -524,12 +558,12 @@ func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model stri
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return NewHTTPError(statusForProvider(resp.StatusCode), "provider_error", strings.TrimSpace(string(data)))
+		return newProviderHTTPError(resp.StatusCode, data)
 	}
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-func anthropicPayload(model string, messages []ChatMessage, maxTokens int) map[string]any {
+func anthropicPayload(model string, messages []ChatMessage, maxTokens int, reasoningEffort *string) map[string]any {
 	if maxTokens <= 0 {
 		maxTokens = 1024
 	}
@@ -556,10 +590,13 @@ func anthropicPayload(model string, messages []ChatMessage, maxTokens int) map[s
 	if len(system) > 0 {
 		payload["system"] = strings.Join(system, "\n")
 	}
+	if reasoningEffort != nil {
+		payload["output_config"] = map[string]any{"effort": *reasoningEffort}
+	}
 	return payload
 }
 
-func geminiPayload(messages []ChatMessage, maxTokens int) map[string]any {
+func geminiPayload(messages []ChatMessage, maxTokens int, model string, reasoningEffort *string) map[string]any {
 	contents := []map[string]any{}
 	for _, message := range messages {
 		role := "user"
@@ -573,10 +610,231 @@ func geminiPayload(messages []ChatMessage, maxTokens int) map[string]any {
 		contents = append(contents, map[string]any{"role": role, "parts": []map[string]any{{"text": contentToText(message.Content)}}})
 	}
 	payload := map[string]any{"contents": contents}
+	generationConfig := map[string]any{}
 	if maxTokens > 0 {
-		payload["generationConfig"] = map[string]any{"maxOutputTokens": maxTokens}
+		generationConfig["maxOutputTokens"] = maxTokens
+	}
+	if effort := normalizedReasoningEffort(reasoningEffort); effort != nil {
+		thinkingConfig, supported := geminiThinkingConfig(model, *effort)
+		if supported {
+			generationConfig["thinkingConfig"] = thinkingConfig
+		}
+	}
+	if len(generationConfig) > 0 {
+		payload["generationConfig"] = generationConfig
 	}
 	return payload
+}
+
+func responsesReasoningEffort(req ResponsesRequest) *string {
+	if req.Reasoning == nil {
+		return nil
+	}
+	return req.Reasoning.Effort
+}
+
+func normalizedReasoningEffort(effort *string) *string {
+	if effort == nil {
+		return nil
+	}
+	value := strings.TrimSpace(*effort)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func normalizedResponsesReasoning(req ResponsesRequest) ResponsesRequest {
+	if req.Reasoning == nil {
+		return req
+	}
+	reasoning := *req.Reasoning
+	reasoning.Effort = normalizedReasoningEffort(reasoning.Effort)
+	req.Reasoning = &reasoning
+	return req
+}
+
+func withoutResponsesReasoningEffort(req ResponsesRequest) ResponsesRequest {
+	if req.Reasoning == nil {
+		return req
+	}
+	reasoning := *req.Reasoning
+	reasoning.Effort = nil
+	req.Reasoning = &reasoning
+	return req
+}
+
+func isReasoningEffortRejection(err error) bool {
+	httpErr := AsHTTPError(err)
+	if httpErr == nil ||
+		httpErr.Code != "provider_error" ||
+		(httpErr.UpstreamStatus != http.StatusBadRequest && httpErr.UpstreamStatus != http.StatusUnprocessableEntity) {
+		return false
+	}
+	message := strings.ToLower(httpErr.Message)
+	effortField := false
+	for _, marker := range []string{
+		"reasoning_effort",
+		"reasoning.effort",
+		"output_config.effort",
+		"output_config",
+		"thinkingconfig",
+		"thinking_config",
+		"thinkinglevel",
+		"thinkingbudget",
+	} {
+		if strings.Contains(message, marker) {
+			effortField = true
+			break
+		}
+	}
+	if !effortField {
+		return false
+	}
+	for _, marker := range []string{
+		"invalid",
+		"unsupported",
+		"not supported",
+		"unknown",
+		"unrecognized",
+		"unexpected",
+		"not permitted",
+		"does not support",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func anthropicReasoningEffortSupported(model string, effort string) bool {
+	effort = strings.TrimSpace(effort)
+	switch anthropicReasoningEffortModelFamily(model) {
+	case "claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5":
+		return effort == "low" || effort == "medium" || effort == "high" || effort == "xhigh" || effort == "max"
+	case "claude-mythos-preview", "claude-opus-4-6", "claude-sonnet-4-6":
+		return effort == "low" || effort == "medium" || effort == "high" || effort == "max"
+	case "claude-opus-4-5":
+		return effort == "low" || effort == "medium" || effort == "high"
+	default:
+		return false
+	}
+}
+
+func anthropicReasoningEffortModelFamily(model string) string {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	for _, family := range []string{
+		"claude-mythos-preview",
+		"claude-fable-5",
+		"claude-mythos-5",
+		"claude-opus-4-8",
+		"claude-opus-4-7",
+		"claude-opus-4-6",
+		"claude-opus-4-5",
+		"claude-sonnet-5",
+		"claude-sonnet-4-6",
+	} {
+		index := strings.LastIndex(normalized, family)
+		if index < 0 || !anthropicModelBoundary(normalized, index-1) || !anthropicModelBoundary(normalized, index+len(family)) {
+			continue
+		}
+		return family
+	}
+	return ""
+}
+
+func anthropicModelBoundary(model string, index int) bool {
+	if index < 0 || index >= len(model) {
+		return true
+	}
+	switch model[index] {
+	case '-', '_', '.', '/', ':', '@':
+		return true
+	default:
+		return false
+	}
+}
+
+func geminiThinkingConfig(model string, effort string) (map[string]any, bool) {
+	effort = strings.TrimSpace(effort)
+	modelVersion := geminiModelVersion(model)
+	modelVariant := geminiModelVariant(model)
+	if strings.HasPrefix(modelVersion, "2.5") {
+		switch effort {
+		case "none":
+			if geminiVariantIs(modelVariant, "pro") {
+				return nil, false
+			}
+			return map[string]any{"thinkingBudget": 0}, true
+		case "minimal", "low":
+			return map[string]any{"thinkingBudget": 1024}, true
+		case "medium":
+			return map[string]any{"thinkingBudget": 8192}, true
+		case "high":
+			return map[string]any{"thinkingBudget": 24576}, true
+		default:
+			return nil, false
+		}
+	}
+	majorText := strings.SplitN(modelVersion, ".", 2)[0]
+	major, err := strconv.Atoi(majorText)
+	if err != nil || major < 3 {
+		return nil, false
+	}
+	if geminiVariantIs(modelVariant, "flash-lite-image") {
+		switch effort {
+		case "minimal", "high":
+			return map[string]any{"thinkingLevel": effort}, true
+		default:
+			return nil, false
+		}
+	}
+	if effort == "minimal" && geminiVariantIs(modelVariant, "pro") {
+		return map[string]any{"thinkingLevel": "low"}, true
+	}
+	switch effort {
+	case "minimal", "low", "medium", "high":
+		return map[string]any{"thinkingLevel": effort}, true
+	default:
+		return nil, false
+	}
+}
+
+func geminiModelVersion(model string) string {
+	modelID := geminiModelID(model)
+	if modelID == "" {
+		return ""
+	}
+	version := strings.TrimPrefix(modelID, "gemini-")
+	for i, r := range version {
+		if (r < '0' || r > '9') && r != '.' {
+			return version[:i]
+		}
+	}
+	return version
+}
+
+func geminiModelVariant(model string) string {
+	modelID := geminiModelID(model)
+	version := geminiModelVersion(modelID)
+	if modelID == "" || version == "" {
+		return ""
+	}
+	return strings.TrimPrefix(modelID, "gemini-"+version+"-")
+}
+
+func geminiModelID(model string) string {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	index := strings.LastIndex(normalized, "gemini-")
+	if index < 0 {
+		return ""
+	}
+	return normalized[index:]
+}
+
+func geminiVariantIs(variant string, family string) bool {
+	return variant == family || strings.HasPrefix(variant, family+"-")
 }
 
 func anthropicText(body map[string]any) string {
@@ -596,9 +854,13 @@ func anthropicText(body map[string]any) string {
 
 func anthropicUsage(body map[string]any) Usage {
 	usageMap, _ := body["usage"].(map[string]any)
+	uncachedInputTokens := int64FromAny(usageMap["input_tokens"])
+	cacheCreationInputTokens := int64FromAny(usageMap["cache_creation_input_tokens"])
+	cachedInputTokens := int64FromAny(usageMap["cache_read_input_tokens"])
 	usage := Usage{
-		PromptTokens:     int64FromAny(usageMap["input_tokens"]),
-		CompletionTokens: int64FromAny(usageMap["output_tokens"]),
+		PromptTokens:      uncachedInputTokens + cacheCreationInputTokens + cachedInputTokens,
+		CachedInputTokens: cachedInputTokens,
+		CompletionTokens:  int64FromAny(usageMap["output_tokens"]),
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	return usage
@@ -628,9 +890,10 @@ func geminiText(body map[string]any) string {
 func geminiUsage(body map[string]any) Usage {
 	usageMap, _ := body["usageMetadata"].(map[string]any)
 	usage := Usage{
-		PromptTokens:     int64FromAny(usageMap["promptTokenCount"]),
-		CompletionTokens: int64FromAny(usageMap["candidatesTokenCount"]),
-		TotalTokens:      int64FromAny(usageMap["totalTokenCount"]),
+		PromptTokens:      int64FromAny(usageMap["promptTokenCount"]),
+		CachedInputTokens: int64FromAny(firstNonNil(usageMap["cachedContentTokenCount"], usageMap["totalCachedTokens"])),
+		CompletionTokens:  int64FromAny(usageMap["candidatesTokenCount"]),
+		TotalTokens:       int64FromAny(usageMap["totalTokenCount"]),
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
@@ -640,15 +903,78 @@ func geminiUsage(body map[string]any) Usage {
 
 func usageFromMap(body map[string]any) Usage {
 	usageMap, _ := body["usage"].(map[string]any)
+	inputDetails, _ := firstNonNil(usageMap["prompt_tokens_details"], usageMap["input_tokens_details"]).(map[string]any)
+	outputDetails, _ := usageMap["output_tokens_details"].(map[string]any)
 	usage := Usage{
-		PromptTokens:     int64FromAny(firstNonNil(usageMap["prompt_tokens"], usageMap["input_tokens"])),
-		CompletionTokens: int64FromAny(firstNonNil(usageMap["completion_tokens"], usageMap["output_tokens"])),
-		TotalTokens:      int64FromAny(usageMap["total_tokens"]),
+		PromptTokens: int64FromAny(firstNonNil(usageMap["prompt_tokens"], usageMap["input_tokens"])),
+		CachedInputTokens: int64FromAny(firstNonNil(
+			inputDetails["cached_tokens"],
+			usageMap["prompt_cache_hit_tokens"],
+			usageMap["cached_input_tokens"],
+			usageMap["cached_tokens"],
+			usageMap["total_cached_tokens"],
+		)),
+		CacheWriteInputTokens: int64FromAny(firstNonNil(usageMap["cache_write_input_tokens"], inputDetails["cache_write_tokens"])),
+		CompletionTokens:      int64FromAny(firstNonNil(usageMap["completion_tokens"], usageMap["output_tokens"])),
+		ReasoningOutputTokens: int64FromAny(firstNonNil(usageMap["reasoning_output_tokens"], outputDetails["reasoning_tokens"])),
+		TotalTokens:           int64FromAny(usageMap["total_tokens"]),
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
 	return usage
+}
+
+func includeOpenAIStreamUsage(req ChatCompletionRequest) ChatCompletionRequest {
+	options := make(map[string]any, len(req.StreamOptions)+1)
+	for key, value := range req.StreamOptions {
+		options[key] = value
+	}
+	options["include_usage"] = true
+	req.StreamOptions = options
+	return req
+}
+
+func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
+	reader := bufio.NewReader(body)
+	var usage Usage
+	for {
+		line, readErr := reader.ReadString('\n')
+		if line != "" {
+			if _, err := io.WriteString(w, line); err != nil {
+				return usage, err
+			}
+			if parsed, ok := usageFromServerSentEvent(line); ok {
+				usage = parsed
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				return usage, nil
+			}
+			return usage, readErr
+		}
+	}
+}
+
+func usageFromServerSentEvent(line string) (Usage, bool) {
+	payload := strings.TrimSpace(line)
+	if !strings.HasPrefix(payload, "data:") {
+		return Usage{}, false
+	}
+	payload = strings.TrimSpace(strings.TrimPrefix(payload, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return Usage{}, false
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return Usage{}, false
+	}
+	usageMap, ok := event["usage"].(map[string]any)
+	if !ok || len(usageMap) == 0 {
+		return Usage{}, false
+	}
+	return usageFromMap(event), true
 }
 
 func chatResponse(model string, text string, usage Usage) map[string]any {
@@ -758,6 +1084,16 @@ func joinURL(base string, endpoint string) string {
 	base = strings.TrimRight(base, "/")
 	endpoint = "/" + strings.TrimLeft(endpoint, "/")
 	return base + endpoint
+}
+
+func newProviderHTTPError(upstreamStatus int, data []byte) *HTTPError {
+	err := NewHTTPError(
+		statusForProvider(upstreamStatus),
+		"provider_error",
+		strings.TrimSpace(string(data)),
+	)
+	err.UpstreamStatus = upstreamStatus
+	return err
 }
 
 func statusForProvider(status int) int {

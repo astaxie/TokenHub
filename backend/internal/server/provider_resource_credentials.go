@@ -31,7 +31,7 @@ func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource)
 		return
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = "https://api.openai.com/v1"
+		resource.BaseURL = openAICodexBaseURL
 	}
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
@@ -44,7 +44,7 @@ func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource,
 		return
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = "https://api.openai.com/v1"
+		resource.BaseURL = openAICodexBaseURL
 	}
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
@@ -194,58 +194,70 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		return ProviderResourceCredentials{}, nil
 	}
 
-	s.mu.Lock()
-	var resource ProviderResource
-	if err := s.db.First(&resource, "id = ?", resourceID).Error; err != nil {
-		s.mu.Unlock()
-		return ProviderResourceCredentials{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
-	}
-	creds := s.providerResourceCredentialsForRuntime(resource)
-	if !isOpenAIAccountResource(resource.ResourceType) {
-		s.mu.Unlock()
-		return creds, nil
-	}
-	needsRefresh, expired := providerResourceCredentialsNeedRefresh(creds, openAIAccountOAuthRefreshLead)
-	if !force && !needsRefresh {
-		s.mu.Unlock()
-		return creds, nil
-	}
-	if strings.TrimSpace(creds.RefreshToken) == "" {
-		s.mu.Unlock()
-		if expired {
-			return creds, NewHTTPError(503, "provider_resource_token_expired", "Provider resource access token expired and no refresh token is available")
+	var result ProviderResourceCredentials
+	err := s.withClusterLease(ctx, "credential-refresh:"+resourceID, func(leaseCtx context.Context) error {
+		s.mu.Lock()
+		var resource ProviderResource
+		if err := s.db.WithContext(leaseCtx).First(&resource, "id = ?", resourceID).Error; err != nil {
+			s.mu.Unlock()
+			return notFound(err, "provider_resource_not_found", "Provider resource not found")
 		}
-		return creds, nil
-	}
-	s.mu.Unlock()
+		creds := s.providerResourceCredentialsForRuntime(resource)
+		if !isOpenAIAccountResource(resource.ResourceType) {
+			result = creds
+			s.mu.Unlock()
+			return nil
+		}
+		needsRefresh, expired := providerResourceCredentialsNeedRefresh(creds, openAIAccountOAuthRefreshLead)
+		if !force && !needsRefresh {
+			result = creds
+			s.mu.Unlock()
+			return nil
+		}
+		if strings.TrimSpace(creds.RefreshToken) == "" {
+			result = creds
+			s.mu.Unlock()
+			if expired {
+				return NewHTTPError(503, "provider_resource_token_expired", "Provider resource access token expired and no refresh token is available")
+			}
+			return nil
+		}
+		s.mu.Unlock()
 
-	refreshed, err := refreshOpenAIAccountOAuthCredentials(ctx, creds)
+		refreshed, err := refreshOpenAIAccountOAuthCredentials(leaseCtx, creds)
+		if err != nil {
+			return err
+		}
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var current ProviderResource
+		if err := s.db.WithContext(leaseCtx).First(&current, "id = ?", resourceID).Error; err != nil {
+			return notFound(err, "provider_resource_not_found", "Provider resource not found")
+		}
+		if !isOpenAIAccountResource(current.ResourceType) {
+			result = refreshed
+			return nil
+		}
+		if current.Options == nil {
+			current.Options = map[string]string{}
+		}
+		current.Credentials = &refreshed
+		s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
+		if strings.TrimSpace(current.APIKey) != "" {
+			current.APIKey = s.encryptSecret(current.APIKey)
+		}
+		current.UpdatedAt = time.Now().UTC()
+		if err := s.db.WithContext(leaseCtx).Save(&current).Error; err != nil {
+			return err
+		}
+		result = s.providerResourceCredentialsForRuntime(current)
+		return nil
+	})
 	if err != nil {
-		return creds, err
+		return result, err
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var current ProviderResource
-	if err := s.db.First(&current, "id = ?", resourceID).Error; err != nil {
-		return refreshed, notFound(err, "provider_resource_not_found", "Provider resource not found")
-	}
-	if !isOpenAIAccountResource(current.ResourceType) {
-		return refreshed, nil
-	}
-	if current.Options == nil {
-		current.Options = map[string]string{}
-	}
-	current.Credentials = &refreshed
-	s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
-	if strings.TrimSpace(current.APIKey) != "" {
-		current.APIKey = s.encryptSecret(current.APIKey)
-	}
-	current.UpdatedAt = time.Now().UTC()
-	if err := s.db.Save(&current).Error; err != nil {
-		return refreshed, err
-	}
-	return s.providerResourceCredentialsForRuntime(current), nil
+	return result, nil
 }
 
 func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResource) ProviderResourceCredentials {

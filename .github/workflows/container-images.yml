@@ -1,0 +1,179 @@
+name: Container images
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Publish edge or a manual-* tag from the selected Git ref
+        required: true
+        default: edge
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-images-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare image publication
+    runs-on: ubuntu-latest
+    outputs:
+      final_tags: ${{ steps.tags.outputs.final_tags }}
+      staging_tag: ${{ steps.tags.outputs.staging_tag }}
+    steps:
+      - name: Validate tags
+        id: tags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_TAG: ${{ inputs.tag }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          staging_tag="staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA::12}"
+          final_tags=()
+
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            numeric_identifier='(0|[1-9][0-9]*)'
+            prerelease_identifier='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+            semver_pattern="^v?${numeric_identifier}\.${numeric_identifier}\.${numeric_identifier}(-${prerelease_identifier}(\.${prerelease_identifier})*)?$"
+            if [[ ! "$RELEASE_TAG" =~ $semver_pattern ]]; then
+              echo "Release tag must be semantic, for example v0.3.1 or v0.3.1-rc.1" >&2
+              exit 1
+            fi
+
+            version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+            final_tags+=("$version")
+            if [[ "$RELEASE_PRERELEASE" != "true" && -z "${BASH_REMATCH[4]}" ]]; then
+              final_tags+=("${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" "latest")
+            fi
+          else
+            if [[ "$MANUAL_TAG" != "edge" && ! "$MANUAL_TAG" =~ ^manual-[A-Za-z0-9_][A-Za-z0-9_.-]{0,120}$ ]]; then
+              echo "Manual image tag must be edge or start with manual-" >&2
+              exit 1
+            fi
+            final_tags+=("$MANUAL_TAG")
+          fi
+
+          echo "staging_tag=$staging_tag" >>"$GITHUB_OUTPUT"
+          {
+            echo "final_tags<<EOF"
+            printf '%s\n' "${final_tags[@]}"
+            echo "EOF"
+          } >>"$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }} image
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: .
+            file: backend/Dockerfile
+            image: tokenhub-backend
+          - name: frontend
+            context: frontend
+            file: frontend/Dockerfile
+            image: tokenhub-frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.staging_tag }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }},ignore-error=true
+
+      - name: Attest image provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  promote:
+    name: Publish paired image tags
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and publish paired tags
+        env:
+          FINAL_TAGS: ${{ needs.prepare.outputs.final_tags }}
+          IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+          STAGING_TAG: ${{ needs.prepare.outputs.staging_tag }}
+        run: |
+          set -euo pipefail
+
+          images=(tokenhub-backend tokenhub-frontend)
+          for image in "${images[@]}"; do
+            docker buildx imagetools inspect "$IMAGE_PREFIX/$image:$STAGING_TAG" >/dev/null
+          done
+
+          while IFS= read -r final_tag; do
+            [[ -n "$final_tag" ]] || continue
+            for image in "${images[@]}"; do
+              docker buildx imagetools create \
+                --tag "$IMAGE_PREFIX/$image:$final_tag" \
+                "$IMAGE_PREFIX/$image:$STAGING_TAG"
+            done
+          done <<<"$FINAL_TAGS"

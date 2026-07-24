@@ -13,12 +13,15 @@ output/
 # Internal design notes
 design/
 doc/
+docs/superpowers/
+scripts/
 
 # Go
 bin/
 .tmp/
 *.test
 coverage.out
+backend/tokenhub
 
 # Local runtime data
 data/*
@@ -41,3 +44,8 @@ yarn-error.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Claude Code
+.claude/
+.spec-workflow/
+CLAUDE.md

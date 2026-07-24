@@ -55,13 +55,16 @@ TokenHub 将日常模型使用、团队治理和平台运维拆成清晰的角�
 - 身份源配置：支持 OAuth/OIDC 企业登录，并配合 RBAC 和审计追踪。
 - 简洁控制台：分角色导航、全局搜索、黑白主题，以及左侧 API 导航 + 右侧详情的接口文档。
 - SQLite-first 私有化部署，内置 Docker Compose 一键部署。
+- PostgreSQL 支持多实例部署：通过远端 PostgreSQL 共享状态，实现前后端实例横向扩展，并提供连接池配置。参见[部署指南](docs/zh-CN/deployment.md)。
 - 管理后台支持英文、中文、日文切换。
+- TokenHub 还支持接入 OpenAI Codex 订阅账号资源，并通过可隔离、可恢复的 Codex Profile，让指定的本地 Codex CLI 或桌面端会话经过 TokenHub。参见 [Codex 接入指南](docs/zh-CN/codex-tokenhub-profile-quick-start.md)。
 
 ## 快速开始
 
 ```bash
 cp deploy/.env.example deploy/.env
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+# 将 deploy/.env 中所有 change-me 值替换为强密钥。
+./deploy/install.sh
 ```
 
 访问地址：
@@ -70,37 +73,12 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 - 后端 API：`http://localhost:8080`
 - 健康检查：`http://localhost:8080/healthz`
 
-默认管理员账号：
+初始管理员账号：
 
 - 用户名：`admin`
-- 密码：`admin123456`
+- 密码：`TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` 的配置值
 
-对外开放前，请修改默认密码，并在 `deploy/.env` 中替换默认密钥。
-
-## 本地开发
-
-后端：
-
-```bash
-cd backend
-go run ./cmd/tokenhub
-```
-
-前端：
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-使用 SDK 示例测试模型 API 链路：
-
-```bash
-cd sdk
-npm install
-npm run test:deepseek
-```
+部署脚本会校验生产凭证，拉取已发布镜像并启动容器，不在部署服务器构建镜像。镜像尚未公开时，如果默认 `latest` 标签拉取失败，脚本会自动改为从本地源码构建；显式指定的标签不会触发该行为。校验失败时会列出不安全的变量，但不会输出敏感值。如果本次创建或重启的后端容器异常导致 Compose 失败，脚本只会自动显示本次启动产生的后端近期日志。需要明确从当前代码构建时，使用 `./deploy/install.sh --build`。
 
 ## 文档
 
@@ -108,8 +86,13 @@ npm run test:deepseek
 - [普通用户指南](docs/zh-CN/user-guide.md)
 - [团队负责人指南](docs/zh-CN/team-leader-guide.md)
 - [管理员指南](docs/zh-CN/administrator-guide.md)
+- [贡献指南](CONTRIBUTING.zh-CN.md)
 - [English documentation](docs/README.md)
 - [日本語ドキュメント](docs/ja/README.md)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=astaxie%2FTokenHub&type=Date&legend=top-left)](https://www.star-history.com/?repos=astaxie%2FTokenHub&type=date&legend=top-left)
 
 ## License
 

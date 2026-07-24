@@ -1,0 +1,354 @@
+
+.gateway-docs {
+  gap: 16px;
+}
+
+.gateway-hero {
+  min-height: 154px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.gateway-hero h2 {
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.gateway-hero p {
+  color: var(--ink-2);
+}
+
+.gateway-hero a,
+.gateway-model-list span,
+.gateway-hero code,
+.gateway-steps code,
+.gateway-api-note code {
+  border-color: var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.gateway-quick-grid {
+  gap: 12px;
+}
+
+.gateway-copy-card {
+  border-radius: 14px;
+}
+
+.gateway-code-block pre,
+.api-code-block,
+.payload-block pre {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.audit-tabs,
+.request-filter-tabs,
+.category-tabs,
+.language-switcher,
+.settings-tabs,
+.boolean-toggle,
+.api-example-tabs {
+  border-color: var(--border);
+  border-radius: 10px;
+  background: var(--surface-3);
+}
+
+.audit-tab,
+.request-filter-tabs button,
+.category-tab,
+.language-switcher button,
+.settings-tab,
+.boolean-toggle button,
+.api-example-tab {
+  border-radius: 8px;
+  color: var(--ink-2);
+}
+
+.audit-tab:hover,
+.audit-tab.active,
+.category-tab:hover,
+.category-tab.active,
+.language-switcher button.active,
+.settings-tab:hover,
+.settings-tab.active,
+.boolean-toggle button.active,
+.api-example-tab:hover,
+.api-example-tab.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.request-filter-tabs button.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.request-history-layout {
+  gap: 14px;
+}
+
+.request-list-panel,
+.request-detail-panel {
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.request-list-head,
+.payload-block-head,
+.api-example-header {
+  border-bottom-color: var(--border);
+  background: var(--surface-2);
+}
+
+.request-list-row {
+  border-bottom-color: var(--border);
+}
+
+.request-list-row:hover,
+.request-list-row.active {
+  background: var(--surface-2);
+}
+
+.request-list-row.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.request-message,
+.request-row-main strong,
+.request-detail-head strong,
+.detail-field strong,
+.usage-stat strong,
+.attempt-head strong,
+.model-name-cell strong,
+.model-card h2,
+.route-model-head h2,
+.route-provider-main strong,
+.route-upstream-model strong {
+  color: var(--ink);
+}
+
+.model-catalog,
+.route-matrix {
+  gap: 18px;
+}
+
+.model-catalog-sidebar {
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.model-provider-filter,
+.model-capability-tab {
+  border-color: var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.model-provider-filter:hover,
+.model-provider-filter.active,
+.model-capability-tab:hover,
+.model-capability-tab.active,
+.model-card:hover,
+.route-model-card:hover,
+.report-export-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  box-shadow: var(--shadow-md);
+}
+
+.model-provider-icon,
+.report-export-icon {
+  border-radius: 9px;
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.model-card,
+.route-model-card {
+  border-radius: 16px;
+}
+
+.model-card.unrouted {
+  border-color: color-mix(in srgb, var(--warn) 34%, var(--border));
+  background:
+    linear-gradient(0deg, color-mix(in srgb, var(--warn) 8%, transparent), color-mix(in srgb, var(--warn) 8%, transparent)),
+    var(--surface);
+  box-shadow:
+    inset 3px 0 0 color-mix(in srgb, var(--warn) 72%, transparent),
+    var(--shadow-sm);
+}
+
+.model-card.unrouted:hover {
+  border-color: color-mix(in srgb, var(--warn) 48%, var(--border));
+  background:
+    linear-gradient(0deg, color-mix(in srgb, var(--warn) 11%, transparent), color-mix(in srgb, var(--warn) 11%, transparent)),
+    var(--surface);
+  box-shadow:
+    inset 3px 0 0 var(--warn),
+    var(--shadow-md);
+}
+
+.model-card-brand em,
+.model-card-brand strong,
+.model-card-tags span,
+.capability-row em {
+  border-radius: 7px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+
+.model-card-brand strong,
+.model-card-tags .official,
+.category-tab.active em,
+.provider-selected-summary strong {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.model-card-tags .unrouted-tag {
+  background: var(--warn-weak);
+  color: var(--warn);
+}
+
+.route-provider-row {
+  border-radius: 12px;
+}
+
+.modal-backdrop {
+  background: rgba(11, 11, 15, 0.34);
+  backdrop-filter: blur(6px);
+}
+
+.modal,
+.confirm-modal {
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-header,
+.modal-actions {
+  border-color: var(--border);
+}
+
+.modal-header {
+  align-items: center;
+}
+
+.playground-page {
+  min-height: calc(100dvh - 60px);
+  border-radius: 0;
+  background: transparent;
+}
+
+.playground-shell {
+  height: calc(100dvh - 60px);
+  min-height: 620px;
+  grid-template-columns: 300px minmax(0, 1fr);
+  background: var(--surface);
+}
+
+.playground-config {
+  border-right-color: var(--border);
+  background: var(--surface-2);
+}
+
+.playground-main,
+.playground-chat,
+.playground-code-drawer,
+.api-code-block {
+  background: var(--surface);
+}
+
+.playground-model-select,
+.playground-model-bar,
+.playground-detail-strip,
+.playground-route,
+.playground-composer,
+.api-example-header,
+.api-example-tabs,
+.api-example-meta {
+  border-color: var(--border);
+}
+
+.playground-model-select select,
+.playground-field select {
+  height: 38px;
+  border-radius: 10px;
+}
+
+.playground-field span,
+.playground-slider span,
+.playground-model-title > span,
+.playground-route em,
+.playground-route small,
+.playground-foot,
+.playground-empty,
+.api-example-header span,
+.api-example-meta,
+.provider-catalog-head span,
+.provider-model-head span,
+.provider-import-hint {
+  color: var(--ink-3);
+}
+
+.playground-detail-strip,
+.playground-route,
+.api-example-header,
+.api-example-meta {
+  background: var(--surface-2);
+}
+
+.playground-message p {
+  border-color: var(--border);
+  border-radius: 14px 14px 14px 4px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.playground-message.user p {
+  border-color: var(--accent);
+  border-radius: 14px 14px 4px 14px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.playground-composer {
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.playground-send-button {
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.api-example-tab.active {
+  color: var(--accent);
+}
+
+.pagination {
+  border-top-color: var(--border);
+}
+
+.page-size select,
+.page-buttons button {
+  border-color: var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+[data-theme="dark"] .gateway-code-block pre,
+[data-theme="dark"] .api-code-block,
+[data-theme="dark"] .payload-block pre {
+  color: var(--ink);
+}

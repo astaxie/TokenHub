@@ -4,6 +4,77 @@ Language: [English](../deployment.md) | [简体中文](../zh-CN/deployment.md) |
 
 TokenHub は、Go バックエンド、Next.js 管理コンソール、SQLite 永続化で構成されるプライベートデプロイ向けのサービスです。
 
+## データベースの選択
+
+TokenHub は 2 種類のデータベースバックエンドをサポートしています。
+
+### SQLite（デフォルト）
+
+**利点：**
+- 設定不要で、別途データベースサービスが不要
+- 中小規模のデプロイに適する
+- バックアップが簡単（ファイルを直接コピー）
+
+**ユースケース：**
+- 開発およびテスト環境
+- 1000 ユーザー未満のデプロイ
+- 単一サーバーのデプロイ
+
+**デプロイ：**
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+```
+
+### PostgreSQL（本番環境推奨）
+
+**利点：**
+- 高並行シナリオに適したエンタープライズ級データベース
+- より優れたトランザクションサポートとデータ整合性
+- レプリケーションと高可用性をサポート
+
+**ユースケース：**
+- 本番環境
+- 1000 ユーザーを超えるデプロイ
+- 高可用性要件
+
+**デプロイ：**
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.postgres.yml up -d
+```
+
+PostgreSQL の詳細な設定については、[PostgreSQL セットアップガイド](../postgresql-setup.md)を参照してください。
+
+### リモート PostgreSQL を使用するマルチインスタンス構成
+
+デフォルトのインストールでは、SQLite を使用するフロントエンド 1 台とバックエンド 1 台を起動します。水平スケールが必要で、データベースを Compose プロジェクト外で管理する場合は `deploy/docker-compose.remote-postgres.yml` を使用します。この構成はスケール可能なバックエンドとフロントエンドの前に Nginx ゲートウェイを配置し、ローカルデータベースを起動しません。
+
+<p align="center">
+  <img src="../assets/architecture/tokenhub-multi-instance.png" alt="TokenHub マルチインスタンス構成" width="1200" />
+</p>
+
+マルチインスタンスモードでは：
+
+- Nginx が管理コンソール、API、ヘルスチェックのトラフィックを正常なレプリカへ分散します。
+- バックエンドレプリカは、永続設定、OAuth セッション、クォータカウンター、監査データ、クラスターロック、実行中リクエストの並行数リースを PostgreSQL で共有します。
+- リースの期限と所有権は PostgreSQL のクロックで判定し、ホスト間の時刻ずれによる早期引き継ぎを防ぎます。所有権を失った処理はハートビートによってキャンセルされます。
+- 設定されたモデルカタログはバックエンドの起動ごとに同期され、冪等な同期処理はクラスターロックによって直列化されます。
+- データベースの調整障害では Provider の容量だけを解放し、正常なモデル Provider を誤って失敗扱いにしません。
+
+リモート `TOKENHUB_DATABASE_URL`、公開ゲートウェイ URL、本番用シークレット、信頼するプロキシ CIDR を設定して実行します。
+
+```bash
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.remote-postgres.yml up -d \
+  --scale tokenhub-backend=3 \
+  --scale tokenhub-frontend=2
+```
+
+すべてのレプリカで同じ `TOKENHUB_SECRET_KEY` を使用してください。`TOKENHUB_DB_MAX_OPEN_CONNS` はレプリカ単位なので、合計接続数が PostgreSQL の上限を下回るように設定します。SQLite ファイルを複数のバックエンドで共有してはいけません。
+
+`./deploy/test-multi-instance.sh` で実際の 2 インスタンス PostgreSQL E2E テストを実行できます。
+
 ## Docker Compose
 
 デプロイ用の環境変数ファイルを作成します。
@@ -14,20 +85,53 @@ cp deploy/.env.example deploy/.env
 
 起動前に `deploy/.env` を編集してください。
 
-- `TOKENHUB_ADMIN_TOKEN`: Admin API の初期 Token。強いランダム値を使用してください。
-- `TOKENHUB_SECRET_KEY`: バックエンド秘密鍵。強いランダム値を使用し、安定して保持してください。
+- `TOKENHUB_ADMIN_TOKEN`: Admin API の初期 Token。32 バイト以上のランダム値を使用してください。
+- `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: 初期 `admin` ユーザーの作成時にのみ使用するパスワード。12 バイト以上にしてください。
+- `TOKENHUB_SECRET_KEY`: バックエンド秘密鍵。32 バイト以上のランダム値を使用し、安定して保持してください。
+- `TOKENHUB_IMAGE_TAG`: バックエンドとフロントエンドで共通のイメージタグ。デフォルトは `latest`。
 - `TOKENHUB_PUBLIC_BASE_URL`: ユーザーに表示するバックエンド URL。
-- `NEXT_PUBLIC_API_BASE_URL`: ブラウザの管理コンソールが使用するバックエンド URL。
+- `TOKENHUB_API_BASE_URL`: ブラウザの管理コンソールが使用するバックエンド URL。フロントエンドサーバーが実行時に読み取ります。非推奨の `NEXT_PUBLIC_API_BASE_URL` は、1 回の互換期間に限りフォールバックとして残します。
 - `TOKENHUB_BACKEND_PORT`: バックエンドのホスト側ポート。デフォルトは `8080`。
 - `TOKENHUB_FRONTEND_PORT`: 管理コンソールのホスト側ポート。デフォルトは `3000`。
 
 リポジトリルートから起動します。
 
 ```bash
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+./deploy/install.sh
 ```
 
-### 任意: サーバー側のビルド高速化
+スクリプトは Compose の環境変数を検証し、公開済みイメージを取得して、ローカルではビルドせずにコンテナを起動します。GHCR イメージの初回公開中に取得できない場合は、現在のチェックアウトからのビルドへ自動的に切り替えます。秘密値を表示せずに安全でない変数を個別に報告します。Compose が失敗し、その試行で作成または再起動したバックエンドコンテナが exited、restarting、dead、unhealthy のいずれかである場合、その試行のバックエンドログを最大 100 行表示します。バックエンド以外の障害では、無関係なバックエンドログを出力しません。
+
+イメージを取得したりコンテナを起動したりせず、設定だけを検証するには次を実行します。
+
+```bash
+./deploy/install.sh --check-only
+```
+
+別の環境ファイルを使用する場合は、`./deploy/install.sh --env-file /path/to/deploy.env` を実行します。
+
+### 公開イメージのバージョンルール
+
+GitHub Actions は `linux/amd64` と `linux/arm64` 向けに `ghcr.io/astaxie/tokenhub-backend` と `ghcr.io/astaxie/tokenhub-frontend` を公開します。
+
+- GitHub Release を公開すると、完全なセマンティックバージョンのタグを自動生成します。プレリリースでない場合は、メジャー・マイナータグと `latest` も更新します。
+- `workflow_dispatch` では `edge` または分離された `manual-*` タグのみを公開でき、正式なリリースタグや `latest` は上書きできません。
+- PR ではコンテナイメージをビルドまたは push しません。
+- `main` へのマージではイメージを公開しません。
+
+ワークフローは、まず実行ごとのステージングタグで各イメージを push し、両方のマルチプラットフォームイメージが存在することを確認してから最終タグを公開します。バックエンドとフロントエンドには同じ `TOKENHUB_IMAGE_TAG` を使用してください。本番環境では `latest` ではなく、完全なリリースタグを固定することを推奨します。
+
+GHCR で初めて公開した Package はデフォルトで非公開です。匿名デプロイを有効にする前に、リポジトリ所有者が両方の Package を Public に変更する必要があります。それまでは、デフォルトの `latest` タグを使用するデプロイに限り、取得に失敗するとローカルのソースビルドへ自動的に切り替えます。明示した `TOKENHUB_IMAGE_TAG` を取得できない場合、現在のソースをそのバージョンとして扱わず、インストールスクリプトは終了します。
+
+### 任意: ローカルビルド
+
+現在のチェックアウトからイメージをビルドする場合は、次を実行します。
+
+```bash
+./deploy/install.sh --build
+```
+
+以下の高速化設定は、ローカルのソースビルドにのみ適用されます。
 
 このプロジェクトの Dockerfile には、地域依存のパッケージミラーをハードコードしません。サーバーから Docker Hub、npm、Go Module ソースへのアクセスが遅い場合は、Dockerfile を編集せず、デプロイ先サーバー側で高速化を設定してください。
 
@@ -60,7 +164,7 @@ Compose は次を起動します。
 - バックエンド: `http://localhost:8080`
 - フロントエンド: `http://localhost:3000`
 - SQLite データ: Docker named volume `tokenhub-data`
-- モデルカタログ: `data/model-catalog.yaml` からマウント
+- モデルカタログ: 選択したバックエンドイメージに含まれるバージョン
 
 状態を確認します。
 
@@ -71,11 +175,11 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 初回管理者ログイン:
 
 - ユーザー名: `admin`
-- パスワード: `admin123456`
+- パスワード: 設定した `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`
 
-サービスを広いネットワークに公開する前に、デフォルトパスワードを変更するか、新しい管理者アカウントを作成してください。
+`prod`、`production`、ステージングなどの非開発環境では、プレースホルダー値、32 バイト未満の Admin Token または秘密鍵、12 バイト未満の初期パスワードを拒否します。
 
-ログを確認します。
+ログを手動で確認または追跡します。
 
 ```bash
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f
@@ -102,7 +206,10 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_ENV` | `prod` | ランタイム環境名 |
 | `TOKENHUB_HTTP_ADDR` | `:8080` | バックエンド待受アドレス |
 | `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:8080` | ユーザーに表示するバックエンド URL |
+| `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For` を提供できるプロキシ IP または CIDR（カンマ区切り） |
+| `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せるブラウザー Origin（カンマ区切り） |
 | `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Admin API 用の初期 Token |
+| `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初期 `admin` ユーザーのパスワード。本番起動前に変更が必要 |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | バックエンド秘密鍵 |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | コンテナ内 SQLite データベースパス |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | バックアップ出力ディレクトリ |
@@ -111,13 +218,17 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_LOG_LEVEL` | `info` | ログレベル |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider リソースをクールダウンするまでの失敗しきい値 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Provider リソースのクールダウン秒数 |
+| `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
+| `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
+| `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停止時に処理中リクエストを待機する最大秒数 |
+| `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Docker がバックエンドを強制停止するまでの Compose 猶予時間 |
 
 ## フロントエンド環境変数
 
 | 変数 | デフォルト | 説明 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8080` | バックエンド Admin API URL |
-| `NEXT_PUBLIC_APP_NAME` | `TokenHub` | 表示名 |
+| `TOKENHUB_API_BASE_URL` | `http://localhost:8080` | フロントエンドサーバーが実行時に読み取るバックエンド Admin API URL |
+| `NEXT_PUBLIC_API_BASE_URL` | 空 | 非推奨の互換フォールバック。`TOKENHUB_API_BASE_URL` へ移行してください |
 
 ## データとバックアップ
 
@@ -138,17 +249,15 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 
 ## モデルカタログ
 
-デプロイファイルは、リポジトリ内の `data/model-catalog.yaml` をバックエンドコンテナの `/app/catalog/model-catalog.yaml` にマウントします。
+公開済みバックエンドイメージには、対応するバージョンの `data/model-catalog.yaml` が `/app/catalog/model-catalog.yaml` に含まれます。デフォルトのデプロイではこのファイルを使用し、バックエンドプログラムとモデルカタログを同じイメージバージョンにそろえます。
 
-標準モデルカタログを更新する手順:
-
-1. `data/model-catalog.yaml` を編集します。
-2. バックエンドコンテナを再起動します。
-3. 管理コンソールの `Model Catalog` で結果を確認します。
+カスタムモデルカタログを使用する場合は、マウントするファイルを明示します。
 
 ```bash
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart tokenhub-backend
+./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml
 ```
+
+カスタムファイルはイメージ内のモデルカタログを上書きするため、そのバージョンは `TOKENHUB_IMAGE_TAG` とは別に管理します。ファイルを更新した後、バックエンドコンテナを再起動し、管理コンソールの `Model Catalog` で内容を確認します。
 
 ## リバースプロキシ
 
@@ -158,3 +267,5 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart token
 - `/v1/*` と `/api/admin/*` はバックエンドサービスへ。
 
 長いモデル応答に備えて、リクエストボディサイズとストリーミングタイムアウトを十分に設定してください。
+
+Liveness には `/livez`、Readiness には `/readyz` を使用します。データベースが利用できない場合、`/readyz` と後方互換の `/healthz` は `503` を返します。

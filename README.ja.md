@@ -55,13 +55,16 @@ TokenHub は、日常的なモデル利用、チームガバナンス、プラ�
 - OAuth/OIDC によるエンタープライズサインイン、RBAC、監査証跡に対応する ID ソース設定。
 - クリーンなコンソール: ロール別ナビゲーション、グローバル検索、ライト/ダーク切り替え、左ナビ + 右詳細の API ドキュメント。
 - SQLite-first のプライベートデプロイと Docker Compose サポート。
+- PostgreSQL はマルチインスタンス構成に対応します。リモート PostgreSQL で状態を共有し、フロントエンドとバックエンドのレプリカを水平スケールできるほか、コネクションプールも設定できます。[デプロイガイド](docs/ja/deployment.md)を参照してください。
 - 管理コンソールは英語、中国語、日本語の切り替えに対応。
+- TokenHub は OpenAI Codex のサブスクリプションアカウントリソースにも接続できます。分離および復旧が可能な Codex Profile を使用し、指定したローカル Codex CLI またはデスクトップセッションを TokenHub 経由で実行できます。[Codex 接続ガイド](docs/ja/codex-tokenhub-profile-quick-start.md)を参照してください。
 
 ## クイックスタート
 
 ```bash
 cp deploy/.env.example deploy/.env
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+# deploy/.env のすべての change-me 値を強いシークレットに置き換えます。
+./deploy/install.sh
 ```
 
 アクセス先:
@@ -73,34 +76,9 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 初期管理者ログイン:
 
 - ユーザー名: `admin`
-- パスワード: `admin123456`
+- パスワード: `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` の設定値
 
-外部ネットワークへ公開する前に、初期パスワードを変更し、`deploy/.env` のシークレットを置き換えてください。
-
-## ローカル開発
-
-バックエンド:
-
-```bash
-cd backend
-go run ./cmd/tokenhub
-```
-
-フロントエンド:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-SDK サンプルでモデル API の疎通を確認できます。
-
-```bash
-cd sdk
-npm install
-npm run test:deepseek
-```
+デプロイスクリプトは本番用認証情報を検証し、公開済みイメージを取得して、ローカルではビルドせずにコンテナを起動します。イメージがまだ公開されておらず、デフォルトの `latest` タグの取得に失敗した場合は、ローカルのソースビルドへ自動的に切り替えます。明示したタグでは切り替えません。秘密値を表示せずに安全でない変数を個別に報告します。その試行で作成または再起動したバックエンドコンテナの異常により Compose が失敗した場合に限り、その試行で生成された直近のバックエンドログを自動表示します。現在のチェックアウトから明示的にビルドする場合は `./deploy/install.sh --build` を使用します。
 
 ## ドキュメント
 
@@ -108,8 +86,13 @@ npm run test:deepseek
 - [ユーザーガイド](docs/ja/user-guide.md)
 - [チームリーダーガイド](docs/ja/team-leader-guide.md)
 - [管理者ガイド](docs/ja/administrator-guide.md)
+- [コントリビューションガイド](CONTRIBUTING.ja.md)
 - [English documentation](docs/README.md)
 - [简体中文文档](docs/zh-CN/README.md)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=astaxie%2FTokenHub&type=Date&legend=top-left)](https://www.star-history.com/?repos=astaxie%2FTokenHub&type=date&legend=top-left)
 
 ## License
 

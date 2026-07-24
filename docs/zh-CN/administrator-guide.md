@@ -36,6 +36,10 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 | 禁用模型 | 对普通用户隐藏 |
 | Provider 路由不健康 | 在路由诊断和请求日志中可见 |
 
+## Prompt Cache 计价
+
+模型目录支持按每百万 Token 配置可选的缓存读取价格。配置后，命中缓存的输入 Token 按该价格估算成本；留空时，DeepSeek V4 Pro 按标准输入价的约 0.83% 估算，其他 DeepSeek 模型按 2% 估算，其余非 Embedding 模型按 10% 估算。模型定价表会标记估算值，并在悬停时说明采用的比例。
+
 ## 安全检查清单
 
 | 控制项 | 要求 |

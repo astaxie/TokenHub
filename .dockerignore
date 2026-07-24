@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.vscode
+deploy
+docs
+frontend
+sdk
+tmp
+output
+*.log
+backend/data
+backend/tokenhub
+data/*
+!data/model-catalog.yaml

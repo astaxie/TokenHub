@@ -1,0 +1,28 @@
+services:
+  tokenhub-e2e-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tokenhub_e2e
+      POSTGRES_USER: tokenhub
+      POSTGRES_PASSWORD: tokenhub-e2e-password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tokenhub -d tokenhub_e2e"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  tokenhub-e2e:
+    image: golang:1.26-bookworm
+    working_dir: /workspace/backend
+    environment:
+      TEST_POSTGRES_URL: postgresql://tokenhub:tokenhub-e2e-password@tokenhub-e2e-postgres:5432/tokenhub_e2e?sslmode=disable
+      CGO_ENABLED: "1"
+    volumes:
+      - ..:/workspace:ro
+    depends_on:
+      tokenhub-e2e-postgres:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - go test -tags=integration ./internal/server -run '^TestMultiInstancePostgresE2E$$' -count=1 -v

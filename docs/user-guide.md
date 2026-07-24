@@ -17,8 +17,8 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 
 ## Call Sequence
 
-1. Open **Key Management** and choose the project that should own usage and cost.
-2. Create or copy a project API key. New keys are shown only once.
+1. Open **Key Management** and create or copy an API key. New keys are shown only once.
+2. TokenHub automatically attributes a personal key to an assigned project, or to the platform default project when none is assigned.
 3. Call `GET /v1/models` to see the model list available to that key.
 4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/responses`, or `POST /v1/embeddings`.
 5. Review **Usage Analytics** and **Request Logs** for requests, tokens, cost, and errors.
@@ -82,9 +82,36 @@ Common request fields:
 | `messages` | Yes | `system`, `user`, and `assistant` message list |
 | `max_tokens` | No | Maximum generated tokens |
 | `temperature` | No | Sampling temperature |
+| `reasoning_effort` | No | Reasoning effort for models and routes that support it |
 | `stream` | No | `true` returns Server-Sent Events |
 | `tools` | No | Function tools when supported by the upstream model |
 | `response_format` | No | JSON object or JSON schema when supported |
+
+### Reasoning effort
+
+Chat Completions accepts the OpenAI-compatible `reasoning_effort` field:
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "messages": [{"role": "user", "content": "Analyze the trade-offs."}],
+  "reasoning_effort": "high"
+}
+```
+
+Responses accepts the nested OpenAI-compatible form:
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "input": "Analyze the trade-offs.",
+  "reasoning": {"effort": "high"}
+}
+```
+
+TokenHub treats reasoning effort as a best-effort hint and does not change route ordering. OpenAI-compatible providers receive the value unchanged. Native Anthropic routes convert supported values to `output_config.effort`. Native Gemini routes convert supported values according to the model-specific `thinkingLevel` matrix for Gemini 3 and later models or the documented `thinkingBudget` for Gemini 2.5 models. Unsupported or blank values are omitted so the upstream model default remains in effect. If an upstream provider returns a `400` or `422` parameter error that explicitly identifies the effort field, TokenHub retries the same route once without that field before applying the existing failover behavior. Each physical retry counts toward Provider Resource RPM and appears as a route attempt.
+
+Responses reasoning effort is supported on OpenAI-compatible, Anthropic, and Gemini routes. Azure OpenAI Responses and streaming Responses are not implemented; those requests return `501 provider_capability_not_supported`.
 
 ## SDK Setup
 

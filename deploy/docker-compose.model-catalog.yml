@@ -1,0 +1,4 @@
+services:
+  tokenhub-backend:
+    volumes:
+      - ${TOKENHUB_MODEL_CATALOG_PATH:-../data/model-catalog.yaml}:/app/catalog/model-catalog.yaml:ro

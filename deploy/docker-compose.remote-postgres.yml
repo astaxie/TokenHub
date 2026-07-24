@@ -1,0 +1,82 @@
+services:
+  tokenhub-backend:
+    image: ghcr.io/astaxie/tokenhub-backend:${TOKENHUB_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    restart: unless-stopped
+    environment:
+      TOKENHUB_ENV: ${TOKENHUB_ENV:-prod}
+      TOKENHUB_HTTP_ADDR: :8080
+      TOKENHUB_PUBLIC_BASE_URL: ${TOKENHUB_PUBLIC_BASE_URL:?set TOKENHUB_PUBLIC_BASE_URL}
+      TOKENHUB_TRUSTED_PROXY_CIDRS: ${TOKENHUB_TRUSTED_PROXY_CIDRS:?set TOKENHUB_TRUSTED_PROXY_CIDRS}
+      TOKENHUB_CORS_ALLOWED_ORIGINS: ${TOKENHUB_CORS_ALLOWED_ORIGINS:-${TOKENHUB_PUBLIC_BASE_URL}}
+      TOKENHUB_ADMIN_TOKEN: ${TOKENHUB_ADMIN_TOKEN:?set TOKENHUB_ADMIN_TOKEN}
+      TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD: ${TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD:?set TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD}
+      TOKENHUB_SECRET_KEY: ${TOKENHUB_SECRET_KEY:?set TOKENHUB_SECRET_KEY}
+      TOKENHUB_DATABASE_URL: ${TOKENHUB_DATABASE_URL:?set remote TOKENHUB_DATABASE_URL}
+      TOKENHUB_MODEL_CATALOG_FILE: /app/catalog/model-catalog.yaml
+      TOKENHUB_SEED_DEMO: ${TOKENHUB_SEED_DEMO:-false}
+      TOKENHUB_LOG_LEVEL: ${TOKENHUB_LOG_LEVEL:-info}
+      TOKENHUB_RESOURCE_FAILURE_THRESHOLD: ${TOKENHUB_RESOURCE_FAILURE_THRESHOLD:-3}
+      TOKENHUB_RESOURCE_COOLDOWN_SECONDS: ${TOKENHUB_RESOURCE_COOLDOWN_SECONDS:-300}
+      TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS: ${TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS:-300}
+      TOKENHUB_CLUSTER_LOCK_TTL_SECONDS: ${TOKENHUB_CLUSTER_LOCK_TTL_SECONDS:-180}
+      TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS: ${TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS:-150}
+      TOKENHUB_DB_MAX_OPEN_CONNS: ${TOKENHUB_DB_MAX_OPEN_CONNS:-25}
+      TOKENHUB_DB_MAX_IDLE_CONNS: ${TOKENHUB_DB_MAX_IDLE_CONNS:-5}
+      TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES: ${TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES:-30}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    stop_grace_period: ${TOKENHUB_STOP_GRACE_PERIOD:-180s}
+    networks:
+      - tokenhub
+
+  tokenhub-frontend:
+    image: ghcr.io/astaxie/tokenhub-frontend:${TOKENHUB_IMAGE_TAG:-latest}
+    build:
+      context: ../frontend
+    restart: unless-stopped
+    environment:
+      TOKENHUB_API_BASE_URL: ${TOKENHUB_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-${TOKENHUB_PUBLIC_BASE_URL}}}
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - tokenhub
+
+  tokenhub-load-balancer:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${TOKENHUB_GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - ./nginx.multi-instance.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      tokenhub-backend:
+        condition: service_healthy
+      tokenhub-frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/gateway-healthz >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    networks:
+      - tokenhub
+
+networks:
+  tokenhub: {}

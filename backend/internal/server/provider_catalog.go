@@ -29,6 +29,7 @@ var catalogCache = struct {
 }{}
 
 var standardModelCategories = map[string]bool{
+	"codex":        true,
 	"openai":       true,
 	"claude":       true,
 	"deepseek":     true,
@@ -189,21 +190,22 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 		}
 	}
 	model := ProviderCatalogModel{
-		ID:                  id,
-		Name:                name,
-		DisplayName:         displayName,
-		CanonicalName:       canonicalModelName(id, displayName),
-		Category:            inferModelCategory(id, displayName),
-		Family:              firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
-		Type:                modelType,
-		ContextWindow:       int64(catalogNumberField(limit, "context")),
-		MaxOutputTokens:     int64(catalogNumberField(limit, "output")),
-		InputPriceUSDPer1M:  catalogNumberField(cost, "input"),
-		OutputPriceUSDPer1M: catalogNumberField(cost, "output"),
-		InputModalities:     catalogStringSliceField(modalities, "input"),
-		OutputModalities:    catalogStringSliceField(modalities, "output"),
-		LastUpdated:         catalogStringField(raw, "last_updated"),
-		Metadata:            metadata,
+		ID:                     id,
+		Name:                   name,
+		DisplayName:            displayName,
+		CanonicalName:          canonicalModelName(id, displayName),
+		Category:               inferModelCategory(id, displayName),
+		Family:                 firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
+		Type:                   modelType,
+		ContextWindow:          int64(catalogNumberField(limit, "context")),
+		MaxOutputTokens:        int64(catalogNumberField(limit, "output")),
+		InputPriceUSDPer1M:     catalogNumberField(cost, "input"),
+		CacheReadPriceUSDPer1M: catalogNumberField(cost, "cache_read"),
+		OutputPriceUSDPer1M:    catalogNumberField(cost, "output"),
+		InputModalities:        catalogStringSliceField(modalities, "input"),
+		OutputModalities:       catalogStringSliceField(modalities, "output"),
+		LastUpdated:            catalogStringField(raw, "last_updated"),
+		Metadata:               metadata,
 	}
 	model.Capabilities = catalogModelCapabilities(raw, model)
 	model.SupportedParameters = catalogModelParameters(raw, model)
@@ -560,6 +562,8 @@ func inferModelFamily(id string) string {
 func inferModelCategory(id string, displayName string) string {
 	normalized := strings.ToLower(strings.Join([]string{id, displayName}, " "))
 	switch {
+	case strings.Contains(normalized, "codex"):
+		return "codex"
 	case strings.Contains(normalized, "gpt") || strings.Contains(normalized, "openai") || strings.Contains(normalized, "o1") || strings.Contains(normalized, "o3") || strings.Contains(normalized, "o4"):
 		return "openai"
 	case strings.Contains(normalized, "claude") || strings.Contains(normalized, "anthropic"):

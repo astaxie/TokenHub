@@ -1,0 +1,188 @@
+.database-status {
+  display: grid;
+  gap: 16px;
+}
+
+.database-status-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.database-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.database-status-card,
+.database-status-details {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.database-status-card {
+  min-height: 132px;
+}
+
+.database-status-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.database-status-card-header h2 {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.database-status-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.database-status-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.database-status-card-icon.database {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.database-status-card-icon.runtime,
+.database-status-card-icon.version {
+  background: color-mix(in srgb, #7c3aed 12%, transparent);
+  color: #7c3aed;
+}
+
+.database-status-card-icon.connection {
+  background: var(--pos-weak);
+  color: var(--pos);
+}
+
+.database-status-card-icon.details {
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+
+.database-status-card-value {
+  min-width: 0;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.database-status-value-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.database-status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--ink-4);
+}
+
+.database-status-indicator.active {
+  background: var(--pos);
+}
+
+.database-status-state-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.database-status-state,
+.database-status-state-icon.normal {
+  color: var(--pos);
+}
+
+.database-status-state.error,
+.database-status-state-icon.error {
+  color: var(--red);
+}
+
+.database-status-state {
+  font-size: 20px;
+  font-weight: 720;
+}
+
+.database-status-version,
+.database-status-url {
+  color: var(--ink-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.database-status-version {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.database-status-url {
+  border-radius: 9px;
+  padding: 11px 12px;
+  background: var(--surface-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.database-status-note {
+  margin-top: 8px;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.database-status-message {
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+}
+
+.database-status-error {
+  border: 1px solid color-mix(in srgb, var(--red) 28%, var(--border));
+  border-radius: 12px;
+  padding: 13px 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: color-mix(in srgb, var(--red) 8%, var(--surface));
+  color: var(--red);
+}
+
+.database-status-error svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+  .database-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .database-status-card {
+    min-height: 120px;
+  }
+}

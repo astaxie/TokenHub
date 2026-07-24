@@ -1,0 +1,993 @@
+"use client";
+
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
+import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
+import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
+import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, notificationChannelTypes, type Provider, type ProviderCatalogEntry, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
+import { rowTitle, stringifyForm } from "../domain/entities";
+import { uniqueUIID, viewFromPath } from "../domain/formatting";
+import { reportDatasetLabel } from "../domain/labels";
+import { type AppLanguage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
+import { createKeyWithCapture } from "../resources/generic-config";
+import { downloadReport } from "../resources/governance-config";
+import { adminFetch, adminMutate, importUsersFromCSVContent, isAuthExpiredError, loadRequestLabel, notificationChannelDefaults, permissionPartialLoadMessage, readAdminError, readLoadError, routePayload } from "../resources/payloads";
+import { projectMemberConfig, projectMemberInitialValues } from "../resources/project-key-config";
+import { resourceConfigFor } from "../resources/settings-config";
+import { APIKeyWizardModal, UserImportModal } from "../shared/modals";
+import { ConfirmDialog, IssuedKeyModal } from "../shared/ui";
+import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "./auth";
+import { PageHeader, Sidebar, StatusStack, TopNav } from "./navigation-ui";
+import { AuditView } from "../views/audit";
+import { CrudView, ReportsView } from "../views/crud-projects";
+import { DatabaseStatusView } from "../views/database-model-pricing";
+import { GatewayView } from "../views/gateway-view";
+import { ModelCatalogView, RouteStrategyView } from "../views/model-catalog";
+import { OverviewView } from "../views/overview";
+import { PlaygroundPage } from "../views/playground";
+import { ProviderUpsertModal } from "../views/provider-editor";
+import { QuickAPIKeyModal } from "../views/quick-access";
+import { EditModal, SettingsView, usePagination } from "../views/settings-table";
+import { BillingView, UsageView } from "../views/usage-billing";
+
+export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const routeView = viewFromPath(pathname);
+  const [language, setLanguage] = useState<AppLanguage>(() => readSavedLanguage());
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [baseURL, setBaseURL] = useState(defaultBaseURL);
+  const [adminToken, setAdminToken] = useState("");
+  const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
+  const [loginIdentityProviders, setLoginIdentityProviders] = useState<LoginIdentityProvider[]>([]);
+  const [oauthReturnURL, setOAuthReturnURL] = useState(() => currentOAuthReturnURL());
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(allNavGroupTitles.map((title) => [title, true])),
+  );
+  const [activeView, setActiveView] = useState<ViewKey>(routeView);
+  const [data, setData] = useState<AppData>(emptyData());
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [modelCategoryFilter, setModelCategoryFilter] = useState("all");
+  const [settingsTab, setSettingsTab] = useState<SettingsTabKey>("settings");
+  const [modal, setModal] = useState<ModalState<any> | null>(null);
+  const [providerCreateOpen, setProviderCreateOpen] = useState(false);
+  const [providerEditItem, setProviderEditItem] = useState<Provider | null>(null);
+  const [quickAPIKeyOpen, setQuickAPIKeyOpen] = useState(false);
+  const [apiKeyWizardOpen, setApiKeyWizardOpen] = useState(false);
+  const [apiKeyWizardInitialValues, setApiKeyWizardInitialValues] = useState<Record<string, string>>({});
+  const [userImportOpen, setUserImportOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<ConfirmState<any> | null>(null);
+  const [issuedKey, setIssuedKey] = useState("");
+  const [reportHistory, setReportHistory] = useState<ReportExportHistoryItem[]>([]);
+  const resetToken = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("reset_token") ?? "";
+
+  const api = useMemo(() => ({ baseURL, adminToken }), [baseURL, adminToken]);
+  const activeConfig = resourceConfigFor(activeView);
+  const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
+  setActiveLanguage(language);
+
+  function changeLanguage(nextLanguage: AppLanguage) {
+    setLanguage(nextLanguage);
+  }
+
+  function toggleTheme() {
+    setTheme((value) => (value === "light" ? "dark" : "light"));
+  }
+
+  function selectView(view: ViewKey, options: { replace?: boolean } = {}) {
+    if (view !== activeView) {
+      setNotice("");
+      setError("");
+      setIssuedKey("");
+      setModelCategoryFilter(view === "notification-channels" ? "webhook" : "all");
+    }
+    setActiveView(view);
+    const nextPath = viewRoutes[view];
+    if (pathname === nextPath) return;
+    const suffix = typeof window === "undefined" ? "" : `${window.location.search}${window.location.hash}`;
+    const nextURL = `${nextPath}${suffix}`;
+    if (options.replace) {
+      router.replace(nextURL);
+    } else {
+      router.push(nextURL);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function bootstrapSession() {
+      const saved = readSavedSession();
+      const oauth = readOAuthLoginResult();
+      const sessionBaseURL = readPendingOAuthBaseURL() ?? saved?.baseURL ?? defaultBaseURL;
+      if (!oauth && forwardOAuthAuthorizationResponse(sessionBaseURL)) return;
+      if (oauth?.error) {
+        clearOAuthLoginResult();
+        clearPendingOAuthBaseURL();
+        setError(tx("OAuth 登录失败"));
+      }
+      if (oauth?.token) {
+        setBaseURL(sessionBaseURL);
+        setLoading(true);
+        try {
+          const resp = await fetch(`${sessionBaseURL.replace(/\/$/, "")}/api/admin/auth/me`, {
+            headers: { authorization: `Bearer ${oauth.token}` },
+          });
+          if (!resp.ok) {
+            throw new Error(await readAdminError(resp, "OAuth 会话校验失败"));
+          }
+          const payload = (await resp.json()) as { user: AdminUser };
+          const expiresAt = oauth.expiresAt || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+          if (cancelled) return;
+          setData(emptyData());
+          setAdminToken(oauth.token);
+          setCurrentUser(payload.user);
+          saveSession({ baseURL: sessionBaseURL, token: oauth.token, user: payload.user, expiresAt });
+          setError("");
+        } catch (err) {
+          if (!cancelled) setError(err instanceof Error ? err.message : tx("OAuth 登录失败"));
+        } finally {
+          clearOAuthLoginResult();
+          clearPendingOAuthBaseURL();
+          if (!cancelled) {
+            setLoading(false);
+            setBootstrapped(true);
+          }
+        }
+        return;
+      }
+      if (saved) {
+        setBaseURL(saved.baseURL);
+        setAdminToken(saved.token);
+        setCurrentUser(saved.user);
+      }
+      setBootstrapped(true);
+    }
+    void bootstrapSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOAuthReturnURL(currentOAuthReturnURL());
+    }
+  }, []);
+
+  useEffect(() => {
+    const result = readProviderAccountOAuthResultFromLocation();
+    if (!result) return;
+    savePendingProviderAccountOAuthResult(result);
+    clearProviderAccountOAuthResultFromLocation();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser || !hasPendingProviderAccountOAuthResult()) return;
+    selectView("providers", { replace: true });
+    setProviderCreateOpen(true);
+    setNotice(tx("收到账号授权回调，已打开账号池创建向导。"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!bootstrapped || currentUser) return;
+    let cancelled = false;
+    async function loadLoginIdentityProviders() {
+      try {
+        const resp = await fetch(`${baseURL.replace(/\/$/, "")}/api/admin/auth/identity-providers`);
+        if (!resp.ok) {
+          if (!cancelled) setLoginIdentityProviders([]);
+          return;
+        }
+        const payload = (await resp.json()) as { data?: LoginIdentityProvider[] };
+        if (!cancelled) setLoginIdentityProviders(payload.data ?? []);
+      } catch {
+        if (!cancelled) setLoginIdentityProviders([]);
+      }
+    }
+    void loadLoginIdentityProviders();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseURL, bootstrapped, currentUser]);
+
+  useEffect(() => {
+    setActiveLanguage(language);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(languageStorageKey, language);
+      document.documentElement.lang = language === "zh-CN" ? "zh-CN" : language;
+    }
+  }, [language]);
+
+  useEffect(() => {
+    if (!bootstrapped || !adminToken || !currentUser) return;
+    if (!canAccessView(currentUser, activeView)) return;
+    void load(activeView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootstrapped, adminToken, currentUser, activeView]);
+
+  useEffect(() => {
+    if (activeView === "notification-channels" && !notificationChannelTypes.includes(modelCategoryFilter)) {
+      setModelCategoryFilter("webhook");
+    }
+  }, [activeView, modelCategoryFilter]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!canAccessView(currentUser, activeView)) {
+      selectView(defaultViewForRole(currentUser), { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, activeView]);
+
+  useEffect(() => {
+    if (!currentUser || !canAccessView(currentUser, activeView)) return;
+    rememberRecentView(activeView);
+  }, [activeView, currentUser]);
+
+  useEffect(() => {
+    if (isOAuthAuthorizationResponse()) return;
+    if (readOAuthLoginResult()) return;
+    setNotice("");
+    setError("");
+    setModelCategoryFilter(routeView === "notification-channels" ? "webhook" : "all");
+    setActiveView(routeView);
+  }, [routeView]);
+
+  useEffect(() => {
+    function onAuthExpired() {
+      clearSavedSession();
+      setAdminToken("");
+      setCurrentUser(null);
+      setData(emptyData());
+      setModal(null);
+      setProviderCreateOpen(false);
+      setProviderEditItem(null);
+      setApiKeyWizardOpen(false);
+      setApiKeyWizardInitialValues({});
+      setUserImportOpen(false);
+      setConfirmDelete(null);
+      setIssuedKey("");
+      setNotice("");
+      setError("");
+      selectView("overview", { replace: true });
+      setLoading(false);
+    }
+    window.addEventListener(authExpiredEventName, onAuthExpired);
+    return () => window.removeEventListener(authExpiredEventName, onAuthExpired);
+  }, []);
+
+  useEffect(() => {
+    function onIssuedKey(event: Event) {
+      const detail = (event as CustomEvent<string>).detail;
+      if (!detail) return;
+      if (isIssuedAPIKey(detail)) {
+        setNotice("");
+        setIssuedKey(detail);
+      } else {
+        setIssuedKey("");
+        setNotice(detail);
+      }
+    }
+    window.addEventListener("tokenhub-issued-key", onIssuedKey);
+    return () => window.removeEventListener("tokenhub-issued-key", onIssuedKey);
+  }, []);
+
+  async function load(view: ViewKey = activeView) {
+    if (!adminToken || !currentUser) return;
+    if (!canAccessView(currentUser, view)) return;
+    setLoading(true);
+    setError("");
+    try {
+      const plan = loadPlanForView(currentUser, view);
+      const requests: Array<{ name: string; request: Promise<Response>; optional?: boolean }> = [];
+      const queue = (enabled: boolean, name: string, path: string) => {
+        if (enabled) requests.push({ name, request: adminFetch(api, path) });
+      };
+
+      queue(plan.overview, "overview", "/api/admin/overview");
+      queue(plan.providers, "providers", "/api/admin/providers");
+      queue(plan.providerResources, "provider-resources", "/api/admin/provider-resources");
+      queue(plan.keys, "api-keys", "/api/admin/api-keys");
+      queue(plan.routes, "routes", "/api/admin/routing-rules");
+      queue(plan.logs, "audit", "/api/admin/audit/requests");
+      queue(plan.auditEvents, "audit-events", "/api/admin/audit/events");
+      queue(plan.alerts, "alerts", "/api/admin/alerts");
+      queue(plan.alertDeliveries, "alert-deliveries", "/api/admin/alert-deliveries");
+      queue(plan.approvals, "approvals", "/api/admin/approvals");
+      queue(plan.sqliteBackups, "sqlite-backups", "/api/admin/sqlite/backups");
+      queue(plan.breakdown, "breakdown", "/api/admin/usage/breakdown");
+      queue(plan.timeseries, "timeseries", "/api/admin/usage/timeseries");
+      queue(plan.users, "users", "/api/admin/users");
+      queue(plan.providerCatalog, "provider-catalog", "/api/admin/provider-catalog");
+      queue(plan.providerMonitoring, "provider-monitoring", "/api/admin/providers/monitoring");
+      for (const kind of plan.resources) {
+        requests.push({ name: `resource:${kind}`, request: adminFetch(api, `/api/admin/resources/${kind}`), optional: true });
+      }
+
+      const responses = await Promise.all(requests.map((item) => item.request));
+      const skippedResources: string[] = [];
+      for (let index = 0; index < responses.length; index += 1) {
+        const resp = responses[index];
+        if (!resp.ok) {
+          if (resp.status === 403 && requests[index].optional) {
+            skippedResources.push(loadRequestLabel(requests[index].name));
+            continue;
+          }
+          throw new Error(await readLoadError(resp, requests[index].name));
+        }
+      }
+
+      const loaded: LoadedData = {};
+      for (let index = 0; index < responses.length; index += 1) {
+        const name = requests[index].name;
+        const resp = responses[index];
+        if (!resp.ok) continue;
+        if (name === "overview") {
+          const overview = await resp.json();
+          loaded.summary = overview.summary ?? emptySummary();
+          loaded.projects = overview.projects ?? [];
+          loaded.providers = overview.providers ?? [];
+          loaded.providerResources = overview.provider_resources ?? [];
+          loaded.models = overview.models ?? [];
+          loaded.alerts = overview.alerts ?? [];
+        } else if (name === "providers") {
+          const payload = (await resp.json()) as { data: Provider[] };
+          loaded.providers = payload.data ?? [];
+        } else if (name === "provider-resources") {
+          const payload = (await resp.json()) as { data: ProviderResource[] };
+          loaded.providerResources = payload.data ?? [];
+        } else if (name === "api-keys") {
+          const payload = (await resp.json()) as { data: APIKey[] };
+          loaded.keys = payload.data ?? [];
+        } else if (name === "routes") {
+          const payload = (await resp.json()) as { data: ModelRoute[] };
+          loaded.routes = payload.data ?? [];
+        } else if (name === "audit") {
+          const payload = (await resp.json()) as { data: RequestLog[] };
+          loaded.logs = payload.data ?? [];
+        } else if (name === "audit-events") {
+          const payload = (await resp.json()) as { data: AuditEvent[] };
+          loaded.auditEvents = payload.data ?? [];
+        } else if (name === "alerts") {
+          const payload = (await resp.json()) as { data: AlertEvent[] };
+          loaded.alerts = payload.data ?? [];
+        } else if (name === "alert-deliveries") {
+          const payload = (await resp.json()) as { data: AlertDelivery[] };
+          loaded.alertDeliveries = payload.data ?? [];
+        } else if (name === "approvals") {
+          const payload = (await resp.json()) as { data: ApprovalRequest[] };
+          loaded.approvals = payload.data ?? [];
+        } else if (name === "sqlite-backups") {
+          const payload = (await resp.json()) as { data: SQLiteBackup[] };
+          loaded.sqliteBackups = payload.data ?? [];
+        } else if (name === "breakdown") {
+          loaded.breakdown = (await resp.json()) as UsageBreakdown;
+        } else if (name === "timeseries") {
+          const payload = (await resp.json()) as { data: UsagePoint[] };
+          loaded.timeseries = payload.data ?? [];
+        } else if (name === "users") {
+          const payload = (await resp.json()) as { data: AdminUser[] };
+          loaded.users = payload.data ?? [];
+        } else if (name === "provider-catalog") {
+          const payload = (await resp.json()) as { data: ProviderCatalogEntry[] };
+          loaded.providerCatalog = payload.data ?? [];
+        } else if (name === "provider-monitoring") {
+          const payload = (await resp.json()) as { data: ProviderMonitoringSnapshot[] };
+          loaded.providerMonitoring = payload.data ?? [];
+        } else if (name.startsWith("resource:")) {
+          const kind = name.slice("resource:".length);
+          const payload = (await resp.json()) as { data: AdminResource[] };
+          loaded.resources = { ...(loaded.resources ?? {}), [kind]: payload.data ?? [] };
+        }
+      }
+
+      setData((current) => mergeLoadedData(current, loaded));
+      if (skippedResources.length > 0) {
+        setNotice(permissionPartialLoadMessage(skippedResources));
+      }
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("连接失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function login(identity: string, password: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const resp = await fetch(`${baseURL.replace(/\/$/, "")}/api/admin/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identity, password }),
+      });
+      if (!resp.ok) throw new Error(`login ${resp.status}`);
+      const payload = (await resp.json()) as { token: string; user: AdminUser; expires_at: string };
+      setData(emptyData());
+      setAdminToken(payload.token);
+      setCurrentUser(payload.user);
+      saveSession({ baseURL, token: payload.token, user: payload.user, expiresAt: payload.expires_at });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tx("登录失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetPassword(token: string, password: string) {
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const resp = await fetch(`${baseURL.replace(/\/$/, "")}/api/admin/auth/reset-password`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+      if (!resp.ok) throw new Error(`reset password ${resp.status}`);
+      window.history.replaceState(null, "", window.location.pathname);
+      setNotice(tx("密码已重置，请使用新密码登录"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tx("密码重置失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function logout() {
+    if (adminToken) {
+      await adminFetch(api, "/api/admin/auth/logout", { method: "POST" }).catch(() => undefined);
+    }
+    clearSavedSession();
+    setAdminToken("");
+    setCurrentUser(null);
+    setData(emptyData());
+    setUserImportOpen(false);
+    setApiKeyWizardOpen(false);
+    setApiKeyWizardInitialValues({});
+    selectView("overview", { replace: true });
+  }
+
+  async function saveModal(values: Record<string, string>) {
+    if (!modal) return;
+    setLoading(true);
+    setError("");
+    try {
+      if (modal.item) {
+        await modal.config.update?.(api, modal.item, values);
+      } else {
+        await modal.config.create?.(api, values, data);
+      }
+      setModal(null);
+      await load();
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("保存失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteItem<T>(config: ResourceConfig<T>, item: T) {
+    if (!config.remove) return;
+    setLoading(true);
+    setError("");
+    try {
+      await config.remove(api, item);
+      setIssuedKey("");
+      setConfirmDelete(null);
+      await load();
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("删除失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function importUsersFromCSV(content: string) {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      setNotice("");
+      setError(tx("请先粘贴 CSV 内容。"));
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await importUsersFromCSVContent(api, trimmed);
+      const created = result.created ?? 0;
+      const updated = result.updated ?? 0;
+      const skipped = result.skipped ?? 0;
+      setUserImportOpen(false);
+      await load("users");
+      setNotice(importUsersDoneMessage(created, updated, skipped));
+      if (skipped > 0 && result.errors?.length) {
+        setError(importUsersSkippedMessage(skipped, result.errors.slice(0, 3).join("；")));
+      }
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("用户导入失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openCreateRoute() {
+    if (!activeConfig) return;
+    if (loading) {
+      setNotice("");
+      setError(tx("数据加载中，请稍后再操作。"));
+      return;
+    }
+    if (data.models.length === 0) {
+      setNotice("");
+      setError(tx("请先维护模型目录，再新增路由策略。"));
+      selectView("models");
+      return;
+    }
+    if (data.providers.length === 0) {
+      setNotice("");
+      setError(tx("请先新增 Provider 渠道，再配置路由策略。"));
+      selectView("providers");
+      return;
+    }
+    setModal({ config: activeConfig });
+  }
+
+  function openCreateAPIKey() {
+    if (loading) {
+      setNotice("");
+      setError(tx("数据加载中，请稍后再操作。"));
+      return;
+    }
+    setIssuedKey("");
+    setQuickAPIKeyOpen(true);
+  }
+
+  function quickCreateAPIKey(values: Record<string, string>, onCreated: () => void) {
+    void createKeyWithCapture(api, values, setIssuedKey, setNotice, load, setLoading, setError, onCreated);
+  }
+
+  function openCreateForCurrentView() {
+    if (!activeConfig) return;
+    if (activeView === "routes") {
+      openCreateRoute();
+      return;
+    }
+    if (loading) {
+      setNotice("");
+      setError(tx("数据加载中，请稍后再操作。"));
+      return;
+    }
+    if (activeConfig.view === "providers") {
+      setProviderCreateOpen(true);
+      return;
+    }
+    if (activeConfig.view === "notification-channels") {
+      setModal({ config: activeConfig, initialValues: notificationChannelDefaults(modelCategoryFilter) });
+      return;
+    }
+    if (activeConfig.view === "api-keys") {
+      openCreateAPIKey();
+      return;
+    }
+    setModal({ config: activeConfig });
+  }
+
+  async function reorderModelRoutes(model: Model, orderedRoutes: ModelRoute[]) {
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      for (let index = 0; index < orderedRoutes.length; index += 1) {
+        const route = orderedRoutes[index];
+        const nextPriority = index + 1;
+        if (route.priority === nextPriority) continue;
+        await adminMutate(api, `/api/admin/routing-rules/${route.id}`, "PATCH", routePayload({
+          ...stringifyForm(route),
+          priority: String(nextPriority),
+        }));
+      }
+      setNotice(tx(`已更新 ${model.name} 的 Provider 调用顺序`));
+      await load();
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("更新路由顺序失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const viewItems = activeConfig?.list(data) ?? [];
+  const categoryItems = filterByModelCategory(activeConfig?.view, viewItems, modelCategoryFilter, data);
+  const filteredItems = filterRows(categoryItems, query);
+  const crudPagination = usePagination(filteredItems.length, `${activeView}:${modelCategoryFilter}:${query}`);
+  const pagedItems = useMemo(
+    () => filteredItems.slice(crudPagination.startIndex, crudPagination.endIndex),
+    [filteredItems, crudPagination.startIndex, crudPagination.endIndex],
+  );
+
+  if (!bootstrapped) {
+    return <main className="login-shell" />;
+  }
+
+  if (resetToken && !currentUser) {
+    return (
+      <ResetPasswordView
+        loading={loading}
+        error={error}
+        theme={theme}
+        onThemeToggle={toggleTheme}
+        token={resetToken}
+        onReset={(token, password) => void resetPassword(token, password)}
+      />
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <LoginView
+        loading={loading}
+        error={error}
+        baseURL={baseURL}
+        identityProviders={loginIdentityProviders}
+        oauthReturnURL={oauthReturnURL}
+        theme={theme}
+        onThemeToggle={toggleTheme}
+        onLogin={(identity, password) => void login(identity, password)}
+      />
+    );
+  }
+
+  return (
+    <main className={sidebarCollapsed ? "app-shell sidebar-collapsed" : "app-shell"} data-theme={theme}>
+      <Sidebar
+        activeView={activeView}
+        onSelect={selectView}
+        user={currentUser}
+        onLogout={() => void logout()}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
+        openGroups={openNavGroups}
+        onToggleGroup={(title) =>
+          setOpenNavGroups((current) => ({ ...current, [title]: current[title] === false }))
+        }
+      />
+
+      <section className="workspace">
+        <TopNav
+          activeView={activeView}
+          data={data}
+          user={currentUser}
+          theme={theme}
+          onSelectView={selectView}
+          onThemeToggle={toggleTheme}
+        />
+
+        <div className={activeView === "playground" ? "content-panel playground-content-panel" : "content-panel"}>
+          {activeView === "playground" || activeView === "overview" ? null : (
+            <PageHeader activeView={activeView} data={data} meta={activeMeta} user={currentUser} />
+          )}
+
+          <StatusStack
+            error={error}
+            notice={notice}
+            onClearError={() => setError("")}
+            onClearNotice={() => setNotice("")}
+          />
+
+          {activeView === "playground" ? null : <div className="divider" />}
+
+          {activeView === "overview" ? (
+            <OverviewView data={data} user={currentUser} onSelectView={selectView} />
+          ) : activeView === "playground" ? (
+            <PlaygroundPage api={api} data={data} canViewRoutes={canAccessView(currentUser, "routes")} />
+          ) : activeView === "gateway" ? (
+            <GatewayView
+              api={api}
+              data={data}
+              user={currentUser}
+              language={language}
+              onLanguageChange={changeLanguage}
+              loading={loading}
+              onQuickCreateKey={quickCreateAPIKey}
+              onManageKeys={() => selectView("api-keys")}
+            />
+          ) : activeView === "usage" ? (
+            <UsageView data={data} user={currentUser} />
+          ) : activeView === "billing" ? (
+            <BillingView data={data} user={currentUser} />
+          ) : activeView === "audit" ? (
+            <AuditView api={api} data={data} user={currentUser} />
+          ) : activeView === "database-status" ? (
+            <DatabaseStatusView api={api} isDark={theme === "dark"} />
+          ) : activeView === "settings" ? (
+            <SettingsView
+              data={data}
+              activeTab={settingsTab}
+              language={language}
+              onTabChange={setSettingsTab}
+              onLanguageChange={changeLanguage}
+              onCreate={(config) => setModal({ config })}
+              onEdit={(config, item) => setModal({ config, item })}
+              onDelete={(config, item) => setConfirmDelete({ config, item })}
+              onAction={(action, item) => void runResourceAction(action, item, data)}
+              onToolbarAction={(action, items) => void runToolbarAction(action, items)}
+            />
+          ) : activeView === "routes" && activeConfig ? (
+            <RouteStrategyView
+              config={activeConfig as ResourceConfig<ModelRoute>}
+              data={data}
+              loading={loading}
+              onCreate={openCreateRoute}
+              onEdit={(route) => setModal({ config: activeConfig, item: route })}
+              onDelete={(route) => setConfirmDelete({ config: activeConfig, item: route })}
+              onReorder={(model, routes) => void reorderModelRoutes(model, routes)}
+            />
+          ) : activeView === "models" && activeConfig ? (
+            <ModelCatalogView
+              config={activeConfig as ResourceConfig<Model>}
+              data={data}
+              readOnly={!canAccessView(currentUser, "routes")}
+              onCreate={() => setModal({ config: activeConfig })}
+              onEdit={(item) => setModal({ config: activeConfig, item })}
+              onDelete={(item) => setConfirmDelete({ config: activeConfig, item })}
+              onAction={(action, item) => void runResourceAction(action, item, data)}
+            />
+          ) : activeView === "reports" && activeConfig ? (
+            <ReportsView
+              config={activeConfig as ResourceConfig<AdminResource>}
+              data={data}
+              history={reportHistory}
+              loading={loading}
+              onCreate={() => setModal({ config: activeConfig })}
+              onEdit={(item) => setModal({ config: activeConfig, item })}
+              onDelete={(item) => setConfirmDelete({ config: activeConfig, item })}
+              onAction={(action, item) => void runResourceAction(action, item, data)}
+              onExport={(dataset) => void exportReportDataset(dataset)}
+            />
+          ) : activeConfig ? (
+            <CrudView
+              config={activeConfig}
+              data={data}
+              api={api}
+              user={currentUser}
+              items={pagedItems}
+              monitorItems={filteredItems}
+              totalItems={filteredItems.length}
+              loading={loading}
+              query={query}
+              pagination={crudPagination}
+              categoryFilter={modelCategoryFilter}
+              onCategoryFilter={setModelCategoryFilter}
+              onQuery={setQuery}
+              onCreate={openCreateForCurrentView}
+              onEdit={(item) => {
+                if (activeConfig.view === "providers") {
+                  setProviderEditItem(item as Provider);
+                  return;
+                }
+                setModal({ config: activeConfig, item });
+              }}
+              onDelete={(item) => setConfirmDelete({ config: activeConfig, item })}
+              onAction={(action, item) => void runResourceAction(action, item, data)}
+              onProjectMemberCreate={(project) => setModal({ config: projectMemberConfig(), initialValues: projectMemberInitialValues(project) })}
+              onProjectMemberEdit={(member) => setModal({ config: projectMemberConfig(), item: member })}
+              onProjectMemberDelete={(member) => setConfirmDelete({ config: projectMemberConfig(), item: member })}
+              onToolbarAction={(action) => void runToolbarAction(action, filteredItems)}
+            />
+          ) : null}
+        </div>
+      </section>
+
+      {modal ? (
+        <EditModal
+          state={modal}
+          data={data}
+          currentUser={currentUser}
+          loading={loading}
+          onClose={() => setModal(null)}
+          onSave={(values) => {
+            if (modal.config.view === "api-keys" && !modal.item) {
+              void createKeyWithCapture(api, values, setIssuedKey, setNotice, load, setLoading, setError, () => setModal(null));
+              return;
+            }
+            void saveModal(values);
+          }}
+        />
+      ) : null}
+
+      {providerCreateOpen ? (
+        <ProviderUpsertModal
+          mode="create"
+          api={api}
+          catalog={data.providerCatalog}
+          standardModels={data.models}
+          resources={data.providerResources}
+          loading={loading}
+          onClose={() => setProviderCreateOpen(false)}
+          onSaved={async () => {
+            setProviderCreateOpen(false);
+            await load();
+          }}
+          setLoading={setLoading}
+          setError={setError}
+          setNotice={setNotice}
+        />
+      ) : null}
+
+      {providerEditItem ? (
+        <ProviderUpsertModal
+          mode="edit"
+          provider={providerEditItem}
+          api={api}
+          catalog={data.providerCatalog}
+          standardModels={data.models}
+          routes={data.routes}
+          resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}
+          loading={loading}
+          onClose={() => setProviderEditItem(null)}
+          onSaved={async () => {
+            setProviderEditItem(null);
+            await load();
+          }}
+          onAccountsChanged={async () => {
+            await load();
+          }}
+          setLoading={setLoading}
+          setError={setError}
+          setNotice={setNotice}
+        />
+      ) : null}
+
+      {quickAPIKeyOpen ? (
+        <QuickAPIKeyModal
+          data={data}
+          user={currentUser}
+          loading={loading}
+          onClose={() => {
+            if (!loading) setQuickAPIKeyOpen(false);
+          }}
+          onCreate={(values) => quickCreateAPIKey(values, () => setQuickAPIKeyOpen(false))}
+        />
+      ) : null}
+
+      {apiKeyWizardOpen ? (
+        <APIKeyWizardModal
+          data={data}
+          currentUser={currentUser}
+          initialValues={apiKeyWizardInitialValues}
+          loading={loading}
+          onClose={() => {
+            if (!loading) {
+              setApiKeyWizardOpen(false);
+              setApiKeyWizardInitialValues({});
+            }
+          }}
+          onCreate={(values) => {
+            setIssuedKey("");
+            void createKeyWithCapture(api, values, setIssuedKey, setNotice, load, setLoading, setError, () => {
+              setApiKeyWizardOpen(false);
+              setApiKeyWizardInitialValues({});
+            });
+          }}
+        />
+      ) : null}
+
+      {userImportOpen ? (
+        <UserImportModal
+          loading={loading}
+          onClose={() => setUserImportOpen(false)}
+          onImport={(content) => void importUsersFromCSV(content)}
+        />
+      ) : null}
+
+      {confirmDelete ? (
+        <ConfirmDialog
+          title={tx("确认删除")}
+          message={deleteConfirmMessage(rowTitle(confirmDelete.item))}
+          loading={loading}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => void deleteItem(confirmDelete.config, confirmDelete.item)}
+        />
+      ) : null}
+
+      {issuedKey ? (
+        <IssuedKeyModal
+          value={issuedKey}
+          onClose={() => setIssuedKey("")}
+        />
+      ) : null}
+
+    </main>
+  );
+
+  async function runResourceAction<T>(action: ResourceAction<T>, item: T, appData: AppData) {
+    if (action.modal) {
+      const nextModal = action.modal(item, appData);
+      if (nextModal.config.view === "api-keys" && !nextModal.item) {
+        setIssuedKey("");
+        setApiKeyWizardInitialValues(nextModal.initialValues ?? {});
+        setApiKeyWizardOpen(true);
+        return;
+      }
+      setModal(nextModal);
+      return;
+    }
+    if (!action.run) return;
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      await action.run(api, item);
+      setNotice(tx(action.doneMessage?.(item) ?? "操作已完成"));
+      await load();
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("操作失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runToolbarAction(action: ToolbarAction, items: unknown[]) {
+    if (action.kind === "import-users") {
+      setError("");
+      setNotice("");
+      setUserImportOpen(true);
+      return;
+    }
+    if (!action.run) return;
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      await action.run(api, items);
+      setNotice(tx(action.doneMessage?.() ?? "操作已完成"));
+      await load();
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("操作失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function exportReportDataset(dataset: string) {
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await downloadReport(api, dataset);
+      if (result) {
+        setNotice(tx(`${reportDatasetLabel(dataset)} 已导出`));
+        setReportHistory((current) => [
+          {
+            id: uniqueUIID("export"),
+            dataset,
+            file_name: result.fileName,
+            period: result.period,
+            exported_at: new Date().toISOString(),
+          },
+          ...current,
+        ].slice(0, 8));
+      }
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("导出失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+}

@@ -17,6 +17,7 @@ type modelCatalogSeed struct {
 	Modality               string            `yaml:"modality"`
 	ContextWindow          int64             `yaml:"context_window"`
 	InputPriceUSDPer1M     float64           `yaml:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M float64           `yaml:"cache_read_price_usd_per_1m"`
 	OutputPriceUSDPer1M    float64           `yaml:"output_price_usd_per_1m"`
 	EmbeddingPriceUSDPer1M float64           `yaml:"embedding_price_usd_per_1m"`
 	InputModalities        []string          `yaml:"input_modalities"`
@@ -124,6 +125,7 @@ func buildCatalogModel(seed modelCatalogSeed) Model {
 		Capabilities:           capabilities,
 		SupportedParameters:    supportedParameters,
 		InputPriceUSDPer1M:     inputPrice,
+		CacheReadPriceUSDPer1M: seed.CacheReadPriceUSDPer1M,
 		OutputPriceUSDPer1M:    outputPrice,
 		EmbeddingPriceUSDPer1M: seed.EmbeddingPriceUSDPer1M,
 		Status:                 StatusActive,

@@ -27,6 +27,7 @@ import (
 	"time"
 
 	sqlite3 "github.com/mattn/go-sqlite3"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -40,6 +41,76 @@ type QuotaBucket struct {
 	Scope  string `gorm:"primaryKey"`
 	Bucket string `gorm:"primaryKey;index"`
 	QuotaCounter
+}
+
+// InFlightLease makes concurrency enforcement visible to every backend
+// instance. Leases are renewed by the owning process and expire automatically
+// after a crash so capacity cannot remain permanently wedged.
+type InFlightLease struct {
+	ID        string    `gorm:"primaryKey"`
+	ScopeType string    `gorm:"index:idx_in_flight_scope,priority:1"`
+	ScopeID   string    `gorm:"index:idx_in_flight_scope,priority:2"`
+	ExpiresAt time.Time `gorm:"index"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// ClusterLease is a database-backed, expiring mutex used for operations that
+// must have a single writer across the whole TokenHub cluster.
+type ClusterLease struct {
+	Name      string    `gorm:"primaryKey"`
+	OwnerID   string    `gorm:"index"`
+	ExpiresAt time.Time `gorm:"index"`
+	UpdatedAt time.Time
+}
+
+// ClusterTaskState prevents every replica from repeating the same startup
+// task. Revisions are monotonic: an older binary never overwrites work already
+// completed by a newer revision.
+type ClusterTaskState struct {
+	Name        string `gorm:"primaryKey"`
+	Revision    int64
+	CompletedAt time.Time
+}
+
+type AdapterSessionBinding struct {
+	ID              string    `json:"id" gorm:"primaryKey"`
+	AdapterType     string    `json:"adapter_type" gorm:"uniqueIndex:idx_adapter_session_binding,priority:1"`
+	AffinityKind    string    `json:"affinity_kind"`
+	ProviderID      string    `json:"provider_id" gorm:"uniqueIndex:idx_adapter_session_binding,priority:2;index"`
+	AffinityKeyHash string    `json:"-" gorm:"uniqueIndex:idx_adapter_session_binding,priority:3"`
+	ResourceID      string    `json:"resource_id" gorm:"index"`
+	Generation      int64     `json:"generation"`
+	RebindReason    string    `json:"rebind_reason,omitempty"`
+	LastUsedAt      time.Time `json:"last_used_at"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type ProviderResourceObservation struct {
+	ResourceID        string            `json:"resource_id" gorm:"primaryKey"`
+	AdapterType       string            `json:"adapter_type" gorm:"index"`
+	RateLimitHeaders  map[string]string `json:"rate_limit_headers,omitempty" gorm:"serializer:json"`
+	QuotaSnapshot     string            `json:"-" gorm:"type:text"`
+	QuotaFetchedAt    *time.Time        `json:"quota_fetched_at,omitempty"`
+	UpstreamRequestID string            `json:"upstream_request_id,omitempty"`
+	ServedModel       string            `json:"served_model,omitempty"`
+	ModelETag         string            `json:"model_etag,omitempty"`
+	Transport         string            `json:"transport,omitempty"`
+	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+type ProviderObservation struct {
+	ID          string    `json:"id" gorm:"primaryKey"`
+	ProviderID  string    `json:"provider_id" gorm:"index"`
+	ResourceID  string    `json:"resource_id,omitempty" gorm:"index"`
+	AdapterType string    `json:"adapter_type" gorm:"index"`
+	Source      string    `json:"source" gorm:"index"`
+	Operation   string    `json:"operation" gorm:"index"`
+	Success     bool      `json:"success" gorm:"index"`
+	LatencyMS   int64     `json:"latency_ms"`
+	ErrorCode   string    `json:"error_code,omitempty"`
+	ObservedAt  time.Time `json:"observed_at" gorm:"index"`
 }
 
 type Store interface {
@@ -63,6 +134,7 @@ type Store interface {
 	AddProviderResource(resource ProviderResource) (ProviderResource, error)
 	ListProviderResources() []ProviderResource
 	UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error)
+	UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error)
 	DeleteProviderResource(id string) error
 	SetProviderResourceHealth(resourceID string, healthy bool) (ProviderResource, error)
 	BulkOperateProviderResources(action string, ids []string) (ProviderResourceBulkResult, error)
@@ -79,7 +151,7 @@ type Store interface {
 	SelectRouteCandidates(modelName string) ([]RouteSelection, error)
 	MarkRouteUsed(routeID string)
 	MarkProviderResourceUsed(resourceID string)
-	StartCall(project Project, key APIKey, modelName string) (CallContext, error)
+	StartCall(ctx context.Context, project Project, key APIKey, modelName string) (CallContext, error)
 	FinishCall(call CallContext, route RouteSelection, usage Usage, statusCode int, errorCode string, clientIP string, userAgent string)
 	RecordPlaygroundRequest(call CallContext, route RouteSelection, statusCode int, errorCode string, clientIP string, userAgent string)
 	RecordRouteAttempts(requestID string, attempts []RouteAttempt)
@@ -92,6 +164,10 @@ type Store interface {
 	UsageTimeseries(days int) []map[string]any
 	GenerateBillingPeriod(period string) (map[string]any, error)
 	ListRequestLogs() []RequestLog
+	ListProviderObservations(since time.Time) []ProviderObservation
+	RecordProviderObservation(observation ProviderObservation)
+	GetProviderResourceObservation(resourceID string) (ProviderResourceObservation, bool)
+	SaveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error
 	GetRequestDetail(requestID string) (map[string]any, error)
 	ListAlerts() []AlertEvent
 	GetAlert(id string) (AlertEvent, error)
@@ -124,28 +200,149 @@ type Store interface {
 	RestoreSQLiteBackup(id string, restoredBy string) (SQLiteBackupRecord, error)
 	DeleteSQLiteBackup(id string) error
 	AccessibleModels(key APIKey) []Model
-	CheckProviderResourceCapacity(resourceID string) error
-	FinishProviderResourceAttempt(resourceID string, success bool, usage Usage)
+	CheckProviderResourceCapacity(ctx context.Context, resourceID string) (string, context.Context, error)
+	CheckProviderResourceRetryCapacity(ctx context.Context, resourceID string, leaseID string) error
+	ReleaseProviderResourceCapacity(resourceID string, leaseID string)
+	FinishProviderResourceAttempt(resourceID string, leaseID string, success bool, usage Usage)
 	RefreshProviderResourceCredentials(ctx context.Context, resourceID string, force bool) (ProviderResourceCredentials, error)
+	GetAdapterSessionBinding(ctx context.Context, adapterType string, providerID string, affinityKeyHash string) (AdapterSessionBinding, bool, error)
+	CommitAdapterSessionBinding(ctx context.Context, binding AdapterSessionBinding, expectedGeneration int64) (AdapterSessionBinding, bool, error)
+	RunClusterOperation(ctx context.Context, name string, fn func(context.Context) error) error
+	SaveProviderAccountOAuthSession(session providerAccountOAuthSession) error
+	GetProviderAccountOAuthSessionByState(state string) (providerAccountOAuthSession, bool, error)
+	ConsumeProviderAccountOAuthSession(id string, state string) (providerAccountOAuthSession, bool, error)
 	TestProvider(id string) (Provider, error)
 	TestProviderResource(id string) (ProviderResource, error)
+	GetDatabaseStatus() (map[string]interface{}, error)
+	Ping(ctx context.Context) error
 }
 
 type GormStore struct {
 	db               *gorm.DB
-	mu               sync.Mutex
-	inFlight         map[string]int64
-	resourceInFlight map[string]int64
+	mu               *sync.Mutex
+	leaseHeartbeats  *sync.Map
 	secretKey        string
 	failureThreshold int
 	cooldownDuration time.Duration
 	sqliteDSN        string
 	backupDir        string
+	dbDriver         string // "sqlite" or "postgres"
+	inFlightLeaseTTL time.Duration
+	clusterLockTTL   time.Duration
+}
+
+type leaseHeartbeat struct {
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+	stop   chan struct{}
+	done   chan struct{}
 }
 
 // MemoryStore is kept as a compatibility alias for existing tests and callers.
 // It is now backed by GORM and SQLite, not process-local maps.
 type MemoryStore = GormStore
+
+// parseDatabaseURL parses a database URL and returns the driver type and DSN.
+// Supported formats:
+//   - sqlite://path/to/db.db
+//   - file:...            (SQLite DSN, e.g. in-memory stores)
+//   - path/to/db.db       (bare path treated as SQLite)
+//   - postgres://user:pass@host:port/dbname?params
+//   - postgresql://user:pass@host:port/dbname?params
+//   - host=... user=... password=... dbname=... (PostgreSQL keyword DSN)
+//
+// The keyword DSN form is preferred when the password contains URI delimiters
+// such as #, ?, /, or %, which would otherwise be misparsed in the URL form.
+func parseDatabaseURL(databaseURL string) (driver string, dsn string, err error) {
+	if strings.TrimSpace(databaseURL) == "" {
+		return "", "", fmt.Errorf("database URL cannot be empty")
+	}
+
+	// PostgreSQL keyword DSN (e.g. "host=db user=u password=p dbname=x").
+	// It has no URL scheme, so detect it before attempting url.Parse.
+	if isPostgresKeywordDSN(databaseURL) {
+		return "postgres", databaseURL, nil
+	}
+
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid database URL: %w", err)
+	}
+
+	switch u.Scheme {
+	case "postgres", "postgresql":
+		// PostgreSQL URL: postgres://user:pass@host:port/dbname?params
+		// Use the original URL directly as the DSN.
+		return "postgres", databaseURL, nil
+
+	case "sqlite", "file", "":
+		// SQLite: sqlite:// URLs, file: DSNs (in-memory stores), or bare paths.
+		// sqliteDSN handles all of these for backwards compatibility.
+		dsn, err := sqliteDSN(databaseURL)
+		if err != nil {
+			return "", "", err
+		}
+		return "sqlite", dsn, nil
+
+	default:
+		return "", "", fmt.Errorf("unsupported database scheme: %s (supported: sqlite, file, postgres, postgresql)", u.Scheme)
+	}
+}
+
+// isPostgresKeywordDSN reports whether the string is a PostgreSQL keyword/value
+// DSN (e.g. "host=localhost user=tokenhub password=secret dbname=tokenhub")
+// rather than a URL. Such DSNs have no "scheme://" prefix and begin with a
+// recognized connection keyword.
+func isPostgresKeywordDSN(databaseURL string) bool {
+	trimmed := strings.TrimSpace(databaseURL)
+	if strings.Contains(trimmed, "://") {
+		return false
+	}
+	firstField := strings.SplitN(trimmed, "=", 2)
+	if len(firstField) != 2 {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(firstField[0])) {
+	case "host", "hostaddr", "user", "dbname", "port", "password", "sslmode":
+		return true
+	}
+	return false
+}
+
+// redactDatabaseURL redacts the password in database URL for safe logging
+func redactDatabaseURL(databaseURL string) string {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return "<invalid-url>"
+	}
+	if u.User != nil {
+		username := u.User.Username()
+		_, hasPassword := u.User.Password()
+		if hasPassword {
+			// Hide password only, preserve username
+			u.User = url.UserPassword(username, "****")
+		} else {
+			// No password in original URL, keep username only
+			u.User = url.User(username)
+		}
+	}
+	// PostgreSQL URIs also allow credentials in query parameters
+	// (for example, ?user=u&password=secret). Mask any password-bearing keys.
+	if query := u.Query(); len(query) > 0 {
+		changed := false
+		for key := range query {
+			switch strings.ToLower(key) {
+			case "password", "passwd", "pgpassword":
+				query.Set(key, "****")
+				changed = true
+			}
+		}
+		if changed {
+			u.RawQuery = query.Encode()
+		}
+	}
+	return u.String()
+}
 
 func OpenStore(databaseURL string) (*GormStore, error) {
 	return OpenStoreWithConfig(databaseURL, ConfigFromEnv())
@@ -155,19 +352,34 @@ func OpenStoreWithConfig(databaseURL string, config Config) (*GormStore, error) 
 	if strings.TrimSpace(databaseURL) == "" {
 		databaseURL = defaultConfigDatabaseURL()
 	}
-	return NewSQLiteStoreWithConfig(databaseURL, config)
+	return NewStoreWithDialect(databaseURL, config)
 }
 
 func NewSQLiteStore(databaseURL string) (*GormStore, error) {
-	return NewSQLiteStoreWithConfig(databaseURL, ConfigFromEnv())
+	return NewStoreWithDialect(databaseURL, ConfigFromEnv())
 }
 
-func NewSQLiteStoreWithConfig(databaseURL string, config Config) (*GormStore, error) {
-	dsn, err := sqliteDSN(databaseURL)
+// NewStoreWithDialect creates a Store with the appropriate driver based on the database URL.
+// It supports SQLite and PostgreSQL.
+func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) {
+	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
 		return nil, err
 	}
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+
+	log.Printf("[tokenhub] initializing database: driver=%s url=%s", driver, redactDatabaseURL(databaseURL))
+
+	var dialector gorm.Dialector
+	switch driver {
+	case "sqlite":
+		dialector = sqlite.Open(dsn)
+	case "postgres":
+		dialector = postgres.Open(dsn)
+	default:
+		return nil, fmt.Errorf("unsupported database driver: %s", driver)
+	}
+
+	db, err := gorm.Open(dialector, &gorm.Config{
 		TranslateError: true,
 		Logger: gormlogger.New(
 			log.New(os.Stdout, "\r\n", log.LstdFlags),
@@ -181,52 +393,129 @@ func NewSQLiteStoreWithConfig(databaseURL string, config Config) (*GormStore, er
 	if err != nil {
 		return nil, err
 	}
+
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxOpenConns(1)
-	if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+
+	// Configure the connection pool based on database type. PostgreSQL keeps a
+	// dedicated connection for the migration advisory lock, so migrations need
+	// at least one additional connection even when the runtime pool is set to 1.
+	postgresMaxOpenConns := 0
+	if driver == "postgres" {
+		// PostgreSQL uses connection pooling.
+		maxOpenConns := defaultInt(config.DBMaxOpenConns, 25)
+		maxIdleConns := defaultInt(config.DBMaxIdleConns, 5)
+		connMaxLifetime := time.Duration(defaultInt(config.DBConnMaxLifetimeMinutes, 30)) * time.Minute
+
+		postgresMaxOpenConns = maxOpenConns
+		sqlDB.SetMaxOpenConns(maxInt(2, maxOpenConns))
+		sqlDB.SetMaxIdleConns(maxIdleConns)
+		sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	} else {
+		// SQLite maintains a single connection.
+		sqlDB.SetMaxOpenConns(1)
+	}
+
+	// SQLite-specific configuration.
+	if driver == "sqlite" {
+		if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+			return nil, err
+		}
+		if err := db.Exec("PRAGMA busy_timeout = 5000").Error; err != nil {
+			return nil, err
+		}
+	}
+
+	migrate := func() error {
+		return db.AutoMigrate(
+			&Project{},
+			&APIKey{},
+			&Provider{},
+			&ProviderResource{},
+			&Model{},
+			&ModelRoute{},
+			&QuotaBucket{},
+			&InFlightLease{},
+			&ClusterLease{},
+			&ClusterTaskState{},
+			&AdapterSessionBinding{},
+			&ProviderResourceObservation{},
+			&ProviderObservation{},
+			&providerAccountOAuthSessionRecord{},
+			&UsageRecord{},
+			&RequestLog{},
+			&RequestPayloadLog{},
+			&RouteAttemptLog{},
+			&AlertEvent{},
+			&AlertDelivery{},
+			&ProviderResourceBucket{},
+			&AuditEvent{},
+			&AdminResource{},
+			&ApprovalRequest{},
+			&AdminUser{},
+			&AdminSession{},
+			&AdminPasswordResetToken{},
+			&SQLiteBackupRecord{},
+		)
+	}
+	if err := runSchemaMigrationLocked(sqlDB, driver, migrate); err != nil {
 		return nil, err
 	}
-	if err := db.Exec("PRAGMA busy_timeout = 5000").Error; err != nil {
-		return nil, err
+	if postgresMaxOpenConns > 0 {
+		sqlDB.SetMaxOpenConns(postgresMaxOpenConns)
 	}
-	if err := db.AutoMigrate(
-		&Project{},
-		&APIKey{},
-		&Provider{},
-		&ProviderResource{},
-		&Model{},
-		&ModelRoute{},
-		&QuotaBucket{},
-		&UsageRecord{},
-		&RequestLog{},
-		&RequestPayloadLog{},
-		&RouteAttemptLog{},
-		&AlertEvent{},
-		&AlertDelivery{},
-		&ProviderResourceBucket{},
-		&AuditEvent{},
-		&AdminResource{},
-		&ApprovalRequest{},
-		&AdminUser{},
-		&AdminSession{},
-		&AdminPasswordResetToken{},
-		&SQLiteBackupRecord{},
-	); err != nil {
-		return nil, err
-	}
+
 	return &GormStore{
 		db:               db,
-		inFlight:         map[string]int64{},
-		resourceInFlight: map[string]int64{},
+		mu:               &sync.Mutex{},
+		leaseHeartbeats:  &sync.Map{},
 		secretKey:        config.SecretKey,
 		failureThreshold: defaultInt(config.ResourceFailureThreshold, 3),
 		cooldownDuration: time.Duration(defaultInt(config.ResourceCooldownSeconds, 300)) * time.Second,
 		sqliteDSN:        dsn,
 		backupDir:        defaultString(config.SQLiteBackupDir, "data/backups"),
+		dbDriver:         driver,
+		inFlightLeaseTTL: time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300)) * time.Second,
+		clusterLockTTL:   time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
 	}, nil
+}
+
+// WithContext returns a store view whose database operations inherit ctx.
+// Synchronization and lease bookkeeping remain shared with the parent store.
+func (s *GormStore) WithContext(ctx context.Context) *GormStore {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	contextual := *s
+	contextual.db = s.db.WithContext(ctx)
+	return &contextual
+}
+
+func runSchemaMigrationLocked(sqlDB *sql.DB, driver string, migrate func() error) error {
+	if driver != "postgres" {
+		return migrate()
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	const lockName = "tokenhub:schema-migration"
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock(hashtextextended($1, 0))", lockName); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock(hashtextextended($1, 0))", lockName)
+	}()
+	return migrate()
+}
+
+// NewSQLiteStoreWithConfig is retained as a compatibility alias.
+func NewSQLiteStoreWithConfig(databaseURL string, config Config) (*GormStore, error) {
+	return NewStoreWithDialect(databaseURL, config)
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -235,6 +524,280 @@ func NewMemoryStore() *MemoryStore {
 		panic(err)
 	}
 	return store
+}
+
+// RunClusterTask runs fn once for the requested monotonic revision across all
+// replicas sharing the database. A failed task is not recorded and is retried
+// by the next replica.
+func (s *GormStore) RunClusterTask(ctx context.Context, name string, revision int64, fn func(context.Context) error) error {
+	name = strings.TrimSpace(name)
+	if name == "" || revision <= 0 {
+		return fmt.Errorf("cluster task name and positive revision are required")
+	}
+	return s.withClusterLease(ctx, "task:"+name, func(leaseCtx context.Context) error {
+		var state ClusterTaskState
+		err := s.db.WithContext(leaseCtx).First(&state, "name = ?", name).Error
+		if err == nil && state.Revision >= revision {
+			return nil
+		}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err := fn(leaseCtx); err != nil {
+			return err
+		}
+		if err := context.Cause(leaseCtx); err != nil {
+			return err
+		}
+		state = ClusterTaskState{Name: name, Revision: revision, CompletedAt: time.Now().UTC()}
+		return s.db.WithContext(leaseCtx).Clauses(clause.OnConflict{UpdateAll: true}).Create(&state).Error
+	})
+}
+
+// RunClusterOperation serializes an idempotent operation across all replicas.
+// Unlike RunClusterTask, it runs once for every caller instead of recording a
+// completed revision.
+func (s *GormStore) RunClusterOperation(ctx context.Context, name string, fn func(context.Context) error) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("cluster operation name is required")
+	}
+	return s.withClusterLease(ctx, "operation:"+name, fn)
+}
+
+func effectiveLeaseTTL(value time.Duration, fallback time.Duration) time.Duration {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func leaseRenewalInterval(ttl time.Duration) time.Duration {
+	interval := ttl / 3
+	if interval < 100*time.Millisecond {
+		return 100 * time.Millisecond
+	}
+	return interval
+}
+
+func leaseSafetyWindow(ttl time.Duration) time.Duration {
+	window := ttl / 10
+	if window < 100*time.Millisecond {
+		return 100 * time.Millisecond
+	}
+	if window > time.Second {
+		return time.Second
+	}
+	return window
+}
+
+func startLeaseHeartbeat(parent context.Context, ttl time.Duration, confirmedFor time.Duration, renew func(context.Context) (time.Duration, bool, error)) *leaseHeartbeat {
+	if parent == nil {
+		parent = context.Background()
+	}
+	confirmedUntil := time.Now().Add(confirmedFor)
+	leaseCtx, cancel := context.WithCancelCause(parent)
+	heartbeat := &leaseHeartbeat{
+		ctx:    leaseCtx,
+		cancel: cancel,
+		stop:   make(chan struct{}),
+		done:   make(chan struct{}),
+	}
+	go func() {
+		defer close(heartbeat.done)
+		nextDelay := leaseRenewalInterval(ttl)
+		safetyWindow := leaseSafetyWindow(ttl)
+		for {
+			timer := time.NewTimer(nextDelay)
+			select {
+			case <-heartbeat.stop:
+				timer.Stop()
+				return
+			case <-leaseCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+
+			remaining := time.Until(confirmedUntil)
+			if remaining <= safetyWindow {
+				cancel(ErrCoordinationLeaseLost)
+				return
+			}
+			attemptTimeout := (remaining - safetyWindow) / 2
+			if attemptTimeout > 2*time.Second {
+				attemptTimeout = 2 * time.Second
+			}
+			if attemptTimeout < 50*time.Millisecond {
+				attemptTimeout = 50 * time.Millisecond
+			}
+			attemptCtx, stopAttempt := context.WithTimeout(leaseCtx, attemptTimeout)
+			renewedFor, retained, err := renew(attemptCtx)
+			stopAttempt()
+			if err == nil && retained {
+				if renewedFor <= safetyWindow {
+					cancel(ErrCoordinationLeaseLost)
+					return
+				}
+				confirmedUntil = time.Now().Add(renewedFor)
+				nextDelay = leaseRenewalInterval(ttl)
+				continue
+			}
+			if err == nil {
+				cancel(ErrCoordinationLeaseLost)
+				return
+			}
+
+			remaining = time.Until(confirmedUntil)
+			if remaining <= safetyWindow {
+				cancel(ErrCoordinationLeaseLost)
+				return
+			}
+			nextDelay = (remaining - safetyWindow) / 2
+			if nextDelay > time.Second {
+				nextDelay = time.Second
+			}
+			if nextDelay < 50*time.Millisecond {
+				nextDelay = 50 * time.Millisecond
+			}
+		}
+	}()
+	return heartbeat
+}
+
+func stopLeaseHeartbeat(heartbeat *leaseHeartbeat) error {
+	if heartbeat == nil {
+		return nil
+	}
+	close(heartbeat.stop)
+	heartbeat.cancel(context.Canceled)
+	<-heartbeat.done
+	cause := context.Cause(heartbeat.ctx)
+	if errors.Is(cause, ErrCoordinationLeaseLost) {
+		return ErrCoordinationLeaseLost
+	}
+	return nil
+}
+
+func (s *GormStore) databaseNow(db *gorm.DB) (time.Time, error) {
+	var epoch float64
+	query := "SELECT (julianday('now') - 2440587.5) * 86400"
+	if s.dbDriver == "postgres" {
+		query = "SELECT EXTRACT(EPOCH FROM clock_timestamp())::double precision"
+	}
+	if err := db.Raw(query).Scan(&epoch).Error; err != nil {
+		return time.Time{}, err
+	}
+	seconds, fraction := math.Modf(epoch)
+	return time.Unix(int64(seconds), int64(math.Round(fraction*float64(time.Second)))).UTC(), nil
+}
+
+func (s *GormStore) persistedLeaseConfirmation(db *gorm.DB, expiresAt time.Time) (time.Duration, error) {
+	now, err := s.databaseNow(db)
+	if err != nil {
+		return 0, err
+	}
+	remaining := expiresAt.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+	return remaining, nil
+}
+
+func (s *GormStore) tryAcquireClusterLease(ctx context.Context, name string, ownerID string, ttl time.Duration) (bool, time.Duration, error) {
+	var acquired bool
+	var confirmedFor time.Duration
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now, err := s.databaseNow(tx)
+		if err != nil {
+			return err
+		}
+		expiresAt := now.Add(ttl)
+		result := tx.Exec(`
+			INSERT INTO cluster_leases (name, owner_id, expires_at, updated_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT (name) DO UPDATE SET
+				owner_id = excluded.owner_id,
+				expires_at = excluded.expires_at,
+				updated_at = excluded.updated_at
+			WHERE cluster_leases.expires_at <= ?`, name, ownerID, expiresAt, now, now)
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		var lease ClusterLease
+		if err := tx.Select("expires_at").First(&lease, "name = ? AND owner_id = ?", name, ownerID).Error; err != nil {
+			return err
+		}
+		confirmedFor, err = s.persistedLeaseConfirmation(tx, lease.ExpiresAt)
+		if err != nil {
+			return err
+		}
+		acquired = confirmedFor > 0
+		return nil
+	})
+	return acquired, confirmedFor, err
+}
+
+func (s *GormStore) renewClusterLease(ctx context.Context, name string, ownerID string, ttl time.Duration) (time.Duration, bool, error) {
+	var confirmedFor time.Duration
+	var retained bool
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now, err := s.databaseNow(tx)
+		if err != nil {
+			return err
+		}
+		result := tx.Model(&ClusterLease{}).
+			Where("name = ? AND owner_id = ?", name, ownerID).
+			Updates(map[string]any{"expires_at": now.Add(ttl), "updated_at": now})
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		var lease ClusterLease
+		if err := tx.Select("expires_at").First(&lease, "name = ? AND owner_id = ?", name, ownerID).Error; err != nil {
+			return err
+		}
+		confirmedFor, err = s.persistedLeaseConfirmation(tx, lease.ExpiresAt)
+		if err != nil {
+			return err
+		}
+		retained = confirmedFor > 0
+		return nil
+	})
+	return confirmedFor, retained, err
+}
+
+func (s *GormStore) withClusterLease(ctx context.Context, name string, fn func(context.Context) error) error {
+	ownerID := NewID("lock")
+	ttl := effectiveLeaseTTL(s.clusterLockTTL, 180*time.Second)
+	var confirmedFor time.Duration
+	for {
+		acquired, confirmation, err := s.tryAcquireClusterLease(ctx, name, ownerID, ttl)
+		if err != nil {
+			return err
+		}
+		if acquired {
+			confirmedFor = confirmation
+			break
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	heartbeat := startLeaseHeartbeat(ctx, ttl, confirmedFor, func(attemptCtx context.Context) (time.Duration, bool, error) {
+		return s.renewClusterLease(attemptCtx, name, ownerID, ttl)
+	})
+	fnErr := fn(heartbeat.ctx)
+	leaseErr := stopLeaseHeartbeat(heartbeat)
+	_ = s.db.Delete(&ClusterLease{}, "name = ? AND owner_id = ?", name, ownerID).Error
+	if leaseErr != nil {
+		return leaseErr
+	}
+	return fnErr
 }
 
 func sqliteDSN(databaseURL string) (string, error) {
@@ -352,9 +915,11 @@ func (s *GormStore) DeleteProject(id string) error {
 		keyIDs := make([]string, 0, len(keys))
 		for _, key := range keys {
 			keyIDs = append(keyIDs, key.ID)
-			delete(s.inFlight, key.ID)
 		}
 		if len(keyIDs) > 0 {
+			if err := tx.Where("scope_type = ? AND scope_id IN ?", "api_key", keyIDs).Delete(&InFlightLease{}).Error; err != nil {
+				return err
+			}
 			if err := tx.Where("key_id IN ?", keyIDs).Delete(&QuotaBucket{}).Error; err != nil {
 				return err
 			}
@@ -547,7 +1112,9 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 		if err := tx.Where("key_id = ?", id).Delete(&QuotaBucket{}).Error; err != nil {
 			return err
 		}
-		delete(s.inFlight, id)
+		if err := tx.Where("scope_type = ? AND scope_id = ?", "api_key", id).Delete(&InFlightLease{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&key).Error
 	})
 }
@@ -600,6 +1167,12 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 	if provider.CreatedAt.IsZero() {
 		provider.CreatedAt = time.Now().UTC()
 	}
+	if provider.Type == ProviderOpenAICodex {
+		provider.APIKey = ""
+		if codexProviderBaseURLNeedsNormalization(provider.BaseURL) {
+			provider.BaseURL = openAICodexBaseURL
+		}
+	}
 	provider.APIKey = s.encryptSecret(provider.APIKey)
 	_ = s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&provider).Error
 	return provider
@@ -626,10 +1199,16 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 		provider.Name = patch.Name
 	}
 	if patch.Type != "" {
+		if err := validateProviderAdapterResources(s.db, id, patch.Type); err != nil {
+			return Provider{}, err
+		}
 		provider.Type = patch.Type
 	}
 	provider.BaseURL = patch.BaseURL
 	if patch.APIKey != "" {
+		if firstNonEmpty(patch.Type, provider.Type) == ProviderOpenAICodex {
+			return Provider{}, NewHTTPError(409, "provider_adapter_credential_conflict", "Codex Subscription credentials must be stored on account resources")
+		}
 		provider.APIKey = s.encryptSecret(patch.APIKey)
 	}
 	if patch.Status != "" {
@@ -664,6 +1243,30 @@ func (s *GormStore) DeleteProvider(id string) error {
 		if err := tx.Where("provider_id = ?", id).Delete(&ModelRoute{}).Error; err != nil {
 			return err
 		}
+		var resourceIDs []string
+		if err := tx.Model(&ProviderResource{}).Where("provider_id = ?", id).Pluck("id", &resourceIDs).Error; err != nil {
+			return err
+		}
+		if len(resourceIDs) > 0 {
+			if err := tx.Where("scope_type = ? AND scope_id IN ?", "provider_resource", resourceIDs).Delete(&InFlightLease{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("resource_id IN ?", resourceIDs).Delete(&ProviderResourceBucket{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("resource_id IN ?", resourceIDs).Delete(&ProviderResourceObservation{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("resource_id IN ?", resourceIDs).Delete(&ProviderObservation{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("provider_id = ?", id).Delete(&AdapterSessionBinding{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("provider_id = ?", id).Delete(&ProviderObservation{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("provider_id = ?", id).Delete(&ProviderResource{}).Error; err != nil {
 			return err
 		}
@@ -691,12 +1294,20 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.db.First(&Provider{}, "id = ?", resource.ProviderID).Error; err != nil {
+	var provider Provider
+	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 	}
+	if err := ensureProviderResourceAdapterCompatibility(s.db, &provider, resource.ResourceType); err != nil {
+		return ProviderResource{}, err
+	}
+	resource.Name = strings.TrimSpace(resource.Name)
 	now := time.Now().UTC()
 	if resource.ID == "" {
 		resource.ID = NewID("rsrc")
+	}
+	if err := s.ensureProviderResourceNameUnique(resource.ID, resource.Name); err != nil {
+		return ProviderResource{}, err
 	}
 	if resource.Status == "" {
 		resource.Status = StatusActive
@@ -726,7 +1337,17 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 func (s *GormStore) ListProviderResources() []ProviderResource {
 	var items []ProviderResource
 	_ = s.db.Order("provider_id asc, priority asc, weight desc, created_at asc").Find(&items).Error
+	var observations []ProviderResourceObservation
+	_ = s.db.Find(&observations).Error
+	observationByResource := make(map[string]ProviderResourceObservation, len(observations))
+	for _, observation := range observations {
+		observationByResource[observation.ResourceID] = observation
+	}
 	for i := range items {
+		if observation, ok := observationByResource[items[i].ID]; ok {
+			copy := observation
+			items[i].Observation = &copy
+		}
 		redactProviderResourceSecrets(&items[i])
 	}
 	return items
@@ -747,7 +1368,11 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 		resource.ProviderID = patch.ProviderID
 	}
 	if patch.Name != "" {
-		resource.Name = patch.Name
+		nextName := strings.TrimSpace(patch.Name)
+		if err := s.ensureProviderResourceNameUnique(resource.ID, nextName); err != nil {
+			return ProviderResource{}, err
+		}
+		resource.Name = nextName
 	}
 	if patch.Group != "" {
 		resource.Group = patch.Group
@@ -782,6 +1407,13 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 	if patch.Options != nil {
 		resource.Options = patch.Options
 	}
+	var provider Provider
+	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
+		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
+	}
+	if err := ensureProviderResourceAdapterCompatibility(s.db, &provider, resource.ResourceType); err != nil {
+		return ProviderResource{}, err
+	}
 	resource.UpdatedAt = time.Now().UTC()
 	s.prepareProviderResourceForUpdate(&resource, patch)
 	if patch.Credentials != nil && strings.TrimSpace(patch.Credentials.AccessToken) != "" {
@@ -790,6 +1422,47 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 	if shouldEncryptAPIKey {
 		resource.APIKey = s.encryptSecret(resource.APIKey)
 	}
+	if err := s.db.Save(&resource).Error; err != nil {
+		return ProviderResource{}, err
+	}
+	redactProviderResourceSecrets(&resource)
+	return resource, nil
+}
+
+func (s *GormStore) ensureProviderResourceNameUnique(resourceID, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return NewHTTPError(http.StatusBadRequest, "invalid_provider_resource", "Provider resource name is required")
+	}
+	var count int64
+	err := s.db.Model(&ProviderResource{}).
+		Where("LOWER(TRIM(name)) = ?", strings.ToLower(name)).
+		Where("id <> ?", resourceID).
+		Count(&count).Error
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return NewHTTPError(http.StatusConflict, "provider_resource_name_conflict", "Provider resource name already exists")
+	}
+	return nil
+}
+
+func (s *GormStore) UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var resource ProviderResource
+	if err := s.db.First(&resource, "id = ?", id).Error; err != nil {
+		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
+	}
+	if resource.Options == nil {
+		resource.Options = map[string]string{}
+	}
+	for key, value := range options {
+		resource.Options[key] = value
+	}
+	resource.UpdatedAt = time.Now().UTC()
 	if err := s.db.Save(&resource).Error; err != nil {
 		return ProviderResource{}, err
 	}
@@ -809,6 +1482,21 @@ func (s *GormStore) DeleteProviderResource(id string) error {
 		if err := tx.Model(&ModelRoute{}).
 			Where("provider_resource_id = ?", id).
 			Update("provider_resource_id", "").Error; err != nil {
+			return err
+		}
+		if err := tx.Where("scope_type = ? AND scope_id = ?", "provider_resource", id).Delete(&InFlightLease{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("resource_id = ?", id).Delete(&ProviderResourceBucket{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("resource_id = ?", id).Delete(&ProviderResourceObservation{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("resource_id = ?", id).Delete(&ProviderObservation{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("resource_id = ?", id).Delete(&AdapterSessionBinding{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&resource).Error
@@ -906,7 +1594,6 @@ func (s *GormStore) BulkOperateProviderResources(action string, ids []string) (P
 				result.Errors = append(result.Errors, id+": "+err.Error())
 				continue
 			}
-			s.resourceInFlight[resource.ID] = 0
 		}
 		if err := s.db.Model(&ProviderResource{}).Where("id = ?", resource.ID).Updates(updates).Error; err != nil {
 			result.Failed++
@@ -950,6 +1637,11 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 		if resource.ID == "" {
 			resource.ID = NewID("rsrc")
 		}
+		if err := s.ensureProviderResourceNameUnique(resource.ID, resource.Name); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
+			continue
+		}
 		if resource.Status == "" {
 			resource.Status = StatusActive
 		}
@@ -980,93 +1672,337 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 	return result, nil
 }
 
-func (s *GormStore) CheckProviderResourceCapacity(resourceID string) error {
+func (s *GormStore) lockScopeForUpdate(tx *gorm.DB, scopeType string, scopeID string) error {
+	if s.dbDriver != "postgres" {
+		return nil
+	}
+	key := "tokenhub:" + scopeType + ":" + scopeID
+	return tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", key).Error
+}
+
+func (s *GormStore) acquireInFlightLease(tx *gorm.DB, scopeType string, scopeID string, limit int64, leaseID string) (time.Duration, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	if err := s.lockScopeForUpdate(tx, scopeType, scopeID); err != nil {
+		return 0, err
+	}
+	now, err := s.databaseNow(tx)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Where("scope_type = ? AND scope_id = ? AND expires_at <= ?", scopeType, scopeID, now).
+		Delete(&InFlightLease{}).Error; err != nil {
+		return 0, err
+	}
+	var count int64
+	if err := tx.Model(&InFlightLease{}).
+		Where("scope_type = ? AND scope_id = ? AND expires_at > ?", scopeType, scopeID, now).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	if count >= limit {
+		return 0, ErrRateLimitExceeded
+	}
+	ttl := effectiveLeaseTTL(s.inFlightLeaseTTL, 300*time.Second)
+	expiresAt := now.Add(ttl)
+	lease := InFlightLease{
+		ID:        leaseID,
+		ScopeType: scopeType,
+		ScopeID:   scopeID,
+		ExpiresAt: expiresAt,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := tx.Create(&lease).Error; err != nil {
+		return 0, err
+	}
+	var persisted InFlightLease
+	if err := tx.Select("expires_at").First(&persisted, "id = ?", leaseID).Error; err != nil {
+		return 0, err
+	}
+	return s.persistedLeaseConfirmation(tx, persisted.ExpiresAt)
+}
+
+func (s *GormStore) renewInFlightLease(ctx context.Context, leaseID string, ttl time.Duration) (time.Duration, bool, error) {
+	var confirmedFor time.Duration
+	var retained bool
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now, err := s.databaseNow(tx)
+		if err != nil {
+			return err
+		}
+		result := tx.Model(&InFlightLease{}).Where("id = ?", leaseID).
+			Updates(map[string]any{"expires_at": now.Add(ttl), "updated_at": now})
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		var persisted InFlightLease
+		if err := tx.Select("expires_at").First(&persisted, "id = ?", leaseID).Error; err != nil {
+			return err
+		}
+		confirmedFor, err = s.persistedLeaseConfirmation(tx, persisted.ExpiresAt)
+		if err != nil {
+			return err
+		}
+		retained = confirmedFor > 0
+		return nil
+	})
+	return confirmedFor, retained, err
+}
+
+func (s *GormStore) startInFlightLeaseHeartbeat(parent context.Context, leaseID string, confirmedFor time.Duration) context.Context {
+	if strings.TrimSpace(leaseID) == "" {
+		return parent
+	}
+	ttl := effectiveLeaseTTL(s.inFlightLeaseTTL, 300*time.Second)
+	heartbeat := startLeaseHeartbeat(parent, ttl, confirmedFor, func(attemptCtx context.Context) (time.Duration, bool, error) {
+		return s.renewInFlightLease(attemptCtx, leaseID, ttl)
+	})
+	if previous, loaded := s.leaseHeartbeats.LoadOrStore(leaseID, heartbeat); loaded {
+		if previousHeartbeat, ok := previous.(*leaseHeartbeat); ok {
+			_ = stopLeaseHeartbeat(previousHeartbeat)
+		}
+		s.leaseHeartbeats.Store(leaseID, heartbeat)
+	}
+	return heartbeat.ctx
+}
+
+func (s *GormStore) stopInFlightLeaseHeartbeat(leaseID string) error {
+	if value, ok := s.leaseHeartbeats.LoadAndDelete(leaseID); ok {
+		if heartbeat, ok := value.(*leaseHeartbeat); ok {
+			return stopLeaseHeartbeat(heartbeat)
+		}
+	}
+	return nil
+}
+
+// ReleaseProviderResourceCapacity releases concurrency bookkeeping without
+// treating a local coordination failure as an upstream provider failure.
+func (s *GormStore) ReleaseProviderResourceCapacity(resourceID string, leaseID string) {
+	_ = s.stopInFlightLeaseHeartbeat(leaseID)
+	if strings.TrimSpace(leaseID) == "" {
+		return
+	}
+	if err := s.db.Delete(&InFlightLease{}, "id = ?", leaseID).Error; err != nil {
+		log.Printf("[tokenhub] failed to release provider concurrency lease resource=%s lease=%s: %v", resourceID, leaseID, err)
+	}
+}
+
+func (s *GormStore) providerResourceBucketForUpdate(tx *gorm.DB, resourceID string, bucket string) (ProviderResourceBucket, error) {
+	seed := ProviderResourceBucket{ResourceID: resourceID, Bucket: bucket, UpdatedAt: time.Now().UTC()}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
+		return ProviderResourceBucket{}, err
+	}
+	query := tx
+	if s.dbDriver == "postgres" {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	var item ProviderResourceBucket
+	if err := query.First(&item, "resource_id = ? AND bucket = ?", resourceID, bucket).Error; err != nil {
+		return ProviderResourceBucket{}, err
+	}
+	return item, nil
+}
+
+func (s *GormStore) consumeProviderResourceRequestCapacity(tx *gorm.DB, resource ProviderResource, now time.Time) error {
+	if resource.RateLimitRPM <= 0 && resource.TokenLimitTPM <= 0 {
+		return nil
+	}
+	bucket, err := s.providerResourceBucketForUpdate(tx, resource.ID, minuteBucket(now))
+	if err != nil {
+		return err
+	}
+	if resource.RateLimitRPM > 0 && bucket.Requests >= resource.RateLimitRPM {
+		return NewHTTPError(http.StatusTooManyRequests, "provider_resource_rpm_exceeded", "Provider resource RPM limit exceeded")
+	}
+	if resource.TokenLimitTPM > 0 && bucket.Tokens >= resource.TokenLimitTPM {
+		return NewHTTPError(http.StatusTooManyRequests, "provider_resource_tpm_exceeded", "Provider resource TPM limit exceeded")
+	}
+	bucket.Requests++
+	bucket.UpdatedAt = now
+	return tx.Save(&bucket).Error
+}
+
+func (s *GormStore) CheckProviderResourceCapacity(ctx context.Context, resourceID string) (string, context.Context, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if resourceID == "" {
+		return "", ctx, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	leaseID := NewID("lease")
+	acquiredLease := false
+	var leaseConfirmedFor time.Duration
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "provider_resource", resourceID); err != nil {
+			return err
+		}
+		query := tx
+		if s.dbDriver == "postgres" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var resource ProviderResource
+		if err := query.First(&resource, "id = ?", resourceID).Error; err != nil {
+			return notFound(err, "provider_resource_not_found", "Provider resource not found")
+		}
+		now, err := s.databaseNow(tx)
+		if err != nil {
+			return err
+		}
+		if resource.CooldownUntil != nil && now.Before(*resource.CooldownUntil) {
+			return NewHTTPError(http.StatusTooManyRequests, "provider_resource_cooling_down", "Provider resource is cooling down")
+		}
+		if resource.MaxConcurrency > 0 {
+			confirmedFor, err := s.acquireInFlightLease(tx, "provider_resource", resource.ID, resource.MaxConcurrency, leaseID)
+			if err != nil {
+				if errors.Is(err, ErrRateLimitExceeded) {
+					return NewHTTPError(http.StatusTooManyRequests, "provider_resource_concurrency_exceeded", "Provider resource concurrency limit exceeded")
+				}
+				return err
+			}
+			leaseConfirmedFor = confirmedFor
+			acquiredLease = true
+		}
+		if err := s.consumeProviderResourceRequestCapacity(tx, resource, now); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return "", ctx, err
+	}
+	if acquiredLease {
+		leaseCtx := s.startInFlightLeaseHeartbeat(ctx, leaseID, leaseConfirmedFor)
+		return leaseID, leaseCtx, nil
+	}
+	return "", ctx, nil
+}
+
+// CheckProviderResourceRetryCapacity accounts for another physical upstream
+// request while retaining the concurrency lease acquired for the logical call.
+func (s *GormStore) CheckProviderResourceRetryCapacity(ctx context.Context, resourceID string, leaseID string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if resourceID == "" {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var resource ProviderResource
-	if err := s.db.First(&resource, "id = ?", resourceID).Error; err != nil {
-		return notFound(err, "provider_resource_not_found", "Provider resource not found")
-	}
-	now := time.Now().UTC()
-	if resource.CooldownUntil != nil && now.Before(*resource.CooldownUntil) {
-		return NewHTTPError(http.StatusTooManyRequests, "provider_resource_cooling_down", "Provider resource is cooling down")
-	}
-	if resource.MaxConcurrency > 0 && s.resourceInFlight[resource.ID] >= resource.MaxConcurrency {
-		return NewHTTPError(http.StatusTooManyRequests, "provider_resource_concurrency_exceeded", "Provider resource concurrency limit exceeded")
-	}
-	if resource.RateLimitRPM > 0 || resource.TokenLimitTPM > 0 {
-		bucket, err := providerResourceBucket(s.db, resource.ID, minuteBucket(now))
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "provider_resource", resourceID); err != nil {
+			return err
+		}
+		query := tx
+		if s.dbDriver == "postgres" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var resource ProviderResource
+		if err := query.First(&resource, "id = ?", resourceID).Error; err != nil {
+			return notFound(err, "provider_resource_not_found", "Provider resource not found")
+		}
+		now, err := s.databaseNow(tx)
 		if err != nil {
 			return err
 		}
-		if resource.RateLimitRPM > 0 && bucket.Requests >= resource.RateLimitRPM {
-			return NewHTTPError(http.StatusTooManyRequests, "provider_resource_rpm_exceeded", "Provider resource RPM limit exceeded")
+		if strings.TrimSpace(leaseID) != "" {
+			var count int64
+			if err := tx.Model(&InFlightLease{}).
+				Where("id = ? AND scope_type = ? AND scope_id = ? AND expires_at > ?", leaseID, "provider_resource", resourceID, now).
+				Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				return ErrCoordinationLeaseLost
+			}
 		}
-		if resource.TokenLimitTPM > 0 && bucket.Tokens >= resource.TokenLimitTPM {
-			return NewHTTPError(http.StatusTooManyRequests, "provider_resource_tpm_exceeded", "Provider resource TPM limit exceeded")
-		}
-		bucket.Requests++
-		bucket.UpdatedAt = now
-		if err := s.db.Save(&bucket).Error; err != nil {
-			return err
-		}
-	}
-	s.resourceInFlight[resource.ID]++
-	return nil
+		return s.consumeProviderResourceRequestCapacity(tx, resource, now)
+	})
 }
 
-func (s *GormStore) FinishProviderResourceAttempt(resourceID string, success bool, usage Usage) {
+func (s *GormStore) FinishProviderResourceAttempt(resourceID string, leaseID string, success bool, usage Usage) {
 	if resourceID == "" {
 		return
 	}
+	_ = s.stopInFlightLeaseHeartbeat(leaseID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.resourceInFlight[resourceID] > 0 {
-		s.resourceInFlight[resourceID]--
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "provider_resource", resourceID); err != nil {
+			return err
+		}
+		if strings.TrimSpace(leaseID) != "" {
+			if err := tx.Delete(&InFlightLease{}, "id = ?", leaseID).Error; err != nil {
+				return err
+			}
+		}
+		query := tx
+		if s.dbDriver == "postgres" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var resource ProviderResource
+		if err := query.First(&resource, "id = ?", resourceID).Error; err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		updates := map[string]any{"updated_at": now}
+		if success {
+			if usage.TotalTokens == 0 {
+				usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+			}
+			if usage.TotalTokens > 0 {
+				bucket, err := s.providerResourceBucketForUpdate(tx, resourceID, minuteBucket(now))
+				if err != nil {
+					return err
+				}
+				bucket.Tokens += usage.TotalTokens
+				bucket.UpdatedAt = now
+				if err := tx.Save(&bucket).Error; err != nil {
+					return err
+				}
+			}
+			updates["failure_count"] = 0
+			if resource.CooldownUntil != nil && now.After(*resource.CooldownUntil) {
+				updates["cooldown_until"] = nil
+			}
+		} else {
+			nextFailures := resource.FailureCount + 1
+			updates["failure_count"] = nextFailures
+			if nextFailures >= s.failureThreshold {
+				cooldownUntil := now.Add(s.cooldownDuration)
+				updates["healthy"] = false
+				updates["cooldown_until"] = &cooldownUntil
+				updates["last_checked_at"] = now
+				if err := tx.Create(&AlertEvent{
+					ID:         NewID("alt"),
+					ScopeType:  "provider_resource",
+					ScopeID:    resource.ID,
+					Severity:   "warning",
+					Code:       "provider_resource_cooling_down",
+					Message:    "Provider resource entered cooldown after repeated failures",
+					ResourceID: resource.ProviderID,
+					CreatedAt:  now,
+				}).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return tx.Model(&ProviderResource{}).Where("id = ?", resourceID).Updates(updates).Error
+	})
+	if err != nil {
+		log.Printf("[tokenhub] failed to finish provider resource attempt resource=%s: %v", resourceID, err)
+		if strings.TrimSpace(leaseID) != "" {
+			if releaseErr := s.db.Delete(&InFlightLease{}, "id = ?", leaseID).Error; releaseErr != nil {
+				log.Printf("[tokenhub] failed to release provider concurrency lease resource=%s lease=%s: %v", resourceID, leaseID, releaseErr)
+			}
+		}
 	}
-	var resource ProviderResource
-	if err := s.db.First(&resource, "id = ?", resourceID).Error; err != nil {
-		return
-	}
-	now := time.Now().UTC()
-	updates := map[string]any{"updated_at": now}
-	if success {
-		if usage.TotalTokens == 0 {
-			usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-		}
-		if usage.TotalTokens > 0 {
-			_ = addProviderResourceTokens(s.db, resourceID, minuteBucket(now), usage.TotalTokens)
-		}
-		updates["failure_count"] = 0
-		if resource.CooldownUntil != nil && now.After(*resource.CooldownUntil) {
-			updates["cooldown_until"] = nil
-		}
-	} else {
-		nextFailures := resource.FailureCount + 1
-		updates["failure_count"] = nextFailures
-		if nextFailures >= s.failureThreshold {
-			cooldownUntil := now.Add(s.cooldownDuration)
-			updates["healthy"] = false
-			updates["cooldown_until"] = &cooldownUntil
-			updates["last_checked_at"] = now
-			_ = s.db.Create(&AlertEvent{
-				ID:         NewID("alt"),
-				ScopeType:  "provider_resource",
-				ScopeID:    resource.ID,
-				Severity:   "warning",
-				Code:       "provider_resource_cooling_down",
-				Message:    "Provider resource entered cooldown after repeated failures",
-				ResourceID: resource.ProviderID,
-				CreatedAt:  now,
-			}).Error
-		}
-	}
-	_ = s.db.Model(&ProviderResource{}).Where("id = ?", resourceID).Updates(updates).Error
 }
 
 func (s *GormStore) TestProvider(id string) (Provider, error) {
@@ -1121,6 +2057,9 @@ func (s *GormStore) AddModel(model Model) Model {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if model.Modality == "embedding" {
+		model.CacheReadPriceUSDPer1M = 0
+	}
 	if model.ID == "" {
 		model.ID = model.Name
 	}
@@ -1167,8 +2106,12 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 			model.ContextWindow = patch.ContextWindow
 		}
 		model.InputPriceUSDPer1M = patch.InputPriceUSDPer1M
+		model.CacheReadPriceUSDPer1M = patch.CacheReadPriceUSDPer1M
 		model.OutputPriceUSDPer1M = patch.OutputPriceUSDPer1M
 		model.EmbeddingPriceUSDPer1M = patch.EmbeddingPriceUSDPer1M
+		if model.Modality == "embedding" {
+			model.CacheReadPriceUSDPer1M = 0
+		}
 		if patch.InputModalities != nil {
 			model.InputModalities = patch.InputModalities
 		}
@@ -1348,7 +2291,7 @@ func (s *GormStore) SelectRouteCandidates(modelName string) ([]RouteSelection, e
 		var resources []ProviderResource
 		query := s.db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true)
 		if strings.TrimSpace(route.ResourceGroup) != "" {
-			query = query.Where("`group` = ?", strings.TrimSpace(route.ResourceGroup))
+			query = query.Where("\"group\" = ?", strings.TrimSpace(route.ResourceGroup))
 		}
 		if err := query.Order("priority asc, weight desc, created_at asc").
 			Find(&resources).Error; err != nil {
@@ -1443,13 +2386,21 @@ func (s *GormStore) MarkProviderResourceUsed(resourceID string) {
 		Updates(map[string]any{"last_used_at": now, "updated_at": now}).Error
 }
 
-func (s *GormStore) StartCall(project Project, key APIKey, modelName string) (CallContext, error) {
+func (s *GormStore) StartCall(ctx context.Context, project Project, key APIKey, modelName string) (CallContext, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var call CallContext
-	var keyID string
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	requestID := NewID("req")
+	leaseAcquired := false
+	var leaseConfirmedFor time.Duration
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "api_key", key.ID); err != nil {
+			return err
+		}
 		var privateKey APIKey
 		if err := tx.First(&privateKey, "id = ?", key.ID).Error; err != nil {
 			return ErrInvalidAPIKey
@@ -1463,17 +2414,25 @@ func (s *GormStore) StartCall(project Project, key APIKey, modelName string) (Ca
 			return ErrModelNotAllowed
 		}
 		effectiveLimits := mergeQuotaLimits(privateKey.Limits, quotaPolicyLimits(tx, project, privateKey))
-		now := time.Now().UTC()
-		dayCounter, err := quotaBucket(tx, privateKey.ID, "day", dayBucket(now))
+		now, err := s.databaseNow(tx)
 		if err != nil {
 			return err
 		}
-		monthCounter, err := quotaBucket(tx, privateKey.ID, "month", monthBucket(now))
+		dayCounter, err := s.quotaBucketForUpdate(tx, privateKey.ID, "day", dayBucket(now))
 		if err != nil {
 			return err
 		}
-		if effectiveLimits.MaxConcurrency > 0 && s.inFlight[privateKey.ID] >= effectiveLimits.MaxConcurrency {
-			return ErrRateLimitExceeded
+		monthCounter, err := s.quotaBucketForUpdate(tx, privateKey.ID, "month", monthBucket(now))
+		if err != nil {
+			return err
+		}
+		if effectiveLimits.MaxConcurrency > 0 {
+			confirmedFor, err := s.acquireInFlightLease(tx, "api_key", privateKey.ID, effectiveLimits.MaxConcurrency, requestID)
+			if err != nil {
+				return err
+			}
+			leaseConfirmedFor = confirmedFor
+			leaseAcquired = true
 		}
 		if exceedsRequestQuota(effectiveLimits, &dayCounter.QuotaCounter, &monthCounter.QuotaCounter) ||
 			exceedsTokenQuota(effectiveLimits, &dayCounter.QuotaCounter, &monthCounter.QuotaCounter) ||
@@ -1491,40 +2450,44 @@ func (s *GormStore) StartCall(project Project, key APIKey, modelName string) (Ca
 		if err := tx.Save(&monthCounter).Error; err != nil {
 			return err
 		}
-		keyID = privateKey.ID
 		call = CallContext{
-			RequestID: NewID("req"),
-			Project:   project,
-			Key:       publicKey(privateKey),
-			Model:     model,
-			StartedAt: now,
+			RequestID:      requestID,
+			Project:        project,
+			Key:            publicKey(privateKey),
+			Model:          model,
+			StartedAt:      now,
+			requestContext: ctx,
 		}
 		return nil
 	})
 	if err != nil {
 		return CallContext{}, err
 	}
-	s.inFlight[keyID]++
+	if leaseAcquired {
+		call.requestContext = s.startInFlightLeaseHeartbeat(ctx, requestID, leaseConfirmedFor)
+	}
 	return call, nil
 }
 
 func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usage, statusCode int, errorCode string, clientIP string, userAgent string) {
+	_ = s.stopInFlightLeaseHeartbeat(call.RequestID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if call.Key.ID != "" && s.inFlight[call.Key.ID] > 0 {
-		s.inFlight[call.Key.ID]--
-	}
 	usage = priceUsage(call.Model, usage)
 	now := time.Now().UTC()
-	_ = s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if call.Key.ID != "" {
+			if err := s.lockScopeForUpdate(tx, "api_key", call.Key.ID); err != nil {
+				return err
+			}
+		}
 		var key APIKey
 		if err := tx.First(&key, "id = ?", call.Key.ID).Error; err == nil {
-			dayCounter, err := quotaBucket(tx, key.ID, "day", dayBucket(now))
+			dayCounter, err := s.quotaBucketForUpdate(tx, key.ID, "day", dayBucket(now))
 			if err != nil {
 				return err
 			}
-			monthCounter, err := quotaBucket(tx, key.ID, "month", monthBucket(now))
+			monthCounter, err := s.quotaBucketForUpdate(tx, key.ID, "month", monthBucket(now))
 			if err != nil {
 				return err
 			}
@@ -1550,7 +2513,10 @@ func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usa
 				ProviderID:         route.Provider.ID,
 				ProviderResourceID: routeResourceID(route),
 				InputTokens:        usage.PromptTokens,
+				CachedInputTokens:  usage.CachedInputTokens,
+				CacheWriteTokens:   usage.CacheWriteInputTokens,
 				OutputTokens:       usage.CompletionTokens,
+				ReasoningTokens:    usage.ReasoningOutputTokens,
 				TotalTokens:        usage.TotalTokens,
 				CostUSD:            usage.CostUSD,
 				CreatedAt:          now,
@@ -1558,7 +2524,7 @@ func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usa
 				return err
 			}
 		}
-		return tx.Create(&RequestLog{
+		if err := tx.Create(&RequestLog{
 			ID:                 NewID("log"),
 			RequestID:          call.RequestID,
 			ProjectID:          call.Project.ID,
@@ -1567,14 +2533,69 @@ func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usa
 			ProviderID:         route.Provider.ID,
 			ProviderResourceID: routeResourceID(route),
 			ProviderModel:      route.ProviderModel,
+			UpstreamRequestID:  usage.UpstreamRequestID,
+			ServedModel:        usage.ServedModel,
+			ModelETag:          usage.ModelETag,
+			Transport:          usage.Transport,
 			StatusCode:         statusCode,
 			ErrorCode:          errorCode,
 			LatencyMS:          time.Since(call.StartedAt).Milliseconds(),
 			ClientIP:           clientIP,
 			UserAgent:          userAgent,
 			CreatedAt:          now,
-		}).Error
+		}).Error; err != nil {
+			return err
+		}
+		if route.Provider.ID != "" {
+			if err := tx.Create(&ProviderObservation{
+				ID:          NewID("pob"),
+				ProviderID:  route.Provider.ID,
+				ResourceID:  routeResourceID(route),
+				AdapterType: route.Provider.Type,
+				Source:      "gateway_request",
+				Operation:   "inference",
+				Success:     providerObservationSuccess(statusCode, errorCode),
+				LatencyMS:   time.Since(call.StartedAt).Milliseconds(),
+				ErrorCode:   errorCode,
+				ObservedAt:  now,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		if resourceID := routeResourceID(route); resourceID != "" && (len(usage.ResponseHeaders) > 0 || usage.UpstreamRequestID != "" || usage.ServedModel != "") {
+			observation := ProviderResourceObservation{
+				ResourceID:        resourceID,
+				AdapterType:       route.Provider.Type,
+				RateLimitHeaders:  codexRateLimitHeaders(usage.ResponseHeaders),
+				UpstreamRequestID: usage.UpstreamRequestID,
+				ServedModel:       usage.ServedModel,
+				ModelETag:         usage.ModelETag,
+				Transport:         usage.Transport,
+				UpdatedAt:         now,
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "resource_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"adapter_type",
+					"rate_limit_headers",
+					"upstream_request_id",
+					"served_model",
+					"model_e_tag",
+					"transport",
+					"updated_at",
+				}),
+			}).Create(&observation).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error
 	})
+	if err != nil {
+		log.Printf("[tokenhub] failed to finish call request=%s: %v", call.RequestID, err)
+		if releaseErr := s.db.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error; releaseErr != nil {
+			log.Printf("[tokenhub] failed to release API key concurrency lease request=%s: %v", call.RequestID, releaseErr)
+		}
+	}
 }
 
 func (s *GormStore) RecordPlaygroundRequest(call CallContext, route RouteSelection, statusCode int, errorCode string, clientIP string, userAgent string) {
@@ -1661,12 +2682,15 @@ func (s *GormStore) UsageSummary() map[string]any {
 	_ = s.db.Find(&records).Error
 	_ = s.db.Find(&logs).Error
 
-	var input, output, total int64
+	var input, cachedInput, cacheWrite, output, reasoningOutput, total int64
 	var cost float64
 	errorsCount := 0
 	for _, record := range records {
 		input += record.InputTokens
+		cachedInput += record.CachedInputTokens
+		cacheWrite += record.CacheWriteTokens
 		output += record.OutputTokens
+		reasoningOutput += record.ReasoningTokens
 		total += record.TotalTokens
 		cost += record.CostUSD
 	}
@@ -1679,13 +2703,16 @@ func (s *GormStore) UsageSummary() map[string]any {
 		}
 	}
 	return map[string]any{
-		"request_count":      billableRequestLogCount(logs),
-		"usage_record_count": len(records),
-		"input_tokens":       input,
-		"output_tokens":      output,
-		"total_tokens":       total,
-		"estimated_cost_usd": cost,
-		"errors":             errorsCount,
+		"request_count":            billableRequestLogCount(logs),
+		"usage_record_count":       len(records),
+		"input_tokens":             input,
+		"cached_input_tokens":      cachedInput,
+		"cache_write_input_tokens": cacheWrite,
+		"output_tokens":            output,
+		"reasoning_output_tokens":  reasoningOutput,
+		"total_tokens":             total,
+		"estimated_cost_usd":       cost,
+		"errors":                   errorsCount,
 	}
 }
 
@@ -1754,12 +2781,13 @@ func (s *GormStore) UsageTimeseries(days int) []map[string]any {
 		day := now.AddDate(0, 0, -i).Format("2006-01-02")
 		indexByDay[day] = len(series)
 		series = append(series, map[string]any{
-			"date":               day,
-			"request_count":      int64(0),
-			"input_tokens":       int64(0),
-			"output_tokens":      int64(0),
-			"total_tokens":       int64(0),
-			"estimated_cost_usd": float64(0),
+			"date":                day,
+			"request_count":       int64(0),
+			"input_tokens":        int64(0),
+			"cached_input_tokens": int64(0),
+			"output_tokens":       int64(0),
+			"total_tokens":        int64(0),
+			"estimated_cost_usd":  float64(0),
 		})
 	}
 	var records []UsageRecord
@@ -1772,6 +2800,7 @@ func (s *GormStore) UsageTimeseries(days int) []map[string]any {
 		}
 		series[idx]["request_count"] = series[idx]["request_count"].(int64) + 1
 		series[idx]["input_tokens"] = series[idx]["input_tokens"].(int64) + record.InputTokens
+		series[idx]["cached_input_tokens"] = series[idx]["cached_input_tokens"].(int64) + record.CachedInputTokens
 		series[idx]["output_tokens"] = series[idx]["output_tokens"].(int64) + record.OutputTokens
 		series[idx]["total_tokens"] = series[idx]["total_tokens"].(int64) + record.TotalTokens
 		series[idx]["estimated_cost_usd"] = series[idx]["estimated_cost_usd"].(float64) + record.CostUSD
@@ -1791,14 +2820,15 @@ func (s *GormStore) GenerateBillingPeriod(period string) (map[string]any, error)
 	}
 
 	type bucket struct {
-		CostCenter   string
-		ProjectID    string
-		TeamID       string
-		RequestCount int64
-		InputTokens  int64
-		OutputTokens int64
-		TotalTokens  int64
-		CostUSD      float64
+		CostCenter        string
+		ProjectID         string
+		TeamID            string
+		RequestCount      int64
+		InputTokens       int64
+		CachedInputTokens int64
+		OutputTokens      int64
+		TotalTokens       int64
+		CostUSD           float64
 	}
 	buckets := map[string]*bucket{}
 	projectTotals := map[string]float64{}
@@ -1814,6 +2844,7 @@ func (s *GormStore) GenerateBillingPeriod(period string) (map[string]any, error)
 		}
 		item.RequestCount++
 		item.InputTokens += record.InputTokens
+		item.CachedInputTokens += record.CachedInputTokens
 		item.OutputTokens += record.OutputTokens
 		item.TotalTokens += record.TotalTokens
 		item.CostUSD += record.CostUSD
@@ -1847,17 +2878,18 @@ func (s *GormStore) GenerateBillingPeriod(period string) (map[string]any, error)
 				Description: "由 TokenHub 用量记录自动生成",
 				Status:      StatusActive,
 				Fields: map[string]any{
-					"period":             period,
-					"cost_center":        item.CostCenter,
-					"project_id":         item.ProjectID,
-					"team_id":            item.TeamID,
-					"allocated_cost_usd": roundMoney(item.CostUSD),
-					"request_count":      item.RequestCount,
-					"input_tokens":       item.InputTokens,
-					"output_tokens":      item.OutputTokens,
-					"total_tokens":       item.TotalTokens,
-					"allocation_rule":    "actual_usage_cost",
-					"generated_by":       "tokenhub",
+					"period":              period,
+					"cost_center":         item.CostCenter,
+					"project_id":          item.ProjectID,
+					"team_id":             item.TeamID,
+					"allocated_cost_usd":  roundMoney(item.CostUSD),
+					"request_count":       item.RequestCount,
+					"input_tokens":        item.InputTokens,
+					"cached_input_tokens": item.CachedInputTokens,
+					"output_tokens":       item.OutputTokens,
+					"total_tokens":        item.TotalTokens,
+					"allocation_rule":     "actual_usage_cost",
+					"generated_by":        "tokenhub",
 				},
 				CreatedAt: time.Now().UTC(),
 				UpdatedAt: time.Now().UTC(),
@@ -1907,6 +2939,54 @@ func (s *GormStore) ListRequestLogs() []RequestLog {
 	var items []RequestLog
 	_ = s.db.Order("created_at desc").Find(&items).Error
 	return items
+}
+
+func (s *GormStore) ListProviderObservations(since time.Time) []ProviderObservation {
+	var items []ProviderObservation
+	query := s.db
+	if !since.IsZero() {
+		query = query.Where("observed_at >= ?", since.UTC())
+	}
+	_ = query.Order("observed_at desc").Find(&items).Error
+	return items
+}
+
+func (s *GormStore) RecordProviderObservation(observation ProviderObservation) {
+	if observation.ID == "" {
+		observation.ID = NewID("pob")
+	}
+	if observation.ObservedAt.IsZero() {
+		observation.ObservedAt = time.Now().UTC()
+	}
+	_ = s.db.Create(&observation).Error
+}
+
+func (s *GormStore) GetProviderResourceObservation(resourceID string) (ProviderResourceObservation, bool) {
+	var observation ProviderResourceObservation
+	err := s.db.First(&observation, "resource_id = ?", strings.TrimSpace(resourceID)).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ProviderResourceObservation{}, false
+	}
+	return observation, err == nil
+}
+
+func (s *GormStore) SaveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
+	observation := ProviderResourceObservation{
+		ResourceID:     strings.TrimSpace(resourceID),
+		AdapterType:    strings.TrimSpace(adapterType),
+		QuotaSnapshot:  snapshot,
+		QuotaFetchedAt: &fetchedAt,
+		UpdatedAt:      time.Now().UTC(),
+	}
+	return s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "resource_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"adapter_type",
+			"quota_snapshot",
+			"quota_fetched_at",
+			"updated_at",
+		}),
+	}).Create(&observation).Error
 }
 
 func (s *GormStore) GetRequestDetail(requestID string) (map[string]any, error) {
@@ -2240,6 +3320,7 @@ func (s *GormStore) UpdateAdminUser(id string, patch AdminUser, password string)
 	if err := s.db.First(&user, "id = ?", id).Error; err != nil {
 		return AdminUser{}, notFound(err, "admin_user_not_found", "Admin user not found")
 	}
+	wasActivePlatformAdmin := activePlatformAdmin(user)
 	if patch.Username != "" {
 		var count int64
 		if err := s.db.Model(&AdminUser{}).Where("id <> ? AND username = ?", id, patch.Username).Count(&count).Error; err != nil {
@@ -2271,7 +3352,16 @@ func (s *GormStore) UpdateAdminUser(id string, patch AdminUser, password string)
 		user.Status = patch.Status
 	}
 	if password != "" {
-		user.PasswordHash = HashSecret(password)
+		passwordHash, err := hashPassword(password)
+		if err != nil {
+			return AdminUser{}, err
+		}
+		user.PasswordHash = passwordHash
+	}
+	if wasActivePlatformAdmin && !activePlatformAdmin(user) {
+		if err := ensureAnotherActivePlatformAdmin(s.db, user.ID); err != nil {
+			return AdminUser{}, err
+		}
 	}
 	user.UpdatedAt = time.Now().UTC()
 	if err := s.db.Save(&user).Error; err != nil {
@@ -2289,12 +3379,10 @@ func (s *GormStore) DeleteAdminUser(id string) error {
 		if err := tx.First(&user, "id = ?", id).Error; err != nil {
 			return notFound(err, "admin_user_not_found", "Admin user not found")
 		}
-		var activeUsers int64
-		if err := tx.Model(&AdminUser{}).Where("status = ?", StatusActive).Count(&activeUsers).Error; err != nil {
-			return err
-		}
-		if activeUsers <= 1 && user.Status == StatusActive {
-			return NewHTTPError(400, "last_admin_user", "Cannot delete the last active admin user")
+		if activePlatformAdmin(user) {
+			if err := ensureAnotherActivePlatformAdmin(tx, user.ID); err != nil {
+				return err
+			}
 		}
 		if err := tx.Where("user_id = ?", id).Delete(&AdminSession{}).Error; err != nil {
 			return err
@@ -2304,6 +3392,24 @@ func (s *GormStore) DeleteAdminUser(id string) error {
 		}
 		return tx.Delete(&user).Error
 	})
+}
+
+func activePlatformAdmin(user AdminUser) bool {
+	role := strings.ToLower(strings.TrimSpace(user.Role))
+	return user.Status == StatusActive && (role == "admin" || role == "system_admin")
+}
+
+func ensureAnotherActivePlatformAdmin(db *gorm.DB, excludedUserID string) error {
+	var count int64
+	if err := db.Model(&AdminUser{}).
+		Where("id <> ? AND status = ? AND lower(role) IN ?", excludedUserID, StatusActive, []string{"admin", "system_admin"}).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return NewHTTPError(400, "last_admin_user", "Cannot remove, disable, or demote the last active platform administrator")
+	}
+	return nil
 }
 
 func (s *GormStore) CreateAdminPasswordResetToken(userID string, createdBy string, ttl time.Duration) (string, AdminPasswordResetToken, error) {
@@ -2349,7 +3455,11 @@ func (s *GormStore) ResetAdminUserPassword(token string, password string) (Admin
 		return AdminUser{}, notFound(err, "admin_user_not_found", "Admin user not found")
 	}
 	now := time.Now().UTC()
-	user.PasswordHash = HashSecret(password)
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		return AdminUser{}, err
+	}
+	user.PasswordHash = passwordHash
 	user.UpdatedAt = now
 	item.UsedAt = &now
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -2372,14 +3482,22 @@ func (s *GormStore) AuthenticateAdminUser(identity string, password string, ttl 
 
 	identity = strings.ToLower(strings.TrimSpace(identity))
 	var user AdminUser
-	if err := s.db.Where("lower(email) = ? OR lower(username) = ?", identity, identity).First(&user).Error; err != nil {
+	if err := s.db.Where("LOWER(email) = ? OR LOWER(username) = ?", identity, identity).First(&user).Error; err != nil {
 		return AdminUser{}, AdminSession{}, NewHTTPError(401, "invalid_credentials", "Invalid username or password")
 	}
 	if user.Status != StatusActive {
 		return AdminUser{}, AdminSession{}, NewHTTPError(403, "admin_user_disabled", "Admin user is disabled")
 	}
-	if user.PasswordHash != HashSecret(password) {
+	validPassword, needsPasswordUpgrade := verifyPassword(user.PasswordHash, password)
+	if !validPassword {
 		return AdminUser{}, AdminSession{}, NewHTTPError(401, "invalid_credentials", "Invalid username or password")
+	}
+	if needsPasswordUpgrade {
+		upgradedHash, err := hashPasswordForUpgrade(password)
+		if err != nil {
+			return AdminUser{}, AdminSession{}, err
+		}
+		user.PasswordHash = upgradedHash
 	}
 	now := time.Now().UTC()
 	session := AdminSession{
@@ -2460,6 +3578,10 @@ func (s *GormStore) RevokeAdminSession(token string) {
 }
 
 func (s *GormStore) CreateSQLiteBackup(createdBy string, expireDays int) (SQLiteBackupRecord, error) {
+	if s.IsPostgreSQL() {
+		return s.CreatePostgreSQLBackup(createdBy, expireDays)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -2536,6 +3658,10 @@ func (s *GormStore) GetSQLiteBackup(id string) (SQLiteBackupRecord, error) {
 }
 
 func (s *GormStore) RestoreSQLiteBackup(id string, restoredBy string) (SQLiteBackupRecord, error) {
+	if s.IsPostgreSQL() {
+		return s.RestorePostgreSQLBackup(id, restoredBy)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -2711,63 +3837,85 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 	return items
 }
 
-func quotaBucket(tx *gorm.DB, keyID, scope, bucket string) (QuotaBucket, error) {
-	item := QuotaBucket{KeyID: keyID, Scope: scope, Bucket: bucket}
-	err := tx.First(&item, "key_id = ? AND scope = ? AND bucket = ?", keyID, scope, bucket).Error
-	if err == nil {
-		return item, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string) (QuotaBucket, error) {
+	seed := QuotaBucket{KeyID: keyID, Scope: scope, Bucket: bucket}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
 		return QuotaBucket{}, err
 	}
-	if err := tx.Create(&item).Error; err != nil {
+	query := tx
+	if s.dbDriver == "postgres" {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	var item QuotaBucket
+	if err := query.First(&item, "key_id = ? AND scope = ? AND bucket = ?", keyID, scope, bucket).Error; err != nil {
 		return QuotaBucket{}, err
 	}
 	return item, nil
-}
-
-func providerResourceBucket(tx *gorm.DB, resourceID, bucket string) (ProviderResourceBucket, error) {
-	item := ProviderResourceBucket{ResourceID: resourceID, Bucket: bucket}
-	err := tx.First(&item, "resource_id = ? AND bucket = ?", resourceID, bucket).Error
-	if err == nil {
-		return item, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return ProviderResourceBucket{}, err
-	}
-	item.UpdatedAt = time.Now().UTC()
-	if err := tx.Create(&item).Error; err != nil {
-		return ProviderResourceBucket{}, err
-	}
-	return item, nil
-}
-
-func addProviderResourceTokens(tx *gorm.DB, resourceID string, bucket string, tokens int64) error {
-	if tokens <= 0 {
-		return nil
-	}
-	item, err := providerResourceBucket(tx, resourceID, bucket)
-	if err != nil {
-		return err
-	}
-	item.Tokens += tokens
-	item.UpdatedAt = time.Now().UTC()
-	return tx.Save(&item).Error
 }
 
 func priceUsage(model Model, usage Usage) Usage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
+	usage.CachedInputTokens = minInt64(maxInt64(usage.CachedInputTokens, 0), usage.PromptTokens)
 	if usage.CostUSD == 0 {
 		if model.Modality == "embedding" && model.EmbeddingPriceUSDPer1M > 0 {
 			usage.CostUSD = float64(usage.TotalTokens) * model.EmbeddingPriceUSDPer1M / 1_000_000
 		} else {
-			usage.CostUSD = float64(usage.PromptTokens)*model.InputPriceUSDPer1M/1_000_000 +
+			uncachedInputTokens := usage.PromptTokens - usage.CachedInputTokens
+			cacheReadPrice := effectiveCacheReadPriceUSDPer1M(model)
+			usage.CostUSD = float64(uncachedInputTokens)*model.InputPriceUSDPer1M/1_000_000 +
+				float64(usage.CachedInputTokens)*cacheReadPrice/1_000_000 +
 				float64(usage.CompletionTokens)*model.OutputPriceUSDPer1M/1_000_000
 		}
 	}
 	return usage
+}
+
+const (
+	defaultCacheReadEstimateRatio  = 0.10
+	deepSeekCacheReadEstimateRatio = 0.02
+	deepSeekV4ProCacheReadRatio    = 1.0 / 120
+)
+
+func effectiveCacheReadPriceUSDPer1M(model Model) float64 {
+	if model.Modality == "embedding" {
+		return 0
+	}
+	if model.CacheReadPriceUSDPer1M > 0 {
+		return model.CacheReadPriceUSDPer1M
+	}
+	for _, key := range []string{"cached_input_price_usd_per_1m", "cache_read_price_usd_per_1m", "cached_read_price_usd_per_1m"} {
+		if value, err := strconv.ParseFloat(strings.TrimSpace(model.Metadata[key]), 64); err == nil && value > 0 {
+			return value
+		}
+	}
+	if model.InputPriceUSDPer1M <= 0 {
+		return 0
+	}
+	ratio := defaultCacheReadEstimateRatio
+	category := standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.Name, model.Family)))
+	if category == "deepseek" {
+		ratio = deepSeekCacheReadEstimateRatio
+		if strings.Contains(strings.ToLower(model.Name+" "+model.Family), "v4-pro") {
+			ratio = deepSeekV4ProCacheReadRatio
+		}
+	}
+	return model.InputPriceUSDPer1M * ratio
+}
+
+func minInt64(left int64, right int64) int64 {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func maxInt64(left int64, right int64) int64 {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func raiseQuotaAlerts(tx *gorm.DB, key APIKey, dayCounter, monthCounter *QuotaCounter) error {
@@ -3305,7 +4453,11 @@ func createAdminUser(db *gorm.DB, user AdminUser, password string) (AdminUser, e
 		return AdminUser{}, NewHTTPError(409, "admin_user_conflict", "Username or email already exists")
 	}
 	if user.PasswordHash == "" {
-		user.PasswordHash = HashSecret(password)
+		passwordHash, err := hashPassword(password)
+		if err != nil {
+			return AdminUser{}, err
+		}
+		user.PasswordHash = passwordHash
 	}
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = now
@@ -3551,12 +4703,13 @@ func addUsage(counter *QuotaCounter, usage Usage) {
 
 func aggregateUsage(records []UsageRecord, keyFn func(UsageRecord) string) []map[string]any {
 	type bucket struct {
-		Key          string
-		Requests     int64
-		InputTokens  int64
-		OutputTokens int64
-		TotalTokens  int64
-		CostUSD      float64
+		Key               string
+		Requests          int64
+		InputTokens       int64
+		CachedInputTokens int64
+		OutputTokens      int64
+		TotalTokens       int64
+		CostUSD           float64
 	}
 	buckets := map[string]*bucket{}
 	for _, record := range records {
@@ -3571,6 +4724,7 @@ func aggregateUsage(records []UsageRecord, keyFn func(UsageRecord) string) []map
 		}
 		item.Requests++
 		item.InputTokens += record.InputTokens
+		item.CachedInputTokens += record.CachedInputTokens
 		item.OutputTokens += record.OutputTokens
 		item.TotalTokens += record.TotalTokens
 		item.CostUSD += record.CostUSD
@@ -3588,12 +4742,13 @@ func aggregateUsage(records []UsageRecord, keyFn func(UsageRecord) string) []map
 	result := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		result = append(result, map[string]any{
-			"id":                 item.Key,
-			"request_count":      item.Requests,
-			"input_tokens":       item.InputTokens,
-			"output_tokens":      item.OutputTokens,
-			"total_tokens":       item.TotalTokens,
-			"estimated_cost_usd": item.CostUSD,
+			"id":                  item.Key,
+			"request_count":       item.Requests,
+			"input_tokens":        item.InputTokens,
+			"cached_input_tokens": item.CachedInputTokens,
+			"output_tokens":       item.OutputTokens,
+			"total_tokens":        item.TotalTokens,
+			"estimated_cost_usd":  item.CostUSD,
 		})
 	}
 	return result
@@ -3654,4 +4809,59 @@ func resourcePrefix(kind string) string {
 	default:
 		return "res"
 	}
+}
+
+// GetDatabaseStatus returns the database type, Docker environment, and connection status.
+func (s *GormStore) GetDatabaseStatus() (map[string]interface{}, error) {
+	status := make(map[string]interface{})
+
+	// 1. Detect the database type.
+	dbType := "sqlite"
+	if s.db.Dialector.Name() == "postgres" {
+		dbType = "postgres"
+	}
+	status["database_type"] = dbType
+
+	// 2. Detect whether running in Docker.
+	isDocker := false
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		isDocker = true
+	}
+	status["is_docker"] = isDocker
+
+	// 3. Test the database connection.
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		status["connection_ok"] = false
+		return status, nil
+	}
+
+	if err := sqlDB.Ping(); err != nil {
+		status["connection_ok"] = false
+		return status, nil
+	}
+	status["connection_ok"] = true
+
+	// 4. If PostgreSQL, retrieve the version information.
+	if dbType == "postgres" {
+		var version string
+		if err := s.db.Raw("SELECT version()").Scan(&version).Error; err == nil {
+			status["postgres_version"] = version
+		}
+	}
+
+	// 5. Get the redacted database URL.
+	if databaseURL := os.Getenv("TOKENHUB_DATABASE_URL"); databaseURL != "" {
+		status["database_url"] = redactDatabaseURL(databaseURL)
+	}
+
+	return status, nil
+}
+
+func (s *GormStore) Ping(ctx context.Context) error {
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
 }

@@ -55,13 +55,16 @@ TokenHub separates everyday model usage, team governance, and platform administr
 - Identity source configuration for OAuth/OIDC enterprise sign-in, plus RBAC and audit trails.
 - Clean console with compact role-aware navigation, global search, light/dark mode, and split-view API documentation.
 - SQLite-first private deployment with Docker Compose support.
+- PostgreSQL supports multi-instance deployments: share state through remote PostgreSQL, scale frontend and backend replicas horizontally, and configure connection pools. See the [deployment guide](docs/deployment.md).
 - Console language switching for English, Chinese, and Japanese.
+- TokenHub can also connect OpenAI Codex subscription resources and route selected local Codex CLI or desktop sessions through an isolated, recoverable Codex profile. See the [Codex integration guides](docs/codex-tokenhub-profile-quick-start.md).
 
 ## Quick Start
 
 ```bash
 cp deploy/.env.example deploy/.env
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+# Replace every change-me value in deploy/.env with a strong secret.
+./deploy/install.sh
 ```
 
 Open:
@@ -70,37 +73,12 @@ Open:
 - Backend API: `http://localhost:8080`
 - Health check: `http://localhost:8080/healthz`
 
-Default admin login:
+Initial admin login:
 
 - Username: `admin`
-- Password: `admin123456`
+- Password: the value of `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`
 
-Change the default password and secrets in `deploy/.env` before exposing TokenHub beyond a local machine.
-
-## Local Development
-
-Backend:
-
-```bash
-cd backend
-go run ./cmd/tokenhub
-```
-
-Frontend:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Smoke-test the model API with the included SDK example:
-
-```bash
-cd sdk
-npm install
-npm run test:deepseek
-```
+The deployment script validates production credentials, pulls published images, and starts the containers without building locally. Until the images are publicly available, a failed pull of the default `latest` tag automatically falls back to a local source build; an explicitly selected tag never does. The script reports each unsafe variable without printing secret values. If Compose fails because a backend container created or restarted by that attempt is unhealthy, it automatically shows only that attempt's recent backend logs. Use `./deploy/install.sh --build` to request a local build explicitly.
 
 ## Documentation
 
@@ -108,8 +86,13 @@ npm run test:deepseek
 - [User Guide](docs/user-guide.md)
 - [Team Leader Guide](docs/team-leader-guide.md)
 - [Administrator Guide](docs/administrator-guide.md)
+- [Contributing Guide](CONTRIBUTING.md)
 - [简体中文文档](docs/zh-CN/README.md)
 - [日本語ドキュメント](docs/ja/README.md)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=astaxie%2FTokenHub&type=Date&legend=top-left)](https://www.star-history.com/?repos=astaxie%2FTokenHub&type=date&legend=top-left)
 
 ## License
 
