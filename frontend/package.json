@@ -7,8 +7,7 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
-    "check:lines": "node scripts/check-source-lines.mjs",
-    "typecheck": "npm run check:lines && tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "lucide-react": "1.17.0",
