@@ -1024,6 +1024,83 @@ func TestStreamingEffortFallbackDoesNotRetryAfterWriting(t *testing.T) {
 	}
 }
 
+func TestRoutedErrorsReuseAuditedRequestID(t *testing.T) {
+	assertAuditedRequestID := func(t *testing.T, store *GormStore, resp *httptest.ResponseRecorder) {
+		t.Helper()
+		var responseBody map[string]any
+		if err := json.Unmarshal(resp.Body.Bytes(), &responseBody); err != nil {
+			t.Fatalf("decode gateway error: %v", err)
+		}
+		requestID, _ := responseBody["request_id"].(string)
+		if requestID == "" || requestID != resp.Header().Get("x-request-id") {
+			t.Fatalf("expected matching request IDs, header=%q body=%q", resp.Header().Get("x-request-id"), requestID)
+		}
+		var requestLog RequestLog
+		if err := store.db.First(&requestLog, "request_id = ?", requestID).Error; err != nil {
+			t.Fatalf("expected request ID %q to resolve to an audit record: %v", requestID, err)
+		}
+	}
+
+	t.Run("provider failure", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":{"message":"temporary upstream failure"}}`)
+		}))
+		defer upstream.Close()
+
+		server, store, secret := newReasoningEffortGateway(t, upstream.URL, ProviderOpenAICompatible)
+		resp := doReasoningJSON(t, server.Handler(), "/v1/chat/completions", map[string]any{
+			"model":    "reasoning-model",
+			"messages": []map[string]any{{"role": "user", "content": "reason"}},
+		}, secret)
+		if resp.Code != http.StatusBadGateway {
+			t.Fatalf("expected 502, got %d: %s", resp.Code, resp.Body.String())
+		}
+		assertAuditedRequestID(t, store, resp)
+	})
+
+	t.Run("route selection failure", func(t *testing.T) {
+		server, store, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
+		if err := store.DeleteRoute("route_reasoning_0"); err != nil {
+			t.Fatal(err)
+		}
+		resp := doReasoningJSON(t, server.Handler(), "/v1/chat/completions", map[string]any{
+			"model":    "reasoning-model",
+			"messages": []map[string]any{{"role": "user", "content": "reason"}},
+		}, secret)
+		if resp.Code != http.StatusServiceUnavailable {
+			t.Fatalf("expected 503, got %d: %s", resp.Code, resp.Body.String())
+		}
+		assertAuditedRequestID(t, store, resp)
+	})
+
+	t.Run("quota rejection", func(t *testing.T) {
+		server, store, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderMock)
+		keys := store.ListAPIKeys()
+		if len(keys) != 1 {
+			t.Fatalf("expected one API key, got %d", len(keys))
+		}
+		if _, err := store.UpdateAPIKey(keys[0].ID, APIKey{
+			Limits: QuotaLimits{DailyRequests: 1, MonthlyRequests: 1},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		request := map[string]any{
+			"model":    "reasoning-model",
+			"messages": []map[string]any{{"role": "user", "content": "reason"}},
+		}
+		first := doReasoningJSON(t, server.Handler(), "/v1/chat/completions", request, secret)
+		if first.Code != http.StatusOK {
+			t.Fatalf("expected first request to succeed, got %d: %s", first.Code, first.Body.String())
+		}
+		second := doReasoningJSON(t, server.Handler(), "/v1/chat/completions", request, secret)
+		if second.Code != http.StatusTooManyRequests {
+			t.Fatalf("expected quota rejection, got %d: %s", second.Code, second.Body.String())
+		}
+		assertAuditedRequestID(t, store, second)
+	})
+}
+
 func TestGatewayFallsBackToBackupAfterEffortRetryFails(t *testing.T) {
 	var primaryRequests []map[string]any
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

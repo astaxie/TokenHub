@@ -500,10 +500,12 @@ func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		requestID := s.store.RecordRejectedRequest(project, key, model, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		w.Header().Set("x-request-id", requestID)
 		s.recordRequestPayload(requestID, requestPayload, auditErrorPayload(err, requestID))
 		writeError(w, r, err)
 		return RoutedCall{}, false
 	}
+	w.Header().Set("x-request-id", call.RequestID)
 	if call.requestContext != nil {
 		*r = *r.WithContext(call.requestContext)
 	}
@@ -6431,6 +6433,7 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	if requestID == "" {
 		requestID = NewID("req")
 	}
+	w.Header().Set("x-request-id", requestID)
 	writeJSON(w, httpErr.Status, map[string]any{
 		"error": map[string]any{
 			"message": httpErr.Message,
