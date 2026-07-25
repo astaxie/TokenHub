@@ -21,7 +21,7 @@ func TestWithoutGatewayExtensionsStripsReasoningFields(t *testing.T) {
 		},
 	}}
 
-	sanitized := withoutGatewayExtensions(req)
+	sanitized := withoutGatewayExtensions(req, false)
 
 	for _, message := range sanitized.Messages {
 		if message.ReasoningContent != "" || message.ReasoningSignature != "" || message.RedactedReasoningContent != "" {
@@ -35,6 +35,83 @@ func TestWithoutGatewayExtensionsStripsReasoningFields(t *testing.T) {
 	}
 }
 
+func TestWithoutGatewayExtensionsStripsExplicitEmptyRawFields(t *testing.T) {
+	var req ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{
+		"messages":[{
+			"role":"assistant",
+			"content":"answer",
+			"reasoning_content":"",
+			"reasoning_signature":"",
+			"redacted_reasoning_content":"",
+			"provider_message":"preserve me"
+		}]
+	}`), &req); err != nil {
+		t.Fatal(err)
+	}
+
+	sanitized := withoutGatewayExtensions(req, false)
+	encoded, err := json.Marshal(sanitized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var forwarded map[string]any
+	if err := json.Unmarshal(encoded, &forwarded); err != nil {
+		t.Fatal(err)
+	}
+	messages, _ := forwarded["messages"].([]any)
+	message, _ := messages[0].(map[string]any)
+	for _, field := range []string{"reasoning_content", "reasoning_signature", "redacted_reasoning_content"} {
+		if _, present := message[field]; present {
+			t.Fatalf("explicit empty %s must not be forwarded: %v", field, message)
+		}
+	}
+	if message["provider_message"] != "preserve me" {
+		t.Fatalf("unrelated provider field was lost: %v", message)
+	}
+
+	if _, present := req.Messages[0].raw["reasoning_signature"]; !present {
+		t.Fatal("the original request was mutated")
+	}
+}
+
+func TestDeepSeekAdapterForwardsReasoningContentOnly(t *testing.T) {
+	var received map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&received)
+		w.Header().Set("content-type", "application/json")
+		io.WriteString(w, `{"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	adapter := OpenAICompatibleAdapter{Client: upstream.Client()}
+	provider := Provider{Type: "deepseek", BaseURL: upstream.URL, APIKey: "test-key"}
+	_, _, err := adapter.Chat(context.Background(), provider, "model-x", ChatCompletionRequest{
+		Model: "model-x",
+		Messages: []ChatMessage{{
+			Role:                     "assistant",
+			Content:                  "answer",
+			ReasoningContent:         "deepseek continuation",
+			ReasoningSignature:       "anthropic:sig",
+			RedactedReasoningContent: "opaque",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+
+	messages, _ := received["messages"].([]any)
+	message, _ := messages[0].(map[string]any)
+	if message["reasoning_content"] != "deepseek continuation" {
+		t.Fatalf("DeepSeek reasoning_content was not forwarded: %v", message)
+	}
+	for _, field := range []string{"reasoning_signature", "redacted_reasoning_content"} {
+		if _, present := message[field]; present {
+			t.Fatalf("%s must remain gateway-local: %v", field, message)
+		}
+	}
+}
+
 func TestOpenAICompatibleAdapterDoesNotForwardGatewayExtensions(t *testing.T) {
 	var received map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +122,7 @@ func TestOpenAICompatibleAdapterDoesNotForwardGatewayExtensions(t *testing.T) {
 	defer upstream.Close()
 
 	adapter := OpenAICompatibleAdapter{Client: upstream.Client()}
-	provider := Provider{BaseURL: upstream.URL, APIKey: "test-key"}
+	provider := Provider{Type: ProviderOpenAICompatible, BaseURL: upstream.URL, APIKey: "test-key"}
 
 	_, _, err := adapter.Chat(context.Background(), provider, "model-x", ChatCompletionRequest{
 		Model: "model-x",

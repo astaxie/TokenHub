@@ -325,17 +325,21 @@ const (
 	geminiSignatureProvider    = "gemini"
 )
 
-// withoutGatewayExtensions strips the TokenHub-only reasoning fields from a
-// request before it is forwarded verbatim to an OpenAI-compatible upstream.
+// withoutGatewayExtensions strips TokenHub-only reasoning fields before a
+// request is forwarded to an OpenAI-shaped upstream.
 //
-// These fields exist to carry Anthropic and Gemini continuation data across the
-// OpenAI-shaped surface. They are not part of the OpenAI schema, and strict
-// implementations reject unknown message fields, so forwarding them would break
-// requests that worked before the fields existed.
-func withoutGatewayExtensions(req ChatCompletionRequest) ChatCompletionRequest {
+// ReasoningContent is preserved only for DeepSeek, where it is an upstream
+// protocol field used by tool-call continuations. Signature fields always stay
+// gateway-local because they carry Anthropic or Gemini opaque state.
+func withoutGatewayExtensions(req ChatCompletionRequest, preserveReasoningContent bool) ChatCompletionRequest {
 	needsCopy := false
 	for _, message := range req.Messages {
-		if message.ReasoningContent != "" || message.ReasoningSignature != "" || message.RedactedReasoningContent != "" {
+		_, hasReasoningContent := message.raw["reasoning_content"]
+		_, hasReasoningSignature := message.raw["reasoning_signature"]
+		_, hasRedactedReasoningContent := message.raw["redacted_reasoning_content"]
+		if (!preserveReasoningContent && (message.ReasoningContent != "" || hasReasoningContent)) ||
+			message.ReasoningSignature != "" || hasReasoningSignature ||
+			message.RedactedReasoningContent != "" || hasRedactedReasoningContent {
 			needsCopy = true
 			break
 		}
@@ -346,9 +350,17 @@ func withoutGatewayExtensions(req ChatCompletionRequest) ChatCompletionRequest {
 	messages := make([]ChatMessage, len(req.Messages))
 	copy(messages, req.Messages)
 	for index := range messages {
-		messages[index].ReasoningContent = ""
+		if messages[index].raw != nil {
+			messages[index].raw = cloneRawJSON(messages[index].raw, 0)
+		}
+		if !preserveReasoningContent {
+			messages[index].ReasoningContent = ""
+			delete(messages[index].raw, "reasoning_content")
+		}
 		messages[index].ReasoningSignature = ""
 		messages[index].RedactedReasoningContent = ""
+		delete(messages[index].raw, "reasoning_signature")
+		delete(messages[index].raw, "redacted_reasoning_content")
 	}
 	req.Messages = messages
 	return req

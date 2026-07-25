@@ -38,15 +38,22 @@ func TestGatewayForwardsChatReasoningEffort(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	server, _, secret := newReasoningEffortGateway(t, upstream.URL, ProviderOpenAICompatible)
+	server, _, secret := newReasoningEffortGateway(t, upstream.URL, "deepseek")
 	app := server.Handler()
 	effort := "high"
 	for _, stream := range []bool{false, true} {
 		resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
-			"model":            "reasoning-model",
-			"messages":         []map[string]any{{"role": "user", "content": "reason carefully"}},
+			"model": "reasoning-model",
+			"messages": []map[string]any{{
+				"role":              "assistant",
+				"content":           "",
+				"reasoning_content": "provider reasoning state",
+				"provider_message":  "preserve me",
+			}},
 			"reasoning_effort": effort,
 			"stream":           stream,
+			"thinking":         map[string]any{"type": "disabled"},
+			"provider_option":  "preserve me",
 		}, secret)
 		if resp.Code != http.StatusOK {
 			t.Fatalf("stream=%v expected 200, got %d: %s", stream, resp.Code, resp.Body)
@@ -62,6 +69,18 @@ func TestGatewayForwardsChatReasoningEffort(t *testing.T) {
 		}
 		if payload["model"] != "upstream-reasoning-model" {
 			t.Fatalf("expected routed provider model, got %#v", payload["model"])
+		}
+		thinking, _ := payload["thinking"].(map[string]any)
+		if thinking["type"] != "disabled" || payload["provider_option"] != "preserve me" {
+			t.Fatalf("provider-specific request fields were not preserved: %#v", payload)
+		}
+		messages, _ := payload["messages"].([]any)
+		if len(messages) != 1 {
+			t.Fatalf("expected one upstream message, got %#v", payload["messages"])
+		}
+		message, _ := messages[0].(map[string]any)
+		if message["reasoning_content"] != "provider reasoning state" || message["provider_message"] != "preserve me" {
+			t.Fatalf("provider-specific message fields were not preserved: %#v", message)
 		}
 	}
 }

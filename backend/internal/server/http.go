@@ -3408,10 +3408,17 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		BaseURL:  firstNonEmpty(req.BaseURL, catalog.BaseURL),
 		APIKey:   req.APIKey,
 		Status:   firstNonEmpty(req.Status, StatusActive),
-		Healthy:  req.Healthy,
+		Healthy:  req.Healthy != nil && *req.Healthy,
 		Priority: req.Priority,
 		Headers:  req.Headers,
 		Options:  req.Options,
+	}
+	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, NewHTTPError(
+			http.StatusBadRequest,
+			"provider_adapter_missing",
+			fmt.Sprintf("Provider adapter type %q is not registered", provider.Type),
+		)
 	}
 	if provider.Priority == 0 {
 		provider.Priority = 10
@@ -3633,6 +3640,12 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 				return
 			}
+			current, ok := s.store.GetProvider(parts[0])
+			if !ok {
+				writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
+				return
+			}
+			mergeProviderPatchRequest(&req, current)
 			provider, catalog, catalogSource, err := s.providerFromCreateRequest(r.Context(), req)
 			if err != nil {
 				writeError(w, r, err)
@@ -3726,6 +3739,34 @@ func (s *Server) handleAdminProviderResources(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusCreated, resource)
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+	}
+}
+
+func mergeProviderPatchRequest(req *ProviderCreateRequest, current Provider) {
+	if req.Name == "" {
+		req.Name = current.Name
+	}
+	if req.Type == "" {
+		req.Type = current.Type
+	}
+	if req.BaseURL == "" {
+		req.BaseURL = current.BaseURL
+	}
+	if req.Status == "" {
+		req.Status = current.Status
+	}
+	if req.Healthy == nil {
+		healthy := current.Healthy
+		req.Healthy = &healthy
+	}
+	if req.Priority == 0 {
+		req.Priority = current.Priority
+	}
+	if req.Headers == nil {
+		req.Headers = current.Headers
+	}
+	if req.Options == nil {
+		req.Options = current.Options
 	}
 }
 
@@ -7155,9 +7196,27 @@ func bearerToken(r *http.Request) string {
 
 func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
-	decoder := json.NewDecoder(io.LimitReader(r.Body, 4<<20))
+	const maxRequestBodyBytes = 4 << 20
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(data) > maxRequestBodyBytes {
+		return fmt.Errorf("request body exceeds %d bytes", maxRequestBodyBytes)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	return decoder.Decode(target)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("request body must contain a single JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
