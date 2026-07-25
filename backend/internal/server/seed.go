@@ -159,6 +159,9 @@ func BootstrapBaseDataWithConfig(store Store, config Config) error {
 	}
 	seedDefaultOrgResources(store)
 	seedDefaultProject(store)
+	if err := seedBuiltinProviderCatalog(store); err != nil {
+		return err
+	}
 	pruneProviderImportedModelCatalog(store)
 	if err := seedDefaultModelCatalog(store, config.ModelCatalogFile); err != nil {
 		return err

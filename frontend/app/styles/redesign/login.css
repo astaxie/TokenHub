@@ -711,6 +711,12 @@ textarea:focus-visible {
   border-radius: 7px;
 }
 
+.login-sso-icon.dingtalk,
+.login-sso-icon.feishu,
+.login-sso-icon.wecom {
+  background: #f4f9ff;
+}
+
 .login-sso-icon.gitlab {
   background: #fff2e8;
   color: #d65a1f;

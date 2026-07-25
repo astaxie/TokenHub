@@ -25,6 +25,10 @@ This guide is for platform administrators, security operators, and infrastructur
 6. Validate the flow with Model Playground and request logs.
 7. Review usage attribution before issuing keys broadly.
 
+## Provider Catalog Availability
+
+TokenHub stores the last known-good public provider catalog in the database. A new installation seeds a built-in catalog and attempts to download the complete public catalog before the backend starts accepting requests. If that initialization download fails, the backend starts with the built-in snapshot and retries on the next startup. Public snapshots older than 24 hours refresh in the background. Ordinary **Provider Channels** requests only read the database, and a refresh atomically replaces the snapshot only after the download passes completeness validation. If GitHub is slow or unavailable, administrators continue using the stored snapshot.
+
 ## Routing Requirements
 
 Users should only see callable models. A model is callable when it is active in the catalog and has at least one enabled routing rule.

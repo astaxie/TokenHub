@@ -10,17 +10,48 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
-const publicProviderConfAllURL = "https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/main/dist/all.json"
+const (
+	publicProviderConfAllURL       = "https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/main/dist/all.json"
+	providerCatalogSnapshotID      = "public-provider-conf"
+	providerCatalogResponseLimit   = 16 << 20
+	providerCatalogRequestTimeout  = 20 * time.Second
+	providerCatalogRefreshInterval = 24 * time.Hour
+	providerCatalogMinProviders    = 20
+	providerCatalogMinModels       = 100
+	providerCatalogMinRetention    = 0.8
+)
 
-var catalogCache = struct {
-	sync.Mutex
-	entries   []ProviderCatalogEntry
-	fetchedAt time.Time
-}{}
+type providerCatalogService struct {
+	store       Store
+	client      *http.Client
+	upstreamURL string
+}
+
+func newProviderCatalogService(store Store, client *http.Client, upstreamURL string) *providerCatalogService {
+	if client == nil {
+		client = &http.Client{Timeout: providerCatalogRequestTimeout}
+	}
+	if strings.TrimSpace(upstreamURL) == "" {
+		upstreamURL = publicProviderConfAllURL
+	}
+	return &providerCatalogService{store: store, client: client, upstreamURL: upstreamURL}
+}
+
+// RefreshProviderCatalogIfStale updates the database snapshot without making
+// ordinary Provider page requests depend on GitHub availability.
+func (s *Server) RefreshProviderCatalogIfStale(ctx context.Context) (bool, error) {
+	return s.providerCatalog.RefreshIfStale(ctx, providerCatalogRefreshInterval)
+}
+
+// InitializeProviderCatalog populates a fresh installation with the complete
+// public snapshot before the backend starts accepting requests. The builtin
+// database seed remains available when the upstream cannot be reached.
+func (s *Server) InitializeProviderCatalog(ctx context.Context) (bool, error) {
+	return s.providerCatalog.Initialize(ctx)
+}
 
 var standardModelCategories = map[string]bool{
 	"codex":        true,
@@ -45,56 +76,28 @@ var standardModelCategories = map[string]bool{
 	"custom":       true,
 }
 
-func LoadProviderCatalog(ctx context.Context, client *http.Client, refresh bool) ([]ProviderCatalogEntry, string, error) {
-	catalogCache.Lock()
-	if !refresh && time.Since(catalogCache.fetchedAt) < time.Hour && len(catalogCache.entries) > 0 {
-		entries := cloneCatalogEntries(catalogCache.entries, false)
-		catalogCache.Unlock()
-		return entries, "cache", nil
+func (s *providerCatalogService) List(ctx context.Context, refresh bool) ([]ProviderCatalogEntry, string, error) {
+	if refresh {
+		return s.refresh(ctx)
 	}
-	catalogCache.Unlock()
-
-	entries, err := fetchPublicProviderCatalog(ctx, client)
-	if err != nil {
-		catalogCache.Lock()
-		if len(catalogCache.entries) > 0 {
-			entries := cloneCatalogEntries(catalogCache.entries, false)
-			catalogCache.Unlock()
-			return entries, "cache", nil
-		}
-		catalogCache.Unlock()
-		entries := builtinProviderCatalog(true)
-		sortCatalogEntries(entries)
-		catalogCache.Lock()
-		catalogCache.entries = cloneCatalogEntries(entries, true)
-		catalogCache.fetchedAt = time.Now()
-		catalogCache.Unlock()
-		return cloneCatalogEntries(entries, false), "builtin", nil
-	}
-
-	entries = append(entries, customProviderCatalogEntry())
-	sortCatalogEntries(entries)
-
-	catalogCache.Lock()
-	catalogCache.entries = cloneCatalogEntries(entries, true)
-	catalogCache.fetchedAt = time.Now()
-	catalogCache.Unlock()
-
-	return cloneCatalogEntries(entries, false), "public-provider-conf", nil
+	entries, source, _, err := s.loadStored(false)
+	return entries, source, err
 }
 
-func GetProviderCatalogEntry(ctx context.Context, client *http.Client, id string, refresh bool) (ProviderCatalogEntry, string, bool, error) {
+func (s *providerCatalogService) Get(ctx context.Context, id string, refresh bool) (ProviderCatalogEntry, string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "custom" {
 		return customProviderCatalogEntry(), "builtin", true, nil
 	}
-	_, source, err := LoadProviderCatalog(ctx, client, refresh)
+	if refresh {
+		if _, source, err := s.refresh(ctx); err != nil {
+			return ProviderCatalogEntry{}, source, false, err
+		}
+	}
+	entries, source, _, err := s.loadStored(true)
 	if err != nil {
 		return ProviderCatalogEntry{}, source, false, err
 	}
-	catalogCache.Lock()
-	entries := cloneCatalogEntries(catalogCache.entries, true)
-	catalogCache.Unlock()
 	for _, entry := range entries {
 		if entry.ID == id {
 			return entry, source, true, nil
@@ -103,11 +106,131 @@ func GetProviderCatalogEntry(ctx context.Context, client *http.Client, id string
 	return ProviderCatalogEntry{}, source, false, nil
 }
 
-func fetchPublicProviderCatalog(ctx context.Context, client *http.Client) ([]ProviderCatalogEntry, error) {
-	if client == nil {
-		client = http.DefaultClient
+func (s *providerCatalogService) RefreshIfStale(ctx context.Context, maxAge time.Duration) (bool, error) {
+	_, source, fetchedAt, err := s.loadStored(false)
+	if err != nil {
+		return false, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicProviderConfAllURL, nil)
+	if source != "builtin" && maxAge > 0 && time.Since(fetchedAt) < maxAge {
+		return false, nil
+	}
+	_, _, err = s.refresh(ctx)
+	return err == nil, err
+}
+
+func (s *providerCatalogService) Initialize(ctx context.Context) (bool, error) {
+	_, source, _, err := s.loadStored(false)
+	if err != nil {
+		return false, err
+	}
+	if source != "builtin" {
+		return false, nil
+	}
+	_, _, err = s.refresh(ctx)
+	return err == nil, err
+}
+
+func (s *providerCatalogService) loadStored(includeModels bool) ([]ProviderCatalogEntry, string, time.Time, error) {
+	entries, source, fetchedAt, found, err := s.store.LoadProviderCatalogSnapshot(includeModels)
+	if err != nil {
+		return nil, source, fetchedAt, err
+	}
+	if found && len(entries) > 0 {
+		return entries, source, fetchedAt, nil
+	}
+	entries = builtinProviderCatalog(true)
+	sortCatalogEntries(entries)
+	fetchedAt = time.Now().UTC()
+	if err := s.store.SaveProviderCatalogSnapshot(entries, "builtin", fetchedAt); err != nil {
+		return nil, "builtin", fetchedAt, err
+	}
+	if !includeModels {
+		entries = cloneCatalogEntries(entries, false)
+	}
+	return entries, "builtin", fetchedAt, nil
+}
+
+func seedBuiltinProviderCatalog(store Store) error {
+	_, _, _, found, err := store.LoadProviderCatalogSnapshot(false)
+	if err != nil || found {
+		return err
+	}
+	entries := builtinProviderCatalog(true)
+	sortCatalogEntries(entries)
+	return store.SaveProviderCatalogSnapshot(entries, "builtin", time.Now().UTC())
+}
+
+func (s *providerCatalogService) refresh(ctx context.Context) ([]ProviderCatalogEntry, string, error) {
+	var refreshed []ProviderCatalogEntry
+	err := s.store.RunClusterOperation(ctx, "provider-catalog-refresh", func(refreshCtx context.Context) error {
+		previous, _, _, _ := s.loadStored(false)
+		entries, err := fetchPublicProviderCatalog(refreshCtx, s.client, s.upstreamURL)
+		if err != nil {
+			return err
+		}
+		if err := validateProviderCatalogRefresh(entries, previous); err != nil {
+			return err
+		}
+		filtered := entries[:0]
+		for _, entry := range entries {
+			if entry.ID != "custom" {
+				filtered = append(filtered, entry)
+			}
+		}
+		entries = append(filtered, customProviderCatalogEntry())
+		sortCatalogEntries(entries)
+		if err := s.store.SaveProviderCatalogSnapshot(entries, "public-provider-conf", time.Now().UTC()); err != nil {
+			return err
+		}
+		refreshed = cloneCatalogEntries(entries, false)
+		return nil
+	})
+	if err != nil {
+		return nil, "public-provider-conf", err
+	}
+	return refreshed, "public-provider-conf", nil
+}
+
+func validateProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) error {
+	providerCount, modelCount, ids := providerCatalogStats(entries)
+	if providerCount < providerCatalogMinProviders || modelCount < providerCatalogMinModels {
+		return NewHTTPError(http.StatusBadGateway, "provider_catalog_incomplete", "Provider catalog upstream returned an incomplete snapshot")
+	}
+	for _, requiredID := range []string{"openai", "anthropic", "google"} {
+		if !ids[requiredID] {
+			return NewHTTPError(http.StatusBadGateway, "provider_catalog_incomplete", "Provider catalog upstream is missing required providers")
+		}
+	}
+	previousProviders, previousModels, _ := providerCatalogStats(previous)
+	if previousProviders >= providerCatalogMinProviders && float64(providerCount) < float64(previousProviders)*providerCatalogMinRetention {
+		return NewHTTPError(http.StatusBadGateway, "provider_catalog_incomplete", "Provider catalog upstream provider count dropped unexpectedly")
+	}
+	if previousModels >= providerCatalogMinModels && float64(modelCount) < float64(previousModels)*providerCatalogMinRetention {
+		return NewHTTPError(http.StatusBadGateway, "provider_catalog_incomplete", "Provider catalog upstream model count dropped unexpectedly")
+	}
+	return nil
+}
+
+func providerCatalogStats(entries []ProviderCatalogEntry) (int, int, map[string]bool) {
+	providerCount := 0
+	modelCount := 0
+	ids := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		if entry.ID == "custom" {
+			continue
+		}
+		providerCount++
+		modelCount += entry.ModelsCount
+		ids[entry.ID] = true
+	}
+	return providerCount, modelCount, ids
+}
+
+func fetchPublicProviderCatalog(ctx context.Context, client *http.Client, upstreamURL string) ([]ProviderCatalogEntry, error) {
+	if client == nil {
+		client = &http.Client{Timeout: providerCatalogRequestTimeout}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +246,7 @@ func fetchPublicProviderCatalog(ctx context.Context, client *http.Client) ([]Pro
 	var payload struct {
 		Providers map[string]map[string]any `json:"providers"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, providerCatalogResponseLimit)).Decode(&payload); err != nil {
 		return nil, err
 	}
 	entries := make([]ProviderCatalogEntry, 0, len(payload.Providers))

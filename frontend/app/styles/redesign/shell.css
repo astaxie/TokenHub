@@ -15,6 +15,7 @@
 
 .sidebar {
   height: 100dvh;
+  overflow: visible;
   padding: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -102,11 +103,11 @@
 
 .version-popover {
   position: absolute;
-  top: 36px;
+  top: 32px;
   left: 0;
-  width: min(410px, calc(100vw - 32px));
+  width: min(340px, calc(100vw - 24px));
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 16px;
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-lg);
@@ -114,8 +115,8 @@
 }
 
 .version-popover-header {
-  min-height: 74px;
-  padding: 0 26px;
+  min-height: 58px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -123,61 +124,61 @@
 }
 
 .version-popover-header strong {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 760;
 }
 
 .version-popover-body {
-  padding: 32px 32px 28px;
+  padding: 22px 22px 20px;
   display: grid;
   justify-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .version-current {
   color: var(--ink);
-  font-size: 36px;
+  font-size: 30px;
   font-weight: 820;
   line-height: 1;
 }
 
 .version-latest {
   color: var(--ink-2);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 560;
 }
 
 .version-update-card {
   width: 100%;
-  min-height: 86px;
-  margin-top: 10px;
-  padding: 16px 22px;
+  min-height: 68px;
+  margin-top: 4px;
+  padding: 12px 14px;
   border: 1px solid color-mix(in srgb, #ffd43b 78%, var(--border));
   border-radius: 14px;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   background: color-mix(in srgb, #fff7d6 72%, var(--surface));
   color: #b94a00;
 }
 
 .version-update-card strong {
   display: block;
-  font-size: 19px;
+  font-size: 15px;
   font-weight: 760;
 }
 
 .version-update-card span {
   display: block;
-  margin-top: 5px;
+  margin-top: 3px;
   color: #ee8a35;
-  font-size: 16px;
+  font-size: 13px;
 }
 
 .version-update-icon {
-  width: 50px;
-  height: 50px;
-  flex: 0 0 50px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -187,12 +188,13 @@
 }
 
 .version-status-text {
-  min-height: 56px;
-  margin: 10px 0 0;
+  min-height: 40px;
+  margin: 4px 0 0;
   display: flex;
   align-items: center;
   color: var(--ink-2);
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.45;
   text-align: center;
 }
 
@@ -202,16 +204,16 @@
 
 .version-primary-action {
   width: 100%;
-  min-height: 56px;
+  min-height: 44px;
   margin-top: 2px;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 9px;
   background: #19b8a7;
   color: white;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 760;
   text-decoration: none;
   transition: background 150ms ease, transform 150ms ease;
@@ -227,7 +229,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ink-2);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 560;
   text-decoration: none;
 }

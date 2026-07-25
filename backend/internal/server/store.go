@@ -100,6 +100,19 @@ type ProviderResourceObservation struct {
 	UpdatedAt         time.Time         `json:"updated_at"`
 }
 
+// ProviderCatalogSnapshot keeps the last known-good public provider catalog in
+// the database. SummaryJSON serves the list endpoint without decoding the full
+// model catalog, while CatalogJSON retains model details for provider setup.
+type ProviderCatalogSnapshot struct {
+	ID          string    `gorm:"primaryKey"`
+	Source      string    `gorm:"index"`
+	SummaryJSON string    `gorm:"type:text"`
+	CatalogJSON string    `gorm:"type:text"`
+	FetchedAt   time.Time `gorm:"index"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type ProviderObservation struct {
 	ID          string    `json:"id" gorm:"primaryKey"`
 	ProviderID  string    `json:"provider_id" gorm:"index"`
@@ -129,6 +142,8 @@ type Store interface {
 	AddProvider(provider Provider) Provider
 	GetProvider(id string) (Provider, bool)
 	ListProviders() []Provider
+	LoadProviderCatalogSnapshot(includeModels bool) ([]ProviderCatalogEntry, string, time.Time, bool, error)
+	SaveProviderCatalogSnapshot(entries []ProviderCatalogEntry, source string, fetchedAt time.Time) error
 	UpdateProvider(id string, patch Provider) (Provider, error)
 	DeleteProvider(id string) error
 	SetProviderHealth(providerID string, healthy bool) (Provider, error)
@@ -444,6 +459,7 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 			&AdapterSessionBinding{},
 			&ProviderResourceObservation{},
 			&ProviderObservation{},
+			&ProviderCatalogSnapshot{},
 			&providerAccountOAuthSessionRecord{},
 			&UsageRecord{},
 			&RequestLog{},
@@ -1186,6 +1202,57 @@ func (s *GormStore) ListProviders() []Provider {
 		items[i].APIKey = ""
 	}
 	return items
+}
+
+func (s *GormStore) LoadProviderCatalogSnapshot(includeModels bool) ([]ProviderCatalogEntry, string, time.Time, bool, error) {
+	var snapshot ProviderCatalogSnapshot
+	query := s.db
+	if !includeModels {
+		query = query.Select("id", "source", "summary_json", "fetched_at")
+	}
+	if err := query.First(&snapshot, "id = ?", providerCatalogSnapshotID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, "", time.Time{}, false, nil
+		}
+		return nil, "", time.Time{}, false, err
+	}
+	payload := snapshot.SummaryJSON
+	if includeModels || strings.TrimSpace(payload) == "" {
+		payload = snapshot.CatalogJSON
+	}
+	var entries []ProviderCatalogEntry
+	if err := json.Unmarshal([]byte(payload), &entries); err != nil {
+		return nil, "", time.Time{}, false, fmt.Errorf("decode provider catalog snapshot: %w", err)
+	}
+	if !includeModels && strings.TrimSpace(snapshot.SummaryJSON) == "" {
+		entries = cloneCatalogEntries(entries, false)
+	}
+	return entries, snapshot.Source, snapshot.FetchedAt, true, nil
+}
+
+func (s *GormStore) SaveProviderCatalogSnapshot(entries []ProviderCatalogEntry, source string, fetchedAt time.Time) error {
+	if len(entries) == 0 {
+		return fmt.Errorf("provider catalog snapshot cannot be empty")
+	}
+	if fetchedAt.IsZero() {
+		fetchedAt = time.Now().UTC()
+	}
+	catalogJSON, err := json.Marshal(cloneCatalogEntries(entries, true))
+	if err != nil {
+		return fmt.Errorf("encode provider catalog snapshot: %w", err)
+	}
+	summaryJSON, err := json.Marshal(cloneCatalogEntries(entries, false))
+	if err != nil {
+		return fmt.Errorf("encode provider catalog summaries: %w", err)
+	}
+	snapshot := ProviderCatalogSnapshot{
+		ID:          providerCatalogSnapshotID,
+		Source:      firstNonEmpty(strings.TrimSpace(source), "builtin"),
+		SummaryJSON: string(summaryJSON),
+		CatalogJSON: string(catalogJSON),
+		FetchedAt:   fetchedAt.UTC(),
+	}
+	return s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&snapshot).Error
 }
 
 func (s *GormStore) GetProvider(id string) (Provider, bool) {
