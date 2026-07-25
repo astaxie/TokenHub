@@ -532,6 +532,20 @@ type ChatMessage struct {
 	Name       string `json:"name,omitempty"`
 	ToolCallID string `json:"tool_call_id,omitempty"`
 	ToolCalls  any    `json:"tool_calls,omitempty"`
+
+	// The OpenAI Chat Completions schema has no field for a provider's chain of
+	// thought, so the fields below are TokenHub extensions. ReasoningContent
+	// follows the convention DeepSeek introduced; the signature fields carry the
+	// opaque continuation blobs Anthropic and Gemini require to be echoed back
+	// verbatim on the next turn of a multi-step tool exchange.
+	//
+	// Signatures are prefixed with the provider that minted them so one
+	// provider's blob is never replayed to another. A missing or foreign
+	// signature degrades to dropping the reasoning block rather than failing the
+	// request.
+	ReasoningContent         string `json:"reasoning_content,omitempty"`
+	ReasoningSignature       string `json:"reasoning_signature,omitempty"`
+	RedactedReasoningContent string `json:"redacted_reasoning_content,omitempty"`
 }
 
 type ReasoningOptions = ResponsesReasoning

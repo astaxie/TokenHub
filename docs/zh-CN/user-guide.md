@@ -117,6 +117,33 @@ TokenHub 将推理强度作为尽力应用的提示字段，不改变路由顺�
 
 Responses 推理强度支持 OpenAI 兼容、Anthropic 和 Gemini 路由。Azure OpenAI Responses 与 Responses 流式响应尚未实现，此类请求返回 `501 provider_capability_not_supported`。
 
+## Anthropic 与 Gemini 路由的工具调用与多模态内容
+
+Chat Completions 请求路由到原生 Anthropic 或 Gemini 供应商时，会完整转换请求与响应，而不仅是纯文本。
+
+| 能力 | Anthropic | Gemini |
+| --- | --- | --- |
+| `tools` 与 `tool_choice` | 支持 | 支持 |
+| Assistant `tool_calls` 与 `role: "tool"` 结果 | 支持 | 支持 |
+| `parallel_tool_calls: false` | 支持 | `501 provider_capability_not_supported` |
+| 图片内容块 | `http(s)` URL 与 base64 data URI | 仅 base64 data URI |
+| 流式 | 增量转发 | 增量转发 |
+
+流式按上游事件到达顺序逐条转发，因此首字延迟取决于供应商而非完整响应。这些路由无法表达的内容类型（例如音频块）返回 `400 unsupported_content_block`，不会被静默丢弃。
+
+### 推理连续性
+
+Anthropic 与 Gemini 要求在多轮工具调用的下一轮中，原样回传推理步骤附带的 opaque 签名。OpenAI Chat Completions 规范没有对应字段，因此 TokenHub 通过扩展字段返回：
+
+| 字段 | 对应供应商数据 |
+| --- | --- |
+| `message.reasoning_content` | Anthropic `thinking` 文本、Gemini thought 片段 |
+| `message.reasoning_signature` | Anthropic `thinking.signature` |
+| `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
+| `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
+
+在后续请求的 assistant 消息中回传这些字段即可保持推理连续性。忽略这些字段的客户端同样可用：TokenHub 会省略推理块，而不会回传供应商将拒绝的签名。签名带有签发供应商的标记，绝不会被回传给其他供应商。
+
 ## Anthropic Messages 与 Claude Code
 
 TokenHub 提供 `POST /v1/messages` 和 `POST /v1/messages/count_tokens`，供 Claude Code 与 Anthropic 兼容客户端调用。项目 Key 通过 Bearer Token 发送：

@@ -165,6 +165,7 @@ type OpenAICompatibleAdapter struct {
 }
 
 func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	req = withoutGatewayExtensions(req)
 	req.Model = providerModel
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	var body map[string]any
@@ -175,6 +176,7 @@ func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, pr
 }
 
 func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
+	req = withoutGatewayExtensions(req)
 	req.Model = providerModel
 	req.Stream = true
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
@@ -271,6 +273,7 @@ type AzureOpenAIAdapter struct {
 }
 
 func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	req = withoutGatewayExtensions(req)
 	req.Model = providerModel
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	var body map[string]any
@@ -281,6 +284,7 @@ func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, provide
 }
 
 func (a AzureOpenAIAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
+	req = withoutGatewayExtensions(req)
 	req.Model = providerModel
 	req.Stream = true
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
@@ -354,42 +358,44 @@ type AnthropicAdapter struct {
 	Client *http.Client
 }
 
-func (a AnthropicAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
 	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
 	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
 		reasoningEffort = nil
 	}
-	payload := anthropicPayload(providerModel, req.Messages, req.MaxTokens, reasoningEffort)
+	return buildAnthropicRequest(providerModel, req, reasoningEffort)
+}
+
+func (a AnthropicAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	payload, err := a.buildRequest(providerModel, req)
+	if err != nil {
+		return nil, Usage{}, err
+	}
 	var body map[string]any
 	if err := a.doJSON(ctx, provider, "/v1/messages", payload, &body); err != nil {
 		return nil, Usage{}, err
 	}
-	text := anthropicText(body)
 	usage := anthropicUsage(body)
-	return chatResponse(req.Model, text, usage), usage, nil
+	converted, err := anthropicChatResponse(body, req.Model, usage)
+	if err != nil {
+		return nil, usage, err
+	}
+	return converted, usage, nil
 }
 
 func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	resp, usage, err := a.Chat(ctx, provider, providerModel, req)
+	payload, err := a.buildRequest(providerModel, req)
 	if err != nil {
 		return Usage{}, err
 	}
-	text := ""
-	if asMap, ok := resp.(map[string]any); ok {
-		text = choiceText(asMap)
-	}
-	payload, _ := json.Marshal(map[string]any{
-		"id":      NewID("chatcmpl"),
-		"object":  "chat.completion.chunk",
-		"created": time.Now().Unix(),
-		"model":   req.Model,
-		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"content": text}, "finish_reason": nil}},
-	})
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+	payload["stream"] = true
+	resp, err := a.doRaw(ctx, provider, "/v1/messages", payload)
+	if err != nil {
 		return Usage{}, err
 	}
-	_, err = io.WriteString(w, "data: [DONE]\n\n")
-	return usage, err
+	defer resp.Body.Close()
+	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
+	return streamAnthropicChat(resp.Body, encoder)
 }
 
 func (a AnthropicAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -415,16 +421,25 @@ func (a AnthropicAdapter) Embeddings(ctx context.Context, provider Provider, pro
 }
 
 func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoint string, payload any, target any) error {
+	resp, err := a.doRaw(ctx, provider, endpoint, payload)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint string, payload any) (*http.Response, error) {
 	if provider.BaseURL == "" {
 		provider.BaseURL = "https://api.anthropic.com"
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.BaseURL, "/")+endpoint, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	version := provider.Options["anthropic_version"]
 	if version == "" {
@@ -439,14 +454,14 @@ func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoin
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, data)
 	}
-	return json.NewDecoder(resp.Body).Decode(target)
+	return resp, nil
 }
 
 type GeminiAdapter struct {
@@ -454,37 +469,34 @@ type GeminiAdapter struct {
 }
 
 func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	payload := geminiPayload(req.Messages, req.MaxTokens, providerModel, req.ReasoningEffort)
+	payload, err := buildGeminiRequest(providerModel, req)
+	if err != nil {
+		return nil, Usage{}, err
+	}
 	var body map[string]any
 	if err := a.doJSON(ctx, provider, providerModel, ":generateContent", payload, &body); err != nil {
 		return nil, Usage{}, err
 	}
-	text := geminiText(body)
 	usage := geminiUsage(body)
-	return chatResponse(req.Model, text, usage), usage, nil
+	converted, err := geminiChatResponse(body, req.Model, usage)
+	if err != nil {
+		return nil, usage, err
+	}
+	return converted, usage, nil
 }
 
 func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	resp, usage, err := a.Chat(ctx, provider, providerModel, req)
+	payload, err := buildGeminiRequest(providerModel, req)
 	if err != nil {
 		return Usage{}, err
 	}
-	text := ""
-	if asMap, ok := resp.(map[string]any); ok {
-		text = choiceText(asMap)
-	}
-	payload, _ := json.Marshal(map[string]any{
-		"id":      NewID("chatcmpl"),
-		"object":  "chat.completion.chunk",
-		"created": time.Now().Unix(),
-		"model":   req.Model,
-		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"content": text}, "finish_reason": nil}},
-	})
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+	resp, err := a.doRaw(ctx, provider, providerModel, ":streamGenerateContent?alt=sse", payload)
+	if err != nil {
 		return Usage{}, err
 	}
-	_, err = io.WriteString(w, "data: [DONE]\n\n")
-	return usage, err
+	defer resp.Body.Close()
+	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
+	return streamGeminiChat(resp.Body, encoder)
 }
 
 func (a GeminiAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -534,17 +546,39 @@ func (a GeminiAdapter) Embeddings(ctx context.Context, provider Provider, provid
 }
 
 func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model string, action string, payload any, target any) error {
+	resp, err := a.doRaw(ctx, provider, model, action, payload)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+// doRaw issues a Gemini request. The action may already carry a query string
+// (streaming uses ":streamGenerateContent?alt=sse"), so the API key separator is
+// chosen accordingly.
+func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model string, action string, payload any) (*http.Response, error) {
 	if provider.BaseURL == "" {
 		provider.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	u := fmt.Sprintf("%s/models/%s%s?key=%s", strings.TrimRight(provider.BaseURL, "/"), url.PathEscape(model), action, url.QueryEscape(provider.APIKey))
+	separator := "?"
+	if strings.Contains(action, "?") {
+		separator = "&"
+	}
+	u := fmt.Sprintf("%s/models/%s%s%skey=%s",
+		strings.TrimRight(provider.BaseURL, "/"),
+		url.PathEscape(model),
+		action,
+		separator,
+		url.QueryEscape(provider.APIKey),
+	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("content-type", "application/json")
 	client := a.Client
@@ -553,77 +587,14 @@ func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model stri
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, data)
 	}
-	return json.NewDecoder(resp.Body).Decode(target)
-}
-
-func anthropicPayload(model string, messages []ChatMessage, maxTokens int, reasoningEffort *string) map[string]any {
-	if maxTokens <= 0 {
-		maxTokens = 1024
-	}
-	system := []string{}
-	converted := []map[string]any{}
-	for _, message := range messages {
-		if message.Role == "system" {
-			system = append(system, contentToText(message.Content))
-			continue
-		}
-		role := message.Role
-		if role == "assistant" {
-			role = "assistant"
-		} else {
-			role = "user"
-		}
-		converted = append(converted, map[string]any{"role": role, "content": contentToText(message.Content)})
-	}
-	payload := map[string]any{
-		"model":      model,
-		"max_tokens": maxTokens,
-		"messages":   converted,
-	}
-	if len(system) > 0 {
-		payload["system"] = strings.Join(system, "\n")
-	}
-	if reasoningEffort != nil {
-		payload["output_config"] = map[string]any{"effort": *reasoningEffort}
-	}
-	return payload
-}
-
-func geminiPayload(messages []ChatMessage, maxTokens int, model string, reasoningEffort *string) map[string]any {
-	contents := []map[string]any{}
-	for _, message := range messages {
-		role := "user"
-		if message.Role == "assistant" {
-			role = "model"
-		}
-		if message.Role == "system" {
-			contents = append(contents, map[string]any{"role": "user", "parts": []map[string]any{{"text": contentToText(message.Content)}}})
-			continue
-		}
-		contents = append(contents, map[string]any{"role": role, "parts": []map[string]any{{"text": contentToText(message.Content)}}})
-	}
-	payload := map[string]any{"contents": contents}
-	generationConfig := map[string]any{}
-	if maxTokens > 0 {
-		generationConfig["maxOutputTokens"] = maxTokens
-	}
-	if effort := normalizedReasoningEffort(reasoningEffort); effort != nil {
-		thinkingConfig, supported := geminiThinkingConfig(model, *effort)
-		if supported {
-			generationConfig["thinkingConfig"] = thinkingConfig
-		}
-	}
-	if len(generationConfig) > 0 {
-		payload["generationConfig"] = generationConfig
-	}
-	return payload
+	return resp, nil
 }
 
 func responsesReasoningEffort(req ResponsesRequest) *string {
@@ -837,21 +808,6 @@ func geminiVariantIs(variant string, family string) bool {
 	return variant == family || strings.HasPrefix(variant, family+"-")
 }
 
-func anthropicText(body map[string]any) string {
-	content, _ := body["content"].([]any)
-	parts := []string{}
-	for _, item := range content {
-		asMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if text, ok := asMap["text"].(string); ok {
-			parts = append(parts, text)
-		}
-	}
-	return strings.Join(parts, "")
-}
-
 func anthropicUsage(body map[string]any) Usage {
 	usageMap, _ := body["usage"].(map[string]any)
 	uncachedInputTokens := int64FromAny(usageMap["input_tokens"])
@@ -864,27 +820,6 @@ func anthropicUsage(body map[string]any) Usage {
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	return usage
-}
-
-func geminiText(body map[string]any) string {
-	candidates, _ := body["candidates"].([]any)
-	if len(candidates) == 0 {
-		return ""
-	}
-	candidate, _ := candidates[0].(map[string]any)
-	content, _ := candidate["content"].(map[string]any)
-	parts, _ := content["parts"].([]any)
-	text := []string{}
-	for _, part := range parts {
-		asMap, ok := part.(map[string]any)
-		if !ok {
-			continue
-		}
-		if value, ok := asMap["text"].(string); ok {
-			text = append(text, value)
-		}
-	}
-	return strings.Join(text, "")
 }
 
 func geminiUsage(body map[string]any) Usage {
@@ -975,23 +910,6 @@ func usageFromServerSentEvent(line string) (Usage, bool) {
 		return Usage{}, false
 	}
 	return usageFromMap(event), true
-}
-
-func chatResponse(model string, text string, usage Usage) map[string]any {
-	return map[string]any{
-		"id":      NewID("chatcmpl"),
-		"object":  "chat.completion",
-		"created": time.Now().Unix(),
-		"model":   model,
-		"choices": []map[string]any{
-			{
-				"index":         0,
-				"message":       map[string]any{"role": "assistant", "content": text},
-				"finish_reason": "stop",
-			},
-		},
-		"usage": usage,
-	}
 }
 
 func responseObject(model string, text string, usage Usage) map[string]any {

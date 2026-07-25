@@ -117,6 +117,33 @@ TokenHub は推論強度をベストエフォートのヒントとして扱い�
 
 Responses の推論強度は OpenAI 互換、Anthropic、Gemini の各ルートで利用できます。Azure OpenAI Responses と Responses のストリーミングは未実装で、`501 provider_capability_not_supported` を返します。
 
+## Anthropic および Gemini ルートでのツール呼び出しとマルチモーダル入力
+
+ネイティブの Anthropic または Gemini プロバイダーへルーティングされる Chat Completions リクエストでは、プレーンテキストだけでなくリクエストとレスポンスの全体が変換されます。
+
+| 機能 | Anthropic | Gemini |
+| --- | --- | --- |
+| `tools` と `tool_choice` | 対応 | 対応 |
+| Assistant の `tool_calls` と `role: "tool"` の結果 | 対応 | 対応 |
+| `parallel_tool_calls: false` | 対応 | `501 provider_capability_not_supported` |
+| 画像コンテンツパート | `http(s)` URL と base64 data URI | base64 data URI のみ |
+| ストリーミング | 逐次中継 | 逐次中継 |
+
+ストリーミングは上流のイベントを到着順に中継するため、最初のトークンまでの時間はレスポンス全体ではなくプロバイダーの応答速度を反映します。これらのルートで表現できないコンテンツ種別（音声パートなど）は破棄されず `400 unsupported_content_block` を返します。
+
+### 推論の継続
+
+Anthropic と Gemini では、複数ステップのツール呼び出しにおいて、推論ステップに付随する不透明な署名を次のターンでそのまま返す必要があります。OpenAI Chat Completions のスキーマには該当するフィールドがないため、TokenHub は拡張フィールドで返します。
+
+| フィールド | 対応するプロバイダーのデータ |
+| --- | --- |
+| `message.reasoning_content` | Anthropic の `thinking` テキスト、Gemini の thought パート |
+| `message.reasoning_signature` | Anthropic の `thinking.signature` |
+| `message.redacted_reasoning_content` | Anthropic の `redacted_thinking.data` |
+| `message.tool_calls[].thought_signature` | Gemini の `thoughtSignature` |
+
+次のリクエストの assistant メッセージでこれらのフィールドをそのまま返すと、推論の連続性が保たれます。これらを無視するクライアントでも動作します。TokenHub はプロバイダーが拒否する署名を送り返すのではなく、推論ブロックを省略します。署名には発行元プロバイダーの識別子が付与され、別のプロバイダーへ送られることはありません。
+
 ## Anthropic Messages と Claude Code
 
 TokenHub は Claude Code と Anthropic 互換クライアント向けに `POST /v1/messages` と `POST /v1/messages/count_tokens` を提供します。Project Key は Bearer Token として送信します。

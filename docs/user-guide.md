@@ -117,6 +117,33 @@ TokenHub treats reasoning effort as a best-effort hint and does not change route
 
 Responses reasoning effort is supported on OpenAI-compatible, Anthropic, and Gemini routes. Azure OpenAI Responses and streaming Responses are not implemented; those requests return `501 provider_capability_not_supported`.
 
+## Tool calling and multimodal content on Anthropic and Gemini routes
+
+Chat Completions requests routed to a native Anthropic or Gemini provider translate the whole request and response, not only plain text.
+
+| Capability | Anthropic | Gemini |
+| --- | --- | --- |
+| `tools` and `tool_choice` | Supported | Supported |
+| Assistant `tool_calls` and `role: "tool"` results | Supported | Supported |
+| `parallel_tool_calls: false` | Supported | `501 provider_capability_not_supported` |
+| Image content parts | `http(s)` URLs and base64 data URIs | Base64 data URIs only |
+| Streaming | Incremental relay | Incremental relay |
+
+Streaming forwards upstream events as they arrive, so time to first token reflects the provider rather than the full response. Content types these routes cannot represent, such as audio parts, return `400 unsupported_content_block` instead of being dropped from the request.
+
+### Reasoning continuation
+
+Anthropic and Gemini require the opaque signature attached to a reasoning step to be echoed back verbatim on the next turn of a multi-step tool exchange. The OpenAI Chat Completions schema has no field for it, so TokenHub returns the data in extension fields:
+
+| Field | Provider data |
+| --- | --- |
+| `message.reasoning_content` | Anthropic `thinking` text, Gemini thought parts |
+| `message.reasoning_signature` | Anthropic `thinking.signature` |
+| `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
+| `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
+
+Echo these fields on the assistant message of the following request to preserve reasoning continuity. Clients that ignore them still work: TokenHub omits the reasoning block rather than replaying a signature the provider would reject. Signatures are tagged with the provider that issued them and are never replayed to a different provider.
+
 ## Anthropic Messages and Claude Code
 
 TokenHub exposes `POST /v1/messages` and `POST /v1/messages/count_tokens` for Claude Code and Anthropic-compatible clients. Use a project key as a bearer token:
