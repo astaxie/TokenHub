@@ -82,6 +82,28 @@ func TestGatewayModelsAndChatCompletion(t *testing.T) {
 	}
 }
 
+func TestGatewayRejectsTrailingJSONValue(t *testing.T) {
+	app := newTestServer()
+	body := `{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hello"}]}{"extra":true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer thk_demo_local")
+	resp := httptest.NewRecorder()
+	app.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for concatenated JSON values, got %d: %s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode gateway error: %v", err)
+	}
+	errorBody, _ := payload["error"].(map[string]any)
+	if errorBody["code"] != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %#v", payload)
+	}
+}
+
 func TestGatewayModelsExposeJieKouCompatibleFields(t *testing.T) {
 	app := newTestServer()
 
@@ -2873,6 +2895,57 @@ func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
 	}
 	if !strings.Contains(routes.Body, "local-coder") || !strings.Contains(routes.Body, "qwen2.5-coder") {
 		t.Fatalf("expected new route in list: %s", routes.Body)
+	}
+}
+
+func TestAdminProviderConfigurationFailsEarlyAndPatchPreservesFields(t *testing.T) {
+	app := newTestServer()
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"name":     "Invalid Adapter",
+		"type":     "openai-compatible",
+		"base_url": "https://example.invalid/v1",
+		"healthy":  true,
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, `"code":"provider_adapter_missing"`) {
+		t.Fatalf("expected unknown adapter to fail during creation, got %d: %s", invalid.Code, invalid.Body)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":       "prv_patch_preserve",
+		"name":     "Patch Preserve",
+		"type":     ProviderOpenAICompatible,
+		"base_url": "https://example.invalid/v1",
+		"status":   StatusActive,
+		"healthy":  true,
+		"priority": 7,
+		"headers":  map[string]string{"x-provider": "preserved"},
+		"options":  map[string]string{"region": "test"},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation, got %d: %s", created.Code, created.Body)
+	}
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/providers/prv_patch_preserve", map[string]any{
+		"type": "deepseek",
+	}, "")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected partial provider patch, got %d: %s", updated.Code, updated.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(updated.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	provider := result.Provider
+	if provider.Type != "deepseek" ||
+		provider.Name != "Patch Preserve" ||
+		provider.BaseURL != "https://example.invalid/v1" ||
+		provider.Status != StatusActive ||
+		!provider.Healthy ||
+		provider.Priority != 7 ||
+		provider.Headers["x-provider"] != "preserved" ||
+		provider.Options["region"] != "test" {
+		t.Fatalf("partial patch erased provider fields: %+v", provider)
 	}
 }
 

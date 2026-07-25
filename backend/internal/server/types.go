@@ -197,7 +197,7 @@ type ProviderCreateRequest struct {
 	BaseURL        string                 `json:"base_url"`
 	APIKey         string                 `json:"api_key"`
 	Status         string                 `json:"status"`
-	Healthy        bool                   `json:"healthy"`
+	Healthy        *bool                  `json:"healthy"`
 	Priority       int                    `json:"priority"`
 	Headers        map[string]string      `json:"headers"`
 	Options        map[string]string      `json:"options"`
@@ -546,6 +546,7 @@ type ChatMessage struct {
 	ReasoningContent         string `json:"reasoning_content,omitempty"`
 	ReasoningSignature       string `json:"reasoning_signature,omitempty"`
 	RedactedReasoningContent string `json:"redacted_reasoning_content,omitempty"`
+	raw                      map[string]json.RawMessage
 }
 
 type ReasoningOptions = ResponsesReasoning
@@ -576,6 +577,83 @@ type ChatCompletionRequest struct {
 	// string values; other types are forwarded for the upstream to judge.
 	PromptCacheKey any `json:"prompt_cache_key,omitempty"`
 	User           any `json:"user,omitempty"`
+	raw            map[string]json.RawMessage
+}
+
+// UnmarshalJSON keeps provider-specific message fields so compatible upstreams
+// can receive opaque continuation data without TokenHub needing to understand it.
+func (m *ChatMessage) UnmarshalJSON(data []byte) error {
+	type messageAlias ChatMessage
+	var decoded messageAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*m = ChatMessage(decoded)
+	m.raw = raw
+	return nil
+}
+
+func (m ChatMessage) MarshalJSON() ([]byte, error) {
+	type messageAlias ChatMessage
+	if m.raw == nil {
+		return json.Marshal(messageAlias(m))
+	}
+	raw := cloneRawJSON(m.raw, 8)
+	setOrDeleteRawJSONField(raw, "role", m.Role, m.Role != "")
+	setOrDeleteRawJSONField(raw, "content", m.Content, m.Content != nil)
+	setOrDeleteRawJSONField(raw, "name", m.Name, m.Name != "")
+	setOrDeleteRawJSONField(raw, "tool_call_id", m.ToolCallID, m.ToolCallID != "")
+	setOrDeleteRawJSONField(raw, "tool_calls", m.ToolCalls, m.ToolCalls != nil)
+	setOrDeleteRawJSONField(raw, "reasoning_content", m.ReasoningContent, m.ReasoningContent != "")
+	setOrDeleteRawJSONField(raw, "reasoning_signature", m.ReasoningSignature, m.ReasoningSignature != "")
+	setOrDeleteRawJSONField(raw, "redacted_reasoning_content", m.RedactedReasoningContent, m.RedactedReasoningContent != "")
+	return json.Marshal(raw)
+}
+
+// UnmarshalJSON keeps top-level provider extensions such as DeepSeek's thinking
+// switch while typed fields remain available to routing and policy code.
+func (r *ChatCompletionRequest) UnmarshalJSON(data []byte) error {
+	type requestAlias ChatCompletionRequest
+	var decoded requestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = ChatCompletionRequest(decoded)
+	r.raw = raw
+	return nil
+}
+
+func (r ChatCompletionRequest) MarshalJSON() ([]byte, error) {
+	type requestAlias ChatCompletionRequest
+	if r.raw == nil {
+		return json.Marshal(requestAlias(r))
+	}
+	raw := cloneRawJSON(r.raw, 16)
+	setOrDeleteRawJSONField(raw, "model", r.Model, r.Model != "")
+	setOrDeleteRawJSONField(raw, "messages", r.Messages, r.Messages != nil)
+	setOrDeleteRawJSONField(raw, "stream", r.Stream, r.Stream)
+	setOrDeleteRawJSONField(raw, "stream_options", r.StreamOptions, r.StreamOptions != nil)
+	setOrDeleteRawJSONField(raw, "max_tokens", r.MaxTokens, r.MaxTokens != 0)
+	setOrDeleteRawJSONField(raw, "temperature", r.Temperature, r.Temperature != nil)
+	setOrDeleteRawJSONField(raw, "top_p", r.TopP, r.TopP != nil)
+	setOrDeleteRawJSONField(raw, "stop", r.Stop, r.Stop != nil)
+	setOrDeleteRawJSONField(raw, "tools", r.Tools, r.Tools != nil)
+	setOrDeleteRawJSONField(raw, "tool_choice", r.ToolChoice, r.ToolChoice != nil)
+	setOrDeleteRawJSONField(raw, "parallel_tool_calls", r.ParallelToolCalls, r.ParallelToolCalls != nil)
+	setOrDeleteRawJSONField(raw, "response_format", r.ResponseFormat, r.ResponseFormat != nil)
+	setOrDeleteRawJSONField(raw, "reasoning_effort", r.ReasoningEffort, r.ReasoningEffort != nil)
+	setOrDeleteRawJSONField(raw, "metadata", r.Metadata, r.Metadata != nil)
+	setOrDeleteRawJSONField(raw, "prompt_cache_key", r.PromptCacheKey, r.PromptCacheKey != nil)
+	setOrDeleteRawJSONField(raw, "user", r.User, r.User != nil)
+	return json.Marshal(raw)
 }
 
 type PlaygroundChatResponse struct {
@@ -649,10 +727,7 @@ func (r ResponsesRequest) MarshalJSON() ([]byte, error) {
 	if r.raw == nil {
 		return json.Marshal(requestAlias(r))
 	}
-	raw := make(map[string]json.RawMessage, len(r.raw)+8)
-	for key, value := range r.raw {
-		raw[key] = value
-	}
+	raw := cloneRawJSON(r.raw, 8)
 	setRawJSONField(raw, "model", r.Model, r.Model != "")
 	setRawJSONField(raw, "input", r.Input, r.Input != nil)
 	setRawJSONField(raw, "stream", r.Stream, true)
@@ -702,6 +777,22 @@ func setRawJSONField(raw map[string]json.RawMessage, key string, value any, pres
 	if err == nil {
 		raw[key] = encoded
 	}
+}
+
+func setOrDeleteRawJSONField(raw map[string]json.RawMessage, key string, value any, present bool) {
+	if !present {
+		delete(raw, key)
+		return
+	}
+	setRawJSONField(raw, key, value, true)
+}
+
+func cloneRawJSON(source map[string]json.RawMessage, extra int) map[string]json.RawMessage {
+	cloned := make(map[string]json.RawMessage, len(source)+extra)
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 type EmbeddingsRequest struct {

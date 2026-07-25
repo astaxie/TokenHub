@@ -165,7 +165,7 @@ type OpenAICompatibleAdapter struct {
 }
 
 func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	req = withoutGatewayExtensions(req)
+	req = withoutGatewayExtensions(req, provider.Type == "deepseek")
 	req.Model = providerModel
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	var body map[string]any
@@ -176,7 +176,7 @@ func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, pr
 }
 
 func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	req = withoutGatewayExtensions(req)
+	req = withoutGatewayExtensions(req, provider.Type == "deepseek")
 	req.Model = providerModel
 	req.Stream = true
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
@@ -197,6 +197,13 @@ func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provide
 		return nil, Usage{}, err
 	}
 	return body, usageFromMap(body), nil
+}
+
+func (a OpenAICompatibleAdapter) OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, _ http.Header) (*http.Response, error) {
+	req.Model = providerModel
+	req.Stream = true
+	req = normalizedResponsesReasoning(req)
+	return a.doRaw(ctx, provider, http.MethodPost, "/responses", req)
 }
 
 func (a OpenAICompatibleAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -273,7 +280,7 @@ type AzureOpenAIAdapter struct {
 }
 
 func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	req = withoutGatewayExtensions(req)
+	req = withoutGatewayExtensions(req, false)
 	req.Model = providerModel
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	var body map[string]any
@@ -284,7 +291,7 @@ func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, provide
 }
 
 func (a AzureOpenAIAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	req = withoutGatewayExtensions(req)
+	req = withoutGatewayExtensions(req, false)
 	req.Model = providerModel
 	req.Stream = true
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)

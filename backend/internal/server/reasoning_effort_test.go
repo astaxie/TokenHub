@@ -38,15 +38,22 @@ func TestGatewayForwardsChatReasoningEffort(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	server, _, secret := newReasoningEffortGateway(t, upstream.URL, ProviderOpenAICompatible)
+	server, _, secret := newReasoningEffortGateway(t, upstream.URL, "deepseek")
 	app := server.Handler()
 	effort := "high"
 	for _, stream := range []bool{false, true} {
 		resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
-			"model":            "reasoning-model",
-			"messages":         []map[string]any{{"role": "user", "content": "reason carefully"}},
+			"model": "reasoning-model",
+			"messages": []map[string]any{{
+				"role":              "assistant",
+				"content":           "",
+				"reasoning_content": "provider reasoning state",
+				"provider_message":  "preserve me",
+			}},
 			"reasoning_effort": effort,
 			"stream":           stream,
+			"thinking":         map[string]any{"type": "disabled"},
+			"provider_option":  "preserve me",
 		}, secret)
 		if resp.Code != http.StatusOK {
 			t.Fatalf("stream=%v expected 200, got %d: %s", stream, resp.Code, resp.Body)
@@ -62,6 +69,18 @@ func TestGatewayForwardsChatReasoningEffort(t *testing.T) {
 		}
 		if payload["model"] != "upstream-reasoning-model" {
 			t.Fatalf("expected routed provider model, got %#v", payload["model"])
+		}
+		thinking, _ := payload["thinking"].(map[string]any)
+		if thinking["type"] != "disabled" || payload["provider_option"] != "preserve me" {
+			t.Fatalf("provider-specific request fields were not preserved: %#v", payload)
+		}
+		messages, _ := payload["messages"].([]any)
+		if len(messages) != 1 {
+			t.Fatalf("expected one upstream message, got %#v", payload["messages"])
+		}
+		message, _ := messages[0].(map[string]any)
+		if message["reasoning_content"] != "provider reasoning state" || message["provider_message"] != "preserve me" {
+			t.Fatalf("provider-specific message fields were not preserved: %#v", message)
 		}
 	}
 }
@@ -104,6 +123,54 @@ func TestGatewayForwardsResponsesReasoningEffort(t *testing.T) {
 	}
 	if upstreamRequest["model"] != "upstream-reasoning-model" {
 		t.Fatalf("expected routed provider model, got %#v", upstreamRequest["model"])
+	}
+}
+
+func TestGatewayStreamsOpenAICompatibleResponses(t *testing.T) {
+	var upstreamRequest map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Errorf("unexpected upstream path %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamRequest); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+			return
+		}
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"STREAM_OK\"}\n\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1,\"total_tokens\":3}}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newReasoningEffortGateway(t, upstream.URL, ProviderOpenAICompatible)
+	resp := postStream(t, server.Handler(), "/v1/responses", map[string]any{
+		"model":              "reasoning-model",
+		"input":              "stream this",
+		"stream":             true,
+		"thinking":           map[string]any{"type": "disabled"},
+		"provider_extension": "preserve me",
+	}, secret)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !bytes.Contains(resp.Body.Bytes(), []byte("STREAM_OK")) ||
+		!bytes.Contains(resp.Body.Bytes(), []byte("response.completed")) {
+		t.Fatalf("expected Responses SSE events, got %s", resp.Body)
+	}
+	if resp.Header().Get("content-type") != "text/event-stream" {
+		t.Fatalf("unexpected content type %q", resp.Header().Get("content-type"))
+	}
+	if resp.Header().Get("x-tokenhub-route-id") != "route_reasoning_0" {
+		t.Fatalf("unexpected route header %q", resp.Header().Get("x-tokenhub-route-id"))
+	}
+	if upstreamRequest["model"] != "upstream-reasoning-model" || upstreamRequest["stream"] != true {
+		t.Fatalf("unexpected upstream request: %#v", upstreamRequest)
+	}
+	thinking, _ := upstreamRequest["thinking"].(map[string]any)
+	if thinking["type"] != "disabled" || upstreamRequest["provider_extension"] != "preserve me" {
+		t.Fatalf("provider extensions were not preserved: %#v", upstreamRequest)
 	}
 }
 
@@ -1254,8 +1321,8 @@ func TestGatewayFallsBackToBackupAfterEffortRetryFails(t *testing.T) {
 	}
 }
 
-func TestResponsesStreamingIsExplicitlyRejected(t *testing.T) {
-	server, store, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
+func TestResponsesStreamingRejectsRoutesWithoutCapability(t *testing.T) {
+	server, store, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderMock)
 	assertAuditedError := func(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, wantCode string) {
 		t.Helper()
 		if resp.Code != wantStatus {
