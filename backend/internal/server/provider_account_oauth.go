@@ -341,9 +341,14 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 		writeError(w, r, err)
 		return
 	}
-	// Exchange succeeded; consume the session to prevent replays.
-	if _, _, err := s.store.ConsumeProviderAccountOAuthSession(session.ID, session.State); err != nil {
+	// Exchange succeeded; consume the session to prevent replays. The consume is
+	// atomic (row lock + delete), so if a concurrent request already consumed it
+	// we must not return the freshly-exchanged token to the losing caller.
+	if _, consumed, err := s.store.ConsumeProviderAccountOAuthSession(session.ID, session.State); err != nil {
 		writeError(w, r, err)
+		return
+	} else if !consumed {
+		writeError(w, r, NewHTTPError(http.StatusConflict, "oauth_session_consumed", "OAuth session was already consumed by another request"))
 		return
 	}
 	info := openAIAccountOAuthTokenInfoFromResponse(token, session.ClientID, ProviderResourceCredentials{})

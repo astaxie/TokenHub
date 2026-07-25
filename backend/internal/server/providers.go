@@ -1013,8 +1013,13 @@ func deterministicEmbedding(text string, dims int) []float64 {
 // splitContent splits text into chunks of approximately maxRunes runes each,
 // preferring to break at word boundaries (spaces) for a natural progressive display.
 func splitContent(text string, maxRunes int) []string {
-	if text == "" || maxRunes <= 0 {
+	if maxRunes <= 0 {
 		return nil
+	}
+	if text == "" {
+		// Return a single empty chunk so streaming callers still emit a terminal
+		// chunk with finish_reason "stop" instead of only [DONE].
+		return []string{""}
 	}
 	runes := []rune(text)
 	var chunks []string

@@ -798,8 +798,14 @@ func stopLeaseHeartbeat(heartbeat *leaseHeartbeat) error {
 		return nil
 	}
 	if !heartbeat.stopped.CompareAndSwap(false, true) {
-		// Already stopped by another goroutine 鈥?don't close the channel twice.
-		<-heartbeat.done
+		// Already stopped by another goroutine — don't close the channel twice.
+		// Bound the wait so a concurrent stopper does not hang if the heartbeat
+		// goroutine is stuck on a non-cancellable operation.
+		select {
+		case <-heartbeat.done:
+		case <-time.After(5 * time.Second):
+			log.Printf("[tokenhub] WARNING: lease heartbeat did not stop within 5s (concurrent stop), abandoning wait")
+		}
 		cause := context.Cause(heartbeat.ctx)
 		if errors.Is(cause, ErrCoordinationLeaseLost) {
 			return ErrCoordinationLeaseLost
@@ -940,7 +946,7 @@ func (s *GormStore) withClusterLease(ctx context.Context, name string, fn func(c
 	_ = s.db.Delete(&ClusterLease{}, "name = ? AND owner_id = ?", name, ownerID).Error
 	if leaseErr != nil {
 		if fnErr != nil {
-			return fmt.Errorf("lease lost during operation: %w (original error: %v)", leaseErr, fnErr)
+			return fmt.Errorf("lease lost during operation: %w (original error: %w)", leaseErr, fnErr)
 		}
 		return leaseErr
 	}
@@ -2125,9 +2131,10 @@ func (s *GormStore) BulkOperateProviderResources(action string, ids []string) (P
 			resource.FailureCount = 0
 			resource.CooldownUntil = nil
 			resource.LastCheckedAt = &now
-			// Release all in-flight concurrency leases so new requests can proceed immediately.
-			if err := s.db.Where("scope_type = ? AND scope_id = ?", "provider_resource", resource.ID).Delete(&InFlightLease{}).Error; err != nil {
-				log.Printf("[tokenhub] WARNING: clear_error failed to release in-flight leases for resource %s: %v", resource.ID, err)
+			// Clean up expired leases only; active leases must remain until their
+			// owners finish, otherwise MaxConcurrency can be exceeded by replacements.
+			if err := s.db.Where("scope_type = ? AND scope_id = ? AND expires_at <= ?", "provider_resource", resource.ID, now).Delete(&InFlightLease{}).Error; err != nil {
+				log.Printf("[tokenhub] WARNING: clear_error failed to clean expired leases for resource %s: %v", resource.ID, err)
 			}
 		case "reset_usage":
 			if err := s.db.Where("resource_id = ?", resource.ID).Delete(&ProviderResourceBucket{}).Error; err != nil {
@@ -2135,9 +2142,9 @@ func (s *GormStore) BulkOperateProviderResources(action string, ids []string) (P
 				result.Errors = append(result.Errors, id+": "+err.Error())
 				continue
 			}
-			// Release all in-flight concurrency leases so new requests can proceed immediately.
-			if err := s.db.Where("scope_type = ? AND scope_id = ?", "provider_resource", resource.ID).Delete(&InFlightLease{}).Error; err != nil {
-				log.Printf("[tokenhub] WARNING: reset_usage failed to release in-flight leases for resource %s: %v", resource.ID, err)
+			// Clean up expired leases only; active leases must remain until their owners finish.
+			if err := s.db.Where("scope_type = ? AND scope_id = ? AND expires_at <= ?", "provider_resource", resource.ID, now).Delete(&InFlightLease{}).Error; err != nil {
+				log.Printf("[tokenhub] WARNING: reset_usage failed to clean expired leases for resource %s: %v", resource.ID, err)
 			}
 		}
 		if err := s.db.Model(&ProviderResource{}).Where("id = ?", resource.ID).Updates(updates).Error; err != nil {
@@ -2997,6 +3004,30 @@ func (s *GormStore) SelectRouteCandidates(modelName string) ([]RouteSelection, e
 		resourceMap[r.ID] = r
 	}
 
+	// Batch load active resources for providers referenced by unpinned routes,
+	// so the route loop does not issue one query per unpinned route.
+	resourcesByProvider := make(map[string][]ProviderResource)
+	unpinnedProviderIDs := make([]string, 0)
+	seenProvider := map[string]bool{}
+	for _, route := range routes {
+		if route.ProviderResourceID == "" && !seenProvider[route.ProviderID] {
+			unpinnedProviderIDs = append(unpinnedProviderIDs, route.ProviderID)
+			seenProvider[route.ProviderID] = true
+		}
+	}
+	if len(unpinnedProviderIDs) > 0 {
+		var unpinnedResources []ProviderResource
+		if err := s.db.Where("provider_id IN ? AND status = ? AND (healthy = ? OR cooldown_until <= ?)",
+			unpinnedProviderIDs, StatusActive, true, now).
+			Order("priority asc, weight desc, created_at asc").
+			Find(&unpinnedResources).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range unpinnedResources {
+			resourcesByProvider[r.ProviderID] = append(resourcesByProvider[r.ProviderID], r)
+		}
+	}
+
 	for _, route := range routes {
 		provider, ok := providerMap[route.ProviderID]
 		if !ok {
@@ -3013,26 +3044,32 @@ func (s *GormStore) SelectRouteCandidates(modelName string) ([]RouteSelection, e
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
 				continue
 			}
-			selections = append(selections, s.routeSelection(provider, &resource, route))
+			selection, err := s.routeSelection(provider, &resource, route)
+			if err != nil {
+				log.Printf("[tokenhub] WARNING: skipping route %s for resource %s: %v", route.ID, resource.ID, err)
+				continue
+			}
+			selections = append(selections, selection)
 			continue
 		}
 
 		var resources []ProviderResource
-		// Unhealthy resources whose cooldown has lapsed are admitted as half-open
-		// candidates. Admission still gates them to a single trial (see
-		// CheckProviderResourceCapacity); this query only makes them reachable, which
-		// is what lets a parked resource ever be retried.
-		query := s.db.Where("provider_id = ? AND status = ? AND (healthy = ? OR cooldown_until <= ?)",
-			provider.ID, StatusActive, true, now)
-		if strings.TrimSpace(route.ResourceGroup) != "" {
-			query = query.Where("\"group\" = ?", strings.TrimSpace(route.ResourceGroup))
-		}
-		if err := query.Order("priority asc, weight desc, created_at asc").
-			Find(&resources).Error; err != nil {
-			return nil, err
+		if group := strings.TrimSpace(route.ResourceGroup); group != "" {
+			for _, r := range resourcesByProvider[provider.ID] {
+				if r.Group == group {
+					resources = append(resources, r)
+				}
+			}
+		} else {
+			resources = resourcesByProvider[provider.ID]
 		}
 		if len(resources) == 0 {
-			selections = append(selections, s.routeSelection(provider, nil, route))
+			selection, err := s.routeSelection(provider, nil, route)
+			if err != nil {
+				log.Printf("[tokenhub] WARNING: skipping route %s: %v", route.ID, err)
+				continue
+			}
+			selections = append(selections, selection)
 			continue
 		}
 		for _, resource := range resources {
@@ -3041,7 +3078,12 @@ func (s *GormStore) SelectRouteCandidates(modelName string) ([]RouteSelection, e
 			if resource.Weight > 0 {
 				resourceRoute.Weight = resource.Weight
 			}
-			selections = append(selections, s.routeSelection(provider, &resource, resourceRoute))
+			selection, err := s.routeSelection(provider, &resource, resourceRoute)
+			if err != nil {
+				log.Printf("[tokenhub] WARNING: skipping route %s for resource %s: %v", resourceRoute.ID, resource.ID, err)
+				continue
+			}
+			selections = append(selections, selection)
 		}
 	}
 	s.attachRouteRuntimeStats(selections, now)
@@ -3107,29 +3149,29 @@ func routeRuntimeStatsKey(routeID string, resourceID string) string {
 	return routeID + "\x00" + resourceID
 }
 
-func (s *GormStore) routeSelection(provider Provider, resource *ProviderResource, route ModelRoute) RouteSelection {
-	if decrypted, err := s.decryptSecret(provider.APIKey); err != nil {
-		log.Printf("[tokenhub] WARNING: routeSelection failed to decrypt provider API key for provider %s: %v", provider.ID, err)
-	} else {
-		provider.APIKey = decrypted
+func (s *GormStore) routeSelection(provider Provider, resource *ProviderResource, route ModelRoute) (RouteSelection, error) {
+	decrypted, err := s.decryptSecret(provider.APIKey)
+	if err != nil {
+		return RouteSelection{}, fmt.Errorf("decrypt provider API key for %s: %w", provider.ID, err)
 	}
+	provider.APIKey = decrypted
 	if resource == nil {
 		return RouteSelection{
 			Provider:      provider,
 			ProviderModel: route.ProviderModel,
 			Route:         route,
-		}
+		}, nil
 	}
 	effective := provider
 	if resource.BaseURL != "" {
 		effective.BaseURL = resource.BaseURL
 	}
 	if resource.APIKey != "" {
-		if decrypted, err := s.decryptSecret(resource.APIKey); err != nil {
-			log.Printf("[tokenhub] WARNING: routeSelection failed to decrypt resource API key for resource %s: %v", resource.ID, err)
-		} else {
-			effective.APIKey = decrypted
+		decrypted, err := s.decryptSecret(resource.APIKey)
+		if err != nil {
+			return RouteSelection{}, fmt.Errorf("decrypt resource API key for %s: %w", resource.ID, err)
 		}
+		effective.APIKey = decrypted
 	}
 	if len(resource.Headers) > 0 {
 		headers := map[string]string{}
@@ -3158,7 +3200,7 @@ func (s *GormStore) routeSelection(provider Provider, resource *ProviderResource
 		Resource:      &publicResource,
 		ProviderModel: route.ProviderModel,
 		Route:         route,
-	}
+	}, nil
 }
 
 func (s *GormStore) MarkRouteUsed(routeID string) {
@@ -3997,8 +4039,8 @@ func (s *GormStore) GenerateBillingPeriod(period string) (map[string]any, error)
 			if err := tx.Create(&AdminResource{
 				ID:          NewID(resourcePrefix("chargebacks")),
 				Kind:        "chargebacks",
-				Name:        fmt.Sprintf("%s %s %s 鍒嗘憡", period, item.CostCenter, item.ProjectID),
-				Description: "鐢?TokenHub 鐢ㄩ噺璁板綍鑷姩鐢熸垚",
+				Name:        fmt.Sprintf("%s %s %s 分摊", period, item.CostCenter, item.ProjectID),
+				Description: "由 TokenHub 用量记录自动生成",
 				Status:      StatusActive,
 				Fields: map[string]any{
 					"period":              period,
@@ -4375,11 +4417,11 @@ func (s *GormStore) RunMonitor(id string) (MonitorRunResult, error) {
 		}
 	default:
 		result.Status = "failed"
-		result.Message = "涓嶆敮鎸佺殑鐩戞帶鐩爣"
+		result.Message = "不支持的监控目标"
 	}
 	result.LatencyMS = time.Since(started).Milliseconds()
 	if result.Message == "" {
-		result.Message = "鐩戞帶鎵ц瀹屾垚"
+		result.Message = "监控执行完成"
 	}
 	fields["target_type"] = result.TargetType
 	fields["last_status"] = result.Status

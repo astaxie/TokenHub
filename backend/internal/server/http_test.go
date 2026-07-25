@@ -5449,12 +5449,20 @@ func TestOpenAIProviderAccountOAuthGenerateAuthURLAndCallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if redirect.String() == "" ||
-		redirect.Query().Get("provider_account_oauth") != "1" ||
-		redirect.Query().Get("provider_account_oauth_session_id") != payload.SessionID ||
-		redirect.Query().Get("provider_account_oauth_state") != payload.State ||
-		redirect.Query().Get("code") != "oauth-code" {
-		t.Fatalf("unexpected callback redirect: %s", location)
+	// OAuth tokens must be in the fragment, never in the query string.
+	if redirect.Query().Get("provider_account_oauth") != "" ||
+		redirect.Query().Get("code") != "" {
+		t.Fatalf("sensitive OAuth values leaked into query string: %s", location)
+	}
+	fragmentValues, qerr := url.ParseQuery(redirect.Fragment)
+	if qerr != nil {
+		t.Fatalf("failed to parse redirect fragment: %v", qerr)
+	}
+	if fragmentValues.Get("provider_account_oauth") != "1" ||
+		fragmentValues.Get("provider_account_oauth_session_id") != payload.SessionID ||
+		fragmentValues.Get("provider_account_oauth_state") != payload.State ||
+		fragmentValues.Get("code") != "oauth-code" {
+		t.Fatalf("unexpected callback redirect fragment: %s", redirect.Fragment)
 	}
 }
 
