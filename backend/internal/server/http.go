@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -365,106 +366,67 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Stream {
-		route := routed.Routes[0]
-		resourceID := routeResourceID(route)
-		leaseID, leaseCtx, err := s.store.CheckProviderResourceCapacity(r.Context(), resourceID)
-		if err != nil {
-			s.finishFailedRoutedCall(r, routed, []RouteAttempt{{
-				Selection: route,
-				Status:    AsHTTPError(err).Status,
-				ErrorCode: AsHTTPError(err).Code,
-				Error:     err.Error(),
-			}}, err)
-			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
-			writeError(w, r, err)
-			return
-		}
-		preparedRoute, err := s.prepareRouteForUpstream(leaseCtx, route)
-		if err != nil {
-			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-				err = leaseErr
-			}
-			finishProviderResourceAttempt(s.store, resourceID, leaseID, err, Usage{})
-			httpErr := AsHTTPError(err)
-			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
-			writeError(w, r, err)
-			return
-		}
-		route = preparedRoute
-		adapter, err := s.adapterForRoute(route)
-		if err != nil {
-			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-				err = leaseErr
-			}
-			finishProviderResourceAttempt(s.store, resourceID, leaseID, err, Usage{})
-			httpErr := AsHTTPError(err)
-			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
-			writeError(w, r, err)
-			return
-		}
-		w.Header().Set("content-type", "text/event-stream")
-		w.Header().Set("cache-control", "no-cache")
-		w.Header().Set("x-request-id", routed.Call.RequestID)
-		s.writeRouteHeaders(w, routed.Call, route, 1)
-		streamReq := req
-		allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
-		attempts := make([]RouteAttempt, 0, 2)
-		streamWriter := &streamWriteTracker{writer: w}
-		var usage Usage
-		for {
-			usage, err = adapter.ChatStream(leaseCtx, route.Provider, route.ProviderModel, streamReq, streamWriter)
-			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-				err = leaseErr
-			}
-			retryWithoutEffort := allowEffortFallback &&
-				streamReq.ReasoningEffort != nil &&
-				!streamWriter.Wrote() &&
-				isReasoningEffortRejection(err)
-			if !retryWithoutEffort {
-				finishProviderResourceAttempt(s.store, resourceID, leaseID, err, usage)
-			}
-			status, code := routeAttemptStatusAndCode(err, retryWithoutEffort)
-			attempts = append(attempts, RouteAttempt{
-				Selection: route,
-				Status:    status,
-				ErrorCode: code,
-				Error:     errorMessage(err),
-			})
-			if !retryWithoutEffort {
-				break
-			}
+	affinity, err := s.chatCacheLocalityAffinity(key.ID, r.Header, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, err)
+		s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	if affinity != nil {
+		routed.Affinity = affinity
+		routed.Call.Affinity = affinity
+		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+	}
 
-			streamReq.ReasoningEffort = nil
-			if retryErr := s.store.CheckProviderResourceRetryCapacity(leaseCtx, resourceID, leaseID); retryErr != nil {
-				s.store.ReleaseProviderResourceCapacity(resourceID, leaseID)
-				err = retryErr
-				status, code = statusAndCode(retryErr)
-				attempts = append(attempts, RouteAttempt{
-					Selection: route,
-					Status:    status,
-					ErrorCode: code,
-					Error:     errorMessage(retryErr),
-				})
-				s.writeRouteHeaders(w, routed.Call, route, len(attempts))
-				usage = Usage{}
-				break
-			}
-			s.writeRouteHeaders(w, routed.Call, route, len(attempts)+1)
-		}
-		status, code := statusAndCode(err)
-		if err == nil {
+	if req.Stream {
+		tracker := &streamWriteTracker{writer: w}
+		allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
+		_, route, usage, attempts, streamErr := executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback,
+			func(ctx context.Context, candidate RouteSelection, omitReasoningEffort bool, attempt int) (struct{}, Usage, error) {
+				prepared, prepareErr := s.prepareRouteForUpstream(ctx, candidate)
+				if prepareErr != nil {
+					return struct{}{}, Usage{}, prepareErr
+				}
+				adapter, adapterErr := s.adapterForRoute(prepared)
+				if adapterErr != nil {
+					return struct{}{}, Usage{}, adapterErr
+				}
+				upstreamReq := req
+				if omitReasoningEffort {
+					upstreamReq.ReasoningEffort = nil
+				}
+				// Defer the response headers until the first byte is written, at
+				// which point prepared is the route that actually served it.
+				tracker.onFirstWrite = func() {
+					w.Header().Set("content-type", "text/event-stream")
+					w.Header().Set("cache-control", "no-cache")
+					w.Header().Set("x-request-id", routed.Call.RequestID)
+					s.writeRouteHeaders(w, routed.Call, prepared, attempt)
+				}
+				streamUsage, err := adapter.ChatStream(ctx, prepared.Provider, prepared.ProviderModel, upstreamReq, tracker)
+				return struct{}{}, streamUsage, classifyStreamError(ctx, err, tracker.Wrote())
+			})
+
+		status, code := statusAndCode(streamErr)
+		if streamErr == nil {
+			// An upstream may complete with 200 and an empty body, in which case
+			// onFirstWrite never ran and the client would receive none of the
+			// streaming headers.
+			tracker.ensureStarted()
 			s.store.MarkRouteUsed(route.Route.ID)
 			s.store.MarkProviderResourceUsed(routeResourceID(route))
 		}
 		s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
 		s.store.FinishCall(routed.Call, route, usage, status, code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(routed.Call.RequestID, req, auditStreamPayload(status, code, err))
-		if err != nil && !streamWriter.Wrote() {
+		s.recordRequestPayload(routed.Call.RequestID, req, auditStreamPayload(status, code, streamErr))
+		if streamErr != nil && !tracker.Wrote() {
+			// Nothing reached the client, so the response is a plain JSON error.
+			// Still emit routing headers here: onFirstWrite never ran, and callers
+			// rely on these headers to see how many candidates were attempted.
 			w.Header().Del("cache-control")
-			writeError(w, r, err)
+			s.writeRouteHeaders(w, routed.Call, lastAttemptRoute(attempts), len(attempts))
+			writeError(w, r, streamErr)
 		}
 		return
 	}
@@ -691,7 +653,7 @@ func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project
 
 func (s *Server) executeRoutedChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
 	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
-	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool) (any, Usage, error) {
+	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
 		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -710,7 +672,7 @@ func (s *Server) executeRoutedChat(r *http.Request, routed RoutedCall, req ChatC
 
 func (s *Server) executeRoutedResponses(r *http.Request, routed RoutedCall, req ResponsesRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
 	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(req)) != nil
-	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool) (any, Usage, error) {
+	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
 		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -740,7 +702,7 @@ func (s *Server) executeRoutedResponses(r *http.Request, routed RoutedCall, req 
 }
 
 func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, request map[string]json.RawMessage) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool) (any, Usage, error) {
+	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (any, Usage, error) {
 		prepared, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -762,7 +724,7 @@ func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, reques
 }
 
 func (s *Server) executeRoutedEmbeddings(r *http.Request, routed RoutedCall, req EmbeddingsRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool) (any, Usage, error) {
+	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (any, Usage, error) {
 		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -868,7 +830,11 @@ func executeRoutedWithStore[T any](
 	store Store,
 	routed RoutedCall,
 	allowReasoningEffortFallback bool,
-	call func(context.Context, RouteSelection, bool) (T, Usage, error),
+	// call receives the 1-based attempt number, counted across every candidate
+	// including ones that never ran because capacity acquisition failed. Callbacks
+	// must not derive it locally: those failures are appended to attempts here
+	// without invoking the callback, so a local counter would undercount them.
+	call func(context.Context, RouteSelection, bool, int) (T, Usage, error),
 ) (T, RouteSelection, Usage, []RouteAttempt, error) {
 	var zero T
 	var lastErr error = ErrProviderMissing
@@ -903,12 +869,20 @@ func executeRoutedWithStore[T any](
 		}
 		omitReasoningEffort := false
 		for {
-			resp, usage, err := call(leaseCtx, route, omitReasoningEffort)
+			resp, usage, err := call(leaseCtx, route, omitReasoningEffort, len(attempts)+1)
 			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
 				err = leaseErr
 			}
+			// Neither a committed stream nor a client disconnect may be retried,
+			// not even via the effort fallback on the same route. These checks are
+			// load-bearing: ProviderInvocationError implements Unwrap, so
+			// isReasoningEffortRejection sees through the wrapper and would
+			// otherwise return true for an error that must not be retried.
+			disposition := providerErrorDisposition(err)
 			retryWithoutEffort := allowReasoningEffortFallback &&
 				!omitReasoningEffort &&
+				disposition != ProviderErrorStreamCommitted &&
+				disposition != ProviderErrorClient &&
 				isReasoningEffortRejection(err)
 			if !retryWithoutEffort {
 				finishProviderResourceAttempt(store, resourceID, leaseID, err, usage)
@@ -988,10 +962,18 @@ func finishProviderResourceAttempt(store Store, resourceID string, leaseID strin
 type streamWriteTracker struct {
 	writer io.Writer
 	wrote  bool
+	// onFirstWrite runs once, just before the first byte is written. Response
+	// headers must wait until that moment: failover can move to another candidate,
+	// and writing early would expose the preferred route rather than the one that
+	// actually served the request.
+	onFirstWrite func()
 }
 
 func (w *streamWriteTracker) Write(data []byte) (int, error) {
 	if !w.wrote {
+		if w.onFirstWrite != nil {
+			w.onFirstWrite()
+		}
 		if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
 			responseWriter.WriteHeader(http.StatusOK)
 			if flusher, ok := responseWriter.(http.Flusher); ok {
@@ -1003,8 +985,52 @@ func (w *streamWriteTracker) Write(data []byte) (int, error) {
 	return w.writer.Write(data)
 }
 
+// classifyStreamError decides whether a streaming failure may move to the next
+// candidate.
+//
+// Two cases must never fail over:
+//   - The first byte was already written: the client has a 200 and partial events,
+//     so switching upstreams would emit two contradictory streams. Note this
+//     disposition is not produced automatically and must be wrapped explicitly here.
+//   - The client disconnected: retrying only burns the next account's quota.
+//     Without this check, a cancellation error falls through to the status >= 500
+//     branch at the end of shouldFailoverRoutedError and is mistaken for retryable.
+func classifyStreamError(ctx context.Context, err error, wrote bool) error {
+	if err == nil {
+		return nil
+	}
+	// Cancellation is checked before commitment. Both dispositions forbid failover,
+	// but only ProviderErrorClient counts as healthy in
+	// providerAttemptCountsAsHealthy. Classifying a mid-stream client disconnect as
+	// StreamCommitted would charge it to the upstream, so repeated disconnects could
+	// accumulate failures and cool down a perfectly healthy account.
+	if errors.Is(err, context.Canceled) || (ctx != nil && errors.Is(ctx.Err(), context.Canceled)) {
+		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorClient}
+	}
+	if wrote {
+		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorStreamCommitted}
+	}
+	return err
+}
+
 func (w *streamWriteTracker) Wrote() bool {
 	return w != nil && w.wrote
+}
+
+// ensureStarted runs the deferred hook even when the upstream produced no bytes.
+// A 200 response with an empty body would otherwise reach the client with none of
+// the headers onFirstWrite installs, including content-type.
+func (w *streamWriteTracker) ensureStarted() {
+	if w == nil || w.wrote {
+		return
+	}
+	if w.onFirstWrite != nil {
+		w.onFirstWrite()
+	}
+	if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
+		responseWriter.WriteHeader(http.StatusOK)
+	}
+	w.wrote = true
 }
 
 func (w *streamWriteTracker) Flush() {
@@ -1087,7 +1113,14 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 				priorityGroup = priorityGroup[groupEnd:]
 				continue
 			}
-			if group[0].Route.StickySession {
+			cacheLocality := call.Affinity != nil &&
+				call.Affinity.KeyHash != "" &&
+				call.Affinity.Kind == AffinityKindCacheLocality
+			// Sticky pops one candidate out of the group first, which weakens session
+			// affinity. Cache locality works at the finer session granularity, so it
+			// takes over; Codex's stateful binding relies on sticky choosing the
+			// provider first and is left untouched.
+			if group[0].Route.StickySession && !cacheLocality {
 				index := stickyRouteIndex(call, group)
 				planned = append(planned, group[index])
 				group = append(group[:index], group[index+1:]...)
@@ -1097,9 +1130,18 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 				routingKey = call.Affinity.KeyHash
 			}
 			if call.Affinity != nil && call.Affinity.KeyHash != "" {
+				identity := routeSortID
+				score := weightedRendezvousScore
+				if cacheLocality {
+					// Score by cache domain rather than route identity: several routes
+					// sharing an account and upstream model score identically and sort
+					// adjacently, so failover prefers a sibling whose cache is still warm.
+					identity = cacheDomainID
+					score = weightedCacheDomainScore
+				}
 				sort.SliceStable(group, func(i, j int) bool {
-					left := weightedRendezvousScore(routingKey, group[i])
-					right := weightedRendezvousScore(routingKey, group[j])
+					left := score(routingKey, identity(group[i]), routeEffectiveWeight(group[i].Route))
+					right := score(routingKey, identity(group[j]), routeEffectiveWeight(group[j].Route))
 					if left != right {
 						return left > right
 					}
@@ -1121,13 +1163,52 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 	return planned
 }
 
-func weightedRendezvousScore(key string, route RouteSelection) float64 {
+// weightedRendezvousScore scores candidates for Codex session affinity, where
+// identity is routeSortID.
+//
+// FNV-1a is kept deliberately: routeSortID embeds randomly generated route and
+// resource IDs, so it has enough entropy and none of the similarity problem that
+// cache domain identities have. Changing the hash would reassign every Codex
+// session that has no binding yet, and that change is not guarded by
+// CACHE_AFFINITY_ENABLED - with the switch off, routing must stay byte-identical
+// to the pre-change behaviour.
+func weightedRendezvousScore(key string, identity string, weight int) float64 {
 	hash := fnv.New64a()
 	_, _ = hash.Write([]byte(key))
 	_, _ = hash.Write([]byte{0})
-	_, _ = hash.Write([]byte(routeSortID(route)))
+	_, _ = hash.Write([]byte(identity))
+	// Deliberately keeps the original normalisation, without the clamp applied to
+	// cache-domain scoring. Adding the clamp here would change scores for
+	// near-maximum hashes from -Inf to a large finite value, which contradicts the
+	// byte-identical guarantee this function is required to uphold.
 	unit := (float64(hash.Sum64()) + 1) / (float64(^uint64(0)) + 2)
-	return float64(routeEffectiveWeight(route.Route)) / -math.Log(unit)
+	return float64(weight) / -math.Log(unit)
+}
+
+// weightedCacheDomainScore scores candidates for cache locality routing, where
+// identity is cacheDomainID.
+//
+// SHA-256 is required here: cacheDomainID values are highly similar (under one
+// provider they often differ only in the last few characters), and FNV-1a's
+// avalanche is too weak to separate them - measured, three equally weighted
+// candidates received 154/66/80 instead of an even 100/100/100.
+//
+// This is a durable contract: changing the hash, the concatenation order, or the
+// scoring formula invalidates every upstream cache at once and must be versioned.
+func weightedCacheDomainScore(key string, identity string, weight int) float64 {
+	sum := sha256.Sum256(append(append([]byte(key), 0), identity...))
+	return cacheDomainScoreFromHash(binary.BigEndian.Uint64(sum[:8]), weight)
+}
+
+func cacheDomainScoreFromHash(raw uint64, weight int) float64 {
+	// The +1 / +2 keeps unit inside the open interval (0,1): float64 rounding near
+	// the maximum can otherwise yield exactly 1, and -math.Log(1) returns negative
+	// zero, making the score -Inf so that candidate would sort last forever.
+	unit := (float64(raw) + 1) / (float64(^uint64(0)) + 2)
+	if unit >= 1 {
+		unit = 0.99999999999999988
+	}
+	return float64(weight) / -math.Log(unit)
 }
 
 func routesContainAdapterType(routes []RouteSelection, adapterType string) bool {
@@ -1283,6 +1364,12 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 		return false
 	}
 	if errors.Is(err, ErrCoordinationLeaseLost) {
+		return false
+	}
+	// The client is gone; trying the next account only burns its quota. This also
+	// covers cancellations surfaced by the capacity check, which never reach
+	// classifyStreamError.
+	if errors.Is(err, context.Canceled) {
 		return false
 	}
 	switch providerErrorDisposition(err) {

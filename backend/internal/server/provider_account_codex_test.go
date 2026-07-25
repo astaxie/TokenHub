@@ -681,7 +681,7 @@ func TestCodexSessionBindingCommitsAfterClientCancellation(t *testing.T) {
 			Route:    ModelRoute{ID: "route_cancelled_session", ProviderID: provider.ID, Status: StatusActive},
 		}},
 	}
-	_, _, _, _, err = executeRoutedWithStore(ctx, store, routed, false, func(context.Context, RouteSelection, bool) (map[string]any, Usage, error) {
+	_, _, _, _, err = executeRoutedWithStore(ctx, store, routed, false, func(context.Context, RouteSelection, bool, int) (map[string]any, Usage, error) {
 		cancel()
 		return map[string]any{"status": "completed"}, Usage{}, nil
 	})

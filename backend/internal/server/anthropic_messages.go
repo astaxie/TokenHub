@@ -164,7 +164,16 @@ func (s *Server) startAnthropicRoutedCall(
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
-	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, true
+	affinity, err := s.anthropicCacheLocalityAffinity(key.ID, req.Model, r.Header, req.Raw)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		writeAnthropicError(w, r, err)
+		return RoutedCall{}, false
+	}
+	call.Affinity = affinity
+	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes), Affinity: affinity}, true
 }
 
 func (s *Server) executeRoutedAnthropicMessages(
@@ -176,7 +185,7 @@ func (s *Server) executeRoutedAnthropicMessages(
 	if compatibilityErr != nil {
 		return nil, RouteSelection{}, Usage{}, nil, compatibilityErr
 	}
-	return executeRoutedWithStore(r.Context(), s.store, compatible, false, func(ctx context.Context, route RouteSelection, _ bool) (map[string]any, Usage, error) {
+	return executeRoutedWithStore(r.Context(), s.store, compatible, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (map[string]any, Usage, error) {
 		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -940,65 +949,46 @@ func (s *Server) handleAnthropicMessagesStream(
 		return
 	}
 	routed = compatible
-	route := routed.Routes[0]
-	resourceID := routeResourceID(route)
-	leaseID, leaseCtx, err := s.store.CheckProviderResourceCapacity(r.Context(), resourceID)
-	if err != nil {
-		attempts := []RouteAttempt{{
-			Selection: route,
-			Status:    AsHTTPError(err).Status,
-			ErrorCode: AsHTTPError(err).Code,
-			Error:     err.Error(),
-		}}
-		s.finishFailedRoutedCall(r, routed, attempts, err)
-		s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditErrorPayload(err, routed.Call.RequestID))
-		writeAnthropicError(w, r, err)
-		return
-	}
-	route, err = s.prepareRouteForUpstream(leaseCtx, route)
-	if err != nil {
-		finishProviderResourceAttempt(s.store, resourceID, leaseID, err, Usage{})
-		attempts := []RouteAttempt{{
-			Selection: route,
-			Status:    AsHTTPError(err).Status,
-			ErrorCode: AsHTTPError(err).Code,
-			Error:     err.Error(),
-		}}
-		s.finishFailedRoutedCall(r, routed, attempts, err)
-		s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditErrorPayload(err, routed.Call.RequestID))
-		writeAnthropicError(w, r, err)
-		return
-	}
 
-	w.Header().Set("content-type", "text/event-stream")
-	w.Header().Set("cache-control", "no-cache")
-	w.Header().Set("x-request-id", routed.Call.RequestID)
-	s.writeRouteHeaders(w, routed.Call, route, 1)
 	tracker := &streamWriteTracker{writer: w}
-	var usage Usage
-	if route.Provider.Type == ProviderAnthropic {
-		usage, err = s.streamNativeAnthropicMessages(leaseCtx, route, req, r.Header, tracker)
-	} else if openAIMessageProvider(route.Provider.Type) {
-		usage, err = s.streamOpenAIAsAnthropic(leaseCtx, route, req, tracker)
-	} else {
-		err = NewHTTPError(
-			http.StatusNotImplemented,
-			"provider_capability_not_supported",
-			"Provider does not support the Anthropic Messages gateway",
-		)
-	}
-	if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-		err = leaseErr
-	}
-	finishProviderResourceAttempt(s.store, resourceID, leaseID, err, usage)
+	_, route, usage, attempts, err := executeRoutedWithStore(r.Context(), s.store, routed, false,
+		func(ctx context.Context, candidate RouteSelection, _ bool, attempt int) (struct{}, Usage, error) {
+			prepared, prepareErr := s.prepareRouteForUpstream(ctx, candidate)
+			if prepareErr != nil {
+				return struct{}{}, Usage{}, prepareErr
+			}
+			// Defer the response headers until the first byte is written, at which
+			// point prepared is the route that actually served the request.
+			tracker.onFirstWrite = func() {
+				w.Header().Set("content-type", "text/event-stream")
+				w.Header().Set("cache-control", "no-cache")
+				w.Header().Set("x-request-id", routed.Call.RequestID)
+				s.writeRouteHeaders(w, routed.Call, prepared, attempt)
+			}
+
+			var streamUsage Usage
+			var streamErr error
+			switch {
+			case prepared.Provider.Type == ProviderAnthropic:
+				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, req, r.Header, tracker)
+			case openAIMessageProvider(prepared.Provider.Type):
+				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, req, tracker)
+			default:
+				streamErr = NewHTTPError(
+					http.StatusNotImplemented,
+					"provider_capability_not_supported",
+					"Provider does not support the Anthropic Messages gateway",
+				)
+			}
+			return struct{}{}, streamUsage, classifyStreamError(ctx, streamErr, tracker.Wrote())
+		})
+
 	status, code := statusAndCode(err)
-	attempts := []RouteAttempt{{
-		Selection: route,
-		Status:    status,
-		ErrorCode: code,
-		Error:     errorMessage(err),
-	}}
 	if err == nil {
+		// An upstream may complete with 200 and an empty body, in which case
+		// onFirstWrite never ran and the client would receive none of the
+		// streaming headers.
+		tracker.ensureStarted()
 		s.store.MarkRouteUsed(route.Route.ID)
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
@@ -1009,7 +999,10 @@ func (s *Server) handleAnthropicMessagesStream(
 		if tracker.Wrote() {
 			_ = writeAnthropicStreamError(tracker, err)
 		} else {
+			// Nothing reached the client, so onFirstWrite never ran. Emit routing
+			// headers alongside the JSON error so callers can still see the attempts.
 			w.Header().Del("cache-control")
+			s.writeRouteHeaders(w, routed.Call, lastAttemptRoute(attempts), len(attempts))
 			writeAnthropicError(w, r, err)
 		}
 	}

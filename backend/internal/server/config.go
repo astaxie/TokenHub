@@ -26,6 +26,18 @@ type Config struct {
 	DBMaxOpenConns           int
 	DBMaxIdleConns           int
 	DBConnMaxLifetimeMinutes int
+	// CacheAffinityEnabled turns on stateless cache locality routing. Off by
+	// default because it changes routing behaviour; roll back by turning it off
+	// rather than by rolling back the binary.
+	CacheAffinityEnabled bool
+	// CacheAffinityModels is the allowlist used for staged rollout. Empty means
+	// every model.
+	CacheAffinityModels []string
+	// CacheAffinityAllowUserScope accepts user-scoped identifiers
+	// (metadata.user_id / user) as affinity keys. Off by default: one user's
+	// concurrent sessions share the value, pinning all their traffic to a single
+	// account and creating a hotspot.
+	CacheAffinityAllowUserScope bool
 }
 
 func ConfigFromEnv() Config {
@@ -49,6 +61,10 @@ func ConfigFromEnv() Config {
 		DBMaxOpenConns:           getenvInt("TOKENHUB_DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns:           getenvInt("TOKENHUB_DB_MAX_IDLE_CONNS", 5),
 		DBConnMaxLifetimeMinutes: getenvInt("TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES", 30),
+
+		CacheAffinityEnabled:        getenvBool("TOKENHUB_CACHE_AFFINITY_ENABLED", false),
+		CacheAffinityModels:         getenvList("TOKENHUB_CACHE_AFFINITY_MODELS"),
+		CacheAffinityAllowUserScope: getenvBool("TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE", false),
 	}
 }
 

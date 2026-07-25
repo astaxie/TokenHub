@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -27,32 +26,32 @@ type RequestAffinity struct {
 	KeyHash     string
 }
 
+// persistsBinding reports whether this affinity mode reads and writes
+// AdapterSessionBinding.
+//
+// Derived from Kind rather than stored as a struct field: a field would have to
+// be set at every construction site, and missing one silently changes
+// persistence behaviour. Deriving it means a new mode only needs one line here
+// and cannot be forgotten.
+//
+// Cache locality is purely stateless and must return false, otherwise every chat
+// request would pay for the binding table's DELETE+SELECT+UPDATE.
+func (a *RequestAffinity) persistsBinding() bool {
+	return a != nil && a.Kind == AffinityKindCodexSession
+}
+
 func resolveCodexSessionAffinity(secret string, apiKeyID string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
 	canonical, ok := codexSessionIdentifier(headers, request)
 	if !ok {
 		return nil, nil
 	}
-	if len(canonical) > 512 {
-		return nil, NewHTTPError(http.StatusBadRequest, "codex_session_id_invalid", "Codex session identifier is too long")
+	if err := validateSessionIdentifier(canonical, "codex_session_id_invalid", "Codex session identifier"); err != nil {
+		return nil, err
 	}
-	for _, character := range canonical {
-		if character < 0x20 || character == 0x7f {
-			return nil, NewHTTPError(http.StatusBadRequest, "codex_session_id_invalid", "Codex session identifier contains invalid characters")
-		}
-	}
-	key := []byte(strings.TrimSpace(secret))
-	if len(key) == 0 {
-		fallback := sha256.Sum256([]byte("tokenhub-affinity\x00" + strings.TrimSpace(apiKeyID)))
-		key = fallback[:]
-	}
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte(strings.TrimSpace(apiKeyID)))
-	_, _ = mac.Write([]byte{0})
-	_, _ = mac.Write([]byte(canonical))
 	return &RequestAffinity{
 		AdapterType: ProviderOpenAICodex,
 		Kind:        AffinityKindCodexSession,
-		KeyHash:     hex.EncodeToString(mac.Sum(nil)),
+		KeyHash:     deriveSessionAffinityKey(secret, apiKeyID, canonical),
 	}, nil
 }
 
@@ -226,7 +225,7 @@ func (s *GormStore) CommitAdapterSessionBinding(ctx context.Context, binding Ada
 }
 
 func applyAdapterSessionAffinity(ctx context.Context, store Store, routed RoutedCall) (RoutedCall, map[string]AdapterSessionBinding, error) {
-	if routed.Affinity == nil || routed.Affinity.KeyHash == "" {
+	if routed.Affinity == nil || routed.Affinity.KeyHash == "" || !routed.Affinity.persistsBinding() {
 		return routed, nil, nil
 	}
 	bindings := map[string]AdapterSessionBinding{}
@@ -282,7 +281,7 @@ func applyAdapterSessionAffinity(ctx context.Context, store Store, routed Routed
 }
 
 func commitAdapterSessionAffinity(ctx context.Context, store Store, routed RoutedCall, bindings map[string]AdapterSessionBinding, route RouteSelection, rebindReason string) error {
-	if routed.Affinity == nil || route.Provider.Type != routed.Affinity.AdapterType {
+	if routed.Affinity == nil || !routed.Affinity.persistsBinding() || route.Provider.Type != routed.Affinity.AdapterType {
 		return nil
 	}
 	resourceID := routeResourceID(route)

@@ -356,8 +356,8 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 	streamStarted := false
 	attemptNumber := 0
 	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(request)) != nil
-	response, route, usage, attempts, err := executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool) (map[string]any, Usage, error) {
-		attemptNumber++
+	response, route, usage, attempts, err := executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, attempt int) (map[string]any, Usage, error) {
+		attemptNumber = attempt
 		prepared, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err

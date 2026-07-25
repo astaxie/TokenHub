@@ -551,6 +551,17 @@ type ChatCompletionRequest struct {
 	ResponseFormat    any            `json:"response_format,omitempty"`
 	ReasoningEffort   *string        `json:"reasoning_effort,omitempty"`
 	Metadata          map[string]any `json:"metadata,omitempty"`
+	// PromptCacheKey and User are hints upstreams use to route requests sharing a
+	// prefix to the same cache shard. The gateway must forward them verbatim, and
+	// they double as session affinity identifier sources.
+	//
+	// Typed as any rather than string: these fields were previously absent from the
+	// struct, so non-string values were silently ignored. Declaring them as string
+	// would make requests like `{"user": 123}` fail with 400 at decode time, and the
+	// gateway must not be stricter than the upstream. Affinity extraction only reads
+	// string values; other types are forwarded for the upstream to judge.
+	PromptCacheKey any `json:"prompt_cache_key,omitempty"`
+	User           any `json:"user,omitempty"`
 }
 
 type PlaygroundChatResponse struct {
