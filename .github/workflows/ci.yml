@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  merge_group:
+
+# Read-only by default, matching container-images.yml. No job here needs more, and
+# untrusted pull request code runs go test, npm scripts and a production build.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # The version lives in one place. setup-go looks at the repository root by
+          # default, and this module is not there.
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Check formatting
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            echo "These files are not gofmt-formatted:" >&2
+            echo "$unformatted" >&2
+            echo "Run: gofmt -w $unformatted" >&2
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          working-directory: backend
+
+      - name: Test
+        run: go test ./...
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Check for incidental generated changes
+        # next build rewrites next-env.d.ts depending on mode; AGENTS.md says not to
+        # commit that. Catching it here keeps the noise out of review.
+        run: git diff --exit-code -- next-env.d.ts
+
+  repo-gates:
+    name: Repository gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # The translation gate diffs the event's base against its head, so the full
+          # history has to be present. With the default shallow fetch it fails closed.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test the gates
+        run: node --test tools/*.test.mjs
+
+      - name: Check documentation translations
+        run: node tools/check-doc-translations.mjs
+
+      - name: Check environment variable contract
+        run: node tools/check-env-contract.mjs
+
+      - name: Check source file sizes
+        run: node tools/check-source-lines.mjs
+
+      - name: Check for whitespace errors
+        env:
+          # merge_group carries neither of the first two, and a newly created branch
+          # reports an all-zero before, so the base is resolved rather than assumed.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
+            echo "No usable base commit for this event; skipping the whitespace check."
+            exit 0
+          fi
+          git diff --check "${BASE_SHA}" HEAD
+
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # A single stable check for branch protection to require. Without it, protecting
+    # three separately named jobs means editing the rule every time a job is added.
+    needs:
+      - backend
+      - frontend
+      - repo-gates
+    if: always()
+    steps:
+      - name: Verify every job succeeded
+        env:
+          EXPECTED_JOBS: 3
+        run: |
+          set -euo pipefail
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "Job results: $results"
+
+          # An empty or short list would otherwise pass vacuously, which is the one
+          # way a required check can go green while nothing actually ran. Keep this
+          # count in step with the needs: list above.
+          count="$(echo $results | wc -w)"
+          if [[ "$count" -ne "$EXPECTED_JOBS" ]]; then
+            echo "Expected $EXPECTED_JOBS job results but saw $count." >&2
+            exit 1
+          fi
+
+          for result in $results; do
+            if [[ "$result" != "success" ]]; then
+              echo "A required job did not succeed." >&2
+              exit 1
+            fi
+          done

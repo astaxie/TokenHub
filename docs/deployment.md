@@ -227,11 +227,16 @@ Only use `down -v` when you intentionally want to delete local data.
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | Password for the initial `admin` user; must be changed before production startup |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | Backend secret key |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | Database connection URL (sqlite:// or postgresql://) |
+| `TOKENHUB_DB_HOST` | empty | PostgreSQL host. Setting it builds the DSN from the `TOKENHUB_DB_*` fields instead of `TOKENHUB_DATABASE_URL`, which avoids URL encoding when the password contains `#`, `?`, `/` or `%`. `TOKENHUB_DATABASE_URL` still takes precedence when both are set |
+| `TOKENHUB_DB_PORT` | `5432` | PostgreSQL port; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_USER` | empty | PostgreSQL user; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_PASSWORD` | empty | PostgreSQL password; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_NAME` | empty | PostgreSQL database name; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode; used only when `TOKENHUB_DB_HOST` is set |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | Backup output directory |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | Standard model catalog file |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/app/catalog/provider-catalog.json` | Provider templates and candidate-model catalog file |
 | `TOKENHUB_SEED_DEMO` | `false` | Whether to seed demo data |
-| `TOKENHUB_LOG_LEVEL` | `info` | Log level |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider resource failure threshold before cooldown |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Base cooldown before a parked provider resource is given a half-open retry |
 | `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` | `3600` | Upper bound for the exponential backoff applied to repeated recovery failures |

@@ -227,11 +227,16 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初始 `admin` 用户密码；生产启动前必须修改 |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | 后端密钥 |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | 容器内 SQLite 数据库路径 |
+| `TOKENHUB_DB_HOST` | 空 | PostgreSQL 主机。设置后改用 `TOKENHUB_DB_*` 各字段拼装 DSN，而不是 `TOKENHUB_DATABASE_URL`，可避免密码含 `#`、`?`、`/`、`%` 时的 URL 编码问题。两者同时设置时仍以 `TOKENHUB_DATABASE_URL` 优先 |
+| `TOKENHUB_DB_PORT` | `5432` | PostgreSQL 端口；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
+| `TOKENHUB_DB_USER` | 空 | PostgreSQL 用户名；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
+| `TOKENHUB_DB_PASSWORD` | 空 | PostgreSQL 密码；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
+| `TOKENHUB_DB_NAME` | 空 | PostgreSQL 数据库名；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
+| `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | 备份目录 |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | 标准模型目录文件 |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/app/catalog/provider-catalog.json` | Provider 模板与候选模型目录文件 |
 | `TOKENHUB_SEED_DEMO` | `false` | 是否写入演示数据 |
-| `TOKENHUB_LOG_LEVEL` | `info` | 日志级别 |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider 资源进入冷却前的失败阈值 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Provider 资源进入冷却后获得半开重试前的基础等待秒数 |
 | `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` | `3600` | 反复恢复失败时指数退避的上限秒数 |

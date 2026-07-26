@@ -227,11 +227,16 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初期 `admin` ユーザーのパスワード。本番起動前に変更が必要 |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | バックエンド秘密鍵 |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | コンテナ内 SQLite データベースパス |
+| `TOKENHUB_DB_HOST` | 空 | PostgreSQL ホスト。設定すると `TOKENHUB_DATABASE_URL` ではなく `TOKENHUB_DB_*` の各フィールドから DSN を組み立てるため、パスワードに `#`、`?`、`/`、`%` が含まれる場合の URL エンコードを回避できます。両方設定した場合は `TOKENHUB_DATABASE_URL` が優先されます |
+| `TOKENHUB_DB_PORT` | `5432` | PostgreSQL ポート。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_USER` | 空 | PostgreSQL ユーザー。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_PASSWORD` | 空 | PostgreSQL パスワード。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_NAME` | 空 | PostgreSQL データベース名。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | バックアップ出力ディレクトリ |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | 標準モデルカタログファイル |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/app/catalog/provider-catalog.json` | Provider テンプレートと候補モデルのカタログファイル |
 | `TOKENHUB_SEED_DEMO` | `false` | デモデータを投入するか |
-| `TOKENHUB_LOG_LEVEL` | `info` | ログレベル |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider リソースをクールダウンするまでの失敗しきい値 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | クールダウンした Provider リソースがハーフオープン再試行を得るまでの基本待機秒数 |
 | `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` | `3600` | 復旧失敗が続く場合の指数バックオフの上限秒数 |
