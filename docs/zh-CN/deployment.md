@@ -57,7 +57,7 @@ flowchart TB
     frontend --> backend["后端副本 × N"]
     backend <--> providers["模型 Provider"]
 
-    local["data/model-catalog.yaml<br/>模型主数据"] -->|"启动时解析并写入<br/>集群租约串行化各副本"| backend
+    local["data/model-catalog.yaml<br/>候选模型元数据"] -->|"启动时解析并写入候选模板<br/>集群租约串行化各副本"| backend
     providerCatalog["data/provider-catalog.json<br/>受版本控制的 Provider 模板与候选模型"] -->|"管理员新建或刷新 Provider"| backend
     backend <-->|"模型 · 路由 · Provider 目录快照<br/>共享状态 · 数据库锁"| postgres[("共享 PostgreSQL")]
 
@@ -72,7 +72,7 @@ flowchart TB
 - Nginx 将管理后台、API 和健康检查流量负载均衡到健康副本。
 - 后端副本将持久化配置、OAuth 会话、配额计数、审计数据、集群锁和请求并发租约统一存储在 PostgreSQL 中。
 - 租约过期和归属判断使用 PostgreSQL 时钟，避免不同宿主机的时钟偏差导致租约被提前接管；失去租约后，心跳会取消对应任务或请求。
-- 每个后端启动时都会同步当前配置的模型目录，并通过集群租约串行执行幂等同步。
+- 每个后端启动时都会同步当前配置目录中的候选模型元数据，并通过集群租约串行执行幂等同步。
 - Provider 模板和候选模型从仓库中受版本控制的本地目录读取，运行时不依赖远端目录服务。
 - 后端会将本地 Provider 目录快照持久化到 PostgreSQL，使各副本使用同一目录；本地文件缺失时则回退至已写入数据库的内置模板。
 - 数据库协调故障只释放 Provider 容量，不会把健康的模型 Provider 错误计为失败。
@@ -234,7 +234,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_DB_NAME` | 空 | PostgreSQL 数据库名；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
 | `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | 备份目录 |
-| `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | 标准模型目录文件 |
+| `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | 候选模型元数据目录 |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/app/catalog/provider-catalog.json` | Provider 模板与候选模型目录文件 |
 | `TOKENHUB_SEED_DEMO` | `false` | 是否写入演示数据 |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider 资源进入冷却前的失败阈值 |
@@ -290,11 +290,11 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 ./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml
 ```
 
-自定义文件会覆盖镜像内的模型目录，其版本需要与 `TOKENHUB_IMAGE_TAG` 分别管理。更新文件后，重启后端容器，并在管理后台的「模型目录」中确认结果。
+自定义文件会覆盖镜像内的候选模板目录，其版本需要与 `TOKENHUB_IMAGE_TAG` 分别管理。更新文件后，重启后端容器，并在管理后台「模型目录」的「候选模板库」页签确认结果。
 
-更新当前配置的目录文件后，可以重启后端，也可以在管理后台「模型目录」中点击「恢复出厂目录」来重新导入当前文件；手动新增的其他模型会保留。
+更新当前配置的目录文件后，可以重启后端，也可以在管理后台「模型目录」的「候选模板库」页签点击「恢复候选模板」。该操作会刷新参考元数据、保留自定义对外模型，但不会发布任何模板。
 
-`data/model-catalog.yaml` 仍是模型主数据和路由准入清单。`data/provider-catalog.json` 提供 Provider 模板与候选模型。自动创建路由时，仅使用已经存在于模型目录的候选模型；管理员在新增 Provider 时显式开启某个候选模型后，TokenHub 会先将其加入模型目录，再创建对应路由。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+`data/model-catalog.yaml` 提供候选模板的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的候选上游模型。引入选中项只会创建持久化的 Provider 模型库存；选择发布时，还会创建或复用对外模型并添加启用映射。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
 
 ## 反向代理
 

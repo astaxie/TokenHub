@@ -142,6 +142,21 @@ export function providerSelectOptions(data: AppData) {
     }));
 }
 
+export function providerModelSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
+  const providerID = values?.provider_id?.trim();
+  if (!providerID) return [];
+  const seen = new Set<string>();
+  return data.providerModels
+    .filter((model) => model.provider_id === providerID)
+    .filter((model) => {
+      if (seen.has(model.upstream_model)) return false;
+      seen.add(model.upstream_model);
+      return true;
+    })
+    .map((model) => ({ value: model.upstream_model, label: model.upstream_model }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+}
+
 export function providerDisplayName(provider: Provider, _resources: ProviderResource[]) {
   return provider.name || provider.id;
 }

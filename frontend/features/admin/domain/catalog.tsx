@@ -13,6 +13,7 @@ export function emptyData(): AppData {
     keys: [],
     providers: [],
     providerResources: [],
+    providerModels: [],
     models: [],
     routes: [],
     logs: [],

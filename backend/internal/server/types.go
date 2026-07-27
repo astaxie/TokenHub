@@ -174,6 +174,50 @@ type ProviderCatalogModel struct {
 	Metadata               map[string]string `json:"metadata,omitempty"`
 }
 
+// ProviderModel is an upstream model imported into a concrete Provider. It is
+// inventory, not a public API model: publication happens only through a
+// ModelRoute that connects a Model to this provider/upstream-model pair.
+type ProviderModel struct {
+	ID                     string            `json:"id" gorm:"primaryKey"`
+	ProviderID             string            `json:"provider_id" gorm:"uniqueIndex:idx_provider_upstream;index"`
+	UpstreamModel          string            `json:"upstream_model" gorm:"uniqueIndex:idx_provider_upstream"`
+	DisplayName            string            `json:"display_name,omitempty"`
+	CanonicalName          string            `json:"canonical_name,omitempty"`
+	Category               string            `json:"category,omitempty" gorm:"index"`
+	Family                 string            `json:"family,omitempty"`
+	Modality               string            `json:"modality,omitempty"`
+	ContextWindow          int64             `json:"context_window,omitempty"`
+	InputPriceUSDPer1M     float64           `json:"input_price_usd_per_1m,omitempty"`
+	CacheReadPriceUSDPer1M float64           `json:"cache_read_price_usd_per_1m,omitempty"`
+	OutputPriceUSDPer1M    float64           `json:"output_price_usd_per_1m,omitempty"`
+	InputModalities        []string          `json:"input_modalities,omitempty" gorm:"serializer:json"`
+	OutputModalities       []string          `json:"output_modalities,omitempty" gorm:"serializer:json"`
+	Capabilities           []string          `json:"capabilities,omitempty" gorm:"serializer:json"`
+	SupportedParameters    []string          `json:"supported_parameters,omitempty" gorm:"serializer:json"`
+	Metadata               map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
+	Source                 string            `json:"source,omitempty" gorm:"index"`
+	Status                 string            `json:"status" gorm:"index"`
+	LastSeenAt             *time.Time        `json:"last_seen_at,omitempty"`
+	CreatedAt              time.Time         `json:"created_at"`
+	UpdatedAt              time.Time         `json:"updated_at"`
+}
+
+type ProviderModelImportRequest struct {
+	ProviderID    string                 `json:"provider_id"`
+	Models        []ProviderCatalogModel `json:"models"`
+	Publish       bool                   `json:"publish"`
+	ExternalNames map[string]string      `json:"external_names,omitempty"`
+}
+
+type ProviderModelImportResult struct {
+	ImportedModels int             `json:"imported_models"`
+	CreatedModels  int             `json:"created_models"`
+	CreatedRoutes  int             `json:"created_routes"`
+	ProviderModels []ProviderModel `json:"provider_models"`
+	ModelNames     []string        `json:"model_names,omitempty"`
+	RouteIDs       []string        `json:"route_ids,omitempty"`
+}
+
 type ProviderCatalogEntry struct {
 	ID             string                 `json:"id"`
 	Name           string                 `json:"name"`
@@ -209,11 +253,12 @@ type ProviderCreateRequest struct {
 }
 
 type ProviderCreateResult struct {
-	Provider      Provider `json:"provider"`
-	CreatedRoutes int      `json:"created_routes"`
-	ModelNames    []string `json:"model_names,omitempty"`
-	RouteIDs      []string `json:"route_ids,omitempty"`
-	CatalogSource string   `json:"catalog_source,omitempty"`
+	Provider       Provider `json:"provider"`
+	ImportedModels int      `json:"imported_models"`
+	CreatedRoutes  int      `json:"created_routes"`
+	ModelNames     []string `json:"model_names,omitempty"`
+	RouteIDs       []string `json:"route_ids,omitempty"`
+	CatalogSource  string   `json:"catalog_source,omitempty"`
 }
 
 type Provider struct {

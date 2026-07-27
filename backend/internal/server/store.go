@@ -142,6 +142,10 @@ type Store interface {
 	AddProvider(provider Provider) Provider
 	GetProvider(id string) (Provider, bool)
 	ListProviders() []Provider
+	AddProviderModel(model ProviderModel) ProviderModel
+	ListProviderModels() []ProviderModel
+	UpdateProviderModel(id string, patch ProviderModel) (ProviderModel, error)
+	DeleteProviderModel(id string) error
 	LoadProviderCatalogSnapshot(includeModels bool) ([]ProviderCatalogEntry, string, time.Time, bool, error)
 	SaveProviderCatalogSnapshot(entries []ProviderCatalogEntry, source string, fetchedAt time.Time) error
 	UpdateProvider(id string, patch Provider) (Provider, error)
@@ -464,6 +468,7 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 			&APIKey{},
 			&Provider{},
 			&ProviderResource{},
+			&ProviderModel{},
 			&Model{},
 			&ModelRoute{},
 			&QuotaBucket{},
@@ -1336,6 +1341,9 @@ func (s *GormStore) DeleteProvider(id string) error {
 			return notFound(err, "provider_not_found", "Provider not found")
 		}
 		if err := tx.Where("provider_id = ?", id).Delete(&ModelRoute{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("provider_id = ?", id).Delete(&ProviderModel{}).Error; err != nil {
 			return err
 		}
 		var resourceIDs []string
@@ -2217,6 +2225,14 @@ func (s *GormStore) TestProviderResource(id string) (ProviderResource, error) {
 func (s *GormStore) AddModel(model Model) Model {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var existing Model
+	if err := s.db.First(&existing, "name = ?", model.Name).Error; err == nil &&
+		existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal &&
+		model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal {
+		model = withExternalModelRole(model)
+		model.Status = existing.Status
+		model.CreatedAt = existing.CreatedAt
+	}
 
 	if model.Modality == "embedding" {
 		model.CacheReadPriceUSDPer1M = 0
@@ -4301,7 +4317,13 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 	}
 	hydrateAPIKey(&privateKey)
 	var models []Model
-	if err := s.db.Where("status = ?", StatusActive).Order("name asc").Find(&models).Error; err != nil {
+	publishedModelNames := s.db.Model(&ModelRoute{}).
+		Select("model_name").
+		Where("status = ?", StatusActive)
+	if err := s.db.Where("status = ?", StatusActive).
+		Where("name IN (?) OR name = ?", publishedModelNames, codexImageModelName).
+		Order("name asc").
+		Find(&models).Error; err != nil {
 		return nil
 	}
 	codexImageAvailable := s.codexImageGenerationAvailableLocked()

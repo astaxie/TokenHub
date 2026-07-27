@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, notificationChannelTypes, type Provider, type ProviderCatalogEntry, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, notificationChannelTypes, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { rowTitle, stringifyForm } from "../domain/entities";
 import { uniqueUIID, viewFromPath } from "../domain/formatting";
@@ -24,7 +24,8 @@ import { AuditView } from "../views/audit";
 import { CrudView, ReportsView } from "../views/crud-projects";
 import { DatabaseStatusView } from "../views/database-model-pricing";
 import { GatewayView } from "../views/gateway-view";
-import { ModelCatalogView, RouteStrategyView } from "../views/model-catalog";
+import { ModelDirectoryView } from "../views/model-directory";
+import { RouteStrategyView } from "../views/model-catalog";
 import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
 import { ProviderUpsertModal } from "../views/provider-editor";
@@ -297,6 +298,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.overview, "overview", "/api/admin/overview");
       queue(plan.providers, "providers", "/api/admin/providers");
       queue(plan.providerResources, "provider-resources", "/api/admin/provider-resources");
+      queue(plan.providerModels, "provider-models", "/api/admin/provider-models");
       queue(plan.keys, "api-keys", "/api/admin/api-keys");
       queue(plan.routes, "routes", "/api/admin/routing-rules");
       queue(plan.logs, "audit", "/api/admin/audit/requests");
@@ -346,6 +348,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         } else if (name === "provider-resources") {
           const payload = (await resp.json()) as { data: ProviderResource[] };
           loaded.providerResources = payload.data ?? [];
+        } else if (name === "provider-models") {
+          const payload = (await resp.json()) as { data: ProviderModel[] };
+          loaded.providerModels = payload.data ?? [];
         } else if (name === "api-keys") {
           const payload = (await resp.json()) as { data: APIKey[] };
           loaded.keys = payload.data ?? [];
@@ -783,16 +788,18 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onReorder={(model, routes) => void reorderModelRoutes(model, routes)}
             />
           ) : activeView === "models" && activeConfig ? (
-            <ModelCatalogView
+            <ModelDirectoryView
+              api={api}
               config={activeConfig as ResourceConfig<Model>}
               data={data}
+              loading={loading}
               readOnly={!canAccessView(currentUser, "routes")}
-              onCreate={() => setModal({ config: activeConfig })}
-              onEdit={(item) => setModal({ config: activeConfig, item })}
-              onDelete={(item) => setConfirmDelete({ config: activeConfig, item })}
-              onBulkDelete={(items) => setConfirmDelete({ config: activeConfig, items })}
+              onReload={() => load("models")}
+              onEditModel={(item) => setModal({ config: activeConfig, item })}
+              onDeleteModel={(item) => setConfirmDelete({ config: activeConfig, item })}
+              onEditRoute={(route) => setModal({ config: resourceConfigFor("routes") as ResourceConfig<ModelRoute>, item: route })}
+              onDeleteRoute={(route) => setConfirmDelete({ config: resourceConfigFor("routes") as ResourceConfig<ModelRoute>, item: route })}
               onRestoreDefaults={() => setConfirmRestoreModels(true)}
-              onAction={(action, item) => void runResourceAction(action, item, data)}
             />
           ) : activeView === "reports" && activeConfig ? (
             <ReportsView

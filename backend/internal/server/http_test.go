@@ -82,6 +82,38 @@ func TestGatewayModelsAndChatCompletion(t *testing.T) {
 	}
 }
 
+func TestGatewayModelsOnlyListPublishedRoutedModels(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "catalog-only-model", Modality: "chat", Status: StatusActive})
+	store.AddModel(Model{Name: "disabled-route-model", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ModelName:     "disabled-route-model",
+		ProviderID:    "prv_mock",
+		ProviderModel: "disabled-route-model",
+		Status:        StatusDisabled,
+	})
+	project := store.CreateProject(Project{Name: "Published Model Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Unrestricted Models"}, "thk_unrestricted_models"); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSON(t, New(store).Handler(), http.MethodGet, "/v1/models", nil, "thk_unrestricted_models")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, `"id":"gpt-4.1-mini"`) {
+		t.Fatalf("expected published demo model: %s", resp.Body)
+	}
+	for _, hidden := range []string{"catalog-only-model", "disabled-route-model"} {
+		if strings.Contains(resp.Body, hidden) {
+			t.Fatalf("model %q has no active route and must not be published: %s", hidden, resp.Body)
+		}
+	}
+}
+
 func TestGatewayRejectsTrailingJSONValue(t *testing.T) {
 	app := newTestServer()
 	body := `{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hello"}]}{"extra":true}`
@@ -232,6 +264,12 @@ func TestGatewayRetrieveModelSupportsEscapedModelIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.AddModel(Model{Name: "provider/model", Modality: "chat", ContextWindow: 32000, Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ModelName:     "provider/model",
+		ProviderID:    "prv_path_model",
+		ProviderModel: "provider/model",
+		Status:        StatusActive,
+	})
 	app := New(store).Handler()
 
 	resp := doJSON(t, app, http.MethodGet, "/v1/models/provider%2Fmodel", nil, "thk_path_model")
@@ -2974,7 +3012,11 @@ func TestTeamLeaderUsageBreakdownIncludesMembers(t *testing.T) {
 }
 
 func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
-	app := newTestServer()
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
 
 	providerResp := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
 		"name":     "Local vLLM",
@@ -2994,6 +3036,14 @@ func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := providerPayload.Provider
+	for _, upstreamModel := range []string{"qwen2.5-coder", "qwen2.5-coder-backup"} {
+		store.AddProviderModel(ProviderModel{
+			ProviderID:    provider.ID,
+			UpstreamModel: upstreamModel,
+			DisplayName:   upstreamModel,
+			Status:        StatusActive,
+		})
+	}
 
 	modelResp := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
 		"name":                    "local-coder",
@@ -3426,6 +3476,505 @@ func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	}
 	if got := normalizeProviderBaseURL("dmxapi", "https://www.dmxapi.cn"); got != "https://www.dmxapi.cn/v1" {
 		t.Fatalf("expected dmxapi OpenAI-compatible base URL to include /v1, got %s", got)
+	}
+}
+
+func TestAdminImportsProviderModelWithoutPublishing(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     false,
+		"models": []map[string]any{
+			{
+				"id":             "vendor/private-alpha",
+				"display_name":   "Private Alpha",
+				"category":       "custom",
+				"type":           "chat",
+				"context_window": 131072,
+				"capabilities":   []string{"chat", "tools"},
+			},
+		},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected provider model import 201, got %d: %s", imported.Code, imported.Body)
+	}
+
+	providerModels := doJSON(t, app, http.MethodGet, "/api/admin/provider-models", nil, "")
+	if providerModels.Code != http.StatusOK || !strings.Contains(providerModels.Body, `"upstream_model":"vendor/private-alpha"`) {
+		t.Fatalf("expected imported provider model inventory: %d %s", providerModels.Code, providerModels.Body)
+	}
+	if strings.Contains(providerModels.Body, `"published_model":"vendor/private-alpha"`) {
+		t.Fatalf("unpublished provider model must not claim an external model: %s", providerModels.Body)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderModel == "vendor/private-alpha" {
+			t.Fatalf("import-only operation must not create a route: %+v", route)
+		}
+	}
+}
+
+func TestAdminPublishesProviderModelWithCustomExternalName(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Alias Mapping Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Alias Test Key"}, "thk_alias_models"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.5": "DeepSeek",
+		},
+		"models": []map[string]any{
+			{
+				"id":             "vendor/gpt-4.5",
+				"display_name":   "GPT 4.5",
+				"category":       "openai",
+				"type":           "chat",
+				"context_window": 128000,
+				"capabilities":   []string{"chat", "tools"},
+			},
+		},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected published provider model import 201, got %d: %s", imported.Code, imported.Body)
+	}
+	if !strings.Contains(imported.Body, `"created_models":1`) || !strings.Contains(imported.Body, `"created_routes":1`) {
+		t.Fatalf("expected one external model and mapping: %s", imported.Body)
+	}
+
+	models := doJSON(t, app, http.MethodGet, "/v1/models", nil, "thk_alias_models")
+	if models.Code != http.StatusOK || !strings.Contains(models.Body, `"id":"DeepSeek"`) {
+		t.Fatalf("expected custom external model to be published: %d %s", models.Code, models.Body)
+	}
+	routes := store.ListRoutes()
+	found := false
+	for _, route := range routes {
+		if route.ModelName == "DeepSeek" && route.ProviderID == "prv_mock" && route.ProviderModel == "vendor/gpt-4.5" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected DeepSeek to map to provider model vendor/gpt-4.5: %+v", routes)
+	}
+}
+
+func TestAdminProviderImportUsesExactExternalModelIdentity(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Exact Alias Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Exact Alias Key"}, "thk_exact_alias"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.1-mini": "openai/gpt-4.1-mini",
+		},
+		"models": []map[string]any{{
+			"id":           "vendor/gpt-4.1-mini",
+			"display_name": "GPT 4.1 Mini Vendor Deployment",
+			"type":         "chat",
+		}},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected exact alias import 201, got %d: %s", imported.Code, imported.Body)
+	}
+	if _, ok := modelByNameForTest(store.ListModels(), "openai/gpt-4.1-mini"); !ok {
+		t.Fatalf("external aliases must use exact API identity even when their canonical name already exists: %+v", store.ListModels())
+	}
+	models := doJSON(t, app, http.MethodGet, "/v1/models", nil, "thk_exact_alias")
+	if models.Code != http.StatusOK || !strings.Contains(models.Body, `"id":"openai/gpt-4.1-mini"`) {
+		t.Fatalf("expected exact slash-qualified external alias in /v1/models: %d %s", models.Code, models.Body)
+	}
+}
+
+func TestAdminProviderImportKeepsDistinctExactAliases(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	for _, externalName := range []string{"gpt-4.1-mini", "openai/gpt-4.1-mini"} {
+		imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+			"provider_id": "prv_mock",
+			"publish":     true,
+			"external_names": map[string]string{
+				"vendor/gpt-4.1-mini": externalName,
+			},
+			"models": []map[string]any{{
+				"id":           "vendor/gpt-4.1-mini",
+				"display_name": "GPT 4.1 Mini Vendor Deployment",
+				"type":         "chat",
+			}},
+		}, "")
+		if imported.Code != http.StatusCreated {
+			t.Fatalf("expected exact alias import 201 for %q, got %d: %s", externalName, imported.Code, imported.Body)
+		}
+	}
+
+	found := map[string]bool{}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID == "prv_mock" && route.ProviderModel == "vendor/gpt-4.1-mini" {
+			found[route.ModelName] = true
+		}
+	}
+	if !found["gpt-4.1-mini"] || !found["openai/gpt-4.1-mini"] {
+		t.Fatalf("exact external aliases must keep distinct routes: %+v", store.ListRoutes())
+	}
+}
+
+func TestAdminProviderImportRepublishesExistingExternalModel(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "DeepSeek", Modality: "chat", Status: StatusDisabled})
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.5": "DeepSeek",
+		},
+		"models": []map[string]any{{"id": "vendor/gpt-4.5", "type": "chat"}},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected existing external model publication 201, got %d: %s", imported.Code, imported.Body)
+	}
+	model, ok := modelByNameForTest(store.ListModels(), "DeepSeek")
+	if !ok || model.Status != StatusActive {
+		t.Fatalf("publish import must reactivate an existing external model: %+v", model)
+	}
+}
+
+func TestAdminProviderCreationImportsSelectedModelsWithoutPublishing(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":              "prv_inventory_only",
+		"catalog_id":      "openai",
+		"name":            "OpenAI Inventory Only",
+		"type":            ProviderOpenAI,
+		"base_url":        "https://api.openai.com/v1",
+		"status":          StatusActive,
+		"create_routes":   false,
+		"selected_models": []string{"gpt-4.1-mini"},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", created.Code, created.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(created.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ImportedModels != 1 || result.CreatedRoutes != 0 {
+		t.Fatalf("expected inventory import without publication, got %+v", result)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID == "prv_inventory_only" {
+			t.Fatalf("inventory-only provider creation must not publish a route: %+v", route)
+		}
+	}
+	found := false
+	for _, model := range store.ListProviderModels() {
+		if model.ProviderID == "prv_inventory_only" && model.UpstreamModel == "gpt-4.1-mini" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected selected model in provider inventory")
+	}
+}
+
+func TestAdminRejectsDeletingProviderModelUsedByRoute(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	var providerModel ProviderModel
+	for _, item := range store.ListProviderModels() {
+		if item.ProviderID == "prv_mock" && item.UpstreamModel == "mock-chat" {
+			providerModel = item
+			break
+		}
+	}
+	if providerModel.ID == "" {
+		t.Fatal("expected route backfill to create provider inventory")
+	}
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/provider-models/"+providerModel.ID, nil, "")
+	if deleted.Code != http.StatusConflict || !strings.Contains(deleted.Body, "provider_model_in_use") {
+		t.Fatalf("expected in-use conflict, got %d: %s", deleted.Code, deleted.Body)
+	}
+}
+
+func TestAdminUpdatesProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	providerModel := store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/editable-model",
+		DisplayName:   "Editable Model",
+		Modality:      "chat",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/provider-models/"+providerModel.ID, map[string]any{
+		"display_name":   "Edited Provider Model",
+		"context_window": 131072,
+		"capabilities":   []string{"chat", "tools"},
+		"status":         StatusDisabled,
+	}, "")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected provider model patch 200, got %d: %s", updated.Code, updated.Body)
+	}
+	var result ProviderModel
+	if err := json.Unmarshal([]byte(updated.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ID != providerModel.ID ||
+		result.ProviderID != "prv_mock" ||
+		result.UpstreamModel != "vendor/editable-model" ||
+		result.DisplayName != "Edited Provider Model" ||
+		result.ContextWindow != 131072 ||
+		result.Status != StatusDisabled ||
+		!slices.Equal(result.Capabilities, []string{"chat", "tools"}) {
+		t.Fatalf("unexpected updated provider model: %+v", result)
+	}
+}
+
+func TestAdminDeletesUnusedProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	providerModel := store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/unused-model",
+		DisplayName:   "Unused Model",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/provider-models/"+providerModel.ID, nil, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected unused provider model delete 204, got %d: %s", deleted.Code, deleted.Body)
+	}
+	for _, item := range store.ListProviderModels() {
+		if item.ID == providerModel.ID {
+			t.Fatalf("deleted provider model remains in inventory: %+v", item)
+		}
+	}
+}
+
+func TestAdminDeletingProviderRemovesProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID:      "prv_inventory_cascade",
+		Name:    "Inventory Cascade Provider",
+		Type:    ProviderMock,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    provider.ID,
+		UpstreamModel: "vendor/cascade-model",
+		DisplayName:   "Cascade Model",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/providers/"+provider.ID, nil, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected provider delete 204, got %d: %s", deleted.Code, deleted.Body)
+	}
+	for _, item := range store.ListProviderModels() {
+		if item.ProviderID == provider.ID {
+			t.Fatalf("provider deletion left inventory behind: %+v", item)
+		}
+	}
+}
+
+func TestAdminRouteUpdateRequiresImportedProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	var route ModelRoute
+	for _, item := range store.ListRoutes() {
+		if item.ProviderID == "prv_mock" && item.ProviderModel == "mock-chat" {
+			route = item
+			break
+		}
+	}
+	if route.ID == "" {
+		t.Fatal("expected demo route for provider inventory update")
+	}
+	app := New(store).Handler()
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"provider_model": "vendor/changed-upstream",
+	}, "")
+	if updated.Code != http.StatusConflict || !strings.Contains(updated.Body, "provider_model_not_imported") {
+		t.Fatalf("expected unimported provider model conflict, got %d: %s", updated.Code, updated.Body)
+	}
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/changed-upstream",
+		DisplayName:   "Changed Upstream",
+		Status:        StatusActive,
+	})
+	updated = doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"provider_model": "vendor/changed-upstream",
+	}, "")
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body, `"provider_model":"vendor/changed-upstream"`) {
+		t.Fatalf("expected imported provider model patch 200, got %d: %s", updated.Code, updated.Body)
+	}
+}
+
+func TestAdminCreatesExternalModelWithValidatedImportedRoute(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
+		"name":   "invalid-partial-model",
+		"status": StatusActive,
+		"routes": []map[string]any{{
+			"provider_id":    "missing-provider",
+			"provider_model": "gpt-4.5",
+			"status":         StatusActive,
+		}},
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, "route_provider_not_found") {
+		t.Fatalf("expected nested route validation failure, got %d: %s", invalid.Code, invalid.Body)
+	}
+	if _, ok := modelByNameForTest(store.ListModels(), "invalid-partial-model"); ok {
+		t.Fatal("route validation failure must not leave a partial external model")
+	}
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "gpt-4.5",
+		DisplayName:   "GPT 4.5",
+		Status:        StatusActive,
+	})
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
+		"name":         "DeepSeek",
+		"family":       "deepseek",
+		"modality":     "chat",
+		"status":       StatusActive,
+		"capabilities": []string{"chat", "tools"},
+		"routes": []map[string]any{{
+			"provider_id":    "prv_mock",
+			"provider_model": "gpt-4.5",
+			"status":         StatusActive,
+		}},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected model and route creation 201, got %d: %s", created.Code, created.Body)
+	}
+	foundRoute := false
+	for _, route := range store.ListRoutes() {
+		if route.ModelName == "DeepSeek" && route.ProviderID == "prv_mock" && route.ProviderModel == "gpt-4.5" {
+			foundRoute = route.Priority > 0
+		}
+	}
+	if !foundRoute {
+		t.Fatalf("expected prioritized DeepSeek alias route: %+v", store.ListRoutes())
+	}
+	foundInventory := false
+	for _, model := range store.ListProviderModels() {
+		if model.ProviderID == "prv_mock" && model.UpstreamModel == "gpt-4.5" {
+			foundInventory = true
+		}
+	}
+	if !foundInventory {
+		t.Fatal("expected manual nested route to retain imported Provider inventory")
+	}
+}
+
+func TestAdminRejectsUnimportedAndDuplicateProviderModelRoutes(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	unimported := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "gpt-4.1-mini",
+		"provider_id":    "prv_mock",
+		"provider_model": "vendor/not-imported",
+		"status":         StatusActive,
+	}, "")
+	if unimported.Code != http.StatusConflict || !strings.Contains(unimported.Body, "provider_model_not_imported") {
+		t.Fatalf("expected unimported provider model conflict, got %d: %s", unimported.Code, unimported.Body)
+	}
+
+	duplicate := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "gpt-4.1-mini",
+		"provider_id":    "prv_mock",
+		"provider_model": "mock-chat",
+		"status":         StatusActive,
+	}, "")
+	if duplicate.Code != http.StatusConflict || !strings.Contains(duplicate.Body, "model_route_conflict") {
+		t.Fatalf("expected duplicate model route conflict, got %d: %s", duplicate.Code, duplicate.Body)
+	}
+}
+
+func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
+	store := NewMemoryStore()
+	external := store.AddModel(Model{
+		Name:     "catalog-backed-external",
+		Modality: "chat",
+		Metadata: map[string]string{
+			"source":              "tokenhub-standard-catalog",
+			modelDirectoryRoleKey: modelDirectoryRoleExternal,
+		},
+		Status: StatusDisabled,
+	})
+	store.AddModel(Model{
+		Name:     external.Name,
+		Modality: "chat",
+		Metadata: map[string]string{"source": "tokenhub-standard-catalog"},
+		Status:   StatusActive,
+	})
+
+	model, ok := modelByNameForTest(store.ListModels(), external.Name)
+	if !ok || model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal || model.Status != StatusDisabled {
+		t.Fatalf("candidate refresh must preserve external role and publication state: %+v", model)
 	}
 }
 

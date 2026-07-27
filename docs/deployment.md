@@ -57,7 +57,7 @@ flowchart TB
     frontend --> backend["Backend replicas × N"]
     backend <--> providers["Model Providers"]
 
-    local["data/model-catalog.yaml<br/>Model master data"] -->|"Startup: parse + upsert<br/>cluster lease serializes replicas"| backend
+    local["data/model-catalog.yaml<br/>Candidate-model metadata"] -->|"Startup: parse + upsert templates<br/>cluster lease serializes replicas"| backend
     providerCatalog["data/provider-catalog.json<br/>Tracked Provider templates + candidate models"] -->|"Admin provider setup / refresh"| backend
     backend <-->|"Models · Routes · Provider catalog snapshot<br/>shared state · database locks"| postgres[("Shared PostgreSQL")]
 
@@ -72,7 +72,7 @@ In multi-instance mode:
 - Nginx load-balances console, API, and health-check traffic across healthy replicas.
 - Backend replicas keep durable configuration, OAuth sessions, quota buckets, audit data, cluster locks, and in-flight concurrency leases in PostgreSQL.
 - Lease expiry and ownership decisions use the PostgreSQL clock, avoiding early takeover caused by clock skew between hosts. Heartbeats cancel work when lease ownership is lost.
-- The configured model catalog is synchronized on every backend startup; a cluster lease serializes the idempotent synchronization across replicas.
+- Candidate-model metadata from the configured model catalog is synchronized on every backend startup; a cluster lease serializes the idempotent synchronization across replicas.
 - Provider templates and candidate models are read from the tracked local provider catalog; runtime configuration does not depend on a remote catalog service.
 - The backend persists a local Provider-catalog snapshot in PostgreSQL, so replicas serve the same catalog and a missing local file falls back to the seeded built-in templates.
 - Coordination failures release provider capacity without incorrectly marking a healthy model provider as failed.
@@ -234,7 +234,7 @@ Only use `down -v` when you intentionally want to delete local data.
 | `TOKENHUB_DB_NAME` | empty | PostgreSQL database name; used only when `TOKENHUB_DB_HOST` is set |
 | `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode; used only when `TOKENHUB_DB_HOST` is set |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | Backup output directory |
-| `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | Standard model catalog file |
+| `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | Candidate-model metadata catalog |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/app/catalog/provider-catalog.json` | Provider templates and candidate-model catalog file |
 | `TOKENHUB_SEED_DEMO` | `false` | Whether to seed demo data |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider resource failure threshold before cooldown |
@@ -293,11 +293,11 @@ To mount a custom catalog explicitly:
 ./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml
 ```
 
-After editing the configured catalog file, restart the backend or use **Restore Factory Catalog** in the admin Model Catalog page to re-import the current file without removing manually added models.
+After editing the configured catalog file, restart the backend or use **Restore Candidate Templates** on the Model Directory's **Candidate Templates** tab. This refreshes reference metadata without removing custom external models and does not publish any template.
 
-The custom mount intentionally overrides the image catalog and is therefore managed separately from `TOKENHUB_IMAGE_TAG`. After updating that file, restart the backend container and confirm the entries in `Model Catalog`.
+The custom mount intentionally overrides the image catalog and is therefore managed separately from `TOKENHUB_IMAGE_TAG`. After updating that file, restart the backend container and confirm the entries on the **Candidate Templates** tab.
 
-`data/model-catalog.yaml` remains the model master data and route allowlist. `data/provider-catalog.json` provides Provider templates and candidate models. Automatic route creation only uses candidates already present in the model catalog; when an administrator explicitly enables a candidate during Provider creation, TokenHub adds it to the model catalog before creating its route. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
+`data/model-catalog.yaml` provides reference metadata for candidate templates; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the candidate upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory. Publishing additionally creates or reuses an external model and adds an enabled mapping. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
 
 ## Reverse Proxy
 

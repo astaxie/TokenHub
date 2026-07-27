@@ -9,8 +9,8 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 | 区域 | 责任 |
 | --- | --- |
 | Provider Channels | 配置上游 Base URL、凭证、资源和健康检查 |
-| Model Catalog | 维护标准模型名、能力、上下文窗口和计价单位 |
-| Routing Policies | 用优先级、权重和故障转移策略把标准模型映射到 Provider 模型 |
+| 模型目录 | 发布对外 API 模型名，并管理 Provider 上游模型库存 |
+| Routing Policies | 用优先级、权重和故障转移策略把对外模型映射到 Provider 模型 |
 | Projects and Teams | 定义 Key、额度和成本归因的组织边界 |
 | Identity Sources | 配置 OAuth 或 OIDC 企业登录 |
 | Security and Audit | 审查请求日志、后台操作、Key 轮换和策略变更 |
@@ -19,8 +19,8 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 
 1. 至少配置一个身份源，并保留可控的管理员账号。
 2. 添加上游 Provider，例如 `OpenAI Production`、`Azure East US` 或 `Internal Model Gateway`。
-3. 使用英文模型名维护模型目录，例如 `gpt-4.1-mini`。
-4. 为每个要开放调用的模型创建启用状态的路由策略。
+3. 从 Provider 中选择并引入需要的上游模型，形成 Provider 模型库存。
+4. 将选中模型按同名 1:1 方式发布，或设置自定义对外名称与映射。
 5. 创建团队、项目、成本中心和默认额度策略。
 6. 用 Model Playground 和请求日志验证链路。
 7. 在大规模发放 Key 前检查用量归因。
@@ -29,16 +29,21 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 
 TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照，管理员也可以手动刷新同一份本地目录。若本地目录读取、解析或完整性校验失败，TokenHub 会继续使用最后一次有效快照。
 
-## 路由要求
+## 模型目录与发布
 
-普通用户只应该看到可调用模型。模型必须在目录中启用，并且至少有一条启用路由，才算可调用。
+新的模型目录将过去容易混淆的三个概念分开展示：
 
-| 状态 | 管理端表现 |
+| 视图 | 含义 |
 | --- | --- |
-| 启用模型且有启用路由 | 正常模型卡片 |
-| 启用模型但没有路由 | 使用不同背景色提示缺少配置 |
-| 禁用模型 | 对普通用户隐藏 |
-| Provider 路由不健康 | 在路由诊断和请求日志中可见 |
+| **对外模型** | 提供给业务应用的 API 契约。这是默认视图，初始只展示已发布模型。 |
+| **Provider 上游模型** | 已引入到某个具体 Provider 的真实模型库存。只引入库存不会对客户端暴露模型。 |
+| **候选模板库** | 来自跟踪目录的参考元数据。模板在引入并建立映射前，既未接入也不可调用。 |
+
+从 Provider 引入模型时，「引入并发布」默认创建同名 1:1 映射，管理员也可以在引入前修改对外名称。例如，对外发布 `DeepSeek`，但映射到 `OpenAI Production / gpt-4.5`。一个 Provider 上游模型也可以映射到多个对外别名。
+
+管理员也可以手工创建对外模型，并从某个 Provider 已引入的上游模型中选择映射目标。如果所需模型尚未出现，应先把它引入 Provider 库存，再创建映射，让「引入」和「发布」保持为两个明确步骤。
+
+「发布状态」与「运行健康」相互独立。模型要出现在 `GET /v1/models` 中，必须同时满足：对外 `Model` 已启用、至少有一条已启用 `ModelRoute`，且在 API Key 配置了模型白名单时获得授权。Provider 或 Provider Resource 短时不健康不会改变该列表，只会影响当前请求能否成功，并在目录和路由诊断中单独展示。下线对外模型会将它从 `GET /v1/models` 移除，但保留映射，便于之后重新发布。
 
 ## Provider 资源自动恢复
 
@@ -80,9 +85,9 @@ TokenHub 可以在 `GET /metrics` 暴露 Prometheus 指标。该功能默认关�
 
 模型目录支持按每百万 Token 配置可选的缓存读取价格。配置后，命中缓存的输入 Token 按该价格估算成本；留空时，DeepSeek V4 Pro 按标准输入价的约 0.83% 估算，其他 DeepSeek 模型按 2% 估算，其余非 Embedding 模型按 10% 估算。模型定价表会标记估算值，并在悬停时说明采用的比例。
 
-## 目录恢复
+## 候选模板恢复
 
-删除模型会移除数据库记录及其路由，但不会修改 `data/model-catalog.yaml` 或 `TOKENHUB_MODEL_CATALOG_FILE` 指向的文件。后端启动时会再次同步当前配置的目录。管理员也可以在「模型目录」页面使用「恢复出厂目录」，从配置文件重新导入并覆盖标准模型，同时保留手动新增的其他模型。
+删除对外模型会移除其数据库记录及路由，但不会修改 `data/model-catalog.yaml` 或 `TOKENHUB_MODEL_CATALOG_FILE` 指向的文件。后端启动时会再次同步其中的候选元数据。管理员也可以在「模型目录」的「候选模板库」页签使用「恢复候选模板」刷新这些元数据，同时保留自定义对外模型。恢复模板不会把模型引入 Provider、创建映射，也不会将其发布到 `GET /v1/models`。
 
 ## 安全检查清单
 

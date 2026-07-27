@@ -633,9 +633,14 @@ export function EditModal<T>({
               field={field}
               data={data}
               currentUser={currentUser}
+              values={values}
               value={values[field.key] ?? ""}
               editing={Boolean(state.item)}
-              onChange={(value) => setValues((prev) => ({ ...prev, [field.key]: value }))}
+              onChange={(value) => setValues((prev) => ({
+                ...prev,
+                [field.key]: value,
+                ...(state.config.view === "routes" && field.key === "provider_id" && prev.provider_id !== value ? { provider_model: "" } : {}),
+              }))}
             />
           ))}
         </div>

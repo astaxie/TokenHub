@@ -121,6 +121,8 @@ func NewWithConfig(store Store, config Config) *Server {
 	} else if len(jobs) > 0 {
 		log.Printf("[tokenhub] marked %d unfinished image jobs as failed after startup", len(jobs))
 	}
+	backfillProviderModelsFromRoutes(store)
+	backfillExternalModelRolesFromRoutes(store)
 	if config.MetricsEnabled {
 		s.metrics = NewGatewayMetrics(config.MetricsProjectLabel)
 		// Assert against the narrow MetricsSink interface rather than *GormStore, and
@@ -189,6 +191,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/providers/", s.handleAdminProviderNested)
 	s.mux.HandleFunc("/api/admin/provider-resources", s.handleAdminProviderResources)
 	s.mux.HandleFunc("/api/admin/provider-resources/", s.handleAdminProviderResourceNested)
+	s.mux.HandleFunc("/api/admin/provider-models/import", s.handleAdminProviderModelImport)
+	s.mux.HandleFunc("/api/admin/provider-models", s.handleAdminProviderModels)
+	s.mux.HandleFunc("/api/admin/provider-models/", s.handleAdminProviderModelItem)
 	s.mux.HandleFunc("/api/admin/models", s.handleAdminModels)
 	s.mux.HandleFunc("/api/admin/models/restore-defaults", s.handleAdminModelsRestoreDefaults)
 	s.mux.HandleFunc("/api/admin/models/", s.handleAdminModelItem)
@@ -3359,6 +3364,7 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 			Provider:      created,
 			CatalogSource: catalogSource,
 		}
+		result.ImportedModels = s.importSelectedProviderCatalogModels(created.ID, catalog, req.SelectedModels)
 		if shouldCreateProviderRoutes(req, catalog, true) {
 			result.CreatedRoutes, result.ModelNames, result.RouteIDs = s.createProviderCatalogRoutes(created.ID, catalog, req)
 		}
@@ -3576,7 +3582,12 @@ func (s *Server) createProviderCatalogRoutes(providerID string, catalog Provider
 	modelNames := []string{}
 	routeIDs := []string{}
 	category := strings.TrimSpace(req.ModelCategory)
-	standardModelNames := standardModelNameSet(s.store.ListModels())
+	existingModels := s.store.ListModels()
+	standardModelNames := standardModelNameSet(existingModels)
+	exactModelNames := map[string]bool{}
+	for _, model := range existingModels {
+		exactModelNames[model.Name] = true
+	}
 	existingRoutes := s.store.ListRoutes()
 	existingRouteIDs := existingRouteIDSet(existingRoutes)
 	routePriorities := routePriorityByModel(existingRoutes)
@@ -3590,23 +3601,49 @@ func (s *Server) createProviderCatalogRoutes(providerID string, catalog Provider
 		}
 		route := ProviderCatalogModelRoute(providerID, catalogModel)
 		normalizedModelName := normalizeModelLookupName(route.ModelName)
-		if !standardModelNames[normalizedModelName] {
-			if !expandModelCatalog {
+		if !exactModelNames[route.ModelName] {
+			if !expandModelCatalog && !standardModelNames[normalizedModelName] {
 				continue
 			}
-			s.store.AddModel(providerCatalogModelRecord(catalogModel, route.ModelName))
+			s.store.AddModel(withExternalModelRole(providerCatalogModelRecord(catalogModel, route.ModelName)))
+			exactModelNames[route.ModelName] = true
 			standardModelNames[normalizedModelName] = true
 		}
+		s.store.AddProviderModel(providerModelFromCatalog(providerID, catalogModel))
 		if existingRouteIDs[route.ID] {
 			continue
 		}
 		route.Priority = takeNextRoutePriority(routePriorities, route.ModelName)
+		if err := s.markExternalModel(route.ModelName); err != nil {
+			continue
+		}
 		route = s.store.AddRoute(route)
 		existingRouteIDs[route.ID] = true
 		routeIDs = append(routeIDs, route.ID)
 		modelNames = append(modelNames, route.ModelName)
 	}
 	return len(routeIDs), modelNames, routeIDs
+}
+
+func (s *Server) importSelectedProviderCatalogModels(providerID string, catalog ProviderCatalogEntry, selectedModels []string) int {
+	selected := map[string]bool{}
+	for _, modelID := range selectedModels {
+		if modelID = strings.TrimSpace(modelID); modelID != "" {
+			selected[modelID] = true
+		}
+	}
+	if len(selected) == 0 {
+		return 0
+	}
+	imported := 0
+	for _, model := range catalog.Models {
+		if !selected[model.ID] {
+			continue
+		}
+		s.store.AddProviderModel(providerModelFromCatalog(providerID, model))
+		imported++
+	}
+	return imported
 }
 
 func providerCatalogModelRecord(model ProviderCatalogModel, name string) Model {
@@ -3813,6 +3850,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 				Provider:      updated,
 				CatalogSource: catalogSource,
 			}
+			result.ImportedModels = s.importSelectedProviderCatalogModels(updated.ID, catalog, req.SelectedModels)
 			if shouldCreateProviderRoutes(req, catalog, false) {
 				result.CreatedRoutes, result.ModelNames, result.RouteIDs = s.createProviderCatalogRoutes(updated.ID, catalog, req)
 			}
@@ -4130,9 +4168,44 @@ func (s *Server) handleAdminModels(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 			return
 		}
-		model := s.store.AddModel(req.Model)
+		req.Model.Name = strings.TrimSpace(req.Model.Name)
+		if req.Model.Name == "" {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_model", "name is required"))
+			return
+		}
+		priorities := routePriorityByModel(s.store.ListRoutes())
+		seenRoutes := existingProviderModelRouteSet(s.store.ListRoutes())
+		preparedRoutes := make([]ModelRoute, 0, len(req.Routes))
 		for _, route := range req.Routes {
-			route.ModelName = model.Name
+			route.ModelName = req.Model.Name
+			route.ProviderID = strings.TrimSpace(route.ProviderID)
+			route.ProviderModel = strings.TrimSpace(route.ProviderModel)
+			if route.ProviderID == "" || route.ProviderModel == "" {
+				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_route", "provider_id and provider_model are required"))
+				return
+			}
+			if err := s.validateRouteAdapter(route); err != nil {
+				writeError(w, r, err)
+				return
+			}
+			if err := s.validateImportedProviderModel(route); err != nil {
+				writeError(w, r, err)
+				return
+			}
+			routeKey := providerModelRouteKey(route.ProviderID, route.ProviderModel, route.ModelName)
+			if seenRoutes[routeKey] {
+				writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
+				return
+			}
+			seenRoutes[routeKey] = true
+			if route.Priority <= 0 {
+				route.Priority = takeNextRoutePriority(priorities, route.ModelName)
+			}
+			preparedRoutes = append(preparedRoutes, route)
+		}
+		req.Model = withExternalModelRole(req.Model)
+		model := s.store.AddModel(req.Model)
+		for _, route := range preparedRoutes {
 			s.store.AddRoute(route)
 		}
 		s.recordAdminAudit(r, user, "create", "model", model.Name, "", model)
@@ -4252,6 +4325,18 @@ func (s *Server) handleAdminRoutes(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, err)
 			return
 		}
+		if err := s.validateImportedProviderModel(req); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if modelRouteMappingExists(req, s.store.ListRoutes(), "") {
+			writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
+			return
+		}
+		if err := s.markExternalModel(req.ModelName); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		route := s.store.AddRoute(req)
 		s.recordAdminAudit(r, user, "create", "routing_rule", route.ID, "", route)
 		writeJSON(w, http.StatusCreated, route)
@@ -4328,6 +4413,18 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, err)
 			return
 		}
+		if err := s.validateImportedProviderModel(candidate); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if modelRouteMappingExists(candidate, s.store.ListRoutes(), routeID) {
+			writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
+			return
+		}
+		if err := s.markExternalModel(candidate.ModelName); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		route, err := s.store.UpdateRoute(routeID, req)
 		if err != nil {
 			writeError(w, r, err)
@@ -4363,6 +4460,31 @@ func (s *Server) validateRouteAdapter(route ModelRoute) error {
 		return NewHTTPError(http.StatusBadRequest, "route_resource_mismatch", "Route resource must belong to the selected Provider")
 	}
 	return nil
+}
+
+func (s *Server) validateImportedProviderModel(route ModelRoute) error {
+	providerID := strings.TrimSpace(route.ProviderID)
+	upstreamModel := strings.TrimSpace(route.ProviderModel)
+	for _, model := range s.store.ListProviderModels() {
+		if model.ProviderID == providerID && model.UpstreamModel == upstreamModel {
+			return nil
+		}
+	}
+	return NewHTTPError(http.StatusConflict, "provider_model_not_imported", "Import the upstream model for this Provider before creating a route")
+}
+
+func modelRouteMappingExists(candidate ModelRoute, routes []ModelRoute, excludeID string) bool {
+	for _, route := range routes {
+		if route.ID == excludeID {
+			continue
+		}
+		if strings.TrimSpace(route.ModelName) == strings.TrimSpace(candidate.ModelName) &&
+			strings.TrimSpace(route.ProviderID) == strings.TrimSpace(candidate.ProviderID) &&
+			strings.TrimSpace(route.ProviderModel) == strings.TrimSpace(candidate.ProviderModel) {
+			return true
+		}
+	}
+	return false
 }
 
 func modelRouteByID(routes []ModelRoute, routeID string) (ModelRoute, bool) {

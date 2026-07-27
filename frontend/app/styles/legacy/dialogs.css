@@ -2,7 +2,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 100;
   background: rgba(24, 24, 27, 0.28);
   display: flex;
   align-items: center;

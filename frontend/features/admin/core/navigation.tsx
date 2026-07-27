@@ -68,6 +68,7 @@ export const adminNavGroups: NavGroup[] = [
     items: [
       { view: "overview", label: "平台总览", icon: LayoutDashboard },
       { view: "usage", label: "全局用量", icon: BarChart3 },
+      { view: "audit", label: "请求日志", icon: FileText },
       { view: "reports", label: "导出报表", icon: BarChart3 },
     ],
   },

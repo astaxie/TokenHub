@@ -824,6 +824,15 @@ func stableCatalogRouteID(providerID string, modelID string) string {
 	return "route_catalog_" + hex.EncodeToString(sum[:])[:16]
 }
 
+func stableProviderModelRouteID(providerID string, modelID string, externalName string) string {
+	defaultName := canonicalModelName(modelID, modelID)
+	if strings.TrimSpace(externalName) == strings.TrimSpace(defaultName) {
+		return stableCatalogRouteID(providerID, modelID)
+	}
+	sum := sha256.Sum256([]byte(providerID + ":" + modelID + ":" + externalName))
+	return "route_import_" + hex.EncodeToString(sum[:])[:16]
+}
+
 func sanitizeIdentifier(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	var builder strings.Builder

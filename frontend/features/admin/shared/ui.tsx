@@ -101,6 +101,7 @@ export function FieldInput({
   field,
   data,
   currentUser,
+  values,
   value,
   editing,
   onChange,
@@ -108,6 +109,7 @@ export function FieldInput({
   field: FieldConfig;
   data: AppData;
   currentUser?: AdminUser | null;
+  values?: Record<string, string>;
   value: string;
   editing: boolean;
   onChange: (value: string) => void;
@@ -116,7 +118,7 @@ export function FieldInput({
   const readOnly = editing && field.readOnlyOnEdit;
   const autoComplete = field.autoComplete ?? "off";
   const inputName = `tokenhub-${field.key}`;
-  let options = field.optionsFromData?.(data, currentUser) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
+  let options = field.optionsFromData?.(data, currentUser, values) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
   if (value && !options.some((option) => option.value === value)) {
     options = [...options, { value, label: value }];
   }

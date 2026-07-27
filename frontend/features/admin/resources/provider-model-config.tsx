@@ -1,6 +1,6 @@
 import { type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerRouteDefaults, providerRouteSummary, providerSelectOptions, routeScoreSummary, stringifyForm } from "../domain/entities";
+import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteDefaults, providerRouteSummary, providerSelectOptions, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { tx } from "../i18n/runtime";
@@ -283,7 +283,7 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
         help: "新增路由时可多选模型；编辑已有路由时仍按单条规则调整。",
       },
       { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true },
-      { key: "provider_model", label: "上游模型/部署名", placeholder: "留空则沿用统一模型名", help: "批量创建时留空，会为每个统一模型使用同名上游模型。" },
+      { key: "provider_model", label: "已引入的上游模型", type: "select", optionsFromData: providerModelSelectOptions, required: true, help: "先在 Provider 上游模型库存中引入，再创建或编辑路由。保存时会校验该模型属于所选 Provider。" },
       { key: "priority", label: "优先级", type: "number" },
       { key: "weight", label: "权重", type: "number" },
       { key: "quality_score", label: "质量评分 1-100", type: "number", help: "质量优先模式会优先选择该评分更高的线路。" },

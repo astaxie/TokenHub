@@ -9,8 +9,8 @@ This guide is for platform administrators, security operators, and infrastructur
 | Area | Responsibility |
 | --- | --- |
 | Provider Channels | Configure upstream Base URLs, credentials, resources, and health checks |
-| Model Catalog | Maintain standard model names, capabilities, context windows, and pricing units |
-| Routing Policies | Map standard models to provider models with priority, weight, and failover strategy |
+| Model Directory | Publish external API model names and manage Provider upstream-model inventory |
+| Routing Policies | Map external models to Provider models with priority, weight, and failover strategy |
 | Projects and Teams | Define ownership boundaries for keys, quota, and cost attribution |
 | Identity Sources | Configure OAuth or OIDC login providers for enterprise sign-in |
 | Security and Audit | Review request logs, admin events, key rotation, and policy changes |
@@ -19,8 +19,8 @@ This guide is for platform administrators, security operators, and infrastructur
 
 1. Configure at least one identity source and keep a controlled administrator account.
 2. Add upstream providers such as `OpenAI Production`, `Azure East US`, or `Internal Model Gateway`.
-3. Import or maintain the model catalog using English model names such as `gpt-4.1-mini`.
-4. Create enabled routing rules for every model that should be callable.
+3. Import selected upstream models from the Provider into the Provider-model inventory.
+4. Publish the selected models with a same-name mapping, or assign a custom external name and mapping.
 5. Create teams, projects, cost centers, and default quota policies.
 6. Validate the flow with Model Playground and request logs.
 7. Review usage attribution before issuing keys broadly.
@@ -29,16 +29,21 @@ This guide is for platform administrators, security operators, and infrastructur
 
 TokenHub stores the last known-good provider catalog in the database. On every backend startup, it validates and loads the configured local `provider-catalog.json`, then atomically replaces the database snapshot. Ordinary **Provider Channels** requests only read the database snapshot, and administrators can manually refresh the same local catalog. If local catalog reading, parsing, or completeness validation fails, TokenHub keeps using the last known-good snapshot.
 
-## Routing Requirements
+## Model Directory and Publication
 
-Users should only see callable models. A model is callable when it is active in the catalog and has at least one enabled routing rule.
+The Model Directory separates three concepts that were previously easy to confuse:
 
-| State | Admin UI behavior |
+| View | Meaning |
 | --- | --- |
-| Active model with enabled route | Normal model card |
-| Active model without route | Visually distinct background so admins can spot missing configuration |
-| Disabled model | Hidden from ordinary users |
-| Unhealthy provider route | Visible in routing diagnostics and request logs |
+| **External Models** | The API contract exposed to applications. This is the default view and initially shows only published models. |
+| **Provider Upstream Models** | Models imported for one concrete Provider. Importing inventory alone does not expose a model to clients. |
+| **Candidate Templates** | Reference metadata from the tracked catalog. A template is neither connected nor callable until it is imported and mapped. |
+
+When importing a Provider model, **Import and publish** creates an enabled same-name mapping by default. The external name can be edited before import. For example, an administrator can publish the external name `DeepSeek` while mapping it to `OpenAI Production / gpt-4.5`. A Provider upstream model can also be mapped to more than one external alias.
+
+An administrator can instead create an external model manually and select one of the upstream models already imported for a Provider. If the required upstream model is not listed, import it into Provider inventory first; this keeps inventory and mappings as two explicit steps.
+
+Publication and runtime health are different states. Membership in `GET /v1/models` requires an active external `Model`, at least one active `ModelRoute`, and API-key access when a model allowlist is configured. It does not change when a Provider or Provider Resource is temporarily unhealthy. Health affects whether a request can be served and is shown separately in the directory and routing diagnostics. Disabling the external model removes it from `GET /v1/models` while retaining its mappings for later re-publication.
 
 ## Provider Resource Recovery
 
@@ -80,9 +85,9 @@ To push instead of scrape, point an OpenTelemetry Collector's `prometheus` recei
 
 The model catalog accepts an optional cache read price in USD per 1 million tokens. When it is configured, cached input tokens use that price in estimated costs. When it is left blank, TokenHub estimates the cache read price at about 0.83% of the standard input price for DeepSeek V4 Pro, 2% for other DeepSeek models, and 10% for other non-embedding models. The model pricing table marks estimated values and explains the applied ratio on hover.
 
-## Catalog Recovery
+## Candidate Template Recovery
 
-Deleting a model removes the database record and its routes, but it does not edit `data/model-catalog.yaml` or the file configured by `TOKENHUB_MODEL_CATALOG_FILE`. Backend startup syncs that configured catalog again. Administrators can also use **Restore Factory Catalog** in the Model Catalog page to re-import and overwrite standard models from the configured catalog while keeping manually added models.
+Deleting an external model removes its database record and routes, but it does not edit `data/model-catalog.yaml` or the file configured by `TOKENHUB_MODEL_CATALOG_FILE`. Backend startup synchronizes the candidate metadata from that file again. Administrators can also use **Restore Candidate Templates** on the **Candidate Templates** tab to refresh that metadata while keeping custom external models. Restoring a template does not import it for a Provider, create a mapping, or publish it in `GET /v1/models`.
 
 ## Security Checklist
 

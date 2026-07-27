@@ -57,7 +57,7 @@ flowchart TB
     frontend --> backend["バックエンドレプリカ × N"]
     backend <--> providers["モデル Provider"]
 
-    local["data/model-catalog.yaml<br/>モデルのマスターデータ"] -->|"起動時に解析して upsert<br/>クラスタリースでレプリカを直列化"| backend
+    local["data/model-catalog.yaml<br/>候補モデルのメタデータ"] -->|"起動時に解析して候補テンプレートを upsert<br/>クラスタリースでレプリカを直列化"| backend
     providerCatalog["data/provider-catalog.json<br/>バージョン管理された Provider テンプレートと候補モデル"] -->|"管理者による Provider の作成・更新"| backend
     backend <-->|"モデル · ルート · Provider カタログスナップショット<br/>共有状態 · データベースロック"| postgres[("共有 PostgreSQL")]
 
@@ -72,7 +72,7 @@ flowchart TB
 - Nginx が管理コンソール、API、ヘルスチェックのトラフィックを正常なレプリカへ分散します。
 - バックエンドレプリカは、永続設定、OAuth セッション、クォータカウンター、監査データ、クラスターロック、実行中リクエストの並行数リースを PostgreSQL で共有します。
 - リースの期限と所有権は PostgreSQL のクロックで判定し、ホスト間の時刻ずれによる早期引き継ぎを防ぎます。所有権を失った処理はハートビートによってキャンセルされます。
-- 設定されたモデルカタログはバックエンドの起動ごとに同期され、冪等な同期処理はクラスターロックによって直列化されます。
+- 設定されたモデルカタログの候補モデルメタデータはバックエンドの起動ごとに同期され、冪等な同期処理はクラスターロックによって直列化されます。
 - Provider テンプレートと候補モデルは、リポジトリでバージョン管理されたローカルカタログから読み込まれ、実行時にリモートカタログサービスへ依存しません。
 - バックエンドはローカル Provider カタログのスナップショットを PostgreSQL に永続化するため、全レプリカで同じカタログを使用できます。ローカルファイルがない場合は、データベースへ保存された組み込みテンプレートにフォールバックします。
 - データベースの調整障害では Provider の容量だけを解放し、正常なモデル Provider を誤って失敗扱いにしません。
@@ -234,7 +234,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_DB_NAME` | 空 | PostgreSQL データベース名。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
 | `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | バックアップ出力ディレクトリ |
-| `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | 標準モデルカタログファイル |
+| `TOKENHUB_MODEL_CATALOG_FILE` | `/app/catalog/model-catalog.yaml` | 候補モデルのメタデータカタログ |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/app/catalog/provider-catalog.json` | Provider テンプレートと候補モデルのカタログファイル |
 | `TOKENHUB_SEED_DEMO` | `false` | デモデータを投入するか |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider リソースをクールダウンするまでの失敗しきい値 |
@@ -290,11 +290,11 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 ./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml
 ```
 
-カスタムファイルはイメージ内のモデルカタログを上書きするため、そのバージョンは `TOKENHUB_IMAGE_TAG` とは別に管理します。ファイルを更新した後、バックエンドコンテナを再起動し、管理コンソールの `Model Catalog` で内容を確認します。
+カスタムファイルはイメージ内の候補テンプレートカタログを上書きするため、そのバージョンは `TOKENHUB_IMAGE_TAG` とは別に管理します。ファイルを更新した後、バックエンドコンテナを再起動し、「モデルディレクトリ」の「候補テンプレート」タブで内容を確認します。
 
-設定済みカタログファイルを更新した後は、バックエンドを再起動するか、管理コンソールの Model Catalog で「出荷時カタログに復元」を実行して現在のファイルを再インポートできます。手動で追加したその他のモデルは保持されます。
+設定済みカタログファイルを更新した後は、バックエンドを再起動するか、「モデルディレクトリ」の「候補テンプレート」タブで「候補テンプレートを復元」を実行できます。この操作は参照メタデータを更新し、カスタム外部モデルを保持しますが、テンプレートを公開しません。
 
-`data/model-catalog.yaml` はモデルのマスターデータおよびルートの許可リストです。`data/provider-catalog.json` は Provider テンプレートと候補モデルを提供します。ルートの自動作成では、モデルカタログにすでに存在する候補だけを使用します。管理者が Provider の作成時に候補モデルを明示的に有効化すると、TokenHub はそのモデルをモデルカタログへ追加してから対応するルートを作成します。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
+`data/model-catalog.yaml` は候補テンプレートの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデル候補を提供します。選択項目を取り込むと永続化された Provider モデルインベントリが作成され、公開を選ぶと外部モデルの作成または再利用と有効なマッピングの追加も行われます。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
 
 ## リバースプロキシ
 

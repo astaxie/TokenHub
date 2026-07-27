@@ -171,6 +171,31 @@ export type ProviderCatalogEntry = {
   models?: ProviderCatalogModel[];
 };
 
+export type ProviderModel = {
+  id: string;
+  provider_id: string;
+  upstream_model: string;
+  display_name?: string;
+  canonical_name?: string;
+  category?: string;
+  family?: string;
+  modality?: string;
+  context_window?: number;
+  input_price_usd_per_1m?: number;
+  cache_read_price_usd_per_1m?: number;
+  output_price_usd_per_1m?: number;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  capabilities?: string[];
+  supported_parameters?: string[];
+  metadata?: Record<string, string>;
+  source?: string;
+  status: string;
+  last_seen_at?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type ProviderResource = {
   id: string;
   provider_id: string;
@@ -615,7 +640,7 @@ export type FieldConfig = {
   label: string;
   type?: FieldType;
   options?: string[];
-  optionsFromData?: (data: AppData, currentUser?: AdminUser | null) => Array<{ value: string; label: string }>;
+  optionsFromData?: (data: AppData, currentUser?: AdminUser | null, values?: Record<string, string>) => Array<{ value: string; label: string }>;
   placeholder?: string;
   autoComplete?: string;
   required?: boolean;
@@ -680,6 +705,7 @@ export type AppData = {
   keys: APIKey[];
   providers: Provider[];
   providerResources: ProviderResource[];
+  providerModels: ProviderModel[];
   models: Model[];
   routes: ModelRoute[];
   logs: RequestLog[];
