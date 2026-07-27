@@ -8,6 +8,8 @@ TokenHub is designed for private deployment with a Go backend, a Next.js admin c
 
 TokenHub supports two database backends:
 
+The commands below use Docker Compose. Both backends are equally supported without Docker; see [Bare-metal Deployment](#bare-metal-deployment-without-docker).
+
 ### SQLite (Default)
 
 **Advantages:**
@@ -213,6 +215,120 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 ```
 
 Only use `down -v` when you intentionally want to delete local data.
+
+## Bare-metal Deployment (without Docker)
+
+`deploy/bare-metal/` runs the same two services with no Docker anywhere. Use it when Docker is unavailable or not permitted. The application is unchanged: the backend is a single Go binary and the console is the Next.js standalone server.
+
+There are two entry points:
+
+| | Use it for | Needs root | Survives reboot |
+| --- | --- | --- | --- |
+| `run-local.sh` | Running the production build on your own machine | No | No |
+| `build.sh` + `install.sh` | Installing on a server under systemd | Yes | Yes |
+
+Both are **SQLite only**. The backend also speaks PostgreSQL, but these scripts do not manage it; see [Database](#database) below.
+
+### Run locally
+
+```bash
+./deploy/bare-metal/run-local.sh          # foreground, Ctrl-C stops both
+./deploy/bare-metal/run-local.sh -d       # background, returns immediately
+./deploy/bare-metal/run-local.sh status
+./deploy/bare-metal/run-local.sh logs -f
+./deploy/bare-metal/run-local.sh stop
+```
+
+Builds both components if needed, then runs them on loopback. The binary, the console bundle, the database, the logs and the pid files all live in `.tokenhub/` inside the repository, which is gitignored; deleting that directory removes every trace. Nothing is installed system-wide and no service account is created.
+
+With `-d` the services detach from the launching shell and keep running after it exits — and after the terminal closes — but not across a reboot; use the systemd installation for that. Both modes write pid files, so `status` and `stop` also work on a foreground instance. `stop` verifies that the recorded pid still belongs to this instance before signalling it, so a recycled pid is never killed by mistake, and both ports are claimed before anything starts so the script cannot report success against an unrelated service already listening.
+
+This is verified on Linux. macOS lacks `setsid`, so the script falls back to walking the process tree when stopping; that path is implemented but untested on macOS.
+
+This runs the **production** build — the same standalone bundle a deployment runs — rather than a dev server, so it surfaces problems that only appear in a production build. It uses development credentials (`admin` / `admin123456`) and binds loopback only, so it is for local use, not a deployment.
+
+Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, `--console-port N`, `restart`.
+
+### Requirements
+
+| Host | Requirements |
+| --- | --- |
+| Build host | Go (the version in `backend/go.mod`), Node 22 or newer, npm, a C compiler |
+| Target host | Linux with systemd and GNU coreutils/findutils (standard on every mainstream distribution), Node 22 or newer installed system-wide |
+
+The backend links SQLite through cgo, so a C compiler is required and the resulting binary is tied to the target architecture and libc. Build on a host that matches the target.
+
+Node must be installed system-wide. The service units set `ProtectHome=true`, so an interpreter under a user's home directory (nvm, fnm, asdf) is unreachable at runtime. The installer rejects such an interpreter instead of producing a service that fails later.
+
+### Build a release
+
+```bash
+./deploy/bare-metal/build.sh
+```
+
+This produces `dist/tokenhub-<version>-<os>-<arch>/` and a matching `.tar.gz`. The directory is self-contained: backend binary, console bundle, both catalogs, unit files, configuration examples, the installer and `SHA256SUMS`. Copy either form to the target host; the target needs no repository checkout and no Go toolchain.
+
+### Install
+
+```bash
+sudo ./install.sh --generate-secrets
+```
+
+`--generate-secrets` fills `TOKENHUB_SECRET_KEY`, `TOKENHUB_ADMIN_TOKEN` and `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` on a freshly created configuration. Without it, a configuration that still holds `change-me-*` placeholders leaves both units installed but **disabled and not started**, because an enabled unit with an invalid configuration would crash-loop on the next boot.
+
+After starting, the installer polls `/readyz` and the console port and prints `systemctl status` plus recent journal entries if either fails.
+
+Useful flags: `--no-start`, `--install-timers` (backup timer for the configured database), `--skip-backup` (skip the pre-upgrade snapshot; not recommended).
+
+### Installed layout
+
+| Path | Owner | Contents |
+| --- | --- | --- |
+| `/opt/tokenhub/releases/<version>/` | `root:root` | Immutable release payload |
+| `/opt/tokenhub/current` | symlink | Active release; switched atomically |
+| `/etc/tokenhub/backend.env` | `root:tokenhub` 0640 | Backend configuration and secrets |
+| `/etc/tokenhub/frontend.env` | `root:tokenhub-web` 0640 | Console configuration, no secrets |
+| `/var/lib/tokenhub/` | `tokenhub:tokenhub` 0750 | SQLite database, backups, pre-upgrade snapshots |
+
+Two service accounts are used: `tokenhub` for the backend and `tokenhub-web` for the console. They never share a configuration file, so a compromised console cannot read the secret key, the admin token or database credentials. The backend unit runs with `UMask=0077`, keeping the SQLite database and its backups private.
+
+### Database
+
+The database lives at `/var/lib/tokenhub/tokenhub.db` and backups at `/var/lib/tokenhub/backups`. Both paths are absolute in `backend.env` on purpose: the built-in defaults are relative to the working directory, which is the read-only release directory here.
+
+The backend can also run on PostgreSQL, but the installer **rejects** such a configuration rather than half-supporting it. Managing PostgreSQL properly would mean owning the preflight checks, the pre-upgrade `pg_dump`, backup retention, and a client toolchain whose version has to track the server's — none of which this installer does. To run TokenHub on PostgreSQL, configure and supervise the backend yourself; see the [PostgreSQL Setup Guide](postgresql-setup.md).
+
+### Backups
+
+`--install-timers` installs a daily timer that calls the backend's own online-backup API and then deletes expired backups. The application records an expiry but never prunes on its own, so retention is driven by the timer. Never copy a live SQLite file instead; the copy would be torn. The backup holds the backend's single SQLite connection for its duration, so it is scheduled off-peak by default, and the static admin token authenticates as the earliest-created admin user — demoting that user breaks the timer.
+
+The timer exits non-zero on failure and logs to the journal; monitor `systemctl --failed` or add an `OnFailure=` unit.
+
+A restore is only useful together with the original `TOKENHUB_SECRET_KEY`, which decrypts stored provider credentials. Back that key up separately. Backups written to the same disk as the database are a local recovery copy, not disaster recovery; copy them off-host.
+
+### Upgrade and rollback
+
+Run `install.sh` from the new release. It stages the payload, verifies checksums, stops both services, takes a **verified pre-upgrade database snapshot**, switches `current` atomically, and restarts. The previous release is retained.
+
+The snapshot is not optional protection: startup runs `AutoMigrate` unconditionally, so pointing `current` back at the old release does **not** roll the schema back. A rollback means restoring the snapshot as well. The snapshot aborts if `-wal`, `-shm` or `-journal` sidecar files remain after the service stops, because the database was then not closed cleanly.
+
+### Uninstall
+
+```bash
+sudo /opt/tokenhub/current/uninstall.sh            # keeps /etc/tokenhub and /var/lib/tokenhub
+sudo /opt/tokenhub/current/uninstall.sh --purge    # also deletes the database and every local backup
+```
+
+### Exposing the services
+
+Both services bind all interfaces by default, exactly like the Compose deployment. For anything beyond a single-machine trial, put them behind a reverse proxy with TLS, restrict the ports with a firewall, and set `TOKENHUB_TRUSTED_PROXY_CIDRS` to the proxy addresses.
+
+`TOKENHUB_API_BASE_URL` in `frontend.env` is rendered into the page and called **by the browser**, not by the Node process:
+
+- `http://127.0.0.1:8080` only works when the console is opened on the server itself.
+- A console served over HTTPS cannot call an HTTP API; browsers block mixed content.
+- `TOKENHUB_CORS_ALLOWED_ORIGINS` must list the exact console origin — scheme, host and port, with no path.
+- The admin session caches the base URL in the browser's local storage, so changing this value does not affect an existing session until the user logs out or clears site data.
 
 ## Backend Environment Variables
 

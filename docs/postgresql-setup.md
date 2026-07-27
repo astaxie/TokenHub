@@ -111,6 +111,14 @@ cd backend
 go run ./cmd/tokenhub
 ```
 
+### Note on the bare-metal installer
+
+`deploy/bare-metal/` manages SQLite deployments only, and its installer rejects a
+PostgreSQL configuration rather than half-supporting one: doing it properly means
+owning the preflight checks, the pre-upgrade dump, backup retention and a client
+toolchain whose version has to track the server's. To run TokenHub on PostgreSQL,
+configure and supervise the backend yourself using the settings above.
+
 ## Connection Pool Configuration
 
 PostgreSQL supports connection pool configuration; tune it according to your load:

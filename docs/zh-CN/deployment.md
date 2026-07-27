@@ -8,6 +8,8 @@ TokenHub 面向私有化部署，由 Go 后端、Next.js 管理后台和 SQLite 
 
 TokenHub 支持两种数据库后端：
 
+下面的命令使用 Docker Compose。两种后端同样支持不使用 Docker 的方式，参见[裸机部署](#裸机部署不使用-docker)。
+
 ### SQLite（默认）
 
 **优点：**
@@ -213,6 +215,120 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 ```
 
 仅在明确需要删除本地数据时使用 `down -v`。
+
+## 裸机部署（不使用 Docker）
+
+`deploy/bare-metal/` 以完全不依赖 Docker 的方式运行同样的两个服务。当环境无法使用或不允许使用 Docker 时使用这种方式。应用本身没有任何改动：后端是单个 Go 二进制，控制台是 Next.js standalone 服务。
+
+它提供两个入口：
+
+| | 用途 | 需要 root | 重启后保留 |
+| --- | --- | --- | --- |
+| `run-local.sh` | 在自己的机器上运行生产构建 | 否 | 否 |
+| `build.sh` + `install.sh` | 在服务器上以 systemd 方式安装 | 是 | 是 |
+
+两者都**仅支持 SQLite**。后端本身也支持 PostgreSQL，但这套脚本不负责管理，参见下文[数据库](#数据库)。
+
+### 本地运行
+
+```bash
+./deploy/bare-metal/run-local.sh          # 前台运行，Ctrl-C 同时停止两者
+./deploy/bare-metal/run-local.sh -d       # 后台运行，立即返回
+./deploy/bare-metal/run-local.sh status
+./deploy/bare-metal/run-local.sh logs -f
+./deploy/bare-metal/run-local.sh stop
+```
+
+按需构建两个组件，然后以 loopback 方式运行。二进制、控制台产物、数据库、日志和 pid 文件都放在仓库内的 `.tokenhub/`（已被 gitignore），删除该目录即可清除全部痕迹。不安装任何系统级内容，也不创建服务账号。
+
+加 `-d` 后服务会脱离启动它的 shell，在该 shell 退出、终端关闭后继续运行；但重启机器不会自动拉起，需要开机自启请用 systemd 安装方式。两种模式都会写 pid 文件，因此 `status` 和 `stop` 对前台实例同样有效。`stop` 在发信号前会校验记录的 pid 仍属于本实例，因此不会误杀被系统复用了该号码的其它进程；启动前还会先占用两个端口，端口被占用时直接报错，不会把别的服务的响应误判成启动成功。
+
+以上在 Linux 上验证过。macOS 没有 `setsid`，脚本会退化为遍历进程树来停止服务；该路径已实现但未在 macOS 上实测。
+
+它运行的是**生产构建**——和部署时完全相同的 standalone 产物——而不是 dev server，因此能暴露只在生产构建下出现的问题。它使用开发用凭据（`admin` / `admin123456`）且只监听 loopback，仅供本地使用，不是部署方式。
+
+其他参数：`--rebuild`、`--reset`（清空本地数据库）、`--backend-port N`、`--console-port N`、`restart`。
+
+### 环境要求
+
+| 主机 | 要求 |
+| --- | --- |
+| 构建机 | Go（版本见 `backend/go.mod`）、Node 22 或更高、npm、C 编译器 |
+| 目标机 | 带 systemd 和 GNU coreutils/findutils 的 Linux（主流发行版均满足）、系统级安装的 Node 22 或更高 |
+
+后端通过 cgo 链接 SQLite，因此需要 C 编译器，并且产出的二进制与目标机的架构和 libc 绑定。请在与目标机一致的主机上构建。
+
+Node 必须是系统级安装。服务单元设置了 `ProtectHome=true`，位于用户主目录下的解释器（nvm、fnm、asdf）在运行时不可访问。安装器会直接拒绝这类解释器，而不是装出一个稍后才失败的服务。
+
+### 构建发布包
+
+```bash
+./deploy/bare-metal/build.sh
+```
+
+产出 `dist/tokenhub-<version>-<os>-<arch>/` 及对应的 `.tar.gz`。该目录是自包含的：后端二进制、控制台产物、两份目录文件、unit 文件、配置示例、安装器和 `SHA256SUMS`。将任一形式拷贝到目标机即可，目标机不需要仓库检出，也不需要 Go 工具链。
+
+### 安装
+
+```bash
+sudo ./install.sh --generate-secrets
+```
+
+`--generate-secrets` 会为新创建的配置填充 `TOKENHUB_SECRET_KEY`、`TOKENHUB_ADMIN_TOKEN` 和 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`。不加该参数时，若配置仍保留 `change-me-*` 占位值，两个 unit 会被安装但**保持 disabled 且不启动**——把配置无效的 unit 设为开机自启，只会让它在下次启动时反复崩溃。
+
+启动后，安装器会轮询 `/readyz` 和控制台端口；任一失败时打印 `systemctl status` 与最近的日志。
+
+其他参数：`--no-start`、`--install-timers`（为当前数据库安装备份定时器）、`--skip-backup`（跳过升级前快照，不推荐）。
+
+### 安装后的目录结构
+
+| 路径 | 属主 | 内容 |
+| --- | --- | --- |
+| `/opt/tokenhub/releases/<version>/` | `root:root` | 只读的发布包 |
+| `/opt/tokenhub/current` | 符号链接 | 当前生效的版本，原子切换 |
+| `/etc/tokenhub/backend.env` | `root:tokenhub` 0640 | 后端配置与密钥 |
+| `/etc/tokenhub/frontend.env` | `root:tokenhub-web` 0640 | 控制台配置，不含密钥 |
+| `/var/lib/tokenhub/` | `tokenhub:tokenhub` 0750 | SQLite 数据库、备份、升级前快照 |
+
+使用两个服务账号：后端用 `tokenhub`，控制台用 `tokenhub-web`。二者不共享配置文件，因此控制台被攻破也读不到密钥、管理员令牌或数据库凭据。后端 unit 以 `UMask=0077` 运行，确保 SQLite 数据库及其备份不会被其他用户读取。
+
+### 数据库
+
+数据库位于 `/var/lib/tokenhub/tokenhub.db`，备份位于 `/var/lib/tokenhub/backups`。`backend.env` 中特意使用绝对路径：内置默认值是相对于工作目录的，而这里的工作目录是只读的发布目录。
+
+后端也能运行在 PostgreSQL 上，但安装器会**直接拒绝**这类配置，而不是提供半吊子支持。要正确管理 PostgreSQL，就必须同时负责启动前预检、升级前的 `pg_dump`、备份保留策略，以及一套版本必须跟随服务端的客户端工具链——这些都不在本安装器职责内。若要让 TokenHub 跑在 PostgreSQL 上，请自行配置并托管后端，参见 [PostgreSQL 配置指南](../postgresql-setup.md)。
+
+### 备份
+
+`--install-timers` 会安装一个每日定时器：调用后端自身的在线备份 API，随后删除已过期的备份。应用只记录过期时间，从不自行清理，因此保留策略由定时器驱动。切勿改为直接拷贝运行中的 SQLite 文件，那样得到的是残缺副本。备份期间会占用后端唯一的 SQLite 连接，因此默认排在低峰时段；另外静态管理令牌对应的是最早创建的管理员用户，把该用户降级会导致定时器失效。
+
+定时器失败时以非零码退出并写入 journal；请监控 `systemctl --failed` 或添加 `OnFailure=` unit。
+
+恢复备份必须同时具备原始的 `TOKENHUB_SECRET_KEY`，它用于解密已保存的厂商凭据，请单独备份该密钥。与数据库同盘的备份只是本地恢复副本，不构成容灾，请复制到其他主机。
+
+### 升级与回滚
+
+在新版本发布包中运行 `install.sh`。它会暂存产物、校验 checksum、停止两个服务、执行**带校验的升级前数据库快照**、原子切换 `current`，然后重启。上一个版本会被保留。
+
+该快照不是可选的保险措施：启动时无条件执行 `AutoMigrate`，把 `current` 指回旧版本**并不会**回滚数据库 schema。回滚必须连同快照一起恢复。如果服务停止后仍存在 `-wal`、`-shm` 或 `-journal` 附属文件，快照会中止，因为此时数据库并未被干净关闭。
+
+### 卸载
+
+```bash
+sudo /opt/tokenhub/current/uninstall.sh            # 保留 /etc/tokenhub 与 /var/lib/tokenhub
+sudo /opt/tokenhub/current/uninstall.sh --purge    # 同时删除数据库和所有本地备份
+```
+
+### 对外暴露服务
+
+与 Compose 部署一致，两个服务默认监听所有网卡。除单机试用外，请置于带 TLS 的反向代理之后，用防火墙限制端口，并把 `TOKENHUB_TRUSTED_PROXY_CIDRS` 设为代理地址。
+
+`frontend.env` 中的 `TOKENHUB_API_BASE_URL` 会被渲染进页面并由**浏览器**调用，而不是由 Node 进程调用：
+
+- `http://127.0.0.1:8080` 只在服务器本机打开控制台时有效。
+- 通过 HTTPS 提供的控制台无法调用 HTTP 的 API，浏览器会拦截混合内容。
+- `TOKENHUB_CORS_ALLOWED_ORIGINS` 必须写控制台的精确 origin —— 协议、主机、端口，且不带路径。
+- 管理会话会把该地址缓存在浏览器 local storage 中，因此修改该值不会影响已有会话，需退出登录或清除站点数据。
 
 ## 后端环境变量
 

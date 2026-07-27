@@ -54,7 +54,7 @@ TokenHub は、日常的なモデル利用、チームガバナンス、プラ�
 - ユーザー、プロジェクト、チーム、モデル、コストセンターに紐づく利用分析とリクエストログ。
 - OAuth/OIDC によるエンタープライズサインイン、RBAC、監査証跡に対応する ID ソース設定。
 - クリーンなコンソール: ロール別ナビゲーション、グローバル検索、ライト/ダーク切り替え、左ナビ + 右詳細の API ドキュメント。
-- SQLite-first のプライベートデプロイと Docker Compose サポート。
+- SQLite-first のプライベートデプロイ。Docker Compose に加え、Docker 不要の systemd ベアメタルインストールにも対応。
 - PostgreSQL はマルチインスタンス構成に対応します。リモート PostgreSQL で状態を共有し、フロントエンドとバックエンドのレプリカを水平スケールできるほか、コネクションプールも設定できます。[デプロイガイド](docs/ja/deployment.md)を参照してください。
 - 管理コンソールは英語、中国語、日本語の切り替えに対応。
 - TokenHub は OpenAI Codex のサブスクリプションアカウントリソースにも接続できます。分離および復旧が可能な Codex Profile を使用し、指定したローカル Codex CLI またはデスクトップセッションを TokenHub 経由で実行できます。[Codex 接続ガイド](docs/ja/codex-tokenhub-profile-quick-start.md)を参照してください。
