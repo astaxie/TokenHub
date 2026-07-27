@@ -2,7 +2,8 @@
 //
 // This is a growth alarm, not an architectural remedy. Freezing a 7,500-line file does
 // not make it good; it buys time for a real package split by making sure the file does
-// not quietly get worse first. A frozen entry can only ever be lowered.
+// not quietly get worse first. `--update` can only ever lower a frozen entry; raising
+// one is a deliberate hand edit, so it shows up in a diff someone has to agree to.
 //
 // Counting is `contents.split(/\r?\n/).length`, which is `wc -l` plus one for a file
 // ending in a newline. One definition is used everywhere so a baseline recorded by the
@@ -30,14 +31,19 @@ export const SKIP_DIRECTORIES = new Set([
  * included rather than exempted, matching the stance .golangci.yml already takes on
  * errcheck in tests: a 4,900-line test file is as hard to review as a 4,900-line
  * source file.
+ *
+ * Raising an entry is deliberately not something `--update` can do. It only lowers,
+ * so every increase lands as a visible diff a reviewer has to agree to — which is the
+ * whole point of a ratchet. The three backend entries below were raised once, by hand,
+ * to absorb the image generation feature that merged while this gate was in review.
  */
 export const FROZEN = new Map([
-  ["backend/internal/server/http.go", 7579],
-  ["backend/internal/server/store.go", 5094],
-  ["backend/internal/server/http_test.go", 4944],
   ["backend/internal/server/anthropic_messages.go", 1504],
-  ["frontend/features/admin/views/provider-editor.tsx", 2029],
-  ["frontend/app/styles/legacy/resources.css", 1510],
+  ["backend/internal/server/http_test.go", 5035],
+  ["backend/internal/server/http.go", 7649],
+  ["backend/internal/server/store.go", 5384],
+  ["frontend/app/styles/legacy/resources.css", 1492],
+  ["frontend/features/admin/views/provider-editor.tsx", 2009],
 ]);
 
 export function countLines(contents) {

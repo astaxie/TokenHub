@@ -250,6 +250,11 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | 同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 段階的ロールアウト用のモデル許可リスト（カンマ区切り）。空の場合は全モデルが対象 |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | ユーザー単位の識別子もアフィニティキーとして受け入れるか。同一ユーザーの並行セッションが同じ値を共有し単一アカウントに集中するため既定では無効 |
+| `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | 生成された画像アセットを保存するディレクトリ |
+| `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | 画像生成キューを処理するワーカー数 |
+| `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | キューで待機できる画像ジョブの上限 |
+| `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | 単一の画像生成ジョブのタイムアウト。超過すると失敗として扱われます |
+| `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | 画像生成非対応と記録されたプロバイダーリソースを再検査するまでの待機時間 |
 
 ## フロントエンド環境変数
 

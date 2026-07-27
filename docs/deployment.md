@@ -250,6 +250,11 @@ Only use `down -v` when you intentionally want to delete local data.
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Pin a session to one upstream account so the provider's prompt cache keeps hitting. Off by default because it changes routing behaviour |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | empty | Comma-separated model allowlist for staged rollout; empty means every model |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Also accept user-scoped identifiers as affinity keys; off by default because one user's concurrent sessions would share a single account |
+| `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | Directory holding generated image assets |
+| `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | Number of workers draining the image generation queue |
+| `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | Maximum image jobs that may wait in the queue |
+| `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | Time limit for a single image generation job before it is failed |
+| `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | How long a provider resource marked as lacking image support is skipped before it is probed again |
 | `TOKENHUB_DB_MAX_OPEN_CONNS` | `25` | Maximum open database connections (PostgreSQL only) |
 | `TOKENHUB_DB_MAX_IDLE_CONNS` | `5` | Maximum idle database connections (PostgreSQL only) |
 | `TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES` | `30` | Maximum connection lifetime in minutes (PostgreSQL only) |
