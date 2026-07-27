@@ -1293,7 +1293,7 @@ func TestGatewayFallsBackToBackupAfterEffortRetryFails(t *testing.T) {
 	for _, provider := range providers {
 		if provider.ID == "prv_reasoning_1" {
 			provider.BaseURL = backup.URL
-			store.AddProvider(provider)
+			mustAddProvider(t, store, provider)
 		}
 	}
 
@@ -1396,7 +1396,7 @@ func newReasoningEffortGateway(t *testing.T, upstreamURL string, providerTypes .
 	})
 	for index, providerType := range providerTypes {
 		providerID := fmt.Sprintf("prv_reasoning_%d", index)
-		provider := store.AddProvider(Provider{
+		provider := mustAddProvider(t, store, Provider{
 			ID:      providerID,
 			Name:    fmt.Sprintf("Reasoning Provider %d", index),
 			Type:    providerType,
@@ -1404,6 +1404,7 @@ func newReasoningEffortGateway(t *testing.T, upstreamURL string, providerTypes .
 			Status:  StatusActive,
 			Healthy: true,
 		})
+
 		store.AddRoute(ModelRoute{
 			ID:            fmt.Sprintf("route_reasoning_%d", index),
 			ModelName:     "reasoning-model",

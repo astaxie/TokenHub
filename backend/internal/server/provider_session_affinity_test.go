@@ -8,13 +8,14 @@ import (
 
 func TestAdapterSessionBindingExpiresAfterOneHour(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_expiring_session",
 		Name:    "Expiring Session",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_expiring_session",
 		ProviderID:   provider.ID,
@@ -63,13 +64,14 @@ func TestAdapterSessionBindingExpiresAfterOneHour(t *testing.T) {
 
 func TestAdapterSessionBindingSuccessfulUseRefreshesExpiration(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_refreshing_session",
 		Name:    "Refreshing Session",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_refreshing_session",
 		ProviderID:   provider.ID,

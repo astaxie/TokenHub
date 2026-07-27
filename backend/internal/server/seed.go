@@ -65,7 +65,7 @@ func SeedDemoDataWithConfig(store Store, config Config) error {
 		}
 	}
 
-	mock := store.AddProvider(Provider{
+	mock, err := store.AddProvider(Provider{
 		ID:       "prv_mock",
 		Name:     "Mock Provider",
 		Type:     ProviderMock,
@@ -73,6 +73,9 @@ func SeedDemoDataWithConfig(store Store, config Config) error {
 		Healthy:  true,
 		Priority: 1,
 	})
+	if err != nil {
+		return err
+	}
 	mockResource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_mock_primary",
 		ProviderID:   mock.ID,
@@ -515,7 +518,7 @@ func seedMockData(store Store) error {
 	}
 	for i := 1; i <= 36; i++ {
 		providerType := providerTypes[(i-1)%len(providerTypes)]
-		provider := store.AddProvider(Provider{
+		provider, err := store.AddProvider(Provider{
 			ID:       fmt.Sprintf("prv_mock_%03d", i),
 			Name:     fmt.Sprintf("Mock Provider %03d", i),
 			Type:     providerType,
@@ -530,6 +533,9 @@ func seedMockData(store Store) error {
 				"tier": mockTier(i),
 			},
 		})
+		if err != nil {
+			return err
+		}
 		for resourceIndex := 1; resourceIndex <= 2; resourceIndex++ {
 			_, err := store.AddProviderResource(ProviderResource{
 				ID:             fmt.Sprintf("rsrc_mock_%03d_%d", i, resourceIndex),

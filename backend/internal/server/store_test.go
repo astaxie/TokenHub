@@ -1,13 +1,64 @@
 package server
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"errors"
 	"math"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 )
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) {
+	return 0, errors.New("random source unavailable")
+}
+
+func mustAddProvider(t testing.TB, store Store, provider Provider) Provider {
+	t.Helper()
+	created, err := store.AddProvider(provider)
+	if err != nil {
+		t.Fatalf("add provider: %v", err)
+	}
+	return created
+}
+
+func TestAddProviderDoesNotPersistWhenEncryptionFails(t *testing.T) {
+	store := NewMemoryStore()
+	previousReader := rand.Reader
+	rand.Reader = failingReader{}
+	t.Cleanup(func() { rand.Reader = previousReader })
+
+	const providerID = "prv_encrypt_failure"
+	if _, err := store.AddProvider(Provider{
+		ID:      providerID,
+		Name:    "Encryption failure",
+		Type:    ProviderOpenAI,
+		APIKey:  "provider-secret",
+		Status:  StatusActive,
+		Healthy: true,
+	}); err == nil {
+		t.Fatal("expected provider encryption to fail")
+	}
+
+	var count int64
+	if err := store.db.Model(&Provider{}).Where("id = ?", providerID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("provider persisted after encryption failure: count=%d", count)
+	}
+}
+
+func TestSplitContentReturnsTerminalChunkForEmptyContent(t *testing.T) {
+	chunks := splitContent("", 48)
+	if len(chunks) != 1 || chunks[0] != "" {
+		t.Fatalf("splitContent empty result = %#v, want one empty chunk", chunks)
+	}
+}
 
 func TestPriceUsageAppliesConfiguredCacheReadPrice(t *testing.T) {
 	model := Model{

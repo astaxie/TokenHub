@@ -1108,7 +1108,7 @@ func TestGatewayQuotaExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mock := store.AddProvider(Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	mock := mustAddProvider(t, store, Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddModel(Model{Name: "gpt-4.1-mini", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{ModelName: "gpt-4.1-mini", ProviderID: mock.ID, ProviderModel: "mock-chat", Status: StatusActive})
 	app := New(store).Handler()
@@ -1151,7 +1151,7 @@ func TestQuotaPolicyAppliesAtRuntime(t *testing.T) {
 			"daily_requests": 1,
 		},
 	})
-	mock := store.AddProvider(Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	mock := mustAddProvider(t, store, Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddModel(Model{Name: "gpt-4.1-mini", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{ModelName: "gpt-4.1-mini", ProviderID: mock.ID, ProviderModel: "mock-chat", Status: StatusActive})
 	app := New(store).Handler()
@@ -1210,7 +1210,7 @@ func TestBudgetExceededBlocksRuntimeCalls(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	mock := store.AddProvider(Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	mock := mustAddProvider(t, store, Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddModel(Model{Name: "gpt-4.1-mini", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{ModelName: "gpt-4.1-mini", ProviderID: mock.ID, ProviderModel: "mock-chat", Status: StatusActive})
 	app := New(store).Handler()
@@ -1264,7 +1264,7 @@ func TestRuntimeBudgetUsesActualUsageInsteadOfCachedUsedField(t *testing.T) {
 			"enforcement": "block",
 		},
 	})
-	mock := store.AddProvider(Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	mock := mustAddProvider(t, store, Provider{Name: "Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddModel(Model{Name: "gpt-4.1-mini", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{ModelName: "gpt-4.1-mini", ProviderID: mock.ID, ProviderModel: "mock-chat", Status: StatusActive})
 	app := New(store).Handler()
@@ -4971,12 +4971,13 @@ func TestAdminDeletesProviderAccountRuntimeData(t *testing.T) {
 	if err := SeedDemoData(store); err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		Name:    "Delete Account Provider",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ProviderID:   provider.ID,
 		Name:         "Delete Account Resource",
@@ -5095,13 +5096,14 @@ func TestAdminRejectsDuplicateProviderResourceName(t *testing.T) {
 
 func TestAdminCreatesOpenAISubscriptionProviderResource(t *testing.T) {
 	store := NewMemoryStore()
-	store.AddProvider(Provider{
+	mustAddProvider(t, store, Provider{
 		ID:      "prv_openai_sub",
 		Name:    "OpenAI Subscription Pool",
 		Type:    ProviderOpenAI,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	app := New(store).Handler()
 	idToken := testJWT(map[string]any{
 		"email": "codex.user@example.com",
@@ -5185,7 +5187,7 @@ func TestProviderCredentialsAreEncryptedAndUsable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_encrypted",
 		Name:    "Encrypted Provider",
 		Type:    "capture",
@@ -5193,6 +5195,7 @@ func TestProviderCredentialsAreEncryptedAndUsable(t *testing.T) {
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_encrypted",
 		ProviderID:   provider.ID,
@@ -5260,7 +5263,7 @@ func TestOpenAISubscriptionResourceSuppliesRouteCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{ID: "prv_capture_openai", Name: "Capture OpenAI", Type: "capture", Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, store, Provider{ID: "prv_capture_openai", Name: "Capture OpenAI", Type: "capture", Status: StatusActive, Healthy: true})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_openai_account",
 		ProviderID:   provider.ID,
@@ -5355,7 +5358,7 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{ID: "prv_refreshing", Name: "Refreshing Provider", Type: "capture", Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, store, Provider{ID: "prv_refreshing", Name: "Refreshing Provider", Type: "capture", Status: StatusActive, Healthy: true})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_refreshing",
 		ProviderID:   provider.ID,
@@ -5639,7 +5642,7 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if err := SeedDemoData(store); err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{Name: "Bulk Provider", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, store, Provider{Name: "Bulk Provider", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	resource, err := store.AddProviderResource(ProviderResource{
 		Name:           "Bulk Resource",
 		ProviderID:     provider.ID,
@@ -5660,6 +5663,12 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 		t.Fatalf("expected cooldown before clear_error, got %v", err)
 	}
 	app := New(store).Handler()
+	now := time.Now().UTC()
+	clearExpiredLease := InFlightLease{ID: "lease_clear_expired", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(-time.Minute)}
+	clearActiveLease := InFlightLease{ID: "lease_clear_active", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(time.Minute)}
+	if err := store.db.Create([]InFlightLease{clearExpiredLease, clearActiveLease}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	disabled := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
 		"action": "disable",
@@ -5680,6 +5689,11 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if cleared.Code != http.StatusOK || !strings.Contains(cleared.Body, `"success":1`) {
 		t.Fatalf("clear error failed: %d %s", cleared.Code, cleared.Body)
 	}
+	assertInFlightLeaseExists(t, store, clearExpiredLease.ID, false)
+	assertInFlightLeaseExists(t, store, clearActiveLease.ID, true)
+	if err := store.db.Delete(&InFlightLease{}, "id = ?", clearActiveLease.ID).Error; err != nil {
+		t.Fatal(err)
+	}
 	leaseID, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID)
 	if err != nil {
 		t.Fatalf("capacity should be available after clear_error: %v", err)
@@ -5688,12 +5702,22 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_rpm_exceeded" {
 		t.Fatalf("expected rpm limit before reset, got %v", err)
 	}
+	resetExpiredLease := InFlightLease{ID: "lease_reset_expired", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(-time.Minute)}
+	resetActiveLease := InFlightLease{ID: "lease_reset_active", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(time.Minute)}
+	if err := store.db.Create([]InFlightLease{resetExpiredLease, resetActiveLease}).Error; err != nil {
+		t.Fatal(err)
+	}
 	reset := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
 		"action": "reset_usage",
 		"ids":    []string{resource.ID},
 	}, "")
 	if reset.Code != http.StatusOK || !strings.Contains(reset.Body, `"success":1`) {
 		t.Fatalf("reset usage failed: %d %s", reset.Code, reset.Body)
+	}
+	assertInFlightLeaseExists(t, store, resetExpiredLease.ID, false)
+	assertInFlightLeaseExists(t, store, resetActiveLease.ID, true)
+	if err := store.db.Delete(&InFlightLease{}, "id = ?", resetActiveLease.ID).Error; err != nil {
+		t.Fatal(err)
 	}
 	leaseID, _, err = store.CheckProviderResourceCapacity(context.Background(), resource.ID)
 	if err != nil {
@@ -5702,12 +5726,23 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	store.FinishProviderResourceAttempt(context.Background(), resource.ID, leaseID, AttemptSucceeded, Usage{})
 }
 
+func assertInFlightLeaseExists(t testing.TB, store *GormStore, leaseID string, want bool) {
+	t.Helper()
+	var count int64
+	if err := store.db.Model(&InFlightLease{}).Where("id = ?", leaseID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := count == 1; got != want {
+		t.Fatalf("lease %s existence = %t, want %t", leaseID, got, want)
+	}
+}
+
 func TestProviderResourceImport(t *testing.T) {
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{Name: "Import Provider", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, store, Provider{Name: "Import Provider", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	app := New(store).Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/import", map[string]any{
@@ -5824,7 +5859,7 @@ func TestDefaultMonitorsAreAutoDiscovered(t *testing.T) {
 	if err := BootstrapBaseData(store); err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:       "prv_health_default",
 		Name:     "Health Default Provider",
 		Type:     ProviderMock,
@@ -5832,6 +5867,7 @@ func TestDefaultMonitorsAreAutoDiscovered(t *testing.T) {
 		Healthy:  true,
 		Priority: 1,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_health_default",
 		ProviderID:   provider.ID,
@@ -6013,7 +6049,7 @@ func TestGatewayRoutesThroughProviderResource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{ID: "prv_resource", Name: "Resource Provider", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, store, Provider{ID: "prv_resource", Name: "Resource Provider", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_primary",
 		ProviderID:   provider.ID,
@@ -6103,8 +6139,8 @@ func TestGatewayFailoverUsesBackupRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failing := store.AddProvider(Provider{ID: "prv_failing", Name: "Failing", Type: "failing_mock", Status: StatusActive, Healthy: true})
-	backup := store.AddProvider(Provider{ID: "prv_backup", Name: "Backup", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	failing := mustAddProvider(t, store, Provider{ID: "prv_failing", Name: "Failing", Type: "failing_mock", Status: StatusActive, Healthy: true})
+	backup := mustAddProvider(t, store, Provider{ID: "prv_backup", Name: "Backup", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddModel(Model{Name: "gpt-4.1-mini", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{ID: "route_failing", ModelName: "gpt-4.1-mini", ProviderID: failing.ID, ProviderModel: "failing-chat", Priority: 1, Weight: 100, Status: StatusActive, Strategy: "priority_only"})
 	store.AddRoute(ModelRoute{ID: "route_backup", ModelName: "gpt-4.1-mini", ProviderID: backup.ID, ProviderModel: "backup-chat", Priority: 2, Weight: 100, Status: StatusActive, Strategy: "priority_only"})
@@ -6162,9 +6198,9 @@ func TestModelRouterStrategiesRankCandidates(t *testing.T) {
 	key := APIKey{ID: "key_router_strategy", ProjectID: project.ID, Name: "router-key", Status: StatusActive}
 	model := Model{Name: "gpt-4.1-mini", Modality: "chat", Status: StatusActive}
 	call := CallContext{RequestID: "req_router_strategy", Project: project, Key: key, Model: model}
-	fast := store.AddProvider(Provider{ID: "prv_fast", Name: "Fast", Type: ProviderMock, Status: StatusActive, Healthy: true})
-	cheap := store.AddProvider(Provider{ID: "prv_cheap", Name: "Cheap", Type: ProviderMock, Status: StatusActive, Healthy: true})
-	quality := store.AddProvider(Provider{ID: "prv_quality", Name: "Quality", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	fast := mustAddProvider(t, store, Provider{ID: "prv_fast", Name: "Fast", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	cheap := mustAddProvider(t, store, Provider{ID: "prv_cheap", Name: "Cheap", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	quality := mustAddProvider(t, store, Provider{ID: "prv_quality", Name: "Quality", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddModel(model)
 	store.AddRoute(ModelRoute{ID: "route_fast", ModelName: model.Name, ProviderID: fast.ID, ProviderModel: "fast-chat", Priority: 1, Weight: 100, QualityScore: 50, CostScore: 50, Status: StatusActive, Strategy: RouteStrategyQuality})
 	store.AddRoute(ModelRoute{ID: "route_cheap", ModelName: model.Name, ProviderID: cheap.ID, ProviderModel: "cheap-chat", Priority: 1, Weight: 80, QualityScore: 40, CostScore: 95, Status: StatusActive, Strategy: RouteStrategyQuality})
@@ -6433,7 +6469,7 @@ func newResourceRoutedStore(t *testing.T, providerType string) (*GormStore, stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{ID: "prv_" + providerType, Name: "Resource Ops Provider", Type: providerType, Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, store, Provider{ID: "prv_" + providerType, Name: "Resource Ops Provider", Type: providerType, Status: StatusActive, Healthy: true})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:             "rsrc_" + providerType,
 		ProviderID:     provider.ID,

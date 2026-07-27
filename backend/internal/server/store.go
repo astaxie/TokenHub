@@ -148,7 +148,7 @@ type Store interface {
 	RotateAPIKey(id string, graceUntil *time.Time) (APIKey, string, error)
 	DeleteAPIKey(id string) error
 	ValidateAPIKey(rawSecret string, clientIP string) (Project, APIKey, error)
-	AddProvider(provider Provider) Provider
+	AddProvider(provider Provider) (Provider, error)
 	GetProvider(id string) (Provider, bool)
 	ListProviders() []Provider
 	AddProviderModel(model ProviderModel) ProviderModel
@@ -1566,8 +1566,8 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 }
 
 func (s *GormStore) ValidateAPIKey(rawSecret string, clientIP string) (Project, APIKey, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	var key APIKey
 	if err := s.db.First(&key, "key_hash = ?", HashSecret(rawSecret)).Error; err != nil {
@@ -1597,7 +1597,7 @@ func (s *GormStore) ValidateAPIKey(rawSecret string, clientIP string) (Project, 
 	return project, publicKey(key), nil
 }
 
-func (s *GormStore) AddProvider(provider Provider) Provider {
+func (s *GormStore) AddProvider(provider Provider) (Provider, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1619,15 +1619,16 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 			provider.BaseURL = openAICodexBaseURL
 		}
 	}
-	encrypted, encErr := s.encryptSecret(provider.APIKey)
-	if encErr != nil {
-		log.Printf("[tokenhub] ERROR: AddProvider failed to encrypt API key for provider %s: %v", provider.ID, encErr)
-		provider.APIKey = ""
-	} else {
-		provider.APIKey = encrypted
+	encrypted, err := s.encryptSecret(provider.APIKey)
+	if err != nil {
+		return Provider{}, fmt.Errorf("encrypt provider API key: %w", err)
 	}
-	_ = s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&provider).Error
-	return provider
+	provider.APIKey = encrypted
+	if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&provider).Error; err != nil {
+		return Provider{}, err
+	}
+	provider.APIKey = ""
+	return provider, nil
 }
 
 func (s *GormStore) ListProviders() []Provider {

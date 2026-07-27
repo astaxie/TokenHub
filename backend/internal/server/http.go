@@ -3118,6 +3118,11 @@ func (s *Server) handleAdminUsersImport(w http.ResponseWriter, r *http.Request) 
 			}
 			importedUsers = append(importedUsers, user)
 			updated++
+			if err := s.sendAdminPasswordResetEmail(r, mailChannel, user, actor.ID); err != nil {
+				errors = append(errors, fmt.Sprintf("row %d: reset email failed: %s", index+1, err.Error()))
+			} else {
+				resetEmailsSent++
+			}
 			for i := range existing {
 				if existing[i].ID == user.ID {
 					existing[i] = user
@@ -3647,7 +3652,11 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(400, "invalid_provider", "name and type are required"))
 			return
 		}
-		created := s.store.AddProvider(provider)
+		created, err := s.store.AddProvider(provider)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
 		result := ProviderCreateResult{
 			Provider:      created,
 			CatalogSource: catalogSource,

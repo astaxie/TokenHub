@@ -284,18 +284,12 @@ func (s *Server) handleOpenAIAccountOAuthCallback(w http.ResponseWriter, r *http
 		http.Redirect(w, r, providerAccountOAuthRedirectWithError(session.ReturnURL, "missing_code"), http.StatusFound)
 		return
 	}
-	target, err := url.Parse(session.ReturnURL)
-	if err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_return_url", "OAuth return URL is invalid"))
-		return
-	}
-	values := target.Query()
+	values := url.Values{}
 	values.Set("provider_account_oauth", "1")
 	values.Set("provider_account_oauth_session_id", session.ID)
 	values.Set("provider_account_oauth_state", session.State)
 	values.Set("code", code)
-	target.RawQuery = values.Encode()
-	http.Redirect(w, r, target.String(), http.StatusFound)
+	http.Redirect(w, r, oauthRedirectWithFragment(session.ReturnURL, values), http.StatusFound)
 }
 
 func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter, r *http.Request) {
@@ -321,14 +315,14 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 		writeError(w, r, NewHTTPError(400, "missing_oauth_code", "OAuth authorization code is required"))
 		return
 	}
-	// Read the session without consuming it, so a failed exchange
-	// preserves the session for retry.
-	session, ok, err := s.store.GetProviderAccountOAuthSessionByState(req.State)
+	// Atomically consume the session before exchanging the code so concurrent
+	// requests cannot use the same PKCE verifier against the token endpoint.
+	session, ok, err := s.store.ConsumeProviderAccountOAuthSession(req.SessionID, req.State)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	if !ok || session.ID != req.SessionID {
+	if !ok {
 		writeError(w, r, NewHTTPError(400, "oauth_session_not_found", "OAuth session was not found or has expired"))
 		return
 	}
@@ -338,17 +332,11 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 	}
 	token, err := exchangeOpenAIAccountOAuthCode(r.Context(), code, session.CodeVerifier, redirectURI, session.ClientID)
 	if err != nil {
+		if restoreErr := s.store.SaveProviderAccountOAuthSession(session); restoreErr != nil {
+			writeError(w, r, fmt.Errorf("restore OAuth session after token exchange failure: %w", restoreErr))
+			return
+		}
 		writeError(w, r, err)
-		return
-	}
-	// Exchange succeeded; consume the session to prevent replays. The consume is
-	// atomic (row lock + delete), so if a concurrent request already consumed it
-	// we must not return the freshly-exchanged token to the losing caller.
-	if _, consumed, err := s.store.ConsumeProviderAccountOAuthSession(session.ID, session.State); err != nil {
-		writeError(w, r, err)
-		return
-	} else if !consumed {
-		writeError(w, r, NewHTTPError(http.StatusConflict, "oauth_session_consumed", "OAuth session was already consumed by another request"))
 		return
 	}
 	info := openAIAccountOAuthTokenInfoFromResponse(token, session.ClientID, ProviderResourceCredentials{})
