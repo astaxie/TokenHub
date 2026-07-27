@@ -61,7 +61,7 @@ flowchart TB
     providerCatalog["data/provider-catalog.json<br/>バージョン管理された Provider テンプレートと候補モデル"] -->|"管理者による Provider の作成・更新"| backend
     backend <-->|"モデル · ルート · Provider カタログスナップショット<br/>共有状態 · データベースロック"| postgres[("共有 PostgreSQL")]
 
-    backend -->|"Provider を作成"| rule["ルート作成ルール<br/>Provider 候補モデル ∩ ローカル Model → Route"]
+    backend -->|"Provider を作成"| rule["ルート作成ルール<br/>明示的に有効化した候補 → Model に追加 → Route<br/>自動候補 ∩ ローカル Model → Route"]
     local -.-> rule
     providerCatalog -.-> rule
     rule -->|"一致する Route を作成"| postgres
@@ -289,7 +289,7 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 
 設定済みカタログファイルを更新した後は、バックエンドを再起動するか、管理コンソールの Model Catalog で「出荷時カタログに復元」を実行して現在のファイルを再インポートできます。手動で追加したその他のモデルは保持されます。
 
-`data/model-catalog.yaml` はモデルのマスターデータおよびルートの許可リストです。`data/provider-catalog.json` は Provider テンプレートと候補モデルを提供し、候補モデルがモデルカタログにも存在する場合だけルートが作成されます。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
+`data/model-catalog.yaml` はモデルのマスターデータおよびルートの許可リストです。`data/provider-catalog.json` は Provider テンプレートと候補モデルを提供します。ルートの自動作成では、モデルカタログにすでに存在する候補だけを使用します。管理者が Provider の作成時に候補モデルを明示的に有効化すると、TokenHub はそのモデルをモデルカタログへ追加してから対応するルートを作成します。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
 
 ## リバースプロキシ
 

@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { appRole } from "../core/navigation";
 import { type AdminResource, type AdminUser, type ApiContext, type AppData, type AuditEvent, type OpenAIAccountQuota, type OpenAIQuotaWindow, type Project, type Provider, type ProviderMonitoringSnapshot, type ProviderQuotaSummary, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type ToolbarAction } from "../core/types";
 import { notificationChannelLabel } from "../domain/catalog";
-import { projectMembersForProject, providerDisplayName, providerDisplayType, providerRoutesFor, stringifyValue } from "../domain/entities";
+import { projectMembersForProject, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerRoutesFor, providerRouteSummary, stringifyValue } from "../domain/entities";
 import { activeRouteCount, formatNumber, formatTime } from "../domain/formatting";
 import { approvalTriggerLabel, enumValueLabel, providerTypeLabel, reportDatasetLabel, roleLabel } from "../domain/labels";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
@@ -14,7 +14,7 @@ import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
 import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { latencyDisplay, requestLogFailed } from "./overview";
-import { APIKeyFlowHint, EntityTable, PaginationControls, type PaginationState, resultCountLabel, RouteStrategyHint } from "./settings-table";
+import { APIKeyFlowHint, EntityTable, PaginationControls, type PaginationState, ResourceEmptyState, resultCountLabel, RouteStrategyHint, TableSkeleton } from "./settings-table";
 
 export function CrudView<T>({
   config,
@@ -116,7 +116,6 @@ export function CrudView<T>({
           onChange={onCategoryFilter}
         />
       ) : null}
-      {config.view === "providers" ? <ProviderAvailabilityMonitor api={api} data={data} providers={monitorItems as Provider[]} /> : null}
       {config.view === "notification-channels" ? (
         <NotificationChannelTabs
           data={data}
@@ -150,27 +149,44 @@ export function CrudView<T>({
       </div>
       <div className={detailPanelOpen ? "resource-detail-layout with-panel" : "resource-detail-layout"}>
         <div className="resource-table-pane">
-          <EntityTable
-            config={tableConfig}
-            data={data}
-            apiBaseURL={api?.baseURL}
-            items={items}
-            loading={loading}
-            query={query}
-            currentUser={currentUser}
-            onCreate={config.create ? onCreate : undefined}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onAction={onAction}
-            onRowClick={
-              isTeamView
-                ? (item) => setSelectedTeamID((item as AdminResource).id)
-                : isProjectView
-                  ? (item) => setSelectedProjectID((item as Project).id)
-                  : undefined
-            }
-            selectedRowID={isTeamView ? selectedTeam?.id : isProjectView ? selectedProject?.id : undefined}
-          />
+          {config.view === "providers" ? (
+            <ProviderChannelTable
+              api={api}
+              config={config as unknown as ResourceConfig<Provider>}
+              currentUser={currentUser}
+              data={data}
+              loading={loading}
+              providers={items as Provider[]}
+              query={query}
+              summaryProviders={monitorItems as Provider[]}
+              onAction={(action, provider) => onAction(action as unknown as ResourceAction<T>, provider as T)}
+              onCreate={config.create ? onCreate : undefined}
+              onDelete={(provider) => onDelete(provider as T)}
+              onEdit={(provider) => onEdit(provider as T)}
+            />
+          ) : (
+            <EntityTable
+              config={tableConfig}
+              data={data}
+              apiBaseURL={api?.baseURL}
+              items={items}
+              loading={loading}
+              query={query}
+              currentUser={currentUser}
+              onCreate={config.create ? onCreate : undefined}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onAction={onAction}
+              onRowClick={
+                isTeamView
+                  ? (item) => setSelectedTeamID((item as AdminResource).id)
+                  : isProjectView
+                    ? (item) => setSelectedProjectID((item as Project).id)
+                    : undefined
+              }
+              selectedRowID={isTeamView ? selectedTeam?.id : isProjectView ? selectedProject?.id : undefined}
+            />
+          )}
           <PaginationControls pagination={pagination} totalItems={totalItems} />
         </div>
         {isTeamView && selectedTeam ? (
@@ -230,7 +246,33 @@ export type ProviderMonitorRow = {
   trend: ProviderTrendTone[];
 };
 
-export function ProviderAvailabilityMonitor({ api, data, providers }: { api?: ApiContext; data: AppData; providers: Provider[] }) {
+export function ProviderChannelTable({
+  api,
+  config,
+  currentUser,
+  data,
+  loading,
+  providers,
+  query,
+  summaryProviders,
+  onAction,
+  onCreate,
+  onDelete,
+  onEdit,
+}: {
+  api?: ApiContext;
+  config: ResourceConfig<Provider>;
+  currentUser: AdminUser | null;
+  data: AppData;
+  loading: boolean;
+  providers: Provider[];
+  query: string;
+  summaryProviders: Provider[];
+  onAction: (action: ResourceAction<Provider>, provider: Provider) => void;
+  onCreate?: () => void;
+  onDelete: (provider: Provider) => void;
+  onEdit: (provider: Provider) => void;
+}) {
   const [quotaOverrides, setQuotaOverrides] = useState<Record<string, ProviderQuotaSummary>>({});
   const [quotaRefreshing, setQuotaRefreshing] = useState<Record<string, boolean>>({});
 
@@ -269,17 +311,19 @@ export function ProviderAvailabilityMonitor({ api, data, providers }: { api?: Ap
     }
   }
 
-  if (providers.length === 0) return null;
+  if (loading && providers.length === 0) return <TableSkeleton columns={7} rows={5} />;
+  if (providers.length === 0) return <ResourceEmptyState config={config} query={query} onCreate={onCreate} />;
 
-  const rows = providerMonitorRowsFromSnapshots(data, providers, quotaOverrides);
-  const summary = providerMonitorSummary(rows);
+  const summaryRows = providerMonitorRowsFromSnapshots(data, summaryProviders, quotaOverrides);
+  const rowsByID = new Map(summaryRows.map((row) => [row.provider.id, row]));
+  const rows = providers.map((provider) => rowsByID.get(provider.id) ?? providerMonitorRow(data, provider));
+  const summary = providerMonitorSummary(summaryRows);
   return (
-    <section className="provider-monitor-card" aria-label={tx("Provider 可用性监控")}>
+    <section className="provider-channel-list" aria-label={tx("Provider 可用性监控")}>
       <div className="provider-monitor-head">
         <div>
           <p className="eyebrow">Provider Availability</p>
-          <h2>{tx("Provider 可用性监控")}</h2>
-          <span>{tx("Codex 订阅使用专用真实测试记录；其他通道使用真实网关请求日志。")}</span>
+          <h2>{tx("Provider 渠道与可用性")}</h2>
         </div>
         <div className="provider-monitor-summary" aria-label={tx("Provider 健康摘要")}>
           <span><strong>{summary.healthy}</strong>{tx("正常")}</span>
@@ -289,29 +333,31 @@ export function ProviderAvailabilityMonitor({ api, data, providers }: { api?: Ap
         </div>
       </div>
       <div className="provider-monitor-table-wrap">
-        <table className="provider-monitor-table">
+        <table className="provider-channel-table">
           <thead>
             <tr>
               <th>{tx("服务商 / 通道")}</th>
-              <th>{tx("综合状态")}</th>
-              <th>{tx("基础监控 · L1/L2")}</th>
-              <th>{tx("Codex 套餐")}</th>
+              <th>{tx("健康与基础监控")}</th>
+              <th>{tx("路由与账号")}</th>
               <th>{tx("真实监控 · L3")}</th>
-              <th>{tx("真实延迟")}</th>
-              <th>{tx("24H 可用率")}</th>
-              <th>{tx("质量评分")}</th>
-              <th>{tx("近30天趋势")}</th>
+              <th>{tx("性能与质量")}</th>
+              <th>{tx("Codex 套餐")}</th>
+              <th>{tx("操作")}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.provider.id}>
+            {rows.map((row) => {
+              const routeSummary = tx(providerRouteSummary(row.provider, data));
+              const accountDetail = providerChannelAccountDetail(row.resources);
+              return <tr key={row.provider.id}>
                 <td>
                   <div className="provider-monitor-name">
                     <span className={`provider-monitor-avatar ${row.statusTone}`}>{providerDisplayName(row.provider, row.resources).slice(0, 1).toUpperCase()}</span>
                     <div>
                       <strong>{providerDisplayName(row.provider, row.resources)}</strong>
-                      <span>{providerTypeLabel(providerDisplayType(row.provider, row.resources))} · {row.activeRouteCount}/{row.routeCount || 0} {tx("启用路由")} · {row.resources.length || 0} {tx("账号资源")}</span>
+                      <span title={providerDisplayBaseURL(row.provider, row.resources)}>
+                        {providerTypeLabel(providerDisplayType(row.provider, row.resources))} · {providerDisplayBaseURL(row.provider, row.resources)}
+                      </span>
                     </div>
                   </div>
                 </td>
@@ -322,34 +368,71 @@ export function ProviderAvailabilityMonitor({ api, data, providers }: { api?: Ap
                       {tx(row.statusLabel)}
                     </span>
                     <small>{row.statusDetail}</small>
+                    <ProviderProbeLine tone={row.basicPrimaryTone} detail={row.basicPrimaryDetail} />
                   </div>
                 </td>
                 <td>
-                  <ProviderProbeLine tone={row.basicPrimaryTone} detail={row.basicPrimaryDetail} />
-                  <ProviderProbeLine tone={row.basicSecondaryTone} detail={row.basicSecondaryDetail} />
+                  <div className="provider-channel-routing">
+                    <strong title={routeSummary}>{routeSummary}</strong>
+                    <span title={accountDetail || undefined}>
+                      {row.resources.length || 0} {tx("账号资源")}{accountDetail ? ` · ${accountDetail}` : ""} · P{formatNumber(row.provider.priority)}
+                    </span>
+                    <ProviderProbeLine tone={row.basicSecondaryTone} detail={row.basicSecondaryDetail} />
+                  </div>
                 </td>
-                <td><ProviderCodexQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
                 <td>
                   <ProviderProbeLine tone={row.realTone} detail={row.realDetail} />
                   <small className="provider-monitor-subtle">
                     {tx(row.observed24h ? "后端统一观测快照" : "等待真实测试或网关请求")}
                   </small>
                 </td>
-                <td><strong className="provider-monitor-metric">{latencyDisplay(row.latencyMS)}</strong></td>
-                <td><strong className="provider-monitor-metric">{row.observed24h ? providerPercent(row.availability24h) : "-"}</strong></td>
                 <td>
-                  <div className="provider-quality-score">
-                    <strong>{row.qualityScore}</strong>
-                    <span><i style={{ width: `${row.qualityScore}%` }} /></span>
+                  <div className="provider-channel-performance">
+                    <div>
+                      <span>{tx("真实延迟")}<strong>{latencyDisplay(row.latencyMS)}</strong></span>
+                      <span>{tx("24H 可用率")}<strong>{row.observed24h ? providerPercent(row.availability24h) : "-"}</strong></span>
+                    </div>
+                    <div className="provider-channel-quality">
+                      <div className="provider-quality-score">
+                        <strong>{row.qualityScore}</strong>
+                        <span><i style={{ width: `${row.qualityScore}%` }} /></span>
+                      </div>
+                      <div className="provider-trend-bars" aria-label={tx("近30天趋势")}>
+                        {row.trend.map((tone, index) => <span className={tone} key={`${row.provider.id}-trend-${index}`} />)}
+                      </div>
+                    </div>
                   </div>
                 </td>
+                <td><ProviderCodexQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
                 <td>
-                  <div className="provider-trend-bars" aria-label={tx("近30天趋势")}>
-                    {row.trend.map((tone, index) => <span className={tone} key={`${row.provider.id}-trend-${index}`} />)}
+                  <div className="row-actions provider-channel-actions">
+                    {(config.actions ?? [])
+                      .filter((action) => action.visible?.(row.provider) ?? true)
+                      .map((action) => (
+                        <button
+                          className="text-button"
+                          key={action.label}
+                          onClick={() => onAction(action, row.provider)}
+                          title={tx(action.title ?? action.label)}
+                          type="button"
+                        >
+                          {tx(action.label)}
+                        </button>
+                      ))}
+                    {config.update ? (
+                      <button className="text-button" onClick={() => onEdit(row.provider)} type="button">
+                        {tx("编辑")}
+                      </button>
+                    ) : null}
+                    {config.remove && (config.canRemove?.(row.provider, currentUser) ?? true) ? (
+                      <button className="danger-button" onClick={() => onDelete(row.provider)} title={tx("删除")} type="button">
+                        <Trash2 size={15} />
+                      </button>
+                    ) : null}
                   </div>
                 </td>
-              </tr>
-            ))}
+              </tr>;
+            })}
           </tbody>
         </table>
       </div>
@@ -357,7 +440,6 @@ export function ProviderAvailabilityMonitor({ api, data, providers }: { api?: Ap
         <span><i className="success" />{tx("正常")}</span>
         <span><i className="warning" />{tx("降级/慢响应")}</span>
         <span><i className="failure" />{tx("故障")}</span>
-        <em>{tx("综合状态由后端区分配置、主动测试、真实请求与套餐来源。")}</em>
       </div>
     </section>
   );
@@ -534,11 +616,26 @@ export function providerMonitorRowsFromSnapshots(
   providers: Provider[],
   quotaOverrides: Record<string, ProviderQuotaSummary> = {},
 ): ProviderMonitorRow[] {
-  const providerIDs = new Set(providers.map((provider) => provider.id));
-  return data.providerMonitoring
-    .filter((snapshot) => providerIDs.has(snapshot.provider.id))
-    .map((snapshot) => providerMonitorRowFromSnapshot(data, snapshot, quotaOverrides[snapshot.provider.id]))
+  const snapshots = new Map(data.providerMonitoring.map((snapshot) => [snapshot.provider.id, snapshot]));
+  return providers
+    .map((provider) => {
+      const snapshot = snapshots.get(provider.id);
+      if (!snapshot) return providerMonitorRow(data, provider);
+      return {
+        ...providerMonitorRowFromSnapshot(data, snapshot, quotaOverrides[provider.id]),
+        provider,
+      };
+    })
     .sort((left, right) => (left.provider.priority - right.provider.priority) || left.provider.name.localeCompare(right.provider.name));
+}
+
+export function providerChannelAccountDetail(resources: ProviderResource[]) {
+  const accounts = resources.filter((resource) => resource.resource_type === "openai_subscription");
+  if (accounts.length === 0) return "";
+  const active = accounts.filter((resource) => resource.status === "active" && resource.healthy).length;
+  const first = accounts[0];
+  const label = first.credential_summary?.account_email || first.credential_summary?.account_id || first.name || tx("OpenAI 账号资源");
+  return `${active}/${accounts.length} ${tx("启用")} · ${label}`;
 }
 
 function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitoringSnapshot, quotaOverride?: ProviderQuotaSummary): ProviderMonitorRow {

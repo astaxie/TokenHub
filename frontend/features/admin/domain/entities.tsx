@@ -374,6 +374,27 @@ export function modelRoutesFor(model: Model, data: AppData) {
     .sort((left, right) => (left.priority - right.priority) || (right.weight - left.weight));
 }
 
+export const codexImageModelName = "codex-gpt-image-2";
+
+export function isCodexSubscriptionImageModel(model: Model | undefined) {
+  return model?.name === codexImageModelName ||
+    model?.metadata?.execution_type === "codex_subscription_image_generation";
+}
+
+export function codexImageCapableResources(data: AppData) {
+  const codexProviderIDs = new Set(
+    data.providers
+      .filter((provider) => provider.type === "openai_codex" && provider.status === "active" && provider.healthy !== false)
+      .map((provider) => provider.id),
+  );
+  return data.providerResources.filter((resource) =>
+    codexProviderIDs.has(resource.provider_id) &&
+    resource.status === "active" &&
+    resource.healthy !== false &&
+    resource.options?.image_generation_capability === "supported",
+  );
+}
+
 export function routeModelCategories(data: AppData) {
   const counts = new Map<string, number>();
   for (const model of data.models) {

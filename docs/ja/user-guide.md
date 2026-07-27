@@ -177,6 +177,18 @@ claude
 
 `ANTHROPIC_AUTH_TOKEN` は TokenHub Key を `Authorization: Bearer` で送信します。Authorization header がない場合は、`ANTHROPIC_API_KEY` の `x-api-key` も利用できます。Token 見積もりは Key とモデル権限を確認しますが、課金対象の推論レコードは作成しません。
 
+## Codex サブスクリプション画像生成
+
+`POST /v1/images/generations` は OpenAI 互換の `model`、`prompt`、`quality`、`size`、`n`、`response_format` を受け付けます。公開仮想モデル `model: "codex-gpt-image-2"` と `n: 1` を使用してください。`gpt-image-2` は別の標準 API モデルであり、Codex サブスクリプションには決してルーティングされません。`Prefer: respond-async` を付けると画像ジョブが返り、`GET /v1/image-jobs/{id}` でポーリングできます。
+
+`POST /v1/images/edits` は multipart の `image` または `image[]` で参照画像を受け付けます。`gpt-image-2` は単一の `mask` を OpenAI API に転送できますが、Codex サブスクリプションではマスク編集は利用できません。TokenHub は Codex CLI をインストールまたは起動せず、Codex サブスクリプションの Images エンドポイントを直接呼び出します。プロンプトはデータベースで暗号化され、入力画像と出力画像はサーバーに保持されます。署名付きダウンロード URL の有効期間は 24 時間です。URL の期限後もファイルは残り、ジョブを再取得すると新しい URL が発行されます。選択された Codex アカウントには画像生成権限が必要です。
+
+画像ジョブの既定の実行タイムアウトは 5 分で、`TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` で変更できます。
+
+TokenHub はアカウントの実際の呼び出し結果から画像生成機能を記録します。対応確認済みのアカウントを優先し、`403` を返したアカウントは一時的に除外します。未確認のアカウントは初回利用時の検出対象として残ります。`TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（既定 24 時間）の経過後、非対応アカウントはモデル検出とルーティングの対象に戻り、次の実リクエストで低頻度に再試行されます。回復確認のための画像をバックグラウンドで自動生成することはありません。
+
+正常な接続済み Codex アカウントのうち、少なくとも1つが画像生成対応済み、または低頻度の再試行期間に入った場合、`codex-gpt-image-2` が `GET /v1/models` に表示されます。これはサブスクリプション型の仮想モデルであり、通常の Provider モデルルートは不要です。別の `gpt-image-2` モデルは OpenAI API Provider を使用し、Codex サブスクリプション枠を消費しません。
+
 ## SDK 設定
 
 ```ts

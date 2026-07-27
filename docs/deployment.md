@@ -61,7 +61,7 @@ flowchart TB
     providerCatalog["data/provider-catalog.json<br/>Tracked Provider templates + candidate models"] -->|"Admin provider setup / refresh"| backend
     backend <-->|"Models · Routes · Provider catalog snapshot<br/>shared state · database locks"| postgres[("Shared PostgreSQL")]
 
-    backend -->|"Provider creation"| rule["Route creation rule<br/>provider candidate ∩ local Model → Route"]
+    backend -->|"Provider creation"| rule["Route creation rule<br/>selected candidate → upsert Model → Route<br/>automatic candidate ∩ local Model → Route"]
     local -.-> rule
     providerCatalog -.-> rule
     rule -->|"Create matching Route"| postgres
@@ -292,7 +292,7 @@ After editing the configured catalog file, restart the backend or use **Restore 
 
 The custom mount intentionally overrides the image catalog and is therefore managed separately from `TOKENHUB_IMAGE_TAG`. After updating that file, restart the backend container and confirm the entries in `Model Catalog`.
 
-`data/model-catalog.yaml` remains the model master data and route allowlist. `data/provider-catalog.json` provides Provider templates and candidate models; a route is created only when its candidate also exists in the model catalog. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
+`data/model-catalog.yaml` remains the model master data and route allowlist. `data/provider-catalog.json` provides Provider templates and candidate models. Automatic route creation only uses candidates already present in the model catalog; when an administrator explicitly enables a candidate during Provider creation, TokenHub adds it to the model catalog before creating its route. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
 
 ## Reverse Proxy
 

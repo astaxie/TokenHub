@@ -159,6 +159,30 @@ models:
       reasoning_default: "true"
       reasoning_mode: "always_on"
       reasoning_effort_options: "low,high,max"
+  - name: "kimi-k3-256k"
+    title: "Kimi K3 256K"
+    description: "Kimi K3 256K is the fixed 256K-context Kimi Code variant for routine coding and code completion; it accepts text and image input but not video."
+    category: "kimi"
+    family: "kimi-k3"
+    modality: "chat"
+    context_window: 262144
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["tools", "response_format", "reasoning", "image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "kimi-code"
+      provider_model_id: "k3-256k"
+      provider_model_name: "Kimi K3 256K"
+      endpoints: "chat/completions"
+      features: "function-calling,structured-outputs,reasoning"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_mode: "always_on"
+      reasoning_effort_options: "low,high,max"
   - name: "minimax/minimax-m3"
     title: "MiniMax M3"
     description: "MiniMax-M3 is a multimodal foundation model from MiniMax. It supports text, image, and video inputs with text output, a 1M-token context window, and is suited for long-horizon agentic work, coding, and tool use. It is built on MiniMax Sparse Attention (MSA), which replaces full attention with KV-block selection to cut per-token compute at long context — roughly 1/20 the cost of the previous generation at 1M tokens, with substantially faster prefill and decode while retaining quality across most tasks.\nTrained as a native multimodal model on interleaved data and tuned for multi-turn, production-like collaboration via an interactive user-simulator framework, the model is oriented toward sustained, multi-step tasks rather than single-turn execution."
@@ -3725,6 +3749,28 @@ models:
       tool_call: "false"
       vision: "true"
       reasoning_supported: "false"
+      execution_type: "openai_image_api"
+      provider_type: "openai"
+      upstream_model: "gpt-image-2"
+      billing_mode: "api"
+  - name: "codex-gpt-image-2"
+    title: "Codex GPT Image 2"
+    description: "Image generation and reference-image editing through a connected Codex subscription account."
+    category: "codex"
+    family: "gpt-image"
+    modality: "image"
+    context_window: 8192
+    input_modalities: ["text", "image"]
+    output_modalities: ["image"]
+    capabilities: ["image", "vision"]
+    supported_parameters: ["image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      execution_type: "codex_subscription_image_generation"
+      provider_type: "openai_codex"
+      upstream_model: "gpt-image-2"
+      billing_mode: "subscription"
+      virtual_model: "true"
   - name: "slow-mock"
     description: "timeout问题测试"
     category: "custom"

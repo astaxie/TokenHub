@@ -2,7 +2,7 @@ import { Check, Copy, KeyRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { type AdminUser, type AppData, type FieldConfig, type Model, type UsagePoint } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
-import { findProvider, modelRoutesFor } from "../domain/entities";
+import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelRoutesFor } from "../domain/entities";
 import { compactNumber, fallbackDays, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
 import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, translatedCell, tx } from "../i18n/runtime";
@@ -411,6 +411,25 @@ export function ModelNameCell({ model }: { model: Model }) {
 }
 
 export function ModelRouteProviders({ model, data }: { model: Model; data: AppData }) {
+  if (isCodexSubscriptionImageModel(model)) {
+    const resources = codexImageCapableResources(data);
+    if (resources.length === 0) {
+      return <span className="muted-inline">{tx("暂无可生图账号")}</span>;
+    }
+    return (
+      <div className="route-provider-list">
+        {resources.slice(0, 4).map((resource) => (
+          <div className="route-provider-chip" key={resource.id}>
+            <span className="route-dot ok" />
+            <strong>{findProvider(data, resource.provider_id)?.name || resource.provider_id}</strong>
+            <em>{resource.name}</em>
+            <small>{tx("Codex 订阅生图")}</small>
+          </div>
+        ))}
+        {resources.length > 4 ? <span className="route-overflow">+{resources.length - 4}</span> : null}
+      </div>
+    );
+  }
   const routes = modelRoutesFor(model, data);
   if (routes.length === 0) {
     return <span className="muted-inline">{tx("未配置线路")}</span>;

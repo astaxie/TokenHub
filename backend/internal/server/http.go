@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,6 +39,16 @@ type Server struct {
 	mux               *http.ServeMux
 	config            Config
 	metrics           *GatewayMetrics
+	imageStorageDir   string
+	imageRunner       func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
+	imageContext      context.Context
+	imageCancel       context.CancelFunc
+	imageQueue        chan imageJobWork
+	imageWorkerStart  sync.Once
+	imageWorkerStop   sync.Once
+	imageWorkerGroup  sync.WaitGroup
+	imageAccountMu    sync.Mutex
+	imageAccountSlots map[string]chan struct{}
 }
 
 func New(store Store) *Server {
@@ -45,6 +56,22 @@ func New(store Store) *Server {
 }
 
 func NewWithConfig(store Store, config Config) *Server {
+	if strings.TrimSpace(config.ImageStorageDir) == "" {
+		config.ImageStorageDir = defaultImageStorageDir()
+	}
+	if config.ImageWorkerConcurrency <= 0 {
+		config.ImageWorkerConcurrency = 2
+	}
+	if config.ImageQueueCapacity <= 0 {
+		config.ImageQueueCapacity = 64
+	}
+	if config.ImageJobTimeoutSeconds <= 0 {
+		config.ImageJobTimeoutSeconds = 300
+	}
+	if config.ImageCapabilityRetrySecs <= 0 {
+		config.ImageCapabilityRetrySecs = 86400
+	}
+	imageContext, imageCancel := context.WithCancel(context.Background())
 	client := &http.Client{Timeout: 120 * time.Second}
 	codexClient := &http.Client{}
 	openai := OpenAICompatibleAdapter{Client: client}
@@ -65,9 +92,9 @@ func NewWithConfig(store Store, config Config) *Server {
 	}
 	registry := NewAdapterRegistry(adapters)
 	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
-	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
 	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact)
+	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate)
 	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
 	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
@@ -83,6 +110,16 @@ func NewWithConfig(store Store, config Config) *Server {
 		providerCatalog:   newProviderCatalogService(store, config.ProviderCatalogFile),
 		mux:               http.NewServeMux(),
 		config:            config,
+		imageStorageDir:   config.ImageStorageDir,
+		imageContext:      imageContext,
+		imageCancel:       imageCancel,
+		imageQueue:        make(chan imageJobWork, config.ImageQueueCapacity),
+		imageAccountSlots: make(map[string]chan struct{}),
+	}
+	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
+		log.Printf("[tokenhub] failed to mark unfinished image jobs after startup: %v", err)
+	} else if len(jobs) > 0 {
+		log.Printf("[tokenhub] marked %d unfinished image jobs as failed after startup", len(jobs))
 	}
 	if config.MetricsEnabled {
 		s.metrics = NewGatewayMetrics(config.MetricsProjectLabel)
@@ -120,6 +157,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/responses", s.gatewayInFlight(s.handleResponses))
 	s.mux.HandleFunc("/v1/responses/compact", s.gatewayInFlight(s.handleResponsesCompact))
 	s.mux.HandleFunc("/v1/embeddings", s.gatewayInFlight(s.handleEmbeddings))
+	s.mux.HandleFunc("/v1/images/generations", s.handleImageGenerations)
+	s.mux.HandleFunc("/v1/images/edits", s.handleImageEdits)
+	s.mux.HandleFunc("/v1/image-jobs/", s.handleImageJob)
+	s.mux.HandleFunc("/v1/image-assets/", s.handleImageAsset)
 
 	s.mux.HandleFunc("/api/admin/auth/login", s.handleAdminLogin)
 	s.mux.HandleFunc("/api/admin/auth/logout", s.handleAdminLogout)
@@ -163,6 +204,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/usage/timeseries", s.handleAdminUsageTimeseries)
 	s.mux.HandleFunc("/api/admin/audit/requests", s.handleAdminRequestLogs)
 	s.mux.HandleFunc("/api/admin/audit/requests/", s.handleAdminRequestDetail)
+	s.mux.HandleFunc("/api/admin/audit/image-jobs", s.handleAdminImageJobs)
 	s.mux.HandleFunc("/api/admin/audit/events", s.handleAdminAuditEvents)
 	s.mux.HandleFunc("/api/admin/alerts", s.handleAdminAlerts)
 	s.mux.HandleFunc("/api/admin/alerts/", s.handleAdminAlertItem)
@@ -3530,6 +3572,7 @@ func (s *Server) createProviderCatalogRoutes(providerID string, catalog Provider
 			selected[modelID] = true
 		}
 	}
+	expandModelCatalog := len(selected) > 0
 	modelNames := []string{}
 	routeIDs := []string{}
 	category := strings.TrimSpace(req.ModelCategory)
@@ -3546,8 +3589,13 @@ func (s *Server) createProviderCatalogRoutes(providerID string, catalog Provider
 			continue
 		}
 		route := ProviderCatalogModelRoute(providerID, catalogModel)
-		if !standardModelNames[normalizeModelLookupName(route.ModelName)] {
-			continue
+		normalizedModelName := normalizeModelLookupName(route.ModelName)
+		if !standardModelNames[normalizedModelName] {
+			if !expandModelCatalog {
+				continue
+			}
+			s.store.AddModel(providerCatalogModelRecord(catalogModel, route.ModelName))
+			standardModelNames[normalizedModelName] = true
 		}
 		if existingRouteIDs[route.ID] {
 			continue
@@ -3559,6 +3607,28 @@ func (s *Server) createProviderCatalogRoutes(providerID string, catalog Provider
 		modelNames = append(modelNames, route.ModelName)
 	}
 	return len(routeIDs), modelNames, routeIDs
+}
+
+func providerCatalogModelRecord(model ProviderCatalogModel, name string) Model {
+	name = firstNonEmpty(strings.TrimSpace(name), model.CanonicalName, canonicalModelName(model.ID, model.DisplayName), model.ID)
+	category := standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName)))
+	return Model{
+		ID:                     name,
+		Name:                   name,
+		Category:               category,
+		Family:                 firstNonEmpty(model.Family, inferModelFamily(name)),
+		Modality:               normalizeModelModality(firstNonEmpty(model.Type, "chat")),
+		ContextWindow:          model.ContextWindow,
+		InputPriceUSDPer1M:     model.InputPriceUSDPer1M,
+		CacheReadPriceUSDPer1M: model.CacheReadPriceUSDPer1M,
+		OutputPriceUSDPer1M:    model.OutputPriceUSDPer1M,
+		InputModalities:        append([]string(nil), model.InputModalities...),
+		OutputModalities:       append([]string(nil), model.OutputModalities...),
+		Capabilities:           append([]string(nil), model.Capabilities...),
+		SupportedParameters:    append([]string(nil), model.SupportedParameters...),
+		Metadata:               cloneStringMap(model.Metadata),
+		Status:                 StatusActive,
+	}
 }
 
 func (s *Server) customProviderCatalogFromStandardModels(category string) ProviderCatalogEntry {

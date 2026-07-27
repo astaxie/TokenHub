@@ -157,6 +157,15 @@
     width: fit-content;
   }
 
+  .provider-monitor-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provider-monitor-summary {
+    justify-content: flex-start;
+  }
+
   .system-settings-preference,
   .system-settings-intro,
   .system-settings-meta {

@@ -624,7 +624,7 @@ export type FieldConfig = {
   visible?: (values: Record<string, string>) => boolean;
 };
 
-export type ProviderCredentialMode = "provider_api_key" | "account_integration" | "later";
+export type ProviderCredentialMode = "provider_api_key" | "account_integration";
 
 export type ColumnConfig<T> = {
   key: string;

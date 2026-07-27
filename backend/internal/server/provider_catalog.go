@@ -278,6 +278,12 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	cost := catalogObjectField(raw, "cost")
 	limit := catalogObjectField(raw, "limit")
 	modalities := catalogObjectField(raw, "modalities")
+	canonicalName := strings.TrimSpace(catalogStringField(raw, "canonical_name"))
+	if canonicalName == "" {
+		canonicalName = canonicalModelName(id, displayName)
+	} else {
+		canonicalName = canonicalModelName(canonicalName, canonicalName)
+	}
 	metadata := map[string]string{
 		"source": "local-provider-catalog",
 	}
@@ -290,7 +296,7 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 		ID:                     id,
 		Name:                   name,
 		DisplayName:            displayName,
-		CanonicalName:          canonicalModelName(id, displayName),
+		CanonicalName:          canonicalName,
 		Category:               inferModelCategory(id, displayName),
 		Family:                 firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
 		Type:                   modelType,

@@ -374,6 +374,47 @@ type RequestPayloadLog struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
+type ImageJob struct {
+	ID                      string     `json:"id" gorm:"primaryKey"`
+	ProjectID               string     `json:"project_id" gorm:"index"`
+	APIKeyID                string     `json:"api_key_id" gorm:"index"`
+	RequestID               string     `json:"request_id,omitempty" gorm:"index"`
+	Status                  string     `json:"status" gorm:"index"`
+	Model                   string     `json:"model"`
+	Action                  string     `json:"action"`
+	PromptCiphertext        string     `json:"-" gorm:"type:text"`
+	Prompt                  string     `json:"prompt,omitempty" gorm:"-"`
+	RevisedPromptCiphertext string     `json:"-" gorm:"type:text"`
+	RevisedPrompt           string     `json:"revised_prompt,omitempty" gorm:"-"`
+	Quality                 string     `json:"quality,omitempty"`
+	Size                    string     `json:"size,omitempty"`
+	ProviderID              string     `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID      string     `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel           string     `json:"provider_model,omitempty"`
+	UpstreamRequestID       string     `json:"upstream_request_id,omitempty"`
+	InputTokens             int64      `json:"input_tokens,omitempty"`
+	CachedInputTokens       int64      `json:"cached_input_tokens,omitempty"`
+	OutputTokens            int64      `json:"output_tokens,omitempty"`
+	TotalTokens             int64      `json:"total_tokens,omitempty"`
+	ErrorCode               string     `json:"error_code,omitempty"`
+	ErrorMessage            string     `json:"error_message,omitempty"`
+	CreatedAt               time.Time  `json:"created_at"`
+	StartedAt               *time.Time `json:"started_at,omitempty"`
+	CompletedAt             *time.Time `json:"completed_at,omitempty"`
+}
+
+type ImageAsset struct {
+	ID           string    `json:"id" gorm:"primaryKey"`
+	JobID        string    `json:"job_id" gorm:"index"`
+	ProjectID    string    `json:"project_id" gorm:"index"`
+	Role         string    `json:"role" gorm:"index"`
+	RelativePath string    `json:"-"`
+	ContentType  string    `json:"content_type"`
+	ByteSize     int64     `json:"bytes"`
+	SHA256       string    `json:"sha256"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type RouteAttemptLog struct {
 	ID                 string    `json:"id" gorm:"primaryKey"`
 	RequestID          string    `json:"request_id" gorm:"index"`

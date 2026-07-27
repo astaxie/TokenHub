@@ -71,6 +71,9 @@ func main() {
 		log.Printf("tokenhub graceful shutdown failed: %v", err)
 		_ = srv.Close()
 	}
+	if err := app.Shutdown(shutdownCtx); err != nil {
+		log.Printf("tokenhub image worker shutdown failed: %v", err)
+	}
 	if err := <-serveErr; err != nil && err != http.ErrServerClosed {
 		log.Printf("tokenhub server stopped with error: %v", err)
 	}

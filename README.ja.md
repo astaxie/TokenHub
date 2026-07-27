@@ -48,6 +48,7 @@ TokenHub は、日常的なモデル利用、チームガバナンス、プラ�
 ## プラットフォーム機能
 
 - OpenAI-Compatible モデル API: `/v1/chat/completions`、`/v1/responses`、`/v1/embeddings`。Anthropic Messages API: `/v1/messages`、`/v1/messages/count_tokens`。
+- OpenAI-Compatible の画像生成および参照画像編集 API: `/v1/images/generations`、`/v1/images/edits`。非同期ジョブとサーバー側の画像保持に対応し、`codex-gpt-image-2` は Codex サブスクリプション枠、`gpt-image-2` は OpenAI API Provider を使用します。[画像生成ガイド](docs/ja/user-guide.md#codex-サブスクリプション画像生成)を参照してください。
 - Provider チャネル: OpenAI-Compatible、Azure OpenAI、Anthropic、Gemini、DeepSeek、Qwen、ローカル vLLM/Ollama、カスタム上流。
 - モデルカタログとルーティングポリシー: 優先度、重み、フェイルオーバー順序、ルートヘルス診断に対応。
 - プロジェクト単位の Key 管理: チーム所有、メンバー権限、クォータ、並行数制限に対応。

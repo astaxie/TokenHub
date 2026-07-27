@@ -182,6 +182,18 @@
     max-height: 260px;
   }
 
+  .provider-quick-catalog-list {
+    max-height: 260px;
+  }
+
+  .provider-quick-required-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-quick-model-tools {
+    grid-template-columns: 1fr;
+  }
+
   .provider-model-head {
     align-items: stretch;
     flex-direction: column;

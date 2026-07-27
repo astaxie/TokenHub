@@ -61,7 +61,7 @@ flowchart TB
     providerCatalog["data/provider-catalog.json<br/>受版本控制的 Provider 模板与候选模型"] -->|"管理员新建或刷新 Provider"| backend
     backend <-->|"模型 · 路由 · Provider 目录快照<br/>共享状态 · 数据库锁"| postgres[("共享 PostgreSQL")]
 
-    backend -->|"创建 Provider"| rule["路由创建规则<br/>Provider 候选模型 ∩ 本地 Model → Route"]
+    backend -->|"创建 Provider"| rule["路由创建规则<br/>显式开启候选模型 → 写入 Model → Route<br/>自动候选模型 ∩ 本地 Model → Route"]
     local -.-> rule
     providerCatalog -.-> rule
     rule -->|"创建匹配的 Route"| postgres
@@ -289,7 +289,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 更新当前配置的目录文件后，可以重启后端，也可以在管理后台「模型目录」中点击「恢复出厂目录」来重新导入当前文件；手动新增的其他模型会保留。
 
-`data/model-catalog.yaml` 仍是模型主数据和路由准入清单。`data/provider-catalog.json` 提供 Provider 模板与候选模型；仅当候选模型也存在于模型目录时才会创建路由。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+`data/model-catalog.yaml` 仍是模型主数据和路由准入清单。`data/provider-catalog.json` 提供 Provider 模板与候选模型。自动创建路由时，仅使用已经存在于模型目录的候选模型；管理员在新增 Provider 时显式开启某个候选模型后，TokenHub 会先将其加入模型目录，再创建对应路由。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
 
 ## 反向代理
 

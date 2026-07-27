@@ -10,6 +10,7 @@
 @import "./styles/legacy/dialogs.css";
 @import "./styles/legacy/playground.css";
 @import "./styles/legacy/providers.css";
+@import "./styles/legacy/provider-quick-connect.css";
 @import "./styles/legacy/database-status.css";
 @import "./styles/legacy/responsive.css";
 @import "./styles/redesign/login.css";

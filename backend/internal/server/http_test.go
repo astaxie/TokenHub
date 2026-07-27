@@ -485,6 +485,7 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	for name, category := range map[string]string{
 		"gpt-5.5":                            "openai",
 		"kimi-k3":                            "kimi",
+		"kimi-k3-256k":                       "kimi",
 		"zai-org/glm-5.2":                    "glm",
 		"moonshotai/kimi-k2.7-code":          "kimi",
 		"minimax/minimax-m3":                 "minimax",
@@ -518,6 +519,12 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	if k3 := byName["kimi-k3"]; slices.Contains(k3.SupportedParameters, "temperature") || !slices.Contains(k3.SupportedParameters, "reasoning") {
 		t.Fatalf("unexpected Kimi K3 parameters: %+v", k3.SupportedParameters)
 	}
+	if k3256 := byName["kimi-k3-256k"]; k3256.ContextWindow != 262144 ||
+		!slices.Contains(k3256.InputModalities, "image") ||
+		slices.Contains(k3256.InputModalities, "video") ||
+		!slices.Contains(k3256.SupportedParameters, "reasoning") {
+		t.Fatalf("unexpected Kimi K3 256K metadata: %+v", k3256)
+	}
 	for name, expected := range map[string]struct {
 		input, cacheRead, output float64
 	}{
@@ -532,6 +539,12 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	}
 	if byName["gpt-image-2"].Modality != "image" {
 		t.Fatalf("expected gpt-image-2 image modality, got %s", byName["gpt-image-2"].Modality)
+	}
+	if byName[codexImageModelName].Modality != "image" ||
+		byName[codexImageModelName].Metadata["execution_type"] != "codex_subscription_image_generation" ||
+		byName[codexImageModelName].InputPriceUSDPer1M != 0 ||
+		byName[codexImageModelName].OutputPriceUSDPer1M != 0 {
+		t.Fatalf("expected subscription-backed Codex image model, got %+v", byName[codexImageModelName])
 	}
 	if byName["gemini-3-pro-image"].Modality != "image" {
 		t.Fatalf("expected gemini-3-pro-image image modality, got %s", byName["gemini-3-pro-image"].Modality)
@@ -3222,6 +3235,84 @@ func TestAdminProviderCatalogAndTemplateRouteMapping(t *testing.T) {
 	}
 	if disabledResult.CreatedRoutes != 0 {
 		t.Fatalf("expected no routes when create_routes is false: %s", disabledResp.Body)
+	}
+}
+
+func TestAdminKimiCodingTemplateMapsOfficialModels(t *testing.T) {
+	store := NewMemoryStore()
+	config := Config{
+		AdminToken:             "dev_admin_token",
+		BootstrapAdminPassword: "kimi-coding-test-password",
+		ModelCatalogFile:       "../../../data/model-catalog.yaml",
+		ProviderCatalogFile:    "../../../data/provider-catalog.json",
+	}
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, config)
+	if _, err := server.InitializeProviderCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	app := server.Handler()
+
+	catalogResp := doJSON(t, app, http.MethodGet, "/api/admin/provider-catalog/kimi-for-coding", nil, "")
+	if catalogResp.Code != http.StatusOK {
+		t.Fatalf("expected Kimi catalog, got %d: %s", catalogResp.Code, catalogResp.Body)
+	}
+	var catalogPayload struct {
+		Data ProviderCatalogEntry `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(catalogResp.Body), &catalogPayload); err != nil {
+		t.Fatal(err)
+	}
+	expectedModels := map[string]string{
+		"k3":                        "kimi-k3",
+		"k3-256k":                   "kimi-k3-256k",
+		"kimi-for-coding":           "kimi-k2.7-code",
+		"kimi-for-coding-highspeed": "kimi-k2.7-code-highspeed",
+	}
+	if len(catalogPayload.Data.Models) != len(expectedModels) {
+		t.Fatalf("expected %d Kimi models, got %+v", len(expectedModels), catalogPayload.Data.Models)
+	}
+	for _, model := range catalogPayload.Data.Models {
+		if canonical, ok := expectedModels[model.ID]; !ok || canonical != model.CanonicalName {
+			t.Fatalf("unexpected Kimi catalog model: %+v", model)
+		}
+	}
+
+	createResp := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":      "kimi-for-coding",
+		"id":              "prv_kimi_coding",
+		"name":            "Kimi Coding",
+		"base_url":        "https://api.kimi.com/coding/v1",
+		"api_key":         "test-key",
+		"status":          "active",
+		"healthy":         true,
+		"model_category":  "kimi",
+		"create_routes":   true,
+		"selected_models": []string{"k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"},
+	}, "")
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("expected Kimi provider creation, got %d: %s", createResp.Code, createResp.Body)
+	}
+
+	expectedRoutes := map[string]string{
+		"kimi-k3":                  "k3",
+		"kimi-k3-256k":             "k3-256k",
+		"kimi-k2.7-code":           "kimi-for-coding",
+		"kimi-k2.7-code-highspeed": "kimi-for-coding-highspeed",
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID != "prv_kimi_coding" {
+			continue
+		}
+		if upstream, ok := expectedRoutes[route.ModelName]; !ok || upstream != route.ProviderModel {
+			t.Fatalf("unexpected Kimi route: %+v", route)
+		}
+		delete(expectedRoutes, route.ModelName)
+	}
+	if len(expectedRoutes) != 0 {
+		t.Fatalf("missing Kimi routes: %+v", expectedRoutes)
 	}
 }
 

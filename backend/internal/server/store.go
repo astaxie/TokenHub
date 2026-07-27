@@ -173,6 +173,16 @@ type Store interface {
 	RecordRouteAttempts(requestID string, attempts []RouteAttempt)
 	RecordRejectedRequest(project Project, key APIKey, modelName string, stream bool, statusCode int, errorCode string, clientIP string, userAgent string) string
 	RecordRequestPayload(requestID string, requestBody string, requestTruncated bool, responseBody string, responseTruncated bool)
+	CreateImageJob(job ImageJob, prompt string) (ImageJob, error)
+	ClaimImageJob(id string) (ImageJob, bool, error)
+	GetImageJob(id string) (ImageJob, bool)
+	ListImageJobs(limit int) []ImageJob
+	FailUnfinishedImageJobs(code string, message string) ([]ImageJob, error)
+	UpdateImageJob(job ImageJob, revisedPrompt string) error
+	CompleteImageJob(call CallContext, job ImageJob, revisedPrompt string, asset ImageAsset, route RouteSelection, usage Usage, clientIP string, userAgent string) error
+	CreateImageAsset(asset ImageAsset) (ImageAsset, error)
+	ListImageAssets(jobID string) []ImageAsset
+	GetImageAsset(id string) (ImageAsset, bool)
 	ListUsageRecords() []UsageRecord
 	UsageSummary() map[string]any
 	UsageBreakdown() map[string]any
@@ -235,19 +245,20 @@ type Store interface {
 }
 
 type GormStore struct {
-	db               *gorm.DB
-	mu               *sync.Mutex
-	leaseHeartbeats  *sync.Map
-	secretKey        string
-	metrics          *GatewayMetrics
-	failureThreshold int
-	cooldownDuration time.Duration
-	cooldownMax      time.Duration
-	sqliteDSN        string
-	backupDir        string
-	dbDriver         string // "sqlite" or "postgres"
-	inFlightLeaseTTL time.Duration
-	clusterLockTTL   time.Duration
+	db                   *gorm.DB
+	mu                   *sync.Mutex
+	leaseHeartbeats      *sync.Map
+	secretKey            string
+	metrics              *GatewayMetrics
+	failureThreshold     int
+	cooldownDuration     time.Duration
+	cooldownMax          time.Duration
+	sqliteDSN            string
+	backupDir            string
+	dbDriver             string // "sqlite" or "postgres"
+	inFlightLeaseTTL     time.Duration
+	clusterLockTTL       time.Duration
+	imageCapabilityRetry time.Duration
 }
 
 type leaseHeartbeat struct {
@@ -467,6 +478,8 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 			&UsageRecord{},
 			&RequestLog{},
 			&RequestPayloadLog{},
+			&ImageJob{},
+			&ImageAsset{},
 			&RouteAttemptLog{},
 			&AlertEvent{},
 			&AlertDelivery{},
@@ -488,18 +501,19 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 	}
 
 	return &GormStore{
-		db:               db,
-		mu:               &sync.Mutex{},
-		leaseHeartbeats:  &sync.Map{},
-		secretKey:        config.SecretKey,
-		failureThreshold: defaultInt(config.ResourceFailureThreshold, 3),
-		cooldownDuration: cooldownSecondsToDuration(defaultInt(config.ResourceCooldownSeconds, 300)),
-		cooldownMax:      cooldownSecondsToDuration(defaultInt(config.ResourceCooldownMaxSeconds, 3600)),
-		sqliteDSN:        dsn,
-		backupDir:        defaultString(config.SQLiteBackupDir, "data/backups"),
-		dbDriver:         driver,
-		inFlightLeaseTTL: time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300)) * time.Second,
-		clusterLockTTL:   time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
+		db:                   db,
+		mu:                   &sync.Mutex{},
+		leaseHeartbeats:      &sync.Map{},
+		secretKey:            config.SecretKey,
+		failureThreshold:     defaultInt(config.ResourceFailureThreshold, 3),
+		cooldownDuration:     cooldownSecondsToDuration(defaultInt(config.ResourceCooldownSeconds, 300)),
+		cooldownMax:          cooldownSecondsToDuration(defaultInt(config.ResourceCooldownMaxSeconds, 3600)),
+		sqliteDSN:            dsn,
+		backupDir:            defaultString(config.SQLiteBackupDir, "data/backups"),
+		dbDriver:             driver,
+		inFlightLeaseTTL:     time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300)) * time.Second,
+		clusterLockTTL:       time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
+		imageCapabilityRetry: time.Duration(defaultInt(config.ImageCapabilityRetrySecs, 86400)) * time.Second,
 	}, nil
 }
 
@@ -2643,119 +2657,7 @@ func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usa
 	defer s.mu.Unlock()
 	now := time.Now().UTC()
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if call.Key.ID != "" {
-			if err := s.lockScopeForUpdate(tx, "api_key", call.Key.ID); err != nil {
-				return err
-			}
-		}
-		var key APIKey
-		if err := tx.First(&key, "id = ?", call.Key.ID).Error; err == nil {
-			dayCounter, err := s.quotaBucketForUpdate(tx, key.ID, "day", dayBucket(now))
-			if err != nil {
-				return err
-			}
-			monthCounter, err := s.quotaBucketForUpdate(tx, key.ID, "month", monthBucket(now))
-			if err != nil {
-				return err
-			}
-			addUsage(&dayCounter.QuotaCounter, usage)
-			addUsage(&monthCounter.QuotaCounter, usage)
-			if err := tx.Save(&dayCounter).Error; err != nil {
-				return err
-			}
-			if err := tx.Save(&monthCounter).Error; err != nil {
-				return err
-			}
-			if err := raiseQuotaAlerts(tx, key, &dayCounter.QuotaCounter, &monthCounter.QuotaCounter); err != nil {
-				return err
-			}
-		}
-		if usage.TotalTokens > 0 || usage.CostUSD > 0 {
-			if err := tx.Create(&UsageRecord{
-				ID:                 NewID("use"),
-				RequestID:          call.RequestID,
-				ProjectID:          call.Project.ID,
-				APIKeyID:           call.Key.ID,
-				ModelName:          call.Model.Name,
-				ProviderID:         route.Provider.ID,
-				ProviderResourceID: routeResourceID(route),
-				InputTokens:        usage.PromptTokens,
-				CachedInputTokens:  usage.CachedInputTokens,
-				CacheWriteTokens:   usage.CacheWriteInputTokens,
-				OutputTokens:       usage.CompletionTokens,
-				ReasoningTokens:    usage.ReasoningOutputTokens,
-				TotalTokens:        usage.TotalTokens,
-				CostUSD:            usage.CostUSD,
-				CreatedAt:          now,
-			}).Error; err != nil {
-				return err
-			}
-		}
-		if err := tx.Create(&RequestLog{
-			ID:                 NewID("log"),
-			RequestID:          call.RequestID,
-			ProjectID:          call.Project.ID,
-			APIKeyID:           call.Key.ID,
-			ModelName:          call.Model.Name,
-			ProviderID:         route.Provider.ID,
-			ProviderResourceID: routeResourceID(route),
-			ProviderModel:      route.ProviderModel,
-			UpstreamRequestID:  usage.UpstreamRequestID,
-			ServedModel:        usage.ServedModel,
-			ModelETag:          usage.ModelETag,
-			Transport:          usage.Transport,
-			StatusCode:         statusCode,
-			ErrorCode:          errorCode,
-			LatencyMS:          time.Since(call.StartedAt).Milliseconds(),
-			ClientIP:           clientIP,
-			UserAgent:          userAgent,
-			CreatedAt:          now,
-		}).Error; err != nil {
-			return err
-		}
-		if route.Provider.ID != "" {
-			if err := tx.Create(&ProviderObservation{
-				ID:          NewID("pob"),
-				ProviderID:  route.Provider.ID,
-				ResourceID:  routeResourceID(route),
-				AdapterType: route.Provider.Type,
-				Source:      "gateway_request",
-				Operation:   "inference",
-				Success:     providerObservationSuccess(statusCode, errorCode),
-				LatencyMS:   time.Since(call.StartedAt).Milliseconds(),
-				ErrorCode:   errorCode,
-				ObservedAt:  now,
-			}).Error; err != nil {
-				return err
-			}
-		}
-		if resourceID := routeResourceID(route); resourceID != "" && (len(usage.ResponseHeaders) > 0 || usage.UpstreamRequestID != "" || usage.ServedModel != "") {
-			observation := ProviderResourceObservation{
-				ResourceID:        resourceID,
-				AdapterType:       route.Provider.Type,
-				RateLimitHeaders:  codexRateLimitHeaders(usage.ResponseHeaders),
-				UpstreamRequestID: usage.UpstreamRequestID,
-				ServedModel:       usage.ServedModel,
-				ModelETag:         usage.ModelETag,
-				Transport:         usage.Transport,
-				UpdatedAt:         now,
-			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "resource_id"}},
-				DoUpdates: clause.AssignmentColumns([]string{
-					"adapter_type",
-					"rate_limit_headers",
-					"upstream_request_id",
-					"served_model",
-					"model_e_tag",
-					"transport",
-					"updated_at",
-				}),
-			}).Create(&observation).Error; err != nil {
-				return err
-			}
-		}
-		return tx.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error
+		return s.finishCallTransaction(tx, call, route, usage, statusCode, errorCode, clientIP, userAgent, now)
 	})
 	if err != nil {
 		log.Printf("[tokenhub] failed to finish call request=%s: %v", call.RequestID, err)
@@ -2763,6 +2665,122 @@ func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usa
 			log.Printf("[tokenhub] failed to release API key concurrency lease request=%s: %v", call.RequestID, releaseErr)
 		}
 	}
+}
+
+func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route RouteSelection, usage Usage, statusCode int, errorCode string, clientIP string, userAgent string, now time.Time) error {
+	if call.Key.ID != "" {
+		if err := s.lockScopeForUpdate(tx, "api_key", call.Key.ID); err != nil {
+			return err
+		}
+	}
+	var key APIKey
+	if err := tx.First(&key, "id = ?", call.Key.ID).Error; err == nil {
+		dayCounter, err := s.quotaBucketForUpdate(tx, key.ID, "day", dayBucket(now))
+		if err != nil {
+			return err
+		}
+		monthCounter, err := s.quotaBucketForUpdate(tx, key.ID, "month", monthBucket(now))
+		if err != nil {
+			return err
+		}
+		addUsage(&dayCounter.QuotaCounter, usage)
+		addUsage(&monthCounter.QuotaCounter, usage)
+		if err := tx.Save(&dayCounter).Error; err != nil {
+			return err
+		}
+		if err := tx.Save(&monthCounter).Error; err != nil {
+			return err
+		}
+		if err := raiseQuotaAlerts(tx, key, &dayCounter.QuotaCounter, &monthCounter.QuotaCounter); err != nil {
+			return err
+		}
+	}
+	if usage.TotalTokens > 0 || usage.CostUSD > 0 {
+		if err := tx.Create(&UsageRecord{
+			ID:                 NewID("use"),
+			RequestID:          call.RequestID,
+			ProjectID:          call.Project.ID,
+			APIKeyID:           call.Key.ID,
+			ModelName:          call.Model.Name,
+			ProviderID:         route.Provider.ID,
+			ProviderResourceID: routeResourceID(route),
+			InputTokens:        usage.PromptTokens,
+			CachedInputTokens:  usage.CachedInputTokens,
+			CacheWriteTokens:   usage.CacheWriteInputTokens,
+			OutputTokens:       usage.CompletionTokens,
+			ReasoningTokens:    usage.ReasoningOutputTokens,
+			TotalTokens:        usage.TotalTokens,
+			CostUSD:            usage.CostUSD,
+			CreatedAt:          now,
+		}).Error; err != nil {
+			return err
+		}
+	}
+	if err := tx.Create(&RequestLog{
+		ID:                 NewID("log"),
+		RequestID:          call.RequestID,
+		ProjectID:          call.Project.ID,
+		APIKeyID:           call.Key.ID,
+		ModelName:          call.Model.Name,
+		ProviderID:         route.Provider.ID,
+		ProviderResourceID: routeResourceID(route),
+		ProviderModel:      route.ProviderModel,
+		UpstreamRequestID:  usage.UpstreamRequestID,
+		ServedModel:        usage.ServedModel,
+		ModelETag:          usage.ModelETag,
+		Transport:          usage.Transport,
+		StatusCode:         statusCode,
+		ErrorCode:          errorCode,
+		LatencyMS:          time.Since(call.StartedAt).Milliseconds(),
+		ClientIP:           clientIP,
+		UserAgent:          userAgent,
+		CreatedAt:          now,
+	}).Error; err != nil {
+		return err
+	}
+	if route.Provider.ID != "" {
+		if err := tx.Create(&ProviderObservation{
+			ID:          NewID("pob"),
+			ProviderID:  route.Provider.ID,
+			ResourceID:  routeResourceID(route),
+			AdapterType: route.Provider.Type,
+			Source:      "gateway_request",
+			Operation:   "inference",
+			Success:     providerObservationSuccess(statusCode, errorCode),
+			LatencyMS:   time.Since(call.StartedAt).Milliseconds(),
+			ErrorCode:   errorCode,
+			ObservedAt:  now,
+		}).Error; err != nil {
+			return err
+		}
+	}
+	if resourceID := routeResourceID(route); resourceID != "" && (len(usage.ResponseHeaders) > 0 || usage.UpstreamRequestID != "" || usage.ServedModel != "") {
+		observation := ProviderResourceObservation{
+			ResourceID:        resourceID,
+			AdapterType:       route.Provider.Type,
+			RateLimitHeaders:  codexRateLimitHeaders(usage.ResponseHeaders),
+			UpstreamRequestID: usage.UpstreamRequestID,
+			ServedModel:       usage.ServedModel,
+			ModelETag:         usage.ModelETag,
+			Transport:         usage.Transport,
+			UpdatedAt:         now,
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "resource_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"adapter_type",
+				"rate_limit_headers",
+				"upstream_request_id",
+				"served_model",
+				"model_e_tag",
+				"transport",
+				"updated_at",
+			}),
+		}).Create(&observation).Error; err != nil {
+			return err
+		}
+	}
+	return tx.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error
 }
 
 func (s *GormStore) RecordPlaygroundRequest(call CallContext, route RouteSelection, statusCode int, errorCode string, clientIP string, userAgent string) {
@@ -2891,6 +2909,247 @@ func (s *GormStore) RecordRequestPayload(requestID string, requestBody string, r
 		ResponseTruncated: responseTruncated,
 		CreatedAt:         time.Now().UTC(),
 	}).Error
+}
+
+func (s *GormStore) CreateImageJob(job ImageJob, prompt string) (ImageJob, error) {
+	if strings.TrimSpace(job.ID) == "" {
+		job.ID = NewID("imgjob")
+	}
+	if strings.TrimSpace(job.Status) == "" {
+		job.Status = "queued"
+	}
+	if job.CreatedAt.IsZero() {
+		job.CreatedAt = time.Now().UTC()
+	}
+	job.PromptCiphertext = s.encryptSecret(prompt)
+	job.Prompt = prompt
+	if err := s.db.Create(&job).Error; err != nil {
+		return ImageJob{}, err
+	}
+	return job, nil
+}
+
+func (s *GormStore) ClaimImageJob(id string) (ImageJob, bool, error) {
+	now := time.Now().UTC()
+	result := s.db.Model(&ImageJob{}).
+		Where("id = ? AND status = ?", id, "queued").
+		Updates(map[string]any{"status": "running", "started_at": now})
+	if result.Error != nil {
+		return ImageJob{}, false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ImageJob{}, false, nil
+	}
+	var job ImageJob
+	if err := s.db.First(&job, "id = ?", id).Error; err != nil {
+		return ImageJob{}, false, err
+	}
+	job.Prompt = s.decryptSecret(job.PromptCiphertext)
+	job.RevisedPrompt = s.decryptSecret(job.RevisedPromptCiphertext)
+	return job, true, nil
+}
+
+func (s *GormStore) GetImageJob(id string) (ImageJob, bool) {
+	var job ImageJob
+	if err := s.db.First(&job, "id = ?", id).Error; err != nil {
+		return ImageJob{}, false
+	}
+	job.Prompt = s.decryptSecret(job.PromptCiphertext)
+	job.RevisedPrompt = s.decryptSecret(job.RevisedPromptCiphertext)
+	return job, true
+}
+
+func (s *GormStore) ListImageJobs(limit int) []ImageJob {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	var jobs []ImageJob
+	if err := s.db.Order("created_at desc").Limit(limit).Find(&jobs).Error; err != nil {
+		return nil
+	}
+	for index := range jobs {
+		jobs[index].Prompt = s.decryptSecret(jobs[index].PromptCiphertext)
+		jobs[index].RevisedPrompt = s.decryptSecret(jobs[index].RevisedPromptCiphertext)
+	}
+	return jobs
+}
+
+func (s *GormStore) FailUnfinishedImageJobs(code string, message string) ([]ImageJob, error) {
+	now := time.Now().UTC()
+	var jobs []ImageJob
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("status IN ?", []string{"queued", "running"}).Find(&jobs).Error; err != nil {
+			return err
+		}
+		if len(jobs) == 0 {
+			return nil
+		}
+		if err := tx.Model(&ImageJob{}).
+			Where("status IN ?", []string{"queued", "running"}).
+			Updates(map[string]any{
+				"status":        "failed",
+				"error_code":    code,
+				"error_message": message,
+				"completed_at":  now,
+			}).Error; err != nil {
+			return err
+		}
+		for _, job := range jobs {
+			if strings.TrimSpace(job.RequestID) == "" {
+				continue
+			}
+			if err := tx.Delete(&InFlightLease{}, "id = ?", job.RequestID).Error; err != nil {
+				return err
+			}
+			var count int64
+			if err := tx.Model(&RequestLog{}).Where("request_id = ?", job.RequestID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				if err := tx.Create(&RequestLog{
+					ID:         NewID("log"),
+					RequestID:  job.RequestID,
+					ProjectID:  job.ProjectID,
+					APIKeyID:   job.APIKeyID,
+					ModelName:  job.Model,
+					StatusCode: http.StatusServiceUnavailable,
+					ErrorCode:  code,
+					LatencyMS:  now.Sub(job.CreatedAt).Milliseconds(),
+					CreatedAt:  now,
+				}).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for index := range jobs {
+		jobs[index].Status = "failed"
+		jobs[index].ErrorCode = code
+		jobs[index].ErrorMessage = message
+		jobs[index].CompletedAt = &now
+		jobs[index].Prompt = s.decryptSecret(jobs[index].PromptCiphertext)
+		jobs[index].RevisedPrompt = s.decryptSecret(jobs[index].RevisedPromptCiphertext)
+	}
+	return jobs, nil
+}
+
+func (s *GormStore) UpdateImageJob(job ImageJob, revisedPrompt string) error {
+	if strings.TrimSpace(revisedPrompt) != "" {
+		job.RevisedPromptCiphertext = s.encryptSecret(revisedPrompt)
+		job.RevisedPrompt = revisedPrompt
+	}
+	return s.db.Save(&job).Error
+}
+
+func (s *GormStore) CompleteImageJob(call CallContext, job ImageJob, revisedPrompt string, asset ImageAsset, route RouteSelection, usage Usage, clientIP string, userAgent string) error {
+	elapsed := time.Duration(0)
+	if !call.StartedAt.IsZero() {
+		elapsed = time.Since(call.StartedAt)
+	}
+	_ = s.stopInFlightLeaseHeartbeat(call.RequestID)
+	usage = priceUsage(call.Model, usage)
+
+	now := time.Now().UTC()
+	if job.CompletedAt == nil {
+		job.CompletedAt = &now
+	}
+	if strings.TrimSpace(asset.ID) == "" {
+		asset.ID = NewID("asset")
+	}
+	if asset.CreatedAt.IsZero() {
+		asset.CreatedAt = now
+	}
+	revisedPromptCiphertext := job.RevisedPromptCiphertext
+	if strings.TrimSpace(revisedPrompt) != "" {
+		revisedPromptCiphertext = s.encryptSecret(revisedPrompt)
+	}
+
+	err := func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			if err := s.finishCallTransaction(tx, call, route, usage, http.StatusOK, "", clientIP, userAgent, now); err != nil {
+				return err
+			}
+			if err := tx.Create(&asset).Error; err != nil {
+				return err
+			}
+			result := tx.Model(&ImageJob{}).
+				Where("id = ? AND status = ?", job.ID, "running").
+				Updates(map[string]any{
+					"status":                    "completed",
+					"provider_id":               job.ProviderID,
+					"provider_resource_id":      job.ProviderResourceID,
+					"provider_model":            job.ProviderModel,
+					"upstream_request_id":       job.UpstreamRequestID,
+					"input_tokens":              job.InputTokens,
+					"cached_input_tokens":       job.CachedInputTokens,
+					"output_tokens":             job.OutputTokens,
+					"total_tokens":              job.TotalTokens,
+					"revised_prompt_ciphertext": revisedPromptCiphertext,
+					"error_code":                "",
+					"error_message":             "",
+					"completed_at":              job.CompletedAt,
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return fmt.Errorf("image job %s is not running", job.ID)
+			}
+			if route.Route.ID != "" {
+				if err := tx.Model(&ModelRoute{}).Where("id = ?", route.Route.ID).Update("last_used_at", now).Error; err != nil {
+					return err
+				}
+			}
+			if resourceID := routeResourceID(route); resourceID != "" {
+				if err := tx.Model(&ProviderResource{}).Where("id = ?", resourceID).
+					Updates(map[string]any{"last_used_at": now, "updated_at": now}).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}()
+	if err != nil {
+		if releaseErr := s.db.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error; releaseErr != nil {
+			log.Printf("[tokenhub] failed to release API key concurrency lease request=%s: %v", call.RequestID, releaseErr)
+		}
+	} else {
+		s.observeGatewayCall(call, route, usage, http.StatusOK, "", elapsed)
+	}
+	return err
+}
+
+func (s *GormStore) CreateImageAsset(asset ImageAsset) (ImageAsset, error) {
+	if strings.TrimSpace(asset.ID) == "" {
+		asset.ID = NewID("asset")
+	}
+	if asset.CreatedAt.IsZero() {
+		asset.CreatedAt = time.Now().UTC()
+	}
+	if err := s.db.Create(&asset).Error; err != nil {
+		return ImageAsset{}, err
+	}
+	return asset, nil
+}
+
+func (s *GormStore) ListImageAssets(jobID string) []ImageAsset {
+	var assets []ImageAsset
+	_ = s.db.Where("job_id = ?", jobID).Order("created_at asc").Find(&assets).Error
+	return assets
+}
+
+func (s *GormStore) GetImageAsset(id string) (ImageAsset, bool) {
+	var asset ImageAsset
+	if err := s.db.First(&asset, "id = ?", id).Error; err != nil {
+		return ImageAsset{}, false
+	}
+	return asset, true
 }
 
 func (s *GormStore) UsageSummary() map[string]any {
@@ -4045,16 +4304,47 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 	if err := s.db.Where("status = ?", StatusActive).Order("name asc").Find(&models).Error; err != nil {
 		return nil
 	}
-	if len(privateKey.AllowedModels) == 0 {
-		return models
-	}
+	codexImageAvailable := s.codexImageGenerationAvailableLocked()
 	items := make([]Model, 0, len(models))
 	for _, model := range models {
-		if privateKey.AllowedModels[model.Name] {
-			items = append(items, model)
+		if model.Name == codexImageModelName && !codexImageAvailable {
+			continue
 		}
+		if len(privateKey.AllowedModels) > 0 && !privateKey.AllowedModels[model.Name] {
+			continue
+		}
+		items = append(items, model)
 	}
 	return items
+}
+
+func (s *GormStore) codexImageGenerationAvailableLocked() bool {
+	var providers []Provider
+	if err := s.db.Where("type = ? AND status = ? AND healthy = ?", ProviderOpenAICodex, StatusActive, true).
+		Find(&providers).Error; err != nil || len(providers) == 0 {
+		return false
+	}
+	providerIDs := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		providerIDs = append(providerIDs, provider.ID)
+	}
+	var resources []ProviderResource
+	if err := s.db.Where("provider_id IN ? AND status = ? AND healthy = ?", providerIDs, StatusActive, true).
+		Find(&resources).Error; err != nil {
+		return false
+	}
+	for _, resource := range resources {
+		switch strings.TrimSpace(resource.Options[codexImageCapabilityOption]) {
+		case codexImageCapabilitySupported:
+			return true
+		case codexImageCapabilityUnsupported:
+			checkedAt, err := time.Parse(time.RFC3339Nano, resource.Options[codexImageCapabilityCheckedAtOption])
+			if err == nil && s.imageCapabilityRetry > 0 && !time.Now().Before(checkedAt.Add(s.imageCapabilityRetry)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string) (QuotaBucket, error) {

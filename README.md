@@ -48,6 +48,7 @@ TokenHub separates everyday model usage, team governance, and platform administr
 ## Platform Capabilities
 
 - OpenAI-compatible model APIs: `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`; Anthropic Messages APIs: `/v1/messages`, `/v1/messages/count_tokens`.
+- OpenAI-compatible image generation and reference-image editing through `/v1/images/generations` and `/v1/images/edits`, with asynchronous jobs and server-side image retention; `codex-gpt-image-2` uses Codex subscription capacity, while `gpt-image-2` uses OpenAI API providers. See the [image generation guide](docs/user-guide.md#codex-subscription-image-generation).
 - Provider channels for OpenAI-compatible, Azure OpenAI, Anthropic, Gemini, DeepSeek, Qwen, local vLLM/Ollama, and custom upstreams.
 - Model catalog and routing policies with priority, weight, failover order, and route health diagnostics.
 - Project-scoped key management with team ownership, member permissions, quotas, and concurrency controls.

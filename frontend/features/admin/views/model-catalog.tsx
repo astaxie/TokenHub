@@ -2,7 +2,7 @@ import { AlertCircle, Boxes, ChevronDown, CircleHelp, Gauge, GripVertical, Plus,
 import { useEffect, useMemo, useState } from "react";
 import { type AppData, type Model, type ModelRoute, type Provider, type ResourceAction, type ResourceConfig, type ViewKey } from "../core/types";
 import { filterModelCatalog, hasThirdPartyRoute, modelCapabilityLabel, modelCatalogCapabilityTabs, modelCatalogCategories, modelCatalogFilterLabel, modelCategory, modelCategoryInitial, modelCategoryLabel, modelCategoryTabs, notificationChannelTabs, priceMetric } from "../domain/catalog";
-import { filterRouteModels, findProvider, modelRoutesFor, reorderRoutes, routeModelCategories } from "../domain/entities";
+import { filterRouteModels, findProvider, isCodexSubscriptionImageModel, modelRoutesFor, reorderRoutes, routeModelCategories } from "../domain/entities";
 import { activeRouteCount, formatNumber, modelAvailabilitySummary, modelCatalogEmptyText, modelCategoryRank, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
 import { tx } from "../i18n/runtime";
@@ -720,6 +720,7 @@ export function ModelCatalogCard({
   const availability = modelAvailabilitySummary(model, data, readOnly);
   const routeCount = availability.activeRoutes;
   const hasConfiguredRoute = availability.activeRoutes > 0;
+  const codexSubscriptionImage = isCodexSubscriptionImageModel(model);
   const cardClassName = !readOnly && availability.tone === "blocked" ? "model-card unrouted" : "model-card";
   return (
     <article className={cardClassName}>
@@ -742,7 +743,11 @@ export function ModelCatalogCard({
           <span className="official">{tx(availability.label)}</span>
         ) : (
           <>
-            <span className={hasConfiguredRoute ? undefined : "unrouted-tag"}>{hasConfiguredRoute ? `${routeCount} ${tx("条线路")}` : tx("未配置线路")}</span>
+            <span className={hasConfiguredRoute ? undefined : "unrouted-tag"}>
+              {codexSubscriptionImage
+                ? (hasConfiguredRoute ? `${routeCount} ${tx("个生图账号")}` : tx("暂无可生图账号"))
+                : (hasConfiguredRoute ? `${routeCount} ${tx("条线路")}` : tx("未配置线路"))}
+            </span>
             {hasThirdPartyRoute(model, data) ? <span className="third">{tx("三方资源")}</span> : <span className="official">{tx("官方资源")}</span>}
           </>
         )}

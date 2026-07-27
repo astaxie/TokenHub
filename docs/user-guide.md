@@ -177,6 +177,18 @@ claude
 
 `ANTHROPIC_AUTH_TOKEN` sends the TokenHub key in `Authorization: Bearer`. `ANTHROPIC_API_KEY` also works through `x-api-key` when no Authorization header is present. Token counting verifies key and model access but does not create a billed inference record.
 
+## Codex subscription image generation
+
+`POST /v1/images/generations` accepts the OpenAI-compatible `model`, `prompt`, `quality`, `size`, `n`, and `response_format` fields. Use the public virtual model `model: "codex-gpt-image-2"` and `n: 1`. `gpt-image-2` is a separate standard API model and is never routed through Codex subscriptions. Add `Prefer: respond-async` to receive an image job, then poll `GET /v1/image-jobs/{id}`.
+
+`POST /v1/images/edits` accepts multipart reference images in `image` or `image[]`. `gpt-image-2` forwards one `mask` to the OpenAI API; mask edits are not available through Codex subscription accounts. TokenHub sends image requests directly to the Codex subscription Images endpoint without installing or starting Codex CLI, keeps prompts encrypted in the database, retains input and output images on the server, and returns signed download URLs valid for 24 hours. The files remain stored after a URL expires; polling the job creates a new URL. The selected Codex account must have image-generation entitlement.
+
+Image jobs have a five-minute default execution timeout controlled by `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS`.
+
+TokenHub records image-generation capability from real account results. Accounts confirmed as supported are preferred, accounts returning `403` are temporarily skipped, and accounts that have not been checked remain eligible for first-use detection. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), an unsupported account becomes discoverable and routable again so the next real request can retry it. TokenHub does not generate a background image merely to probe recovery.
+
+`codex-gpt-image-2` appears in `GET /v1/models` when a healthy connected Codex account is confirmed as supported or has reached its low-frequency retry window. It is a subscription-backed virtual model and does not require a conventional Provider model route. The separate `gpt-image-2` catalog model uses an OpenAI API provider and never consumes Codex subscription quota.
+
 ## SDK Setup
 
 ```ts
