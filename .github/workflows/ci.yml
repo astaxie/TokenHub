@@ -92,10 +92,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Check for incidental generated changes
-        # next build rewrites next-env.d.ts depending on mode; AGENTS.md says not to
-        # commit that. Catching it here keeps the noise out of review.
-        run: git diff --exit-code -- next-env.d.ts
+      # There is deliberately no post-build check on next-env.d.ts. Next.js rewrites
+      # its routes import to match the build mode — the committed file references
+      # .next/dev/types, and every production build flips it to .next/types — so such
+      # a check would fail on every run, including on a clean main. AGENTS.md's rule
+      # against committing that flip stays a review-time concern; it cannot be
+      # distinguished from CI simply having built in production mode.
 
   repo-gates:
     name: Repository gates
