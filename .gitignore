@@ -9,6 +9,8 @@ out/
 # Generated local artifacts
 tmp/
 output/
+dist/
+.tokenhub/
 
 # Internal design notes
 design/

@@ -1,0 +1,41 @@
+[Unit]
+Description=TokenHub backend (enterprise AI gateway API)
+Documentation=https://github.com/astaxie/TokenHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tokenhub
+Group=tokenhub
+EnvironmentFile=/etc/tokenhub/backend.env
+# Root-owned and read-only to the service user, so nothing here can drop a .env
+# that the backend's godotenv loader would pick up behind systemd's back.
+WorkingDirectory=/opt/tokenhub/current
+ExecStart=/opt/tokenhub/current/bin/tokenhub
+Restart=on-failure
+# Nonzero so a database that becomes available late cannot trip the start rate limit.
+RestartSec=5
+# Must stay above TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS (default 150); mirrors the
+# stop_grace_period used by the Docker Compose deployment. install.sh enforces it.
+TimeoutStopSec=180
+# Creates and owns /var/lib/tokenhub; stays writable under ProtectSystem=strict.
+StateDirectory=tokenhub
+StateDirectoryMode=0750
+# The SQLite database holds sessions and provider credentials: keep it private
+# instead of inheriting the system default 0022 umask.
+UMask=0077
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily TokenHub SQLite backup
+Documentation=https://github.com/astaxie/TokenHub
+
+[Timer]
+# Off-peak by default: the backup holds the backend's single SQLite connection
+# for its duration, so request traffic waits while a large database is copied.
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=tokenhub-backup.service
+
+[Install]
+WantedBy=timers.target
