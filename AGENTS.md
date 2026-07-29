@@ -39,6 +39,17 @@ npm run test:security-policy
 
 Start the full local development stack from the repository root with `./start.sh`. Start the containerized stack with the commands documented in `docs/deployment.md`.
 
+## Optional development workflows
+
+TokenHub provides two optional AI-agent workflows:
+
+| Workflow | Intended use | Instructions |
+| --- | --- | --- |
+| `fast-dev` | Small, well-scoped, low-risk changes that do not alter public APIs, persistence, authentication or authorization, deployment, or cross-component behavior | [docs/development/workflows/fast-dev.md](docs/development/workflows/fast-dev.md) |
+| `feature-dev` | Important features, user-visible behavior, cross-component changes, public API or data-model changes, security-sensitive work, deployment changes, broad refactors, or work that needs an architectural decision | [docs/development/workflows/feature-dev.md](docs/development/workflows/feature-dev.md) |
+
+Use a workflow only when the user explicitly names it; otherwise follow the normal repository guidance. Read only the selected workflow before editing. If `fast-dev` no longer fits, ask before switching to `feature-dev`. Workflow selection never authorizes commits, pushes, pull requests, merges, or other external writes.
+
 ## Change guidelines
 
 - Keep changes focused and preserve unrelated work in the checkout.

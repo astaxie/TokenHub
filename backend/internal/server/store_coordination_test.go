@@ -89,7 +89,7 @@ func TestFinishProviderAttemptReleasesLeaseAfterAccountingFailure(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	store.FinishProviderResourceAttempt(resource.ID, leaseID, true, Usage{})
+	store.FinishProviderResourceAttempt(context.Background(), resource.ID, leaseID, AttemptSucceeded, Usage{})
 	var count int64
 	if err := store.db.Model(&InFlightLease{}).Where("id = ?", leaseID).Count(&count).Error; err != nil {
 		t.Fatal(err)

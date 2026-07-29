@@ -162,6 +162,7 @@ export function gatewayDocGroups({
             ["model", "string", "是", "统一模型名，例如 " + sampleModel],
             ["messages", "array", "是", "system/user/assistant 消息数组"],
             ["temperature", "number", "否", "采样温度，默认由上游模型决定"],
+            ["reasoning_effort", "string", "否", "推理强度；当前路由不支持时省略"],
             ["stream", "boolean", "否", "true 时返回 SSE 流式响应"],
           ],
           examples: [{ title: "cURL", code: chatCurl }],
@@ -177,7 +178,8 @@ export function gatewayDocGroups({
           params: [
             ["model", "string", "是", "统一模型名"],
             ["input", "string | array", "是", "用户输入内容"],
-            ["stream", "boolean", "否", "是否流式返回"],
+            ["reasoning.effort", "string", "否", "嵌套推理强度；支持 OpenAI 兼容、Anthropic 和 Gemini 路由"],
+            ["stream", "boolean", "否", "暂不支持；true 时返回 501"],
           ],
           examples: [
             {

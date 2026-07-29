@@ -13,11 +13,23 @@ import (
 	"tokenhub/backend/internal/server"
 )
 
+var (
+	buildVersion   = server.DefaultAppVersion
+	buildType      = "source"
+	deploymentType = "source"
+)
+
 func main() {
 	loadDotEnv()
 
 	addr := getenv("TOKENHUB_HTTP_ADDR", ":8080")
 	config := server.ConfigFromEnv()
+	config.AppVersion = buildVersion
+	config.BuildType = buildType
+	config.DeploymentType = deploymentType
+	if runtimeDeploymentType := os.Getenv("TOKENHUB_DEPLOYMENT_TYPE"); runtimeDeploymentType != "" {
+		config.DeploymentType = runtimeDeploymentType
+	}
 	if err := config.ValidateForStartup(); err != nil {
 		log.Fatal(err)
 	}
@@ -30,9 +42,17 @@ func main() {
 		log.Fatal(err)
 	}
 
+	app := server.NewWithConfig(store, config)
+	catalogInitCtx, cancelCatalogInit := context.WithTimeout(context.Background(), 30*time.Second)
+	if initialized, initErr := app.InitializeProviderCatalog(catalogInitCtx); initErr != nil {
+		log.Printf("[tokenhub] provider catalog initialization failed; using database snapshot: %v", initErr)
+	} else if initialized {
+		log.Printf("[tokenhub] provider catalog database snapshot refreshed from local catalog")
+	}
+	cancelCatalogInit()
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           server.NewWithConfig(store, config).Handler(),
+		Handler:           app.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
@@ -42,7 +62,6 @@ func main() {
 	go func() {
 		serveErr <- srv.ListenAndServe()
 	}()
-
 	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	select {
@@ -63,6 +82,9 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("tokenhub graceful shutdown failed: %v", err)
 		_ = srv.Close()
+	}
+	if err := app.Shutdown(shutdownCtx); err != nil {
+		log.Printf("tokenhub image worker shutdown failed: %v", err)
 	}
 	if err := <-serveErr; err != nil && err != http.ErrServerClosed {
 		log.Printf("tokenhub server stopped with error: %v", err)

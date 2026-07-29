@@ -82,6 +82,60 @@ func TestGatewayModelsAndChatCompletion(t *testing.T) {
 	}
 }
 
+func TestGatewayModelsOnlyListPublishedRoutedModels(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "catalog-only-model", Modality: "chat", Status: StatusActive})
+	store.AddModel(Model{Name: "disabled-route-model", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ModelName:     "disabled-route-model",
+		ProviderID:    "prv_mock",
+		ProviderModel: "disabled-route-model",
+		Status:        StatusDisabled,
+	})
+	project := store.CreateProject(Project{Name: "Published Model Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Unrestricted Models"}, "thk_unrestricted_models"); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSON(t, New(store).Handler(), http.MethodGet, "/v1/models", nil, "thk_unrestricted_models")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, `"id":"gpt-4.1-mini"`) {
+		t.Fatalf("expected published demo model: %s", resp.Body)
+	}
+	for _, hidden := range []string{"catalog-only-model", "disabled-route-model"} {
+		if strings.Contains(resp.Body, hidden) {
+			t.Fatalf("model %q has no active route and must not be published: %s", hidden, resp.Body)
+		}
+	}
+}
+
+func TestGatewayRejectsTrailingJSONValue(t *testing.T) {
+	app := newTestServer()
+	body := `{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hello"}]}{"extra":true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer thk_demo_local")
+	resp := httptest.NewRecorder()
+	app.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for concatenated JSON values, got %d: %s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode gateway error: %v", err)
+	}
+	errorBody, _ := payload["error"].(map[string]any)
+	if errorBody["code"] != "invalid_request" {
+		t.Fatalf("expected invalid_request, got %#v", payload)
+	}
+}
+
 func TestGatewayModelsExposeJieKouCompatibleFields(t *testing.T) {
 	app := newTestServer()
 
@@ -140,6 +194,23 @@ func TestGatewayModelsExposeJieKouCompatibleFields(t *testing.T) {
 	}
 }
 
+func TestGatewayModelsExposeCodexCompatibleEnvelope(t *testing.T) {
+	resp := doJSON(t, newTestServer(), http.MethodGet, "/v1/models", nil, "thk_demo_local")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	var payload struct {
+		Data   []modelListItem `json:"data"`
+		Models []any           `json:"models"`
+	}
+	if err := json.Unmarshal([]byte(resp.Body), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Data) == 0 || payload.Models == nil || len(payload.Models) != 0 {
+		t.Fatalf("expected standard model data and an empty Codex-compatible models list, got %+v", payload)
+	}
+}
+
 func TestGatewayRetrieveModelExposeJieKouCompatibleFields(t *testing.T) {
 	app := newTestServer()
 
@@ -193,6 +264,12 @@ func TestGatewayRetrieveModelSupportsEscapedModelIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.AddModel(Model{Name: "provider/model", Modality: "chat", ContextWindow: 32000, Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ModelName:     "provider/model",
+		ProviderID:    "prv_path_model",
+		ProviderModel: "provider/model",
+		Status:        StatusActive,
+	})
 	app := New(store).Handler()
 
 	resp := doJSON(t, app, http.MethodGet, "/v1/models/provider%2Fmodel", nil, "thk_path_model")
@@ -292,6 +369,119 @@ func TestAdminPlaygroundChatUsesRoutesWithoutProjectBilling(t *testing.T) {
 	}
 }
 
+func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_playground_codex",
+		Name:    "Playground Codex",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_playground_codex",
+		ProviderID:   provider.ID,
+		Name:         "Playground Codex Account",
+		ResourceType: ProviderResourceOpenAISubscription,
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("gpt-playground-codex"),
+		Credentials: &ProviderResourceCredentials{
+			AccessToken: "access_playground_codex",
+			AccountID:   "account_playground_codex",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "gpt-playground-codex", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID:                 "route_playground_codex",
+		ModelName:          "gpt-playground-codex",
+		ProviderID:         provider.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      "gpt-playground-codex",
+		Status:             StatusActive,
+	})
+
+	server := New(store)
+	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/backend-api/codex/responses" {
+			t.Fatalf("expected Codex Responses endpoint, got %s", req.URL)
+		}
+		if req.Header.Get("Authorization") != "Bearer access_playground_codex" || req.Header.Get("ChatGPT-Account-ID") != "account_playground_codex" {
+			t.Fatalf("expected OAuth account credentials, got %#v", req.Header)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["model"] != "gpt-playground-codex" || payload["instructions"] != "Be concise." || payload["stream"] != true {
+			t.Fatalf("unexpected Codex playground payload: %#v", payload)
+		}
+		if _, ok := payload["max_output_tokens"]; ok {
+			t.Fatalf("Codex playground request must not send max_output_tokens: %#v", payload)
+		}
+		if _, ok := payload["temperature"]; ok {
+			t.Fatalf("Codex playground request must not send temperature: %#v", payload)
+		}
+		reasoning, _ := payload["reasoning"].(map[string]any)
+		if reasoning["effort"] != "high" {
+			t.Fatalf("expected playground reasoning effort, got %#v", payload["reasoning"])
+		}
+		input, _ := payload["input"].([]any)
+		if len(input) != 3 {
+			t.Fatalf("expected user, assistant, and user history in Responses input, got %#v", payload["input"])
+		}
+		first, _ := input[0].(map[string]any)
+		second, _ := input[1].(map[string]any)
+		third, _ := input[2].(map[string]any)
+		if first["role"] != "user" || second["role"] != "assistant" || third["role"] != "user" {
+			t.Fatalf("unexpected Responses roles: %#v", input)
+		}
+		firstContent, _ := first["content"].([]any)
+		secondContent, _ := second["content"].([]any)
+		firstPart, _ := firstContent[0].(map[string]any)
+		secondPart, _ := secondContent[0].(map[string]any)
+		if firstPart["type"] != "input_text" || firstPart["text"] != "First question" || secondPart["type"] != "output_text" || secondPart["text"] != "First answer" {
+			t.Fatalf("unexpected Responses content: %#v", input)
+		}
+		stream := strings.Join([]string{
+			"event: response.output_text.delta",
+			`data: {"type":"response.output_text.delta","delta":"Codex playground works."}`,
+			"",
+			"event: response.completed",
+			`data: {"type":"response.completed","response":{"id":"resp_playground","status":"completed","model":"gpt-playground-codex","output":[],"usage":{"input_tokens":5,"output_tokens":4,"total_tokens":9}}}`,
+			"",
+		}, "\n")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(stream)),
+			Request:    req,
+		}, nil
+	})}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat", map[string]any{
+		"model": "gpt-playground-codex",
+		"messages": []map[string]any{
+			{"role": "system", "content": "Be concise."},
+			{"role": "user", "content": "First question"},
+			{"role": "assistant", "content": "First answer"},
+			{"role": "user", "content": "Second question"},
+		},
+		"max_tokens":       321,
+		"temperature":      0.2,
+		"reasoning_effort": "high",
+	}, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected Codex playground request to succeed, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, "Codex playground works.") || !strings.Contains(resp.Body, `"prompt_tokens":5`) || !strings.Contains(resp.Body, `"completion_tokens":4`) {
+		t.Fatalf("unexpected Codex playground response: %s", resp.Body)
+	}
+}
+
 func TestGatewayEmbeddings(t *testing.T) {
 	app := newTestServer()
 	resp := doJSON(t, app, http.MethodPost, "/v1/embeddings", map[string]any{
@@ -332,6 +522,8 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	}
 	for name, category := range map[string]string{
 		"gpt-5.5":                            "openai",
+		"kimi-k3":                            "kimi",
+		"kimi-k3-256k":                       "kimi",
 		"zai-org/glm-5.2":                    "glm",
 		"moonshotai/kimi-k2.7-code":          "kimi",
 		"minimax/minimax-m3":                 "minimax",
@@ -356,8 +548,41 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	if !slices.Contains(byName["gpt-5.5"].InputModalities, "image") {
 		t.Fatalf("expected gpt-5.5 image input modality, got %+v", byName["gpt-5.5"].InputModalities)
 	}
+	if k3 := byName["kimi-k3"]; k3.ContextWindow != 1048576 || k3.InputPriceUSDPer1M != 3 || k3.CacheReadPriceUSDPer1M != 0.3 || k3.OutputPriceUSDPer1M != 15 {
+		t.Fatalf("unexpected Kimi K3 limits or pricing: %+v", k3)
+	}
+	if k3 := byName["kimi-k3"]; !slices.Contains(k3.InputModalities, "image") || !slices.Contains(k3.InputModalities, "video") {
+		t.Fatalf("expected Kimi K3 visual input modalities, got %+v", k3.InputModalities)
+	}
+	if k3 := byName["kimi-k3"]; slices.Contains(k3.SupportedParameters, "temperature") || !slices.Contains(k3.SupportedParameters, "reasoning") {
+		t.Fatalf("unexpected Kimi K3 parameters: %+v", k3.SupportedParameters)
+	}
+	if k3256 := byName["kimi-k3-256k"]; k3256.ContextWindow != 262144 ||
+		!slices.Contains(k3256.InputModalities, "image") ||
+		slices.Contains(k3256.InputModalities, "video") ||
+		!slices.Contains(k3256.SupportedParameters, "reasoning") {
+		t.Fatalf("unexpected Kimi K3 256K metadata: %+v", k3256)
+	}
+	for name, expected := range map[string]struct {
+		input, cacheRead, output float64
+	}{
+		"moonshotai/kimi-k2.7-code": {0.95, 0.19, 4},
+		"moonshotai/kimi-k2.6":      {0.95, 0.16, 4},
+		"moonshotai/kimi-k2.5":      {0.6, 0.1, 3},
+	} {
+		model := byName[name]
+		if model.InputPriceUSDPer1M != expected.input || model.CacheReadPriceUSDPer1M != expected.cacheRead || model.OutputPriceUSDPer1M != expected.output {
+			t.Fatalf("unexpected %s pricing: %+v", name, model)
+		}
+	}
 	if byName["gpt-image-2"].Modality != "image" {
 		t.Fatalf("expected gpt-image-2 image modality, got %s", byName["gpt-image-2"].Modality)
+	}
+	if byName[codexImageModelName].Modality != "image" ||
+		byName[codexImageModelName].Metadata["execution_type"] != "codex_subscription_image_generation" ||
+		byName[codexImageModelName].InputPriceUSDPer1M != 0 ||
+		byName[codexImageModelName].OutputPriceUSDPer1M != 0 {
+		t.Fatalf("expected subscription-backed Codex image model, got %+v", byName[codexImageModelName])
 	}
 	if byName["gemini-3-pro-image"].Modality != "image" {
 		t.Fatalf("expected gemini-3-pro-image image modality, got %s", byName["gemini-3-pro-image"].Modality)
@@ -395,6 +620,107 @@ models:
 	}
 }
 
+func TestAdminRestoreDefaultModelCatalog(t *testing.T) {
+	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	content := []byte(`
+version: 1
+models:
+  - name: factory-chat
+    category: openai
+    family: factory
+    modality: chat
+    context_window: 128000
+    input_price_usd_per_1m: 1.5
+    output_price_usd_per_1m: 6
+  - name: factory-embedding
+    category: openai
+    family: factory
+    modality: embedding
+    embedding_price_usd_per_1m: 0.02
+`)
+	if err := os.WriteFile(catalogPath, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewMemoryStore()
+	store.AddModel(Model{Name: "factory-chat", Family: "customized", Modality: "chat", ContextWindow: 1000, Status: StatusDisabled})
+	store.AddModel(Model{Name: "custom-only", Family: "custom", Modality: "chat", Status: StatusActive})
+	app := NewWithConfig(store, Config{AdminToken: "dev_admin_token", ModelCatalogFile: catalogPath}).Handler()
+
+	deleteResp := doJSON(t, app, http.MethodDelete, "/api/admin/models/factory-chat", nil, "")
+	if deleteResp.Code != http.StatusNoContent {
+		t.Fatalf("expected delete to succeed, got %d: %s", deleteResp.Code, deleteResp.Body)
+	}
+
+	restore := doJSON(t, app, http.MethodPost, "/api/admin/models/restore-defaults", map[string]any{}, "")
+	if restore.Code != http.StatusOK {
+		t.Fatalf("expected restore to succeed, got %d: %s", restore.Code, restore.Body)
+	}
+	if !strings.Contains(restore.Body, `"restored":2`) {
+		t.Fatalf("expected restore count, got %s", restore.Body)
+	}
+
+	byName := map[string]Model{}
+	for _, model := range store.ListModels() {
+		byName[model.Name] = model
+	}
+	if byName["factory-chat"].Family != "factory" || byName["factory-chat"].ContextWindow != 128000 || byName["factory-chat"].Status != StatusActive {
+		t.Fatalf("factory-chat was not restored from catalog: %+v", byName["factory-chat"])
+	}
+	if byName["factory-embedding"].EmbeddingPriceUSDPer1M != 0.02 {
+		t.Fatalf("factory embedding was not restored: %+v", byName["factory-embedding"])
+	}
+	if _, ok := byName["custom-only"]; !ok {
+		t.Fatalf("custom model should be preserved")
+	}
+}
+
+func TestAdminModelItemSupportsEscapedSlashNames(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddModel(Model{Name: "deepseek/deepseek-ocr-2", Family: "deepseek", Modality: "ocr", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID:            "route_deepseek_ocr",
+		ModelName:     "deepseek/deepseek-ocr-2",
+		ProviderID:    "prv_deepseek",
+		ProviderModel: "deepseek-ocr-2",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	patch := doJSON(t, app, http.MethodPatch, "/api/admin/models/deepseek%2Fdeepseek-ocr-2", map[string]any{
+		"family":   "deepseek-updated",
+		"modality": "ocr",
+		"status":   StatusActive,
+	}, "")
+	if patch.Code != http.StatusOK {
+		t.Fatalf("expected escaped slash model patch to succeed, got %d: %s", patch.Code, patch.Body)
+	}
+	updated, ok := modelByNameForTest(store.ListModels(), "deepseek/deepseek-ocr-2")
+	if !ok || updated.Family != "deepseek-updated" {
+		t.Fatalf("expected escaped slash model to be patched, got ok=%v model=%+v", ok, updated)
+	}
+
+	deleteResp := doJSON(t, app, http.MethodDelete, "/api/admin/models/deepseek%2Fdeepseek-ocr-2", nil, "")
+	if deleteResp.Code != http.StatusNoContent {
+		t.Fatalf("expected escaped slash model delete to succeed, got %d: %s", deleteResp.Code, deleteResp.Body)
+	}
+	if _, ok := modelByNameForTest(store.ListModels(), "deepseek/deepseek-ocr-2"); ok {
+		t.Fatalf("expected escaped slash model to be deleted")
+	}
+	if len(store.ListRoutes()) != 0 {
+		t.Fatalf("expected model routes to be deleted with model, got %+v", store.ListRoutes())
+	}
+}
+
+func modelByNameForTest(models []Model, name string) (Model, bool) {
+	for _, model := range models {
+		if model.Name == name {
+			return model, true
+		}
+	}
+	return Model{}, false
+}
+
 func TestAdminCreatesAPIKeyUnderDefaultProject(t *testing.T) {
 	store := NewMemoryStore()
 	if err := BootstrapBaseData(store); err != nil {
@@ -429,6 +755,66 @@ func TestAdminCreatesAPIKeyUnderDefaultProject(t *testing.T) {
 	}
 	if keys[0].ProjectID != defaultProjectID {
 		t.Fatalf("expected key project %s, got %s", defaultProjectID, keys[0].ProjectID)
+	}
+}
+
+func TestUserCreatesPersonalAPIKeyWithoutProjectMembership(t *testing.T) {
+	store := NewMemoryStore()
+	if err := BootstrapBaseData(store); err != nil {
+		t.Fatal(err)
+	}
+	user, err := store.CreateAdminUser(AdminUser{
+		Username: "personal-key-user",
+		Name:     "Personal Key User",
+		Email:    "personal-key-user@tokenhub.local",
+		Role:     "user",
+		Status:   StatusActive,
+	}, "user123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	login := doJSON(t, app, http.MethodPost, "/api/admin/auth/login", map[string]any{
+		"identity": user.Username,
+		"password": "user123456",
+	}, "")
+	var session struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(login.Body), &session); err != nil {
+		t.Fatal(err)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/api-keys", map[string]any{
+		"name": "Personal Key",
+	}, session.Token)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("ordinary user should create a personal key without project membership, got %d: %s", created.Code, created.Body)
+	}
+	if !strings.Contains(created.Body, `"project_id":"`+defaultProjectID+`"`) || !strings.Contains(created.Body, `"api_key"`) {
+		t.Fatalf("personal key should fall back to the default project: %s", created.Body)
+	}
+	keys := store.ListProjectKeys(defaultProjectID)
+	if len(keys) != 1 || keys[0].Metadata["created_by"] != user.ID {
+		t.Fatalf("personal key should remain attributable to its creator: %+v", keys)
+	}
+
+	assignedProject := store.CreateProject(Project{Name: "Assigned Project", Status: StatusActive})
+	store.CreateResource("project-members", AdminResource{
+		Name:   "Personal Key User Membership",
+		Status: StatusActive,
+		Fields: map[string]any{
+			"project_id": assignedProject.ID,
+			"user_id":    user.ID,
+			"role":       "developer",
+		},
+	})
+	assigned := doJSON(t, app, http.MethodPost, "/api/admin/api-keys", map[string]any{
+		"name": "Assigned Project Key",
+	}, session.Token)
+	if assigned.Code != http.StatusCreated || !strings.Contains(assigned.Body, `"project_id":"`+assignedProject.ID+`"`) {
+		t.Fatalf("personal key should prefer an assigned project, got %d: %s", assigned.Code, assigned.Body)
 	}
 }
 
@@ -480,6 +866,66 @@ func TestUserCanReadRoutedAdminModels(t *testing.T) {
 	}, payload.Token)
 	if create.Code != http.StatusForbidden {
 		t.Fatalf("expected user model create to be forbidden, got %d: %s", create.Code, create.Body)
+	}
+}
+
+func TestAdminCannotDeleteOwnAccount(t *testing.T) {
+	store := NewMemoryStore()
+	actor, err := store.CreateAdminUser(AdminUser{
+		Username: "platform.admin",
+		Email:    "platform.admin@tokenhub.local",
+		Role:     "admin",
+		Status:   StatusActive,
+	}, "admin123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	victim, err := store.CreateAdminUser(AdminUser{
+		Username: "ordinary.user",
+		Email:    "ordinary.user@tokenhub.local",
+		Role:     "user",
+		Status:   StatusActive,
+	}, "user123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	login := doJSON(t, app, http.MethodPost, "/api/admin/auth/login", map[string]any{
+		"identity": "platform.admin@tokenhub.local",
+		"password": "admin123456",
+	}, "")
+	if login.Code != http.StatusOK {
+		t.Fatalf("expected login 200, got %d: %s", login.Code, login.Body)
+	}
+	var payload struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(login.Body), &payload); err != nil {
+		t.Fatal(err)
+	}
+
+	self := doJSON(t, app, http.MethodDelete, "/api/admin/users/"+actor.ID, nil, payload.Token)
+	if self.Code != http.StatusBadRequest {
+		t.Fatalf("expected self deletion to be rejected with 400, got %d: %s", self.Code, self.Body)
+	}
+	if !strings.Contains(self.Body, "cannot_delete_self") {
+		t.Fatalf("expected cannot_delete_self error, got %s", self.Body)
+	}
+	stillExists := false
+	for _, user := range store.ListAdminUsers() {
+		if user.ID == actor.ID {
+			stillExists = true
+			break
+		}
+	}
+	if !stillExists {
+		t.Fatalf("expected actor account to survive self deletion attempt")
+	}
+
+	other := doJSON(t, app, http.MethodDelete, "/api/admin/users/"+victim.ID, nil, payload.Token)
+	if other.Code != http.StatusNoContent {
+		t.Fatalf("expected deleting another user to succeed, got %d: %s", other.Code, other.Body)
 	}
 }
 
@@ -2334,6 +2780,13 @@ func TestProjectMembersAssignMultipleProjectsAndKeyIssueScope(t *testing.T) {
 	if createdKey.Code != http.StatusCreated || !strings.Contains(createdKey.Body, `"api_key"`) {
 		t.Fatalf("developer member should issue key, got %d: %s", createdKey.Code, createdKey.Body)
 	}
+	forbiddenOwner := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+developerProject.ID+"/keys", map[string]any{
+		"name":          "Wrong Owner Key",
+		"owner_user_id": otherUser.ID,
+	}, payload.Token)
+	if forbiddenOwner.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user should not assign a key to another user, got %d: %s", forbiddenOwner.Code, forbiddenOwner.Body)
+	}
 	viewerKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+viewerProject.ID+"/keys", map[string]any{
 		"name": "Viewer Key",
 	}, payload.Token)
@@ -2345,6 +2798,211 @@ func TestProjectMembersAssignMultipleProjectsAndKeyIssueScope(t *testing.T) {
 	}, payload.Token)
 	if unassignedKey.Code != http.StatusForbidden {
 		t.Fatalf("same-team unassigned user should not issue key, got %d: %s", unassignedKey.Code, unassignedKey.Body)
+	}
+}
+
+func TestAdminAPIKeyOwnerAttributionAndUsageSnapshot(t *testing.T) {
+	store := NewMemoryStore()
+	if _, err := store.CreateAdminUser(AdminUser{
+		ID:       "usr_admin",
+		Username: "key-owner-admin",
+		Name:     "Key Owner Admin",
+		Email:    "key-owner-admin@tokenhub.local",
+		Role:     "admin",
+		Status:   StatusActive,
+	}, "admin123456"); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := store.CreateAdminUser(AdminUser{
+		Username: "key-owner",
+		Name:     "Key Owner",
+		Email:    "key-owner@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_key_owner",
+		Status:   StatusActive,
+	}, "owner123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherOwner, err := store.CreateAdminUser(AdminUser{
+		Username: "key-owner-other",
+		Name:     "Other Key Owner",
+		Email:    "key-owner-other@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_key_owner",
+		Status:   StatusActive,
+	}, "owner123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Key Attribution Project", TeamID: owner.TeamID, Status: StatusActive})
+	server := New(store)
+	app := server.Handler()
+
+	createKey := func(name string) APIKey {
+		t.Helper()
+		resp := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{
+			"name":          name,
+			"owner_user_id": owner.ID,
+		}, "")
+		if resp.Code != http.StatusCreated {
+			t.Fatalf("create owned key failed: %d %s", resp.Code, resp.Body)
+		}
+		var payload struct {
+			ID          string `json:"id"`
+			OwnerUserID string `json:"owner_user_id"`
+		}
+		if err := json.Unmarshal([]byte(resp.Body), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.OwnerUserID != owner.ID {
+			t.Fatalf("created key owner = %q, want %q", payload.OwnerUserID, owner.ID)
+		}
+		for _, key := range store.ListAPIKeys() {
+			if key.ID == payload.ID {
+				return key
+			}
+		}
+		t.Fatalf("created key %q not found", payload.ID)
+		return APIKey{}
+	}
+
+	keyA := createKey("Owner Key A")
+	keyB := createKey("Owner Key B")
+	if keyA.Metadata["created_by"] != "usr_admin" {
+		t.Fatalf("key issuer metadata = %q, want usr_admin", keyA.Metadata["created_by"])
+	}
+	finishUsage := func(requestID string, key APIKey, totalTokens int64) {
+		store.FinishCall(CallContext{
+			RequestID: requestID,
+			Project:   project,
+			Key:       key,
+			Model:     Model{Name: "gpt-4.1-mini"},
+			StartedAt: time.Now(),
+		}, RouteSelection{}, Usage{PromptTokens: totalTokens, TotalTokens: totalTokens}, http.StatusOK, "", "127.0.0.1", "owner-test")
+	}
+	finishUsage("req_owner_a_before_transfer", keyA, 100)
+
+	transfer := doJSON(t, app, http.MethodPatch, "/api/admin/api-keys/"+keyA.ID, map[string]any{
+		"owner_user_id": otherOwner.ID,
+	}, "")
+	if transfer.Code != http.StatusOK {
+		t.Fatalf("transfer key owner failed: %d %s", transfer.Code, transfer.Body)
+	}
+	updatedKeyA, err := server.findAPIKey(keyA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishUsage("req_owner_a_after_transfer", updatedKeyA, 300)
+	finishUsage("req_owner_b", keyB, 200)
+
+	rotate := doJSON(t, app, http.MethodPost, "/api/admin/api-keys/"+keyA.ID+"/rotate", map[string]any{}, "")
+	if rotate.Code != http.StatusCreated {
+		t.Fatalf("rotate transferred key failed: %d %s", rotate.Code, rotate.Body)
+	}
+	var rotatedPayload struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(rotate.Body), &rotatedPayload); err != nil {
+		t.Fatal(err)
+	}
+	rotatedKey, err := server.findAPIKey(rotatedPayload.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotatedKey.OwnerUserID != otherOwner.ID {
+		t.Fatalf("rotated key owner = %q, want %q", rotatedKey.OwnerUserID, otherOwner.ID)
+	}
+
+	resp := doJSON(t, app, http.MethodGet, "/api/admin/usage/breakdown", nil, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("usage breakdown failed: %d %s", resp.Code, resp.Body)
+	}
+	var breakdown struct {
+		Members []struct {
+			ID            string `json:"id"`
+			RequestCount  int64  `json:"request_count"`
+			TotalTokens   int64  `json:"total_tokens"`
+			OwnedKeyCount int    `json:"owned_key_count"`
+			UsedKeyCount  int    `json:"used_key_count"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(resp.Body), &breakdown); err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]struct {
+		requests int64
+		tokens   int64
+		owned    int
+		used     int
+	}{}
+	for _, row := range breakdown.Members {
+		rows[row.ID] = struct {
+			requests int64
+			tokens   int64
+			owned    int
+			used     int
+		}{row.RequestCount, row.TotalTokens, row.OwnedKeyCount, row.UsedKeyCount}
+	}
+	if got := rows[owner.ID]; got.requests != 2 || got.tokens != 300 || got.owned != 1 || got.used != 2 {
+		t.Fatalf("original owner usage = %+v, want requests=2 tokens=300 owned=1 used=2", got)
+	}
+	if got := rows[otherOwner.ID]; got.requests != 1 || got.tokens != 300 || got.owned != 1 || got.used != 1 {
+		t.Fatalf("new owner usage = %+v, want requests=1 tokens=300 owned=1 used=1", got)
+	}
+}
+
+func TestAPIKeyCreateApprovalPreservesOwnerAndIssuer(t *testing.T) {
+	store := NewMemoryStore()
+	requester, err := store.CreateAdminUser(AdminUser{
+		Username: "approval-key-requester",
+		Name:     "Approval Key Requester",
+		Email:    "approval-key-requester@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_approval_key",
+		Status:   StatusActive,
+	}, "requester123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := store.CreateAdminUser(AdminUser{
+		Username: "approval-key-owner",
+		Name:     "Approval Key Owner",
+		Email:    "approval-key-owner@tokenhub.local",
+		Role:     "user",
+		TeamID:   requester.TeamID,
+		Status:   StatusActive,
+	}, "owner123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Approval Key Project", TeamID: requester.TeamID, Status: StatusActive})
+	server := New(store)
+	result, err := server.applyApprovalRequest(ApprovalRequest{
+		ID:           "approval_key_create",
+		Trigger:      "api_key_create",
+		ResourceType: "api_key",
+		RequesterID:  requester.ID,
+		Status:       "pending",
+		Payload: snapshotJSON(map[string]any{
+			"project_id":    project.ID,
+			"name":          "Approved Owned Key",
+			"owner_user_id": owner.ID,
+		}),
+	}, AdminUser{ID: "approval-admin", Role: "admin", Status: StatusActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, ok := result.(map[string]any)
+	if !ok || payload["owner_user_id"] != owner.ID {
+		t.Fatalf("approval result = %#v, want owner %q", result, owner.ID)
+	}
+	keys := store.ListAPIKeys()
+	if len(keys) != 1 {
+		t.Fatalf("approved keys = %d, want 1", len(keys))
+	}
+	if keys[0].OwnerUserID != owner.ID || keys[0].Metadata["created_by"] != requester.ID {
+		t.Fatalf("approved key attribution = owner %q issuer %q", keys[0].OwnerUserID, keys[0].Metadata["created_by"])
 	}
 }
 
@@ -2566,7 +3224,11 @@ func TestTeamLeaderUsageBreakdownIncludesMembers(t *testing.T) {
 }
 
 func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
-	app := newTestServer()
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
 
 	providerResp := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
 		"name":     "Local vLLM",
@@ -2586,6 +3248,14 @@ func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := providerPayload.Provider
+	for _, upstreamModel := range []string{"qwen2.5-coder", "qwen2.5-coder-backup"} {
+		store.AddProviderModel(ProviderModel{
+			ProviderID:    provider.ID,
+			UpstreamModel: upstreamModel,
+			DisplayName:   upstreamModel,
+			Status:        StatusActive,
+		})
+	}
 
 	modelResp := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
 		"name":                    "local-coder",
@@ -2635,6 +3305,57 @@ func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
 	}
 	if !strings.Contains(routes.Body, "local-coder") || !strings.Contains(routes.Body, "qwen2.5-coder") {
 		t.Fatalf("expected new route in list: %s", routes.Body)
+	}
+}
+
+func TestAdminProviderConfigurationFailsEarlyAndPatchPreservesFields(t *testing.T) {
+	app := newTestServer()
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"name":     "Invalid Adapter",
+		"type":     "openai-compatible",
+		"base_url": "https://example.invalid/v1",
+		"healthy":  true,
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, `"code":"provider_adapter_missing"`) {
+		t.Fatalf("expected unknown adapter to fail during creation, got %d: %s", invalid.Code, invalid.Body)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":       "prv_patch_preserve",
+		"name":     "Patch Preserve",
+		"type":     ProviderOpenAICompatible,
+		"base_url": "https://example.invalid/v1",
+		"status":   StatusActive,
+		"healthy":  true,
+		"priority": 7,
+		"headers":  map[string]string{"x-provider": "preserved"},
+		"options":  map[string]string{"region": "test"},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation, got %d: %s", created.Code, created.Body)
+	}
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/providers/prv_patch_preserve", map[string]any{
+		"type": "deepseek",
+	}, "")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected partial provider patch, got %d: %s", updated.Code, updated.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(updated.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	provider := result.Provider
+	if provider.Type != "deepseek" ||
+		provider.Name != "Patch Preserve" ||
+		provider.BaseURL != "https://example.invalid/v1" ||
+		provider.Status != StatusActive ||
+		!provider.Healthy ||
+		provider.Priority != 7 ||
+		provider.Headers["x-provider"] != "preserved" ||
+		provider.Options["region"] != "test" {
+		t.Fatalf("partial patch erased provider fields: %+v", provider)
 	}
 }
 
@@ -2779,6 +3500,163 @@ func TestAdminProviderCatalogAndTemplateRouteMapping(t *testing.T) {
 	}
 }
 
+func TestAdminKimiCodingTemplateMapsOfficialModels(t *testing.T) {
+	store := NewMemoryStore()
+	config := Config{
+		AdminToken:             "dev_admin_token",
+		BootstrapAdminPassword: "kimi-coding-test-password",
+		ModelCatalogFile:       "../../../data/model-catalog.yaml",
+		ProviderCatalogFile:    "../../../data/provider-catalog.json",
+	}
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, config)
+	if _, err := server.InitializeProviderCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	app := server.Handler()
+
+	catalogResp := doJSON(t, app, http.MethodGet, "/api/admin/provider-catalog/kimi-for-coding", nil, "")
+	if catalogResp.Code != http.StatusOK {
+		t.Fatalf("expected Kimi catalog, got %d: %s", catalogResp.Code, catalogResp.Body)
+	}
+	var catalogPayload struct {
+		Data ProviderCatalogEntry `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(catalogResp.Body), &catalogPayload); err != nil {
+		t.Fatal(err)
+	}
+	expectedModels := map[string]string{
+		"k3":                        "kimi-k3",
+		"k3-256k":                   "kimi-k3-256k",
+		"kimi-for-coding":           "kimi-k2.7-code",
+		"kimi-for-coding-highspeed": "kimi-k2.7-code-highspeed",
+	}
+	if len(catalogPayload.Data.Models) != len(expectedModels) {
+		t.Fatalf("expected %d Kimi models, got %+v", len(expectedModels), catalogPayload.Data.Models)
+	}
+	for _, model := range catalogPayload.Data.Models {
+		if canonical, ok := expectedModels[model.ID]; !ok || canonical != model.CanonicalName {
+			t.Fatalf("unexpected Kimi catalog model: %+v", model)
+		}
+	}
+
+	createResp := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":      "kimi-for-coding",
+		"id":              "prv_kimi_coding",
+		"name":            "Kimi Coding",
+		"base_url":        "https://api.kimi.com/coding/v1",
+		"api_key":         "test-key",
+		"status":          "active",
+		"healthy":         true,
+		"model_category":  "kimi",
+		"create_routes":   true,
+		"selected_models": []string{"k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"},
+	}, "")
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("expected Kimi provider creation, got %d: %s", createResp.Code, createResp.Body)
+	}
+
+	expectedRoutes := map[string]string{
+		"kimi-k3":                  "k3",
+		"kimi-k3-256k":             "k3-256k",
+		"kimi-k2.7-code":           "kimi-for-coding",
+		"kimi-k2.7-code-highspeed": "kimi-for-coding-highspeed",
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID != "prv_kimi_coding" {
+			continue
+		}
+		if upstream, ok := expectedRoutes[route.ModelName]; !ok || upstream != route.ProviderModel {
+			t.Fatalf("unexpected Kimi route: %+v", route)
+		}
+		delete(expectedRoutes, route.ModelName)
+	}
+	if len(expectedRoutes) != 0 {
+		t.Fatalf("missing Kimi routes: %+v", expectedRoutes)
+	}
+}
+
+func TestAdminCustomProviderCatalogLoadsUpstreamModels(t *testing.T) {
+	app := newTestServer()
+	seenAuth := ""
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		seenAuth = r.Header.Get("authorization")
+		writeJSON(w, http.StatusOK, map[string]any{
+			"object": "list",
+			"data": []map[string]any{
+				{"id": "gpt-4.1-mini", "object": "model", "owned_by": "agnes"},
+				{"id": "agnes-special", "object": "model", "owned_by": "agnes"},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	catalogResp := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/custom", map[string]any{
+		"name":     "Agnes",
+		"type":     ProviderOpenAICompatible,
+		"base_url": upstream.URL + "/v1",
+		"api_key":  "upstream-secret",
+	}, "")
+	if catalogResp.Code != http.StatusOK {
+		t.Fatalf("expected custom provider catalog, got %d: %s", catalogResp.Code, catalogResp.Body)
+	}
+	if seenAuth != "Bearer upstream-secret" {
+		t.Fatalf("expected upstream authorization header, got %q", seenAuth)
+	}
+	var catalogPayload struct {
+		Data ProviderCatalogEntry `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(catalogResp.Body), &catalogPayload); err != nil {
+		t.Fatal(err)
+	}
+	if catalogPayload.Data.Source != "custom-upstream" || catalogPayload.Data.ModelsCount != 2 {
+		t.Fatalf("expected upstream custom models, got %+v", catalogPayload.Data)
+	}
+	if catalogPayload.Data.Models[0].ID == "gpt-5" || !strings.Contains(catalogResp.Body, `"agnes-special"`) {
+		t.Fatalf("expected real upstream models instead of standard OpenAI catalog: %s", catalogResp.Body)
+	}
+
+	createResp := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":      "custom",
+		"id":              "prv_agnes",
+		"name":            "Agnes",
+		"type":            ProviderOpenAICompatible,
+		"base_url":        upstream.URL + "/v1",
+		"api_key":         "upstream-secret",
+		"status":          "active",
+		"healthy":         true,
+		"create_routes":   true,
+		"selected_models": []string{"gpt-4.1-mini"},
+		"custom_models":   catalogPayload.Data.Models,
+	}, "")
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("expected custom provider created, got %d: %s", createResp.Code, createResp.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(createResp.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.CreatedRoutes != 1 || result.ModelNames[0] != "gpt-4.1-mini" {
+		t.Fatalf("expected one custom upstream route, got %s", createResp.Body)
+	}
+
+	seenAuth = ""
+	savedCatalogResp := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/custom", map[string]any{
+		"provider_id": "prv_agnes",
+	}, "")
+	if savedCatalogResp.Code != http.StatusOK {
+		t.Fatalf("expected saved custom provider catalog, got %d: %s", savedCatalogResp.Code, savedCatalogResp.Body)
+	}
+	if seenAuth != "Bearer upstream-secret" {
+		t.Fatalf("expected saved provider key to be used, got %q", seenAuth)
+	}
+}
+
 func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	entries := []ProviderCatalogEntry{
 		{
@@ -2810,6 +3688,505 @@ func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	}
 	if got := normalizeProviderBaseURL("dmxapi", "https://www.dmxapi.cn"); got != "https://www.dmxapi.cn/v1" {
 		t.Fatalf("expected dmxapi OpenAI-compatible base URL to include /v1, got %s", got)
+	}
+}
+
+func TestAdminImportsProviderModelWithoutPublishing(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     false,
+		"models": []map[string]any{
+			{
+				"id":             "vendor/private-alpha",
+				"display_name":   "Private Alpha",
+				"category":       "custom",
+				"type":           "chat",
+				"context_window": 131072,
+				"capabilities":   []string{"chat", "tools"},
+			},
+		},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected provider model import 201, got %d: %s", imported.Code, imported.Body)
+	}
+
+	providerModels := doJSON(t, app, http.MethodGet, "/api/admin/provider-models", nil, "")
+	if providerModels.Code != http.StatusOK || !strings.Contains(providerModels.Body, `"upstream_model":"vendor/private-alpha"`) {
+		t.Fatalf("expected imported provider model inventory: %d %s", providerModels.Code, providerModels.Body)
+	}
+	if strings.Contains(providerModels.Body, `"published_model":"vendor/private-alpha"`) {
+		t.Fatalf("unpublished provider model must not claim an external model: %s", providerModels.Body)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderModel == "vendor/private-alpha" {
+			t.Fatalf("import-only operation must not create a route: %+v", route)
+		}
+	}
+}
+
+func TestAdminPublishesProviderModelWithCustomExternalName(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Alias Mapping Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Alias Test Key"}, "thk_alias_models"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.5": "DeepSeek",
+		},
+		"models": []map[string]any{
+			{
+				"id":             "vendor/gpt-4.5",
+				"display_name":   "GPT 4.5",
+				"category":       "openai",
+				"type":           "chat",
+				"context_window": 128000,
+				"capabilities":   []string{"chat", "tools"},
+			},
+		},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected published provider model import 201, got %d: %s", imported.Code, imported.Body)
+	}
+	if !strings.Contains(imported.Body, `"created_models":1`) || !strings.Contains(imported.Body, `"created_routes":1`) {
+		t.Fatalf("expected one external model and mapping: %s", imported.Body)
+	}
+
+	models := doJSON(t, app, http.MethodGet, "/v1/models", nil, "thk_alias_models")
+	if models.Code != http.StatusOK || !strings.Contains(models.Body, `"id":"DeepSeek"`) {
+		t.Fatalf("expected custom external model to be published: %d %s", models.Code, models.Body)
+	}
+	routes := store.ListRoutes()
+	found := false
+	for _, route := range routes {
+		if route.ModelName == "DeepSeek" && route.ProviderID == "prv_mock" && route.ProviderModel == "vendor/gpt-4.5" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected DeepSeek to map to provider model vendor/gpt-4.5: %+v", routes)
+	}
+}
+
+func TestAdminProviderImportUsesExactExternalModelIdentity(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Exact Alias Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Exact Alias Key"}, "thk_exact_alias"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.1-mini": "openai/gpt-4.1-mini",
+		},
+		"models": []map[string]any{{
+			"id":           "vendor/gpt-4.1-mini",
+			"display_name": "GPT 4.1 Mini Vendor Deployment",
+			"type":         "chat",
+		}},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected exact alias import 201, got %d: %s", imported.Code, imported.Body)
+	}
+	if _, ok := modelByNameForTest(store.ListModels(), "openai/gpt-4.1-mini"); !ok {
+		t.Fatalf("external aliases must use exact API identity even when their canonical name already exists: %+v", store.ListModels())
+	}
+	models := doJSON(t, app, http.MethodGet, "/v1/models", nil, "thk_exact_alias")
+	if models.Code != http.StatusOK || !strings.Contains(models.Body, `"id":"openai/gpt-4.1-mini"`) {
+		t.Fatalf("expected exact slash-qualified external alias in /v1/models: %d %s", models.Code, models.Body)
+	}
+}
+
+func TestAdminProviderImportKeepsDistinctExactAliases(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	for _, externalName := range []string{"gpt-4.1-mini", "openai/gpt-4.1-mini"} {
+		imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+			"provider_id": "prv_mock",
+			"publish":     true,
+			"external_names": map[string]string{
+				"vendor/gpt-4.1-mini": externalName,
+			},
+			"models": []map[string]any{{
+				"id":           "vendor/gpt-4.1-mini",
+				"display_name": "GPT 4.1 Mini Vendor Deployment",
+				"type":         "chat",
+			}},
+		}, "")
+		if imported.Code != http.StatusCreated {
+			t.Fatalf("expected exact alias import 201 for %q, got %d: %s", externalName, imported.Code, imported.Body)
+		}
+	}
+
+	found := map[string]bool{}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID == "prv_mock" && route.ProviderModel == "vendor/gpt-4.1-mini" {
+			found[route.ModelName] = true
+		}
+	}
+	if !found["gpt-4.1-mini"] || !found["openai/gpt-4.1-mini"] {
+		t.Fatalf("exact external aliases must keep distinct routes: %+v", store.ListRoutes())
+	}
+}
+
+func TestAdminProviderImportRepublishesExistingExternalModel(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "DeepSeek", Modality: "chat", Status: StatusDisabled})
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.5": "DeepSeek",
+		},
+		"models": []map[string]any{{"id": "vendor/gpt-4.5", "type": "chat"}},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected existing external model publication 201, got %d: %s", imported.Code, imported.Body)
+	}
+	model, ok := modelByNameForTest(store.ListModels(), "DeepSeek")
+	if !ok || model.Status != StatusActive {
+		t.Fatalf("publish import must reactivate an existing external model: %+v", model)
+	}
+}
+
+func TestAdminProviderCreationImportsSelectedModelsWithoutPublishing(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":              "prv_inventory_only",
+		"catalog_id":      "openai",
+		"name":            "OpenAI Inventory Only",
+		"type":            ProviderOpenAI,
+		"base_url":        "https://api.openai.com/v1",
+		"status":          StatusActive,
+		"create_routes":   false,
+		"selected_models": []string{"gpt-4.1-mini"},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", created.Code, created.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(created.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ImportedModels != 1 || result.CreatedRoutes != 0 {
+		t.Fatalf("expected inventory import without publication, got %+v", result)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID == "prv_inventory_only" {
+			t.Fatalf("inventory-only provider creation must not publish a route: %+v", route)
+		}
+	}
+	found := false
+	for _, model := range store.ListProviderModels() {
+		if model.ProviderID == "prv_inventory_only" && model.UpstreamModel == "gpt-4.1-mini" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected selected model in provider inventory")
+	}
+}
+
+func TestAdminRejectsDeletingProviderModelUsedByRoute(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	var providerModel ProviderModel
+	for _, item := range store.ListProviderModels() {
+		if item.ProviderID == "prv_mock" && item.UpstreamModel == "mock-chat" {
+			providerModel = item
+			break
+		}
+	}
+	if providerModel.ID == "" {
+		t.Fatal("expected route backfill to create provider inventory")
+	}
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/provider-models/"+providerModel.ID, nil, "")
+	if deleted.Code != http.StatusConflict || !strings.Contains(deleted.Body, "provider_model_in_use") {
+		t.Fatalf("expected in-use conflict, got %d: %s", deleted.Code, deleted.Body)
+	}
+}
+
+func TestAdminUpdatesProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	providerModel := store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/editable-model",
+		DisplayName:   "Editable Model",
+		Modality:      "chat",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/provider-models/"+providerModel.ID, map[string]any{
+		"display_name":   "Edited Provider Model",
+		"context_window": 131072,
+		"capabilities":   []string{"chat", "tools"},
+		"status":         StatusDisabled,
+	}, "")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected provider model patch 200, got %d: %s", updated.Code, updated.Body)
+	}
+	var result ProviderModel
+	if err := json.Unmarshal([]byte(updated.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ID != providerModel.ID ||
+		result.ProviderID != "prv_mock" ||
+		result.UpstreamModel != "vendor/editable-model" ||
+		result.DisplayName != "Edited Provider Model" ||
+		result.ContextWindow != 131072 ||
+		result.Status != StatusDisabled ||
+		!slices.Equal(result.Capabilities, []string{"chat", "tools"}) {
+		t.Fatalf("unexpected updated provider model: %+v", result)
+	}
+}
+
+func TestAdminDeletesUnusedProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	providerModel := store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/unused-model",
+		DisplayName:   "Unused Model",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/provider-models/"+providerModel.ID, nil, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected unused provider model delete 204, got %d: %s", deleted.Code, deleted.Body)
+	}
+	for _, item := range store.ListProviderModels() {
+		if item.ID == providerModel.ID {
+			t.Fatalf("deleted provider model remains in inventory: %+v", item)
+		}
+	}
+}
+
+func TestAdminDeletingProviderRemovesProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID:      "prv_inventory_cascade",
+		Name:    "Inventory Cascade Provider",
+		Type:    ProviderMock,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    provider.ID,
+		UpstreamModel: "vendor/cascade-model",
+		DisplayName:   "Cascade Model",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/providers/"+provider.ID, nil, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected provider delete 204, got %d: %s", deleted.Code, deleted.Body)
+	}
+	for _, item := range store.ListProviderModels() {
+		if item.ProviderID == provider.ID {
+			t.Fatalf("provider deletion left inventory behind: %+v", item)
+		}
+	}
+}
+
+func TestAdminRouteUpdateRequiresImportedProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	var route ModelRoute
+	for _, item := range store.ListRoutes() {
+		if item.ProviderID == "prv_mock" && item.ProviderModel == "mock-chat" {
+			route = item
+			break
+		}
+	}
+	if route.ID == "" {
+		t.Fatal("expected demo route for provider inventory update")
+	}
+	app := New(store).Handler()
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"provider_model": "vendor/changed-upstream",
+	}, "")
+	if updated.Code != http.StatusConflict || !strings.Contains(updated.Body, "provider_model_not_imported") {
+		t.Fatalf("expected unimported provider model conflict, got %d: %s", updated.Code, updated.Body)
+	}
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/changed-upstream",
+		DisplayName:   "Changed Upstream",
+		Status:        StatusActive,
+	})
+	updated = doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"provider_model": "vendor/changed-upstream",
+	}, "")
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body, `"provider_model":"vendor/changed-upstream"`) {
+		t.Fatalf("expected imported provider model patch 200, got %d: %s", updated.Code, updated.Body)
+	}
+}
+
+func TestAdminCreatesExternalModelWithValidatedImportedRoute(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
+		"name":   "invalid-partial-model",
+		"status": StatusActive,
+		"routes": []map[string]any{{
+			"provider_id":    "missing-provider",
+			"provider_model": "gpt-4.5",
+			"status":         StatusActive,
+		}},
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, "route_provider_not_found") {
+		t.Fatalf("expected nested route validation failure, got %d: %s", invalid.Code, invalid.Body)
+	}
+	if _, ok := modelByNameForTest(store.ListModels(), "invalid-partial-model"); ok {
+		t.Fatal("route validation failure must not leave a partial external model")
+	}
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "gpt-4.5",
+		DisplayName:   "GPT 4.5",
+		Status:        StatusActive,
+	})
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
+		"name":         "DeepSeek",
+		"family":       "deepseek",
+		"modality":     "chat",
+		"status":       StatusActive,
+		"capabilities": []string{"chat", "tools"},
+		"routes": []map[string]any{{
+			"provider_id":    "prv_mock",
+			"provider_model": "gpt-4.5",
+			"status":         StatusActive,
+		}},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected model and route creation 201, got %d: %s", created.Code, created.Body)
+	}
+	foundRoute := false
+	for _, route := range store.ListRoutes() {
+		if route.ModelName == "DeepSeek" && route.ProviderID == "prv_mock" && route.ProviderModel == "gpt-4.5" {
+			foundRoute = route.Priority > 0
+		}
+	}
+	if !foundRoute {
+		t.Fatalf("expected prioritized DeepSeek alias route: %+v", store.ListRoutes())
+	}
+	foundInventory := false
+	for _, model := range store.ListProviderModels() {
+		if model.ProviderID == "prv_mock" && model.UpstreamModel == "gpt-4.5" {
+			foundInventory = true
+		}
+	}
+	if !foundInventory {
+		t.Fatal("expected manual nested route to retain imported Provider inventory")
+	}
+}
+
+func TestAdminRejectsUnimportedAndDuplicateProviderModelRoutes(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	unimported := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "gpt-4.1-mini",
+		"provider_id":    "prv_mock",
+		"provider_model": "vendor/not-imported",
+		"status":         StatusActive,
+	}, "")
+	if unimported.Code != http.StatusConflict || !strings.Contains(unimported.Body, "provider_model_not_imported") {
+		t.Fatalf("expected unimported provider model conflict, got %d: %s", unimported.Code, unimported.Body)
+	}
+
+	duplicate := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "gpt-4.1-mini",
+		"provider_id":    "prv_mock",
+		"provider_model": "mock-chat",
+		"status":         StatusActive,
+	}, "")
+	if duplicate.Code != http.StatusConflict || !strings.Contains(duplicate.Body, "model_route_conflict") {
+		t.Fatalf("expected duplicate model route conflict, got %d: %s", duplicate.Code, duplicate.Body)
+	}
+}
+
+func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
+	store := NewMemoryStore()
+	external := store.AddModel(Model{
+		Name:     "catalog-backed-external",
+		Modality: "chat",
+		Metadata: map[string]string{
+			"source":              "tokenhub-standard-catalog",
+			modelDirectoryRoleKey: modelDirectoryRoleExternal,
+		},
+		Status: StatusDisabled,
+	})
+	store.AddModel(Model{
+		Name:     external.Name,
+		Modality: "chat",
+		Metadata: map[string]string{"source": "tokenhub-standard-catalog"},
+		Status:   StatusActive,
+	})
+
+	model, ok := modelByNameForTest(store.ListModels(), external.Name)
+	if !ok || model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal || model.Status != StatusDisabled {
+		t.Fatalf("candidate refresh must preserve external role and publication state: %+v", model)
 	}
 }
 
@@ -2860,6 +4237,133 @@ func TestAdminCreatesProviderResource(t *testing.T) {
 	}
 	if !strings.Contains(health.Body, `"healthy":false`) {
 		t.Fatalf("expected unhealthy resource: %s", health.Body)
+	}
+}
+
+func TestAdminDeletesProviderAccountRuntimeData(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		Name:    "Delete Account Provider",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID:   provider.ID,
+		Name:         "Delete Account Resource",
+		ResourceType: ProviderResourceOpenAISubscription,
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials: &ProviderResourceCredentials{
+			AccessToken:  "delete-account-access-token",
+			RefreshToken: "delete-account-refresh-token",
+			AccountID:    "delete-account-id",
+			Email:        "delete.account@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := store.AddRoute(ModelRoute{
+		ModelName:          "delete-account-model",
+		ProviderID:         provider.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      "delete-account-model",
+		Status:             StatusActive,
+	})
+	now := time.Now().UTC()
+	for _, record := range []any{
+		&InFlightLease{ID: "lease_delete_account", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(time.Minute)},
+		&ProviderResourceBucket{ResourceID: resource.ID, Bucket: "minute", Requests: 1, Tokens: 2, UpdatedAt: now},
+		&ProviderResourceObservation{ResourceID: resource.ID, AdapterType: ProviderOpenAICodex, QuotaSnapshot: `{"plan_type":"pro"}`, QuotaFetchedAt: &now, UpdatedAt: now},
+		&ProviderObservation{ID: "obs_delete_account", ProviderID: provider.ID, ResourceID: resource.ID, AdapterType: ProviderOpenAICodex, Source: "real_request", Operation: "responses", Success: true, ObservedAt: now},
+		&AdapterSessionBinding{ID: "binding_delete_account", AdapterType: ProviderOpenAICodex, AffinityKind: AffinityKindCodexSession, ProviderID: provider.ID, AffinityKeyHash: "delete-account-affinity", ResourceID: resource.ID, LastUsedAt: now},
+	} {
+		if err := store.db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	app := New(store).Handler()
+	resp := doJSON(t, app, http.MethodDelete, "/api/admin/provider-resources/"+resource.ID, nil, "")
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("expected account delete 204, got %d: %s", resp.Code, resp.Body)
+	}
+
+	checks := []struct {
+		name  string
+		model any
+		where string
+		args  []any
+	}{
+		{name: "provider resource", model: &ProviderResource{}, where: "id = ?", args: []any{resource.ID}},
+		{name: "in-flight lease", model: &InFlightLease{}, where: "scope_type = ? AND scope_id = ?", args: []any{"provider_resource", resource.ID}},
+		{name: "rate-limit bucket", model: &ProviderResourceBucket{}, where: "resource_id = ?", args: []any{resource.ID}},
+		{name: "resource observation", model: &ProviderResourceObservation{}, where: "resource_id = ?", args: []any{resource.ID}},
+		{name: "provider observation", model: &ProviderObservation{}, where: "resource_id = ?", args: []any{resource.ID}},
+		{name: "session binding", model: &AdapterSessionBinding{}, where: "resource_id = ?", args: []any{resource.ID}},
+	}
+	for _, check := range checks {
+		var count int64
+		if err := store.db.Model(check.model).Where(check.where, check.args...).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("expected %s data to be deleted, found %d row(s)", check.name, count)
+		}
+	}
+	var detachedRoute ModelRoute
+	if err := store.db.First(&detachedRoute, "id = ?", route.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if detachedRoute.ProviderResourceID != "" {
+		t.Fatalf("expected route to be detached from deleted account, got %q", detachedRoute.ProviderResourceID)
+	}
+}
+
+func TestAdminRejectsDuplicateProviderResourceName(t *testing.T) {
+	app := newTestServer()
+	for index, name := range []string{"OpenAI Codex Primary Account", "  openai codex primary account  "} {
+		resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+			"id":            "rsrc_openai_account_" + strconv.Itoa(index+1),
+			"provider_id":   "prv_mock",
+			"name":          name,
+			"resource_type": ProviderResourceOpenAISubscription,
+			"status":        StatusActive,
+			"healthy":       true,
+		}, "")
+		if index == 0 && resp.Code != http.StatusCreated {
+			t.Fatalf("expected first provider resource created, got %d: %s", resp.Code, resp.Body)
+		}
+		if index == 1 {
+			if resp.Code != http.StatusConflict {
+				t.Fatalf("expected duplicate provider resource name conflict, got %d: %s", resp.Code, resp.Body)
+			}
+			if !strings.Contains(resp.Body, `"code":"provider_resource_name_conflict"`) {
+				t.Fatalf("expected provider resource name conflict code, got: %s", resp.Body)
+			}
+		}
+	}
+
+	secondary := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+		"id":            "rsrc_openai_account_secondary",
+		"provider_id":   "prv_mock",
+		"name":          "OpenAI Codex Secondary Account",
+		"resource_type": ProviderResourceOpenAISubscription,
+		"status":        StatusActive,
+		"healthy":       true,
+	}, "")
+	if secondary.Code != http.StatusCreated {
+		t.Fatalf("expected secondary provider resource created, got %d: %s", secondary.Code, secondary.Body)
+	}
+	rename := doJSON(t, app, http.MethodPatch, "/api/admin/provider-resources/rsrc_openai_account_secondary", map[string]any{
+		"name": " OPENAI CODEX PRIMARY ACCOUNT ",
+	}, "")
+	if rename.Code != http.StatusConflict || !strings.Contains(rename.Body, `"code":"provider_resource_name_conflict"`) {
+		t.Fatalf("expected provider resource rename conflict, got %d: %s", rename.Code, rename.Body)
 	}
 }
 
@@ -3038,6 +4542,7 @@ func TestOpenAISubscriptionResourceSuppliesRouteCredentials(t *testing.T) {
 		ResourceType: ProviderResourceOpenAISubscription,
 		Status:       StatusActive,
 		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("gpt-4.1-mini"),
 		Credentials: &ProviderResourceCredentials{
 			AuthType:       "oauth",
 			AccessToken:    "openai-access-token",
@@ -3132,6 +4637,7 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 		ResourceType: ProviderResourceOpenAISubscription,
 		Status:       StatusActive,
 		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("gpt-4.1-mini"),
 		Credentials: &ProviderResourceCredentials{
 			AuthType:     "oauth",
 			AccessToken:  "access-expired",
@@ -3199,6 +4705,7 @@ func TestOpenAIProviderAccountOAuthGenerateAuthURLAndCallback(t *testing.T) {
 	}
 	if authURL.Host != "auth.openai.com" ||
 		authURL.Query().Get("client_id") != openAIAccountOAuthClientID ||
+		authURL.Query().Get("redirect_uri") != openAIAccountOAuthRedirectURI ||
 		authURL.Query().Get("code_challenge_method") != "S256" ||
 		authURL.Query().Get("codex_cli_simplified_flow") != "true" ||
 		authURL.Query().Get("state") != payload.State {
@@ -3312,7 +4819,7 @@ func TestOpenAIProviderAccountOAuthExchangeCode(t *testing.T) {
 		if r.FormValue("grant_type") != "authorization_code" ||
 			r.FormValue("client_id") != openAIAccountOAuthClientID ||
 			r.FormValue("code") != "oauth-code" ||
-			!strings.Contains(r.FormValue("redirect_uri"), "/api/admin/provider-account-oauth/openai/oauth/callback") ||
+			r.FormValue("redirect_uri") != openAIAccountOAuthRedirectURI ||
 			r.FormValue("code_verifier") == "" {
 			t.Fatalf("unexpected token form: %s", r.Form.Encode())
 		}
@@ -3412,9 +4919,9 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.FinishProviderResourceAttempt(resource.ID, "", false, Usage{})
-	store.FinishProviderResourceAttempt(resource.ID, "", false, Usage{})
-	store.FinishProviderResourceAttempt(resource.ID, "", false, Usage{})
+	store.FinishProviderResourceAttempt(context.Background(), resource.ID, "", AttemptFailed, Usage{})
+	store.FinishProviderResourceAttempt(context.Background(), resource.ID, "", AttemptFailed, Usage{})
+	store.FinishProviderResourceAttempt(context.Background(), resource.ID, "", AttemptFailed, Usage{})
 	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_cooling_down" {
 		t.Fatalf("expected cooldown before clear_error, got %v", err)
 	}
@@ -3443,7 +4950,7 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("capacity should be available after clear_error: %v", err)
 	}
-	store.FinishProviderResourceAttempt(resource.ID, leaseID, true, Usage{TotalTokens: 5})
+	store.FinishProviderResourceAttempt(context.Background(), resource.ID, leaseID, AttemptSucceeded, Usage{TotalTokens: 5})
 	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_rpm_exceeded" {
 		t.Fatalf("expected rpm limit before reset, got %v", err)
 	}
@@ -3458,7 +4965,7 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("capacity should be available after reset_usage: %v", err)
 	}
-	store.FinishProviderResourceAttempt(resource.ID, leaseID, true, Usage{})
+	store.FinishProviderResourceAttempt(context.Background(), resource.ID, leaseID, AttemptSucceeded, Usage{})
 }
 
 func TestProviderResourceImport(t *testing.T) {

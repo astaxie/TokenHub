@@ -31,7 +31,7 @@ func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource)
 		return
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = "https://api.openai.com/v1"
+		resource.BaseURL = openAICodexBaseURL
 	}
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
@@ -44,7 +44,7 @@ func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource,
 		return
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = "https://api.openai.com/v1"
+		resource.BaseURL = openAICodexBaseURL
 	}
 	if resource.Options == nil {
 		resource.Options = map[string]string{}

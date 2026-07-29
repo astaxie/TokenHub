@@ -44,6 +44,45 @@ export function gatewayStreamingCurl(stats: GatewayDocStats) {
   }'`;
 }
 
+export function gatewayAnthropicMessagesCurl(stats: GatewayDocStats) {
+  return `curl -N --request POST \\
+  --url "${stats.baseURL}/messages" \\
+  --header "${stats.authHeader}" \\
+  --header "anthropic-version: 2023-06-01" \\
+  --header "Content-Type: application/json" \\
+  --data '{
+    "model": "${stats.sampleModel}",
+    "max_tokens": 2048,
+    "messages": [
+      {"role": "user", "content": "Understand this repository and summarize its architecture."}
+    ],
+    "stream": true
+  }'`;
+}
+
+export function gatewayAnthropicCountTokensCurl(stats: GatewayDocStats) {
+  return `curl --request POST \\
+  --url "${stats.baseURL}/messages/count_tokens" \\
+  --header "${stats.authHeader}" \\
+  --header "anthropic-version: 2023-06-01" \\
+  --header "Content-Type: application/json" \\
+  --data '{
+    "model": "${stats.sampleModel}",
+    "messages": [
+      {"role": "user", "content": "Understand this repository."}
+    ]
+  }'`;
+}
+
+export function gatewayClaudeCodeExample(stats: GatewayDocStats) {
+  const anthropicBaseURL = stats.baseURL.replace(/\/v1\/?$/, "");
+  return `export ANTHROPIC_BASE_URL="${anthropicBaseURL}"
+export ANTHROPIC_AUTH_TOKEN="YOUR_TOKENHUB_API_KEY"
+export ANTHROPIC_MODEL="${stats.sampleModel}"
+
+claude`;
+}
+
 export function gatewayResponsesCurl(stats: GatewayDocStats) {
   return `curl --request POST \\
   --url "${stats.baseURL}/responses" \\
@@ -264,6 +303,7 @@ export function gatewayEnglishLLMUsageDocs(stats: GatewayDocStats, role: AppRole
                 ["messages", "array", "Yes", "Conversation messages with system, user, or assistant roles."],
                 ["max_tokens", "integer", "No", "Maximum generated tokens."],
                 ["temperature", "number", "No", "Sampling temperature."],
+                ["reasoning_effort", "string", "No", "Reasoning effort; omitted when the selected route cannot represent it."],
                 ["stream", "boolean", "No", "When true, returns Server-Sent Events ending with data: [DONE]."],
                 ["tools", "array", "No", "Function tools supported by compatible upstream models."],
                 ["response_format", "object", "No", "JSON object or JSON schema output when supported."],
@@ -298,11 +338,54 @@ export function gatewayEnglishLLMUsageDocs(stats: GatewayDocStats, role: AppRole
               rows: [
                 ["model", "string", "Yes", "A callable model ID."],
                 ["input", "string | array", "Yes", "Input text or structured input content."],
-                ["stream", "boolean", "No", "Whether to return a streaming response."],
+                ["reasoning.effort", "string", "No", "Nested reasoning effort for OpenAI-compatible, Anthropic, and Gemini routes."],
+                ["stream", "boolean", "No", "Not implemented; true returns 501."],
               ],
             },
             examplesTitle: "Example",
             examples: [{ title: "cURL", code: gatewayResponsesCurl(stats) }],
+          },
+          {
+            id: "anthropic-messages",
+            group: "LLM API Reference",
+            method: "POST",
+            path: "/v1/messages",
+            title: "Create Anthropic Message",
+            description: "Call TokenHub from Claude Code or an Anthropic-compatible client with text, images, client tools, tool results, and streaming.",
+            params: {
+              title: "Request body",
+              columns: ["Field", "Type", "Required", "Description"],
+              rows: [
+                ["model", "string", "Yes", "A callable TokenHub model ID."],
+                ["max_tokens", "integer", "Yes", "Maximum generated tokens."],
+                ["messages", "array", "Yes", "Anthropic user and assistant messages with structured content blocks."],
+                ["system", "string | array", "No", "Top-level Anthropic system prompt."],
+                ["tools", "array", "No", "Client tool definitions using input_schema."],
+                ["tool_choice", "object", "No", "Controls automatic, required, named, or disabled tool use."],
+                ["stream", "boolean", "No", "Returns Anthropic named Server-Sent Events when true."],
+              ],
+            },
+            notesTitle: "Routing behavior",
+            notes: [
+              "Native Anthropic routes preserve Anthropic content blocks and beta headers.",
+              "OpenAI-compatible routes translate client tools, tool results, images, and streaming events.",
+              "Unsupported Anthropic server tools return an explicit 400 response on OpenAI-compatible routes.",
+            ],
+            examplesTitle: "Examples",
+            examples: [
+              { title: "Messages API", code: gatewayAnthropicMessagesCurl(stats) },
+              { title: "Claude Code", code: gatewayClaudeCodeExample(stats) },
+            ],
+          },
+          {
+            id: "anthropic-count-tokens",
+            group: "LLM API Reference",
+            method: "POST",
+            path: "/v1/messages/count_tokens",
+            title: "Count Anthropic Message Tokens",
+            description: "Return a deterministic input-token estimate after authenticating the key and verifying model access. This request is not billed as inference.",
+            examplesTitle: "Example",
+            examples: [{ title: "cURL", code: gatewayAnthropicCountTokensCurl(stats) }],
           },
           {
             id: "embeddings-api",
@@ -356,12 +439,13 @@ export function gatewayEnglishLLMUsageDocs(stats: GatewayDocStats, role: AppRole
             id: "sdk-examples",
             group: teamLeader ? "Team Rollout" : "Project Keys",
             badge: "SDK",
-            title: "OpenAI-Compatible SDKs",
-            description: "Point any OpenAI-compatible SDK at the TokenHub Base URL and use a TokenHub project API key.",
-            examplesTitle: "SDK examples",
+            title: "SDKs and Claude Code",
+            description: "Use the TokenHub Base URL with OpenAI-compatible SDKs or the TokenHub host URL with Claude Code.",
+            examplesTitle: "Client examples",
             examples: [
               { title: "Node.js", code: gatewayOpenAISDKExample(stats) },
               { title: "Python", code: gatewayPythonSDKExample(stats) },
+              { title: "Claude Code", code: gatewayClaudeCodeExample(stats) },
             ],
           },
           {

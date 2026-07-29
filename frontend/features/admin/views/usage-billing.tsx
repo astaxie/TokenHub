@@ -15,24 +15,26 @@ export function UsageView({ data, user }: { data: AppData; user: AdminUser }) {
       <div className="two-column">
         <DataSection title="模型用量">
           <SimpleTable
-            columns={["模型", "请求", "Token", "成本"]}
+            columns={["模型", "请求", "Token", "缓存读", "成本"]}
             paginationKey="usage-models"
             rows={modelBreakdown.map((row) => [
               row.id,
               formatNumber(row.request_count),
               compactNumber(row.total_tokens),
+              compactNumber(row.cached_input_tokens ?? 0),
               `$${formatMoney(row.estimated_cost_usd)}`,
             ])}
           />
         </DataSection>
         <DataSection title={showMemberBreakdown ? "成员用量" : "项目归因"}>
           <SimpleTable
-            columns={[showMemberBreakdown ? "成员" : "项目", "请求", "Token", "成本"]}
+            columns={[showMemberBreakdown ? "成员" : "项目", "请求", "Token", "缓存读", "成本"]}
             paginationKey={showMemberBreakdown ? "usage-members" : "usage-projects"}
             rows={(showMemberBreakdown ? data.breakdown.members ?? [] : data.breakdown.projects ?? []).map((row) => [
               showMemberBreakdown ? usageMemberLabel(data, row.id) : row.id,
               formatNumber(row.request_count),
               compactNumber(row.total_tokens),
+              compactNumber(row.cached_input_tokens ?? 0),
               `$${formatMoney(row.estimated_cost_usd)}`,
             ])}
           />
@@ -41,12 +43,13 @@ export function UsageView({ data, user }: { data: AppData; user: AdminUser }) {
       {showMemberBreakdown ? (
         <DataSection title="项目归因">
           <SimpleTable
-            columns={["项目", "请求", "Token", "成本"]}
+            columns={["项目", "请求", "Token", "缓存读", "成本"]}
             paginationKey="usage-projects"
             rows={(data.breakdown.projects ?? []).map((row) => [
               projectName(data, row.id),
               formatNumber(row.request_count),
               compactNumber(row.total_tokens),
+              compactNumber(row.cached_input_tokens ?? 0),
               `$${formatMoney(row.estimated_cost_usd)}`,
             ])}
           />
@@ -71,7 +74,7 @@ export function PersonalUsageSummary({ data }: { data: AppData }) {
       </header>
 
       <div className="executive-kpi-grid">
-        <ExecutiveKPI label="总 Token 消耗" value={compactNumber(data.summary.total_tokens)} detail={`${tx("输入")} ${compactNumber(data.summary.input_tokens)} / ${tx("输出")} ${compactNumber(data.summary.output_tokens)}`} />
+        <ExecutiveKPI label="总 Token 消耗" value={compactNumber(data.summary.total_tokens)} detail={`${tx("输入")} ${compactNumber(data.summary.input_tokens)} / ${tx("缓存读")} ${compactNumber(data.summary.cached_input_tokens ?? 0)} / ${tx("输出")} ${compactNumber(data.summary.output_tokens)}`} />
         <ExecutiveKPI label="请求数" value={formatNumber(data.summary.request_count)} detail={countWithUnit(data.summary.usage_record_count ?? 0, "条用量记录", "usage record", "件の利用記録")} />
         <ExecutiveKPI label="估算成本" value={`$${formatMoney(data.summary.estimated_cost_usd)}`} detail={countWithUnit(data.summary.errors, "个错误", "error", "件のエラー")} />
         <ExecutiveKPI label="可见项目" value={formatNumber(data.projects.length)} detail={tx("按当前账号权限汇总")} />
@@ -105,7 +108,7 @@ export function ExecutiveUsageReport({ data }: { data: AppData }) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date());
-  const tokenDetail = `${tx("输入")} ${compactNumber(totalInput)} / ${tx("输出")} ${compactNumber(totalOutput)}`;
+  const tokenDetail = `${tx("输入")} ${compactNumber(totalInput)} / ${tx("缓存读")} ${compactNumber(data.summary.cached_input_tokens ?? 0)} / ${tx("输出")} ${compactNumber(totalOutput)}`;
   const departmentDetail = topDepartment
     ? `${tx("最高")}：${topDepartment.name} · ${departmentShare}%`
     : tx("暂无部门归因");
@@ -268,6 +271,7 @@ export function ExecutiveMemberTable({ rows, totalTokens }: { rows: ExecutiveMem
             <th>{tx("排名")}</th>
             <th>{tx("成员")}</th>
             <th>{tx("部门")}</th>
+            <th>{tx("Key（已用/归属）")}</th>
             <th>{tx("请求")}</th>
             <th>{tx("输入 Token")}</th>
             <th>{tx("输出 Token")}</th>
@@ -284,6 +288,7 @@ export function ExecutiveMemberTable({ rows, totalTokens }: { rows: ExecutiveMem
                 <td><span className="executive-rank-badge">{index + 1}</span></td>
                 <td><strong>{row.name}</strong><small>{row.id}</small></td>
                 <td>{tx(row.department)}</td>
+                <td>{formatNumber(row.used_key_count ?? 0)} / {formatNumber(row.owned_key_count ?? 0)}</td>
                 <td>{formatNumber(row.request_count)}</td>
                 <td>{compactNumber(row.input_tokens)}</td>
                 <td>{compactNumber(row.output_tokens)}</td>
@@ -322,6 +327,7 @@ export function executiveDepartmentRows(data: AppData): ExecutiveDepartmentRow[]
         member_count: 0,
         request_count: 0,
         input_tokens: 0,
+        cached_input_tokens: 0,
         output_tokens: 0,
         total_tokens: 0,
         estimated_cost_usd: 0,
@@ -371,9 +377,12 @@ export function sortUsageRows<T extends UsageBreakdownRow>(rows: T[]): T[] {
 export function addUsageRow(target: UsageBreakdownRow, source: UsageBreakdownRow) {
   target.request_count += source.request_count;
   target.input_tokens += source.input_tokens;
+  target.cached_input_tokens = (target.cached_input_tokens ?? 0) + (source.cached_input_tokens ?? 0);
   target.output_tokens += source.output_tokens;
   target.total_tokens += source.total_tokens;
   target.estimated_cost_usd += source.estimated_cost_usd;
+  target.owned_key_count = (target.owned_key_count ?? 0) + (source.owned_key_count ?? 0);
+  target.used_key_count = (target.used_key_count ?? 0) + (source.used_key_count ?? 0);
 }
 
 export function findUsageUser(data: AppData, id: string) {

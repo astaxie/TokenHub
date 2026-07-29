@@ -3,7 +3,10 @@ import { Activity } from "lucide-react";
 export type Summary = {
   request_count: number;
   input_tokens: number;
+  cached_input_tokens?: number;
+  cache_write_input_tokens?: number;
   output_tokens: number;
+  reasoning_output_tokens?: number;
   total_tokens: number;
   estimated_cost_usd: number;
   errors: number;
@@ -30,6 +33,7 @@ export type Project = {
 export type APIKey = {
   id: string;
   project_id: string;
+  owner_user_id?: string;
   name: string;
   group?: string;
   key_prefix: string;
@@ -42,6 +46,7 @@ export type APIKey = {
   rotated_from_id?: string;
   grace_until?: string;
   last_used_at?: string;
+  metadata?: Record<string, string>;
 };
 
 export type DatabaseStatus = {
@@ -63,6 +68,76 @@ export type Provider = {
   options?: Record<string, string>;
 };
 
+export type AdapterDescriptor = {
+  type: string;
+  capabilities: string[];
+};
+
+export type ProviderMonitoringSignal = {
+  state: "healthy" | "degraded" | "down" | "unknown";
+  source: "configuration" | "active_probe" | "gateway_request" | string;
+  detail?: string;
+  samples: number;
+  success_rate?: number;
+  latency_ms?: number;
+  error_code?: string;
+  observed_at?: string;
+};
+
+export type OpenAIQuotaWindow = {
+  used_percent: number;
+  reset_after_seconds: number;
+  reset_at: number;
+};
+
+export type OpenAIAccountQuota = {
+  plan_type?: string;
+  fetched_at?: number;
+  rate_limit?: {
+    allowed: boolean;
+    limit_reached: boolean;
+    primary_window?: OpenAIQuotaWindow;
+    secondary_window?: OpenAIQuotaWindow;
+  };
+};
+
+export type ProviderQuotaSummary = {
+  supported: boolean;
+  remaining_percent?: number;
+  limit_reached: boolean;
+  plan_type?: string;
+  earliest_reset_at?: number;
+  fetched_at?: number;
+  successful_accounts: number;
+  failed_accounts: number;
+  accounts?: Array<{
+    resource_id: string;
+    resource_name: string;
+    quota?: OpenAIAccountQuota;
+    error_code?: string;
+  }>;
+};
+
+export type ProviderMonitoringSnapshot = {
+  provider: Provider;
+  adapter: AdapterDescriptor;
+  route_count: number;
+  active_route_count: number;
+  resource_count: number;
+  active_resource_count: number;
+  healthy_resource_count: number;
+  state: "healthy" | "degraded" | "down" | "unknown";
+  status_label: string;
+  status_detail: string;
+  configuration: ProviderMonitoringSignal;
+  resources: ProviderMonitoringSignal;
+  active_probe: ProviderMonitoringSignal;
+  gateway: ProviderMonitoringSignal;
+  quota: ProviderQuotaSummary;
+  quality_score: number;
+  trend: Array<"success" | "warning" | "failure" | "none">;
+};
+
 export type ProviderCatalogModel = {
   id: string;
   name: string;
@@ -74,12 +149,14 @@ export type ProviderCatalogModel = {
   context_window?: number;
   max_output_tokens?: number;
   input_price_usd_per_1m?: number;
+  cache_read_price_usd_per_1m?: number;
   output_price_usd_per_1m?: number;
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
   supported_parameters?: string[];
   last_updated?: string;
+  metadata?: Record<string, string>;
 };
 
 export type ProviderCatalogEntry = {
@@ -94,6 +171,31 @@ export type ProviderCatalogEntry = {
   models_count: number;
   source: string;
   models?: ProviderCatalogModel[];
+};
+
+export type ProviderModel = {
+  id: string;
+  provider_id: string;
+  upstream_model: string;
+  display_name?: string;
+  canonical_name?: string;
+  category?: string;
+  family?: string;
+  modality?: string;
+  context_window?: number;
+  input_price_usd_per_1m?: number;
+  cache_read_price_usd_per_1m?: number;
+  output_price_usd_per_1m?: number;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  capabilities?: string[];
+  supported_parameters?: string[];
+  metadata?: Record<string, string>;
+  source?: string;
+  status: string;
+  last_seen_at?: string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type ProviderResource = {
@@ -131,6 +233,7 @@ export type Model = {
   context_window?: number;
   status: string;
   input_price_usd_per_1m?: number;
+  cache_read_price_usd_per_1m?: number;
   output_price_usd_per_1m?: number;
   embedding_price_usd_per_1m?: number;
   input_modalities?: string[];
@@ -154,7 +257,23 @@ export type ModelRoute = {
   cost_score?: number;
   status: string;
   strategy?: string;
+  project_scope?: "all" | "include" | "exclude";
+  project_ids?: string[];
   last_used_at?: string;
+};
+
+export type ModelRouteStrategy = "priority_weighted" | "adaptive" | "quality" | "cost" | "priority_only" | "balanced";
+
+export type ModelRoutePolicyRoute = {
+  route_id: string;
+  weight: number;
+  quality_score: number;
+  cost_score: number;
+};
+
+export type ModelRoutePolicy = {
+  strategy: ModelRouteStrategy;
+  routes: ModelRoutePolicyRoute[];
 };
 
 export type ChatRole = "system" | "user" | "assistant";
@@ -172,6 +291,10 @@ export type PlaygroundRouteSummary = {
   resource_id?: string;
   resource_name?: string;
   provider_model?: string;
+  upstream_request_id?: string;
+  served_model?: string;
+  model_etag?: string;
+  transport?: string;
   priority?: number;
   resource_priority?: number;
   weight?: number;
@@ -182,6 +305,7 @@ export type PlaygroundRouteSummary = {
 
 export type PlaygroundUsage = {
   prompt_tokens?: number;
+  cached_input_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
   estimated_cost_usd?: number;
@@ -331,11 +455,15 @@ export type UsageRecord = {
   request_id: string;
   project_id: string;
   api_key_id: string;
+  attributed_user_id?: string;
   model: string;
   provider_id?: string;
   provider_resource_id?: string;
   input_tokens: number;
+  cached_input_tokens?: number;
+  cache_write_input_tokens?: number;
   output_tokens: number;
+  reasoning_output_tokens?: number;
   total_tokens: number;
   estimated_cost_usd: number;
   created_at: string;
@@ -352,6 +480,8 @@ export type RouteAttemptLog = {
   status_code: number;
   error_code?: string;
   error_message?: string;
+  invoked: boolean;
+  latency_ms?: number;
   created_at: string;
 };
 
@@ -382,6 +512,8 @@ export type AuditEvent = {
   resource_id: string;
   status: string;
   message?: string;
+  before_snapshot?: string;
+  after_snapshot?: string;
   ip?: string;
   user_agent?: string;
   created_at: string;
@@ -391,9 +523,12 @@ export type UsageBreakdownRow = {
   id: string;
   request_count: number;
   input_tokens: number;
+  cached_input_tokens?: number;
   output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  owned_key_count?: number;
+  used_key_count?: number;
 };
 
 export type UsageBreakdown = {
@@ -409,6 +544,7 @@ export type UsagePoint = {
   date: string;
   request_count: number;
   input_tokens: number;
+  cached_input_tokens?: number;
   output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
@@ -527,16 +663,17 @@ export type FieldConfig = {
   label: string;
   type?: FieldType;
   options?: string[];
-  optionsFromData?: (data: AppData, currentUser?: AdminUser | null) => Array<{ value: string; label: string }>;
+  optionsFromData?: (data: AppData, currentUser?: AdminUser | null, values?: Record<string, string>) => Array<{ value: string; label: string }>;
   placeholder?: string;
   autoComplete?: string;
   required?: boolean;
   help?: string;
   readOnlyOnEdit?: boolean;
+  multiSelectOnEdit?: boolean;
   visible?: (values: Record<string, string>) => boolean;
 };
 
-export type ProviderCredentialMode = "provider_api_key" | "account_integration" | "later";
+export type ProviderCredentialMode = "provider_api_key" | "account_integration";
 
 export type ColumnConfig<T> = {
   key: string;
@@ -556,6 +693,7 @@ export type ResourceConfig<T> = {
   create?: (ctx: ApiContext, values: Record<string, string>, data?: AppData) => Promise<void>;
   update?: (ctx: ApiContext, item: T, values: Record<string, string>) => Promise<void>;
   remove?: (ctx: ApiContext, item: T) => Promise<void>;
+  canRemove?: (item: T, currentUser: AdminUser | null) => boolean;
   actions?: ResourceAction<T>[];
   toolbarActions?: ToolbarAction[];
   toForm?: (item: T) => Record<string, string>;
@@ -591,6 +729,7 @@ export type AppData = {
   keys: APIKey[];
   providers: Provider[];
   providerResources: ProviderResource[];
+  providerModels: ProviderModel[];
   models: Model[];
   routes: ModelRoute[];
   logs: RequestLog[];
@@ -604,6 +743,7 @@ export type AppData = {
   timeseries: UsagePoint[];
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];
+  providerMonitoring: ProviderMonitoringSnapshot[];
 };
 
 export type ApiContext = {
@@ -619,13 +759,11 @@ export type ModalState<T> = {
 
 export type ConfirmState<T> = {
   config: ResourceConfig<T>;
-  item: T;
+  item?: T;
+  items?: T[];
 };
 
 export type SettingsTabKey = "settings" | "role-configs" | "identity-providers";
-
-export const defaultBaseURL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 export const sessionStorageKey = "tokenhub.admin.session";
 

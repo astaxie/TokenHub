@@ -106,31 +106,83 @@ models:
       reasoning_default: "true"
   - name: "moonshotai/kimi-k2.7-code"
     title: "Kimi K2.7 Code"
-    description: "Kimi K2.7 Code is MoonshotAI's strongest coding & agentic model — a 1T-parameter MoE (32B activated) , 256K context and interleaved thinking with multi-step tool calling. It delivers major gains on long-horizon coding tasks while cutting thinking-token usage by ~30% vs K2.6, and accepts text, image and video inputs for vision-driven development workflows."
+    description: "Kimi K2.7 Code is Kimi's dedicated coding model. It improves long-context instruction following and long-horizon coding success rates, supports text, image, and video input, and provides 256K context with always-on thinking and multi-step tool calling."
     category: "kimi"
     family: "kimi"
     modality: "chat"
     context_window: 262144
-    input_price_usd_per_1m: 9.5
-    output_price_usd_per_1m: 40
+    input_price_usd_per_1m: 0.95
+    cache_read_price_usd_per_1m: 0.19
+    output_price_usd_per_1m: 4
     input_modalities: ["text", "image", "video"]
     output_modalities: ["text"]
     capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "serverless", "structured_outputs"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input"]
+    supported_parameters: ["tools", "response_format", "reasoning", "image_input", "video_input"]
     metadata:
       source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "moonshotai/kimi-k2.7-code"
+      upstream_source: "kimi-api-platform"
+      provider_model_id: "kimi-k2.7-code"
       provider_model_name: "Kimi K2.7 Code"
-      endpoints: "chat/completions,anthropic"
+      endpoints: "chat/completions"
       features: "serverless,function-calling,structured-outputs,reasoning"
       max_output_tokens: "262144"
       tool_call: "true"
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
+      reasoning_mode: "always_on"
+  - name: "kimi-k3"
+    title: "Kimi K3"
+    description: "Kimi K3 is Kimi's flagship model for long-horizon coding, knowledge work, and deep reasoning. It has native visual understanding, supports text, image, and video input, and provides a 1M-token context window with always-on thinking."
+    category: "kimi"
+    family: "kimi"
+    modality: "chat"
+    context_window: 1048576
+    input_price_usd_per_1m: 3
+    cache_read_price_usd_per_1m: 0.3
+    output_price_usd_per_1m: 15
+    input_modalities: ["text", "image", "video"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["tools", "response_format", "reasoning", "image_input", "video_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "kimi-api-platform"
+      provider_model_id: "kimi-k3"
+      provider_model_name: "Kimi K3"
+      endpoints: "chat/completions"
+      features: "function-calling,structured-outputs,reasoning"
+      max_output_tokens: "1048576"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_mode: "always_on"
+      reasoning_effort_options: "low,high,max"
+  - name: "kimi-k3-256k"
+    title: "Kimi K3 256K"
+    description: "Kimi K3 256K is the fixed 256K-context Kimi Code variant for routine coding and code completion; it accepts text and image input but not video."
+    category: "kimi"
+    family: "kimi-k3"
+    modality: "chat"
+    context_window: 262144
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["tools", "response_format", "reasoning", "image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "kimi-code"
+      provider_model_id: "k3-256k"
+      provider_model_name: "Kimi K3 256K"
+      endpoints: "chat/completions"
+      features: "function-calling,structured-outputs,reasoning"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_mode: "always_on"
+      reasoning_effort_options: "low,high,max"
   - name: "minimax/minimax-m3"
     title: "MiniMax M3"
     description: "MiniMax-M3 is a multimodal foundation model from MiniMax. It supports text, image, and video inputs with text output, a 1M-token context window, and is suited for long-horizon agentic work, coding, and tool use. It is built on MiniMax Sparse Attention (MSA), which replaces full attention with KV-block selection to cut per-token compute at long context — roughly 1/20 the cost of the previous generation at 1M tokens, with substantially faster prefill and decode while retaining quality across most tasks.\nTrained as a native multimodal model on interleaved data and tuned for multi-turn, production-like collaboration via an interactive user-simulator framework, the model is oriented toward sustained, multi-step tasks rather than single-turn execution."
@@ -384,25 +436,24 @@ models:
       reasoning_default: "true"
   - name: "moonshotai/kimi-k2.5"
     title: "Kimi K2.5"
-    description: "Kimi K2.5 is the latest flagship iteration of Moonshot AI's large language model series, representing a significant leap in multimodal and agentic capabilities. It features a native multimodal architecture supporting both visual and text inputs, alongside versatile thinking and non-thinking modes. This model maintains the substantial 256k token context window found in the K2 series but achieves new open-source state-of-the-art (SoTA) performance across general intelligence, coding, and visual understanding benchmarks. Kimi K2.5 delivers a breakthrough in frontend development, enabling the generation of fully functional, aesthetically polished interactive interfaces with complex dynamic layouts directly from natural language. Optimized for complex problem-solving, it excels in multi-step tool invocation, logical reasoning, and full-stack code synthesis."
+    description: "Kimi K2.5 is a multimodal Kimi model for agentic, coding, visual understanding, and general intelligence tasks. It supports text, image, and video input, thinking and non-thinking modes, dialogue and Agent tasks, and a 256K-token context window."
     category: "kimi"
     family: "kimi"
     modality: "chat"
     context_window: 262144
-    input_price_usd_per_1m: 6
-    output_price_usd_per_1m: 30
+    input_price_usd_per_1m: 0.6
+    cache_read_price_usd_per_1m: 0.1
+    output_price_usd_per_1m: 3
     input_modalities: ["text", "image", "video"]
     output_modalities: ["text"]
     capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "serverless", "structured_outputs"]
     supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input"]
     metadata:
       source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "moonshotai/kimi-k2.5"
+      upstream_source: "kimi-api-platform"
+      provider_model_id: "kimi-k2.5"
       provider_model_name: "Kimi K2.5"
-      endpoints: "chat/completions,anthropic"
+      endpoints: "chat/completions"
       features: "serverless,reasoning,structured-outputs,function-calling"
       max_output_tokens: "262144"
       tool_call: "true"
@@ -2615,25 +2666,24 @@ models:
       reasoning_default: "true"
   - name: "moonshotai/kimi-k2.6"
     title: "Kimi K2.6"
-    description: "Kimi K2.5 is the latest flagship iteration of Moonshot AI's large language model series, representing a significant leap in multimodal and agentic capabilities. It features a native multimodal architecture supporting both visual and text inputs, alongside versatile thinking and non-thinking modes. This model maintains the substantial 256k token context window found in the K2 series but achieves new open-source state-of-the-art (SoTA) performance across general intelligence, coding, and visual understanding benchmarks. Kimi K2.5 delivers a breakthrough in frontend development, enabling the generation of fully functional, aesthetically polished interactive interfaces with complex dynamic layouts directly from natural language. Optimized for complex problem-solving, it excels in multi-step tool invocation, logical reasoning, and full-stack code synthesis."
+    description: "Kimi K2.6 is Kimi's general-purpose model for long-horizon coding, dialogue, and Agent tasks. It supports text, image, and video input, thinking and non-thinking modes, multi-step tool calling, and a 256K-token context window."
     category: "kimi"
     family: "kimi"
     modality: "chat"
     context_window: 262144
-    input_price_usd_per_1m: 6
-    output_price_usd_per_1m: 30
+    input_price_usd_per_1m: 0.95
+    cache_read_price_usd_per_1m: 0.16
+    output_price_usd_per_1m: 4
     input_modalities: ["text", "image", "video"]
     output_modalities: ["text"]
     capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "serverless", "structured_outputs"]
     supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input"]
     metadata:
       source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "moonshotai/kimi-k2.6"
+      upstream_source: "kimi-api-platform"
+      provider_model_id: "kimi-k2.6"
       provider_model_name: "Kimi K2.6"
-      endpoints: "chat/completions,anthropic"
+      endpoints: "chat/completions"
       features: "serverless,reasoning,structured-outputs,function-calling"
       max_output_tokens: "262144"
       tool_call: "true"
@@ -3699,6 +3749,28 @@ models:
       tool_call: "false"
       vision: "true"
       reasoning_supported: "false"
+      execution_type: "openai_image_api"
+      provider_type: "openai"
+      upstream_model: "gpt-image-2"
+      billing_mode: "api"
+  - name: "codex-gpt-image-2"
+    title: "Codex GPT Image 2"
+    description: "Image generation and reference-image editing through a connected Codex subscription account."
+    category: "codex"
+    family: "gpt-image"
+    modality: "image"
+    context_window: 8192
+    input_modalities: ["text", "image"]
+    output_modalities: ["image"]
+    capabilities: ["image", "vision"]
+    supported_parameters: ["image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      execution_type: "codex_subscription_image_generation"
+      provider_type: "openai_codex"
+      upstream_model: "gpt-image-2"
+      billing_mode: "subscription"
+      virtual_model: "true"
   - name: "slow-mock"
     description: "timeout问题测试"
     category: "custom"
@@ -4055,3 +4127,147 @@ models:
       tool_call: "true"
       vision: "false"
       reasoning_supported: "false"
+  - name: "kimi-k2.7-code-highspeed"
+    title: "Kimi K2.7 Code HighSpeed"
+    description: "High-speed Kimi K2.7 Code endpoint available through Tencent Cloud Token Plan."
+    category: "kimi"
+    family: "kimi"
+    modality: "chat"
+    context_window: 262144
+    input_price_usd_per_1m: 9.5
+    output_price_usd_per_1m: 40
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "tencent-token-plan"
+      provider_model_id: "kimi-k2.7-code-highspeed"
+      provider_model_name: "Kimi-K2.7-Code-HighSpeed"
+      endpoints: "chat/completions"
+      features: "function-calling,reasoning"
+      max_output_tokens: "262144"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "deepseek-v4-flash-202605"
+    title: "DeepSeek V4 Flash 原厂直供"
+    description: "DeepSeek V4 Flash direct model endpoint available through Tencent Cloud Token Plan."
+    category: "deepseek"
+    family: "deepseek"
+    modality: "chat"
+    context_window: 1048576
+    input_price_usd_per_1m: 1.4
+    output_price_usd_per_1m: 2.8
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "tencent-token-plan"
+      provider_model_id: "deepseek-v4-flash-202605"
+      provider_model_name: "DeepSeek-V4-Flash 原厂直供"
+      endpoints: "chat/completions"
+      features: "function-calling,structured-outputs,reasoning"
+      max_output_tokens: "393216"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "deepseek-v4-pro-202606"
+    title: "DeepSeek V4 Pro 原厂直供"
+    description: "DeepSeek V4 Pro direct model endpoint available through Tencent Cloud Token Plan."
+    category: "deepseek"
+    family: "deepseek"
+    modality: "chat"
+    context_window: 1048576
+    input_price_usd_per_1m: 4.35
+    output_price_usd_per_1m: 8.7
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "tencent-token-plan"
+      provider_model_id: "deepseek-v4-pro-202606"
+      provider_model_name: "DeepSeek-V4-Pro 原厂直供"
+      endpoints: "chat/completions"
+      features: "function-calling,structured-outputs,reasoning"
+      max_output_tokens: "393216"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "tc-code-latest"
+    title: "Tencent Cloud Token Plan Auto"
+    description: "Tencent Cloud Token Plan automatically selects a coding model for the request."
+    category: "custom"
+    family: "auto"
+    modality: "chat"
+    context_window: 131072
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "tencent-token-plan"
+      provider_model_id: "tc-code-latest"
+      provider_model_name: "Auto"
+      endpoints: "chat/completions"
+      features: "function-calling,reasoning"
+      max_output_tokens: "16384"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "hy3"
+    title: "Hy3"
+    description: "Tencent Cloud Hy3 model for coding agents, long documents, and multi-step workflows."
+    category: "custom"
+    family: "hy"
+    modality: "chat"
+    context_window: 256000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "tencent-token-plan"
+      provider_model_id: "hy3"
+      provider_model_name: "Hy3"
+      endpoints: "chat/completions"
+      features: "function-calling,reasoning"
+      max_output_tokens: "64000"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "false"
+  - name: "hy3-preview"
+    title: "Hy3 Preview"
+    description: "Tencent Cloud Hy3 preview alias, automatically routed upstream to Hy3."
+    category: "custom"
+    family: "hy"
+    modality: "chat"
+    context_window: 256000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "tencent-token-plan"
+      provider_model_id: "hy3-preview"
+      provider_model_name: "Hy3 preview"
+      endpoints: "chat/completions"
+      features: "function-calling,reasoning"
+      max_output_tokens: "64000"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "false"

@@ -1,6 +1,7 @@
 services:
   tokenhub-backend:
     container_name: tokenhub-backend
+    image: ghcr.io/astaxie/tokenhub-backend:${TOKENHUB_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: backend/Dockerfile
@@ -9,8 +10,13 @@ services:
     restart: unless-stopped
     environment:
       TOKENHUB_ENV: ${TOKENHUB_ENV:-prod}
+      TOKENHUB_DEPLOYMENT_TYPE: container
+      TOKENHUB_MANAGED_UPDATES: "true"
+      TOKENHUB_INSTALL_ROOT: /opt/tokenhub
+      TOKENHUB_RUN_MODE: all
       TOKENHUB_HTTP_ADDR: :8080
       TOKENHUB_PUBLIC_BASE_URL: ${TOKENHUB_PUBLIC_BASE_URL:-http://localhost:8080}
+      TOKENHUB_RELEASE_REPOSITORY: ${TOKENHUB_RELEASE_REPOSITORY:-astaxie/TokenHub}
       TOKENHUB_TRUSTED_PROXY_CIDRS: ${TOKENHUB_TRUSTED_PROXY_CIDRS:-}
       TOKENHUB_CORS_ALLOWED_ORIGINS: ${TOKENHUB_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       TOKENHUB_ADMIN_TOKEN: ${TOKENHUB_ADMIN_TOKEN:-change-me-tokenhub-admin-token}
@@ -19,57 +25,50 @@ services:
       TOKENHUB_SECRET_KEY: ${TOKENHUB_SECRET_KEY:-change-me-tokenhub-secret-key}
       TOKENHUB_DATABASE_URL: ${TOKENHUB_DATABASE_URL:-sqlite:///app/data/tokenhub.db}
       TOKENHUB_SQLITE_BACKUP_DIR: /app/data/backups
-      TOKENHUB_MODEL_CATALOG_FILE: /app/catalog/model-catalog.yaml
+      TOKENHUB_MODEL_CATALOG_FILE: /opt/tokenhub/current/catalog/model-catalog.yaml
+      TOKENHUB_PROVIDER_CATALOG_FILE: /opt/tokenhub/current/catalog/provider-catalog.json
       TOKENHUB_SEED_DEMO: ${TOKENHUB_SEED_DEMO:-false}
       TOKENHUB_LOG_LEVEL: ${TOKENHUB_LOG_LEVEL:-info}
       TOKENHUB_RESOURCE_FAILURE_THRESHOLD: ${TOKENHUB_RESOURCE_FAILURE_THRESHOLD:-3}
       TOKENHUB_RESOURCE_COOLDOWN_SECONDS: ${TOKENHUB_RESOURCE_COOLDOWN_SECONDS:-300}
+      TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS: ${TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS:-3600}
+      TOKENHUB_METRICS_ENABLED: ${TOKENHUB_METRICS_ENABLED:-false}
+      TOKENHUB_METRICS_TOKEN: ${TOKENHUB_METRICS_TOKEN:-}
+      TOKENHUB_METRICS_PROJECT_LABEL: ${TOKENHUB_METRICS_PROJECT_LABEL:-false}
       TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS: ${TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS:-300}
       TOKENHUB_CLUSTER_LOCK_TTL_SECONDS: ${TOKENHUB_CLUSTER_LOCK_TTL_SECONDS:-180}
       TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS: ${TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS:-150}
+      TOKENHUB_CACHE_AFFINITY_ENABLED: ${TOKENHUB_CACHE_AFFINITY_ENABLED:-false}
+      TOKENHUB_CACHE_AFFINITY_MODELS: ${TOKENHUB_CACHE_AFFINITY_MODELS:-}
+      TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE: ${TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE:-false}
+      TOKENHUB_API_BASE_URL: ${TOKENHUB_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}}
+      TOKENHUB_FRONTEND_HOST: 0.0.0.0
+      TOKENHUB_FRONTEND_PORT: 3000
     ports:
       - "${TOKENHUB_BACKEND_PORT:-8080}:8080"
+      - "${TOKENHUB_FRONTEND_PORT:-3000}:3000"
     volumes:
       - tokenhub-data:/app/data
-      - ../data/model-catalog.yaml:/app/catalog/model-catalog.yaml:ro
+      - tokenhub-releases:/opt/tokenhub
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 10s
-    stop_grace_period: ${TOKENHUB_STOP_GRACE_PERIOD:-180s}
-    networks:
-      - tokenhub
-
-  tokenhub-frontend:
-    container_name: tokenhub-frontend
-    build:
-      context: ../frontend
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
-        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-TokenHub}
-    restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
-      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-TokenHub}
-    ports:
-      - "${TOKENHUB_FRONTEND_PORT:-3000}:3000"
-    depends_on:
-      tokenhub-backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      test:
+        - CMD
+        - node
+        - -e
+        - Promise.all([fetch('http://127.0.0.1:8080/healthz'),fetch('http://127.0.0.1:3000')]).then(rs=>process.exit(rs.every(r=>r.ok)?0:1)).catch(()=>process.exit(1))
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
+    stop_grace_period: ${TOKENHUB_STOP_GRACE_PERIOD:-180s}
     networks:
       - tokenhub
 
 volumes:
   tokenhub-data:
     name: tokenhub-data
+  tokenhub-releases:
+    name: tokenhub-releases
 
 networks:
   tokenhub:

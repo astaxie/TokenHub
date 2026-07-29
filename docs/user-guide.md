@@ -8,7 +8,7 @@ This guide is for employees and application developers who call approved large l
 
 | Item | Purpose |
 | --- | --- |
-| Base URL | OpenAI-compatible endpoint root, for example `http://localhost:8080/v1` |
+| Base URL | OpenAI-compatible root `http://localhost:8080/v1`; Claude Code host `http://localhost:8080` |
 | Project API Key | Sent as `Authorization: Bearer YOUR_TOKENHUB_API_KEY` |
 | Model ID | Returned by `GET /v1/models` and used as the `model` field |
 | Request ID | Used in Request Logs when troubleshooting failures |
@@ -17,10 +17,10 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 
 ## Call Sequence
 
-1. Open **Key Management** and choose the project that should own usage and cost.
-2. Create or copy a project API key. New keys are shown only once.
+1. Open **Key Management** and create or copy an API key. New keys are shown only once.
+2. TokenHub automatically attributes a personal key to an assigned project, or to the platform default project when none is assigned.
 3. Call `GET /v1/models` to see the model list available to that key.
-4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/responses`, or `POST /v1/embeddings`.
+4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, or `POST /v1/embeddings`.
 5. Review **Usage Analytics** and **Request Logs** for requests, tokens, cost, and errors.
 
 ## List Models
@@ -42,8 +42,12 @@ Typical model fields:
 | `input_token_price_per_m` | JieKou-compatible integer input price per million tokens |
 | `output_token_price_per_m` | JieKou-compatible integer output price per million tokens |
 | `title` | Model title |
+| `display_name` | Anthropic-compatible display name |
 | `description` | Model description |
 | `context_size` | Maximum context window |
+| `created_at` | Anthropic-compatible RFC 3339 creation timestamp |
+| `max_input_tokens` | Anthropic-compatible maximum input context |
+| `max_tokens` | Configured maximum output tokens, or `0` when unspecified |
 
 ## Retrieve Model
 
@@ -82,9 +86,110 @@ Common request fields:
 | `messages` | Yes | `system`, `user`, and `assistant` message list |
 | `max_tokens` | No | Maximum generated tokens |
 | `temperature` | No | Sampling temperature |
+| `reasoning_effort` | No | Reasoning effort for models and routes that support it |
 | `stream` | No | `true` returns Server-Sent Events |
 | `tools` | No | Function tools when supported by the upstream model |
 | `response_format` | No | JSON object or JSON schema when supported |
+
+### Reasoning effort
+
+Chat Completions accepts the OpenAI-compatible `reasoning_effort` field:
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "messages": [{"role": "user", "content": "Analyze the trade-offs."}],
+  "reasoning_effort": "high"
+}
+```
+
+Responses accepts the nested OpenAI-compatible form:
+
+```json
+{
+  "model": "REASONING_MODEL_ID",
+  "input": "Analyze the trade-offs.",
+  "reasoning": {"effort": "high"}
+}
+```
+
+TokenHub treats reasoning effort as a best-effort hint and does not change route ordering. OpenAI-compatible providers receive the value unchanged. Native Anthropic routes convert supported values to `output_config.effort`. Native Gemini routes convert supported values according to the model-specific `thinkingLevel` matrix for Gemini 3 and later models or the documented `thinkingBudget` for Gemini 2.5 models. Unsupported or blank values are omitted so the upstream model default remains in effect. If an upstream provider returns a `400` or `422` parameter error that explicitly identifies the effort field, TokenHub retries the same route once without that field before applying the existing failover behavior. Each physical retry counts toward Provider Resource RPM and appears as a route attempt.
+
+Responses reasoning effort is supported on OpenAI-compatible, Anthropic, and Gemini routes. Azure OpenAI Responses and streaming Responses are not implemented; those requests return `501 provider_capability_not_supported`.
+
+## Tool calling and multimodal content on Anthropic and Gemini routes
+
+Chat Completions requests routed to a native Anthropic or Gemini provider translate the whole request and response, not only plain text.
+
+| Capability | Anthropic | Gemini |
+| --- | --- | --- |
+| `tools` and `tool_choice` | Supported | Supported |
+| Assistant `tool_calls` and `role: "tool"` results | Supported | Supported |
+| `parallel_tool_calls: false` | Supported | `501 provider_capability_not_supported` |
+| Image content parts | `http(s)` URLs and base64 data URIs | Base64 data URIs only |
+| Streaming | Incremental relay | Incremental relay |
+
+Streaming forwards upstream events as they arrive, so time to first token reflects the provider rather than the full response. Content types these routes cannot represent, such as audio parts, return `400 unsupported_content_block` instead of being dropped from the request.
+
+### Reasoning continuation
+
+Anthropic and Gemini require the opaque signature attached to a reasoning step to be echoed back verbatim on the next turn of a multi-step tool exchange. The OpenAI Chat Completions schema has no field for it, so TokenHub returns the data in extension fields:
+
+| Field | Provider data |
+| --- | --- |
+| `message.reasoning_content` | Anthropic `thinking` text, Gemini thought parts |
+| `message.reasoning_signature` | Anthropic `thinking.signature` |
+| `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
+| `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
+
+Echo these fields on the assistant message of the following request to preserve reasoning continuity. Clients that ignore them still work: TokenHub omits the reasoning block rather than replaying a signature the provider would reject. Signatures are tagged with the provider that issued them and are never replayed to a different provider.
+
+## Anthropic Messages and Claude Code
+
+TokenHub exposes `POST /v1/messages` and `POST /v1/messages/count_tokens` for Claude Code and Anthropic-compatible clients. Use a project key as a bearer token:
+
+```bash
+curl --request POST \
+  --url "http://localhost:8080/v1/messages" \
+  --header "Authorization: Bearer YOUR_TOKENHUB_API_KEY" \
+  --header "anthropic-version: 2023-06-01" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "model": "CLAUDE_COMPATIBLE_MODEL_ID",
+    "max_tokens": 2048,
+    "messages": [
+      {"role": "user", "content": "Understand this repository and summarize its architecture."}
+    ]
+  }'
+```
+
+Native Anthropic routes preserve Anthropic content blocks and beta headers. OpenAI-compatible routes translate text, images, client tools, tool results, parallel tool calls, and streaming events. Anthropic server tools that cannot be represented by an OpenAI-compatible provider return `400 unsupported_tool`.
+
+Claude Code requests that enable `mid-conversation-system-2026-04-07` may include `system` entries inside `messages`. TokenHub preserves those entries on native Anthropic routes and translates them into ordered system messages on OpenAI-compatible routes. Without that beta, `messages` continues to accept only `user` and `assistant` roles.
+
+Configure local Claude Code with the TokenHub host URL, without the `/v1` suffix:
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:8080"
+export ANTHROPIC_AUTH_TOKEN="YOUR_TOKENHUB_API_KEY"
+export ANTHROPIC_MODEL="CLAUDE_COMPATIBLE_MODEL_ID"
+
+claude
+```
+
+`ANTHROPIC_AUTH_TOKEN` sends the TokenHub key in `Authorization: Bearer`. `ANTHROPIC_API_KEY` also works through `x-api-key` when no Authorization header is present. Token counting verifies key and model access but does not create a billed inference record.
+
+## Codex subscription image generation
+
+`POST /v1/images/generations` accepts the OpenAI-compatible `model`, `prompt`, `quality`, `size`, `n`, and `response_format` fields. Use the public virtual model `model: "codex-gpt-image-2"` and `n: 1`. `gpt-image-2` is a separate standard API model and is never routed through Codex subscriptions. Add `Prefer: respond-async` to receive an image job, then poll `GET /v1/image-jobs/{id}`.
+
+`POST /v1/images/edits` accepts multipart reference images in `image` or `image[]`. `gpt-image-2` forwards one `mask` to the OpenAI API; mask edits are not available through Codex subscription accounts. TokenHub sends image requests directly to the Codex subscription Images endpoint without installing or starting Codex CLI, keeps prompts encrypted in the database, retains input and output images on the server, and returns signed download URLs valid for 24 hours. The files remain stored after a URL expires; polling the job creates a new URL. The selected Codex account must have image-generation entitlement.
+
+Image jobs have a five-minute default execution timeout controlled by `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS`.
+
+TokenHub records image-generation capability from real account results. Accounts confirmed as supported are preferred, accounts returning `403` are temporarily skipped, and accounts that have not been checked remain eligible for first-use detection. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), an unsupported account becomes discoverable and routable again so the next real request can retry it. TokenHub does not generate a background image merely to probe recovery.
+
+`codex-gpt-image-2` appears in `GET /v1/models` when a healthy connected Codex account is confirmed as supported or has reached its low-frequency retry window. It is a subscription-backed virtual model and does not require a conventional Provider model route. The separate `gpt-image-2` catalog model uses an OpenAI API provider and never consumes Codex subscription quota.
 
 ## SDK Setup
 

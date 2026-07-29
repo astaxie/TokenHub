@@ -1,0 +1,170 @@
+name: Container images
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Publish edge or a manual-* tag from the selected Git ref
+        required: true
+        default: edge
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-images-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare image publication
+    runs-on: ubuntu-latest
+    outputs:
+      build_version: ${{ steps.tags.outputs.build_version }}
+      final_tags: ${{ steps.tags.outputs.final_tags }}
+      staging_tag: ${{ steps.tags.outputs.staging_tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate tags
+        id: tags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_TAG: ${{ inputs.tag }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          staging_tag="staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA::12}"
+          build_version=""
+          final_tags=()
+
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            version="$(.github/release/normalize-release-tag.sh "$RELEASE_TAG")"
+            stable_version="${version%%-*}"
+            IFS=. read -r major minor _patch <<<"$stable_version"
+            build_version="$version"
+            final_tags+=("$version")
+            if [[ "$RELEASE_PRERELEASE" != "true" && "$version" != *-* ]]; then
+              final_tags+=("${major}.${minor}" "latest")
+            fi
+          else
+            if [[ "$MANUAL_TAG" != "edge" && ! "$MANUAL_TAG" =~ ^manual-[A-Za-z0-9_][A-Za-z0-9_.-]{0,120}$ ]]; then
+              echo "Manual image tag must be edge or start with manual-" >&2
+              exit 1
+            fi
+            build_version="$MANUAL_TAG"
+            final_tags+=("$MANUAL_TAG")
+          fi
+
+          echo "build_version=$build_version" >>"$GITHUB_OUTPUT"
+          echo "staging_tag=$staging_tag" >>"$GITHUB_OUTPUT"
+          {
+            echo "final_tags<<EOF"
+            printf '%s\n' "${final_tags[@]}"
+            echo "EOF"
+          } >>"$GITHUB_OUTPUT"
+
+  build:
+    name: Build managed TokenHub image
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/tokenhub-backend
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.staging_tag }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: |
+            ${{ steps.metadata.outputs.labels }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.build_version }}
+          build-args: |
+            TOKENHUB_VERSION=${{ needs.prepare.outputs.build_version }}
+            TOKENHUB_BUILD_TYPE=release
+          cache-from: type=gha,scope=managed-tokenhub
+          cache-to: type=gha,mode=max,scope=managed-tokenhub,ignore-error=true
+
+      - name: Attest image provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/tokenhub-backend
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  promote:
+    name: Publish image tags
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and publish tags
+        env:
+          FINAL_TAGS: ${{ needs.prepare.outputs.final_tags }}
+          IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+          STAGING_TAG: ${{ needs.prepare.outputs.staging_tag }}
+        run: |
+          set -euo pipefail
+
+          image="tokenhub-backend"
+          docker buildx imagetools inspect "$IMAGE_PREFIX/$image:$STAGING_TAG" >/dev/null
+
+          while IFS= read -r final_tag; do
+            [[ -n "$final_tag" ]] || continue
+            docker buildx imagetools create \
+              --tag "$IMAGE_PREFIX/$image:$final_tag" \
+              "$IMAGE_PREFIX/$image:$STAGING_TAG"
+          done <<<"$FINAL_TAGS"

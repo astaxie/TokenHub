@@ -17,6 +17,7 @@ type modelCatalogSeed struct {
 	Modality               string            `yaml:"modality"`
 	ContextWindow          int64             `yaml:"context_window"`
 	InputPriceUSDPer1M     float64           `yaml:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M float64           `yaml:"cache_read_price_usd_per_1m"`
 	OutputPriceUSDPer1M    float64           `yaml:"output_price_usd_per_1m"`
 	EmbeddingPriceUSDPer1M float64           `yaml:"embedding_price_usd_per_1m"`
 	InputModalities        []string          `yaml:"input_modalities"`
@@ -90,11 +91,12 @@ func buildCatalogModel(seed modelCatalogSeed) Model {
 		contextWindow = inferCatalogContextWindow(name, modality)
 	}
 	inputPrice := seed.InputPriceUSDPer1M
-	if inputPrice == 0 {
+	subscriptionBilled := strings.EqualFold(strings.TrimSpace(seed.Metadata["billing_mode"]), "subscription")
+	if inputPrice == 0 && !subscriptionBilled {
 		inputPrice = catalogInputPrice(name, modality)
 	}
 	outputPrice := seed.OutputPriceUSDPer1M
-	if outputPrice == 0 {
+	if outputPrice == 0 && !subscriptionBilled {
 		outputPrice = catalogOutputPrice(name, modality)
 	}
 	metadata := map[string]string{}
@@ -124,6 +126,7 @@ func buildCatalogModel(seed modelCatalogSeed) Model {
 		Capabilities:           capabilities,
 		SupportedParameters:    supportedParameters,
 		InputPriceUSDPer1M:     inputPrice,
+		CacheReadPriceUSDPer1M: seed.CacheReadPriceUSDPer1M,
 		OutputPriceUSDPer1M:    outputPrice,
 		EmbeddingPriceUSDPer1M: seed.EmbeddingPriceUSDPer1M,
 		Status:                 StatusActive,

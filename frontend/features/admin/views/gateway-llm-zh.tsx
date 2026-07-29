@@ -1,6 +1,17 @@
 import { type AppRole } from "../core/types";
 import { formatNumber } from "../domain/formatting";
-import { gatewayEmbeddingsCurl, gatewayListModelsCurl, gatewayOpenAISDKExample, gatewayPythonSDKExample, gatewayResponsesCurl, gatewayRetrieveModelCurl, gatewayStreamingCurl } from "./gateway-llm-en";
+import {
+  gatewayAnthropicCountTokensCurl,
+  gatewayAnthropicMessagesCurl,
+  gatewayClaudeCodeExample,
+  gatewayEmbeddingsCurl,
+  gatewayListModelsCurl,
+  gatewayOpenAISDKExample,
+  gatewayPythonSDKExample,
+  gatewayResponsesCurl,
+  gatewayRetrieveModelCurl,
+  gatewayStreamingCurl,
+} from "./gateway-llm-en";
 import { type GatewayDocBundle, type GatewayDocStats } from "./gateway-view";
 
 export function gatewayChineseLLMUsageDocs(stats: GatewayDocStats, role: AppRole): GatewayDocBundle {
@@ -165,6 +176,7 @@ export function gatewayChineseLLMUsageDocs(stats: GatewayDocStats, role: AppRole
                 ["messages", "array", "是", "由 system、user、assistant 组成的消息数组。"],
                 ["max_tokens", "integer", "否", "最大生成 token 数。"],
                 ["temperature", "number", "否", "采样温度。"],
+                ["reasoning_effort", "string", "否", "推理强度；当前路由不支持时省略。"],
                 ["stream", "boolean", "否", "true 时返回 SSE 流，结束标记为 data: [DONE]。"],
                 ["tools", "array", "否", "兼容上游模型的函数工具。"],
                 ["response_format", "object", "否", "上游支持时可指定 JSON object 或 JSON schema。"],
@@ -199,11 +211,54 @@ export function gatewayChineseLLMUsageDocs(stats: GatewayDocStats, role: AppRole
               rows: [
                 ["model", "string", "是", "可调用模型 ID。"],
                 ["input", "string | array", "是", "输入文本或结构化输入内容。"],
-                ["stream", "boolean", "否", "是否流式返回。"],
+                ["reasoning.effort", "string", "否", "嵌套推理强度；支持 OpenAI 兼容、Anthropic 和 Gemini 路由。"],
+                ["stream", "boolean", "否", "暂不支持；true 时返回 501。"],
               ],
             },
             examplesTitle: "示例",
             examples: [{ title: "cURL", code: gatewayResponsesCurl(stats) }],
+          },
+          {
+            id: "anthropic-messages",
+            group: "大模型 API",
+            method: "POST",
+            path: "/v1/messages",
+            title: "创建 Anthropic Messages 请求",
+            description: "供 Claude Code 或 Anthropic 兼容客户端调用，支持文本、图片、客户端工具、工具结果和流式响应。",
+            params: {
+              title: "请求体",
+              columns: ["字段", "类型", "必填", "说明"],
+              rows: [
+                ["model", "string", "是", "可调用的 TokenHub 模型 ID。"],
+                ["max_tokens", "integer", "是", "最大生成 Token 数。"],
+                ["messages", "array", "是", "由 user、assistant 和结构化内容块组成的 Anthropic 消息。"],
+                ["system", "string | array", "否", "顶层 Anthropic system prompt。"],
+                ["tools", "array", "否", "使用 input_schema 定义的客户端工具。"],
+                ["tool_choice", "object", "否", "控制自动、强制、指定或停用工具调用。"],
+                ["stream", "boolean", "否", "true 时返回 Anthropic 命名 SSE 事件。"],
+              ],
+            },
+            notesTitle: "路由行为",
+            notes: [
+              "原生 Anthropic 路由保留内容块和 beta Header。",
+              "OpenAI 兼容路由转换客户端工具、工具结果、图片和流式事件。",
+              "OpenAI 兼容路由遇到不支持的 Anthropic 服务端工具时返回明确的 400 响应。",
+            ],
+            examplesTitle: "示例",
+            examples: [
+              { title: "Messages API", code: gatewayAnthropicMessagesCurl(stats) },
+              { title: "Claude Code", code: gatewayClaudeCodeExample(stats) },
+            ],
+          },
+          {
+            id: "anthropic-count-tokens",
+            group: "大模型 API",
+            method: "POST",
+            path: "/v1/messages/count_tokens",
+            title: "估算 Anthropic Messages Token",
+            description: "完成 Key 认证和模型权限检查后返回确定性的输入 Token 估算值，不计为模型推理请求。",
+            examplesTitle: "示例",
+            examples: [{ title: "cURL", code: gatewayAnthropicCountTokensCurl(stats) }],
           },
           {
             id: "embeddings-api",
@@ -257,12 +312,13 @@ export function gatewayChineseLLMUsageDocs(stats: GatewayDocStats, role: AppRole
             id: "sdk-examples",
             group: teamLeader ? "团队接入" : "项目 Key",
             badge: "SDK",
-            title: "OpenAI 兼容 SDK",
-            description: "把任意 OpenAI 兼容 SDK 指向 TokenHub Base URL，并使用 TokenHub 项目 API Key。",
-            examplesTitle: "SDK 示例",
+            title: "SDK 与 Claude Code",
+            description: "OpenAI 兼容 SDK 使用 TokenHub Base URL；Claude Code 使用 TokenHub Host URL。",
+            examplesTitle: "客户端示例",
             examples: [
               { title: "Node.js", code: gatewayOpenAISDKExample(stats) },
               { title: "Python", code: gatewayPythonSDKExample(stats) },
+              { title: "Claude Code", code: gatewayClaudeCodeExample(stats) },
             ],
           },
           {

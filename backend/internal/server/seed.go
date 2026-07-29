@@ -20,7 +20,11 @@ func RunStartupBootstrap(ctx context.Context, store *GormStore, config Config) e
 		seed = SeedDemoDataWithConfig
 	}
 	return store.RunClusterOperation(ctx, operation, func(leaseCtx context.Context) error {
-		return seed(store.WithContext(leaseCtx), config)
+		contextual := store.WithContext(leaseCtx)
+		if err := contextual.NormalizeProviderAdapterTypes(leaseCtx); err != nil {
+			return err
+		}
+		return seed(contextual, config)
 	})
 }
 
@@ -155,6 +159,9 @@ func BootstrapBaseDataWithConfig(store Store, config Config) error {
 	}
 	seedDefaultOrgResources(store)
 	seedDefaultProject(store)
+	if err := seedBuiltinProviderCatalog(store); err != nil {
+		return err
+	}
 	pruneProviderImportedModelCatalog(store)
 	if err := seedDefaultModelCatalog(store, config.ModelCatalogFile); err != nil {
 		return err
@@ -735,7 +742,7 @@ func seedMockUsage(store Store) {
 		modelName := "gpt-4.1-mini"
 		call, err := store.StartCall(context.Background(), project, key, modelName)
 		if err != nil {
-			store.RecordRejectedRequest(project, key, modelName, http.StatusTooManyRequests, "quota_exceeded", mockIP(i), "mock-seed/1.0")
+			store.RecordRejectedRequest(project, key, modelName, false, http.StatusTooManyRequests, "quota_exceeded", mockIP(i), "mock-seed/1.0")
 			continue
 		}
 		route, err := store.SelectRoute(modelName)
@@ -760,7 +767,7 @@ func seedMockUsage(store Store) {
 		if err != nil {
 			continue
 		}
-		store.RecordRejectedRequest(project, key, fmt.Sprintf("blocked-model-%02d", i), http.StatusForbidden, "model_not_allowed", mockIP(300+i), "mock-seed/1.0")
+		store.RecordRejectedRequest(project, key, fmt.Sprintf("blocked-model-%02d", i), false, http.StatusForbidden, "model_not_allowed", mockIP(300+i), "mock-seed/1.0")
 	}
 }
 

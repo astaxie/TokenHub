@@ -182,6 +182,18 @@
     max-height: 260px;
   }
 
+  .provider-quick-catalog-list {
+    max-height: 260px;
+  }
+
+  .provider-quick-required-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-quick-model-tools {
+    grid-template-columns: 1fr;
+  }
+
   .provider-model-head {
     align-items: stretch;
     flex-direction: column;
@@ -276,6 +288,12 @@
     align-items: start;
   }
 
+  .route-provider-row.route-policy-row {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: 26px 44px minmax(0, 1fr) auto;
+  }
+
   .route-provider-main,
   .route-upstream-model {
     grid-column: 3 / -1;
@@ -286,9 +304,30 @@
     justify-self: start;
   }
 
-  .route-row-actions {
+  .route-policy-row .route-policy-parameters,
+  .route-policy-row .route-policy-order-value {
+    grid-column: 3 / -1;
+    justify-self: stretch;
+  }
+
+  .route-policy-row .route-policy-parameters {
+    min-width: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .route-policy-row .route-policy-order-value {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .route-policy-row > .pill {
+    grid-row: 4;
+  }
+
+  .route-policy-row .route-row-actions {
     grid-column: 4 / 5;
-    grid-row: 3;
+    grid-row: 4;
     align-self: center;
   }
 
@@ -349,6 +388,28 @@
     padding: 12px;
   }
 
+  .model-route-policy-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .route-policy-save {
+    width: fit-content;
+  }
+
+  .route-strategy-guide-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .route-strategy-guide-grid > div + div {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .route-strategy-guide-head {
+    align-items: flex-start;
+  }
+
   .model-card-pricing {
     gap: 9px;
   }
@@ -362,6 +423,10 @@
   }
 
   .wizard-panel {
+    min-height: 0;
+  }
+
+  .identity-provider-wizard-body {
     min-height: 0;
   }
 

@@ -70,11 +70,9 @@ export async function createKeyWithCapture(
   setError("");
   setNotice("");
   try {
-    if (!values.project_id) {
-      throw new Error("请选择项目空间后再发放 API Key");
-    }
     const payload = keyCreatePayload(values);
-    const resp = await adminFetch(ctx, `/api/admin/projects/${values.project_id}/keys`, {
+    const endpoint = values.project_id ? `/api/admin/projects/${values.project_id}/keys` : "/api/admin/api-keys";
+    const resp = await adminFetch(ctx, endpoint, {
       method: "POST",
       body: JSON.stringify(payload),
     });

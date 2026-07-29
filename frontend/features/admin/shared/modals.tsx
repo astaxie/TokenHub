@@ -1,7 +1,7 @@
-import { Boxes, Check, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
+import { BookOpen, Boxes, Check, ExternalLink, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 import { type Dispatch, type FormEvent, type SetStateAction, useMemo, useState } from "react";
 import { type AdminResource, type AdminUser, type AppData, type FieldConfig, type ModalState } from "../core/types";
-import { findProject, projectOwnerLabel, projectSelectOptions, projectTeamLabel } from "../domain/entities";
+import { findProject, ownerUserLabel, projectOwnerLabel, projectSelectOptions, projectTeamLabel } from "../domain/entities";
 import { keyWizardModelOptions, modelAvailabilitySummary } from "../domain/formatting";
 import { identityProviderDefaultGrantLabel, identityProviderIconLabel, identityProviderTypeLabel, splitList } from "../domain/labels";
 import { tx } from "../i18n/runtime";
@@ -30,12 +30,47 @@ export function IdentityProviderEditModal({
   onClose: () => void;
   onSave: (values: Record<string, string>) => void;
 }) {
+  const creating = !state.item;
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [templateConfirmed, setTemplateConfirmed] = useState(!creating);
   const templateKey = inferIdentityProviderTemplateKey(values);
   const template = identityProviderTemplateByKey(templateKey);
+  const platformClientSecretRequired = template.key === "dingtalk" || template.key === "feishu" || template.key === "wecom";
+  const clientIDLabel = template.key === "dingtalk" ? "App Key" : template.key === "feishu" ? "App ID" : template.key === "wecom" ? "Corp ID" : "Client ID";
+  const clientSecretLabel = template.key === "wecom" ? "Corp Secret" : template.key === "dingtalk" || template.key === "feishu" ? "App Secret" : "Client Secret";
+  const requiredFields = template.key === "dingtalk"
+    ? "App Key、App Secret"
+    : template.key === "feishu"
+      ? "App ID、App Secret"
+      : template.key === "wecom"
+        ? "Corp ID、Corp Secret、Agent ID"
+        : "Client ID、授权端点、Token 端点、用户信息端点";
+  const connectionComplete = Boolean(
+    values.name?.trim() &&
+    values.provider_type?.trim() &&
+    values.client_id?.trim() &&
+    (!platformClientSecretRequired || values.client_secret?.trim()) &&
+    (template.key !== "wecom" || values.agent_id?.trim()),
+  );
+  const endpointsComplete = Boolean(values.authorize_url?.trim() && values.token_url?.trim() && values.userinfo_url?.trim());
+  const canFinish = connectionComplete && endpointsComplete;
+  const advancedRequired = !endpointsComplete;
+  const wizardSteps = [
+    { title: "选择身份源", icon: Boxes },
+    { title: "连接方式", icon: KeyRound },
+    { title: "登录入口", icon: ShieldCheck },
+    { title: advancedRequired ? "高级设置（必填）" : "高级设置（可选）", icon: Sparkles },
+  ];
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (creating && wizardStep === 0 && !templateConfirmed) return;
+    if (creating && wizardStep < 2) {
+      setWizardStep((current) => current + 1);
+      return;
+    }
+    if (creating && !canFinish) return;
     onSave(values);
   }
 
@@ -64,6 +99,153 @@ export function IdentityProviderEditModal({
     );
   }
 
+  function renderTemplateSection() {
+    return (
+      <section className="identity-provider-template-panel">
+        <div className="identity-provider-section-head">
+          <h3>{tx("选择身份源模板")}</h3>
+          <span>{tx("选择后会自动填充协议、登录图标、Scope、Claim 和常见端点。")}</span>
+        </div>
+        <div className="identity-template-grid">
+          {identityProviderTemplates.map((item) => {
+            const iconConfig = loginIdentityProviderIconConfig(item.iconKey);
+            const Icon = iconConfig.icon;
+            return (
+              <button
+                className={template.key === item.key && (!creating || templateConfirmed) ? "identity-template-card active" : "identity-template-card"}
+                key={item.key}
+                onClick={() => {
+                  setTemplateConfirmed(true);
+                  update("provider_template", item.key);
+                }}
+                type="button"
+              >
+                <span className={`login-sso-icon ${iconConfig.key}`}><Icon size={16} /></span>
+                <strong>{tx(item.label)}</strong>
+                <em>{identityProviderTypeLabel(item.providerType)}</em>
+                <small>{tx(identityProviderTemplateHelp(item))}</small>
+              </button>
+            );
+          })}
+        </div>
+        <div className="identity-template-summary">
+          <DetailField label="登录按钮" value={values.login_label || template.loginLabel || template.label} />
+          <DetailField label="默认 Scope" value={values.scopes || template.scopes} />
+          <DetailField label="必填项" value={tx(requiredFields)} />
+        </div>
+      </section>
+    );
+  }
+
+  function renderConnectionSection() {
+    return (
+      <section className="identity-provider-section">
+        <div className="identity-provider-section-head">
+          <h3>{tx("连接方式")}</h3>
+          <span>{tx(template.label)}</span>
+        </div>
+        <div className="identity-provider-doc-help">
+          <span>
+            <BookOpen size={16} />
+            <span>{tx(template.configurationHelp || "不知道在哪里获取这些信息？请在身份源平台创建应用并复制对应凭据。")}</span>
+          </span>
+          <a href={template.configurationGuideURL} target="_blank" rel="noreferrer">
+            <span>{tx(template.configurationGuideLabel || "查看官方配置文档")}</span>
+            <ExternalLink size={14} />
+          </a>
+        </div>
+        <div className="identity-provider-grid">
+          {renderField("name")}
+          {renderField("provider_type")}
+          {renderField("status")}
+          {renderField("issuer_url", { placeholder: template.issuerPlaceholder })}
+          {renderField("client_id", { label: clientIDLabel })}
+          {renderField("client_secret", {
+            label: clientSecretLabel,
+            required: creating && platformClientSecretRequired,
+            placeholder: state.item ? "留空则不修改" : "",
+            help: state.item ? "留空则不修改已保存密钥。" : "来自身份源应用的密钥。",
+          })}
+          {renderField("agent_id")}
+          {renderField("redirect_uri")}
+        </div>
+      </section>
+    );
+  }
+
+  function renderLoginSections() {
+    return (
+      <>
+        <section className="identity-provider-section">
+          <div className="identity-provider-section-head">
+            <h3>{tx("登录入口")}</h3>
+            <span>{identityProviderIconLabel(values.icon_key)} / {values.login_label || values.name || tx("SSO")}</span>
+          </div>
+          <div className="identity-provider-grid compact">
+            {renderField("icon_key")}
+            {renderField("login_label")}
+          </div>
+        </section>
+
+        <section className="identity-provider-section">
+          <div className="identity-provider-section-head">
+            <h3>{tx("首次登录授权")}</h3>
+            <span>{identityProviderDefaultGrantLabel(data, { ...state.item, fields: values } as AdminResource)}</span>
+          </div>
+          <div className="identity-provider-grid">
+            {renderField("default_role")}
+            {renderField("default_team_id")}
+            {renderField("default_project_id")}
+            {renderField("default_project_role")}
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function renderAdvancedFields() {
+    return (
+      <div className="identity-provider-grid">
+        {renderField("authorize_url", { required: creating })}
+        {renderField("token_url", { required: creating })}
+        {renderField("userinfo_url", { required: creating })}
+        {renderField("userdetail_url")}
+        {renderField("scopes")}
+        {renderField("username_claim")}
+        {renderField("email_claim")}
+        {renderField("team_claim")}
+        {renderField("subject_claim")}
+      </div>
+    );
+  }
+
+  function renderAdvancedSection(expanded: boolean) {
+    if (expanded) {
+      return (
+        <section className="identity-provider-section">
+          <div className="identity-provider-section-head">
+            <h3>{tx(advancedRequired ? "高级设置（必填）" : "高级设置（可选）")}</h3>
+            <span>{tx("端点、Scope 与 Claim 映射")}</span>
+          </div>
+          {renderAdvancedFields()}
+        </section>
+      );
+    }
+    return (
+      <details
+        className="identity-provider-advanced"
+        open={advancedOpen}
+        onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+      >
+        <summary>
+          <strong>{tx("高级配置")}</strong>
+          <span>{tx("端点、Scope 与 Claim 映射")}</span>
+        </summary>
+        {renderAdvancedFields()}
+      </details>
+    );
+  }
+
   return (
     <div className="modal-backdrop" role="presentation">
       <form className="modal identity-provider-modal" onSubmit={submit}>
@@ -72,108 +254,74 @@ export function IdentityProviderEditModal({
             <p className="eyebrow">{state.item ? tx("编辑") : tx("新增")}</p>
             <h2>{tx("身份源")}</h2>
           </div>
-          <button className="icon-button" onClick={onClose} type="button" title={tx("关闭")}>×</button>
+          <button className="icon-button" disabled={loading} onClick={onClose} type="button" title={tx("关闭")}>×</button>
         </div>
 
-        <div className="identity-provider-body">
-          <section className="identity-provider-template-panel">
-            <div className="identity-provider-section-head">
-              <h3>{tx("选择身份源模板")}</h3>
-              <span>{tx("选择后会自动填充协议、登录图标、Scope、Claim 和常见端点。")}</span>
-            </div>
-            <div className="identity-template-grid">
-              {identityProviderTemplates.map((item) => {
-                const iconConfig = loginIdentityProviderIconConfig(item.iconKey);
-                const Icon = iconConfig.icon;
-                return (
-                  <button
-                    className={template.key === item.key ? "identity-template-card active" : "identity-template-card"}
-                    key={item.key}
-                    onClick={() => update("provider_template", item.key)}
-                    type="button"
-                  >
-                    <span className={`login-sso-icon ${iconConfig.key}`}><Icon size={16} /></span>
-                    <strong>{tx(item.label)}</strong>
-                    <em>{identityProviderTypeLabel(item.providerType)}</em>
-                    <small>{tx(identityProviderTemplateHelp(item))}</small>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="identity-template-summary">
-              <DetailField label="登录按钮" value={values.login_label || template.loginLabel || template.label} />
-              <DetailField label="默认 Scope" value={values.scopes || template.scopes} />
-              <DetailField label="必填项" value={tx("Issuer、Client ID、Client Secret、Callback URL")} />
-            </div>
-          </section>
+        {creating ? (
+          <div className="wizard-stepper identity-provider-wizard-stepper" aria-label={tx("身份源配置步骤")}>
+            {wizardSteps.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  aria-current={wizardStep === index ? "step" : undefined}
+                  className={wizardStep === index ? "wizard-step active" : index < wizardStep ? "wizard-step done" : "wizard-step"}
+                  disabled={index > wizardStep || loading}
+                  key={item.title}
+                  onClick={() => setWizardStep(index)}
+                  type="button"
+                >
+                  <span>{index < wizardStep ? <Check size={14} /> : <Icon size={14} />}</span>
+                  <strong>{tx(item.title)}</strong>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
-          <section className="identity-provider-section">
-            <div className="identity-provider-section-head">
-              <h3>{tx("连接方式")}</h3>
-              <span>{tx(template.label)}</span>
-            </div>
-            <div className="identity-provider-grid">
-              {renderField("name")}
-              {renderField("provider_type")}
-              {renderField("status")}
-              {renderField("issuer_url", { placeholder: template.issuerPlaceholder })}
-              {renderField("client_id")}
-              {renderField("client_secret", {
-                placeholder: state.item ? "留空则不修改" : "",
-                help: state.item ? "留空则不修改已保存密钥。" : "来自身份源应用的密钥。",
-              })}
-              {renderField("redirect_uri")}
-            </div>
-          </section>
+        <div className={creating ? "identity-provider-body identity-provider-wizard-body" : "identity-provider-body"}>
+          {creating ? (
+            <>
+              {wizardStep === 0 ? renderTemplateSection() : null}
+              {wizardStep === 1 ? renderConnectionSection() : null}
+              {wizardStep === 2 ? renderLoginSections() : null}
+              {wizardStep === 3 ? renderAdvancedSection(true) : null}
+            </>
+          ) : (
+            <>
+              {renderTemplateSection()}
+              {renderConnectionSection()}
+              {renderLoginSections()}
+              {renderAdvancedSection(false)}
+            </>
+          )}
+        </div>
 
-          <section className="identity-provider-section">
-            <div className="identity-provider-section-head">
-              <h3>{tx("登录入口")}</h3>
-              <span>{identityProviderIconLabel(values.icon_key)} / {values.login_label || values.name || tx("SSO")}</span>
-            </div>
-            <div className="identity-provider-grid compact">
-              {renderField("icon_key")}
-              {renderField("login_label")}
-            </div>
-          </section>
-
-          <section className="identity-provider-section">
-            <div className="identity-provider-section-head">
-              <h3>{tx("首次登录授权")}</h3>
-              <span>{identityProviderDefaultGrantLabel(data, { ...state.item, fields: values } as AdminResource)}</span>
-            </div>
-            <div className="identity-provider-grid">
-              {renderField("default_role")}
-              {renderField("default_team_id")}
-              {renderField("default_project_id")}
-              {renderField("default_project_role")}
-            </div>
-          </section>
-
-          <details
-            className="identity-provider-advanced"
-            open={advancedOpen}
-            onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+        <div className="modal-actions identity-provider-wizard-actions">
+          <button className="secondary-button" disabled={loading} onClick={onClose} type="button">{tx("取消")}</button>
+          {creating && wizardStep > 0 ? (
+            <button className="secondary-button" disabled={loading} onClick={() => setWizardStep((current) => Math.max(current - 1, 0))} type="button">
+              {tx("上一步")}
+            </button>
+          ) : null}
+          {creating && wizardStep === 2 ? (
+            <button className="secondary-button" disabled={loading} onClick={() => setWizardStep(3)} type="button">
+              {tx(advancedRequired ? "高级设置（必填）" : "高级设置（可选）")}
+            </button>
+          ) : null}
+          <button
+            className="button"
+            disabled={loading || (creating && wizardStep === 0 && !templateConfirmed) || (creating && wizardStep >= 2 && !canFinish)}
+            title={creating && wizardStep >= 2 && !canFinish ? tx("请先完成连接信息和高级设置中的必填端点") : undefined}
+            type="submit"
           >
-            <summary>
-              <strong>{tx("高级配置")}</strong>
-              <span>{tx("端点、Scope 与 Claim 映射")}</span>
-            </summary>
-            <div className="identity-provider-grid">
-              {renderField("authorize_url")}
-              {renderField("token_url")}
-              {renderField("userinfo_url")}
-              {renderField("scopes")}
-              {renderField("username_claim")}
-              {renderField("email_claim")}
-              {renderField("team_claim")}
-            </div>
-          </details>
-        </div>
-
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onClose} type="button">{tx("取消")}</button>
-          <button className="button" disabled={loading} type="submit">{tx("保存")}</button>
+            {loading
+              ? tx("保存中")
+              : creating && wizardStep < 2
+                ? tx("下一步")
+                : creating && wizardStep === 2
+                  ? tx("跳过并完成")
+                  : tx("保存")}
+          </button>
         </div>
       </form>
     </div>
@@ -247,7 +395,7 @@ export function APIKeyWizardModal({
   }
 
   function canContinue(targetStep = step) {
-    if (targetStep === 0) return Boolean(values.project_id);
+    if (targetStep === 0) return Boolean(values.project_id && values.owner_user_id);
     if (targetStep === 1) return Boolean(values.name?.trim());
     if (targetStep === 2) return modelScope === "all" || selectedModels.length > 0;
     return true;
@@ -330,6 +478,9 @@ export function APIKeyWizardModal({
                   })}
                 </div>
               )}
+              <div className="wizard-form-grid">
+                {renderField("owner_user_id")}
+              </div>
             </section>
           ) : null}
 
@@ -413,6 +564,7 @@ export function APIKeyWizardModal({
               </div>
               <div className="wizard-review-grid">
                 <ReviewItem label="归属项目" value={selectedProject?.name || values.project_id || "-"} />
+                <ReviewItem label="归属用户" value={ownerUserLabel(data, values.owner_user_id)} />
                 <ReviewItem label="用途/环境" value={values.group || "default"} />
                 <ReviewItem label="Key 名称" value={values.name || "-"} />
                 <ReviewItem label="模型范围" value={modelScope === "all" ? tx("全部可路由模型") : selectedModels.join(", ") || "-"} />

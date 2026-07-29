@@ -301,11 +301,12 @@ export function RequestDetailPanel({
   const usageTotals = detail.usage.reduce(
     (sum, item) => ({
       input_tokens: sum.input_tokens + (item.input_tokens || 0),
+      cached_input_tokens: sum.cached_input_tokens + (item.cached_input_tokens || 0),
       output_tokens: sum.output_tokens + (item.output_tokens || 0),
       total_tokens: sum.total_tokens + (item.total_tokens || 0),
       estimated_cost_usd: sum.estimated_cost_usd + (item.estimated_cost_usd || 0),
     }),
-    { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 },
+    { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 },
   );
   const isError = log.status_code >= 400;
 
@@ -358,6 +359,7 @@ export function RequestDetailPanel({
         </div>
         <div className="request-usage-strip">
           <UsageStat label="输入" value={compactNumber(usageTotals.input_tokens)} />
+          <UsageStat label="缓存读" value={compactNumber(usageTotals.cached_input_tokens)} />
           <UsageStat label="输出" value={compactNumber(usageTotals.output_tokens)} />
           <UsageStat label="总量" value={compactNumber(usageTotals.total_tokens)} />
           <UsageStat label="估算成本" value={`$${formatMoney(usageTotals.estimated_cost_usd)}`} />

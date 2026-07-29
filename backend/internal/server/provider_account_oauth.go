@@ -23,6 +23,7 @@ const (
 	openAIAccountOAuthClientID     = "app_EMoamEEZ73f0CkXaXp7hrann"
 	openAIAccountOAuthAuthorize    = "https://auth.openai.com/oauth/authorize"
 	openAIAccountOAuthTokenURL     = "https://auth.openai.com/oauth/token"
+	openAIAccountOAuthRedirectURI  = "http://localhost:1455/auth/callback"
 	openAIAccountOAuthScopes       = "openid profile email offline_access"
 	openAIAccountOAuthRefreshScope = "openid profile email"
 	openAIAccountOAuthSessionTTL   = 30 * time.Minute
@@ -201,7 +202,7 @@ func (s *Server) handleAdminOpenAIAccountOAuthGenerateAuthURL(w http.ResponseWri
 	}
 	redirectURI := strings.TrimSpace(req.RedirectURI)
 	if redirectURI == "" {
-		redirectURI = providerAccountOAuthCallbackURL(r)
+		redirectURI = openAIAccountOAuthRedirectURI
 	}
 	if err := validateAbsoluteHTTPURL(redirectURI, "invalid_redirect_uri", "OAuth callback URL must be an absolute http or https URL"); err != nil {
 		writeError(w, r, err)
@@ -357,6 +358,7 @@ func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelecti
 	if route.Provider.Options == nil {
 		route.Provider.Options = map[string]string{}
 	}
+	route.Provider.Options["resource_id"] = routeResourceID(route)
 	applyOpenAIAccountOptions(route.Provider.Options, creds)
 	return route, nil
 }
@@ -512,21 +514,6 @@ func providerAccountCredentialSummary(creds ProviderResourceCredentials) map[str
 		delete(options, key)
 	}
 	return options
-}
-
-func providerAccountOAuthCallbackURL(r *http.Request) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if forwarded := firstForwardedValue(r.Header.Get("x-forwarded-proto")); forwarded != "" {
-		scheme = forwarded
-	}
-	host := r.Host
-	if forwarded := firstForwardedValue(r.Header.Get("x-forwarded-host")); forwarded != "" {
-		host = forwarded
-	}
-	return fmt.Sprintf("%s://%s/api/admin/provider-account-oauth/openai/oauth/callback", scheme, host)
 }
 
 func providerAccountOAuthRedirectWithError(returnURL string, code string) string {

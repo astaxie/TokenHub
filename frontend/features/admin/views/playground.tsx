@@ -35,6 +35,7 @@ export function PlaygroundPanel({
   const [responseFormat, setResponseFormat] = useState("text");
   const [maxTokens, setMaxTokens] = useState("4096");
   const [temperature, setTemperature] = useState("0.7");
+  const [reasoningEffort, setReasoningEffort] = useState("");
   const [presencePenalty, setPresencePenalty] = useState("0.0");
   const [frequencyPenalty, setFrequencyPenalty] = useState("0.0");
   const [minP, setMinP] = useState("0.00");
@@ -50,6 +51,10 @@ export function PlaygroundPanel({
   const maxTokenLimit = Math.max(4096, Math.min(contextWindow || 32768, 200000));
   const inputPrice = selectedModel?.input_price_usd_per_1m ?? 0;
   const outputPrice = selectedModel?.output_price_usd_per_1m ?? 0;
+  const supportsReasoningEffort = Boolean(
+    selectedModel?.capabilities?.includes("reasoning")
+    || selectedModel?.supported_parameters?.some((parameter) => parameter === "reasoning" || parameter === "reasoning_effort"),
+  );
 
   useEffect(() => {
     if (!modelName && models[0]?.name) {
@@ -96,6 +101,7 @@ export function PlaygroundPanel({
           messages: messagesForRequest,
           max_tokens: Number.isFinite(numericMaxTokens) && numericMaxTokens > 0 ? Math.round(numericMaxTokens) : undefined,
           temperature: Number.isFinite(numericTemperature) ? numericTemperature : undefined,
+          reasoning_effort: supportsReasoningEffort && reasoningEffort ? reasoningEffort : undefined,
         }),
       });
       if (!resp.ok) {
@@ -151,6 +157,17 @@ export function PlaygroundPanel({
               <option value="text">text</option>
             </select>
           </label>
+          {supportsReasoningEffort ? (
+            <label className="playground-field">
+              <span>{tx("推理强度")}</span>
+              <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)}>
+                <option value="">{tx("模型默认")}</option>
+                {["none", "minimal", "low", "medium", "high", "xhigh", "max"].map((effort) => (
+                  <option key={effort} value={effort}>{effort}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="playground-field">
             <span>{tx("系统提示")}</span>
             <textarea value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} />
@@ -265,6 +282,7 @@ export function PlaygroundPanel({
             {lastResult?.usage ? (
               <div className="playground-foot">
                 <span>Prompt {formatNumber(lastResult.usage.prompt_tokens ?? 0)}</span>
+                <span>Cached {formatNumber(lastResult.usage.cached_input_tokens ?? 0)}</span>
                 <span>Completion {formatNumber(lastResult.usage.completion_tokens ?? 0)}</span>
                 <span>Total {formatNumber(lastResult.usage.total_tokens ?? 0)}</span>
                 {lastResult.request_id ? <span>{lastResult.request_id}</span> : null}

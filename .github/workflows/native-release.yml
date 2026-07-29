@@ -1,0 +1,304 @@
+name: Native release assets
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed semantic GitHub Release tag to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-release-${{ github.repository }}-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 22.23.1
+
+jobs:
+  prepare:
+    name: Prepare native release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate release tag
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          raw_tag="$INPUT_TAG"
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            raw_tag="$RELEASE_TAG"
+          fi
+
+          version="$(.github/release/normalize-release-tag.sh "$raw_tag")"
+          echo "tag=v${version}" >>"$GITHUB_OUTPUT"
+          echo "version=${version}" >>"$GITHUB_OUTPUT"
+
+  frontend:
+    name: Build native frontend (linux/${{ matrix.arch }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out release
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
+
+      - name: Build standalone frontend
+        working-directory: frontend
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
+          server_paths=()
+          while IFS= read -r candidate; do
+            candidate_root="$(dirname "$candidate")"
+            if [[ -d "$candidate_root/.next" && -f "$candidate_root/package.json" ]]; then
+              server_paths+=("$candidate")
+            fi
+          done < <(find .next/standalone -type f -name server.js -print)
+          if [[ "${#server_paths[@]}" -ne 1 ]]; then
+            printf 'expected exactly one standalone server root, found %s\n' "${#server_paths[@]}" >&2
+            for candidate in "${server_paths[@]}"; do
+              printf 'candidate: %s\n' "$candidate" >&2
+            done
+            exit 1
+          fi
+          server_path="${server_paths[0]}"
+          standalone_root="$(dirname "$server_path")"
+          bundle="../native-frontend-${ARCH}"
+          mkdir -p "$bundle/frontend/.next"
+          cp -a "$standalone_root/." "$bundle/frontend/"
+          cp -a .next/static "$bundle/frontend/.next/static"
+          cp -a public "$bundle/frontend/public"
+          test -f "$bundle/frontend/server.js"
+
+          sharp_binary="$(find "$bundle" -type f -path '*/@img/sharp-linux-*/lib/*.node' -print -quit)"
+          test -n "$sharp_binary"
+          if [[ "$ARCH" == "arm64" ]]; then
+            file "$sharp_binary" | grep -Eq 'ARM aarch64|aarch64'
+          else
+            file "$sharp_binary" | grep -Eq 'x86-64|x86_64'
+          fi
+          tar -C "$bundle" -czf "../native-frontend-${ARCH}.tar.gz" frontend
+
+      - name: Upload frontend bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tokenhub-native-frontend-${{ matrix.arch }}
+          path: native-frontend-${{ matrix.arch }}.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
+  backend:
+    name: Build native backend (linux/${{ matrix.arch }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out release
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Build static backend
+        env:
+          ARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "native-backend-${ARCH}"
+          docker buildx build \
+            --platform "linux/${ARCH}" \
+            --file backend/Dockerfile.native \
+            --target artifact \
+            --build-arg "TOKENHUB_VERSION=${VERSION}" \
+            --output "type=local,dest=native-backend-${ARCH}" \
+            .
+          test -x "native-backend-${ARCH}/tokenhub"
+          file "native-backend-${ARCH}/tokenhub" | grep -q "statically linked"
+
+      - name: Upload backend binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tokenhub-native-backend-${{ matrix.arch }}
+          path: native-backend-${{ matrix.arch }}/tokenhub
+          if-no-files-found: error
+
+  package:
+    name: Package native release (linux/${{ matrix.arch }})
+    needs:
+      - prepare
+      - frontend
+      - backend
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    steps:
+      - name: Check out release
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Download frontend bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: tokenhub-native-frontend-${{ matrix.arch }}
+          path: downloads/frontend
+
+      - name: Download backend binary
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: tokenhub-native-backend-${{ matrix.arch }}
+          path: downloads/backend
+
+      - name: Download and verify Node.js runtime
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          node_arch="$ARCH"
+          if [[ "$ARCH" == "amd64" ]]; then
+            node_arch="x64"
+          fi
+          node_asset="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"
+          node_base="https://nodejs.org/dist/v${NODE_VERSION}"
+          curl -fsSLO "${node_base}/${node_asset}"
+          curl -fsSLO "${node_base}/SHASUMS256.txt"
+          grep "  ${node_asset}$" SHASUMS256.txt >node-checksum.txt
+          sha256sum -c node-checksum.txt
+          tar -xJf "$node_asset"
+          mkdir -p downloads/node
+          cp "node-v${NODE_VERSION}-linux-${node_arch}/bin/node" downloads/node/node
+
+      - name: Assemble native archive
+        env:
+          ARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          stage="stage-${ARCH}"
+          archive="tokenhub_${VERSION}_linux_${ARCH}.tar.gz"
+          mkdir -p "$stage/bin" "$stage/catalog" "$stage/deploy"
+          tar -xzf "downloads/frontend/native-frontend-${ARCH}.tar.gz" -C "$stage"
+          cp downloads/backend/tokenhub "$stage/bin/tokenhub"
+          cp downloads/node/node "$stage/bin/node"
+          cp deploy/native/tokenhub-run "$stage/bin/tokenhub-run"
+          cp deploy/native/tokenhub.service "$stage/deploy/tokenhub.service"
+          cp data/model-catalog.yaml "$stage/catalog/model-catalog.yaml"
+          cp data/provider-catalog.json "$stage/catalog/provider-catalog.json"
+          cp LICENSE README.md "$stage/"
+          printf '%s\n' "$VERSION" >"$stage/VERSION"
+          chmod 0755 "$stage/bin/tokenhub" "$stage/bin/node" "$stage/bin/tokenhub-run"
+          for required in \
+            bin/tokenhub \
+            bin/node \
+            bin/tokenhub-run \
+            frontend/server.js \
+            catalog/model-catalog.yaml \
+            catalog/provider-catalog.json \
+            deploy/tokenhub.service \
+            VERSION; do
+            test -f "$stage/$required"
+          done
+          link_path="$(find "$stage" -type l -print -quit)"
+          test -z "$link_path"
+
+          source_date_epoch="$(git log -1 --format=%ct)"
+          tar \
+            --sort=name \
+            --mtime="@${source_date_epoch}" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C "$stage" \
+            -czf "$archive" \
+            .
+          tar -tzf "$archive" >/dev/null
+
+      - name: Upload native archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tokenhub-native-archive-${{ matrix.arch }}
+          path: tokenhub_${{ needs.prepare.outputs.version }}_linux_${{ matrix.arch }}.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
+  publish:
+    name: Publish native release assets
+    needs:
+      - prepare
+      - package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download native archives
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: tokenhub-native-archive-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum tokenhub_*.tar.gz >checksums.txt
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          gh release upload "$RELEASE_TAG" \
+            tokenhub_*.tar.gz \
+            checksums.txt \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"

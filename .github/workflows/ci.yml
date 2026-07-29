@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Check formatting
+        working-directory: backend
+        run: |
+          unformatted="$(gofmt -l .)"
+          test -z "$unformatted" || {
+            printf 'Unformatted Go files:\n%s\n' "$unformatted" >&2
+            exit 1
+          }
+
+      - name: Test
+        working-directory: backend
+        run: go test ./...
+
+      - name: Vet
+        working-directory: backend
+        run: go vet ./...
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  deployment:
+    name: Deployment
+    runs-on: ubuntu-latest
+    env:
+      TOKENHUB_ADMIN_TOKEN: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD: strong-admin-password
+      TOKENHUB_DATABASE_URL: postgresql://tokenhub:test@db.example:5432/tokenhub?sslmode=require
+      TOKENHUB_PUBLIC_BASE_URL: https://tokenhub.example.com
+      TOKENHUB_SECRET_KEY: ssssssssssssssssssssssssssssssss
+      TOKENHUB_TRUSTED_PROXY_CIDRS: 127.0.0.1/32
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Check shell syntax
+        run: |
+          bash -n \
+            .github/release/normalize-release-tag.sh \
+            .github/release/normalize-release-tag_test.sh \
+            deploy/install.sh \
+            deploy/install_test.sh \
+            deploy/native/install.sh \
+            deploy/native/install_test.sh \
+            deploy/native/tokenhub-run
+          sh -n \
+            deploy/container/tokenhub-build-id \
+            deploy/container/tokenhub-entrypoint
+
+      - name: Test deployment scripts
+        run: |
+          .github/release/normalize-release-tag_test.sh
+          deploy/install_test.sh
+          TOKENHUB_NATIVE_INTEGRATION=1 deploy/native/install_test.sh
+          deploy/container/tokenhub-entrypoint_test.sh
+
+      - name: Render Compose configurations
+        run: |
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config >/dev/null
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.postgres.yml config >/dev/null
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config >/dev/null
+          docker compose --env-file deploy/.env.example \
+            -f deploy/docker-compose.yml \
+            -f deploy/docker-compose.model-catalog.yml \
+            config >/dev/null

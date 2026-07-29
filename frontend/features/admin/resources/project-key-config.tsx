@@ -1,5 +1,9 @@
+import { ChevronDown, Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { type AdminResource, type APIKey, type AppData, type FieldConfig, type Project, type ResourceAction, type ResourceConfig } from "../core/types";
-import { costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
+import { apiKeyOwnerSelectOptions, apiKeyOwnerUserID, costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
+import { apiGatewayBaseURL } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, keyPatchPayload, projectQuotaSummary, updateAPIKeyStatus } from "./payloads";
 import { StatusPill } from "../shared/ui";
@@ -142,7 +146,8 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     columns: [
       { key: "name", label: "名称" },
       { key: "project_id", label: "归属项目", render: (item, ctx) => projectName(ctx, item.project_id) },
-      { key: "project_owner", label: "负责人", render: (item, ctx) => projectOwnerLabel(ctx, item.project_id) },
+      { key: "owner_user_id", label: "归属用户", render: (item, ctx) => ownerUserLabel(ctx, apiKeyOwnerUserID(ctx, item)) },
+      { key: "project_owner", label: "项目负责人", render: (item, ctx) => projectOwnerLabel(ctx, item.project_id) },
       { key: "project_team", label: "团队", render: (item, ctx) => projectTeamLabel(ctx, item.project_id) },
       { key: "key_prefix", label: "Key", render: (item) => `${item.key_prefix}...${item.key_suffix}` },
       { key: "allowed_models", label: "模型", render: (item) => (item.allowed_models ?? []).join(", ") || tx("全部") },
@@ -159,6 +164,14 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
         optionsFromData: projectSelectOptions,
         help: "只显示当前账号拥有发 Key 权限的项目；一个人可以被分配到多个项目。",
         readOnlyOnEdit: true,
+      },
+      {
+        key: "owner_user_id",
+        label: "归属用户",
+        type: "select",
+        required: true,
+        optionsFromData: apiKeyOwnerSelectOptions,
+        help: "Key 的用量会计入该用户；平台管理员发放时请明确选择实际使用人。",
       },
       { key: "name", label: "Key 名称", required: true },
       { key: "group", label: "用途/环境", placeholder: "prod、dev、backend-service" },
@@ -195,6 +208,7 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     ],
     toForm: (item) => ({
       project_id: item.project_id,
+      owner_user_id: item.owner_user_id || item.metadata?.created_by || "",
       name: item.name,
       group: item.group ?? "default",
       allowed_models: (item.allowed_models ?? []).join(", "),
@@ -241,6 +255,152 @@ export function APIKeyStatusSwitch({
       <strong>{enabled ? tx("启用") : tx("停用")}</strong>
     </button>
   );
+}
+
+export function APIKeyDownloadMenu({ item, data, baseURL }: { item: APIKey; data: AppData; baseURL: string }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const optionsRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeMenu = () => setOpen(false);
+    const close = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !optionsRef.current?.contains(target)) closeMenu();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, [open]);
+
+  function toggleMenu() {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const menuHeight = 112;
+      const openBelow = window.innerHeight - rect.bottom >= menuHeight + 12;
+      setPosition({
+        left: Math.max(8, rect.right - 248),
+        top: openBelow ? rect.bottom + 6 : Math.max(8, rect.top - menuHeight - 6),
+      });
+    }
+    setOpen((current) => !current);
+  }
+
+  function downloadConfig() {
+    downloadTextTemplate(
+      codexConfigTemplate(item, data, baseURL),
+      `${templateFilename(item.name)}-codex-config.toml`,
+      "text/plain;charset=utf-8",
+    );
+    setOpen(false);
+  }
+
+  function downloadEnvironment() {
+    downloadTextTemplate(
+      tokenHubEnvironmentTemplate(item),
+      `${templateFilename(item.name)}.env`,
+      "text/plain;charset=utf-8",
+    );
+    setOpen(false);
+  }
+
+  return (
+    <div className="api-key-download-menu" ref={menuRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="text-button api-key-download-trigger"
+        onClick={toggleMenu}
+        ref={triggerRef}
+        title={tx("下载 Key 配置模板")}
+        type="button"
+      >
+        <Download size={13} />
+        <span>{tx("下载")}</span>
+        <ChevronDown size={12} />
+      </button>
+      {open ? createPortal(
+        <div className="api-key-download-options" ref={optionsRef} role="menu" style={position}>
+          <button onClick={downloadConfig} role="menuitem" type="button">
+            <strong>{tx("Codex CLI 配置")}</strong>
+            <span>config.toml · {tx("连接 TokenHub Responses")}</span>
+          </button>
+          <button onClick={downloadEnvironment} role="menuitem" type="button">
+            <strong>{tx("环境变量模板")}</strong>
+            <span>.env · {tx("替换 Key 占位符")}</span>
+          </button>
+        </div>,
+        document.body,
+      ) : null}
+    </div>
+  );
+}
+
+export function codexConfigTemplate(item: APIKey, data: AppData, apiBaseURL: string) {
+  const model = codexTemplateModel(item, data);
+  const baseURL = apiGatewayBaseURL(apiBaseURL);
+  return `# TokenHub Codex CLI configuration for ${item.name}
+# Set the API key before starting Codex:
+# export TOKENHUB_API_KEY="REPLACE_WITH_YOUR_TOKENHUB_API_KEY"
+
+model = "${escapeTomlString(model)}"
+model_provider = "tokenhub"
+model_reasoning_effort = "medium"
+
+[model_providers.tokenhub]
+name = "TokenHub - ${escapeTomlString(item.name)}"
+base_url = "${escapeTomlString(baseURL)}"
+wire_api = "responses"
+env_key = "TOKENHUB_API_KEY"
+env_key_instructions = "Set TOKENHUB_API_KEY to REPLACE_WITH_YOUR_TOKENHUB_API_KEY"
+`;
+}
+
+export function tokenHubEnvironmentTemplate(item: APIKey) {
+  return `# TokenHub API Key for ${item.name}
+TOKENHUB_API_KEY=REPLACE_WITH_YOUR_TOKENHUB_API_KEY
+`;
+}
+
+function codexTemplateModel(item: APIKey, data: AppData) {
+  const activeModels = new Set(data.models.filter((model) => model.status === "active").map((model) => model.name));
+  const routedModels = data.routes
+    .filter((route) => route.status === "active" && activeModels.has(route.model_name))
+    .map((route) => route.model_name);
+  const allowedModels = (item.allowed_models ?? []).filter(Boolean);
+  const candidates = allowedModels.length > 0 ? allowedModels.filter((model) => routedModels.includes(model)) : routedModels;
+  return candidates[0] ?? allowedModels[0] ?? "REPLACE_WITH_MODEL_ID_FROM_V1_MODELS";
+}
+
+function escapeTomlString(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
+}
+
+function templateFilename(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "tokenhub-key";
+}
+
+function downloadTextTemplate(content: string, filename: string, type: string) {
+  const url = window.URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
 }
 
 export function apiKeyStatusAction(status: "active" | "disabled"): ResourceAction<APIKey> {

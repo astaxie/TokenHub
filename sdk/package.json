@@ -1,10 +1,11 @@
 {
   "name": "tokenhub-sdk-smoke-tests",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
+    "test:anthropic-messages": "node ./test-anthropic-messages.mjs",
     "test:deepseek": "node ./test-deepseek.mjs",
     "test:security-policy": "node ./test-security-policy.mjs"
   },

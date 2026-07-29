@@ -10,6 +10,7 @@ import { gatewayJapaneseDocs } from "./gateway-docs-ja";
 import { apiMethodClass, GatewayCodeBlock, GatewayCopyCard, gatewayLanguageLabel } from "./gateway-docs-ui";
 import { gatewayChineseDocs } from "./gateway-docs-zh";
 import { gatewayLLMUsageDocs } from "./gateway-llm-en";
+import { QuickAccessView } from "./quick-access";
 
 export function GatewayView({
   api,
@@ -17,19 +18,55 @@ export function GatewayView({
   user,
   language,
   onLanguageChange,
+  loading,
+  onQuickCreateKey,
+  onManageKeys,
 }: {
   api: ApiContext;
   data: AppData;
   user: AdminUser;
   language: AppLanguage;
   onLanguageChange: (language: AppLanguage) => void;
+  loading: boolean;
+  onQuickCreateKey: (values: Record<string, string>, onCreated: () => void) => void;
+  onManageKeys: () => void;
+}) {
+  const role = appRole(user.role);
+  if (role === "user" || role === "team_leader") {
+    return (
+      <QuickAccessView
+        api={api}
+        data={data}
+        user={user}
+        loading={loading}
+        onCreateKey={onQuickCreateKey}
+        onManageKeys={onManageKeys}
+      />
+    );
+  }
+
+  return <GatewayDocsView api={api} data={data} language={language} onLanguageChange={onLanguageChange} role={role} />;
+}
+
+function GatewayDocsView({
+  api,
+  data,
+  language,
+  onLanguageChange,
+  role,
+}: {
+  api: ApiContext;
+  data: AppData;
+  language: AppLanguage;
+  onLanguageChange: (language: AppLanguage) => void;
+  role: AppRole;
 }) {
   const baseURL = apiGatewayBaseURL(api.baseURL);
   const activeRoutes = data.routes.filter((route) => route.status === "active").length;
   const callableModels = playgroundModels(data);
   const sampleModel = callableModels.find((model) => activeRouteCount(model.name, data) > 0)?.name ?? callableModels[0]?.name ?? "gpt-4.1-mini";
   const keyHint = data.keys[0] ? `${data.keys[0].key_prefix}...${data.keys[0].key_suffix}` : "YOUR_TOKENHUB_API_KEY";
-  const docBundle = gatewayDocBundle({ language, baseURL, keyHint, sampleModel, activeRoutes, data, callableModels, role: appRole(user.role) });
+  const docBundle = gatewayDocBundle({ language, baseURL, keyHint, sampleModel, activeRoutes, data, callableModels, role });
   const [activeDocID, setActiveDocID] = useState(docBundle.defaultDocID ?? "quickstart");
   const allDocs = docBundle.groups.flatMap((group) => group.items);
   const activeDoc = allDocs.find((item) => item.id === activeDocID) ?? allDocs[0]!;

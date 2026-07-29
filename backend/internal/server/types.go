@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -19,13 +21,19 @@ const (
 	StatusRevoked  = "revoked"
 
 	RouteStrategyBalanced         = "balanced"
+	RouteStrategyAdaptive         = "adaptive"
 	RouteStrategyCost             = "cost"
 	RouteStrategyQuality          = "quality"
 	RouteStrategyPriorityWeighted = "priority_weighted"
 	RouteStrategyPriorityOnly     = "priority_only"
 
+	RouteProjectScopeAll     = "all"
+	RouteProjectScopeInclude = "include"
+	RouteProjectScopeExclude = "exclude"
+
 	ProviderMock             = "mock"
 	ProviderOpenAI           = "openai"
+	ProviderOpenAICodex      = "openai_codex"
 	ProviderOpenAICompatible = "openai_compatible"
 	ProviderAzureOpenAI      = "azure_openai"
 	ProviderAnthropic        = "anthropic"
@@ -54,9 +62,10 @@ var (
 )
 
 type HTTPError struct {
-	Status  int
-	Code    string
-	Message string
+	Status         int
+	Code           string
+	Message        string
+	UpstreamStatus int `json:"-"`
 }
 
 func (e *HTTPError) Error() string {
@@ -93,6 +102,7 @@ type Project struct {
 type APIKey struct {
 	ID                   string            `json:"id" gorm:"primaryKey"`
 	ProjectID            string            `json:"project_id" gorm:"index"`
+	OwnerUserID          string            `json:"owner_user_id,omitempty" gorm:"index"`
 	TenantExternalID     string            `json:"tenant_id,omitempty" gorm:"index:idx_api_key_gateway_scope,priority:1"`
 	ProjectExternalID    string            `json:"external_project_id,omitempty" gorm:"index:idx_api_key_gateway_scope,priority:2"`
 	PrincipalType        string            `json:"principal_type,omitempty" gorm:"index"`
@@ -146,6 +156,7 @@ type Model struct {
 	Modality               string            `json:"modality"`
 	ContextWindow          int64             `json:"context_window"`
 	InputPriceUSDPer1M     float64           `json:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M float64           `json:"cache_read_price_usd_per_1m"`
 	OutputPriceUSDPer1M    float64           `json:"output_price_usd_per_1m"`
 	EmbeddingPriceUSDPer1M float64           `json:"embedding_price_usd_per_1m"`
 	InputModalities        []string          `json:"input_modalities,omitempty" gorm:"serializer:json"`
@@ -158,23 +169,68 @@ type Model struct {
 }
 
 type ProviderCatalogModel struct {
-	ID                  string            `json:"id"`
-	Name                string            `json:"name"`
-	DisplayName         string            `json:"display_name,omitempty"`
-	CanonicalName       string            `json:"canonical_name,omitempty"`
-	Category            string            `json:"category,omitempty"`
-	Family              string            `json:"family,omitempty"`
-	Type                string            `json:"type,omitempty"`
-	ContextWindow       int64             `json:"context_window,omitempty"`
-	MaxOutputTokens     int64             `json:"max_output_tokens,omitempty"`
-	InputPriceUSDPer1M  float64           `json:"input_price_usd_per_1m,omitempty"`
-	OutputPriceUSDPer1M float64           `json:"output_price_usd_per_1m,omitempty"`
-	InputModalities     []string          `json:"input_modalities,omitempty"`
-	OutputModalities    []string          `json:"output_modalities,omitempty"`
-	Capabilities        []string          `json:"capabilities,omitempty"`
-	SupportedParameters []string          `json:"supported_parameters,omitempty"`
-	LastUpdated         string            `json:"last_updated,omitempty"`
-	Metadata            map[string]string `json:"metadata,omitempty"`
+	ID                     string            `json:"id"`
+	Name                   string            `json:"name"`
+	DisplayName            string            `json:"display_name,omitempty"`
+	CanonicalName          string            `json:"canonical_name,omitempty"`
+	Category               string            `json:"category,omitempty"`
+	Family                 string            `json:"family,omitempty"`
+	Type                   string            `json:"type,omitempty"`
+	ContextWindow          int64             `json:"context_window,omitempty"`
+	MaxOutputTokens        int64             `json:"max_output_tokens,omitempty"`
+	InputPriceUSDPer1M     float64           `json:"input_price_usd_per_1m,omitempty"`
+	CacheReadPriceUSDPer1M float64           `json:"cache_read_price_usd_per_1m,omitempty"`
+	OutputPriceUSDPer1M    float64           `json:"output_price_usd_per_1m,omitempty"`
+	InputModalities        []string          `json:"input_modalities,omitempty"`
+	OutputModalities       []string          `json:"output_modalities,omitempty"`
+	Capabilities           []string          `json:"capabilities,omitempty"`
+	SupportedParameters    []string          `json:"supported_parameters,omitempty"`
+	LastUpdated            string            `json:"last_updated,omitempty"`
+	Metadata               map[string]string `json:"metadata,omitempty"`
+}
+
+// ProviderModel is an upstream model imported into a concrete Provider. It is
+// inventory, not a public API model: publication happens only through a
+// ModelRoute that connects a Model to this provider/upstream-model pair.
+type ProviderModel struct {
+	ID                     string            `json:"id" gorm:"primaryKey"`
+	ProviderID             string            `json:"provider_id" gorm:"uniqueIndex:idx_provider_upstream;index"`
+	UpstreamModel          string            `json:"upstream_model" gorm:"uniqueIndex:idx_provider_upstream"`
+	DisplayName            string            `json:"display_name,omitempty"`
+	CanonicalName          string            `json:"canonical_name,omitempty"`
+	Category               string            `json:"category,omitempty" gorm:"index"`
+	Family                 string            `json:"family,omitempty"`
+	Modality               string            `json:"modality,omitempty"`
+	ContextWindow          int64             `json:"context_window,omitempty"`
+	InputPriceUSDPer1M     float64           `json:"input_price_usd_per_1m,omitempty"`
+	CacheReadPriceUSDPer1M float64           `json:"cache_read_price_usd_per_1m,omitempty"`
+	OutputPriceUSDPer1M    float64           `json:"output_price_usd_per_1m,omitempty"`
+	InputModalities        []string          `json:"input_modalities,omitempty" gorm:"serializer:json"`
+	OutputModalities       []string          `json:"output_modalities,omitempty" gorm:"serializer:json"`
+	Capabilities           []string          `json:"capabilities,omitempty" gorm:"serializer:json"`
+	SupportedParameters    []string          `json:"supported_parameters,omitempty" gorm:"serializer:json"`
+	Metadata               map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
+	Source                 string            `json:"source,omitempty" gorm:"index"`
+	Status                 string            `json:"status" gorm:"index"`
+	LastSeenAt             *time.Time        `json:"last_seen_at,omitempty"`
+	CreatedAt              time.Time         `json:"created_at"`
+	UpdatedAt              time.Time         `json:"updated_at"`
+}
+
+type ProviderModelImportRequest struct {
+	ProviderID    string                 `json:"provider_id"`
+	Models        []ProviderCatalogModel `json:"models"`
+	Publish       bool                   `json:"publish"`
+	ExternalNames map[string]string      `json:"external_names,omitempty"`
+}
+
+type ProviderModelImportResult struct {
+	ImportedModels int             `json:"imported_models"`
+	CreatedModels  int             `json:"created_models"`
+	CreatedRoutes  int             `json:"created_routes"`
+	ProviderModels []ProviderModel `json:"provider_models"`
+	ModelNames     []string        `json:"model_names,omitempty"`
+	RouteIDs       []string        `json:"route_ids,omitempty"`
 }
 
 type ProviderCatalogEntry struct {
@@ -188,32 +244,36 @@ type ProviderCatalogEntry struct {
 	CategoryCounts map[string]int         `json:"category_counts,omitempty"`
 	ModelsCount    int                    `json:"models_count"`
 	Source         string                 `json:"source"`
+	ETag           string                 `json:"etag,omitempty"`
 	Models         []ProviderCatalogModel `json:"models,omitempty"`
 }
 
 type ProviderCreateRequest struct {
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	Type           string            `json:"type"`
-	BaseURL        string            `json:"base_url"`
-	APIKey         string            `json:"api_key"`
-	Status         string            `json:"status"`
-	Healthy        bool              `json:"healthy"`
-	Priority       int               `json:"priority"`
-	Headers        map[string]string `json:"headers"`
-	Options        map[string]string `json:"options"`
-	CatalogID      string            `json:"catalog_id"`
-	ModelCategory  string            `json:"model_category"`
-	CreateRoutes   *bool             `json:"create_routes"`
-	SelectedModels []string          `json:"selected_models"`
+	ID             string                 `json:"id"`
+	ProviderID     string                 `json:"provider_id"`
+	Name           string                 `json:"name"`
+	Type           string                 `json:"type"`
+	BaseURL        string                 `json:"base_url"`
+	APIKey         string                 `json:"api_key"`
+	Status         string                 `json:"status"`
+	Healthy        *bool                  `json:"healthy"`
+	Priority       int                    `json:"priority"`
+	Headers        map[string]string      `json:"headers"`
+	Options        map[string]string      `json:"options"`
+	CatalogID      string                 `json:"catalog_id"`
+	ModelCategory  string                 `json:"model_category"`
+	CreateRoutes   *bool                  `json:"create_routes"`
+	SelectedModels []string               `json:"selected_models"`
+	CustomModels   []ProviderCatalogModel `json:"custom_models"`
 }
 
 type ProviderCreateResult struct {
-	Provider      Provider `json:"provider"`
-	CreatedRoutes int      `json:"created_routes"`
-	ModelNames    []string `json:"model_names,omitempty"`
-	RouteIDs      []string `json:"route_ids,omitempty"`
-	CatalogSource string   `json:"catalog_source,omitempty"`
+	Provider       Provider `json:"provider"`
+	ImportedModels int      `json:"imported_models"`
+	CreatedRoutes  int      `json:"created_routes"`
+	ModelNames     []string `json:"model_names,omitempty"`
+	RouteIDs       []string `json:"route_ids,omitempty"`
+	CatalogSource  string   `json:"catalog_source,omitempty"`
 }
 
 type Provider struct {
@@ -252,6 +312,7 @@ type ProviderResource struct {
 	Credentials       *ProviderResourceCredentials `json:"credentials,omitempty" gorm:"-"`
 	CredentialBlob    string                       `json:"-" gorm:"column:credential_blob"`
 	CredentialSummary map[string]string            `json:"credential_summary,omitempty" gorm:"-"`
+	Observation       *ProviderResourceObservation `json:"observation,omitempty" gorm:"-"`
 	FailureCount      int                          `json:"failure_count"`
 	CooldownUntil     *time.Time                   `json:"cooldown_until,omitempty"`
 	LastUsedAt        *time.Time                   `json:"last_used_at,omitempty"`
@@ -305,15 +366,37 @@ type ModelRoute struct {
 	CostScore          int        `json:"cost_score,omitempty"`
 	Status             string     `json:"status"`
 	Strategy           string     `json:"strategy,omitempty"`
+	ProjectScope       string     `json:"project_scope,omitempty"`
+	ProjectIDs         []string   `json:"project_ids,omitempty" gorm:"serializer:json"`
 	LastUsedAt         *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt          time.Time  `json:"created_at"`
 }
 
+type ModelRoutePolicyRoute struct {
+	RouteID      string `json:"route_id"`
+	Weight       int    `json:"weight"`
+	QualityScore int    `json:"quality_score"`
+	CostScore    int    `json:"cost_score"`
+}
+
+type ModelRoutePolicy struct {
+	Strategy string                  `json:"strategy"`
+	Routes   []ModelRoutePolicyRoute `json:"routes"`
+}
+
 type Usage struct {
-	PromptTokens     int64   `json:"prompt_tokens"`
-	CompletionTokens int64   `json:"completion_tokens"`
-	TotalTokens      int64   `json:"total_tokens"`
-	CostUSD          float64 `json:"estimated_cost_usd,omitempty"`
+	PromptTokens          int64       `json:"prompt_tokens"`
+	CachedInputTokens     int64       `json:"cached_input_tokens,omitempty"`
+	CacheWriteInputTokens int64       `json:"cache_write_input_tokens,omitempty"`
+	CompletionTokens      int64       `json:"completion_tokens"`
+	ReasoningOutputTokens int64       `json:"reasoning_output_tokens,omitempty"`
+	TotalTokens           int64       `json:"total_tokens"`
+	CostUSD               float64     `json:"estimated_cost_usd,omitempty"`
+	UpstreamRequestID     string      `json:"upstream_request_id,omitempty"`
+	ServedModel           string      `json:"served_model,omitempty"`
+	ModelETag             string      `json:"model_etag,omitempty"`
+	Transport             string      `json:"transport,omitempty"`
+	ResponseHeaders       http.Header `json:"-"`
 }
 
 type UsageRecord struct {
@@ -321,11 +404,15 @@ type UsageRecord struct {
 	RequestID          string    `json:"request_id" gorm:"index"`
 	ProjectID          string    `json:"project_id" gorm:"index"`
 	APIKeyID           string    `json:"api_key_id" gorm:"index"`
+	AttributedUserID   string    `json:"attributed_user_id,omitempty" gorm:"index"`
 	ModelName          string    `json:"model" gorm:"index"`
 	ProviderID         string    `json:"provider_id" gorm:"index"`
 	ProviderResourceID string    `json:"provider_resource_id,omitempty" gorm:"index"`
 	InputTokens        int64     `json:"input_tokens"`
+	CachedInputTokens  int64     `json:"cached_input_tokens,omitempty"`
+	CacheWriteTokens   int64     `json:"cache_write_input_tokens,omitempty"`
 	OutputTokens       int64     `json:"output_tokens"`
+	ReasoningTokens    int64     `json:"reasoning_output_tokens,omitempty"`
 	TotalTokens        int64     `json:"total_tokens"`
 	CostUSD            float64   `json:"estimated_cost_usd"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -340,6 +427,10 @@ type RequestLog struct {
 	ProviderID         string    `json:"provider_id,omitempty" gorm:"index"`
 	ProviderResourceID string    `json:"provider_resource_id,omitempty" gorm:"index"`
 	ProviderModel      string    `json:"provider_model,omitempty"`
+	UpstreamRequestID  string    `json:"upstream_request_id,omitempty"`
+	ServedModel        string    `json:"served_model,omitempty"`
+	ModelETag          string    `json:"model_etag,omitempty"`
+	Transport          string    `json:"transport,omitempty"`
 	StatusCode         int       `json:"status_code"`
 	ErrorCode          string    `json:"error_code,omitempty"`
 	LatencyMS          int64     `json:"latency_ms"`
@@ -358,18 +449,61 @@ type RequestPayloadLog struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
+type ImageJob struct {
+	ID                      string     `json:"id" gorm:"primaryKey"`
+	ProjectID               string     `json:"project_id" gorm:"index"`
+	APIKeyID                string     `json:"api_key_id" gorm:"index"`
+	RequestID               string     `json:"request_id,omitempty" gorm:"index"`
+	Status                  string     `json:"status" gorm:"index"`
+	Model                   string     `json:"model"`
+	Action                  string     `json:"action"`
+	PromptCiphertext        string     `json:"-" gorm:"type:text"`
+	Prompt                  string     `json:"prompt,omitempty" gorm:"-"`
+	RevisedPromptCiphertext string     `json:"-" gorm:"type:text"`
+	RevisedPrompt           string     `json:"revised_prompt,omitempty" gorm:"-"`
+	Quality                 string     `json:"quality,omitempty"`
+	Size                    string     `json:"size,omitempty"`
+	ProviderID              string     `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID      string     `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel           string     `json:"provider_model,omitempty"`
+	UpstreamRequestID       string     `json:"upstream_request_id,omitempty"`
+	InputTokens             int64      `json:"input_tokens,omitempty"`
+	CachedInputTokens       int64      `json:"cached_input_tokens,omitempty"`
+	OutputTokens            int64      `json:"output_tokens,omitempty"`
+	TotalTokens             int64      `json:"total_tokens,omitempty"`
+	ErrorCode               string     `json:"error_code,omitempty"`
+	ErrorMessage            string     `json:"error_message,omitempty"`
+	CreatedAt               time.Time  `json:"created_at"`
+	StartedAt               *time.Time `json:"started_at,omitempty"`
+	CompletedAt             *time.Time `json:"completed_at,omitempty"`
+}
+
+type ImageAsset struct {
+	ID           string    `json:"id" gorm:"primaryKey"`
+	JobID        string    `json:"job_id" gorm:"index"`
+	ProjectID    string    `json:"project_id" gorm:"index"`
+	Role         string    `json:"role" gorm:"index"`
+	RelativePath string    `json:"-"`
+	ContentType  string    `json:"content_type"`
+	ByteSize     int64     `json:"bytes"`
+	SHA256       string    `json:"sha256"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type RouteAttemptLog struct {
 	ID                 string    `json:"id" gorm:"primaryKey"`
 	RequestID          string    `json:"request_id" gorm:"index"`
 	AttemptIndex       int       `json:"attempt_index"`
-	RouteID            string    `json:"route_id,omitempty" gorm:"index"`
+	RouteID            string    `json:"route_id,omitempty" gorm:"index;index:idx_route_attempt_adaptive,priority:1"`
 	ProviderID         string    `json:"provider_id,omitempty" gorm:"index"`
 	ProviderResourceID string    `json:"provider_resource_id,omitempty" gorm:"index"`
 	ProviderModel      string    `json:"provider_model,omitempty"`
 	StatusCode         int       `json:"status_code"`
 	ErrorCode          string    `json:"error_code,omitempty"`
 	ErrorMessage       string    `json:"error_message,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
+	Invoked            bool      `json:"invoked" gorm:"index;index:idx_route_attempt_adaptive,priority:2"`
+	LatencyMS          int64     `json:"latency_ms,omitempty"`
+	CreatedAt          time.Time `json:"created_at" gorm:"index:idx_route_attempt_adaptive,priority:3"`
 }
 
 type AlertEvent struct {
@@ -511,17 +645,133 @@ type SQLiteBackupRecord struct {
 }
 
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Role       string `json:"role"`
+	Content    any    `json:"content"`
+	Name       string `json:"name,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	ToolCalls  any    `json:"tool_calls,omitempty"`
+
+	// The OpenAI Chat Completions schema has no field for a provider's chain of
+	// thought, so the fields below are TokenHub extensions. ReasoningContent
+	// follows the convention DeepSeek introduced; the signature fields carry the
+	// opaque continuation blobs Anthropic and Gemini require to be echoed back
+	// verbatim on the next turn of a multi-step tool exchange.
+	//
+	// Signatures are prefixed with the provider that minted them so one
+	// provider's blob is never replayed to another. A missing or foreign
+	// signature degrades to dropping the reasoning block rather than failing the
+	// request.
+	ReasoningContent         string `json:"reasoning_content,omitempty"`
+	ReasoningSignature       string `json:"reasoning_signature,omitempty"`
+	RedactedReasoningContent string `json:"redacted_reasoning_content,omitempty"`
+	raw                      map[string]json.RawMessage
 }
 
+type ReasoningOptions = ResponsesReasoning
+
 type ChatCompletionRequest struct {
-	Model       string         `json:"model"`
-	Messages    []ChatMessage  `json:"messages"`
-	Stream      bool           `json:"stream,omitempty"`
-	MaxTokens   int            `json:"max_tokens,omitempty"`
-	Temperature *float64       `json:"temperature,omitempty"`
-	Metadata    map[string]any `json:"metadata,omitempty"`
+	Model             string         `json:"model"`
+	Messages          []ChatMessage  `json:"messages"`
+	Stream            bool           `json:"stream,omitempty"`
+	StreamOptions     map[string]any `json:"stream_options,omitempty"`
+	MaxTokens         int            `json:"max_tokens,omitempty"`
+	Temperature       *float64       `json:"temperature,omitempty"`
+	TopP              *float64       `json:"top_p,omitempty"`
+	Stop              any            `json:"stop,omitempty"`
+	Tools             any            `json:"tools,omitempty"`
+	ToolChoice        any            `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool          `json:"parallel_tool_calls,omitempty"`
+	ResponseFormat    any            `json:"response_format,omitempty"`
+	ReasoningEffort   *string        `json:"reasoning_effort,omitempty"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
+	// PromptCacheKey and User are hints upstreams use to route requests sharing a
+	// prefix to the same cache shard. The gateway must forward them verbatim, and
+	// they double as session affinity identifier sources.
+	//
+	// Typed as any rather than string: these fields were previously absent from the
+	// struct, so non-string values were silently ignored. Declaring them as string
+	// would make requests like `{"user": 123}` fail with 400 at decode time, and the
+	// gateway must not be stricter than the upstream. Affinity extraction only reads
+	// string values; other types are forwarded for the upstream to judge.
+	PromptCacheKey any `json:"prompt_cache_key,omitempty"`
+	User           any `json:"user,omitempty"`
+	raw            map[string]json.RawMessage
+}
+
+// UnmarshalJSON keeps provider-specific message fields so compatible upstreams
+// can receive opaque continuation data without TokenHub needing to understand it.
+func (m *ChatMessage) UnmarshalJSON(data []byte) error {
+	type messageAlias ChatMessage
+	var decoded messageAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*m = ChatMessage(decoded)
+	m.raw = raw
+	return nil
+}
+
+func (m ChatMessage) MarshalJSON() ([]byte, error) {
+	type messageAlias ChatMessage
+	if m.raw == nil {
+		return json.Marshal(messageAlias(m))
+	}
+	raw := cloneRawJSON(m.raw, 8)
+	setOrDeleteRawJSONField(raw, "role", m.Role, m.Role != "")
+	setOrDeleteRawJSONField(raw, "content", m.Content, m.Content != nil)
+	setOrDeleteRawJSONField(raw, "name", m.Name, m.Name != "")
+	setOrDeleteRawJSONField(raw, "tool_call_id", m.ToolCallID, m.ToolCallID != "")
+	setOrDeleteRawJSONField(raw, "tool_calls", m.ToolCalls, m.ToolCalls != nil)
+	setOrDeleteRawJSONField(raw, "reasoning_content", m.ReasoningContent, m.ReasoningContent != "")
+	setOrDeleteRawJSONField(raw, "reasoning_signature", m.ReasoningSignature, m.ReasoningSignature != "")
+	setOrDeleteRawJSONField(raw, "redacted_reasoning_content", m.RedactedReasoningContent, m.RedactedReasoningContent != "")
+	return json.Marshal(raw)
+}
+
+// UnmarshalJSON keeps top-level provider extensions such as DeepSeek's thinking
+// switch while typed fields remain available to routing and policy code.
+func (r *ChatCompletionRequest) UnmarshalJSON(data []byte) error {
+	type requestAlias ChatCompletionRequest
+	var decoded requestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = ChatCompletionRequest(decoded)
+	r.raw = raw
+	return nil
+}
+
+func (r ChatCompletionRequest) MarshalJSON() ([]byte, error) {
+	type requestAlias ChatCompletionRequest
+	if r.raw == nil {
+		return json.Marshal(requestAlias(r))
+	}
+	raw := cloneRawJSON(r.raw, 16)
+	setOrDeleteRawJSONField(raw, "model", r.Model, r.Model != "")
+	setOrDeleteRawJSONField(raw, "messages", r.Messages, r.Messages != nil)
+	setOrDeleteRawJSONField(raw, "stream", r.Stream, r.Stream)
+	setOrDeleteRawJSONField(raw, "stream_options", r.StreamOptions, r.StreamOptions != nil)
+	setOrDeleteRawJSONField(raw, "max_tokens", r.MaxTokens, r.MaxTokens != 0)
+	setOrDeleteRawJSONField(raw, "temperature", r.Temperature, r.Temperature != nil)
+	setOrDeleteRawJSONField(raw, "top_p", r.TopP, r.TopP != nil)
+	setOrDeleteRawJSONField(raw, "stop", r.Stop, r.Stop != nil)
+	setOrDeleteRawJSONField(raw, "tools", r.Tools, r.Tools != nil)
+	setOrDeleteRawJSONField(raw, "tool_choice", r.ToolChoice, r.ToolChoice != nil)
+	setOrDeleteRawJSONField(raw, "parallel_tool_calls", r.ParallelToolCalls, r.ParallelToolCalls != nil)
+	setOrDeleteRawJSONField(raw, "response_format", r.ResponseFormat, r.ResponseFormat != nil)
+	setOrDeleteRawJSONField(raw, "reasoning_effort", r.ReasoningEffort, r.ReasoningEffort != nil)
+	setOrDeleteRawJSONField(raw, "metadata", r.Metadata, r.Metadata != nil)
+	setOrDeleteRawJSONField(raw, "prompt_cache_key", r.PromptCacheKey, r.PromptCacheKey != nil)
+	setOrDeleteRawJSONField(raw, "user", r.User, r.User != nil)
+	return json.Marshal(raw)
 }
 
 type PlaygroundChatResponse struct {
@@ -533,18 +783,22 @@ type PlaygroundChatResponse struct {
 }
 
 type PlaygroundRouteSummary struct {
-	RouteID          string `json:"route_id,omitempty"`
-	ProviderID       string `json:"provider_id,omitempty"`
-	ProviderName     string `json:"provider_name,omitempty"`
-	ResourceID       string `json:"resource_id,omitempty"`
-	ResourceName     string `json:"resource_name,omitempty"`
-	ProviderModel    string `json:"provider_model,omitempty"`
-	Priority         int    `json:"priority,omitempty"`
-	ResourcePriority int    `json:"resource_priority,omitempty"`
-	Weight           int    `json:"weight,omitempty"`
-	QualityScore     int    `json:"quality_score,omitempty"`
-	CostScore        int    `json:"cost_score,omitempty"`
-	Strategy         string `json:"strategy,omitempty"`
+	RouteID          string  `json:"route_id,omitempty"`
+	ProviderID       string  `json:"provider_id,omitempty"`
+	ProviderName     string  `json:"provider_name,omitempty"`
+	ResourceID       string  `json:"resource_id,omitempty"`
+	ResourceName     string  `json:"resource_name,omitempty"`
+	ProviderModel    string  `json:"provider_model,omitempty"`
+	Priority         int     `json:"priority,omitempty"`
+	ResourcePriority int     `json:"resource_priority,omitempty"`
+	Weight           int     `json:"weight,omitempty"`
+	QualityScore     int     `json:"quality_score,omitempty"`
+	CostScore        int     `json:"cost_score,omitempty"`
+	Strategy         string  `json:"strategy,omitempty"`
+	EffectiveWeight  int     `json:"effective_weight,omitempty"`
+	Samples          int64   `json:"samples,omitempty"`
+	SuccessRate      float64 `json:"success_rate,omitempty"`
+	LatencyMS        int64   `json:"latency_ms,omitempty"`
 }
 
 type PlaygroundRouteAttempt struct {
@@ -555,11 +809,112 @@ type PlaygroundRouteAttempt struct {
 }
 
 type ResponsesRequest struct {
-	Model       string   `json:"model"`
-	Input       any      `json:"input"`
-	Stream      bool     `json:"stream,omitempty"`
-	MaxTokens   int      `json:"max_output_tokens,omitempty"`
-	Temperature *float64 `json:"temperature,omitempty"`
+	Model        string              `json:"model"`
+	Input        any                 `json:"input"`
+	Stream       bool                `json:"stream,omitempty"`
+	MaxTokens    int                 `json:"max_output_tokens,omitempty"`
+	Temperature  *float64            `json:"temperature,omitempty"`
+	Instructions string              `json:"instructions,omitempty"`
+	Store        *bool               `json:"store,omitempty"`
+	Reasoning    *ResponsesReasoning `json:"reasoning,omitempty"`
+	ServiceTier  string              `json:"service_tier,omitempty"`
+	raw          map[string]json.RawMessage
+}
+
+type ResponsesReasoning struct {
+	Effort  *string `json:"effort,omitempty"`
+	Mode    string  `json:"mode,omitempty"`
+	Context string  `json:"context,omitempty"`
+}
+
+// UnmarshalJSON keeps fields TokenHub does not interpret so the Responses API
+// remains a transparent protocol surface for tools and future request fields.
+func (r *ResponsesRequest) UnmarshalJSON(data []byte) error {
+	type requestAlias ResponsesRequest
+	var decoded requestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = ResponsesRequest(decoded)
+	r.raw = raw
+	return nil
+}
+
+func (r ResponsesRequest) MarshalJSON() ([]byte, error) {
+	type requestAlias ResponsesRequest
+	if r.raw == nil {
+		return json.Marshal(requestAlias(r))
+	}
+	raw := cloneRawJSON(r.raw, 8)
+	setRawJSONField(raw, "model", r.Model, r.Model != "")
+	setRawJSONField(raw, "input", r.Input, r.Input != nil)
+	setRawJSONField(raw, "stream", r.Stream, true)
+	setRawJSONField(raw, "max_output_tokens", r.MaxTokens, r.MaxTokens != 0)
+	setRawJSONField(raw, "temperature", r.Temperature, r.Temperature != nil)
+	setRawJSONField(raw, "instructions", r.Instructions, r.Instructions != "")
+	setRawJSONField(raw, "store", r.Store, r.Store != nil)
+	if r.Reasoning != nil {
+		setResponsesReasoningField(raw, *r.Reasoning)
+	} else {
+		delete(raw, "reasoning")
+	}
+	setRawJSONField(raw, "service_tier", r.ServiceTier, r.ServiceTier != "")
+	return json.Marshal(raw)
+}
+
+func setResponsesReasoningField(raw map[string]json.RawMessage, reasoning ResponsesReasoning) {
+	merged := map[string]any{}
+	if existing, ok := raw["reasoning"]; ok {
+		_ = json.Unmarshal(existing, &merged)
+	}
+	if reasoning.Effort != nil {
+		merged["effort"] = *reasoning.Effort
+	} else {
+		delete(merged, "effort")
+	}
+	if reasoning.Mode != "" {
+		merged["mode"] = reasoning.Mode
+	}
+	if reasoning.Context != "" {
+		merged["context"] = reasoning.Context
+	}
+	if len(merged) == 0 {
+		delete(raw, "reasoning")
+		return
+	}
+	if encoded, err := json.Marshal(merged); err == nil {
+		raw["reasoning"] = encoded
+	}
+}
+
+func setRawJSONField(raw map[string]json.RawMessage, key string, value any, present bool) {
+	if !present {
+		return
+	}
+	encoded, err := json.Marshal(value)
+	if err == nil {
+		raw[key] = encoded
+	}
+}
+
+func setOrDeleteRawJSONField(raw map[string]json.RawMessage, key string, value any, present bool) {
+	if !present {
+		delete(raw, key)
+		return
+	}
+	setRawJSONField(raw, key, value, true)
+}
+
+func cloneRawJSON(source map[string]json.RawMessage, extra int) map[string]json.RawMessage {
+	cloned := make(map[string]json.RawMessage, len(source)+extra)
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 type EmbeddingsRequest struct {
@@ -572,20 +927,34 @@ type RouteSelection struct {
 	Resource      *ProviderResource
 	ProviderModel string
 	Route         ModelRoute
+	Runtime       RouteRuntimeStats
+}
+
+type RouteRuntimeStats struct {
+	Samples         int64   `json:"samples,omitempty"`
+	SuccessRate     float64 `json:"success_rate,omitempty"`
+	LatencyMS       int64   `json:"latency_ms,omitempty"`
+	EffectiveWeight int     `json:"effective_weight,omitempty"`
 }
 
 type RouteExplainStep struct {
-	RouteID          string `json:"route_id"`
-	ProviderID       string `json:"provider_id"`
-	ResourceID       string `json:"resource_id,omitempty"`
-	ProviderModel    string `json:"provider_model"`
-	Priority         int    `json:"priority"`
-	ResourcePriority int    `json:"resource_priority"`
-	Weight           int    `json:"weight"`
-	QualityScore     int    `json:"quality_score,omitempty"`
-	CostScore        int    `json:"cost_score,omitempty"`
-	Strategy         string `json:"strategy"`
-	Status           string `json:"status"`
+	RouteID          string   `json:"route_id"`
+	ProviderID       string   `json:"provider_id"`
+	ResourceID       string   `json:"resource_id,omitempty"`
+	ProviderModel    string   `json:"provider_model"`
+	Priority         int      `json:"priority"`
+	ResourcePriority int      `json:"resource_priority"`
+	Weight           int      `json:"weight"`
+	QualityScore     int      `json:"quality_score,omitempty"`
+	CostScore        int      `json:"cost_score,omitempty"`
+	Strategy         string   `json:"strategy"`
+	ProjectScope     string   `json:"project_scope"`
+	ProjectIDs       []string `json:"project_ids,omitempty"`
+	EffectiveWeight  int      `json:"effective_weight"`
+	Samples          int64    `json:"samples,omitempty"`
+	SuccessRate      float64  `json:"success_rate,omitempty"`
+	LatencyMS        int64    `json:"latency_ms,omitempty"`
+	Status           string   `json:"status"`
 }
 
 type RouteAttempt struct {
@@ -593,19 +962,26 @@ type RouteAttempt struct {
 	Status    int            `json:"status"`
 	ErrorCode string         `json:"error_code,omitempty"`
 	Error     string         `json:"error,omitempty"`
+	Invoked   bool           `json:"invoked"`
+	LatencyMS int64          `json:"latency_ms,omitempty"`
 }
 
 type RoutedCall struct {
-	Call   CallContext
-	Routes []RouteSelection
+	Call     CallContext
+	Routes   []RouteSelection
+	Affinity *RequestAffinity
 }
 
 type CallContext struct {
-	RequestID      string
-	Project        Project
-	Key            APIKey
-	Model          Model
-	StartedAt      time.Time
+	RequestID string
+	Project   Project
+	Key       APIKey
+	Model     Model
+	StartedAt time.Time
+	// Stream records whether the client asked for a streamed response. It only
+	// labels observability output and never influences routing.
+	Stream         bool
+	Affinity       *RequestAffinity
 	requestContext context.Context
 }
 

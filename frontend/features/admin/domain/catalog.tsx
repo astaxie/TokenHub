@@ -13,6 +13,7 @@ export function emptyData(): AppData {
     keys: [],
     providers: [],
     providerResources: [],
+    providerModels: [],
     models: [],
     routes: [],
     logs: [],
@@ -26,6 +27,7 @@ export function emptyData(): AppData {
     timeseries: [],
     resources: {},
     providerCatalog: [],
+    providerMonitoring: [],
   };
 }
 
@@ -33,6 +35,7 @@ export function emptySummary(): Summary {
   return {
     request_count: 0,
     input_tokens: 0,
+    cached_input_tokens: 0,
     output_tokens: 0,
     total_tokens: 0,
     estimated_cost_usd: 0,
@@ -100,35 +103,18 @@ export function providerEntryCategoryCount(entry: ProviderCatalogEntry, category
 }
 
 export function buildCustomProviderCatalogEntry(category: string, standardModels: Model[]): ProviderCatalogEntry {
+  void standardModels;
   const normalizedCategory = standardModelCategory(category);
-  const models = standardModels
-    .filter((model) => normalizedCategory === "all" || modelCategory(model) === normalizedCategory)
-    .map((model) => ({
-      id: model.name,
-      name: model.name,
-      display_name: model.name,
-      canonical_name: model.name,
-      category: modelCategory(model),
-      family: model.family,
-      type: model.modality,
-      context_window: model.context_window,
-      input_price_usd_per_1m: model.input_price_usd_per_1m,
-      output_price_usd_per_1m: model.output_price_usd_per_1m,
-      input_modalities: model.input_modalities,
-      output_modalities: model.output_modalities,
-      capabilities: model.capabilities,
-      supported_parameters: model.supported_parameters,
-    }));
   return {
     id: "custom",
     name: "自定义渠道商",
     display_name: "自定义渠道商",
     type: "openai_compatible",
     categories: [normalizedCategory],
-    category_counts: { [normalizedCategory]: models.length },
-    models_count: models.length,
-    source: "tokenhub-standard-catalog",
-    models,
+    category_counts: { [normalizedCategory]: 0 },
+    models_count: 0,
+    source: "custom-upstream-pending",
+    models: [],
   };
 }
 
@@ -448,6 +434,7 @@ export function hasThirdPartyRoute(model: Model, data: AppData) {
 
 export function modelCategoryInitial(category: string, label: string) {
   const normalized = category.toLowerCase();
+  if (normalized === "codex") return "C";
   if (normalized === "claude") return "A";
   if (normalized === "gemini") return "G";
   if (normalized === "openai") return "O";
@@ -474,6 +461,11 @@ export function modelCategory(model: Model | ProviderCatalogModel | undefined) {
 }
 
 export function providerCategories(provider: Provider, data: AppData) {
+  if (data.providerResources.some((resource) =>
+    resource.provider_id === provider.id && resource.resource_type === "openai_subscription",
+  )) {
+    return ["codex"];
+  }
   const routeModels = providerRoutesFor(provider, data)
     .map((route) => data.models.find((model) => model.name === route.model_name))
     .filter(Boolean) as Model[];
@@ -486,6 +478,7 @@ export function providerCategories(provider: Provider, data: AppData) {
 
 export function providerTypeToModelCategory(type: string) {
   const normalized = type.toLowerCase();
+  if (normalized.includes("codex")) return "codex";
   if (normalized.includes("anthropic")) return "claude";
   if (normalized.includes("gemini")) return "gemini";
   if (normalized.includes("deepseek")) return "deepseek";
@@ -512,6 +505,7 @@ export function modelCategoryLabel(category: string) {
 
 export function inferModelCategoryText(value: string) {
   const normalized = value.toLowerCase();
+  if (normalized.includes("codex")) return "codex";
   if (normalized.includes("gpt") || normalized.includes("openai") || /\bo[134]\b/.test(normalized)) return "openai";
   if (normalized.includes("claude") || normalized.includes("anthropic")) return "claude";
   if (normalized.includes("deepseek")) return "deepseek";

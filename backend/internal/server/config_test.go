@@ -88,6 +88,16 @@ func TestConfigParsesClusterCoordinationSettings(t *testing.T) {
 	}
 }
 
+func TestConfigParsesImageExecutionSettings(t *testing.T) {
+	t.Setenv("TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS", "300")
+	t.Setenv("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", "86400")
+
+	config := ConfigFromEnv()
+	if config.ImageJobTimeoutSeconds != 300 || config.ImageCapabilityRetrySecs != 86400 {
+		t.Fatalf("unexpected image execution settings: %+v", config)
+	}
+}
+
 func TestProductionConfigRejectsPlaceholderCredentials(t *testing.T) {
 	config := Config{
 		Environment:            "prod",
@@ -194,4 +204,25 @@ func withWorkingDir(t *testing.T, dir string) {
 			t.Fatalf("restore working dir: %v", err)
 		}
 	})
+}
+
+// Metrics expose model names, provider identifiers and spend, so a deployment must opt
+// in rather than inherit the endpoint.
+func TestConfigMetricsAreDisabledByDefault(t *testing.T) {
+	t.Setenv("TOKENHUB_METRICS_ENABLED", "")
+	t.Setenv("TOKENHUB_METRICS_TOKEN", "")
+	t.Setenv("TOKENHUB_METRICS_PROJECT_LABEL", "")
+
+	config := ConfigFromEnv()
+	if config.MetricsEnabled {
+		t.Fatal("metrics must be off unless explicitly enabled")
+	}
+	if config.MetricsProjectLabel {
+		t.Fatal("the project label must be off by default")
+	}
+
+	t.Setenv("TOKENHUB_METRICS_ENABLED", "true")
+	if !ConfigFromEnv().MetricsEnabled {
+		t.Fatal("TOKENHUB_METRICS_ENABLED=true must enable metrics")
+	}
 }

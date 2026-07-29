@@ -1,4 +1,4 @@
-import { Check, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, Server, ShieldCheck, Sun, UserRoundCheck, Users } from "lucide-react";
+import { Box, Check, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, Pause, Play, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { savePendingOAuthBaseURL } from "../core/session";
 import { type LoginIdentityProvider, viewRoutes } from "../core/types";
@@ -8,6 +8,9 @@ import { activeLanguage, tx } from "../i18n/runtime";
 
 export const identityProviderIconOptions = [
   "auto",
+  "dingtalk",
+  "feishu",
+  "wecom",
   "gitlab",
   "github",
   "google",
@@ -25,6 +28,7 @@ export type IdentityProviderEndpointDefaults = {
   authorize_url?: string;
   token_url?: string;
   userinfo_url?: string;
+  userdetail_url?: string;
 };
 
 export type IdentityProviderTemplate = {
@@ -33,12 +37,16 @@ export type IdentityProviderTemplate = {
   providerType: "oidc" | "oauth2";
   iconKey: string;
   loginLabel: string;
+  configurationGuideURL: string;
+  configurationGuideLabel?: string;
+  configurationHelp?: string;
   issuerPlaceholder: string;
   defaultIssuer?: string;
   scopes: string;
   usernameClaim: string;
   emailClaim: string;
   teamClaim: string;
+  subjectClaim: string;
   endpoints?: (issuerURL: string) => IdentityProviderEndpointDefaults;
 };
 
@@ -49,11 +57,76 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
     providerType: "oidc",
     iconKey: "oidc",
     loginLabel: "SSO",
+    configurationGuideURL: "https://openid.net/specs/openid-connect-core-1_0.html",
+    configurationGuideLabel: "查看 OIDC 协议参考",
+    configurationHelp: "通用模板没有统一的应用管理后台，请查阅实际身份源的应用注册文档以获取 Client ID 和 Client Secret。",
     issuerPlaceholder: "https://sso.example.com",
     scopes: "openid, profile, email",
     usernameClaim: "preferred_username",
     emailClaim: "email",
     teamClaim: "department",
+    subjectClaim: "sub",
+  },
+  {
+    key: "dingtalk",
+    label: "钉钉",
+    providerType: "oauth2",
+    iconKey: "dingtalk",
+    loginLabel: "DingTalk",
+    configurationGuideURL: "https://open.dingtalk.com/document/orgapp/tutorial-obtaining-user-personal-information",
+    issuerPlaceholder: "https://login.dingtalk.com",
+    defaultIssuer: "https://login.dingtalk.com",
+    scopes: "openid",
+    usernameClaim: "unionId",
+    emailClaim: "email",
+    teamClaim: "",
+    subjectClaim: "unionId",
+    endpoints: () => ({
+      authorize_url: "https://login.dingtalk.com/oauth2/auth",
+      token_url: "https://api.dingtalk.com/v1.0/oauth2/userAccessToken",
+      userinfo_url: "https://api.dingtalk.com/v1.0/contact/users/me",
+    }),
+  },
+  {
+    key: "feishu",
+    label: "飞书",
+    providerType: "oauth2",
+    iconKey: "feishu",
+    loginLabel: "Feishu",
+    configurationGuideURL: "https://open.feishu.cn/document/common-capabilities/sso/web-application-sso/web-app-overview",
+    issuerPlaceholder: "https://open.feishu.cn",
+    defaultIssuer: "https://open.feishu.cn",
+    scopes: "",
+    usernameClaim: "union_id",
+    emailClaim: "enterprise_email",
+    teamClaim: "",
+    subjectClaim: "union_id",
+    endpoints: () => ({
+      authorize_url: "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
+      token_url: "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+      userinfo_url: "https://open.feishu.cn/open-apis/authen/v1/user_info",
+    }),
+  },
+  {
+    key: "wecom",
+    label: "企业微信",
+    providerType: "oauth2",
+    iconKey: "wecom",
+    loginLabel: "WeCom",
+    configurationGuideURL: "https://developer.work.weixin.qq.com/document/path/91022",
+    issuerPlaceholder: "https://qyapi.weixin.qq.com",
+    defaultIssuer: "https://qyapi.weixin.qq.com",
+    scopes: "",
+    usernameClaim: "userid",
+    emailClaim: "biz_mail",
+    teamClaim: "main_department",
+    subjectClaim: "userid",
+    endpoints: () => ({
+      authorize_url: "https://login.work.weixin.qq.com/wwlogin/sso/login",
+      token_url: "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
+      userinfo_url: "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo",
+      userdetail_url: "https://qyapi.weixin.qq.com/cgi-bin/user/get",
+    }),
   },
   {
     key: "gitlab",
@@ -61,11 +134,13 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
     providerType: "oauth2",
     iconKey: "gitlab",
     loginLabel: "GitLab",
+    configurationGuideURL: "https://docs.gitlab.com/integration/oauth_provider/",
     issuerPlaceholder: "https://gitlab.example.com",
     scopes: "openid profile email read_user",
     usernameClaim: "username",
     emailClaim: "email",
     teamClaim: "department",
+    subjectClaim: "sub",
     endpoints: (issuerURL) => issuerURL ? ({
       authorize_url: `${issuerURL}/oauth/authorize`,
       token_url: `${issuerURL}/oauth/token`,
@@ -78,12 +153,14 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
     providerType: "oidc",
     iconKey: "google",
     loginLabel: "Google",
+    configurationGuideURL: "https://developers.google.com/identity/protocols/oauth2/web-server",
     issuerPlaceholder: "https://accounts.google.com",
     defaultIssuer: "https://accounts.google.com",
     scopes: "openid profile email",
     usernameClaim: "email",
     emailClaim: "email",
     teamClaim: "hd",
+    subjectClaim: "sub",
     endpoints: () => ({
       authorize_url: "https://accounts.google.com/o/oauth2/v2/auth",
       token_url: "https://oauth2.googleapis.com/token",
@@ -96,11 +173,13 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
     providerType: "oidc",
     iconKey: "microsoft",
     loginLabel: "Microsoft",
+    configurationGuideURL: "https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app",
     issuerPlaceholder: "https://login.microsoftonline.com/{tenant}/v2.0",
     scopes: "openid profile email User.Read",
     usernameClaim: "preferred_username",
     emailClaim: "email",
     teamClaim: "department",
+    subjectClaim: "sub",
     endpoints: (issuerURL) => issuerURL ? ({
       authorize_url: `${issuerURL}/oauth2/v2.0/authorize`,
       token_url: `${issuerURL}/oauth2/v2.0/token`,
@@ -113,11 +192,13 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
     providerType: "oidc",
     iconKey: "okta",
     loginLabel: "Okta",
+    configurationGuideURL: "https://developer.okta.com/docs/guides/sign-into-web-app-redirect/",
     issuerPlaceholder: "https://company.okta.com/oauth2/default",
     scopes: "openid profile email",
     usernameClaim: "preferred_username",
     emailClaim: "email",
     teamClaim: "groups",
+    subjectClaim: "sub",
     endpoints: (issuerURL) => issuerURL ? ({
       authorize_url: `${issuerURL}/v1/authorize`,
       token_url: `${issuerURL}/v1/token`,
@@ -130,11 +211,13 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
     providerType: "oidc",
     iconKey: "keycloak",
     loginLabel: "Keycloak",
+    configurationGuideURL: "https://www.keycloak.org/docs/latest/server_admin/#assembly-managing-clients_server_administration_guide",
     issuerPlaceholder: "https://keycloak.example.com/realms/company",
     scopes: "openid profile email",
     usernameClaim: "preferred_username",
     emailClaim: "email",
     teamClaim: "groups",
+    subjectClaim: "sub",
     endpoints: (issuerURL) => issuerURL ? ({
       authorize_url: `${issuerURL}/protocol/openid-connect/auth`,
       token_url: `${issuerURL}/protocol/openid-connect/token`,
@@ -147,11 +230,15 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
     providerType: "oauth2",
     iconKey: "oauth2",
     loginLabel: "OAuth2",
+    configurationGuideURL: "https://www.rfc-editor.org/info/rfc6749/",
+    configurationGuideLabel: "查看 OAuth2 协议参考",
+    configurationHelp: "通用模板没有统一的应用管理后台，请查阅实际身份源的应用注册文档以获取 Client ID 和 Client Secret。",
     issuerPlaceholder: "https://oauth.example.com",
     scopes: "profile, email",
     usernameClaim: "username",
     emailClaim: "email",
     teamClaim: "department",
+    subjectClaim: "sub",
   },
 ];
 
@@ -197,7 +284,7 @@ export function loginIdentityProviderIconKey(provider: LoginIdentityProvider) {
   if (configured && configured !== "auto") return configured;
   const providerType = stringifyValue(provider.provider_type).trim().toLowerCase();
   const fingerprint = `${provider.name} ${provider.issuer_url ?? ""} ${providerType}`.toLowerCase();
-  for (const key of ["gitlab", "github", "google", "microsoft", "azure", "entra", "okta", "keycloak"]) {
+  for (const key of ["dingtalk", "feishu", "wecom", "gitlab", "github", "google", "microsoft", "azure", "entra", "okta", "keycloak"]) {
     if (fingerprint.includes(key)) {
       return key === "azure" || key === "entra" ? "microsoft" : key;
     }
@@ -253,7 +340,8 @@ export function applyIdentityProviderTemplate(values: Record<string, string>, te
   const next: Record<string, string> = { ...values, provider_template: template.key };
   next.provider_type = template.providerType;
   next.icon_key = template.iconKey;
-  if (template.defaultIssuer && (overwrite || !next.issuer_url)) next.issuer_url = template.defaultIssuer;
+  if (overwrite) next.issuer_url = template.defaultIssuer ?? "";
+  else if (template.defaultIssuer && !next.issuer_url) next.issuer_url = template.defaultIssuer;
   const issuer = normalizeIdentityProviderIssuer(next.issuer_url || template.defaultIssuer || "");
   for (const [key, value] of Object.entries({
     login_label: template.loginLabel,
@@ -261,19 +349,27 @@ export function applyIdentityProviderTemplate(values: Record<string, string>, te
     username_claim: template.usernameClaim,
     email_claim: template.emailClaim,
     team_claim: template.teamClaim,
+    subject_claim: template.subjectClaim,
   })) {
     if (overwrite || !next[key]) next[key] = value;
   }
   const endpoints = identityProviderEndpointDefaults(template, issuer);
-  for (const [key, value] of Object.entries(endpoints)) {
-    if (value && (overwrite || !next[key])) next[key] = value;
+  for (const key of ["authorize_url", "token_url", "userinfo_url", "userdetail_url"] as const) {
+    const value = endpoints[key] ?? "";
+    if (overwrite || (value && !next[key])) next[key] = value;
   }
+  if (overwrite && template.key !== "wecom") next.agent_id = "";
   return next;
 }
 
 export function identityProviderInitialFormValues(values: Record<string, string>, createMode: boolean) {
   const templateKey = inferIdentityProviderTemplateKey(values);
   const next: Record<string, string> = createMode ? applyIdentityProviderTemplate(values, templateKey, false) : { ...values, provider_template: templateKey };
+  if (createMode) {
+    if (next.client_id === "tokenhub-admin") next.client_id = "";
+    if (next.issuer_url === "https://sso.example.com") next.issuer_url = "";
+    if (next.redirect_uri === "http://localhost:8080/api/admin/auth/oauth/callback") next.redirect_uri = "";
+  }
   if (!next.default_role) next.default_role = "user";
   if (!next.default_project_role) next.default_project_role = "developer";
   return next;
@@ -281,14 +377,21 @@ export function identityProviderInitialFormValues(values: Record<string, string>
 
 export function updateIdentityProviderFormValue(values: Record<string, string>, key: string, value: string) {
   if (key === "provider_template") {
-    return applyIdentityProviderTemplate(values, value, true);
+    const currentTemplateKey = inferIdentityProviderTemplateKey(values);
+    const next = applyIdentityProviderTemplate(values, value, true);
+    if (currentTemplateKey !== next.provider_template) {
+      next.client_id = "";
+      next.client_secret = "";
+      next.agent_id = "";
+    }
+    return next;
   }
   const next = { ...values, [key]: value };
   if (key === "issuer_url") {
     const template = identityProviderTemplateByKey(next.provider_template || inferIdentityProviderTemplateKey(next));
     const previousEndpoints = identityProviderEndpointDefaults(template, values.issuer_url ?? "");
     const nextEndpoints = identityProviderEndpointDefaults(template, value);
-    for (const endpointKey of ["authorize_url", "token_url", "userinfo_url"] as const) {
+    for (const endpointKey of ["authorize_url", "token_url", "userinfo_url", "userdetail_url"] as const) {
       if (!values[endpointKey] || values[endpointKey] === previousEndpoints[endpointKey]) {
         next[endpointKey] = nextEndpoints[endpointKey] ?? "";
       }
@@ -356,8 +459,44 @@ export function MicrosoftBrandIcon({ size = 15 }: { size?: number }) {
   );
 }
 
+export function DingTalkBrandIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 1024 1024" width={size} height={size} aria-hidden="true">
+      <path fill="#59adf8" d="M717.6192 682.1376h116.5824l-212.0192 296.3968-5.12-1.792 46.08-194.816h-91.136c10.24-47.2576 20.0704-91.648 30.72-140.1856-25.9072 7.7824-48.5376 12.288-69.1712 21.2992-44.6976 19.456-84.8896 11.1616-121.1392-17.6128a455.68 455.68 0 0 1-66.9696-63.232c-20.48-24.4736-13.9776-38.4512 17.0496-43.6736 65.6896-11.0592 131.584-20.7872 197.5808-33.0752h-41.4208c-56.7808-.5632-113.6128-1.4848-170.3936-1.6896-34.8672 0-59.4432-18.176-80.4864-43.4688a272.5888 272.5888 0 0 1-54.9888-110.848c-6.4512-26.0096.6656-33.1776 27.4944-26.9312 67.84 15.7696 135.5776 32.1024 203.4176 47.9744a1030.1952 1030.1952 0 0 0 105.1648 20.1728c-40.96-13.6192-82.7392-26.112-123.3408-40.96-61.952-22.9376-122.88-47.9232-184.832-71.68A66.56 66.56 0 0 1 201.728 240.64c-24.1152-54.9888-42.1376-111.5648-42.5472-172.288 0-22.1184 7.2192-27.5456 26.2144-18.3296C378.88 143.36 578.9184 222.3104 779.5712 299.3152A288.6656 288.6656 0 0 1 834.56 329.0624c33.3312 22.1696 44.1856 50.1248 26.9312 85.248-35.4304 72.0896-74.3936 142.4384-112.2304 213.3504-9.472 17.4592-20.0192 34.4064-31.6416 54.4768Z" />
+    </svg>
+  );
+}
+
+export function FeishuBrandIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 1024 1024" width={size} height={size} aria-hidden="true">
+      <path fill="#133c9a" d="M832.032 367.2048c4.1232.024 8.2432.2656 12.3392.7232a345.9104 345.9104 0 0 1 91.8656 25.368c8.5232 3.8176 10.6288 6.9104 3.2912 14.608a296.456 296.456 0 0 0-51.4608 75.9424c-14.1488 29.776-29.6128 58.928-44.0896 88.576a190.048 190.048 0 0 1-43.992 58.5664c-45.2752 40.9632-98.0512 58.2384-158.264 49.88-69.096-9.5744-134.5408-32.9024-196.3648-63.6672-3.8496-1.9072-6.5808-3.2896-8.8512-4.672a4.4832 4.4832 0 0 1-2.096-3.9424 4.4832 4.4832 0 0 1 2.3584-3.7904l4.2784-2.304c50.0784-26.7488 91.8656-64.0272 132.1376-103.216 17.0112-16.4512 33.3312-33.7248 50.5072-50.0448a291.1264 291.1264 0 0 1 135.2-72.3872c11.12-2.6656 22.3392-4.8368 33.5264-7.2384h.528l23.8208-2.2048" />
+      <path fill="#3370ff" d="M348.0288 850.6816c-7.6-.4272-26.3216-2.9936-28.56-3.2896a452.6144 452.6144 0 0 1-139.312-40.7344c-25.4656-11.9104-49.9792-25.96-74.5584-39.648-16.1552-9.016-23.4928-23.032-23.328-42.0496.528-70.3472.528-140.704 0-211.0736-.2624-45.2752-1.5792-90.5488-2.2704-135.792a36.6016 36.6016 0 0 1 1.8752-11.744c2.7312-8.16 8.3584-8.656 13.92-3.2912 6.416 6.1856 11.5152 13.6864 17.8656 19.7408 56.856 56 117.1008 107.296 184.6512 149.5456a1017.56 1017.56 0 0 0 118.4512 65.2464c65.6416 29.8096 132.928 56.0992 203.44 72.7808 62.2848 14.7408 122.8608 5.4624 173.3328-34.0864 15.4-13.1616 23.0336-22.8032 41.2944-47.1184a303.6624 303.6624 0 0 1-31.5552 61.464c-11.7456 18.4912-38.2 43.168-58.368 62.5152-30.6336 29.6128-70.6768 53.632-108.2528 73.9008-40.9632 22.0784-83.5408 39.7136-129.0448 49.3536-23.328 5.824-57.0224 12.504-68.6368 13.1616-2.04-.1648-8.9824 1.4144-12.536 1.12-29.9744 2.2688-48.4656 3.1248-78.408 0Z" />
+      <path fill="#00d6b9" d="M219.28 172.912a44.256 44.256 0 0 1 6.2832 0c128.848 0 256.6448 2.072 385.328 2.072.224 0 .4432.0688.6256.1984a303.4976 303.4976 0 0 1 33.1328 33.856c29.0544 28.8896 50.704 78.968 65.5104 109.5024 7.3712 21.0912 18.4912 41.2608 23.7568 64.752v.4288a281.552 281.552 0 0 0-38.2992 15.5968c-37.2144 18.8864-54.1264 32.672-85.0224 63.1072-16.8128 16.4512-31.192 31.2912-53.5328 52.3488-7.008 6.5808-24.8416 23.264-25.1376 22.736-5.9232-10.464-106.08-206.4-307.2832-360.552" />
+    </svg>
+  );
+}
+
+export function WeComBrandIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 1229 1024" width={size} height={size} aria-hidden="true">
+      <path fill="#0082ef" d="M690.8 828.8c-72 28.8-148.8 33.6-225.6 28.8-33.6-4.8-67.2-9.6-100.8-19.2-4.8 0-9.6 0-14.4 4.8-43.2 19.2-86.4 43.2-124.8 62.4-14.4 9.6-28.8 9.6-43.2 0s-14.4-24-14.4-43.2c9.6-33.6 9.6-67.2 14.4-100.8 0-4.8-4.8-9.6-4.8-14.4-48-48-86.4-96-115.2-158.4-48-115.2-38.4-230.4 28.8-336C158 137.6 263.6 75.2 388.4 46.4S633.2 32 748.4 89.6c105.6 52.8 182.4 134.4 216 249.6 14.4 43.2 19.2 86.4 14.4 129.6-24-24-52.8-28.8-81.6-14.4 0-28.8 0-57.6-9.6-86.4-19.2-67.2-57.6-120-105.6-163.2-81.6-67.2-182.4-96-288-96-110.4 9.6-206.4 48-283.2 124.8-62.4 62.4-96 139.2-91.2 230.4 4.8 76.8 38.4 139.2 86.4 192l38.4 38.4c19.2 14.4 24 28.8 14.4 48-4.8 19.2-9.6 43.2-14.4 62.4 0 4.8-4.8 9.6 0 9.6 4.8 4.8 9.6 0 9.6 0 24-14.4 52.8-28.8 76.8-48 14.4-9.6 28.8-9.6 48-4.8 81.6 24 168 24 249.6 0 4.8 0 9.6-4.8 9.6 4.8 9.6 28.8 24 48 52.8 62.4Z" />
+      <path fill="#0081ee" d="M1170.8 732.8c0 33.6-24 57.6-52.8 62.4-48 9.6-86.4 28.8-120 62.4-9.6 9.6-14.4 9.6-24 4.8-4.8-4.8-4.8-14.4 0-24 33.6-33.6 52.8-76.8 62.4-120 4.8-33.6 38.4-52.8 72-52.8 38.4 4.8 62.4 33.6 62.4 67.2Z" />
+      <path fill="#fa6202" d="M926 992c-33.6 0-62.4-24-67.2-52.8-4.8-48-28.8-86.4-62.4-115.2-4.8-4.8-9.6-9.6-4.8-19.2 4.8-14.4 14.4-14.4 24-9.6 9.6 4.8 14.4 14.4 19.2 19.2 28.8 24 62.4 38.4 96 43.2 33.6 4.8 57.6 38.4 52.8 72 4.8 33.6-24 62.4-57.6 62.4Z" />
+      <path fill="#fecd00" d="M671.6 742.4c0-33.6 19.2-57.6 52.8-67.2 48-9.6 86.4-28.8 120-62.4 9.6-9.6 19.2-9.6 24 0 4.8 4.8 4.8 14.4-4.8 24-28.8 28.8-48 62.4-57.6 105.6 0 4.8 0 14.4-4.8 19.2-9.6 33.6-38.4 52.8-72 48-33.6-4.8-57.6-33.6-57.6-67.2Z" />
+      <path fill="#2cbd00" d="M1002.8 574.4c14.4 28.8 28.8 52.8 48 72 9.6 9.6 9.6 19.2 4.8 24-4.8 9.6-14.4 9.6-24 0-24-28.8-57.6-48-91.2-57.6-9.6-4.8-19.2-4.8-28.8-4.8-19.2-4.8-38.4-14.4-43.2-38.4-9.6-24-9.6-48 9.6-67.2 19.2-24 43.2-28.8 67.2-24 24 9.6 43.2 24 48 52.8 0 14.4 4.8 28.8 9.6 43.2Z" />
+    </svg>
+  );
+}
+
 export function loginIdentityProviderIconConfig(key: string): { key: string; icon: LoginIdentityProviderIconComponent } {
   switch (key) {
+    case "dingtalk":
+      return { key, icon: DingTalkBrandIcon };
+    case "feishu":
+      return { key, icon: FeishuBrandIcon };
+    case "wecom":
+      return { key, icon: WeComBrandIcon };
     case "gitlab":
       return { key, icon: GitLabBrandIcon };
     case "github":
@@ -405,6 +544,7 @@ export function LoginView({
   const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [heroPaused, setHeroPaused] = useState(false);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -423,110 +563,66 @@ export function LoginView({
         {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
       </button>
       <section className="login-stage">
-        <aside className="login-hero-panel" aria-label="TokenHub">
-          <div className="login-hero-orbit" aria-hidden="true" />
-          <div className="login-flow-scene">
-            <svg className="login-flow-svg" viewBox="0 0 460 320" aria-hidden="true">
-              <path id="login-key-flow-one" className="login-flow-link" d="M 92 84 C 150 84 165 138 208 151" />
-              <path id="login-key-flow-two" className="login-flow-link" d="M 92 160 C 142 160 166 160 208 160" />
-              <path id="login-key-flow-three" className="login-flow-link" d="M 92 236 C 150 236 165 182 208 169" />
-              <path id="login-provider-flow-one" className="login-flow-link login-provider-flow" d="M 260 150 C 298 116 318 82 362 82" />
-              <path id="login-provider-flow-two" className="login-flow-link login-provider-flow" d="M 260 160 C 302 160 320 160 362 160" />
-              <path id="login-provider-flow-three" className="login-flow-link login-provider-flow" d="M 260 170 C 298 204 318 238 362 238" />
-              {[
-                ["#login-key-flow-one", "0s"],
-                ["#login-key-flow-one", "-1.25s"],
-                ["#login-key-flow-two", "-0.35s"],
-                ["#login-key-flow-two", "-1.7s"],
-                ["#login-key-flow-three", "-0.7s"],
-                ["#login-key-flow-three", "-2.05s"],
-                ["#login-provider-flow-one", "-0.1s"],
-                ["#login-provider-flow-one", "-1.45s"],
-                ["#login-provider-flow-two", "-0.65s"],
-                ["#login-provider-flow-two", "-2s"],
-                ["#login-provider-flow-three", "-1.1s"],
-                ["#login-provider-flow-three", "-2.45s"],
-              ].map(([path, begin], index) => (
-                <circle className="login-flow-token" key={`${path}-${begin}-${index}`} r={4}>
-                  <animateMotion dur="3.1s" begin={begin} repeatCount="indefinite">
-                    <mpath href={path} />
-                  </animateMotion>
-                </circle>
-              ))}
+        <aside className={`login-hero-panel${heroPaused ? " is-paused" : ""}`} aria-label="TokenHub">
+          <div className="login-brand-lockup">
+            <span className="login-brand-mark" aria-hidden="true">
+              <img src="/brand/tokenhub-logo.png" alt="" />
+            </span>
+            <span className="login-brand-copy">
+              <strong>Token<span>Hub</span></strong>
+              <small>{tx("企业 AI 网关")}</small>
+            </span>
+          </div>
+
+          <div className="login-route-scene" aria-hidden="true">
+            <svg className="login-route-svg" viewBox="0 0 460 240">
+              <path className="login-route-line inbound" d="M 96 130 H 168" pathLength="1" />
+              <path className="login-route-line outbound top" d="M 296 130 H 334 V 72 H 372" pathLength="1" />
+              <path className="login-route-line outbound middle" d="M 296 130 H 372" pathLength="1" />
+              <path className="login-route-line outbound bottom" d="M 296 130 H 334 V 188 H 372" pathLength="1" />
             </svg>
 
-            <div className="login-key-stack" aria-hidden="true">
-              <span className="login-key-chip key-one">
-                <span className="login-key-icon">
-                  <KeyRound size={13} strokeWidth={2.6} />
-                </span>
-                Key 01
-              </span>
-              <span className="login-key-chip key-two">
-                <span className="login-key-icon">
-                  <KeyRound size={13} strokeWidth={2.6} />
-                </span>
-                Key 02
-              </span>
-              <span className="login-key-chip key-three">
-                <span className="login-key-icon">
-                  <KeyRound size={13} strokeWidth={2.6} />
-                </span>
-                Key 03
-              </span>
+            <div className="login-route-user">
+              <span className="login-route-icon"><UserRound size={19} strokeWidth={1.8} /></span>
+              <strong>{tx("用户")}</strong>
+              <small>{tx("发起 API 请求")}</small>
             </div>
 
-            <div className="login-hub-node">
-              <span className="login-logo-tile">
-                <img src="/brand/tokenhub-logo.png" alt="" />
-              </span>
-              <span className="login-hub-copy">
-                <strong>TokenHub</strong>
-                <small>Gateway</small>
-              </span>
+            <span className="login-route-label request-label">{tx("携带 API Key")}</span>
+            <span className="login-route-packet inbound-packet"><KeyRound size={10} strokeWidth={2.5} /></span>
+
+            <div className="login-route-auth">
+              <span className="login-route-icon auth"><KeyRound size={21} strokeWidth={2} /></span>
+              <strong>API Key</strong>
+              <small>{tx("验证身份与权限")}</small>
+              <span className="login-route-auth-status"><Check size={12} strokeWidth={2.7} />{tx("鉴权通过")}</span>
             </div>
 
-            <div className="login-provider-stack" aria-hidden="true">
-              <span className="login-provider-node provider-one">
-                <span className="login-provider-icon">
-                  <Server size={14} strokeWidth={2.35} />
-                </span>
-                <strong>Provider A</strong>
-                <span className="login-provider-bars">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              </span>
-              <span className="login-provider-node provider-two">
-                <span className="login-provider-icon">
-                  <Server size={14} strokeWidth={2.35} />
-                </span>
-                <strong>Provider B</strong>
-                <span className="login-provider-bars">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              </span>
-              <span className="login-provider-node provider-three">
-                <span className="login-provider-icon">
-                  <Server size={14} strokeWidth={2.35} />
-                </span>
-                <strong>Provider C</strong>
-                <span className="login-provider-bars">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              </span>
+            <span className="login-route-label access-label">{tx("允许访问")}</span>
+            <span className="login-route-packet route-one" />
+            <span className="login-route-packet route-two" />
+            <span className="login-route-packet route-three" />
+
+            <div className="login-route-models">
+              {["A", "B", "C"].map((model, index) => (
+                <div className={`login-route-model model-${index + 1}`} key={model}>
+                  <span><Box size={15} strokeWidth={1.8} /></span>
+                  <strong>{tx(`模型 ${model}`)}</strong>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="login-signal-strip" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
+
+          <button
+            aria-label={tx(heroPaused ? "播放动画" : "暂停动画")}
+            aria-pressed={heroPaused}
+            className="login-motion-toggle"
+            onClick={() => setHeroPaused((current) => !current)}
+            title={tx(heroPaused ? "播放动画" : "暂停动画")}
+            type="button"
+          >
+            {heroPaused ? <Play size={14} /> : <Pause size={14} />}
+          </button>
         </aside>
 
         <form className="login-card" onSubmit={submit}>

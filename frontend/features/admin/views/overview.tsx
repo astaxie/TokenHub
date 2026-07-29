@@ -57,7 +57,7 @@ export function OverviewView({
           value: `${formatNumber(activeProviders)} / ${formatNumber(providerTotal)}`,
           icon: Server,
           badge: `${tx("在线")} ${formatNumber(activeProviders)}`,
-          caption: "全部健康 · 延迟 312ms",
+          caption: overviewProviderCaption(data),
           values: series.map(() => activeProviders),
         }
       : {
@@ -205,9 +205,9 @@ export function RoleUsageMonitorDashboard({
       </header>
 
       <div className="usage-monitor-kpis">
-        <UsageMonitorKPI label="请求量" value={formatNumber(stats.requests)} detail={countWithUnit(stats.failedRequests, "次失败", "failed", "件失敗")} icon={BarChart3} tone="blue" />
+        <UsageMonitorKPI label="请求量" value={formatNumber(stats.requests)} detail={countWithUnit(stats.failedRequests, "次失败", "failed", "件失敗", "failed")} icon={BarChart3} tone="blue" />
         <UsageMonitorKPI label="成功率" value={`${stats.successRate.toFixed(stats.successRate >= 99 ? 1 : 2)}%`} detail={`${formatNumber(stats.successRequests)} / ${formatNumber(stats.requests)}`} icon={Check} tone="green" />
-        <UsageMonitorKPI label="平均延迟" value={latencyDisplay(stats.avgLatencyMS)} detail={stats.zeroLatencyRequests > 0 ? countWithUnit(stats.zeroLatencyRequests, "次无延迟记录", "zero-latency", "件の遅延なし") : tx("最近请求")} icon={Gauge} tone="red" />
+        <UsageMonitorKPI label="平均延迟" value={latencyDisplay(stats.avgLatencyMS)} detail={stats.zeroLatencyRequests > 0 ? countWithUnit(stats.zeroLatencyRequests, "次无延迟记录", "zero-latency", "件の遅延なし", "zero-latency") : tx("最近请求")} icon={Gauge} tone="red" />
         <UsageMonitorKPI label="总成本" value={`$${formatDashboardMoney(stats.cost)}`} detail={`${tx("总 Token")} ${compactNumber(stats.totalTokens)}`} icon={CircleDollarSign} tone="amber" />
         <UsageMonitorKPI label="Token 消耗" value={compactNumber(stats.totalTokens)} detail={`${tx("输入")} ${compactNumber(stats.inputTokens)} / ${tx("输出")} ${compactNumber(stats.outputTokens)}`} icon={Database} tone="purple" />
       </div>
@@ -1189,6 +1189,27 @@ export function latencyDisplay(value: number) {
   if (!value) return "-";
   if (value >= 1000) return `${(value / 1000).toFixed(value >= 10_000 ? 1 : 2)}s`;
   return `${Math.round(value)}ms`;
+}
+
+export function overviewProviderCaption(data: AppData) {
+  if (data.providers.length === 0) return tx("未配置 Provider");
+  const providerIDs = new Set(data.providers.map((provider) => provider.id));
+  const snapshots = data.providerMonitoring.filter((snapshot) => providerIDs.has(snapshot.provider.id));
+  const stateLabel = snapshots.length < data.providers.length || snapshots.some((snapshot) => snapshot.state === "unknown")
+    ? tx("等待 Provider 观测")
+    : snapshots.every((snapshot) => snapshot.state === "healthy")
+      ? tx("全部健康")
+      : tx("Provider 需要关注");
+  const latencies = snapshots
+    .map((snapshot) => snapshot.gateway.samples > 0
+      ? snapshot.gateway.latency_ms || 0
+      : snapshot.active_probe.samples > 0
+        ? snapshot.active_probe.latency_ms || 0
+        : 0)
+    .filter((latency) => latency > 0);
+  if (latencies.length === 0) return `${stateLabel} · ${tx("暂无延迟数据")}`;
+  const averageLatency = latencies.reduce((sum, latency) => sum + latency, 0) / latencies.length;
+  return `${stateLabel} · ${tx("平均延迟")} ${latencyDisplay(averageLatency)}`;
 }
 
 export function usageMonitorRequestLine(points: UsagePoint[], maxRequests: number) {

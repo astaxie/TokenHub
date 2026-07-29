@@ -3,18 +3,23 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+MODEL_CATALOG_COMPOSE_FILE="$SCRIPT_DIR/docker-compose.model-catalog.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 CHECK_ONLY=false
+BUILD_LOCAL=false
+MODEL_CATALOG_PATH=""
 
 usage() {
   cat <<'EOF'
-Usage: ./deploy/install.sh [--env-file PATH] [--check-only]
+Usage: ./deploy/install.sh [--env-file PATH] [--check-only] [--build] [--model-catalog PATH]
 
 Options:
-  --env-file PATH  Use a Compose environment file other than deploy/.env.
-  --check-only     Validate the deployment configuration without starting containers.
-  -h, --help       Show this help message.
+  --env-file PATH      Use a Compose environment file other than deploy/.env.
+  --check-only         Validate the deployment configuration without starting containers.
+  --build              Build images from the local checkout instead of pulling published images.
+  --model-catalog PATH Mount a custom model catalog instead of using the image's catalog.
+  -h, --help           Show this help message.
 EOF
 }
 
@@ -41,6 +46,19 @@ while [ "$#" -gt 0 ]; do
       CHECK_ONLY=true
       shift
       ;;
+    --build)
+      BUILD_LOCAL=true
+      shift
+      ;;
+    --model-catalog)
+      if [ "$#" -lt 2 ]; then
+        error "--model-catalog requires a path"
+        usage >&2
+        exit 2
+      fi
+      MODEL_CATALOG_PATH="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -65,6 +83,15 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 compose=("$DOCKER_BIN" compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+if [ -n "$MODEL_CATALOG_PATH" ]; then
+  if [ ! -f "$MODEL_CATALOG_PATH" ]; then
+    error "model catalog file not found: $MODEL_CATALOG_PATH"
+    exit 1
+  fi
+  MODEL_CATALOG_PATH="$(cd "$(dirname "$MODEL_CATALOG_PATH")" && pwd)/$(basename "$MODEL_CATALOG_PATH")"
+  export TOKENHUB_MODEL_CATALOG_PATH="$MODEL_CATALOG_PATH"
+  compose+=(-f "$MODEL_CATALOG_COMPOSE_FILE")
+fi
 
 if ! "${compose[@]}" version >/dev/null; then
   error "Docker Compose is not available"
@@ -86,6 +113,7 @@ admin_token=""
 integration_token=""
 bootstrap_admin_password=""
 secret_key=""
+image_tag=""
 
 while IFS= read -r line; do
   case "$line" in
@@ -94,6 +122,7 @@ while IFS= read -r line; do
     TOKENHUB_INTEGRATION_TOKEN=*) integration_token="${line#*=}" ;;
     TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=*) bootstrap_admin_password="${line#*=}" ;;
     TOKENHUB_SECRET_KEY=*) secret_key="${line#*=}" ;;
+    TOKENHUB_IMAGE_TAG=*) image_tag="${line#*=}" ;;
   esac
 done <<<"$compose_environment"
 unset compose_environment
@@ -104,6 +133,7 @@ admin_token="${admin_token:-change-me-tokenhub-admin-token}"
 integration_token="${integration_token:-change-me-tokenhub-integration-token}"
 bootstrap_admin_password="${bootstrap_admin_password:-change-me-tokenhub-admin-password}"
 secret_key="${secret_key:-change-me-tokenhub-secret-key}"
+image_tag="${image_tag:-latest}"
 
 trim_whitespace() {
   # Keep this list aligned with Go's strings.TrimSpace (Unicode White_Space).
@@ -236,7 +266,39 @@ if [ "$CHECK_ONLY" = true ]; then
   exit 0
 fi
 
-log "building and starting TokenHub"
+if [ "$BUILD_LOCAL" = true ]; then
+  log "building TokenHub images from the local checkout"
+  if "${compose[@]}" build; then
+    :
+  else
+    status=$?
+    error "Docker Compose failed to build TokenHub images (exit status $status)"
+    exit "$status"
+  fi
+else
+  log "pulling published TokenHub images"
+  if "${compose[@]}" pull; then
+    :
+  else
+    pull_status=$?
+    error "Docker Compose failed to pull published TokenHub images (exit status $pull_status)"
+    if [ "$image_tag" != "latest" ]; then
+      error "TOKENHUB_IMAGE_TAG=$image_tag was explicitly selected; refusing to replace it with a local source build"
+      error "check the tag and registry access, or use --build explicitly"
+      exit "$pull_status"
+    fi
+    log "published images are unavailable; falling back to a local source build"
+    if "${compose[@]}" build; then
+      :
+    else
+      status=$?
+      error "Docker Compose also failed to build TokenHub images locally (exit status $status)"
+      exit "$status"
+    fi
+  fi
+fi
+
+log "starting TokenHub"
 compose_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 backend_container_id_before="$("${compose[@]}" ps -a -q tokenhub-backend 2>/dev/null || true)"
 backend_started_at_before=""
@@ -244,7 +306,7 @@ if [ -n "$backend_container_id_before" ]; then
   backend_started_at_before="$("$DOCKER_BIN" inspect --format '{{.State.StartedAt}}' "$backend_container_id_before" 2>/dev/null || true)"
 fi
 
-if "${compose[@]}" up -d --build; then
+if "${compose[@]}" up -d --remove-orphans --no-build --pull never --wait --wait-timeout 180; then
   log "TokenHub started successfully"
   "${compose[@]}" ps
 else
@@ -276,7 +338,7 @@ else
   case "$backend_state" in
     exited|restarting|dead) backend_failed=true ;;
   esac
-  if [ "$backend_health" = "unhealthy" ]; then
+  if [ -n "$backend_health" ] && [ "$backend_health" != "healthy" ]; then
     backend_failed=true
   fi
 
@@ -286,7 +348,7 @@ else
     "${compose[@]}" logs --no-color --tail=100 --since "$backend_logs_since" tokenhub-backend >&2 || \
       error "unable to read tokenhub-backend logs"
   else
-    error "tokenhub-backend did not both change and enter a failed state during this startup attempt; its logs were not included"
+    error "tokenhub-backend did not both change and fail readiness during this startup attempt; its logs were not included"
   fi
   exit "$status"
 fi

@@ -37,6 +37,7 @@ export function adminUserConfig(): ResourceConfig<AdminUser> {
     create: (ctx, values) => adminMutate(ctx, "/api/admin/users", "POST", userPayload(values, true)),
     update: (ctx, item, values) => adminMutate(ctx, `/api/admin/users/${item.id}`, "PATCH", userPayload(values, false)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/users/${item.id}`),
+    canRemove: (item, currentUser) => !currentUser || item.id !== currentUser.id,
     actions: [
       {
         label: "发送重置密码邮件",

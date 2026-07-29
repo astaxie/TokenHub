@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.vscode
+docs
+sdk
+tmp
+output
+*.log
+**/.next
+**/node_modules
+backend/data
+backend/tokenhub
+data/*
+!data/model-catalog.yaml
+!data/provider-catalog.json

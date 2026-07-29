@@ -1,0 +1,150 @@
+#!/bin/sh
+set -eu
+
+image_root="${TOKENHUB_CONTAINER_IMAGE_ROOT:-/usr/local/lib/tokenhub-image}"
+install_root="${TOKENHUB_INSTALL_ROOT:-/opt/tokenhub}"
+run_mode="${TOKENHUB_RUN_MODE:-all}"
+state_file="$install_root/.container-image-version"
+releases_dir="$install_root/releases"
+current_link="$install_root/current"
+
+fail() {
+  printf 'TokenHub container: %s\n' "$*" >&2
+  exit 1
+}
+
+validate_root() {
+  case "$install_root" in
+    /*) ;;
+    *) fail "TOKENHUB_INSTALL_ROOT must be an absolute path" ;;
+  esac
+  [ "$install_root" != "/" ] || fail "TOKENHUB_INSTALL_ROOT must not be /"
+  case "$install_root/" in
+    *"/../"*|*"/./"*) fail "TOKENHUB_INSTALL_ROOT must not contain . or .. path segments" ;;
+  esac
+}
+
+validate_bundle() {
+  bundle="$1"
+  version="$2"
+  for required in \
+    bin/tokenhub \
+    bin/node \
+    bin/tokenhub-run \
+    frontend/server.js \
+    catalog/model-catalog.yaml \
+    catalog/provider-catalog.json \
+    deploy/tokenhub.service \
+    VERSION; do
+    [ -f "$bundle/$required" ] || return 1
+  done
+  [ -x "$bundle/bin/tokenhub" ] || return 1
+  [ -x "$bundle/bin/node" ] || return 1
+  [ -x "$bundle/bin/tokenhub-run" ] || return 1
+  [ "$(tr -d '[:space:]' <"$bundle/VERSION")" = "$version" ]
+}
+
+install_image_bundle() {
+  version="$1"
+  build_id="$2"
+  target="$releases_dir/$version"
+  if validate_bundle "$target" "$version"; then
+    target_build_id=""
+    [ ! -f "$target/BUILD_ID" ] || target_build_id="$(tr -d '[:space:]' <"$target/BUILD_ID")"
+    if [ "$target_build_id" = "$build_id" ]; then
+      return
+    fi
+  fi
+
+  stage="$releases_dir/.image-$version-$$"
+  replaced="$releases_dir/.replaced-$version-$$"
+  rm -rf -- "$stage" "$replaced"
+  mkdir "$stage"
+  cp -a "$image_root/." "$stage/"
+  validate_bundle "$stage" "$version" || fail "image release bundle is incomplete"
+
+  if [ -e "$target" ]; then
+    mv "$target" "$replaced"
+  fi
+  if ! mv "$stage" "$target"; then
+    [ ! -e "$replaced" ] || mv "$replaced" "$target"
+    fail "unable to install image release v$version"
+  fi
+  rm -rf -- "$replaced"
+}
+
+activate_release() {
+  version="$1"
+  next="$install_root/.current-$$"
+  rm -f -- "$next"
+  ln -s "releases/$version" "$next"
+  mv -Tf "$next" "$current_link"
+}
+
+validate_root
+case "$run_mode" in
+  all|backend|frontend) ;;
+  *) fail "TOKENHUB_RUN_MODE must be all, backend, or frontend" ;;
+esac
+
+[ -f "$image_root/VERSION" ] || fail "image release VERSION is missing"
+[ -f "$image_root/BUILD_ID" ] || fail "image BUILD_ID is missing"
+image_version="$(tr -d '[:space:]' <"$image_root/VERSION")"
+image_build_id="$(tr -d '[:space:]' <"$image_root/BUILD_ID")"
+printf '%s\n' "$image_version" | grep -Eq '^[0-9A-Za-z][0-9A-Za-z._-]{0,120}$' ||
+  fail "image release VERSION contains unsupported characters"
+printf '%s\n' "$image_build_id" | grep -Eq '^[0-9a-f]{64}$' ||
+  fail "image BUILD_ID is invalid"
+
+if [ "$(id -u)" -eq 0 ]; then
+  mkdir -p "$releases_dir" /app/data
+  chown node:node "$install_root" "$releases_dir" /app/data
+  exec gosu node "$0" "$@"
+fi
+
+mkdir -p "$releases_dir"
+last_image_version=""
+last_image_build_id=""
+if [ -f "$state_file" ]; then
+  last_image_version="$(sed -n '1p' "$state_file" | tr -d '[:space:]')"
+  last_image_build_id="$(sed -n '2p' "$state_file" | tr -d '[:space:]')"
+fi
+current_valid=false
+if [ -L "$current_link" ] && readlink -f "$current_link" >/dev/null 2>&1; then
+  current_valid=true
+elif [ -e "$current_link" ]; then
+  fail "current release path exists but is not a symbolic link"
+fi
+if [ "$current_valid" != true ] ||
+  [ "$last_image_version" != "$image_version" ] ||
+  [ "$last_image_build_id" != "$image_build_id" ]; then
+  install_image_bundle "$image_version" "$image_build_id"
+  activate_release "$image_version"
+  state_tmp="$install_root/.container-image-version-$$"
+  printf '%s\n%s\n' "$image_version" "$image_build_id" >"$state_tmp"
+  mv -f "$state_tmp" "$state_file"
+fi
+
+release_dir="$(readlink -f "$current_link")"
+case "$release_dir/" in
+  "$releases_dir"/*/) ;;
+  *) fail "current release resolves outside the managed releases directory" ;;
+esac
+active_version="$(tr -d '[:space:]' <"$release_dir/VERSION")"
+validate_bundle "$release_dir" "$active_version" || fail "active release bundle is invalid"
+
+case "$run_mode" in
+  all)
+    exec "$release_dir/bin/tokenhub-run" "$@"
+    ;;
+  backend)
+    exec "$release_dir/bin/tokenhub" "$@"
+    ;;
+  frontend)
+    cd "$release_dir/frontend"
+    exec env \
+      HOSTNAME="${TOKENHUB_FRONTEND_HOST:-0.0.0.0}" \
+      PORT="${TOKENHUB_FRONTEND_PORT:-3000}" \
+      "$release_dir/bin/node" server.js "$@"
+    ;;
+esac

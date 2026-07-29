@@ -6,7 +6,7 @@ import { formatNumber, modelAvailabilitySummary } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
 import { DataSection } from "../shared/ui";
 
-export function DatabaseStatusView({ api, isDark }: { api: ApiContext; isDark: boolean }) {
+export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }) {
   const [status, setStatus] = useState<DatabaseStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,9 +44,7 @@ export function DatabaseStatusView({ api, isDark }: { api: ApiContext; isDark: b
   if (loading) {
     return (
       <DataSection title={tx("数据库状态")}>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{tx("加载中")}...</div>
-        </div>
+        <div className="database-status-message">{tx("加载中")}...</div>
       </DataSection>
     );
   }
@@ -54,11 +52,9 @@ export function DatabaseStatusView({ api, isDark }: { api: ApiContext; isDark: b
   if (error) {
     return (
       <DataSection title={tx("数据库状态")}>
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
-            <AlertCircle className="w-5 h-5" />
-            <span>{tx("加载失败")}: {error}</span>
-          </div>
+        <div className="database-status-error" role="alert">
+          <AlertCircle />
+          <span>{tx("加载失败")}: {error}</span>
         </div>
       </DataSection>
     );
@@ -67,95 +63,106 @@ export function DatabaseStatusView({ api, isDark }: { api: ApiContext; isDark: b
   if (!status) {
     return (
       <DataSection title={tx("数据库状态")}>
-        <div className="text-gray-500">{tx("无数据")}</div>
+        <div className="database-status-message">{tx("无数据")}</div>
       </DataSection>
     );
   }
 
   return (
     <DataSection title={tx("数据库状态")}>
-      <div className="space-y-6">
-        <div className="flex justify-end">
+      <div className="database-status">
+        <div className="database-status-actions">
           <button
+            type="button"
             onClick={fetchDatabaseStatus}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="button"
           >
             {tx("刷新")}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="database-status-grid">
           {/* Database type */}
-          <div className={`p-6 rounded-lg border ${isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
-            <div className="flex items-center gap-3 mb-4">
-              <Database className="w-6 h-6 text-blue-600" />
-              <h2 className="text-lg font-semibold">{tx("数据库类型")}</h2>
+          <article className="database-status-card">
+            <div className="database-status-card-header">
+              <span className="database-status-card-icon database">
+                <Database />
+              </span>
+              <h2>{tx("数据库类型")}</h2>
             </div>
-            <div className="text-3xl font-bold">
+            <div className="database-status-card-value">
               {status.database_type === "postgres" ? "PostgreSQL" : "SQLite"}
             </div>
-          </div>
+          </article>
 
           {/* Runtime environment */}
-          <div className={`p-6 rounded-lg border ${isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
-            <div className="flex items-center gap-3 mb-4">
-              <Server className="w-6 h-6 text-purple-600" />
-              <h2 className="text-lg font-semibold">{tx("运行环境")}</h2>
+          <article className="database-status-card">
+            <div className="database-status-card-header">
+              <span className="database-status-card-icon runtime">
+                <Server />
+              </span>
+              <h2>{tx("运行环境")}</h2>
             </div>
-            <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${status.is_docker ? "bg-green-500" : "bg-gray-400"}`} />
-              <span className="text-xl font-semibold">
+            <div className="database-status-value-row">
+              <span className={`database-status-indicator${status.is_docker ? " active" : ""}`} />
+              <span className="database-status-card-value">
                 {status.is_docker ? tx("Docker 容器") : tx("本地进程")}
               </span>
             </div>
-          </div>
+          </article>
 
           {/* Connection status */}
-          <div className={`p-6 rounded-lg border ${isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
-            <div className="flex items-center gap-3 mb-4">
-              <Activity className="w-6 h-6 text-green-600" />
-              <h2 className="text-lg font-semibold">{tx("连接状态")}</h2>
+          <article className="database-status-card">
+            <div className="database-status-card-header">
+              <span className="database-status-card-icon connection">
+                <Activity />
+              </span>
+              <h2>{tx("连接状态")}</h2>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="database-status-value-row">
               {status.connection_ok ? (
                 <>
-                  <Check className="w-6 h-6 text-green-500" />
-                  <span className="text-xl font-semibold text-green-600">{tx("正常")}</span>
+                  <Check className="database-status-state-icon normal" />
+                  <span className="database-status-state normal">{tx("正常")}</span>
                 </>
               ) : (
                 <>
-                  <X className="w-6 h-6 text-red-500" />
-                  <span className="text-xl font-semibold text-red-600">{tx("异常")}</span>
+                  <X className="database-status-state-icon error" />
+                  <span className="database-status-state error">{tx("异常")}</span>
                 </>
               )}
             </div>
-          </div>
+          </article>
 
           {/* PostgreSQL version (only shown for PostgreSQL) */}
           {status.database_type === "postgres" && status.postgres_version && (
-            <div className={`p-6 rounded-lg border ${isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
-              <div className="flex items-center gap-3 mb-4">
-                <Database className="w-6 h-6 text-indigo-600" />
-                <h2 className="text-lg font-semibold">PostgreSQL {tx("版本")}</h2>
+            <article className="database-status-card">
+              <div className="database-status-card-header">
+                <span className="database-status-card-icon version">
+                  <Database />
+                </span>
+                <h2>PostgreSQL {tx("版本")}</h2>
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+              <div className="database-status-version">
                 {status.postgres_version.split('\n')[0]}
               </div>
-            </div>
+            </article>
           )}
         </div>
 
         {/* Database connection info */}
         {status.database_url && (
-          <div className={`p-6 rounded-lg border ${isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
-            <div className="flex items-center gap-3 mb-4">
-              <Database className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-              <h2 className="text-base font-semibold">{tx("数据库连接信息")}</h2>
+          <div className="database-status-details">
+            <div className="database-status-card-header">
+              <span className="database-status-card-icon details">
+                <Database />
+              </span>
+              <h2>{tx("数据库连接信息")}</h2>
             </div>
-            <div className={`p-3 rounded-md font-mono text-sm break-all ${isDark ? "bg-gray-900 text-gray-300" : "bg-gray-100 text-gray-700"}`}>
+            <div className="database-status-url">
               {status.database_url}
             </div>
-            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            <div className="database-status-note">
               * {tx("密码已隐藏以保护敏感信息")}
             </div>
           </div>
@@ -177,7 +184,7 @@ export function modelCatalogPriceRow(model: Model, data: AppData, readOnly: bool
   const category = modelCategory(model);
   const inputPrice = modelCatalogInputPrice(model);
   const outputPrice = model.output_price_usd_per_1m || undefined;
-  const cacheReadPrice = modelCachedReadPrice(model);
+  const cacheRead = modelCacheReadPriceInfo(model);
   const monthlyCost = modelEstimatedMonthlyCost(model);
   const priceIndex = monthlyCost > 0 && baseline > 0 ? monthlyCost / baseline : 0;
   const availability = modelAvailabilitySummary(model, data, readOnly);
@@ -190,7 +197,9 @@ export function modelCatalogPriceRow(model: Model, data: AppData, readOnly: bool
     categoryLabel: modelCategoryLabel(category),
     inputPrice,
     outputPrice,
-    cacheReadPrice,
+    cacheReadPrice: cacheRead.price,
+    cacheReadPriceSource: cacheRead.source,
+    cacheReadPriceHint: modelCacheReadPriceHint(cacheRead),
     monthlyCost,
     priceIndex,
     contextLabel: model.context_window ? modelCatalogCompactNumber(model.context_window) : "-",
@@ -208,23 +217,59 @@ export function modelCatalogInputPrice(model: Model) {
   return undefined;
 }
 
-export function modelCachedReadPrice(model: Model) {
-  const configured = readModelMetadataNumber(model, [
+export type ModelCacheReadPriceInfo = {
+  price?: number;
+  source: "configured" | "estimated" | "unavailable";
+  ratio?: number;
+  unavailableReason?: "embedding" | "missing_input_price";
+};
+
+export const defaultCacheReadEstimateRatio = 0.10;
+export const deepSeekCacheReadEstimateRatio = 0.02;
+export const deepSeekV4ProCacheReadRatio = 1 / 120;
+
+export function modelCacheReadPriceInfo(model: Model): ModelCacheReadPriceInfo {
+  if (model.modality === "embedding") {
+    return { source: "unavailable", unavailableReason: "embedding" };
+  }
+  const configured = model.cache_read_price_usd_per_1m || readModelMetadataNumber(model, [
     "cached_input_price_usd_per_1m",
     "cache_read_price_usd_per_1m",
     "cached_read_price_usd_per_1m",
   ]);
-  if (configured > 0) return configured;
+  if (configured > 0) return { price: configured, source: "configured" };
   const input = model.input_price_usd_per_1m || 0;
-  if (!input || model.modality === "embedding") return undefined;
+  if (!input) return { source: "unavailable", unavailableReason: "missing_input_price" };
   const category = modelCategory(model);
-  const cacheHint = [model.name, model.family, ...(model.capabilities ?? []), ...(model.supported_parameters ?? [])]
-    .join(" ")
-    .toLowerCase();
-  const commonlyCached = ["openai", "claude", "gemini", "deepseek"].includes(category)
-    || cacheHint.includes("cache")
-    || cacheHint.includes("prompt");
-  return commonlyCached ? input * 0.25 : undefined;
+  const deepSeekV4Pro = `${model.name} ${model.family ?? ""}`.toLowerCase().includes("v4-pro");
+  const ratio = category !== "deepseek"
+    ? defaultCacheReadEstimateRatio
+    : deepSeekV4Pro
+      ? deepSeekV4ProCacheReadRatio
+      : deepSeekCacheReadEstimateRatio;
+  return { price: input * ratio, source: "estimated", ratio };
+}
+
+export function modelCachedReadPrice(model: Model) {
+  return modelCacheReadPriceInfo(model).price;
+}
+
+export function modelCacheReadPriceHint(info: ModelCacheReadPriceInfo) {
+  if (info.source === "configured") {
+    return `${tx("已配置缓存读价")} $${modelCatalogMoney(info.price || 0)}/1M Token；${tx("命中缓存的输入 Token 按此价格估算成本。")}`;
+  }
+  if (info.source === "estimated") {
+    return `${tx("未配置缓存读价，当前按标准输入价的")} ${cacheReadEstimatePercent(info.ratio || 0)} ${tx("估算；建议按上游实际价格配置。")}`;
+  }
+  if (info.unavailableReason === "embedding") {
+    return tx("Embedding 模型按 Embedding 单价计费，不适用缓存读价。");
+  }
+  return tx("缺少标准输入价，无法估算缓存读价。");
+}
+
+export function cacheReadEstimatePercent(ratio: number) {
+  const percent = ratio * 100;
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(2)}%`;
 }
 
 export function readModelMetadataNumber(model: Model, keys: string[]) {

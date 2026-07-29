@@ -1,16 +1,16 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit3, Info, Plus, Search, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, type ModalState, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
 import { filterRows } from "../domain/catalog";
-import { readPath, rowID } from "../domain/entities";
-import { formatNumber } from "../domain/formatting";
+import { readPath, rowID, stringifyValue } from "../domain/entities";
+import { formatNumber, formatTime } from "../domain/formatting";
 import { settingsTabLabel } from "../domain/labels";
 import { activeLanguage, type AppLanguage, countWithLabel, displayText, languageOptions, translatedCell, tx } from "../i18n/runtime";
 import { defaultFormValues } from "../resources/payloads";
-import { apiKeyStatusAction, APIKeyStatusSwitch } from "../resources/project-key-config";
+import { apiKeyStatusAction, APIKeyDownloadMenu, APIKeyStatusSwitch } from "../resources/project-key-config";
 import { identityProviderConfig, roleConfig, systemSettingConfig } from "../resources/settings-config";
 import { IdentityProviderEditModal } from "../shared/modals";
-import { FieldInput } from "../shared/ui";
+import { FieldInput, StatusPill } from "../shared/ui";
 import { identityProviderInitialFormValues } from "../shell/auth";
 import { CrudView } from "./crud-projects";
 
@@ -51,7 +51,6 @@ export function SettingsView({
 
   return (
     <div className="settings-view">
-      <LanguagePreferenceCard language={language} onChange={onLanguageChange} />
       <div className="settings-tabs" role="tablist" aria-label={tx("系统设置分类")}>
         {configs.map((config) => (
           <button
@@ -66,28 +65,38 @@ export function SettingsView({
           </button>
         ))}
       </div>
-      <CrudView
-        config={activeConfig}
-        data={data}
-        items={pagedItems}
-        totalItems={filteredItems.length}
-        loading={false}
-        query={query}
-        pagination={pagination}
-        categoryFilter="all"
-        onCategoryFilter={() => undefined}
-        onQuery={(value) => setQueries((current) => ({ ...current, [activeConfig.view]: value }))}
-        onCreate={() => onCreate(activeConfig)}
-        onEdit={(item) => onEdit(activeConfig, item)}
-        onDelete={(item) => onDelete(activeConfig, item)}
-        onAction={onAction}
-        onToolbarAction={(action) => onToolbarAction(action, filteredItems)}
-      />
+      {activeConfig.view === "settings" ? (
+        <SystemSettingsPanel
+          config={activeConfig}
+          items={filteredItems as AdminResource[]}
+          language={language}
+          onLanguageChange={onLanguageChange}
+          onEdit={(item) => onEdit(activeConfig, item)}
+        />
+      ) : (
+        <CrudView
+          config={activeConfig}
+          data={data}
+          items={pagedItems}
+          totalItems={filteredItems.length}
+          loading={false}
+          query={query}
+          pagination={pagination}
+          categoryFilter="all"
+          onCategoryFilter={() => undefined}
+          onQuery={(value) => setQueries((current) => ({ ...current, [activeConfig.view]: value }))}
+          onCreate={() => onCreate(activeConfig)}
+          onEdit={(item) => onEdit(activeConfig, item)}
+          onDelete={(item) => onDelete(activeConfig, item)}
+          onAction={onAction}
+          onToolbarAction={(action) => onToolbarAction(action, filteredItems)}
+        />
+      )}
     </div>
   );
 }
 
-export function LanguagePreferenceCard({
+export function LanguagePreferenceRow({
   language,
   onChange,
 }: {
@@ -96,8 +105,9 @@ export function LanguagePreferenceCard({
 }) {
   const current = languageOptions.find((option) => option.value === language) ?? languageOptions[0];
   return (
-    <section className="language-card">
+    <div className="system-settings-preference">
       <div>
+        <p className="eyebrow">{tx("控制台偏好")}</p>
         <strong>{tx("界面语言")}</strong>
         <span>{tx("选择控制台显示语言，偏好会保存在当前浏览器。")}</span>
       </div>
@@ -105,7 +115,7 @@ export function LanguagePreferenceCard({
         <small>{tx("当前语言")}: {languageOptionLabel(current, language)}</small>
         <LanguageSwitcher language={language} onChange={onChange} />
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -140,6 +150,85 @@ export function languageOptionLabel(option: { label: string; nativeLabel: string
   return language === "en" ? option.label : option.nativeLabel;
 }
 
+export function SystemSettingsPanel({
+  config,
+  items,
+  language,
+  onLanguageChange,
+  onEdit,
+}: {
+  config: ResourceConfig<AdminResource>;
+  items: AdminResource[];
+  language: AppLanguage;
+  onLanguageChange: (language: AppLanguage) => void;
+  onEdit: (item: AdminResource) => void;
+}) {
+  const current = items.find((item) => item.id === "cfg_gateway") ?? items[0];
+  const settingFields = config.fields.filter((field) => !["name", "description", "status"].includes(field.key));
+  return (
+    <section className="section system-settings-section">
+      <div className="section-header">
+        <h2>{tx(config.eyebrow)}</h2>
+      </div>
+      <div className="section-body">
+        <LanguagePreferenceRow language={language} onChange={onLanguageChange} />
+        <div className="system-settings-intro">
+          <div>
+            <p className="eyebrow">{tx("全局平台范围")}</p>
+            <h3>{tx("网关基础设置")}</h3>
+            <p>{tx("这里维护 TokenHub 运行时读取的一组全局默认值；它不是配置模板，也不需要新增多条记录。")}</p>
+          </div>
+          {current ? (
+            <button className="button" onClick={() => onEdit(current)} type="button">
+              <Edit3 size={16} />
+              {tx("编辑配置")}
+            </button>
+          ) : null}
+        </div>
+        {current ? (
+          <>
+            <div className="system-settings-summary">
+              {settingFields.map((field) => (
+                <div className="system-setting-item" key={field.key}>
+                  <span>{tx(field.label)}</span>
+                  <strong>{settingValue(current, field.key)}</strong>
+                  {field.help ? <small>{tx(field.help)}</small> : null}
+                </div>
+              ))}
+            </div>
+            <div className="system-settings-meta">
+              <div>
+                <span>{tx("当前配置记录")}</span>
+                <code>{current.id}</code>
+                <StatusPill status={current.status} />
+              </div>
+              <small>{tx("更新时间")}: {formatTime(current.updated_at ?? "")}</small>
+            </div>
+            {items.length > 1 ? (
+              <div className="system-settings-note" role="note">
+                <Info size={16} />
+                <span>{tx("检测到多条系统设置记录；运行时优先读取 cfg_gateway。请编辑当前配置，不需要新增同类记录。")}</span>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="resource-empty">
+            <div className="resource-empty-icon">
+              <Search size={18} />
+            </div>
+            <strong>{tx("未找到基础设置")}</strong>
+            <span>{tx("系统启动时会初始化默认网关配置；请刷新数据或检查初始化脚本。")}</span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function settingValue(item: AdminResource, key: string) {
+  return stringifyValue(item.fields?.[key]) || "-";
+}
+
 export function APIKeyFlowHint({ data }: { data: AppData }) {
   return (
     <div className="workflow-hint">
@@ -161,7 +250,7 @@ export function RouteStrategyHint({ data }: { data: AppData }) {
     <div className="workflow-hint">
       <div>
         <strong>{tx("模型路由器")}</strong>
-        <span>{tx("平衡模式综合权重、质量和成本；质量优先会先选高质量线路；成本优先会先选低成本线路。调用失败时会按候选顺序自动回退。")}</span>
+        <span>{tx("每个统一模型只选择一次整体策略；在策略 Tab 下配置各 Provider 的比例或评分。项目作用域仍在线路上控制内部与外部流量边界。")}</span>
       </div>
       <div className="workflow-hint-stats">
         <span>{activeRoutes} {tx("条启用线路")}</span>
@@ -174,6 +263,7 @@ export function RouteStrategyHint({ data }: { data: AppData }) {
 export function EntityTable<T>({
   config,
   data,
+  apiBaseURL,
   items,
   loading = false,
   query = "",
@@ -183,9 +273,11 @@ export function EntityTable<T>({
   onAction,
   onRowClick,
   selectedRowID,
+  currentUser = null,
 }: {
   config: ResourceConfig<T>;
   data: AppData;
+  apiBaseURL?: string;
   items: T[];
   loading?: boolean;
   query?: string;
@@ -195,6 +287,7 @@ export function EntityTable<T>({
   onAction: (action: ResourceAction<T>, item: T) => void;
   onRowClick?: (item: T) => void;
   selectedRowID?: string;
+  currentUser?: AdminUser | null;
 }) {
   if (loading && items.length === 0) {
     return <TableSkeleton columns={Math.max(3, config.columns.length + 1)} rows={5} />;
@@ -236,6 +329,7 @@ export function EntityTable<T>({
               ))}
               <td>
                 <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+                  {config.view === "api-keys" && apiBaseURL ? <APIKeyDownloadMenu baseURL={apiBaseURL} data={data} item={item as APIKey} /> : null}
                   {(config.actions ?? [])
                     .filter((action) => action.visible?.(item) ?? true)
                     .map((action) => (
@@ -254,7 +348,7 @@ export function EntityTable<T>({
                       {tx("编辑")}
                     </button>
                   ) : null}
-                  {config.remove ? (
+                  {config.remove && (config.canRemove?.(item, currentUser) ?? true) ? (
                     <button className="danger-button" onClick={() => onDelete(item)} type="button" title={tx("删除")}>
                       <Trash2 size={15} />
                     </button>
@@ -375,7 +469,7 @@ export type PaginationState = {
   setPageSize: (pageSize: number) => void;
 };
 
-export const pageSizeOptions = [20, 50, 100];
+export const pageSizeOptions = [10, 20, 50, 100];
 
 export function usePagination(totalItems: number, resetKey: string): PaginationState {
   const [page, setPageState] = useState(1);
@@ -539,15 +633,20 @@ export function EditModal<T>({
               field={field}
               data={data}
               currentUser={currentUser}
+              values={values}
               value={values[field.key] ?? ""}
               editing={Boolean(state.item)}
-              onChange={(value) => setValues((prev) => ({ ...prev, [field.key]: value }))}
+              onChange={(value) => setValues((prev) => ({
+                ...prev,
+                [field.key]: value,
+                ...(state.config.view === "routes" && field.key === "provider_id" && prev.provider_id !== value ? { provider_model: "" } : {}),
+              }))}
             />
           ))}
         </div>
         <div className="modal-actions">
           <button className="secondary-button" onClick={onClose} type="button">{tx("取消")}</button>
-          <button className="button" disabled={loading} type="submit">{tx("保存")}</button>
+          <button className="button" disabled={loading} type="submit">{tx(state.config.view === "routes" && !state.item ? "添加路由" : "保存")}</button>
         </div>
       </form>
     </div>

@@ -27,6 +27,7 @@ backend/tokenhub
 data/*
 !data/
 !data/model-catalog.yaml
+!data/provider-catalog.json
 backend/data/
 
 # Environment

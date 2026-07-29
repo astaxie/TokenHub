@@ -39,6 +39,9 @@ export function identityProviderIconLabel(iconKey: string) {
   const normalized = normalizedIdentityProviderIconKey(iconKey);
   const labels: Record<string, string> = {
     auto: "自动",
+    dingtalk: "DingTalk",
+    feishu: "Feishu",
+    wecom: "WeCom",
     gitlab: "GitLab",
     github: "GitHub",
     google: "Google",
@@ -76,6 +79,9 @@ export function dataScopeLabel(scope: string) {
     team: "团队",
     project: "项目",
     self: "本人",
+    all: "所有项目",
+    include: "仅指定项目",
+    exclude: "排除指定项目",
   };
   return tx(labels[scope] ?? (scope || "-"));
 }
@@ -158,6 +164,7 @@ export function enumValueLabel(value: string | undefined) {
     invoice_confirm: "账单确认",
     invoice_reject: "账单驳回",
     balanced: "平衡",
+    adaptive: "自适应",
     quality: "质量优先",
     cost: "成本优先",
     priority_weighted: "优先级 + 权重",
@@ -290,6 +297,7 @@ export function providerTypeLabel(type: string | undefined) {
   const labels: Record<string, string> = {
     mock: "模拟渠道",
     openai: "OpenAI 官方",
+    openai_codex: "Codex Subscription",
     openai_compatible: "OpenAI 兼容",
     azure_openai: "Azure OpenAI",
     anthropic: "Claude / Anthropic",

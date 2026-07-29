@@ -2,21 +2,25 @@ import { Check, Copy, KeyRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { type AdminUser, type AppData, type FieldConfig, type Model, type UsagePoint } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
-import { findProvider, modelRoutesFor } from "../domain/entities";
+import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelRoutesFor } from "../domain/entities";
 import { compactNumber, fallbackDays, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
-import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, translatedCell, tx } from "../i18n/runtime";
+import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
 import { PaginationControls, usePagination } from "../views/settings-table";
 
 export function ConfirmDialog({
   title,
   message,
+  confirmLabel = "删除",
+  confirmClassName = "danger-confirm",
   loading,
   onCancel,
   onConfirm,
 }: {
   title: string;
   message: string;
+  confirmLabel?: string;
+  confirmClassName?: string;
   loading: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -28,7 +32,7 @@ export function ConfirmDialog({
         <p>{tx(message)}</p>
         <div className="modal-actions">
           <button className="secondary-button" onClick={onCancel} type="button">{tx("取消")}</button>
-          <button className="danger-confirm" onClick={onConfirm} disabled={loading} type="button">{tx("删除")}</button>
+          <button className={confirmClassName} onClick={onConfirm} disabled={loading} type="button">{tx(confirmLabel)}</button>
         </div>
       </div>
     </div>
@@ -97,6 +101,7 @@ export function FieldInput({
   field,
   data,
   currentUser,
+  values,
   value,
   editing,
   onChange,
@@ -104,6 +109,7 @@ export function FieldInput({
   field: FieldConfig;
   data: AppData;
   currentUser?: AdminUser | null;
+  values?: Record<string, string>;
   value: string;
   editing: boolean;
   onChange: (value: string) => void;
@@ -112,11 +118,11 @@ export function FieldInput({
   const readOnly = editing && field.readOnlyOnEdit;
   const autoComplete = field.autoComplete ?? "off";
   const inputName = `tokenhub-${field.key}`;
-  let options = field.optionsFromData?.(data, currentUser) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
-  if (value && !options.some((option) => option.value === value)) {
+  let options = field.optionsFromData?.(data, currentUser, values) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
+  if (field.type !== "multi-select" && value && !options.some((option) => option.value === value)) {
     options = [...options, { value, label: value }];
   }
-  if (field.type === "multi-select" && !editing) {
+  if (field.type === "multi-select" && (!editing || field.multiSelectOnEdit)) {
     const selected = new Set(splitList(value));
     const normalizedFilter = filter.trim().toLowerCase();
     const filteredOptions = normalizedFilter
@@ -131,7 +137,7 @@ export function FieldInput({
           <input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder={tx("搜索模型")}
+            placeholder={tx(field.key === "model_name" ? "搜索模型" : "搜索选项")}
             type="search"
           />
           <button
@@ -147,7 +153,7 @@ export function FieldInput({
         </div>
         <div className="multi-select-list">
           {filteredOptions.length === 0 ? (
-            <div className="empty">{tx("没有匹配的模型")}</div>
+            <div className="empty">{tx(field.key === "model_name" ? "没有匹配的模型" : "没有匹配的选项")}</div>
           ) : filteredOptions.map((option) => (
             <label className="multi-select-option" key={option.value}>
               <input
@@ -167,7 +173,7 @@ export function FieldInput({
             </label>
           ))}
         </div>
-        <small>{selectedCount > 0 ? selectedModelsText(selectedCount) : tx("请选择至少一个统一模型")}</small>
+        <small>{selectedCount > 0 ? (field.key === "model_name" ? selectedModelsText(selectedCount) : selectedOptionsText(selectedCount)) : tx(field.key === "model_name" ? "请选择至少一个统一模型" : "请选择至少一个选项")}</small>
         {field.help ? <small>{tx(field.help)}</small> : null}
       </div>
     );
@@ -407,6 +413,25 @@ export function ModelNameCell({ model }: { model: Model }) {
 }
 
 export function ModelRouteProviders({ model, data }: { model: Model; data: AppData }) {
+  if (isCodexSubscriptionImageModel(model)) {
+    const resources = codexImageCapableResources(data);
+    if (resources.length === 0) {
+      return <span className="muted-inline">{tx("暂无可生图账号")}</span>;
+    }
+    return (
+      <div className="route-provider-list">
+        {resources.slice(0, 4).map((resource) => (
+          <div className="route-provider-chip" key={resource.id}>
+            <span className="route-dot ok" />
+            <strong>{findProvider(data, resource.provider_id)?.name || resource.provider_id}</strong>
+            <em>{resource.name}</em>
+            <small>{tx("Codex 订阅生图")}</small>
+          </div>
+        ))}
+        {resources.length > 4 ? <span className="route-overflow">+{resources.length - 4}</span> : null}
+      </div>
+    );
+  }
   const routes = modelRoutesFor(model, data);
   if (routes.length === 0) {
     return <span className="muted-inline">{tx("未配置线路")}</span>;
@@ -429,10 +454,11 @@ export function ModelRouteProviders({ model, data }: { model: Model; data: AppDa
   );
 }
 
-export const providerTypeOptions = ["mock", "openai", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local"];
+export const providerTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local"];
 
 export const modelCategoryLabels: Record<string, string> = {
   all: "全部",
+  codex: "OpenAI Codex",
   openai: "OpenAI",
   claude: "Claude",
   deepseek: "DeepSeek",
@@ -455,6 +481,7 @@ export const modelCategoryLabels: Record<string, string> = {
 };
 
 export const preferredModelCategories = [
+  "codex",
   "openai",
   "claude",
   "deepseek",

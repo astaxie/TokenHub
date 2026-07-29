@@ -1,15 +1,85 @@
-import { AlertCircle, Boxes, Check, Copy, KeyRound, Plus, Search, Send, Server, Settings, UserRoundCheck } from "lucide-react";
+import { AlertCircle, Ban, Check, Copy, KeyRound, Plus, Search, Send, Trash2, UserRoundCheck } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type ApiContext, type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode } from "../core/types";
+import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategory, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
-import { enumOptionLabel, providerTypeLabel } from "../domain/labels";
-import { clearCustomValidity, countWithLabel, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
+import { providerTypeLabel } from "../domain/labels";
+import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerResourceDraftDefaults } from "../resources/provider-model-config";
 import { ReviewItem } from "../shared/modals";
 import { providerTypeOptions } from "../shared/ui";
+import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
+import { ProviderInlineField, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
+import { ProviderAdvancedFields, ProviderConnectionFields } from "./provider-editor-sections";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatProviderAccountDate, formatQuotaPercent, type OpenAIQuotaWindow, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
+
+const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
+
+type OpenAIAccountQuota = {
+  account_id?: string;
+  email?: string;
+  plan_type?: string;
+  rate_limit?: {
+    allowed: boolean;
+    limit_reached: boolean;
+    primary_window?: OpenAIQuotaWindow;
+    secondary_window?: OpenAIQuotaWindow;
+  };
+  additional_rate_limits?: Array<{
+    limit_name: string;
+    metered_feature: string;
+    rate_limit?: {
+      allowed: boolean;
+      limit_reached: boolean;
+      primary_window?: OpenAIQuotaWindow;
+      secondary_window?: OpenAIQuotaWindow;
+    };
+  }>;
+  rate_limit_reset_credits?: { available_count: number };
+  fetched_at: number;
+};
+
+type CodexSubscriptionTestResult = {
+  resource_id: string;
+  model: string;
+  reasoning_effort: string;
+  speed: "standard" | "fast";
+  upstream_service_tier?: string;
+  output_text: string;
+  latency_ms: number;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+};
+
+type ProviderEditTab = "connect" | "models" | "advanced";
+
+type ProviderAccountConfirmation = {
+  action: "enable" | "disable" | "delete";
+  resource: ProviderResource;
+};
+
+const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
+
+const codexProviderCatalogSummary: ProviderCatalogEntry = {
+  id: "openai-codex",
+  name: "OpenAI Codex",
+  display_name: "OpenAI Codex",
+  type: "openai_codex",
+  base_url: "https://chatgpt.com/backend-api/codex",
+  categories: ["codex"],
+  category_counts: { codex: 0 },
+  models_count: 0,
+  source: "openai-codex-live",
+};
+
+const accountProviderCatalogOptions = [codexProviderCatalogSummary];
+
+const fallbackCodexReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
 
 export function ProviderUpsertModal({
   mode,
@@ -18,9 +88,11 @@ export function ProviderUpsertModal({
   catalog,
   standardModels,
   routes = [],
+  resources = [],
   loading,
   onClose,
   onSaved,
+  onAccountsChanged,
   setLoading,
   setError,
   setNotice,
@@ -31,76 +103,148 @@ export function ProviderUpsertModal({
   catalog: ProviderCatalogEntry[];
   standardModels: Model[];
   routes?: ModelRoute[];
+  resources?: ProviderResource[];
   loading: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
+  onAccountsChanged?: () => Promise<void>;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
   setNotice: (value: string) => void;
 }) {
-  const availableCategories = useMemo(() => catalogModelCategoryOptions(catalog), [catalog]);
-  const initialCategory = availableCategories.find((item) => item.key !== "all")?.key ?? "custom";
-  const initialEntry = catalog.find((entry) => providerEntrySupportsCategory(entry, initialCategory)) ?? catalog.find((entry) => entry.id === "custom") ?? catalog[0];
+  const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
+    resource.provider_id === provider?.id && resource.resource_type === "openai_subscription",
+  );
+  const directCredentialCatalog = useMemo(
+    () => catalog.filter((entry) => entry.id !== codexProviderCatalogSummary.id && entry.type !== "openai_codex"),
+    [catalog],
+  );
+  const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
+  const availableCategories = useMemo(
+    () => catalogModelCategoryOptions(selectableProviderCatalog).filter((item) => mode !== "create" || item.key !== "codex"),
+    [mode, selectableProviderCatalog],
+  );
+  const providerCatalogID = provider?.options?.catalog_id;
+  const providerModelCategory = provider?.options?.model_category;
+  const initialCategory = editingCodexSubscription
+    ? "codex"
+    : providerModelCategory || (mode === "edit" && provider
+      ? "all"
+      : availableCategories.find((item) => item.key !== "all")?.key || "custom");
+  const initialEntry = editingCodexSubscription
+    ? codexProviderCatalogSummary
+    : mode === "edit"
+      ? selectableProviderCatalog.find((entry) => entry.id === "custom") ?? selectableProviderCatalog[0]
+      : selectableProviderCatalog.find((entry) => entry.id === providerCatalogID)
+        ?? selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, initialCategory))
+        ?? selectableProviderCatalog.find((entry) => entry.id === "custom")
+        ?? selectableProviderCatalog[0];
   const [modelCategory, setModelCategory] = useState(initialCategory);
   const [catalogID, setCatalogID] = useState(initialEntry?.id ?? "custom");
   const [detail, setDetail] = useState<ProviderCatalogEntry | null>(null);
+  const [codexCatalog, setCodexCatalog] = useState<ProviderCatalogEntry | null>(null);
+  const [codexCatalogLoading, setCodexCatalogLoading] = useState(false);
+  const [codexCatalogError, setCodexCatalogError] = useState("");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [modelLoading, setModelLoading] = useState(false);
   const [modelError, setModelError] = useState("");
   const [catalogReloadKey, setCatalogReloadKey] = useState(0);
+  const catalogRefreshRequested = useRef(false);
   const [selectedModels, setSelectedModels] = useState<Record<string, boolean>>({});
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
-    name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name ?? "",
-    type: mode === "edit" ? provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
-    base_url: mode === "edit" ? provider?.base_url ?? "" : initialEntry?.base_url ?? "",
+    name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex" : provider?.name ?? "" : initialEntry?.display_name ?? "",
+    type: mode === "edit" ? editingCodexSubscription ? "openai_codex" : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
+    base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     priority: String(provider?.priority ?? 10),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
     create_routes: mode === "create" ? "true" : "false",
   }));
-  const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>("provider_api_key");
+  const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingCodexSubscription ? "account_integration" : "provider_api_key");
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() =>
     providerResourceDraftDefaults({
       provider_id: "",
-      name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
-      base_url: mode === "edit" ? provider?.base_url ?? "" : initialEntry?.base_url ?? "",
+      name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex Codex Account" : provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
+      base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     }),
   );
   const [accountOAuthCallback, setAccountOAuthCallback] = useState("");
   const [accountOAuthStatus, setAccountOAuthStatus] = useState("");
   const [accountOAuthBusy, setAccountOAuthBusy] = useState(false);
+  const [accountOAuthNoticeOpen, setAccountOAuthNoticeOpen] = useState(false);
+  const [accountOAuthNoticeError, setAccountOAuthNoticeError] = useState("");
+  const [accountOAuthCallbackModalOpen, setAccountOAuthCallbackModalOpen] = useState(false);
+  const [accountOAuthCallbackModalError, setAccountOAuthCallbackModalError] = useState("");
+  const [accountQuotaBusyIDs, setAccountQuotaBusyIDs] = useState<Record<string, boolean>>({});
+  const [accountQuotaErrors, setAccountQuotaErrors] = useState<Record<string, string>>({});
+  const [accountQuotas, setAccountQuotas] = useState<Record<string, OpenAIAccountQuota>>({});
+  const [accountConfirmation, setAccountConfirmation] = useState<ProviderAccountConfirmation | null>(null);
+  const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
+  const [accountConfirmationError, setAccountConfirmationError] = useState("");
+  const [deleteAccountConfirmation, setDeleteAccountConfirmation] = useState("");
+  const [selectedAccountID, setSelectedAccountID] = useState(editingCodexSubscription ? "all" : "");
+  const [accountCatalogs, setAccountCatalogs] = useState<Record<string, ProviderCatalogEntry>>({});
+  const [accountCatalogErrors, setAccountCatalogErrors] = useState<Record<string, string>>({});
+  const [accountCatalogLoading, setAccountCatalogLoading] = useState(false);
+  const [codexTestValues, setCodexTestValues] = useState({ model: "gpt-5.6-luna", reasoning_effort: "medium", speed: "standard", prompt: "" });
+  const [codexTestBusyID, setCodexTestBusyID] = useState("");
+  const [codexTestErrors, setCodexTestErrors] = useState<Record<string, string>>({});
+  const [codexTestResults, setCodexTestResults] = useState<Record<string, CodexSubscriptionTestResult>>({});
+  const [editTab, setEditTab] = useState<ProviderEditTab>("connect");
+  const [quickAPITab, setQuickAPITab] = useState<ProviderEditTab>("connect");
   const [createStep, setCreateStep] = useState(0);
-  const createSteps = useMemo(() => providerCreateWizardSteps(), []);
+  const quickAPIFlow = mode === "create" && credentialMode === "provider_api_key";
+  const quickAPIConnect = quickAPIFlow && createStep === 1;
+  const createSteps = useMemo(() => providerCreateWizardSteps(credentialMode), [credentialMode]);
   const lastCreateStep = createSteps.length - 1;
   const accountCallbackURL = useMemo(() => providerAccountOAuthCallbackURL(), []);
   const modalRef = useRef<HTMLFormElement | null>(null);
+  const preserveCatalogValuesOnReload = useRef(false);
+  const accountNameInputRef = useRef<HTMLInputElement | null>(null);
   const existingRouteModels = useMemo(
     () => new Set(routes.filter((route) => provider && route.provider_id === provider.id).map((route) => route.model_name)),
     [provider, routes],
   );
-
+  const subscriptionResources = useMemo(
+    () => resources.filter((resource) =>
+      resource.resource_type === "openai_subscription" && (mode === "create" || resource.provider_id === provider?.id),
+    ),
+    [mode, provider?.id, resources],
+  );
+  const usesCodexCatalog = credentialMode === "account_integration" || editingCodexSubscription;
+  const selectedAccountResources = useMemo(
+    () => selectedAccountID === "all"
+      ? subscriptionResources
+      : subscriptionResources.filter((resource) => resource.id === selectedAccountID),
+    [selectedAccountID, subscriptionResources],
+  );
   const categoryCatalog = useMemo(
-    () => catalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory)),
-    [catalog, modelCategory],
+    () => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory)),
+    [modelCategory, selectableProviderCatalog],
   );
   const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory, standardModels), [modelCategory, standardModels]);
 
   useEffect(() => {
+    if (quickAPIFlow) return;
+    if (credentialMode === "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
+    if (catalogID === "custom") return;
     if (categoryCatalog.length === 0) return;
     if (!categoryCatalog.some((entry) => entry.id === catalogID)) {
       selectCatalog(categoryCatalog[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelCategory, categoryCatalog.length]);
+  }, [modelCategory, categoryCatalog.length, credentialMode, catalogID, quickAPIFlow]);
 
   useEffect(() => {
     const entry = catalogID === "custom" ? customCatalogEntry : catalog.find((item) => item.id === catalogID);
-    setModelQuery("");
+    const preserveCatalogValues = preserveCatalogValuesOnReload.current;
+    preserveCatalogValuesOnReload.current = false;
+    if (!preserveCatalogValues) setModelQuery("");
     setModelError("");
-    if (entry && mode === "create") {
+    if (entry && mode === "create" && !preserveCatalogValues) {
       setValues((current) => ({
         ...current,
         name: catalogID === "custom" ? (current.name === initialEntry?.display_name ? "" : current.name) : entry.display_name || entry.name || current.name,
@@ -111,15 +255,59 @@ export function ProviderUpsertModal({
     let cancelled = false;
     setDetail(null);
     setSelectedModels({});
-    if (catalogID === "custom") {
-      setDetail(customCatalogEntry);
+    if (catalogID === codexProviderCatalogSummary.id) {
       setModelLoading(false);
       return () => {
         cancelled = true;
       };
     }
+    if (catalogID === "custom") {
+      if (!values.base_url?.trim()) {
+        setDetail(customCatalogEntry);
+        setModelLoading(false);
+        return () => {
+          cancelled = true;
+        };
+      }
+      setModelLoading(true);
+      adminFetch(api, "/api/admin/provider-catalog/custom", {
+        method: "POST",
+        body: JSON.stringify({
+          provider_id: mode === "edit" ? provider?.id : "",
+          name: values.name,
+          type: values.type || "openai_compatible",
+          base_url: values.base_url,
+          api_key: values.api_key,
+          model_category: modelCategory,
+        }),
+      })
+        .then(async (resp) => {
+          if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载自定义上游模型")));
+          return (await resp.json()) as { data: ProviderCatalogEntry };
+        })
+        .then((payload) => {
+          if (cancelled) return;
+          setDetail(payload.data);
+          setModelError("");
+        })
+        .catch((err) => {
+          if (cancelled || isAuthExpiredError(err)) return;
+          const message = err instanceof Error ? err.message : tx("自定义上游模型加载失败");
+          setDetail(customCatalogEntry);
+          setModelError(message);
+        })
+        .finally(() => {
+          if (!cancelled) setModelLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     setModelLoading(true);
-    adminFetch(api, `/api/admin/provider-catalog/${encodeURIComponent(catalogID)}`)
+    const refresh = catalogRefreshRequested.current;
+    catalogRefreshRequested.current = false;
+    const refreshQuery = refresh ? "?refresh=true" : "";
+    adminFetch(api, `/api/admin/provider-catalog/${encodeURIComponent(catalogID)}${refreshQuery}`)
       .then(async (resp) => {
         if (!resp.ok) throw new Error(`provider catalog ${resp.status}`);
         return (await resp.json()) as { data: ProviderCatalogEntry };
@@ -128,7 +316,7 @@ export function ProviderUpsertModal({
         if (cancelled) return;
         setDetail(payload.data);
         setModelError("");
-        if (mode === "create") {
+        if (mode === "create" && !preserveCatalogValues) {
           setValues((current) => ({
             ...current,
             name: payload.data.display_name || payload.data.name || current.name,
@@ -152,7 +340,105 @@ export function ProviderUpsertModal({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode]);
+  }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id]);
+
+  useEffect(() => {
+    if (!usesCodexCatalog || mode === "edit") return;
+    const resource = subscriptionResources.find((item) => item.status === "active") ?? subscriptionResources[0];
+    const hasPendingCredentials = Boolean(accountValues.access_token?.trim() && accountValues.account_id?.trim());
+    if (!resource && !hasPendingCredentials) {
+      setCodexCatalog(null);
+      setCodexCatalogError(tx("完成 Codex 账号授权后将从真实账号加载可用模型。"));
+      return;
+    }
+    let cancelled = false;
+    setCodexCatalogLoading(true);
+    setCodexCatalogError("");
+    const path = resource
+      ? `/api/admin/provider-catalog/${codexProviderCatalogSummary.id}?resource_id=${encodeURIComponent(resource.id)}`
+      : `/api/admin/provider-catalog/${codexProviderCatalogSummary.id}`;
+    const request = hasPendingCredentials
+      ? {
+          method: "POST",
+          body: JSON.stringify({
+            auth_type: accountValues.auth_type || "oauth",
+            access_token: accountValues.access_token,
+            refresh_token: accountValues.refresh_token,
+            id_token: accountValues.id_token,
+            account_id: accountValues.account_id,
+            email: accountValues.account_email,
+            organization_id: accountValues.organization_id,
+            plan_type: accountValues.plan_type,
+            token_type: accountValues.token_type,
+            expires_at: accountValues.expires_at,
+            scopes: accountValues.scopes,
+          }),
+        }
+      : undefined;
+    adminFetch(api, path, request)
+      .then(async (resp) => {
+        if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载 Codex 模型目录")));
+        return (await resp.json()) as { data: ProviderCatalogEntry };
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        setCodexCatalog(payload.data);
+        setCodexCatalogError("");
+      })
+      .catch((err) => {
+        if (cancelled || isAuthExpiredError(err)) return;
+        setCodexCatalog(null);
+        setCodexCatalogError(err instanceof Error ? err.message : tx("Codex 模型目录加载失败"));
+      })
+      .finally(() => {
+        if (!cancelled) setCodexCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    api,
+    credentialMode,
+    subscriptionResources,
+    usesCodexCatalog,
+    accountValues.access_token,
+    accountValues.account_id,
+    catalogReloadKey,
+    mode,
+  ]);
+
+  useEffect(() => {
+    if (mode !== "edit" || !editingCodexSubscription || selectedAccountResources.length === 0) {
+      setAccountCatalogs({});
+      setAccountCatalogErrors({});
+      return;
+    }
+    let cancelled = false;
+    setAccountCatalogLoading(true);
+    setAccountCatalogErrors({});
+    void Promise.all(selectedAccountResources.map(async (resource) => {
+      try {
+        const resp = await adminFetch(
+          api,
+          `/api/admin/provider-catalog/${codexProviderCatalogSummary.id}?resource_id=${encodeURIComponent(resource.id)}`,
+        );
+        if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载账号模型目录")));
+        const payload = (await resp.json()) as { data: ProviderCatalogEntry };
+        if (!cancelled) {
+          setAccountCatalogs((current) => ({ ...current, [resource.id]: payload.data }));
+        }
+      } catch (err) {
+        if (cancelled || isAuthExpiredError(err)) return;
+        const message = err instanceof Error ? err.message : tx("账号模型目录加载失败");
+        setAccountCatalogErrors((current) => ({ ...current, [resource.id]: message }));
+      }
+    })).finally(() => {
+      if (!cancelled) setAccountCatalogLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, editingCodexSubscription, mode, selectedAccountResources]);
 
   useEffect(() => {
     if (mode === "create") {
@@ -160,25 +446,64 @@ export function ProviderUpsertModal({
     }
   }, [createStep, mode]);
 
+  useEffect(() => {
+    if (mode === "create" && createStep === 3 && catalogID === "custom" && values.base_url?.trim()) {
+      setCatalogReloadKey((current) => current + 1);
+    }
+    // Load custom upstream models when the wizard reaches route confirmation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogID, createStep, mode]);
+
+  useEffect(() => {
+    if (mode !== "edit" || editTab !== "advanced") return;
+    for (const resource of selectedAccountResources) {
+      if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
+    }
+    // Query when the visible account scope changes; successful results remain cached for manual refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editTab, mode, selectedAccountResources]);
+
+  const selectedAccountCatalog = useMemo(
+    () => {
+      const catalogs = selectedAccountResources
+        .map((resource) => accountCatalogs[resource.id])
+        .filter((entry): entry is ProviderCatalogEntry => Boolean(entry));
+      return catalogs.length === selectedAccountResources.length ? intersectProviderCatalogs(catalogs) : null;
+    },
+    [accountCatalogs, selectedAccountResources],
+  );
+  const effectiveDetail = editingCodexSubscription ? selectedAccountCatalog : usesCodexCatalog ? codexCatalog : detail;
+  const effectiveCatalogLoading = editingCodexSubscription ? accountCatalogLoading : usesCodexCatalog ? codexCatalogLoading : modelLoading;
+  const effectiveCatalogError = editingCodexSubscription
+    ? Object.values(accountCatalogErrors)[0] || ""
+    : usesCodexCatalog ? codexCatalogError : modelError;
   const models = useMemo(
-    () => (detail?.models ?? []).filter((model) => {
+    () => (effectiveDetail?.models ?? []).filter((model) => {
+      if (quickAPIFlow) return true;
       if (modelCategory !== "all" && modelCategoryForCatalog(model) !== modelCategory) return false;
+      if (usesCodexCatalog) return true;
+      if (catalogID === "custom") return true;
       const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name);
       return standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name) === canonicalModelNameForUI(canonical, canonical));
     }),
-    [detail, modelCategory, standardModels],
+    [catalogID, effectiveDetail, modelCategory, quickAPIFlow, standardModels, usesCodexCatalog],
   );
   useEffect(() => {
-    if (mode !== "create" || !detail || values.create_routes !== "true") return;
+    if (mode !== "create" || !effectiveDetail || values.create_routes !== "true") return;
+    if (quickAPIFlow) return;
     const nextSelected: Record<string, boolean> = {};
     for (const model of models) {
       nextSelected[model.id] = true;
     }
     setSelectedModels(nextSelected);
-  }, [detail, mode, models, values.create_routes]);
+  }, [effectiveDetail, mode, models, quickAPIFlow, values.create_routes]);
+  const listedCatalog = useMemo(
+    () => quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
+    [categoryCatalog, directCredentialCatalog, quickAPIFlow],
+  );
   const filteredCatalog = useMemo(() => {
     const normalized = catalogQuery.trim().toLowerCase();
-    const entries = categoryCatalog;
+    const entries = listedCatalog;
     if (!normalized) return entries;
     return entries.filter((entry) =>
       [
@@ -187,7 +512,7 @@ export function ProviderUpsertModal({
         entry.display_name,
       ].filter(Boolean).join(" ").toLowerCase().includes(normalized),
     );
-  }, [categoryCatalog, catalogQuery]);
+  }, [catalogQuery, listedCatalog]);
   const filteredModels = useMemo(() => {
     const normalized = modelQuery.trim().toLowerCase();
     if (!normalized) return models.slice(0, 80);
@@ -200,12 +525,43 @@ export function ProviderUpsertModal({
     .map(([id]) => id);
   const autoRouteEnabled = values.create_routes === "true";
   const selectedRouteCount = autoRouteEnabled ? selectedModelIDs.length : 0;
-  const selectedEntry = detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
-  const showProviderCatalog = mode === "edit" || (mode === "create" && createStep === 1 && credentialMode !== "account_integration");
-  const providerBodyClassName = mode === "create" && !showProviderCatalog ? "provider-modal-body provider-wizard-single" : "provider-modal-body";
+  const selectedEntry = usesCodexCatalog
+    ? codexCatalog ?? codexProviderCatalogSummary
+    : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
+  const showProviderCatalog = mode === "create" && createStep === 1 && credentialMode !== "account_integration";
+  const providerBodyClassName = !showProviderCatalog
+    ? "provider-modal-body provider-wizard-single"
+    : quickAPIConnect ? "provider-modal-body provider-api-quick-layout" : "provider-modal-body";
   const accountRuntimeFields = useMemo(() => providerCreateAccountRuntimeFields(), []);
   const accountManualTokenFields = useMemo(() => providerCreateAccountManualTokenFields(), []);
   const accountTokenSummary = useMemo(() => providerAccountTokenSummary(accountValues), [accountValues]);
+  const accountResourceNameConflict = useMemo(() => {
+    const normalized = accountValues.name?.trim().toLocaleLowerCase();
+    if (!normalized) return false;
+    return resources.some((resource) => resource.name.trim().toLocaleLowerCase() === normalized);
+  }, [accountValues.name, resources]);
+  const codexTestModels = selectedAccountCatalog?.models ?? [];
+  const selectedCodexTestModel = codexTestModels.find((model) => model.id === codexTestValues.model);
+  const codexReasoningEfforts = selectedCodexTestModel?.metadata?.supported_reasoning_levels
+    ?.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean) ?? fallbackCodexReasoningEfforts;
+
+  useEffect(() => {
+    if (codexTestModels.length === 0) return;
+    setCodexTestValues((current) => {
+      const nextModel = codexTestModels.some((model) => model.id === current.model)
+        ? current.model
+        : codexTestModels.find((model) => model.id === "gpt-5.6-luna")?.id ?? codexTestModels[0].id;
+      const model = codexTestModels.find((item) => item.id === nextModel);
+      const efforts = model?.metadata?.supported_reasoning_levels?.split(",").filter(Boolean) ?? fallbackCodexReasoningEfforts;
+      const nextEffort = efforts.includes(current.reasoning_effort)
+        ? current.reasoning_effort
+        : model?.metadata?.default_reasoning_level || efforts[0] || "medium";
+      if (nextModel === current.model && nextEffort === current.reasoning_effort) return current;
+      return { ...current, model: nextModel, reasoning_effort: nextEffort };
+    });
+  }, [codexTestModels, codexTestValues.model]);
 
   useEffect(() => {
     if (mode !== "create" || !hasPendingProviderAccountOAuthResult()) return;
@@ -223,13 +579,11 @@ export function ProviderUpsertModal({
   }, [mode, credentialMode]);
 
   useEffect(() => {
-    if (mode !== "create" || credentialMode !== "account_integration" || catalog.length === 0 || catalogID !== "custom") return;
-    const recommended = recommendedAccountProviderEntry(catalog);
-    if (!recommended) return;
-    setModelCategory("openai");
-    selectCatalog(recommended);
+    if (mode !== "create" || credentialMode !== "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
+    setModelCategory("codex");
+    selectCatalog(codexProviderCatalogSummary);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog.length, credentialMode, mode, catalogID]);
+  }, [credentialMode, mode, catalogID]);
 
   function update(key: string, value: string) {
     const previousProviderName = values.name;
@@ -245,13 +599,20 @@ export function ProviderUpsertModal({
     if (key === "base_url") {
       setAccountValues((current) => {
         if (current.base_url && current.base_url !== previousBaseURL) return current;
-        return { ...current, base_url: value || "https://api.openai.com/v1" };
+        return {
+          ...current,
+          base_url: value || (credentialMode === "account_integration" ? codexProviderCatalogSummary.base_url || "" : "https://api.openai.com/v1"),
+        };
       });
     }
   }
 
   function updateAccountValue(key: string, value: string) {
     setAccountValues((current) => ({ ...current, [key]: value }));
+    if (key === "name") {
+      setError("");
+      setAccountOAuthStatus("");
+    }
   }
 
   async function applyProviderAccountOAuthResult(result: ProviderAccountOAuthResult, message: string) {
@@ -307,6 +668,19 @@ export function ProviderUpsertModal({
     void applyProviderAccountOAuthResult(result, tx("已从粘贴的回调结果回填账号 Token。"));
   }
 
+  function confirmProviderAccountOAuthCallback() {
+    const result = parseProviderAccountOAuthResult(accountOAuthCallback, true);
+    if (!result) {
+      const message = tx("请粘贴登录后浏览器地址栏中的完整 localhost 回调地址。");
+      setAccountOAuthCallbackModalError(message);
+      setAccountOAuthStatus(message);
+      return;
+    }
+    setAccountOAuthCallbackModalError("");
+    setAccountOAuthCallbackModalOpen(false);
+    void applyProviderAccountOAuthResult(result, tx("已从粘贴的回调结果回填账号 Token。"));
+  }
+
   async function exchangeProviderAccountAuthorizationCode(result: ProviderAccountOAuthResult, message: string) {
     const pendingSession = readPendingProviderAccountOAuthSession();
     const sessionID = result.session_id || pendingSession?.session_id || "";
@@ -341,9 +715,23 @@ export function ProviderUpsertModal({
     }
   }
 
+  function requestProviderAccountAuthorization() {
+    if (accountResourceNameConflict) {
+      const message = tx("当前名称已被其他账号资源占用。请先修改为新的唯一名称，再继续授权。");
+      setError(message);
+      setAccountOAuthStatus(message);
+      accountNameInputRef.current?.focus();
+      accountNameInputRef.current?.select();
+      return;
+    }
+    setAccountOAuthNoticeError("");
+    setAccountOAuthNoticeOpen(true);
+  }
+
   async function openProviderAccountAuthorization() {
     try {
       setAccountOAuthBusy(true);
+      setAccountOAuthNoticeError("");
       const resp = await adminFetch(api, "/api/admin/provider-account-oauth/openai/generate-auth-url", {
         method: "POST",
         body: JSON.stringify({ return_url: accountCallbackURL }),
@@ -351,12 +739,17 @@ export function ProviderUpsertModal({
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("生成账号授权地址")));
       const generated = (await resp.json()) as ProviderAccountOAuthGenerateResponse;
       savePendingProviderAccountOAuthSession({ session_id: generated.session_id, state: generated.state });
+      setAccountOAuthNoticeOpen(false);
       window.open(generated.auth_url, "_blank", "noopener,noreferrer");
-      setAccountOAuthStatus(tx("已打开 OpenAI/Codex 授权页，授权完成后会自动回填账号 Token。"));
+      setAccountOAuthCallback("");
+      setAccountOAuthCallbackModalError("");
+      setAccountOAuthCallbackModalOpen(true);
+      setAccountOAuthStatus(tx("已打开 OpenAI/Codex 授权页。授权后请复制浏览器地址栏中的完整 localhost callback URL，并粘贴到回调结果。"));
       setError("");
     } catch (err) {
       if (isAuthExpiredError(err)) return;
       const errorMessage = err instanceof Error ? err.message : tx("生成账号授权地址失败");
+      setAccountOAuthNoticeError(errorMessage);
       setAccountOAuthStatus(errorMessage);
       setError(errorMessage);
     } finally {
@@ -365,14 +758,61 @@ export function ProviderUpsertModal({
   }
 
   async function copyProviderAccountCallbackURL() {
-    if (!accountCallbackURL) return;
     try {
-      await navigator.clipboard.writeText(accountCallbackURL);
-      setAccountOAuthStatus(tx("已复制回调地址。"));
+      await navigator.clipboard.writeText(openAIAccountOAuthRedirectURI);
+      setAccountOAuthStatus(tx("已复制 OpenAI 固定回调地址。"));
     } catch {
-      setAccountOAuthCallback(accountCallbackURL);
-      setAccountOAuthStatus(accountCallbackURL);
+      setAccountOAuthCallback(openAIAccountOAuthRedirectURI);
+      setAccountOAuthStatus(openAIAccountOAuthRedirectURI);
     }
+  }
+
+  async function queryAccountQuota(resource: ProviderResource) {
+    setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: true }));
+    setAccountQuotaErrors((current) => {
+      const next = { ...current };
+      delete next[resource.id];
+      return next;
+    });
+    try {
+      const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/quota`);
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询订阅额度")));
+      const quota = (await resp.json()) as OpenAIAccountQuota;
+      setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setAccountQuotaErrors((current) => ({
+        ...current,
+        [resource.id]: err instanceof Error ? err.message : tx("查询订阅额度失败"),
+      }));
+    } finally {
+      setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: false }));
+    }
+  }
+
+  async function testCodexSubscription() {
+    if (selectedAccountResources.length === 0) {
+      setCodexTestErrors({ selection: tx("请选择要测试的 Codex 账号") });
+      return;
+    }
+    setCodexTestBusyID(selectedAccountID);
+    setCodexTestErrors({});
+    await Promise.all(selectedAccountResources.map(async (resource) => {
+      try {
+        const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/test`, {
+          method: "POST",
+          body: JSON.stringify(codexTestValues),
+        });
+        if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Codex Subscription")));
+        const result = (await resp.json()) as CodexSubscriptionTestResult;
+        setCodexTestResults((current) => ({ ...current, [resource.id]: result }));
+      } catch (err) {
+        if (isAuthExpiredError(err)) return;
+        const message = err instanceof Error ? err.message : tx("Codex Subscription 测试失败");
+        setCodexTestErrors((current) => ({ ...current, [resource.id]: message }));
+      }
+    }));
+    setCodexTestBusyID("");
   }
 
   function selectCredentialMode(nextMode: ProviderCredentialMode) {
@@ -383,14 +823,15 @@ export function ProviderUpsertModal({
         resource_type: "openai_subscription",
         auth_type: "oauth",
       }));
-      const recommended = recommendedAccountProviderEntry(catalog);
-      if (recommended) {
-        setModelCategory("openai");
-        setCatalogQuery("");
-        setModelQuery("");
-        setSelectedModels({});
-        selectCatalog(recommended);
-      }
+      setModelCategory("codex");
+      setCatalogQuery("");
+      setModelQuery("");
+      setSelectedModels({});
+      selectCatalog(codexProviderCatalogSummary);
+      return;
+    }
+    if (modelCategory === "codex" || catalogID === codexProviderCatalogSummary.id) {
+      selectCategory(availableCategories[0]?.key ?? "custom");
     }
   }
 
@@ -399,8 +840,73 @@ export function ProviderUpsertModal({
     setAccountValues((current) => ({
       ...current,
       name: defaultProviderResourceName(providerName),
-      base_url: baseURL || "https://api.openai.com/v1",
+      base_url: baseURL || codexProviderCatalogSummary.base_url || "",
     }));
+  }
+
+  function requestAccountConfirmation(action: ProviderAccountConfirmation["action"], resource: ProviderResource) {
+    setAccountConfirmation({ action, resource });
+    setAccountConfirmationError("");
+    setDeleteAccountConfirmation("");
+  }
+
+  function closeAccountConfirmation() {
+    if (accountConfirmationBusy) return;
+    setAccountConfirmation(null);
+    setAccountConfirmationError("");
+    setDeleteAccountConfirmation("");
+  }
+
+  async function updateAccountStatus(resource: ProviderResource, action: "enable" | "disable") {
+    setLoading(true);
+    setAccountConfirmationBusy(true);
+    setAccountConfirmationError("");
+    setError("");
+    setNotice("");
+    try {
+      const resp = await adminFetch(api, "/api/admin/provider-resources/bulk", {
+        method: "POST",
+        body: JSON.stringify({ action, ids: [resource.id] }),
+      });
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx(action === "disable" ? "禁用账号" : "启用账号")));
+      const result = (await resp.json()) as { success?: number; errors?: string[] };
+      if (result.success !== 1) {
+        throw new Error(result.errors?.[0] || tx(action === "disable" ? "禁用账号失败" : "启用账号失败"));
+      }
+      setNotice(`${providerResourceAccountLabel(resource)} ${tx(action === "disable" ? "已禁用" : "已启用")}`);
+      setAccountConfirmation(null);
+      await (onAccountsChanged ?? onSaved)();
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setAccountConfirmationError(err instanceof Error ? err.message : tx("操作失败"));
+    } finally {
+      setAccountConfirmationBusy(false);
+      setLoading(false);
+    }
+  }
+
+  async function deleteAccount(resource: ProviderResource) {
+    if (deleteAccountConfirmation !== deleteAccountConfirmationPhrase) return;
+    setLoading(true);
+    setAccountConfirmationBusy(true);
+    setAccountConfirmationError("");
+    setError("");
+    setNotice("");
+    try {
+      const resp = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}`, {
+        method: "DELETE",
+      });
+      if (!resp.ok && resp.status !== 204) throw new Error(await readAdminError(resp, tx("删除账号")));
+      setNotice(`${providerResourceAccountLabel(resource)} ${tx("已彻底删除")}`);
+      setAccountConfirmation(null);
+      await (onAccountsChanged ?? onSaved)();
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      setAccountConfirmationError(err instanceof Error ? err.message : tx("删除账号失败"));
+    } finally {
+      setAccountConfirmationBusy(false);
+      setLoading(false);
+    }
   }
 
   function selectCategory(category: string) {
@@ -408,11 +914,17 @@ export function ProviderUpsertModal({
     setCatalogQuery("");
     setModelQuery("");
     setSelectedModels({});
-    const nextEntry = catalog.find((entry) => providerEntrySupportsCategory(entry, category));
-    if (nextEntry) selectCatalog(nextEntry);
+    const nextEntry = selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, category));
+    if (nextEntry) {
+      selectCatalog(nextEntry);
+    } else {
+      selectCustomCatalog();
+    }
   }
 
   function selectCatalog(entry: ProviderCatalogEntry) {
+    if (entry.id === catalogID) return;
+    setQuickAPITab("connect");
     const nextName = entry.display_name || entry.name || values.name;
     setCatalogID(entry.id);
     setCatalogReloadKey((current) => current + 1);
@@ -422,14 +934,19 @@ export function ProviderUpsertModal({
     setModelError("");
     setValues((current) => ({
       ...current,
+      id: mode === "create" ? "" : current.id,
       name: mode === "create" ? entry.display_name || entry.name || current.name : current.name,
       type: entry.type || current.type || "openai_compatible",
       base_url: mode === "create" ? entry.base_url ?? "" : current.base_url,
+      api_key: mode === "create" ? "" : current.api_key,
+      create_routes: quickAPIFlow ? "true" : current.create_routes,
     }));
     syncAccountDefaults(nextName, entry.base_url);
   }
 
   function selectCustomCatalog() {
+    if (catalogID === "custom") return;
+    setQuickAPITab("connect");
     setCatalogID("custom");
     setCatalogReloadKey((current) => current + 1);
     setDetail(customCatalogEntry);
@@ -442,8 +959,19 @@ export function ProviderUpsertModal({
       name: mode === "create" ? "" : current.name,
       type: current.type || "openai_compatible",
       base_url: mode === "create" ? "" : current.base_url,
+      api_key: mode === "create" ? "" : current.api_key,
+      create_routes: quickAPIFlow ? "false" : current.create_routes,
     }));
     syncAccountDefaults(values.name || "Provider", "");
+  }
+
+  function reloadSelectedCatalog() {
+    preserveCatalogValuesOnReload.current = true;
+    catalogRefreshRequested.current = catalogID !== "custom" && !usesCodexCatalog;
+    setCatalogReloadKey((current) => current + 1);
+    setDetail(null);
+    setSelectedModels({});
+    setModelError("");
   }
 
   function canContinueCreateStep(targetStep = createStep) {
@@ -452,6 +980,7 @@ export function ProviderUpsertModal({
     if (targetStep === 1) {
       return Boolean(selectedEntry && values.name?.trim());
     }
+    if (targetStep === 2 && credentialMode === "provider_api_key") return Boolean(values.api_key?.trim());
     if (targetStep === 2 && credentialMode === "account_integration") return providerAccountResourceReady(accountValues);
     return true;
   }
@@ -467,10 +996,29 @@ export function ProviderUpsertModal({
       return false;
     }
     if (targetStep === 1 && !values.name?.trim()) {
+      if (quickAPIFlow) setQuickAPITab(catalogID === "custom" ? "connect" : "advanced");
       setError(tx(credentialMode === "account_integration" ? "请填写通道名称。" : "请填写渠道名称。"));
       return false;
     }
+    if (targetStep === 1 && credentialMode === "provider_api_key" && catalogID === "custom" && !values.base_url?.trim()) {
+      if (quickAPIFlow) setQuickAPITab("connect");
+      setError(tx("请填写 Base URL。"));
+      return false;
+    }
+    if (targetStep === 1 && credentialMode === "provider_api_key" && !values.api_key?.trim()) {
+      if (quickAPIFlow) setQuickAPITab("connect");
+      setError(tx("请填写 API Key。"));
+      return false;
+    }
     if (targetStep === 2 && credentialMode === "account_integration") {
+      if (!accountValues.name?.trim()) {
+        setError(tx("请填写账号资源名称。"));
+        return false;
+      }
+      if (accountResourceNameConflict) {
+        setError(tx("账号资源名称已存在，请使用唯一名称。"));
+        return false;
+      }
       try {
         assertProviderAccountResourceReady(accountValues);
       } catch (err) {
@@ -489,11 +1037,13 @@ export function ProviderUpsertModal({
       setCreateStep((current) => Math.min(current + 1, lastCreateStep));
       return;
     }
+    if (quickAPIConnect && !validateCreateStep(createStep)) return;
     setLoading(true);
     setError("");
     setNotice("");
     try {
       if (mode === "create" && credentialMode === "account_integration") {
+        if (accountResourceNameConflict) throw new Error(tx("账号资源名称已存在，请使用唯一名称。"));
         assertProviderAccountResourceReady(accountValues);
       }
       const payload = (mode === "edit" ? providerUpdatePayload : providerPayload)({
@@ -501,8 +1051,9 @@ export function ProviderUpsertModal({
         api_key: mode === "create" && credentialMode !== "provider_api_key" ? "" : values.api_key,
         create_routes: autoRouteEnabled && selectedModelIDs.length > 0 ? "true" : "false",
         catalog_id: catalogID,
-        model_category: modelCategory,
+        model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
+        custom_models: catalogID === "custom" && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
@@ -519,7 +1070,7 @@ export function ProviderUpsertModal({
           ...accountValues,
           provider_id: providerID,
           name: accountValues.name?.trim() || defaultProviderResourceName(result.provider?.name || values.name || providerID),
-          base_url: accountValues.base_url?.trim() || values.base_url || "https://api.openai.com/v1",
+          base_url: accountValues.base_url?.trim() || values.base_url || codexProviderCatalogSummary.base_url || "",
         };
         const resourceResp = await adminFetch(api, "/api/admin/provider-resources", {
           method: "POST",
@@ -529,7 +1080,7 @@ export function ProviderUpsertModal({
         accountResourceCreated = true;
       }
       const routed = result.created_routes ?? 0;
-      setNotice(`${tx("Provider 已")}${tx(mode === "edit" ? "更新" : "新增")}${accountResourceCreated ? `，${tx("已创建账号资源")}` : ""}${routed ? `，${tx("创建")} ${countWithUnit(routed, `条${modelCategoryLabel(modelCategory)}路由`, `${modelCategoryLabel(modelCategory)} route`, `${modelCategoryLabel(modelCategory)} ルート`)}` : ""}`);
+      setNotice(providerSaveMessage(mode === "edit", accountResourceCreated, routed, modelCategoryLabel(modelCategory)));
       await onSaved();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
@@ -572,10 +1123,21 @@ export function ProviderUpsertModal({
         ) : null}
         <div className={providerBodyClassName}>
           {showProviderCatalog ? (
+            quickAPIConnect ? (
+              <ProviderAPIQuickCatalog
+                entries={filteredCatalog}
+                total={listedCatalog.length}
+                selectedID={catalogID}
+                query={catalogQuery}
+                onQueryChange={setCatalogQuery}
+                onSelect={selectCatalog}
+                onSelectCustom={selectCustomCatalog}
+              />
+            ) : (
             <section className="provider-catalog-pane">
             <div className="provider-catalog-head">
               <strong>{tx("模型类型")}</strong>
-              <span>{countWithLabel(availableCategories.length, "类")}</span>
+              <span>{countWithUnit(availableCategories.length, "类", "category", "カテゴリ", "categories")}</span>
             </div>
             <div className="provider-category-list">
               {availableCategories.map((category) => (
@@ -586,7 +1148,7 @@ export function ProviderUpsertModal({
                   type="button"
                 >
                   <strong>{tx(category.label)}</strong>
-                  <span>{countWithLabel(category.count, "个模型")}</span>
+                  <span>{countWithUnit(category.count, "个模型", "model", "モデル")}</span>
                 </button>
               ))}
             </div>
@@ -602,7 +1164,7 @@ export function ProviderUpsertModal({
             >
               <Plus size={14} />
               <span>{tx("自定义渠道商")}</span>
-              <em>{modelCategoryLabel(modelCategory)} · {countWithLabel(customCatalogEntry.models_count, "个标准模型")}</em>
+              <em>{modelCategoryLabel(modelCategory)} · {tx("按 Base URL 加载上游模型")}</em>
             </button>
             <div className="provider-template-search">
               <Search size={14} />
@@ -626,26 +1188,98 @@ export function ProviderUpsertModal({
                   type="button"
                 >
                   <strong>{entry.display_name || entry.name}</strong>
-                  <span>{providerTypeLabel(entry.type)} · {countWithLabel(providerEntryCategoryCount(entry, modelCategory), "个模型")}</span>
+                  <span>{providerTypeLabel(entry.type)} · {countWithUnit(providerEntryCategoryCount(entry, modelCategory), "个模型", "model", "モデル")}</span>
                 </button>
               ))}
             </div>
           </section>
+            )
           ) : null}
 
           <section className="provider-config-pane">
-            {mode === "edit" || createStep > 0 ? (
+            {mode === "edit" && editingCodexSubscription ? (
+              <div className="provider-account-selector">
+                <div>
+                  <strong>{tx("账号列表")}</strong>
+                  <span>{tx("额度、真实测试和模型映射均使用这里选择的账号。")}</span>
+                </div>
+                <select
+                  aria-label={tx("账号列表")}
+                  value={selectedAccountID}
+                  onChange={(event) => {
+                    setSelectedAccountID(event.target.value);
+                    setModelQuery("");
+                    setSelectedModels({});
+                  }}
+                >
+                  <option value="all">{tx("全部账号")}（{subscriptionResources.length}）</option>
+                  {subscriptionResources.map((resource) => (
+                    <option key={resource.id} value={resource.id}>
+                      {resource.name} · {providerResourceAccountLabel(resource)}
+                      {resource.status !== "active" ? ` · ${tx("已停用")}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : mode === "create" && createStep > 0 && !quickAPIConnect ? (
               <div className="provider-selected-summary">
                 <strong>{modelCategoryLabel(modelCategory)}</strong>
-                <span>{selectedEntry?.display_name || selectedEntry?.name || tx("请选择渠道商")}</span>
+                {credentialMode === "account_integration" ? (
+                  <select
+                    aria-label={tx("账号池通道")}
+                    className="provider-account-channel-select"
+                    value={catalogID}
+                    onChange={(event) => {
+                      const entry = accountProviderCatalogOptions.find((item) => item.id === event.target.value);
+                      if (entry) selectCatalog(entry);
+                    }}
+                  >
+                    {accountProviderCatalogOptions.map((entry) => (
+                      <option key={entry.id} value={entry.id}>{entry.display_name || entry.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>{selectedEntry?.display_name || selectedEntry?.name || tx("请选择渠道商")}</span>
+                )}
                 <em>{providerTypeLabel(selectedEntry?.type || values.type || "openai_compatible")}</em>
+              </div>
+            ) : null}
+            {mode === "edit" ? (
+              <div className="provider-editor-tabs" role="tablist" aria-label={tx("Provider 编辑区")}>
+                <button
+                  aria-selected={editTab === "connect"}
+                  className={editTab === "connect" ? "active" : ""}
+                  onClick={() => setEditTab("connect")}
+                  role="tab"
+                  type="button"
+                >
+                  {tx("连接")}
+                </button>
+                <button
+                  aria-selected={editTab === "models"}
+                  className={editTab === "models" ? "active" : ""}
+                  onClick={() => setEditTab("models")}
+                  role="tab"
+                  type="button"
+                >
+                  {tx("模型")}
+                </button>
+                <button
+                  aria-selected={editTab === "advanced"}
+                  className={editTab === "advanced" ? "active" : ""}
+                  onClick={() => setEditTab("advanced")}
+                  role="tab"
+                  type="button"
+                >
+                  {tx("高级")}
+                </button>
               </div>
             ) : null}
             {mode === "create" && createStep === 0 ? (
               <section className="provider-wizard-panel provider-access-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("选择接入方式")}</h3>
-                  <p>{tx("先告诉 TokenHub 你手里有什么：上游 API Key、OpenAI 账号资源，或者只是先占位建路由。")}</p>
+                  <p>{tx("选择使用上游 API Key，或接入 OpenAI 账号资源池。")}</p>
                 </div>
                 <div className="provider-access-options" role="radiogroup" aria-label={tx("选择接入方式")}>
                   {providerCredentialOptions().map((option) => {
@@ -663,7 +1297,7 @@ export function ProviderUpsertModal({
                         <span><Icon size={18} /></span>
                         <strong>{tx(option.label)}</strong>
                         <em>{tx(option.description)}</em>
-                        {option.key === "account_integration" ? <small>{tx("账号资源池会自动推荐 OpenAI 兼容通道，下一步只需确认 Base URL 和账号凭据。")}</small> : null}
+                        {option.key === "account_integration" ? <small>{tx("账号资源池会选择 Codex Subscription 适配器，下一步确认 Codex Backend 地址和账号凭据。")}</small> : null}
                       </button>
                     );
                   })}
@@ -671,6 +1305,27 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "create" && createStep === 1 ? (
+              quickAPIConnect ? (
+                <ProviderAPIQuickConnect
+                  key={catalogID}
+                  catalogID={catalogID}
+                  entry={selectedEntry}
+                  modelCount={models.length}
+                  models={filteredModels}
+                  modelsLoading={effectiveCatalogLoading}
+                  modelsError={effectiveCatalogError}
+                  modelQuery={modelQuery}
+                  selectedModelCount={selectedModelIDs.length}
+                  selectedModels={selectedModels}
+                  activeTab={quickAPITab}
+                  values={values}
+                  onModelQueryChange={setModelQuery}
+                  onModelToggle={(modelID, enabled) => setSelectedModels((current) => ({ ...current, [modelID]: enabled }))}
+                  onReloadModels={reloadSelectedCatalog}
+                  onTabChange={setQuickAPITab}
+                  onUpdate={update}
+                />
+              ) : (
               <section className="provider-wizard-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx(credentialMode === "account_integration" ? "确认账号通道和基础信息" : "选择渠道和基础信息")}</h3>
@@ -687,16 +1342,21 @@ export function ProviderUpsertModal({
                     <ReviewItem label={credentialMode === "account_integration" ? "模型协议" : "模型类型"} value={modelCategoryLabel(modelCategory)} />
                     <ReviewItem label={credentialMode === "account_integration" ? "默认通道" : "渠道商"} value={selectedEntry?.display_name || selectedEntry?.name || "-"} />
                     <ReviewItem label={credentialMode === "account_integration" ? "兼容协议" : "渠道商类型"} value={providerTypeLabel(selectedEntry?.type || values.type || "openai_compatible")} />
-                    <ReviewItem label="可映射模型" value={detail ? `${models.length}/${detail.models_count}` : tx("加载中")} />
+                    <ReviewItem label="可映射模型" value={effectiveDetail ? `${models.length}/${effectiveDetail.models_count}` : codexCatalogError || tx("加载中")} />
                   </div>
                 ) : null}
               </section>
+              )
             ) : null}
             {mode === "create" && createStep === 2 ? (
               <section className="provider-wizard-panel">
                 <div className="wizard-panel-head">
-                  <h3>{tx("配置账号与凭据")}</h3>
-                  <p>{tx(credentialMode === "account_integration" ? "先完成账号授权回填；TokenHub 会把回填的 Token 保存为账号资源。" : "选择是直接保存 API Key、接入账号资源池，还是稍后补齐凭据。")}</p>
+                  <h3>{tx(credentialMode === "account_integration" ? "账号授权" : "直接 API Key")}</h3>
+                  <p>{tx(
+                    credentialMode === "account_integration"
+                      ? "先完成账号授权回填；TokenHub 会把回填的 Token 保存为账号资源。"
+                      : "把上游 Key 保存到 Provider，适合单账号或兼容 API。",
+                  )}</p>
                 </div>
               </section>
             ) : null}
@@ -708,7 +1368,7 @@ export function ProviderUpsertModal({
                 </div>
                 <div className="wizard-review-grid provider-create-review">
                   <ReviewItem label="渠道商" value={values.name || selectedEntry?.display_name || selectedEntry?.name || "-"} />
-                  <ReviewItem label="凭据方式" value={providerCredentialModeLabel(credentialMode)} />
+                  <ReviewItem label="凭据方式" value={tx(providerCredentialModeLabel(credentialMode))} />
                   <ReviewItem label="自动路由" value={autoRouteEnabled ? tx("开启") : tx("关闭开关")} />
                   <ReviewItem label="已选模型" value={selectedRouteCount ? String(selectedRouteCount) : tx("无")} />
                 </div>
@@ -716,76 +1376,71 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "create" && createStep === 2 ? (
               <section className="provider-credential-panel">
-                <div className="provider-credential-head">
-                  <div>
-                    <strong>{tx("认证与账号来源")}</strong>
-                    <span>{tx("选择 Provider 使用哪一种上游凭据。账号集成会把账号作为资源池管理，适合 OpenAI subscription 或多个账号轮询。")}</span>
-                  </div>
-                </div>
-                <div className="provider-credential-options" role="radiogroup" aria-label={tx("认证与账号来源")}>
-                  {providerCredentialOptions().map((option) => {
-                    const Icon = option.icon;
-                    const active = credentialMode === option.key;
-                    return (
-                      <button
-                        aria-checked={active}
-                        className={active ? "provider-credential-option active" : "provider-credential-option"}
-                        key={option.key}
-                        onClick={() => selectCredentialMode(option.key)}
-                        role="radio"
-                        type="button"
-                      >
-                        <Icon size={16} />
-                        <span>
-                          <strong>{tx(option.label)}</strong>
-                          <em>{tx(option.description)}</em>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
                 {credentialMode === "provider_api_key" ? (
                   <div className="provider-direct-key-fields">
                     <label className="field">
                       <span>API Key</span>
-                      <input value={values.api_key ?? ""} type="password" onChange={(event) => update("api_key", event.target.value)} />
+                      <input
+                        autoComplete="new-password"
+                        value={values.api_key ?? ""}
+                        type="password"
+                        onChange={(event) => {
+                          clearCustomValidity(event);
+                          update("api_key", event.target.value);
+                        }}
+                        onInvalid={handleRequiredFieldInvalid}
+                        required
+                      />
                     </label>
                   </div>
-                ) : credentialMode === "account_integration" ? (
+                ) : (
                   <div className="provider-account-inline">
                     <div className="provider-account-inline-head">
                       <strong>{tx("账号授权")}</strong>
                       <span>{tx("使用 OpenAI/Codex OAuth 授权账号；TokenHub 会在后端换取并保存账号 Token。")}</span>
                     </div>
                     <div className="provider-account-auth-grid">
-                      <label className="field">
+                      <label className={`field provider-account-auth-wide provider-account-name-field${accountResourceNameConflict ? " conflict" : ""}`}>
                         <span>{tx("账号资源名称")}</span>
-                        <input value={accountValues.name ?? ""} onChange={(event) => updateAccountValue("name", event.target.value)} required />
-                      </label>
-                      <label className="field">
-                        <span>{tx("账号地址/邮箱")}</span>
-                        <input value={accountValues.account_email ?? ""} onChange={(event) => updateAccountValue("account_email", event.target.value)} placeholder="name@example.com" />
-                        <small>{tx("用于区分账号资源，可填写邮箱或账号系统里的唯一地址。")}</small>
+                        <input
+                          aria-invalid={accountResourceNameConflict}
+                          aria-describedby={accountResourceNameConflict ? "provider-account-name-conflict" : undefined}
+                          ref={accountNameInputRef}
+                          value={accountValues.name ?? ""}
+                          onChange={(event) => updateAccountValue("name", event.target.value)}
+                          required
+                        />
+                        {accountResourceNameConflict ? (
+                          <div className="provider-account-name-conflict" id="provider-account-name-conflict" role="alert">
+                            <AlertCircle aria-hidden="true" size={18} />
+                            <div>
+                              <strong>{tx("账号资源名称已存在，请立即修改名称")}</strong>
+                              <span>{tx("当前名称已被其他账号资源占用。请先修改为新的唯一名称，再继续授权。")}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <small>{tx("账号资源名称需全局唯一，用于在资源池中区分账号。")}</small>
+                        )}
                       </label>
                       <label className="field provider-account-auth-wide">
                         <span>{tx("OpenAI/Codex 授权")}</span>
                         <div className="field-action-row">
-                          <input readOnly value={accountCallbackURL} />
-                          <button className="secondary-button" onClick={openProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
+                          <input readOnly value={openAIAccountOAuthRedirectURI} />
+                          <button className="secondary-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
                             <Send size={14} />
                             {tx(accountOAuthBusy ? "授权中" : "打开授权")}
                           </button>
                         </div>
-                        <small>{tx("点击后由后端生成授权地址；授权完成会带 code 回到本页并自动换取 Token。")}</small>
+                        <small>{tx("点击后由后端生成授权地址。OpenAI 固定回调到 localhost:1455；无需该端口实际启动服务。")}</small>
                       </label>
                       <label className="field provider-account-auth-wide">
                         <span>{tx("回调结果")}</span>
                         <textarea
                           value={accountOAuthCallback}
                           onChange={(event) => parseAccountOAuthCallback(event.target.value)}
-                          placeholder="http://localhost:3000/providers?provider_account_oauth=1&code=..."
+                          placeholder="http://localhost:1455/auth/callback?code=...&state=..."
                         />
-                        <small>{tx("如果授权页没有自动跳回本页，把完整 callback URL 或 URL fragment 粘贴到这里。")}</small>
+                        <small>{tx("授权完成后，即使 localhost 页面显示无法访问，也请复制地址栏中的完整 callback URL 粘贴到这里。")}</small>
                       </label>
                       <div className="provider-account-auth-actions">
                         <button className="secondary-button" onClick={parseAccountOAuthCallbackNow} type="button">
@@ -794,7 +1449,7 @@ export function ProviderUpsertModal({
                         </button>
                         <button className="secondary-button" onClick={copyProviderAccountCallbackURL} type="button">
                           <Copy size={14} />
-                          {tx("复制回调地址")}
+                          {tx("复制固定回调地址")}
                         </button>
                         <div className={accountTokenSummary.ready ? "provider-account-token-status ready" : "provider-account-token-status"}>
                           {accountTokenSummary.ready ? <Check size={15} /> : <AlertCircle size={15} />}
@@ -804,11 +1459,11 @@ export function ProviderUpsertModal({
                       </div>
                     </div>
                     {accountOAuthStatus ? <p className="provider-credential-note">{accountOAuthStatus}</p> : null}
-                    <div className="provider-account-runtime">
-                      <div className="provider-account-inline-head">
+                    <details className="provider-account-runtime">
+                      <summary>
                         <strong>{tx("资源调度")}</strong>
-                        <span>{tx("这些配置决定账号资源参与路由时的权重、并发和限流。")}</span>
-                      </div>
+                        <span>{tx("一般无需修改；展开后可配置 Base URL、优先级、权重和限流。")}</span>
+                      </summary>
                       <div className="provider-account-fields compact">
                         {accountRuntimeFields.filter((field) => field.visible?.(accountValues) ?? true).map((field) => (
                           <ProviderInlineField
@@ -820,7 +1475,7 @@ export function ProviderUpsertModal({
                           />
                         ))}
                       </div>
-                    </div>
+                    </details>
                     <details className="provider-account-advanced">
                       <summary>{tx("高级：手动粘贴 Token")}</summary>
                       <p>{tx("只有在授权回填不可用时使用；保存后 Token 不会再次显示。")}</p>
@@ -837,18 +1492,251 @@ export function ProviderUpsertModal({
                       </div>
                     </details>
                   </div>
-                ) : (
-                  <p className="provider-credential-note">
-                    {tx("保存后不会写入上游凭据，可稍后通过编辑 Provider 或账号集成补齐。")}
-                  </p>
                 )}
               </section>
             ) : null}
-            {mode === "edit" || createStep === 1 ? (
+            {mode === "edit" && editTab === "connect" ? (
+              <ProviderConnectionFields values={values} onUpdate={update} />
+            ) : null}
+            {mode === "edit" && editTab === "advanced" ? (
+              <ProviderAdvancedFields
+                accountIntegration={credentialMode === "account_integration"}
+                values={values}
+                onUpdate={update}
+              />
+            ) : null}
+            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+              <section className="provider-quota-panel">
+                <div className="wizard-panel-head">
+                  <h3>{tx("订阅额度")}</h3>
+                  <p>{tx("实时查询 ChatGPT/Codex 套餐用量和重置时间；不会显示虚构的美元余额。")}</p>
+                </div>
+                <div className="provider-quota-list">
+                  {selectedAccountResources.map((resource) => {
+                    const quota = accountQuotas[resource.id];
+                    const primary = quota?.rate_limit?.primary_window;
+                    const secondary = quota?.rate_limit?.secondary_window;
+                    const accountEmail = providerResourceAccountLabel(resource);
+                    const quotaStatus = quota?.rate_limit?.limit_reached ? "已达上限" : quota?.rate_limit?.allowed ? "可用" : "不可用";
+                    const imageCapability = resource.options?.image_generation_capability;
+                    const usagePercent = quotaUsagePercent(primary);
+                    return (
+                      <article className="provider-quota-card" key={resource.id}>
+                        <div className="provider-quota-card-head">
+                          <div className="provider-quota-account">
+                            <span>{resource.name}</span>
+                            <strong>{accountEmail}</strong>
+                          </div>
+                          <div className="provider-quota-card-actions">
+                            {quota ? <span className={`provider-quota-status ${quotaStatus === "可用" ? "available" : "limited"}`}>{tx(quotaStatus)}</span> : null}
+                            <span className={`provider-image-capability ${imageCapability || "unknown"}`}>
+                              {tx(formatImageGenerationCapabilityTag(imageCapability))}
+                            </span>
+                            <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource)} type="button">
+                              {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新额度" : "查询额度")}
+                            </button>
+                            {resource.status === "active" ? (
+                              <button
+                                className="secondary-button provider-account-disable-button"
+                                disabled={loading}
+                                onClick={() => requestAccountConfirmation("disable", resource)}
+                                type="button"
+                              >
+                                <Ban size={14} />
+                                {tx("禁用")}
+                              </button>
+                            ) : (
+                              <button
+                                className="secondary-button"
+                                disabled={loading}
+                                onClick={() => requestAccountConfirmation("enable", resource)}
+                                type="button"
+                              >
+                                {tx("启用")}
+                              </button>
+                            )}
+                            <button
+                              className="danger-button provider-account-delete-button"
+                              disabled={loading}
+                              onClick={() => requestAccountConfirmation("delete", resource)}
+                              type="button"
+                            >
+                              <Trash2 size={14} />
+                              {tx("删除")}
+                            </button>
+                          </div>
+                        </div>
+                        {quota ? (
+                          <>
+                            <div className="provider-quota-summary">
+                              <div className="provider-quota-usage">
+                                <span>{tx("主窗口使用率")}</span>
+                                <strong>{primary ? `${formatQuotaPercent(primary.used_percent)}%` : "-"}</strong>
+                                <div
+                                  aria-label={tx("主窗口使用率")}
+                                  aria-valuemax={100}
+                                  aria-valuemin={0}
+                                  aria-valuenow={usagePercent}
+                                  className="provider-quota-progress"
+                                  role="progressbar"
+                                >
+                                  <span style={{ width: `${usagePercent}%` }} />
+                                </div>
+                              </div>
+                              <div className="provider-quota-highlights">
+                                <QuotaMetric label="套餐" value={quota.plan_type || resource.credential_summary?.plan_type || "-"} />
+                                <QuotaMetric label="生图能力" value={formatImageGenerationCapability(resource.options?.image_generation_capability)} />
+                                <QuotaMetric label="重置额度" value={quota.rate_limit_reset_credits ? String(quota.rate_limit_reset_credits.available_count) : "-"} />
+                                <QuotaMetric label="主窗口重置时间" value={quotaWindowResetLabel(primary)} />
+                              </div>
+                            </div>
+                            <div className="provider-quota-fetched-at">
+                              {tx("查询时间")} · {new Date(quota.fetched_at * 1000).toLocaleString()}
+                            </div>
+                            <details className="provider-quota-details">
+                              <summary>{tx("账号与更多用量详情")}</summary>
+                              {secondary ? (
+                                <div className="provider-quota-grid">
+                                  <QuotaMetric label="次窗口使用率" value={`${formatQuotaPercent(secondary.used_percent)}%`} />
+                                  <QuotaMetric label="次窗口重置" value={quotaWindowResetLabel(secondary)} />
+                                </div>
+                              ) : null}
+                              <ProviderAccountDetails resource={resource} />
+                            </details>
+                          </>
+                        ) : (
+                          <p className="provider-credential-note">
+                            {tx(accountQuotaBusyIDs[resource.id] ? "正在自动查询该真实账号的套餐与额度信息。" : "暂未获取到该账号的套餐与额度信息，可点击查询重试。")}
+                          </p>
+                        )}
+                        {accountQuotaErrors[resource.id] ? <p className="provider-quota-error">{accountQuotaErrors[resource.id]}</p> : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+              <section className="provider-quota-panel provider-codex-test-panel">
+                <div className="wizard-panel-head">
+                  <h3>{tx("Codex 真实请求测试")}</h3>
+                  <p>{tx("使用顶部选中的账号真实调用 Codex Responses；选择全部账号时，每个账号都会分别发起一次请求并展示独立结果。")}</p>
+                </div>
+                {selectedAccountID === "all" ? (
+                  <p className="provider-account-intersection-note">
+                    {tx("当前模型列表是所有账号可用模型的交集，确保所选模型能够被每个账号真实调用。")}
+                  </p>
+                ) : null}
+                <div className="provider-codex-test-controls">
+                  <label className="field">
+                    <span>{tx("模型")}</span>
+                    <select
+                      disabled={accountCatalogLoading || codexTestModels.length === 0}
+                      value={codexTestValues.model}
+                      onChange={(event) => setCodexTestValues((current) => ({ ...current, model: event.target.value }))}
+                    >
+                      {codexTestModels.map((model) => <option key={model.id} value={model.id}>{model.display_name || model.name}</option>)}
+                    </select>
+                    {accountCatalogLoading ? <small>{tx("正在从所选账号加载模型目录...")}</small> : null}
+                  </label>
+                  <label className="field">
+                    <span>{tx("推理强度")}</span>
+                    <select
+                      disabled={accountCatalogLoading || codexTestModels.length === 0}
+                      value={codexTestValues.reasoning_effort}
+                      onChange={(event) => setCodexTestValues((current) => ({ ...current, reasoning_effort: event.target.value }))}
+                    >
+                      {codexReasoningEfforts.map((value) => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>{tx("速度")}</span>
+                    <select
+                      disabled={accountCatalogLoading || codexTestModels.length === 0}
+                      value={codexTestValues.speed}
+                      onChange={(event) => setCodexTestValues((current) => ({ ...current, speed: event.target.value }))}
+                    >
+                      <option value="standard">{tx("标准")}</option>
+                      <option value="fast">{tx("快速")}</option>
+                    </select>
+                  </label>
+                  <label className="field provider-codex-test-prompt">
+                    <span>{tx("真实提示词")}</span>
+                    <textarea
+                      rows={3}
+                      value={codexTestValues.prompt}
+                      onChange={(event) => setCodexTestValues((current) => ({ ...current, prompt: event.target.value }))}
+                      placeholder={tx("输入要真实发送给 Codex 的内容")}
+                    />
+                  </label>
+                </div>
+                {Object.entries(accountCatalogErrors).map(([resourceID, message]) => (
+                  <p className="provider-quota-error" key={resourceID}>
+                    {subscriptionResources.find((resource) => resource.id === resourceID)?.name || resourceID}：{message}
+                  </p>
+                ))}
+                <div className="provider-codex-test-actions">
+                  <button
+                    className="primary-button"
+                    disabled={
+                      Boolean(codexTestBusyID) ||
+                      accountCatalogLoading ||
+                      codexTestModels.length === 0 ||
+                      !codexTestValues.prompt.trim()
+                    }
+                    onClick={() => void testCodexSubscription()}
+                    type="button"
+                  >
+                    <Send size={14} />
+                    {tx(codexTestBusyID ? "正在真实调用" : selectedAccountID === "all" ? "测试全部账号" : "发送真实测试")}
+                  </button>
+                </div>
+                <div className="provider-quota-list">
+                  {selectedAccountResources.map((resource) => {
+                    const result = codexTestResults[resource.id];
+                    const testError = codexTestErrors[resource.id];
+                    return (
+                    <article className="provider-quota-card" key={resource.id}>
+                        <div className="provider-quota-card-head">
+                          <div>
+                            <strong>{resource.name}</strong>
+                            <span>{providerResourceAccountLabel(resource)}</span>
+                          </div>
+                          <span className={testError ? "provider-test-status error" : result ? "provider-test-status success" : "provider-test-status"}>
+                            {tx(testError ? "失败" : result ? "完成" : "等待测试")}
+                          </span>
+                        </div>
+                        {result ? (
+                          <div className="provider-codex-test-result">
+                            <div className="provider-quota-grid">
+                              <QuotaMetric label="模型" value={result.model} />
+                              <QuotaMetric label="推理强度" value={result.reasoning_effort} />
+                              <QuotaMetric label="请求速度" value={result.speed === "fast" ? "快速" : "标准"} />
+                              <QuotaMetric label="上游 Service Tier" value={result.upstream_service_tier || "未返回"} />
+                              <QuotaMetric label="耗时" value={`${result.latency_ms} ms`} />
+                              <QuotaMetric label="输入 Token" value={String(result.usage.prompt_tokens)} />
+                              <QuotaMetric label="输出 Token" value={String(result.usage.completion_tokens)} />
+                              <QuotaMetric label="总 Token" value={String(result.usage.total_tokens)} />
+                            </div>
+                            <pre>{result.output_text}</pre>
+                          </div>
+                        ) : testError ? (
+                          <p className="provider-quota-error">{testError}</p>
+                        ) : (
+                          <p className="provider-credential-note">{tx("填写提示词后发送；返回内容来自真实 Codex 上游，不使用 Mock。")}</p>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+                {codexTestErrors.selection ? <p className="provider-quota-error">{codexTestErrors.selection}</p> : null}
+              </section>
+            ) : null}
+            {mode === "create" && createStep === 1 && !quickAPIConnect ? (
               <div className="provider-form-grid">
               <label className="field">
                 <span>Provider ID</span>
-                <input value={values.id ?? ""} onChange={(event) => update("id", event.target.value)} placeholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} readOnly={mode === "edit"} />
+                <input value={values.id ?? ""} onChange={(event) => update("id", event.target.value)} placeholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} />
               </label>
               <label className="field">
                 <span>{tx(credentialMode === "account_integration" ? "通道名称" : "渠道名称")}</span>
@@ -864,13 +1752,6 @@ export function ProviderUpsertModal({
                 <span>Base URL</span>
                 <input value={values.base_url ?? ""} onChange={(event) => update("base_url", event.target.value)} />
               </label>
-              {mode === "edit" ? (
-                <label className="field">
-                  <span>API Key</span>
-                  <input value={values.api_key ?? ""} type="password" onChange={(event) => update("api_key", event.target.value)} />
-                  {mode === "edit" ? <small>{tx("留空表示不修改现有 Key；填写新值才会覆盖。")}</small> : null}
-                </label>
-              ) : null}
               <label className="field">
                 <span>{tx("优先级")}</span>
                 <input value={values.priority ?? "10"} type="number" onChange={(event) => update("priority", event.target.value)} />
@@ -878,8 +1759,13 @@ export function ProviderUpsertModal({
             </div>
             ) : null}
 
-            {mode === "edit" || createStep === 3 ? (
+            {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
+            {mode === "edit" && editingCodexSubscription && selectedAccountID === "all" ? (
+              <p className="provider-account-intersection-note">
+                {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}
+              </p>
+            ) : null}
             <div className="provider-import-options">
               <div>
                 <strong>{tx("自动路由")}</strong>
@@ -910,20 +1796,20 @@ export function ProviderUpsertModal({
             <div className="provider-model-head">
               <div>
                 <strong>{tx("上游模型映射")}</strong>
-                <span>{detail ? `${models.length}/${detail.models_count} ${tx("个可映射模型")}` : tx("加载中")}</span>
+                <span>{effectiveDetail ? `${models.length}/${effectiveDetail.models_count} ${tx("个可映射模型")}` : effectiveCatalogError || tx("加载中")}</span>
               </div>
               <div className="provider-model-tools">
                 <input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tx("搜索模型、能力、参数")} />
-                <button className="secondary-button" onClick={() => selectedEntry && selectCatalog(selectedEntry)} type="button">
+                <button className="secondary-button" onClick={reloadSelectedCatalog} type="button">
                   {tx("重新加载")}
                 </button>
               </div>
             </div>
             <div className="provider-model-list">
-              {modelLoading ? (
+              {effectiveCatalogLoading ? (
                 <div className="empty">{tx("正在加载模型列表...")}</div>
-              ) : modelError ? (
-                <div className="empty">{modelError}</div>
+              ) : effectiveCatalogError ? (
+                <div className="empty">{effectiveCatalogError}</div>
               ) : filteredModels.length === 0 ? (
                 <div className="empty">{models.length === 0 ? tx("该渠道商暂无可匹配当前标准模型目录的上游模型") : tx("没有匹配的模型")}</div>
               ) : filteredModels.map((model) => (
@@ -969,155 +1855,154 @@ export function ProviderUpsertModal({
           <button className="button" disabled={loading} type="submit">
             {mode === "create"
               ? createStep === lastCreateStep
-                ? loading ? tx("保存中") : tx("保存 Provider")
+                ? loading ? tx("保存中") : tx(quickAPIConnect ? "新增 Provider" : "保存 Provider")
                 : tx("下一步")
               : tx("保存")}
           </button>
         </div>
       </form>
+      {accountConfirmation ? (
+        <div className="modal-backdrop provider-account-confirmation-backdrop" role="presentation">
+          <div
+            aria-labelledby="provider-account-confirmation-title"
+            aria-modal="true"
+            className="confirm-modal provider-account-confirmation-modal"
+            role="dialog"
+          >
+            <div>
+              <p className="eyebrow">{tx("账号安全操作")}</p>
+              <h2 id="provider-account-confirmation-title">
+                {tx(accountConfirmation.action === "delete"
+                  ? "确认彻底删除账号"
+                  : accountConfirmation.action === "enable"
+                    ? "确认启用账号"
+                    : "确认禁用账号")}
+              </h2>
+            </div>
+            <div className="provider-account-confirmation-target">
+              <span>{accountConfirmation.resource.name}</span>
+              <strong>{providerResourceAccountLabel(accountConfirmation.resource)}</strong>
+            </div>
+            <p>
+              {tx(accountConfirmation.action === "delete"
+                ? "删除后，账号凭据、额度缓存、健康观测、会话绑定和运行状态都会被永久清除，且无法恢复。"
+                : accountConfirmation.action === "enable"
+                  ? "启用后，该账号会重新加入路由调度，并恢复额度查询、真实测试和模型映射能力。"
+                  : "禁用后，该账号会立即退出路由调度；账号数据仍会保留，可稍后重新启用。")}
+            </p>
+            {accountConfirmation.action === "delete" ? (
+              <label className="field provider-account-delete-confirmation-field">
+                <span>{tx("请输入以下英文短语以确认删除")}</span>
+                <code>{deleteAccountConfirmationPhrase}</code>
+                <input
+                  autoComplete="off"
+                  autoFocus
+                  onChange={(event) => {
+                    setDeleteAccountConfirmation(event.target.value);
+                    setAccountConfirmationError("");
+                  }}
+                  placeholder={deleteAccountConfirmationPhrase}
+                  spellCheck={false}
+                  value={deleteAccountConfirmation}
+                />
+              </label>
+            ) : null}
+            {accountConfirmationError ? <p className="provider-quota-error" role="alert">{accountConfirmationError}</p> : null}
+            <div className="modal-actions">
+              <button className="secondary-button" disabled={accountConfirmationBusy} onClick={closeAccountConfirmation} type="button">
+                {tx("取消")}
+              </button>
+              <button
+                className={accountConfirmation.action === "delete" ? "danger-confirm" : "button"}
+                disabled={
+                  accountConfirmationBusy ||
+                  (accountConfirmation.action === "delete" && deleteAccountConfirmation !== deleteAccountConfirmationPhrase)
+                }
+                onClick={() => {
+                  if (accountConfirmation.action === "delete") {
+                    void deleteAccount(accountConfirmation.resource);
+                  } else {
+                    void updateAccountStatus(accountConfirmation.resource, accountConfirmation.action);
+                  }
+                }}
+                type="button"
+              >
+                {tx(accountConfirmationBusy
+                  ? "处理中"
+                  : accountConfirmation.action === "delete"
+                    ? "永久删除账号"
+                    : accountConfirmation.action === "enable"
+                      ? "确认启用"
+                      : "确认禁用")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <ProviderOAuthNoticeModal
+        busy={accountOAuthBusy}
+        error={accountOAuthNoticeError}
+        onClose={() => setAccountOAuthNoticeOpen(false)}
+        onConfirm={() => void openProviderAccountAuthorization()}
+        open={accountOAuthNoticeOpen}
+      />
+      <ProviderOAuthCallbackModal
+        busy={accountOAuthBusy}
+        error={accountOAuthCallbackModalError}
+        onClose={() => setAccountOAuthCallbackModalOpen(false)}
+        onConfirm={confirmProviderAccountOAuthCallback}
+        onValueChange={(value) => {
+          setAccountOAuthCallback(value);
+          setAccountOAuthCallbackModalError("");
+        }}
+        open={accountOAuthCallbackModalOpen}
+        value={accountOAuthCallback}
+      />
     </div>
   );
 }
 
-export function ProviderInlineField({
-  field,
-  value,
-  values,
-  onChange,
-}: {
-  field: FieldConfig;
-  value: string;
-  values: Record<string, string>;
-  onChange: (value: string) => void;
-}) {
-  if (!(field.visible?.(values) ?? true)) return null;
-  const autoComplete = field.autoComplete ?? "off";
-  const inputName = `tokenhub-provider-account-${field.key}`;
-  const options = (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
-  if (field.type === "select") {
-    return (
-      <label className="field" data-field-key={field.key}>
-        <span>{tx(field.label)}</span>
-        <select value={value} onChange={(event) => { clearCustomValidity(event); onChange(event.target.value); }} onInvalid={handleRequiredFieldInvalid} required={field.required}>
-          <option value="">{tx("请选择")}</option>
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>{tx(option.label)}</option>
-          ))}
-        </select>
-        {field.help ? <small>{tx(field.help)}</small> : null}
-      </label>
+function intersectProviderCatalogs(catalogs: ProviderCatalogEntry[]): ProviderCatalogEntry | null {
+  if (catalogs.length === 0) return null;
+  const first = catalogs[0];
+  const models = (first.models ?? []).filter((model) =>
+    catalogs.slice(1).every((catalog) =>
+      (catalog.models ?? []).some((candidate) => candidate.id.toLowerCase() === model.id.toLowerCase()),
+    ),
+  ).map((model) => {
+    const matches = catalogs.map((catalog) =>
+      (catalog.models ?? []).find((candidate) => candidate.id.toLowerCase() === model.id.toLowerCase())!,
     );
-  }
-  if (field.type === "textarea") {
-    return (
-      <label className="field" data-field-key={field.key}>
-        <span>{tx(field.label)}</span>
-        <textarea
-          autoComplete={autoComplete}
-          data-1p-ignore={autoComplete === "off" || autoComplete === "new-password" ? "true" : undefined}
-          data-lpignore={autoComplete === "off" || autoComplete === "new-password" ? "true" : undefined}
-          name={inputName}
-          value={value}
-          onChange={(event) => { clearCustomValidity(event); onChange(event.target.value); }}
-          onInvalid={handleRequiredFieldInvalid}
-          placeholder={tx(field.placeholder)}
-          required={field.required}
-        />
-        {field.help ? <small>{tx(field.help)}</small> : null}
-      </label>
+    const supportedParameters = (model.supported_parameters ?? []).filter((parameter) =>
+      matches.slice(1).every((candidate) => candidate.supported_parameters?.includes(parameter)),
     );
-  }
-  if (field.type === "boolean") {
-    const checked = value === "true";
-    return (
-      <label className="field" data-field-key={field.key}>
-        <span>{tx(field.label)}</span>
-        <div className="boolean-toggle" role="radiogroup" aria-label={tx(field.label)}>
-          <button aria-checked={checked} className={checked ? "active" : ""} onClick={() => onChange("true")} role="radio" type="button">
-            {tx("开启")}
-          </button>
-          <button aria-checked={!checked} className={!checked ? "active" : ""} onClick={() => onChange("false")} role="radio" type="button">
-            {tx("关闭开关")}
-          </button>
-        </div>
-        {field.help ? <small>{tx(field.help)}</small> : null}
-      </label>
-    );
-  }
-  return (
-    <label className="field" data-field-key={field.key}>
-      <span>{tx(field.label)}</span>
-      <input
-        autoComplete={autoComplete}
-        data-1p-ignore={autoComplete === "off" || autoComplete === "new-password" ? "true" : undefined}
-        data-lpignore={autoComplete === "off" || autoComplete === "new-password" ? "true" : undefined}
-        name={inputName}
-        value={value}
-        type={field.type === "number" ? "number" : field.type === "password" ? "password" : "text"}
-        onChange={(event) => { clearCustomValidity(event); onChange(event.target.value); }}
-        onInvalid={handleRequiredFieldInvalid}
-        placeholder={tx(field.placeholder)}
-        required={field.required}
-      />
-      {field.help ? <small>{tx(field.help)}</small> : null}
-    </label>
-  );
-}
-
-export function providerCredentialOptions(): Array<{ key: ProviderCredentialMode; label: string; description: string; icon: typeof KeyRound }> {
-  return [
-    {
-      key: "provider_api_key",
-      label: "直接 API Key",
-      description: "把上游 Key 保存到 Provider，适合单账号或兼容 API。",
-      icon: KeyRound,
-    },
-    {
-      key: "account_integration",
-      label: "账号资源池",
-      description: "适合 OpenAI 账号、Subscription 或多账号轮询，默认通道会自动推荐。",
-      icon: UserRoundCheck,
-    },
-    {
-      key: "later",
-      label: "稍后配置",
-      description: "先创建 Provider 和路由，稍后再添加 Key 或账号资源。",
-      icon: Settings,
-    },
-  ];
-}
-
-export function providerCreateWizardSteps(): Array<{ title: string; icon: typeof Search }> {
-  return [
-    { title: "接入方式", icon: UserRoundCheck },
-    { title: "渠道信息", icon: Server },
-    { title: "账号与凭据", icon: KeyRound },
-    { title: "路由与确认", icon: Boxes },
-  ];
-}
-
-export function providerCreateWizardStepTitle(title: string, credentialMode: ProviderCredentialMode) {
-  if (credentialMode === "account_integration" && title === "渠道信息") return "默认通道";
-  return title;
-}
-
-export function providerCredentialModeLabel(mode: ProviderCredentialMode) {
-  return providerCredentialOptions().find((option) => option.key === mode)?.label ?? mode;
-}
-
-export function providerAccountResourceReady(values: Record<string, string>) {
-  if (values.resource_type === "openai_subscription") {
-    return Boolean(values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim());
-  }
-  return Boolean(values.api_key?.trim());
-}
-
-export function recommendedAccountProviderEntry(catalog: ProviderCatalogEntry[]) {
-  const openAIEntries = catalog.filter((entry) => providerEntrySupportsCategory(entry, "openai"));
-  const exactOpenAI = openAIEntries.find((entry) => {
-    const candidates = [entry.id, entry.name, entry.display_name].map((item) => item?.trim().toLowerCase()).filter(Boolean);
-    return candidates.some((item) => item === "openai" || item === "openai official");
+    const reasoningLevels = intersectStringLists(matches.map((candidate) =>
+      candidate.metadata?.supported_reasoning_levels?.split(",").map((value) => value.trim()).filter(Boolean) ?? [],
+    ));
+    const speedTiers = intersectStringLists(matches.map((candidate) =>
+      candidate.metadata?.additional_speed_tiers?.split(",").map((value) => value.trim()).filter(Boolean) ?? [],
+    ));
+    const contextWindows = matches.map((candidate) => candidate.context_window).filter((value): value is number => Boolean(value));
+    return {
+      ...model,
+      context_window: contextWindows.length > 0 ? Math.min(...contextWindows) : model.context_window,
+      supported_parameters: supportedParameters,
+      metadata: {
+        ...model.metadata,
+        supported_reasoning_levels: reasoningLevels.join(","),
+        additional_speed_tiers: speedTiers.join(","),
+      },
+    };
   });
-  if (exactOpenAI) return exactOpenAI;
-  return openAIEntries.find((entry) => ["openai", "openai_compatible"].includes(entry.type)) ?? openAIEntries[0] ?? catalog[0];
+  return {
+    ...first,
+    models,
+    models_count: models.length,
+    category_counts: { ...(first.category_counts ?? {}), codex: models.length },
+  };
+}
+
+function intersectStringLists(lists: string[][]) {
+  if (lists.length === 0) return [];
+  return lists[0].filter((value) => lists.slice(1).every((list) => list.includes(value)));
 }

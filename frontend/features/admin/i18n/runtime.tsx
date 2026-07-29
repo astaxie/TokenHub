@@ -83,6 +83,8 @@ export function translateGeneratedText(value: string, language: Exclude<AppLangu
   }
   const routeOrderMatch = value.match(/^已更新 (.+) 的 Provider 调用顺序$/);
   if (routeOrderMatch) return language === "ja" ? `${routeOrderMatch[1]} の Provider 呼び出し順を更新しました` : `Updated Provider call order for ${routeOrderMatch[1]}`;
+  const routePolicyMatch = value.match(/^已应用 (.+) 的模型路由策略$/);
+  if (routePolicyMatch) return language === "ja" ? `${routePolicyMatch[1]} のモデルルーティング戦略を適用しました` : `Applied the model routing strategy for ${routePolicyMatch[1]}`;
   const enabledRoutesMatch = value.match(/^(\d+)\/(\d+) 启用 · (.+)$/);
   if (enabledRoutesMatch) {
     return language === "ja"
@@ -110,11 +112,36 @@ export function languageLocale() {
   return "zh-CN";
 }
 
-export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaUnit: string) {
+export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaUnit: string, enPluralUnit = `${enUnit}s`) {
   const formatted = formatNumber(count);
-  if (activeLanguage === "en") return `${formatted} ${enUnit}${count === 1 ? "" : "s"}`;
+  if (activeLanguage === "en") return `${formatted} ${count === 1 ? enUnit : enPluralUnit}`;
   if (activeLanguage === "ja") return `${formatted} ${jaUnit}`;
   return `${formatted} ${zhUnit}`;
+}
+
+export function providerSaveMessage(updated: boolean, accountResourceCreated: boolean, routed: number, categoryLabel: string) {
+  const routeCount = routed > 0
+    ? countWithUnit(routed, `条${categoryLabel}路由`, `${categoryLabel} route`, `${categoryLabel} ルート`)
+    : "";
+  if (activeLanguage === "en") {
+    return [
+      `Provider ${updated ? "updated" : "created"}`,
+      accountResourceCreated ? "account resource created" : "",
+      routeCount ? `${routeCount} created` : "",
+    ].filter(Boolean).join(", ");
+  }
+  if (activeLanguage === "ja") {
+    return [
+      `Provider を${updated ? "更新" : "作成"}しました`,
+      accountResourceCreated ? "アカウントリソースを作成しました" : "",
+      routeCount ? `${routeCount}を作成しました` : "",
+    ].filter(Boolean).join("、");
+  }
+  return [
+    `Provider 已${updated ? "更新" : "新增"}`,
+    accountResourceCreated ? "已创建账号资源" : "",
+    routeCount ? `创建 ${routeCount}` : "",
+  ].filter(Boolean).join("，");
 }
 
 export function countWithLabel(count: number, label: string) {
@@ -127,6 +154,12 @@ export function selectedModelsText(count: number) {
   if (activeLanguage === "en") return `${count} models selected`;
   if (activeLanguage === "ja") return `${count} 件のモデルを選択済み`;
   return `已选择 ${count} 个模型`;
+}
+
+export function selectedOptionsText(count: number) {
+  if (activeLanguage === "en") return `${count} options selected`;
+  if (activeLanguage === "ja") return `${count} 件の項目を選択済み`;
+  return `已选择 ${count} 个选项`;
 }
 
 export function defaultPlaygroundSystemPrompt() {
@@ -161,6 +194,12 @@ export function deleteConfirmMessage(name: string) {
   if (activeLanguage === "en") return `After deleting "${name}", the current in-memory data will be removed immediately.`;
   if (activeLanguage === "ja") return `「${name}」を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
   return `删除「${name}」后，当前内存数据会立即移除。`;
+}
+
+export function bulkDeleteConfirmMessage(count: number) {
+  if (activeLanguage === "en") return `After deleting ${formatNumber(count)} selected records, the current in-memory data will be removed immediately.`;
+  if (activeLanguage === "ja") return `選択した ${formatNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
+  return `删除选中的 ${formatNumber(count)} 条记录后，当前内存数据会立即移除。`;
 }
 
 export function routeAttemptCountText(count: number) {

@@ -1,6 +1,6 @@
 import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type ProviderCatalogModel, routeViews, type UsagePoint, type ViewKey } from "../core/types";
 import { modelCategory } from "./catalog";
-import { findProvider, findProviderResource, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
+import { codexImageCapableResources, findProvider, findProviderResource, isCodexSubscriptionImageModel, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { tx } from "../i18n/runtime";
 import { preferredModelCategories } from "../shared/ui";
 
@@ -133,6 +133,8 @@ export function apiGatewayBaseURL(baseURL: string) {
 }
 
 export function activeRouteCount(modelName: string, data: AppData) {
+  const model = data.models.find((candidate) => candidate.name === modelName);
+  if (isCodexSubscriptionImageModel(model)) return codexImageCapableResources(data).length;
   return data.routes.filter((route) => route.model_name === modelName && route.status === "active").length;
 }
 
@@ -159,6 +161,29 @@ export function modelAvailabilitySummary(model: Model, data: AppData, readOnly =
       totalRoutes: routes.length,
       activeRoutes: activeRoutes.length,
       healthyRoutes: healthyRoutes.length,
+    };
+  }
+  if (isCodexSubscriptionImageModel(model)) {
+    const capableAccounts = codexImageCapableResources(data);
+    if (readOnly || capableAccounts.length > 0) {
+      return {
+        tone: "ready",
+        label: "可调用",
+        detail: readOnly
+          ? "通过 Codex 订阅账号池直接提供图片生成和参考图编辑，无需 Codex CLI。"
+          : "已确认支持生图的 Codex 账号池可用。",
+        totalRoutes: capableAccounts.length,
+        activeRoutes: capableAccounts.length,
+        healthyRoutes: capableAccounts.length,
+      };
+    }
+    return {
+      tone: "blocked",
+      label: "暂无可生图账号",
+      detail: "需要至少一个健康启用且已确认支持生图的 Codex 订阅账号。",
+      totalRoutes: 0,
+      activeRoutes: 0,
+      healthyRoutes: 0,
     };
   }
   if (readOnly && routes.length === 0) {
@@ -243,7 +268,10 @@ export function modelCatalogEmptyText(data: AppData, readOnly: boolean, query: s
 export function keyWizardModelOptions(data: AppData) {
   const activeChatModels = playgroundModels(data, data.routes.length > 0);
   const routed = activeChatModels.filter((model) => data.routes.length === 0 || activeRouteCount(model.name, data) > 0);
-  return (routed.length > 0 ? routed : activeChatModels).sort((left, right) =>
+  const codexImageModels = data.models.filter((model) =>
+    model.status === "active" && isCodexSubscriptionImageModel(model) && activeRouteCount(model.name, data) > 0,
+  );
+  return [...(routed.length > 0 ? routed : activeChatModels), ...codexImageModels].sort((left, right) =>
     modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name),
   );
 }
@@ -302,6 +330,7 @@ export function fallbackDays(): UsagePoint[] {
     date: `2026-06-${String(index + 1).padStart(2, "0")}`,
     request_count: 0,
     input_tokens: 0,
+    cached_input_tokens: 0,
     output_tokens: 0,
     total_tokens: 0,
     estimated_cost_usd: 0,
@@ -349,6 +378,9 @@ export function formatModelPrice(model: ProviderCatalogModel) {
 export function modelToForm(item: Model) {
   return {
     ...stringifyForm(item),
+    cache_read_price_usd_per_1m: item.cache_read_price_usd_per_1m
+      ? String(item.cache_read_price_usd_per_1m)
+      : "",
     capabilities: (item.capabilities ?? []).join(", "),
     supported_parameters: (item.supported_parameters ?? []).join(", "),
     input_modalities: (item.input_modalities ?? []).join(", "),
@@ -371,6 +403,7 @@ export function formatBytes(value: number) {
 export function routeStrategyLabel(value?: string) {
   const labels: Record<string, string> = {
     balanced: "平衡",
+    adaptive: "自适应",
     quality: "质量优先",
     cost: "成本优先",
     priority_weighted: "优先级 + 权重",

@@ -1,0 +1,53 @@
+version: "2"
+
+run:
+  timeout: 10m
+
+linters:
+  # The standard set: errcheck, govet, ineffassign, staticcheck, unused.
+  # Deliberately conservative to start with — a wide rule set on an existing
+  # codebase produces noise that trains people to ignore the linter.
+  default: standard
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # The QF ("quickfix") class is refactoring advice — use a tagged switch,
+        # apply De Morgan's law, drop an embedded field selector. These are
+        # opinions about style rather than defect reports, so the whole class is
+        # opt-in rather than enforced. SA (real bug patterns), S, ST and the rest
+        # stay on.
+        - -QF*
+    errcheck:
+      # Close on a reader, connection or file runs in a defer, after the useful
+      # work, on a path that has already decided its result. Nothing here is a
+      # write or a commit: Flush, Sync and Write stay checked, because a failure
+      # in those means data did not reach its destination.
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (net.Conn).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Conn).Close
+        - (*os.File).Close
+  exclusions:
+    generated: lax
+    # The `std-error-handling` preset is deliberately NOT enabled. It also drops
+    # Flush, Remove, Print* and Setenv, which is much wider than the Close-only
+    # exemption above and would hide failed writes.
+    #
+    # Test files are deliberately NOT exempted either: an ignored error in test
+    # setup, a database call or a fixture server is exactly the kind of failure
+    # that makes a test silently stop testing anything.
+    presets:
+      - comments
+
+issues:
+  # Report everything. The defaults cap a linter at 50 findings and the same
+  # finding at 3, which silently hides work and makes a "clean" run misleading.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt

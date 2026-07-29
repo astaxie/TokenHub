@@ -34,7 +34,7 @@ export function Sidebar({
       <div className="brand">
         <img src="/brand/tokenhub-logo.png" alt="TokenHub" className="brand-logo" />
         <span className="brand-name">TokenHub</span>
-        <span className="version">v0.3.0</span>
+        <div className="sidebar-version-status" id="sidebar-version-status" />
         <button
           className="sidebar-toggle"
           aria-label={collapsed ? tx("展开菜单") : tx("折叠菜单")}
@@ -276,10 +276,28 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
         { label: role === "team_leader" ? "团队成员" : "用户", value: formatNumber(data.users.length) },
       ];
     case "api-keys":
+      if (role === "user") {
+        return [
+          { label: "Key", value: formatNumber(data.keys.length) },
+          { label: "可用模型", value: formatNumber(playgroundModels(data).length) },
+        ];
+      }
       return [
         { label: "Key", value: formatNumber(data.keys.length) },
         { label: "项目", value: formatNumber(data.projects.length) },
       ];
+    case "gateway":
+      if (role === "user" || role === "team_leader") {
+        return [
+          { label: "API Key", value: formatNumber(data.keys.length) },
+          { label: "可用模型", value: formatNumber(playgroundModels(data).length) },
+        ];
+      }
+      return [{ label: "记录", value: formatNumber(pageRecordCount(view, data)) }];
+    case "settings": {
+      const currentSettings = data.resources.settings?.find((item) => item.id === "cfg_gateway") ?? data.resources.settings?.[0];
+      return [{ label: "当前生效", value: currentSettings?.id ?? "-" }];
+    }
     case "usage":
     case "billing":
       return [
@@ -420,6 +438,7 @@ export function TopNav({
       </div>
       <div className="topbar-spacer" />
       <div className="topbar-actions">
+        <div className="top-version-status" id="top-version-status" />
         <div className="top-quick-actions" aria-label={tx("常用操作")}>
           {quickActions.map((item) => {
             const Icon = item.icon;

@@ -1,10 +1,10 @@
 import { type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, providerAccountResourceSummary, providerRouteDefaults, providerRouteSummary, providerSelectOptions, routeScoreSummary, stringifyForm } from "../domain/entities";
+import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteDefaults, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { tx } from "../i18n/runtime";
-import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload } from "./payloads";
+import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptions, StatusPill } from "../shared/ui";
 
 export function providerConfig(): ResourceConfig<Provider> {
@@ -15,9 +15,9 @@ export function providerConfig(): ResourceConfig<Provider> {
     description: "Provider 是一个可调用的上游渠道实例，包含服务商类型、Base URL、API Key、健康状态和标准模型路由。",
     createLabel: "新增 Provider",
     columns: [
-      { key: "name", label: "名称" },
-      { key: "type", label: "类型", render: (item) => providerTypeLabel(item.type) },
-      { key: "base_url", label: "Base URL", render: (item) => item.base_url || "local mock" },
+      { key: "name", label: "名称", render: (item, ctx) => providerDisplayName(item, ctx.providerResources) },
+      { key: "type", label: "类型", render: (item, ctx) => providerTypeLabel(providerDisplayType(item, ctx.providerResources)) },
+      { key: "base_url", label: "Base URL", render: (item, ctx) => providerDisplayBaseURL(item, ctx.providerResources) },
       { key: "routes", label: "路由线路", render: (item, ctx) => providerRouteSummary(item, ctx) },
       { key: "account_resources", label: "账号资源", render: (item, ctx) => providerAccountResourceSummary(item, ctx) },
       { key: "priority", label: "优先级" },
@@ -48,9 +48,9 @@ export function providerConfig(): ResourceConfig<Provider> {
       },
       {
         label: "测试",
-        title: "检测 Provider 可用性",
-        run: (ctx, item) => adminMutate(ctx, `/api/admin/providers/${item.id}/test`, "POST", {}),
-        doneMessage: (item) => `${item.name} 检测完成`,
+        title: "检测 Provider 可用性；Codex 订阅使用 Luna 中等推理标准速度真实测试",
+        run: testProviderAvailability,
+        doneMessage: (item) => `${item.name} ${tx("检测完成")}`,
       },
     ],
     toForm: (item) => ({
@@ -156,7 +156,7 @@ export function providerAccountTokenSummary(values: Record<string, string>) {
 
 export function defaultProviderResourceName(providerName?: string) {
   const normalized = providerName?.trim() || "Provider";
-  return `${normalized} OpenAI Account`;
+  return `${normalized} Codex Account`;
 }
 
 export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string }) {
@@ -166,7 +166,7 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     resource_type: "openai_subscription",
     auth_type: "oauth",
     authorization_url: "",
-    base_url: provider.base_url || "https://api.openai.com/v1",
+    base_url: provider.base_url || "https://chatgpt.com/backend-api/codex",
     group: "default",
     priority: "1",
     weight: "100",
@@ -195,7 +195,7 @@ export function assertProviderAccountResourceReady(values: Record<string, string
     throw new Error(tx("请先完成账号授权回填，或在高级选项中手动粘贴 Token。"));
   }
   if (!values.api_key?.trim()) {
-    throw new Error(tx("请填写账号资源的 API Key，或切换为稍后配置。"));
+    throw new Error(tx("请填写账号资源的 API Key。"));
   }
 }
 
@@ -211,7 +211,7 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "category", label: "模型类型", render: (item) => modelCategoryLabel(modelCategory(item)) },
       { key: "capabilities", label: "能力", render: (item) => modelCapabilitySummary(item) },
       { key: "routes", label: "可用供应商", render: (item, ctx) => <ModelRouteProviders model={item} data={ctx} /> },
-      { key: "route_count", label: "路由数", render: (item, ctx) => modelRoutesFor(item, ctx).length },
+      { key: "route_count", label: "路由数", render: (item, ctx) => isCodexSubscriptionImageModel(item) ? codexImageCapableResources(ctx).length : modelRoutesFor(item, ctx).length },
       { key: "price", label: "目录计价", render: (item) => modelPriceSummary(item) },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
@@ -222,6 +222,14 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank"], required: true },
       { key: "context_window", label: "上下文窗口", type: "number" },
       { key: "input_price_usd_per_1m", label: "输入价 USD/1M", type: "number" },
+      {
+        key: "cache_read_price_usd_per_1m",
+        label: "缓存读价 USD/1M",
+        type: "number",
+        placeholder: "可选，留空时按同类模型常见比例估算",
+        help: "配置值优先用于成本计算；留空时 DeepSeek V4 Pro 按约 0.83%、其他 DeepSeek 按 2%、其余模型按 10% 估算。",
+        visible: (values) => values.modality !== "embedding",
+      },
       { key: "output_price_usd_per_1m", label: "输出价 USD/1M", type: "number" },
       { key: "embedding_price_usd_per_1m", label: "Embedding 价 USD/1M", type: "number" },
       { key: "capabilities", label: "能力标签，逗号分隔" },
@@ -251,7 +259,7 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
     view: "routes",
     title: "路由策略",
     eyebrow: "模型路由规则",
-    description: "参考模型路由器思路，按平衡、质量优先或成本优先模式选择候选 Provider 线路，并在失败时自动回退。",
+    description: "按固定比例、自适应延迟、质量或成本策略选择 Provider，并可按项目限制线路；调用失败时自动回退。",
     createLabel: "新增路由",
     columns: [
       { key: "model_name", label: "统一模型" },
@@ -259,6 +267,7 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
       { key: "provider_model", label: "上游模型" },
       { key: "priority", label: "优先级" },
       { key: "weight", label: "权重" },
+      { key: "project_scope", label: "项目作用域", render: (item, ctx) => routeProjectScopeSummary(item, ctx) },
       { key: "score", label: "评分", render: (item) => routeScoreSummary(item) },
       { key: "strategy", label: "策略", render: (item) => routeStrategyLabel(item.strategy) },
       { key: "sticky_session", label: "粘性", render: (item) => item.sticky_session ? tx("开启") : tx("关闭开关") },
@@ -268,25 +277,23 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
     fields: [
       {
         key: "model_name",
-        label: "统一模型",
-        type: "multi-select",
+        label: "模型目录模型",
+        type: "select",
         optionsFromData: modelSelectOptions,
         required: true,
-        help: "新增路由时可多选模型；编辑已有路由时仍按单条规则调整。",
+        help: "从模型目录选择需要新增 Provider 线路的模型。",
       },
       { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true },
-      { key: "provider_model", label: "上游模型/部署名", placeholder: "留空则沿用统一模型名", help: "批量创建时留空，会为每个统一模型使用同名上游模型。" },
-      { key: "priority", label: "优先级", type: "number" },
-      { key: "weight", label: "权重", type: "number" },
-      { key: "quality_score", label: "质量评分 1-100", type: "number", help: "质量优先模式会优先选择该评分更高的线路。" },
-      { key: "cost_score", label: "成本评分 1-100", type: "number", help: "成本优先模式会优先选择该评分更高的线路，分数越高代表越省。" },
-      { key: "strategy", label: "调度策略", type: "select", options: ["balanced", "quality", "cost", "priority_weighted", "priority_only"], required: true },
+      { key: "provider_model", label: "Provider 模型", type: "select", optionsFromData: providerModelSelectOptions, required: true, help: "选择 Provider 后，只显示该 Provider 已引入的模型。" },
+      { key: "weight", label: "流量权重", type: "number", required: true, help: "固定比例下决定目标占比；自适应策略下作为基础权重。" },
+      { key: "project_scope", label: "项目作用域", type: "select", options: ["all", "include", "exclude"], required: true, help: "可让私有项目只命中内部 Provider，并让其他项目继续使用外部 Provider。" },
+      { key: "project_ids", label: "指定项目", type: "multi-select", optionsFromData: projectMemberProjectSelectOptions, multiSelectOnEdit: true, visible: (values) => values.project_scope !== "all", help: "“仅指定项目”表示白名单；“排除指定项目”表示这些项目不能使用该线路。" },
       { key: "sticky_session", label: "粘性会话", type: "boolean" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     ],
     list: (ctx) => ctx.routes,
-    create: (ctx, values) => createModelRoutes(ctx, values),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/routing-rules/${item.id}`, "PATCH", routePayload(values)),
+    create: (ctx, values, data) => createModelRoutes(ctx, values, data),
+    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/routing-rules/${item.id}`, "PATCH", routePayload({ ...stringifyForm(item), ...values })),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/routing-rules/${item.id}`),
     toForm: (item) => stringifyForm(item),
   };

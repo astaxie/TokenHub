@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -24,14 +25,31 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Server struct {
-	store    Store
-	adapters map[string]ProviderAdapter
-	mux      *http.ServeMux
-	config   Config
+	store             Store
+	adapters          map[string]ProviderAdapter
+	adapterRegistry   *AdapterRegistry
+	integrations      *IntegrationService
+	codexSubscription *CodexSubscriptionAdapter
+	providerCatalog   *providerCatalogService
+	mux               *http.ServeMux
+	config            Config
+	metrics           *GatewayMetrics
+	imageStorageDir   string
+	imageRunner       func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
+	imageContext      context.Context
+	imageCancel       context.CancelFunc
+	imageQueue        chan imageJobWork
+	imageWorkerStart  sync.Once
+	imageWorkerStop   sync.Once
+	imageWorkerGroup  sync.WaitGroup
+	imageAccountMu    sync.Mutex
+	imageAccountSlots map[string]chan struct{}
+	versions          *versionService
 }
 
 func New(store Store) *Server {
@@ -39,23 +57,84 @@ func New(store Store) *Server {
 }
 
 func NewWithConfig(store Store, config Config) *Server {
+	if strings.TrimSpace(config.ImageStorageDir) == "" {
+		config.ImageStorageDir = defaultImageStorageDir()
+	}
+	if config.ImageWorkerConcurrency <= 0 {
+		config.ImageWorkerConcurrency = 2
+	}
+	if config.ImageQueueCapacity <= 0 {
+		config.ImageQueueCapacity = 64
+	}
+	if config.ImageJobTimeoutSeconds <= 0 {
+		config.ImageJobTimeoutSeconds = 300
+	}
+	if config.ImageCapabilityRetrySecs <= 0 {
+		config.ImageCapabilityRetrySecs = 86400
+	}
+	imageContext, imageCancel := context.WithCancel(context.Background())
 	client := &http.Client{Timeout: 120 * time.Second}
+	codexClient := &http.Client{}
 	openai := OpenAICompatibleAdapter{Client: client}
+	codexSubscription := &CodexSubscriptionAdapter{
+		Client:             codexClient,
+		RefreshCredentials: store.RefreshProviderResourceCredentials,
+	}
+	adapters := map[string]ProviderAdapter{
+		ProviderMock:             MockAdapter{},
+		ProviderOpenAI:           openai,
+		ProviderOpenAICompatible: openai,
+		"deepseek":               openai,
+		"qwen":                   openai,
+		"local":                  openai,
+		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client},
+		ProviderAnthropic:        AnthropicAdapter{Client: client},
+		ProviderGemini:           GeminiAdapter{Client: client},
+	}
+	registry := NewAdapterRegistry(adapters)
+	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
+	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
+	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate)
+	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
+	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
+		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	}
 	s := &Server{
-		store: store,
-		adapters: map[string]ProviderAdapter{
-			ProviderMock:             MockAdapter{},
-			ProviderOpenAI:           openai,
-			ProviderOpenAICompatible: openai,
-			"deepseek":               openai,
-			"qwen":                   openai,
-			"local":                  openai,
-			ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client},
-			ProviderAnthropic:        AnthropicAdapter{Client: client},
-			ProviderGemini:           GeminiAdapter{Client: client},
-		},
-		mux:    http.NewServeMux(),
-		config: config,
+		store:             store,
+		adapters:          adapters,
+		adapterRegistry:   registry,
+		integrations:      NewIntegrationService(store, registry),
+		codexSubscription: codexSubscription,
+		providerCatalog:   newProviderCatalogService(store, config.ProviderCatalogFile),
+		mux:               http.NewServeMux(),
+		config:            config,
+		imageStorageDir:   config.ImageStorageDir,
+		imageContext:      imageContext,
+		imageCancel:       imageCancel,
+		imageQueue:        make(chan imageJobWork, config.ImageQueueCapacity),
+		imageAccountSlots: make(map[string]chan struct{}),
+		versions:          newVersionService(config),
+	}
+	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
+		log.Printf("[tokenhub] failed to mark unfinished image jobs after startup: %v", err)
+	} else if len(jobs) > 0 {
+		log.Printf("[tokenhub] marked %d unfinished image jobs as failed after startup", len(jobs))
+	}
+	backfillProviderModelsFromRoutes(store)
+	backfillExternalModelRolesFromRoutes(store)
+	if config.MetricsEnabled {
+		s.metrics = NewGatewayMetrics(config.MetricsProjectLabel)
+		// Assert against the narrow MetricsSink interface rather than *GormStore, and
+		// report failure loudly: silently collecting nothing would be worse than not
+		// offering the endpoint at all.
+		if sink, ok := store.(MetricsSink); ok {
+			sink.SetGatewayMetrics(s.metrics)
+		} else {
+			log.Printf("[tokenhub] store does not implement MetricsSink; gateway request metrics will stay empty")
+		}
 	}
 	s.routes()
 	return s
@@ -69,11 +148,23 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/livez", s.handleLive)
 	s.mux.HandleFunc("/readyz", s.handleHealth)
 	s.mux.HandleFunc("/healthz", s.handleHealth)
+	s.mux.HandleFunc("/metrics", s.handleMetrics)
 	s.mux.HandleFunc("/v1/models", s.handleModels)
 	s.mux.HandleFunc("/v1/models/", s.handleModel)
-	s.mux.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
-	s.mux.HandleFunc("/v1/responses", s.handleResponses)
-	s.mux.HandleFunc("/v1/embeddings", s.handleEmbeddings)
+	// The in-flight gauge covers exactly the endpoints that route to an upstream, so
+	// it stays comparable with requests_total. Catalog lookups and count_tokens are
+	// local and never produce a request count, and admin traffic and scrapes are not
+	// gateway load at all.
+	s.mux.HandleFunc("/v1/chat/completions", s.gatewayInFlight(s.handleChatCompletions))
+	s.mux.HandleFunc("/v1/messages", s.gatewayInFlight(s.handleAnthropicMessages))
+	s.mux.HandleFunc("/v1/messages/count_tokens", s.handleAnthropicCountTokens)
+	s.mux.HandleFunc("/v1/responses", s.gatewayInFlight(s.handleResponses))
+	s.mux.HandleFunc("/v1/responses/compact", s.gatewayInFlight(s.handleResponsesCompact))
+	s.mux.HandleFunc("/v1/embeddings", s.gatewayInFlight(s.handleEmbeddings))
+	s.mux.HandleFunc("/v1/images/generations", s.handleImageGenerations)
+	s.mux.HandleFunc("/v1/images/edits", s.handleImageEdits)
+	s.mux.HandleFunc("/v1/image-jobs/", s.handleImageJob)
+	s.mux.HandleFunc("/v1/image-assets/", s.handleImageAsset)
 	s.mux.HandleFunc("/api/internal/integration/events", s.handleGatewayIntegrationEvent)
 	s.mux.HandleFunc("/api/internal/integration/reconciliation", s.handleGatewayIntegrationReconciliation)
 	s.mux.HandleFunc("/api/internal/models", s.handleGatewayModels)
@@ -100,17 +191,24 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/users/", s.handleAdminUserItem)
 	s.mux.HandleFunc("/api/admin/provider-catalog", s.handleAdminProviderCatalog)
 	s.mux.HandleFunc("/api/admin/provider-catalog/", s.handleAdminProviderCatalogItem)
+	s.mux.HandleFunc("/api/admin/provider-adapters", s.handleAdminProviderAdapters)
 	s.mux.HandleFunc("/api/admin/provider-account-oauth/openai/generate-auth-url", s.handleAdminOpenAIAccountOAuthGenerateAuthURL)
 	s.mux.HandleFunc("/api/admin/provider-account-oauth/openai/exchange-code", s.handleAdminOpenAIAccountOAuthExchangeCode)
 	s.mux.HandleFunc("/api/admin/provider-account-oauth/openai/oauth/callback", s.handleOpenAIAccountOAuthCallback)
 	s.mux.HandleFunc("/api/admin/api-keys", s.handleAdminAPIKeys)
 	s.mux.HandleFunc("/api/admin/api-keys/", s.handleAdminAPIKeyItem)
 	s.mux.HandleFunc("/api/admin/providers", s.handleAdminProviders)
+	s.mux.HandleFunc("/api/admin/providers/monitoring", s.handleAdminProviderMonitoring)
 	s.mux.HandleFunc("/api/admin/providers/", s.handleAdminProviderNested)
 	s.mux.HandleFunc("/api/admin/provider-resources", s.handleAdminProviderResources)
 	s.mux.HandleFunc("/api/admin/provider-resources/", s.handleAdminProviderResourceNested)
+	s.mux.HandleFunc("/api/admin/provider-models/import", s.handleAdminProviderModelImport)
+	s.mux.HandleFunc("/api/admin/provider-models", s.handleAdminProviderModels)
+	s.mux.HandleFunc("/api/admin/provider-models/", s.handleAdminProviderModelItem)
 	s.mux.HandleFunc("/api/admin/models", s.handleAdminModels)
+	s.mux.HandleFunc("/api/admin/models/restore-defaults", s.handleAdminModelsRestoreDefaults)
 	s.mux.HandleFunc("/api/admin/models/", s.handleAdminModelItem)
+	s.mux.HandleFunc("/api/admin/model-routing-policies/", s.handleAdminModelRoutingPolicy)
 	s.mux.HandleFunc("/api/admin/routing-rules", s.handleAdminRoutes)
 	s.mux.HandleFunc("/api/admin/routing-rules/", s.handleAdminRouteItem)
 	s.mux.HandleFunc("/api/admin/resources/", s.handleAdminResources)
@@ -123,6 +221,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/usage/timeseries", s.handleAdminUsageTimeseries)
 	s.mux.HandleFunc("/api/admin/audit/requests", s.handleAdminRequestLogs)
 	s.mux.HandleFunc("/api/admin/audit/requests/", s.handleAdminRequestDetail)
+	s.mux.HandleFunc("/api/admin/audit/image-jobs", s.handleAdminImageJobs)
 	s.mux.HandleFunc("/api/admin/audit/events", s.handleAdminAuditEvents)
 	s.mux.HandleFunc("/api/admin/alerts", s.handleAdminAlerts)
 	s.mux.HandleFunc("/api/admin/alerts/", s.handleAdminAlertItem)
@@ -130,6 +229,22 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/approvals", s.handleAdminApprovals)
 	s.mux.HandleFunc("/api/admin/approvals/", s.handleAdminApprovalItem)
 	s.mux.HandleFunc("/api/admin/system/db-status", s.handleAdminSystemDBStatus)
+	s.mux.HandleFunc("/api/admin/system/version", s.handleAdminSystemVersion)
+	s.mux.HandleFunc("/api/admin/system/update", s.handleAdminSystemUpdate)
+	s.mux.HandleFunc("/api/admin/system/rollback", s.handleAdminSystemRollback)
+	s.mux.HandleFunc("/api/admin/system/restart", s.handleAdminSystemRestart)
+	s.mux.HandleFunc("/api/admin/system/rollback-versions", s.handleAdminRollbackVersions)
+}
+
+func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.adapterRegistry.List()})
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +284,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	for _, model := range models {
 		data = append(data, buildModelListItem(model))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
+	payload := map[string]any{
+		"object":   "list",
+		"data":     data,
+		"models":   []any{},
+		"has_more": false,
+	}
+	if len(data) > 0 {
+		payload["first_id"] = data[0].ID
+		payload["last_id"] = data[len(data)-1].ID
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (s *Server) handleModel(w http.ResponseWriter, r *http.Request) {
@@ -213,12 +338,17 @@ type modelListItem struct {
 	ID                   string `json:"id"`
 	Created              int64  `json:"created"`
 	Object               string `json:"object"`
+	Type                 string `json:"type"`
 	OwnedBy              string `json:"owned_by,omitempty"`
 	InputTokenPricePerM  int64  `json:"input_token_price_per_m"`
 	OutputTokenPricePerM int64  `json:"output_token_price_per_m"`
 	Title                string `json:"title"`
+	DisplayName          string `json:"display_name"`
 	Description          string `json:"description"`
 	ContextSize          int64  `json:"context_size"`
+	CreatedAt            string `json:"created_at"`
+	MaxInputTokens       int64  `json:"max_input_tokens"`
+	MaxTokens            int64  `json:"max_tokens"`
 }
 
 func buildModelListItem(model Model) modelListItem {
@@ -230,12 +360,17 @@ func buildModelListItem(model Model) modelListItem {
 		ID:                   model.Name,
 		Created:              modelCreatedUnix(model),
 		Object:               "model",
+		Type:                 "model",
 		OwnedBy:              "tokenhub",
 		InputTokenPricePerM:  modelTokenPricePerM(inputPrice),
 		OutputTokenPricePerM: modelTokenPricePerM(model.OutputPriceUSDPer1M),
 		Title:                modelTitle(model),
+		DisplayName:          modelTitle(model),
 		Description:          modelDescription(model),
 		ContextSize:          model.ContextWindow,
+		CreatedAt:            modelCreatedAt(model),
+		MaxInputTokens:       model.ContextWindow,
+		MaxTokens:            modelMaxOutputTokens(model),
 	}
 }
 
@@ -244,6 +379,25 @@ func modelCreatedUnix(model Model) int64 {
 		return 0
 	}
 	return model.CreatedAt.Unix()
+}
+
+func modelCreatedAt(model Model) string {
+	if model.CreatedAt.IsZero() {
+		return time.Unix(0, 0).UTC().Format(time.RFC3339)
+	}
+	return model.CreatedAt.UTC().Format(time.RFC3339)
+}
+
+func modelMaxOutputTokens(model Model) int64 {
+	for _, key := range []string{"max_output_tokens", "max_tokens"} {
+		if value := strings.TrimSpace(model.Metadata[key]); value != "" {
+			parsed, err := strconv.ParseInt(value, 10, 64)
+			if err == nil && parsed >= 0 {
+				return parsed
+			}
+		}
+	}
+	return 0
 }
 
 func modelTokenPricePerM(priceUSDPer1M float64) int64 {
@@ -290,73 +444,73 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req)
+	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req.Stream, req)
 	if !ok {
 		return
 	}
 
+	affinity, err := s.chatCacheLocalityAffinity(key.ID, r.Header, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, err)
+		s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	if affinity != nil {
+		routed.Affinity = affinity
+		routed.Call.Affinity = affinity
+		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+	}
+
 	if req.Stream {
-		route := routed.Routes[0]
-		resourceID := routeResourceID(route)
-		leaseID, leaseCtx, err := s.store.CheckProviderResourceCapacity(r.Context(), resourceID)
-		if err != nil {
-			s.finishFailedRoutedCall(r, routed, []RouteAttempt{{
-				Selection: route,
-				Status:    AsHTTPError(err).Status,
-				ErrorCode: AsHTTPError(err).Code,
-				Error:     err.Error(),
-			}}, err)
-			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
-			writeError(w, r, err)
-			return
-		}
-		preparedRoute, err := s.prepareRouteForUpstream(leaseCtx, route)
-		if err != nil {
-			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-				err = leaseErr
-			}
-			finishProviderResourceAttempt(s.store, resourceID, leaseID, err, Usage{})
-			httpErr := AsHTTPError(err)
-			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
-			writeError(w, r, err)
-			return
-		}
-		route = preparedRoute
-		adapter, err := s.adapterForRoute(route)
-		if err != nil {
-			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-				err = leaseErr
-			}
-			finishProviderResourceAttempt(s.store, resourceID, leaseID, err, Usage{})
-			httpErr := AsHTTPError(err)
-			s.store.FinishCall(routed.Call, route, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
-			writeError(w, r, err)
-			return
-		}
-		w.Header().Set("content-type", "text/event-stream")
-		w.Header().Set("cache-control", "no-cache")
-		w.Header().Set("x-request-id", routed.Call.RequestID)
-		s.writeRouteHeaders(w, routed.Call, route, 1)
-		usage, err := adapter.ChatStream(leaseCtx, route.Provider, route.ProviderModel, req, w)
-		if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-			err = leaseErr
-		}
-		finishProviderResourceAttempt(s.store, resourceID, leaseID, err, usage)
-		status, code := statusAndCode(err)
-		if err == nil {
+		tracker := &streamWriteTracker{writer: w}
+		allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
+		_, route, usage, attempts, streamErr := executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback,
+			func(ctx context.Context, candidate RouteSelection, omitReasoningEffort bool, attempt int) (struct{}, Usage, error) {
+				prepared, prepareErr := s.prepareRouteForUpstream(ctx, candidate)
+				if prepareErr != nil {
+					return struct{}{}, Usage{}, prepareErr
+				}
+				adapter, adapterErr := s.adapterForRoute(prepared)
+				if adapterErr != nil {
+					return struct{}{}, Usage{}, adapterErr
+				}
+				upstreamReq := req
+				if omitReasoningEffort {
+					upstreamReq.ReasoningEffort = nil
+				}
+				// Defer the response headers until the first byte is written, at
+				// which point prepared is the route that actually served it.
+				tracker.onFirstWrite = func() {
+					w.Header().Set("content-type", "text/event-stream")
+					w.Header().Set("cache-control", "no-cache")
+					w.Header().Set("x-request-id", routed.Call.RequestID)
+					s.writeRouteHeaders(w, routed.Call, prepared, attempt)
+				}
+				streamUsage, err := adapter.ChatStream(ctx, prepared.Provider, prepared.ProviderModel, upstreamReq, tracker)
+				return struct{}{}, streamUsage, classifyStreamError(ctx, err, tracker.Wrote())
+			})
+
+		status, code := statusAndCode(streamErr)
+		if streamErr == nil {
+			// An upstream may complete with 200 and an empty body, in which case
+			// onFirstWrite never ran and the client would receive none of the
+			// streaming headers.
+			tracker.ensureStarted()
 			s.store.MarkRouteUsed(route.Route.ID)
 			s.store.MarkProviderResourceUsed(routeResourceID(route))
 		}
-		s.store.RecordRouteAttempts(routed.Call.RequestID, []RouteAttempt{{
-			Selection: route,
-			Status:    status,
-			ErrorCode: code,
-			Error:     errorMessage(err),
-		}})
+		s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
 		s.store.FinishCall(routed.Call, route, usage, status, code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(routed.Call.RequestID, req, auditStreamPayload(status, code, err))
+		s.recordRequestPayload(routed.Call.RequestID, req, auditStreamPayload(status, code, streamErr))
+		if streamErr != nil && !tracker.Wrote() {
+			// Nothing reached the client, so the response is a plain JSON error.
+			// Still emit routing headers here: onFirstWrite never ran, and callers
+			// rely on these headers to see how many candidates were attempted.
+			w.Header().Del("cache-control")
+			s.writeRouteHeaders(w, routed.Call, lastAttemptRoute(attempts), len(attempts))
+			writeError(w, r, streamErr)
+		}
 		return
 	}
 
@@ -396,8 +550,38 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
 		return
 	}
-	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req)
+	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req.Stream, req)
 	if !ok {
+		return
+	}
+	if req.Stream {
+		routed.Routes = s.routesWithAdapterCapability(routed.Routes, AdapterCapabilityResponseStream)
+		if len(routed.Routes) == 0 {
+			err := NewHTTPError(
+				http.StatusNotImplemented,
+				"provider_capability_not_supported",
+				"Streaming responses are not supported",
+			)
+			s.finishFailedRoutedCall(r, routed, nil, err)
+			s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
+			writeError(w, r, err)
+			return
+		}
+	}
+	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, err)
+		s.recordRequestPayload(routed.Call.RequestID, req, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
+		routed.Affinity = affinity
+		routed.Call.Affinity = affinity
+		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+	}
+	if req.Stream {
+		s.handleStreamingResponses(w, r, routed, req)
 		return
 	}
 	resp, route, usage, attempts, err := s.executeRoutedResponses(r, routed, req)
@@ -413,8 +597,68 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
 	s.recordRequestPayload(routed.Call.RequestID, req, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
+	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	project, key, err := s.authenticate(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	var request map[string]json.RawMessage
+	if err := decodeJSON(r, &request); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		return
+	}
+	var model string
+	if value, ok := request["model"]; ok {
+		_ = json.Unmarshal(value, &model)
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "missing_model", "model is required"))
+		return
+	}
+	routed, ok := s.startRoutedCall(w, r, project, key, model, false, request)
+	if !ok {
+		return
+	}
+	affinityRequest := ResponsesRequest{Model: model, raw: request}
+	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, affinityRequest)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, err)
+		s.recordRequestPayload(routed.Call.RequestID, request, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
+		routed.Affinity = affinity
+		routed.Call.Affinity = affinity
+		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+	}
+	response, route, usage, attempts, err := s.executeRoutedCompact(r, routed, request)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, err)
+		s.recordRequestPayload(routed.Call.RequestID, request, auditErrorPayload(err, routed.Call.RequestID))
+		writeError(w, r, err)
+		return
+	}
+	s.store.MarkRouteUsed(route.Route.ID)
+	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
+	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
+	s.recordRequestPayload(routed.Call.RequestID, request, response)
+	w.Header().Set("x-request-id", routed.Call.RequestID)
+	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
+	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
@@ -436,7 +680,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
 		return
 	}
-	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req)
+	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, false, req)
 	if !ok {
 		return
 	}
@@ -457,15 +701,18 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, requestPayload any) (RoutedCall, bool) {
+func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, stream bool, requestPayload any) (RoutedCall, bool) {
 	call, err := s.store.StartCall(r.Context(), project, key, model)
+	call.Stream = stream
 	if err != nil {
 		httpErr := AsHTTPError(err)
-		requestID := s.store.RecordRejectedRequest(project, key, model, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		requestID := s.store.RecordRejectedRequest(project, key, model, stream, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		w.Header().Set("x-request-id", requestID)
 		s.recordRequestPayload(requestID, requestPayload, auditErrorPayload(err, requestID))
 		writeError(w, r, err)
 		return RoutedCall{}, false
 	}
+	w.Header().Set("x-request-id", call.RequestID)
 	if call.requestContext != nil {
 		*r = *r.WithContext(call.requestContext)
 	}
@@ -477,11 +724,20 @@ func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project
 		writeError(w, r, err)
 		return RoutedCall{}, false
 	}
+	routes, err = s.filterCodexRoutesByModel(r.Context(), model, routes)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		s.recordRequestPayload(call.RequestID, requestPayload, auditErrorPayload(err, call.RequestID))
+		writeError(w, r, err)
+		return RoutedCall{}, false
+	}
 	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, true
 }
 
 func (s *Server) executeRoutedChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(r.Context(), s.store, routed, func(ctx context.Context, route RouteSelection) (any, Usage, error) {
+	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
+	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
 		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -490,26 +746,136 @@ func (s *Server) executeRoutedChat(r *http.Request, routed RoutedCall, req ChatC
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return adapter.Chat(ctx, route.Provider, route.ProviderModel, req)
+		upstreamReq := req
+		if omitReasoningEffort {
+			upstreamReq.ReasoningEffort = nil
+		}
+		return adapter.Chat(ctx, route.Provider, route.ProviderModel, upstreamReq)
+	})
+}
+
+func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
+	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
+	responsesReq := playgroundChatResponsesRequest(req)
+	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
+		route, err := s.prepareRouteForUpstream(ctx, route)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		if route.Provider.Type == ProviderOpenAICodex {
+			upstreamReq := responsesReq
+			if omitReasoningEffort {
+				upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
+			}
+			resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
+			if isCodexModelUnsupportedError(err) {
+				s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+			}
+			return resp, usage, err
+		}
+		adapter, err := s.adapterForRoute(route)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		upstreamReq := req
+		if omitReasoningEffort {
+			upstreamReq.ReasoningEffort = nil
+		}
+		return adapter.Chat(ctx, route.Provider, route.ProviderModel, upstreamReq)
 	})
 }
 
 func (s *Server) executeRoutedResponses(r *http.Request, routed RoutedCall, req ResponsesRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(r.Context(), s.store, routed, func(ctx context.Context, route RouteSelection) (any, Usage, error) {
+	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(req)) != nil
+	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
 		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		adapter, err := s.adapterForRoute(route)
+		upstreamReq := req
+		if omitReasoningEffort {
+			upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
+		}
+		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
+		if isCodexModelUnsupportedError(err) {
+			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+		}
+		return resp, usage, err
+	})
+}
+
+func (s *Server) invokeResponsesAdapter(ctx context.Context, route RouteSelection, req ResponsesRequest, incoming http.Header) (any, Usage, error) {
+	adapter, err := s.responsesAdapterForRoute(route)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	if envelopeAdapter, ok := adapter.(ResponsesEnvelopeAdapter); ok {
+		return envelopeAdapter.ResponsesWithHeaders(ctx, route.Provider, route.ProviderModel, req, incoming)
+	}
+	if responsesAdapter, ok := adapter.(ResponsesInvoker); ok {
+		return responsesAdapter.Responses(ctx, route.Provider, route.ProviderModel, req)
+	}
+	return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses")
+}
+
+func playgroundChatResponsesRequest(req ChatCompletionRequest) ResponsesRequest {
+	instructions := make([]string, 0, len(req.Messages))
+	input := make([]map[string]any, 0, len(req.Messages))
+	for _, message := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(message.Role))
+		text := contentToText(message.Content)
+		switch role {
+		case "system", "developer":
+			if strings.TrimSpace(text) != "" {
+				instructions = append(instructions, text)
+			}
+		case "assistant":
+			input = append(input, map[string]any{
+				"role":    "assistant",
+				"content": []map[string]any{{"type": "output_text", "text": text}},
+			})
+		default:
+			input = append(input, map[string]any{
+				"role":    role,
+				"content": []map[string]any{{"type": "input_text", "text": text}},
+			})
+		}
+	}
+	responsesReq := ResponsesRequest{
+		Model:        req.Model,
+		Input:        input,
+		Instructions: strings.Join(instructions, "\n\n"),
+	}
+	if effort := normalizedReasoningEffort(req.ReasoningEffort); effort != nil {
+		responsesReq.Reasoning = &ResponsesReasoning{Effort: effort}
+	}
+	return responsesReq
+}
+
+func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, request map[string]json.RawMessage) (any, RouteSelection, Usage, []RouteAttempt, error) {
+	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (any, Usage, error) {
+		prepared, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return adapter.Responses(ctx, route.Provider, route.ProviderModel, req)
+		adapter, err := s.responsesAdapterForRoute(prepared)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		compactAdapter, ok := adapter.(ResponsesCompactAdapter)
+		if !ok {
+			return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses compact")
+		}
+		body := make(map[string]json.RawMessage, len(request))
+		for key, value := range request {
+			body[key] = append(json.RawMessage(nil), value...)
+		}
+		return compactAdapter.CompactWithHeaders(ctx, prepared.Provider, prepared.ProviderModel, body, r.Header)
 	})
 }
 
 func (s *Server) executeRoutedEmbeddings(r *http.Request, routed RoutedCall, req EmbeddingsRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(r.Context(), s.store, routed, func(ctx context.Context, route RouteSelection) (any, Usage, error) {
+	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (any, Usage, error) {
 		route, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -558,6 +924,11 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		writeError(w, r, err)
 		return
 	}
+	routes, err = s.filterCodexRoutesByModel(r.Context(), req.Model, routes)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
 	requestID := NewID("pg")
 	routed := RoutedCall{
 		Call: CallContext{
@@ -569,7 +940,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		},
 	}
 	routed.Routes = s.planRouteOrder(routed.Call, routes)
-	resp, route, usage, attempts, err := s.executeRoutedChat(r, routed, req)
+	resp, route, usage, attempts, err := s.executeRoutedPlaygroundChat(r, routed, req)
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		route = lastAttemptRoute(attempts)
@@ -605,15 +976,33 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func executeRoutedWithStore[T any](ctx context.Context, store Store, routed RoutedCall, call func(context.Context, RouteSelection) (T, Usage, error)) (T, RouteSelection, Usage, []RouteAttempt, error) {
+func executeRoutedWithStore[T any](
+	ctx context.Context,
+	store Store,
+	routed RoutedCall,
+	allowReasoningEffortFallback bool,
+	// call receives the 1-based attempt number, counted across every candidate
+	// including ones that never ran because capacity acquisition failed. Callbacks
+	// must not derive it locally: those failures are appended to attempts here
+	// without invoking the callback, so a local counter would undercount them.
+	call func(context.Context, RouteSelection, bool, int) (T, Usage, error),
+) (T, RouteSelection, Usage, []RouteAttempt, error) {
 	var zero T
 	var lastErr error = ErrProviderMissing
-	attempts := make([]RouteAttempt, 0, len(routed.Routes))
+	var affinityBindings map[string]AdapterSessionBinding
+	var err error
+	routed, affinityBindings, err = applyAdapterSessionAffinity(ctx, store, routed)
+	if err != nil {
+		return zero, RouteSelection{}, Usage{}, nil, err
+	}
+	attempts := make([]RouteAttempt, 0, len(routed.Routes)+1)
 	for _, route := range routed.Routes {
 		if leaseErr := coordinationLeaseError(ctx); leaseErr != nil {
 			return zero, route, Usage{}, attempts, leaseErr
 		}
 		resourceID := routeResourceID(route)
+		binding, hasBinding := affinityBindings[route.Provider.ID]
+		routeIsBound := hasBinding && binding.ResourceID == resourceID
 		leaseID, leaseCtx, err := store.CheckProviderResourceCapacity(ctx, resourceID)
 		if err != nil {
 			status, code := statusAndCode(err)
@@ -624,32 +1013,87 @@ func executeRoutedWithStore[T any](ctx context.Context, store Store, routed Rout
 				Error:     errorMessage(err),
 			})
 			lastErr = err
-			if !shouldFailoverProviderError(err) {
+			if !shouldFailoverRoutedError(err, routeIsBound) {
 				return zero, route, Usage{}, attempts, err
 			}
 			continue
 		}
-		resp, usage, err := call(leaseCtx, route)
-		if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
-			err = leaseErr
-		}
-		finishProviderResourceAttempt(store, resourceID, leaseID, err, usage)
-		status, code := statusAndCode(err)
-		attempts = append(attempts, RouteAttempt{
-			Selection: route,
-			Status:    status,
-			ErrorCode: code,
-			Error:     errorMessage(err),
-		})
-		if err == nil {
-			return resp, route, usage, attempts, nil
-		}
-		lastErr = err
-		if !shouldFailoverProviderError(err) {
-			return zero, route, usage, attempts, err
+		omitReasoningEffort := false
+		for {
+			attemptStartedAt := time.Now()
+			resp, usage, err := call(leaseCtx, route, omitReasoningEffort, len(attempts)+1)
+			latencyMS := maxInt64(1, time.Since(attemptStartedAt).Milliseconds())
+			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
+				err = leaseErr
+			}
+			// Neither a committed stream nor a client disconnect may be retried,
+			// not even via the effort fallback on the same route. These checks are
+			// load-bearing: ProviderInvocationError implements Unwrap, so
+			// isReasoningEffortRejection sees through the wrapper and would
+			// otherwise return true for an error that must not be retried.
+			disposition := providerErrorDisposition(err)
+			retryWithoutEffort := allowReasoningEffortFallback &&
+				!omitReasoningEffort &&
+				disposition != ProviderErrorStreamCommitted &&
+				disposition != ProviderErrorClient &&
+				isReasoningEffortRejection(err)
+			if !retryWithoutEffort {
+				finishProviderResourceAttempt(leaseCtx, store, resourceID, leaseID, err, usage)
+			}
+			status, code := routeAttemptStatusAndCode(err, retryWithoutEffort)
+			attempts = append(attempts, RouteAttempt{
+				Selection: route,
+				Status:    status,
+				ErrorCode: code,
+				Error:     errorMessage(err),
+				Invoked:   true,
+				LatencyMS: latencyMS,
+			})
+			if err == nil {
+				rebindReason := ""
+				if binding, ok := affinityBindings[route.Provider.ID]; ok && binding.ResourceID != resourceID {
+					rebindReason = "resource_failover"
+				}
+				if bindErr := commitAdapterSessionAffinity(ctx, store, routed, affinityBindings, route, rebindReason); bindErr != nil {
+					return zero, route, usage, attempts, bindErr
+				}
+				return resp, route, usage, attempts, nil
+			}
+			lastErr = err
+			if retryWithoutEffort {
+				if retryErr := store.CheckProviderResourceRetryCapacity(leaseCtx, resourceID, leaseID); retryErr != nil {
+					store.ReleaseProviderResourceCapacity(resourceID, leaseID)
+					status, code = statusAndCode(retryErr)
+					attempts = append(attempts, RouteAttempt{
+						Selection: route,
+						Status:    status,
+						ErrorCode: code,
+						Error:     errorMessage(retryErr),
+					})
+					lastErr = retryErr
+					if !shouldFailoverRoutedError(retryErr, routeIsBound) {
+						return zero, route, Usage{}, attempts, retryErr
+					}
+					break
+				}
+				omitReasoningEffort = true
+				continue
+			}
+			if !shouldFailoverRoutedError(err, routeIsBound) {
+				return zero, route, usage, attempts, err
+			}
+			break
 		}
 	}
 	return zero, RouteSelection{}, Usage{}, attempts, lastErr
+}
+
+func routeAttemptStatusAndCode(err error, reasoningEffortRejected bool) (int, string) {
+	if !reasoningEffortRejected {
+		return statusAndCode(err)
+	}
+	httpErr := AsHTTPError(err)
+	return httpErr.UpstreamStatus, "reasoning_effort_rejected"
 }
 
 func coordinationLeaseError(ctx context.Context) error {
@@ -659,7 +1103,7 @@ func coordinationLeaseError(ctx context.Context) error {
 	return nil
 }
 
-func finishProviderResourceAttempt(store Store, resourceID string, leaseID string, err error, usage Usage) {
+func finishProviderResourceAttempt(ctx context.Context, store Store, resourceID string, leaseID string, err error, usage Usage) {
 	if resourceID == "" {
 		return
 	}
@@ -667,7 +1111,90 @@ func finishProviderResourceAttempt(store Store, resourceID string, leaseID strin
 		store.ReleaseProviderResourceCapacity(resourceID, leaseID)
 		return
 	}
-	store.FinishProviderResourceAttempt(resourceID, leaseID, err == nil, usage)
+	store.FinishProviderResourceAttempt(ctx, resourceID, leaseID, providerAttemptOutcome(err), usage)
+}
+
+type streamWriteTracker struct {
+	writer io.Writer
+	wrote  bool
+	// onFirstWrite runs once, just before the first byte is written. Response
+	// headers must wait until that moment: failover can move to another candidate,
+	// and writing early would expose the preferred route rather than the one that
+	// actually served the request.
+	onFirstWrite func()
+}
+
+func (w *streamWriteTracker) Write(data []byte) (int, error) {
+	if !w.wrote {
+		if w.onFirstWrite != nil {
+			w.onFirstWrite()
+		}
+		if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
+			responseWriter.WriteHeader(http.StatusOK)
+			if flusher, ok := responseWriter.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}
+	}
+	w.wrote = true
+	return w.writer.Write(data)
+}
+
+// classifyStreamError decides whether a streaming failure may move to the next
+// candidate.
+//
+// Two cases must never fail over:
+//   - The first byte was already written: the client has a 200 and partial events,
+//     so switching upstreams would emit two contradictory streams. Note this
+//     disposition is not produced automatically and must be wrapped explicitly here.
+//   - The client disconnected: retrying only burns the next account's quota.
+//     Without this check, a cancellation error falls through to the status >= 500
+//     branch at the end of shouldFailoverRoutedError and is mistaken for retryable.
+func classifyStreamError(ctx context.Context, err error, wrote bool) error {
+	if err == nil {
+		return nil
+	}
+	// Cancellation is checked before commitment. Both dispositions forbid failover,
+	// but only ProviderErrorClient counts as healthy in
+	// providerAttemptCountsAsHealthy. Classifying a mid-stream client disconnect as
+	// StreamCommitted would charge it to the upstream, so repeated disconnects could
+	// accumulate failures and cool down a perfectly healthy account.
+	if errors.Is(err, context.Canceled) || (ctx != nil && errors.Is(ctx.Err(), context.Canceled)) {
+		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorClient}
+	}
+	if wrote {
+		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorStreamCommitted}
+	}
+	return err
+}
+
+func (w *streamWriteTracker) Wrote() bool {
+	return w != nil && w.wrote
+}
+
+// ensureStarted runs the deferred hook even when the upstream produced no bytes.
+// A 200 response with an empty body would otherwise reach the client with none of
+// the headers onFirstWrite installs, including content-type.
+func (w *streamWriteTracker) ensureStarted() {
+	if w == nil || w.wrote {
+		return
+	}
+	if w.onFirstWrite != nil {
+		w.onFirstWrite()
+	}
+	if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
+		responseWriter.WriteHeader(http.StatusOK)
+	}
+	w.wrote = true
+}
+
+func (w *streamWriteTracker) Flush() {
+	if w == nil {
+		return
+	}
+	if flusher, ok := w.writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (s *Server) finishFailedRoutedCall(r *http.Request, routed RoutedCall, attempts []RouteAttempt, err error) {
@@ -678,15 +1205,39 @@ func (s *Server) finishFailedRoutedCall(r *http.Request, routed RoutedCall, atte
 }
 
 func (s *Server) adapterForRoute(route RouteSelection) (ProviderAdapter, error) {
-	adapter, ok := s.adapters[route.Provider.Type]
-	if !ok {
-		return nil, NewHTTPError(503, "provider_adapter_missing", "Provider adapter is not registered")
+	adapter, err := s.adapterRegistry.Resolve(route.Provider.Type)
+	if err != nil {
+		return nil, err
 	}
-	return adapter, nil
+	legacy, ok := adapter.(ProviderAdapter)
+	if !ok {
+		return nil, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support this operation")
+	}
+	return legacy, nil
+}
+
+func (s *Server) responsesAdapterForRoute(route RouteSelection) (any, error) {
+	return s.adapterRegistry.Resolve(route.Provider.Type)
+}
+
+func (s *Server) routesWithAdapterCapability(routes []RouteSelection, capability AdapterCapability) []RouteSelection {
+	filtered := make([]RouteSelection, 0, len(routes))
+	for _, route := range routes {
+		descriptor, ok := s.adapterRegistry.Describe(route.Provider.Type)
+		if ok && adapterSupports(descriptor, capability) {
+			filtered = append(filtered, route)
+		}
+	}
+	return filtered
 }
 
 func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []RouteSelection {
-	ordered := append([]RouteSelection(nil), routes...)
+	ordered := make([]RouteSelection, 0, len(routes))
+	for _, route := range routes {
+		if routeMatchesProject(route.Route, call.Project.ID) {
+			ordered = append(ordered, route)
+		}
+	}
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].Route.Priority != ordered[j].Route.Priority {
 			return ordered[i].Route.Priority < ordered[j].Route.Priority
@@ -716,19 +1267,53 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 			}
 			group := append([]RouteSelection(nil), priorityGroup[:groupEnd]...)
 			strategy := routeStrategy(group[0].Route)
+			applyRouteRuntimeWeights(strategy, group)
 			if strategy == RouteStrategyPriorityOnly || strategy == RouteStrategyQuality || strategy == RouteStrategyCost {
 				sortRouteGroupByStrategy(strategy, group)
 				planned = append(planned, group...)
 				priorityGroup = priorityGroup[groupEnd:]
 				continue
 			}
-			if group[0].Route.StickySession {
+			cacheLocality := call.Affinity != nil &&
+				call.Affinity.KeyHash != "" &&
+				call.Affinity.Kind == AffinityKindCacheLocality
+			// Sticky pops one candidate out of the group first, which weakens session
+			// affinity. Cache locality works at the finer session granularity, so it
+			// takes over; Codex's stateful binding relies on sticky choosing the
+			// provider first and is left untouched.
+			if group[0].Route.StickySession && !cacheLocality {
 				index := stickyRouteIndex(call, group)
 				planned = append(planned, group[index])
 				group = append(group[:index], group[index+1:]...)
 			}
+			routingKey := call.RequestID
+			if call.Affinity != nil && call.Affinity.KeyHash != "" {
+				routingKey = call.Affinity.KeyHash
+			}
+			if call.Affinity != nil && call.Affinity.KeyHash != "" {
+				identity := routeSortID
+				score := weightedRendezvousScore
+				if cacheLocality {
+					// Score by cache domain rather than route identity: several routes
+					// sharing an account and upstream model score identically and sort
+					// adjacently, so failover prefers a sibling whose cache is still warm.
+					identity = cacheDomainID
+					score = weightedCacheDomainScore
+				}
+				sort.SliceStable(group, func(i, j int) bool {
+					left := score(routingKey, identity(group[i]), routeEffectiveWeight(group[i]))
+					right := score(routingKey, identity(group[j]), routeEffectiveWeight(group[j]))
+					if left != right {
+						return left > right
+					}
+					return routeSortID(group[i]) < routeSortID(group[j])
+				})
+				planned = append(planned, group...)
+				priorityGroup = priorityGroup[groupEnd:]
+				continue
+			}
 			for len(group) > 0 {
-				index := weightedRouteIndex(call.RequestID, len(planned), group)
+				index := weightedRouteIndex(routingKey, len(planned), group)
 				planned = append(planned, group[index])
 				group = append(group[:index], group[index+1:]...)
 			}
@@ -737,6 +1322,63 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 		ordered = ordered[end:]
 	}
 	return planned
+}
+
+// weightedRendezvousScore scores candidates for Codex session affinity, where
+// identity is routeSortID.
+//
+// FNV-1a is kept deliberately: routeSortID embeds randomly generated route and
+// resource IDs, so it has enough entropy and none of the similarity problem that
+// cache domain identities have. Changing the hash would reassign every Codex
+// session that has no binding yet, and that change is not guarded by
+// CACHE_AFFINITY_ENABLED - with the switch off, routing must stay byte-identical
+// to the pre-change behaviour.
+func weightedRendezvousScore(key string, identity string, weight int) float64 {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(key))
+	_, _ = hash.Write([]byte{0})
+	_, _ = hash.Write([]byte(identity))
+	// Deliberately keeps the original normalisation, without the clamp applied to
+	// cache-domain scoring. Adding the clamp here would change scores for
+	// near-maximum hashes from -Inf to a large finite value, which contradicts the
+	// byte-identical guarantee this function is required to uphold.
+	unit := (float64(hash.Sum64()) + 1) / (float64(^uint64(0)) + 2)
+	return float64(weight) / -math.Log(unit)
+}
+
+// weightedCacheDomainScore scores candidates for cache locality routing, where
+// identity is cacheDomainID.
+//
+// SHA-256 is required here: cacheDomainID values are highly similar (under one
+// provider they often differ only in the last few characters), and FNV-1a's
+// avalanche is too weak to separate them - measured, three equally weighted
+// candidates received 154/66/80 instead of an even 100/100/100.
+//
+// This is a durable contract: changing the hash, the concatenation order, or the
+// scoring formula invalidates every upstream cache at once and must be versioned.
+func weightedCacheDomainScore(key string, identity string, weight int) float64 {
+	sum := sha256.Sum256(append(append([]byte(key), 0), identity...))
+	return cacheDomainScoreFromHash(binary.BigEndian.Uint64(sum[:8]), weight)
+}
+
+func cacheDomainScoreFromHash(raw uint64, weight int) float64 {
+	// The +1 / +2 keeps unit inside the open interval (0,1): float64 rounding near
+	// the maximum can otherwise yield exactly 1, and -math.Log(1) returns negative
+	// zero, making the score -Inf so that candidate would sort last forever.
+	unit := (float64(raw) + 1) / (float64(^uint64(0)) + 2)
+	if unit >= 1 {
+		unit = 0.99999999999999988
+	}
+	return float64(weight) / -math.Log(unit)
+}
+
+func routesContainAdapterType(routes []RouteSelection, adapterType string) bool {
+	for _, route := range routes {
+		if route.Provider.Type == adapterType {
+			return true
+		}
+	}
+	return false
 }
 
 func sortRouteGroupByStrategy(strategy string, routes []RouteSelection) {
@@ -775,14 +1417,14 @@ func weightedRouteIndex(requestID string, salt int, routes []RouteSelection) int
 	}
 	total := 0
 	for _, route := range routes {
-		total += routeEffectiveWeight(route.Route)
+		total += routeEffectiveWeight(route)
 	}
 	if total <= 0 {
 		return 0
 	}
 	needle := stableHashInt(requestID, salt) % total
 	for index, route := range routes {
-		needle -= routeEffectiveWeight(route.Route)
+		needle -= routeEffectiveWeight(route)
 		if needle < 0 {
 			return index
 		}
@@ -805,14 +1447,91 @@ func routeWeight(route ModelRoute) int {
 	return route.Weight
 }
 
-func routeEffectiveWeight(route ModelRoute) int {
-	weight := routeWeight(route)
-	switch routeStrategy(route) {
+func routeEffectiveWeight(route RouteSelection) int {
+	if route.Runtime.EffectiveWeight > 0 {
+		return route.Runtime.EffectiveWeight
+	}
+	weight := routeWeight(route.Route)
+	switch routeStrategy(route.Route) {
 	case RouteStrategyBalanced:
-		return maxInt(1, weight+routeQualityScore(route)+routeCostScore(route))
+		return maxInt(1, weight+routeQualityScore(route.Route)+routeCostScore(route.Route))
 	default:
 		return weight
 	}
+}
+
+func applyRouteRuntimeWeights(strategy string, routes []RouteSelection) {
+	if strategy != RouteStrategyAdaptive {
+		return
+	}
+	for index := range routes {
+		routes[index].Runtime.EffectiveWeight = routeWeight(routes[index].Route)
+	}
+	latencies := make([]int64, 0, len(routes))
+	for _, route := range routes {
+		if route.Runtime.Samples >= 5 && route.Runtime.LatencyMS > 0 {
+			latencies = append(latencies, route.Runtime.LatencyMS)
+		}
+	}
+	referenceLatency := float64(0)
+	if len(latencies) > 0 {
+		sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+		referenceLatency = float64(latencies[len(latencies)/2])
+	}
+	for index := range routes {
+		route := &routes[index]
+		if route.Runtime.Samples < 5 {
+			continue
+		}
+		latencyFactor := float64(1)
+		if referenceLatency > 0 && route.Runtime.LatencyMS > 0 {
+			latencyFactor = clampFloat(referenceLatency/float64(route.Runtime.LatencyMS), 0.25, 4)
+		}
+		successFactor := clampFloat(route.Runtime.SuccessRate, 0.25, 1)
+		baseWeight := routeWeight(route.Route)
+		effective := int(math.Round(float64(baseWeight) * latencyFactor * successFactor))
+		route.Runtime.EffectiveWeight = routeMinInt(maxInt(1, effective), baseWeight*4)
+	}
+}
+
+func clampFloat(value float64, minimum float64, maximum float64) float64 {
+	if value < minimum {
+		return minimum
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
+}
+
+func routeMatchesProject(route ModelRoute, projectID string) bool {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" || projectID == "admin_playground" {
+		return true
+	}
+	matched := false
+	for _, candidate := range route.ProjectIDs {
+		if strings.TrimSpace(candidate) == projectID {
+			matched = true
+			break
+		}
+	}
+	switch routeProjectScope(route) {
+	case RouteProjectScopeInclude:
+		return matched
+	case RouteProjectScopeExclude:
+		return !matched
+	default:
+		return true
+	}
+}
+
+func routeProjectScope(route ModelRoute) string {
+	scope := strings.ToLower(strings.TrimSpace(route.ProjectScope))
+	if scope == RouteProjectScopeInclude || scope == RouteProjectScopeExclude {
+		return scope
+	}
+	return RouteProjectScopeAll
 }
 
 func routeQualityScore(route ModelRoute) int {
@@ -837,6 +1556,13 @@ func routeCostScore(route ModelRoute) int {
 
 func maxInt(left int, right int) int {
 	if left > right {
+		return left
+	}
+	return right
+}
+
+func routeMinInt(left int, right int) int {
+	if left < right {
 		return left
 	}
 	return right
@@ -867,27 +1593,61 @@ func routeStrategy(route ModelRoute) string {
 	if strings.TrimSpace(route.Strategy) == "" {
 		return RouteStrategyBalanced
 	}
-	strategy := strings.TrimSpace(route.Strategy)
-	if strategy == RouteStrategyPriorityWeighted {
-		return RouteStrategyBalanced
-	}
-	return strategy
+	return strings.TrimSpace(route.Strategy)
 }
 
-func shouldFailoverProviderError(err error) bool {
+func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 	if err == nil {
 		return false
 	}
 	if errors.Is(err, ErrCoordinationLeaseLost) {
 		return false
 	}
+	// The client is gone; trying the next account only burns its quota. This also
+	// covers cancellations surfaced by the capacity check, which never reach
+	// classifyStreamError.
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	switch providerErrorDisposition(err) {
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted:
+		return false
+	case ProviderErrorTransientSame:
+		return !routeIsBound
+	case ProviderErrorQuotaExhausted, ProviderErrorAuthBroken, ProviderErrorResourceBroken:
+		return true
+	case ProviderErrorModelUnsupported:
+		return !routeIsBound
+	}
+	if isCodexModelUnsupportedError(err) {
+		return !routeIsBound
+	}
 	httpErr := AsHTTPError(err)
+	if routeIsBound {
+		return false
+	}
 	switch httpErr.Status {
 	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return httpErr.Status >= 500
 	}
+}
+
+func isCodexModelUnsupportedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Code == "codex_model_unsupported" || providerErrorDisposition(err) == ProviderErrorModelUnsupported {
+		return true
+	}
+	if httpErr.Code != "codex_upstream_error" {
+		return false
+	}
+	message := strings.ToLower(httpErr.Message)
+	return strings.Contains(message, "model is not supported") ||
+		(strings.Contains(message, "model") && strings.Contains(message, "not supported") && strings.Contains(message, "chatgpt account"))
 }
 
 func lastAttemptRoute(attempts []RouteAttempt) RouteSelection {
@@ -923,6 +1683,10 @@ func playgroundRouteSummary(route RouteSelection) PlaygroundRouteSummary {
 		QualityScore:     routeQualityScore(route.Route),
 		CostScore:        routeCostScore(route.Route),
 		Strategy:         routeStrategy(route.Route),
+		EffectiveWeight:  routeEffectiveWeight(route),
+		Samples:          route.Runtime.Samples,
+		SuccessRate:      route.Runtime.SuccessRate,
+		LatencyMS:        route.Runtime.LatencyMS,
 	}
 	if route.Resource != nil {
 		summary.ResourceName = route.Resource.Name
@@ -950,14 +1714,17 @@ func (s *Server) writeRouteHeaders(w http.ResponseWriter, call CallContext, rout
 
 func (s *Server) authenticate(r *http.Request) (Project, APIKey, error) {
 	auth := r.Header.Get("authorization")
-	if auth == "" {
-		return Project{}, APIKey{}, ErrInvalidAPIKey
+	if auth != "" {
+		const prefix = "Bearer "
+		if !strings.HasPrefix(auth, prefix) {
+			return Project{}, APIKey{}, ErrInvalidAPIKey
+		}
+		return s.store.ValidateAPIKey(strings.TrimSpace(strings.TrimPrefix(auth, prefix)), s.clientIP(r))
 	}
-	const prefix = "Bearer "
-	if !strings.HasPrefix(auth, prefix) {
-		return Project{}, APIKey{}, ErrInvalidAPIKey
+	if apiKey := strings.TrimSpace(r.Header.Get("x-api-key")); apiKey != "" {
+		return s.store.ValidateAPIKey(apiKey, s.clientIP(r))
 	}
-	return s.store.ValidateAPIKey(strings.TrimSpace(strings.TrimPrefix(auth, prefix)), s.clientIP(r))
+	return Project{}, APIKey{}, ErrInvalidAPIKey
 }
 
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
@@ -1120,7 +1887,7 @@ func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	target, err := buildOAuthAuthorizeURL(authorizeURL, clientID, redirectURI, identityProviderScopes(provider), state)
+	target, err := buildIdentityProviderAuthorizeURL(provider, redirectURI, state)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -1144,6 +1911,9 @@ func (s *Server) handleAdminOAuthCallback(w http.ResponseWriter, r *http.Request
 	}
 	code := strings.TrimSpace(r.URL.Query().Get("code"))
 	if code == "" {
+		code = strings.TrimSpace(r.URL.Query().Get("authCode"))
+	}
+	if code == "" {
 		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "missing_code"), http.StatusFound)
 		return
 	}
@@ -1158,7 +1928,7 @@ func (s *Server) handleAdminOAuthCallback(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, oauthErrorCode("token_exchange_failed", err)), http.StatusFound)
 		return
 	}
-	claims, err := s.fetchOAuthUserInfo(r.Context(), provider, token.AccessToken)
+	claims, err := s.fetchOAuthUserInfo(r.Context(), provider, token.AccessToken, code)
 	if err != nil {
 		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "userinfo_failed"), http.StatusFound)
 		return
@@ -1190,6 +1960,9 @@ func (s *Server) activeOAuthIdentityProviders() []AdminResource {
 			strings.TrimSpace(stringField(item.Fields, "token_url")) == "" ||
 			strings.TrimSpace(stringField(item.Fields, "userinfo_url")) == "" ||
 			strings.TrimSpace(stringField(item.Fields, "client_id")) == "" {
+			continue
+		}
+		if !identityProviderPlatformConfigurationComplete(item) {
 			continue
 		}
 		items = append(items, item)
@@ -1241,7 +2014,7 @@ func identityProviderIconKey(provider AdminResource) string {
 		stringField(provider.Fields, "authorize_url"),
 		providerType,
 	}, " "))
-	for _, key := range []string{"gitlab", "github", "google", "microsoft", "azure", "entra", "okta", "keycloak"} {
+	for _, key := range []string{"dingtalk", "feishu", "wecom", "gitlab", "github", "google", "microsoft", "azure", "entra", "okta", "keycloak"} {
 		if strings.Contains(fingerprint, key) {
 			if key == "azure" || key == "entra" {
 				return "microsoft"
@@ -1285,6 +2058,12 @@ func identityProviderIconDisplayName(iconKey string) string {
 		return "Okta"
 	case "keycloak":
 		return "Keycloak"
+	case "dingtalk":
+		return "DingTalk"
+	case "feishu":
+		return "Feishu"
+	case "wecom":
+		return "WeCom"
 	default:
 		return ""
 	}
@@ -1444,6 +2223,9 @@ func (s *Server) oauthStateSecret() string {
 }
 
 func (s *Server) exchangeOAuthCode(ctx context.Context, provider AdminResource, code string, redirectURI string) (oauthTokenResponse, error) {
+	if token, handled, err := exchangeConfiguredIdentityProviderOAuthCode(ctx, provider, code, redirectURI); handled {
+		return token, err
+	}
 	tokenURL := strings.TrimSpace(stringField(provider.Fields, "token_url"))
 	clientID := strings.TrimSpace(stringField(provider.Fields, "client_id"))
 	clientSecret := strings.TrimSpace(stringField(provider.Fields, "client_secret"))
@@ -1513,7 +2295,10 @@ func requestOAuthToken(ctx context.Context, tokenURL string, form url.Values, ba
 	return token, "", nil
 }
 
-func (s *Server) fetchOAuthUserInfo(ctx context.Context, provider AdminResource, accessToken string) (map[string]any, error) {
+func (s *Server) fetchOAuthUserInfo(ctx context.Context, provider AdminResource, accessToken string, code string) (map[string]any, error) {
+	if claims, handled, err := fetchConfiguredIdentityProviderUserInfo(ctx, provider, accessToken, code); handled {
+		return claims, err
+	}
 	userinfoURL := strings.TrimSpace(stringField(provider.Fields, "userinfo_url"))
 	if userinfoURL == "" {
 		return nil, NewHTTPError(400, "identity_provider_incomplete", "Identity provider userinfo URL is required")
@@ -1544,7 +2329,12 @@ func (s *Server) upsertOAuthAdminUser(provider AdminResource, claims map[string]
 	usernameClaim := strings.TrimSpace(stringField(provider.Fields, "username_claim"))
 	emailClaim := strings.TrimSpace(stringField(provider.Fields, "email_claim"))
 	teamClaim := strings.TrimSpace(stringField(provider.Fields, "team_claim"))
-	email := firstOAuthClaim(claims, emailClaim, "email", "public_email")
+	email := firstOAuthClaim(claims, emailClaim, "email", "enterprise_email", "biz_mail", "public_email")
+	allowUsernameMatch := true
+	if email == "" {
+		email = identityProviderFallbackEmail(provider, claims)
+		allowUsernameMatch = email == ""
+	}
 	if email == "" {
 		return AdminUser{}, NewHTTPError(400, "oauth_email_missing", "OAuth userinfo did not include an email")
 	}
@@ -1552,7 +2342,7 @@ func (s *Server) upsertOAuthAdminUser(provider AdminResource, claims map[string]
 	if username == "" {
 		username = strings.Split(email, "@")[0]
 	}
-	name := firstOAuthClaim(claims, "name", "display_name", usernameClaim, "username")
+	name := firstOAuthClaim(claims, "name", "nick", "display_name", "en_name", usernameClaim, "username")
 	if name == "" {
 		name = username
 	}
@@ -1563,7 +2353,7 @@ func (s *Server) upsertOAuthAdminUser(provider AdminResource, claims map[string]
 		teamID = defaultTeamID
 	}
 	users := s.store.ListAdminUsers()
-	if existing, ok := findOAuthAdminUser(users, email, username); ok {
+	if existing, ok := findOAuthAdminUser(users, email, username, allowUsernameMatch); ok {
 		if existing.Status != StatusActive {
 			return AdminUser{}, NewHTTPError(403, "admin_user_disabled", "Admin user is disabled")
 		}
@@ -1645,13 +2435,16 @@ func oauthClaimString(claims map[string]any, key string) string {
 	}
 }
 
-func findOAuthAdminUser(users []AdminUser, email string, username string) (AdminUser, bool) {
+func findOAuthAdminUser(users []AdminUser, email string, username string, allowUsernameMatch bool) (AdminUser, bool) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	username = strings.ToLower(strings.TrimSpace(username))
 	for _, user := range users {
 		if email != "" && strings.ToLower(strings.TrimSpace(user.Email)) == email {
 			return user, true
 		}
+	}
+	if !allowUsernameMatch {
+		return AdminUser{}, false
 	}
 	for _, user := range users {
 		if username != "" && strings.ToLower(strings.TrimSpace(user.Username)) == username {
@@ -1871,14 +2664,13 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	providers := []Provider{}
 	providerResources := []ProviderResource{}
-	models := []Model{}
 	alerts := []AlertEvent{}
 	if s.canViewGlobalOperations(user) {
 		providers = s.store.ListProviders()
 		providerResources = s.store.ListProviderResources()
 		alerts = s.store.ListAlerts()
 	}
-	models = s.accessibleModelsForAdminUser(user)
+	models := s.accessibleModelsForAdminUser(user)
 	routes := []ModelRoute{}
 	if s.canViewGlobalOperations(user) {
 		routes = s.store.ListRoutes()
@@ -2031,58 +2823,7 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 			writeError(w, r, NewHTTPError(403, "project_forbidden", "Project is not available for this user"))
 			return
 		}
-		var req struct {
-			Name          string      `json:"name"`
-			Group         string      `json:"group"`
-			AllowedModels []string    `json:"allowed_models"`
-			IPAllowlist   []string    `json:"ip_allowlist"`
-			Limits        QuotaLimits `json:"limits"`
-			ExpiresAt     *time.Time  `json:"expires_at"`
-		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
-			return
-		}
-		payload := map[string]any{
-			"project_id":       projectID,
-			"name":             req.Name,
-			"group":            req.Group,
-			"allowed_models":   req.AllowedModels,
-			"ip_allowlist":     req.IPAllowlist,
-			"limits":           req.Limits,
-			"expires_at":       req.ExpiresAt,
-			"requested_action": "api_key_create",
-		}
-		if approval, required := s.approvalRequired(user, "api_key_create", "api_key", "", payload); required {
-			s.recordAdminAudit(r, user, "request_approval", "api_key", approval.ID, "", approval)
-			writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
-			return
-		}
-		key, secret, err := s.store.CreateAPIKey(projectID, APIKey{
-			Name:        req.Name,
-			Group:       req.Group,
-			Allowed:     req.AllowedModels,
-			IPAllowlist: req.IPAllowlist,
-			Limits:      req.Limits,
-			ExpiresAt:   req.ExpiresAt,
-			Status:      StatusActive,
-			Metadata: map[string]string{
-				"created_by":      user.ID,
-				"created_by_role": normalizeAdminRole(user.Role),
-			},
-		}, "")
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "create", "api_key", key.ID, "", map[string]any{"project_id": key.ProjectID, "name": key.Name})
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"id":                      key.ID,
-			"api_key":                 secret,
-			"name":                    key.Name,
-			"project_id":              key.ProjectID,
-			"plain_text_visible_once": true,
-		})
+		s.handleAdminAPIKeyCreate(w, r, user, projectID)
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 	}
@@ -2487,6 +3228,10 @@ func (s *Server) handleAdminUserItem(w http.ResponseWriter, r *http.Request) {
 		s.recordAdminAudit(r, actor, "update", "admin_user", userID, "", updatedUser)
 		writeJSON(w, http.StatusOK, updatedUser)
 	case http.MethodDelete:
+		if actor.ID == userID {
+			writeError(w, r, NewHTTPError(400, "cannot_delete_self", "You cannot delete your own account"))
+			return
+		}
 		if normalizeAdminRole(actor.Role) == "team_leader" {
 			target, ok := s.findAdminUser(userID)
 			if !ok || target.TeamID != actor.TeamID || normalizeAdminRole(target.Role) != "user" {
@@ -2533,11 +3278,102 @@ func (s *Server) handleAdminAPIKeys(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"data": s.filterAPIKeysForUser(user, s.store.ListAPIKeys())})
+	case http.MethodPost:
+		project, err := s.personalAPIKeyProject(user)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.handleAdminAPIKeyCreate(w, r, user, project.ID)
+	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+	}
+}
+
+func (s *Server) personalAPIKeyProject(user AdminUser) (Project, error) {
+	if normalizeAdminRole(user.Role) != "user" {
+		return Project{}, NewHTTPError(400, "project_required", "Project ID is required")
+	}
+	for _, project := range s.store.ListProjects() {
+		if project.ID == defaultProjectID || (project.Status != "" && project.Status != StatusActive) {
+			continue
+		}
+		if s.canUseProjectForAPIKey(user, project.ID) {
+			return project, nil
+		}
+	}
+	project, ok := s.store.GetProject(defaultProjectID)
+	if !ok || (project.Status != "" && project.Status != StatusActive) {
+		return Project{}, NewHTTPError(409, "default_project_unavailable", "Default project is unavailable")
+	}
+	return project, nil
+}
+
+func (s *Server) handleAdminAPIKeyCreate(w http.ResponseWriter, r *http.Request, user AdminUser, projectID string) {
+	var req struct {
+		Name          string      `json:"name"`
+		Group         string      `json:"group"`
+		OwnerUserID   string      `json:"owner_user_id"`
+		AllowedModels []string    `json:"allowed_models"`
+		IPAllowlist   []string    `json:"ip_allowlist"`
+		Limits        QuotaLimits `json:"limits"`
+		ExpiresAt     *time.Time  `json:"expires_at"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.filterAPIKeysForUser(user, s.store.ListAPIKeys())})
+	ownerUserID, err := s.resolveAPIKeyOwner(user, req.OwnerUserID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	payload := map[string]any{
+		"project_id":       projectID,
+		"name":             req.Name,
+		"group":            req.Group,
+		"owner_user_id":    ownerUserID,
+		"allowed_models":   req.AllowedModels,
+		"ip_allowlist":     req.IPAllowlist,
+		"limits":           req.Limits,
+		"expires_at":       req.ExpiresAt,
+		"requested_action": "api_key_create",
+	}
+	if approval, required := s.approvalRequired(user, "api_key_create", "api_key", "", payload); required {
+		s.recordAdminAudit(r, user, "request_approval", "api_key", approval.ID, "", approval)
+		writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
+		return
+	}
+	key, secret, err := s.store.CreateAPIKey(projectID, APIKey{
+		Name:        req.Name,
+		Group:       req.Group,
+		OwnerUserID: ownerUserID,
+		Allowed:     req.AllowedModels,
+		IPAllowlist: req.IPAllowlist,
+		Limits:      req.Limits,
+		ExpiresAt:   req.ExpiresAt,
+		Status:      StatusActive,
+		Metadata: map[string]string{
+			"created_by":      user.ID,
+			"created_by_role": normalizeAdminRole(user.Role),
+		},
+	}, "")
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "create", "api_key", key.ID, "", map[string]any{"project_id": key.ProjectID, "name": key.Name, "owner_user_id": key.OwnerUserID})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":                      key.ID,
+		"api_key":                 secret,
+		"name":                    key.Name,
+		"project_id":              key.ProjectID,
+		"owner_user_id":           key.OwnerUserID,
+		"plain_text_visible_once": true,
+	})
 }
 
 func (s *Server) handleAdminAPIKeyItem(w http.ResponseWriter, r *http.Request) {
@@ -2584,6 +3420,7 @@ func (s *Server) handleAdminAPIKeyItem(w http.ResponseWriter, r *http.Request) {
 			"api_key":                 secret,
 			"name":                    key.Name,
 			"project_id":              key.ProjectID,
+			"owner_user_id":           key.OwnerUserID,
 			"rotated_from_id":         key.RotatedFromID,
 			"plain_text_visible_once": true,
 		})
@@ -2591,22 +3428,53 @@ func (s *Server) handleAdminAPIKeyItem(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodPatch:
-		var req APIKey
+		var req struct {
+			Name          string      `json:"name"`
+			Group         string      `json:"group"`
+			OwnerUserID   *string     `json:"owner_user_id"`
+			AllowedModels []string    `json:"allowed_models"`
+			IPAllowlist   []string    `json:"ip_allowlist"`
+			Limits        QuotaLimits `json:"limits"`
+			Status        string      `json:"status"`
+			ExpiresAt     *time.Time  `json:"expires_at"`
+		}
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 			return
 		}
-		if approval, required := s.apiKeyUpdateApproval(user, keyID, req); required {
-			s.recordAdminAudit(r, user, "request_approval", "api_key", approval.ID, "", approval)
-			writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
-			return
+		patch := APIKey{
+			Name:        req.Name,
+			Group:       req.Group,
+			Allowed:     req.AllowedModels,
+			IPAllowlist: req.IPAllowlist,
+			Limits:      req.Limits,
+			Status:      req.Status,
+			ExpiresAt:   req.ExpiresAt,
 		}
-		key, err := s.store.UpdateAPIKey(keyID, req)
+		if req.OwnerUserID != nil {
+			ownerUserID, err := s.resolveAPIKeyOwner(user, *req.OwnerUserID)
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			patch.OwnerUserID = ownerUserID
+		}
+		existing, err := s.findAPIKey(keyID)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "update", "api_key", keyID, "", key)
+		if approval, required := s.apiKeyUpdateApproval(user, keyID, patch); required {
+			s.recordAdminAudit(r, user, "request_approval", "api_key", approval.ID, "", approval)
+			writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
+			return
+		}
+		key, err := s.store.UpdateAPIKey(keyID, patch)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.recordAdminAudit(r, user, "update", "api_key", keyID, existing, key)
 		writeJSON(w, http.StatusOK, key)
 	case http.MethodDelete:
 		if err := s.store.DeleteAPIKey(keyID); err != nil {
@@ -2648,6 +3516,7 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 			Provider:      created,
 			CatalogSource: catalogSource,
 		}
+		result.ImportedModels = s.importSelectedProviderCatalogModels(created.ID, catalog, req.SelectedModels)
 		if shouldCreateProviderRoutes(req, catalog, true) {
 			result.CreatedRoutes, result.ModelNames, result.RouteIDs = s.createProviderCatalogRoutes(created.ID, catalog, req)
 		}
@@ -2656,6 +3525,17 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 	}
+}
+
+func (s *Server) handleAdminProviderMonitoring(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.providerMonitoringSnapshots(r.Context(), "")})
 }
 
 func (s *Server) handleAdminProviderCatalog(w http.ResponseWriter, r *http.Request) {
@@ -2667,7 +3547,7 @@ func (s *Server) handleAdminProviderCatalog(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	refresh := r.URL.Query().Get("refresh") == "true"
-	entries, source, err := LoadProviderCatalog(r.Context(), http.DefaultClient, refresh)
+	entries, source, err := s.providerCatalog.List(r.Context(), refresh)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -2679,17 +3559,89 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/provider-catalog/"), "/")
 	if id == "" || strings.Contains(id, "/") {
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 		return
 	}
+	if id == codexProviderCatalogID {
+		var (
+			entry ProviderCatalogEntry
+			err   error
+		)
+		switch r.Method {
+		case http.MethodGet:
+			resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id"))
+			if resourceID == "" {
+				for _, resource := range s.store.ListProviderResources() {
+					if isOpenAIAccountResource(resource.ResourceType) && resource.Status == StatusActive {
+						resourceID = resource.ID
+						break
+					}
+				}
+			}
+			if resourceID == "" {
+				writeError(w, r, NewHTTPError(http.StatusConflict, "codex_account_required", "Connect an OpenAI Codex subscription account before loading its models"))
+				return
+			}
+			entry, err = s.queryOpenAICodexModels(r.Context(), resourceID)
+		case http.MethodPost:
+			var credentials ProviderResourceCredentials
+			if decodeErr := decodeJSON(r, &credentials); decodeErr != nil {
+				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", decodeErr.Error()))
+				return
+			}
+			entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
+			if err == nil {
+				s.syncOpenAICodexModels(entry.Models)
+			}
+		default:
+			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+			return
+		}
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		return
+	}
+	if id == "custom" && r.Method == http.MethodPost {
+		var req ProviderCreateRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+			return
+		}
+		if providerID := firstNonEmpty(strings.TrimSpace(req.ProviderID), strings.TrimSpace(req.ID)); providerID != "" {
+			if provider, ok := s.store.GetProvider(providerID); ok {
+				if req.Name == "" {
+					req.Name = provider.Name
+				}
+				if req.Type == "" {
+					req.Type = provider.Type
+				}
+				if req.BaseURL == "" {
+					req.BaseURL = provider.BaseURL
+				}
+				if req.APIKey == "" {
+					req.APIKey = provider.APIKey
+				}
+			}
+		}
+		entry, err := CustomProviderCatalogFromUpstream(r.Context(), http.DefaultClient, req)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		return
+	}
 	refresh := r.URL.Query().Get("refresh") == "true"
-	entry, source, ok, err := GetProviderCatalogEntry(r.Context(), http.DefaultClient, id, refresh)
+	entry, source, ok, err := s.providerCatalog.Get(r.Context(), id, refresh)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -2705,8 +3657,11 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	var catalog ProviderCatalogEntry
 	catalogSource := ""
 	catalogID := strings.TrimSpace(req.CatalogID)
-	if catalogID != "" {
-		entry, source, ok, err := GetProviderCatalogEntry(ctx, http.DefaultClient, catalogID, false)
+	if catalogID == codexProviderCatalogID {
+		catalog = s.codexProviderCatalogFromStandardModels(req.SelectedModels)
+		catalogSource = catalog.Source
+	} else if catalogID != "" {
+		entry, source, ok, err := s.providerCatalog.Get(ctx, catalogID, false)
 		if err != nil {
 			return Provider{}, ProviderCatalogEntry{}, source, err
 		}
@@ -2717,7 +3672,12 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		catalogSource = source
 	}
 	if catalog.ID == "custom" {
-		catalog = s.customProviderCatalogFromStandardModels(req.ModelCategory)
+		if len(req.CustomModels) > 0 {
+			catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
+		} else {
+			catalog = s.customProviderCatalogFromStandardModels(req.ModelCategory)
+		}
+		catalogSource = catalog.Source
 	}
 	id := strings.TrimSpace(req.ID)
 	if id == "" && catalog.ID != "" && catalog.ID != "custom" {
@@ -2730,10 +3690,17 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		BaseURL:  firstNonEmpty(req.BaseURL, catalog.BaseURL),
 		APIKey:   req.APIKey,
 		Status:   firstNonEmpty(req.Status, StatusActive),
-		Healthy:  req.Healthy,
+		Healthy:  req.Healthy != nil && *req.Healthy,
 		Priority: req.Priority,
 		Headers:  req.Headers,
 		Options:  req.Options,
+	}
+	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, NewHTTPError(
+			http.StatusBadRequest,
+			"provider_adapter_missing",
+			fmt.Sprintf("Provider adapter type %q is not registered", provider.Type),
+		)
 	}
 	if provider.Priority == 0 {
 		provider.Priority = 10
@@ -2763,10 +3730,16 @@ func (s *Server) createProviderCatalogRoutes(providerID string, catalog Provider
 			selected[modelID] = true
 		}
 	}
+	expandModelCatalog := len(selected) > 0
 	modelNames := []string{}
 	routeIDs := []string{}
 	category := strings.TrimSpace(req.ModelCategory)
-	standardModelNames := standardModelNameSet(s.store.ListModels())
+	existingModels := s.store.ListModels()
+	standardModelNames := standardModelNameSet(existingModels)
+	exactModelNames := map[string]bool{}
+	for _, model := range existingModels {
+		exactModelNames[model.Name] = true
+	}
 	existingRoutes := s.store.ListRoutes()
 	existingRouteIDs := existingRouteIDSet(existingRoutes)
 	routePriorities := routePriorityByModel(existingRoutes)
@@ -2779,19 +3752,72 @@ func (s *Server) createProviderCatalogRoutes(providerID string, catalog Provider
 			continue
 		}
 		route := ProviderCatalogModelRoute(providerID, catalogModel)
-		if !standardModelNames[normalizeModelLookupName(route.ModelName)] {
-			continue
+		normalizedModelName := normalizeModelLookupName(route.ModelName)
+		if !exactModelNames[route.ModelName] {
+			if !expandModelCatalog && !standardModelNames[normalizedModelName] {
+				continue
+			}
+			s.store.AddModel(withExternalModelRole(providerCatalogModelRecord(catalogModel, route.ModelName)))
+			exactModelNames[route.ModelName] = true
+			standardModelNames[normalizedModelName] = true
 		}
+		s.store.AddProviderModel(providerModelFromCatalog(providerID, catalogModel))
 		if existingRouteIDs[route.ID] {
 			continue
 		}
 		route.Priority = takeNextRoutePriority(routePriorities, route.ModelName)
+		if err := s.markExternalModel(route.ModelName); err != nil {
+			continue
+		}
 		route = s.store.AddRoute(route)
 		existingRouteIDs[route.ID] = true
 		routeIDs = append(routeIDs, route.ID)
 		modelNames = append(modelNames, route.ModelName)
 	}
 	return len(routeIDs), modelNames, routeIDs
+}
+
+func (s *Server) importSelectedProviderCatalogModels(providerID string, catalog ProviderCatalogEntry, selectedModels []string) int {
+	selected := map[string]bool{}
+	for _, modelID := range selectedModels {
+		if modelID = strings.TrimSpace(modelID); modelID != "" {
+			selected[modelID] = true
+		}
+	}
+	if len(selected) == 0 {
+		return 0
+	}
+	imported := 0
+	for _, model := range catalog.Models {
+		if !selected[model.ID] {
+			continue
+		}
+		s.store.AddProviderModel(providerModelFromCatalog(providerID, model))
+		imported++
+	}
+	return imported
+}
+
+func providerCatalogModelRecord(model ProviderCatalogModel, name string) Model {
+	name = firstNonEmpty(strings.TrimSpace(name), model.CanonicalName, canonicalModelName(model.ID, model.DisplayName), model.ID)
+	category := standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName)))
+	return Model{
+		ID:                     name,
+		Name:                   name,
+		Category:               category,
+		Family:                 firstNonEmpty(model.Family, inferModelFamily(name)),
+		Modality:               normalizeModelModality(firstNonEmpty(model.Type, "chat")),
+		ContextWindow:          model.ContextWindow,
+		InputPriceUSDPer1M:     model.InputPriceUSDPer1M,
+		CacheReadPriceUSDPer1M: model.CacheReadPriceUSDPer1M,
+		OutputPriceUSDPer1M:    model.OutputPriceUSDPer1M,
+		InputModalities:        append([]string(nil), model.InputModalities...),
+		OutputModalities:       append([]string(nil), model.OutputModalities...),
+		Capabilities:           append([]string(nil), model.Capabilities...),
+		SupportedParameters:    append([]string(nil), model.SupportedParameters...),
+		Metadata:               cloneStringMap(model.Metadata),
+		Status:                 StatusActive,
+	}
 }
 
 func (s *Server) customProviderCatalogFromStandardModels(category string) ProviderCatalogEntry {
@@ -2803,21 +3829,22 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 			continue
 		}
 		models = append(models, ProviderCatalogModel{
-			ID:                  model.Name,
-			Name:                model.Name,
-			DisplayName:         model.Name,
-			CanonicalName:       model.Name,
-			Category:            modelCategory,
-			Family:              model.Family,
-			Type:                model.Modality,
-			ContextWindow:       model.ContextWindow,
-			InputPriceUSDPer1M:  model.InputPriceUSDPer1M,
-			OutputPriceUSDPer1M: model.OutputPriceUSDPer1M,
-			InputModalities:     append([]string(nil), model.InputModalities...),
-			OutputModalities:    append([]string(nil), model.OutputModalities...),
-			Capabilities:        append([]string(nil), model.Capabilities...),
-			SupportedParameters: append([]string(nil), model.SupportedParameters...),
-			Metadata:            map[string]string{"source": "tokenhub-standard-catalog"},
+			ID:                     model.Name,
+			Name:                   model.Name,
+			DisplayName:            model.Name,
+			CanonicalName:          model.Name,
+			Category:               modelCategory,
+			Family:                 model.Family,
+			Type:                   model.Modality,
+			ContextWindow:          model.ContextWindow,
+			InputPriceUSDPer1M:     model.InputPriceUSDPer1M,
+			CacheReadPriceUSDPer1M: model.CacheReadPriceUSDPer1M,
+			OutputPriceUSDPer1M:    model.OutputPriceUSDPer1M,
+			InputModalities:        append([]string(nil), model.InputModalities...),
+			OutputModalities:       append([]string(nil), model.OutputModalities...),
+			Capabilities:           append([]string(nil), model.Capabilities...),
+			SupportedParameters:    append([]string(nil), model.SupportedParameters...),
+			Metadata:               map[string]string{"source": "tokenhub-standard-catalog"},
 		})
 	}
 	categories, categoryCounts := catalogCategorySummary(models)
@@ -2834,6 +3861,47 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 	entry.CategoryCounts = categoryCounts
 	entry.Models = models
 	entry.ModelsCount = len(models)
+	return entry
+}
+
+func customProviderCatalogFromModels(input []ProviderCatalogModel, category string) ProviderCatalogEntry {
+	normalizedCategory := strings.TrimSpace(category)
+	if normalizedCategory != "" {
+		normalizedCategory = standardModelCategory(normalizedCategory)
+	}
+	models := make([]ProviderCatalogModel, 0, len(input))
+	seen := map[string]bool{}
+	for _, model := range input {
+		model.ID = strings.TrimSpace(model.ID)
+		if model.ID == "" || seen[model.ID] {
+			continue
+		}
+		seen[model.ID] = true
+		model.Name = firstNonEmpty(strings.TrimSpace(model.Name), model.ID)
+		model.DisplayName = firstNonEmpty(strings.TrimSpace(model.DisplayName), model.Name)
+		model.CanonicalName = firstNonEmpty(strings.TrimSpace(model.CanonicalName), canonicalModelName(model.ID, model.DisplayName))
+		model.Category = standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName)))
+		if normalizedCategory != "" && normalizedCategory != "all" && model.Category != normalizedCategory {
+			continue
+		}
+		model.Family = firstNonEmpty(model.Family, inferModelFamily(model.ID))
+		model.Type = firstNonEmpty(model.Type, normalizeModelModality(model.ID))
+		if model.Metadata == nil {
+			model.Metadata = map[string]string{}
+		}
+		if model.Metadata["source"] == "" {
+			model.Metadata["source"] = "custom-upstream"
+		}
+		models = append(models, model)
+	}
+	sort.SliceStable(models, func(i, j int) bool {
+		return strings.ToLower(models[i].ID) < strings.ToLower(models[j].ID)
+	})
+	entry := customProviderCatalogEntry()
+	entry.Source = "custom-upstream"
+	entry.Models = models
+	entry.ModelsCount = len(models)
+	entry.Categories, entry.CategoryCounts = catalogCategorySummary(models)
 	return entry
 }
 
@@ -2913,6 +3981,12 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 				return
 			}
+			current, ok := s.store.GetProvider(parts[0])
+			if !ok {
+				writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
+				return
+			}
+			mergeProviderPatchRequest(&req, current)
 			provider, catalog, catalogSource, err := s.providerFromCreateRequest(r.Context(), req)
 			if err != nil {
 				writeError(w, r, err)
@@ -2928,6 +4002,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 				Provider:      updated,
 				CatalogSource: catalogSource,
 			}
+			result.ImportedModels = s.importSelectedProviderCatalogModels(updated.ID, catalog, req.SelectedModels)
 			if shouldCreateProviderRoutes(req, catalog, false) {
 				result.CreatedRoutes, result.ModelNames, result.RouteIDs = s.createProviderCatalogRoutes(updated.ID, catalog, req)
 			}
@@ -2954,13 +4029,13 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if parts[1] == "test" {
-		provider, err := s.store.TestProvider(parts[0])
+		result, err := s.integrations.TestProvider(r.Context(), parts[0])
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "test", "provider", parts[0], "", map[string]any{"healthy": provider.Healthy})
-		writeJSON(w, http.StatusOK, provider)
+		s.recordAdminAudit(r, user, "test", "provider", parts[0], "", result)
+		writeJSON(w, http.StatusOK, result)
 		return
 	}
 	var req struct {
@@ -3009,6 +4084,34 @@ func (s *Server) handleAdminProviderResources(w http.ResponseWriter, r *http.Req
 	}
 }
 
+func mergeProviderPatchRequest(req *ProviderCreateRequest, current Provider) {
+	if req.Name == "" {
+		req.Name = current.Name
+	}
+	if req.Type == "" {
+		req.Type = current.Type
+	}
+	if req.BaseURL == "" {
+		req.BaseURL = current.BaseURL
+	}
+	if req.Status == "" {
+		req.Status = current.Status
+	}
+	if req.Healthy == nil {
+		healthy := current.Healthy
+		req.Healthy = &healthy
+	}
+	if req.Priority == 0 {
+		req.Priority = current.Priority
+	}
+	if req.Headers == nil {
+		req.Headers = current.Headers
+	}
+	if req.Options == nil {
+		req.Options = current.Options
+	}
+}
+
 func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "provider", r.Method)
 	if !ok {
@@ -3050,8 +4153,22 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		}
 		return
 	}
-	if len(parts) != 2 || (parts[1] != "health" && parts[1] != "test") {
+	if len(parts) != 2 || (parts[1] != "health" && parts[1] != "test" && parts[1] != "refresh-token" && parts[1] != "quota") {
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
+		return
+	}
+	if parts[1] == "quota" {
+		if r.Method != http.MethodGet {
+			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+			return
+		}
+		quota, err := s.queryOpenAIAccountQuotaCached(r.Context(), parts[0], r.URL.Query().Get("refresh") == "true")
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.recordAdminAudit(r, user, "query_quota", "provider_resource", parts[0], "", quota)
+		writeJSON(w, http.StatusOK, quota)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -3059,13 +4176,54 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		return
 	}
 	if parts[1] == "test" {
-		resource, err := s.store.TestProviderResource(parts[0])
+		resource, resourceOK := s.providerResourceByID(parts[0])
+		provider, providerOK := s.providerByID(resource.ProviderID)
+		adapter, adapterErr := s.adapterRegistry.Resolve(provider.Type)
+		_, usesStructuredProbe := adapter.(ProviderResourceProber)
+		if resourceOK && providerOK && adapterErr == nil && usesStructuredProbe {
+			var req codexSubscriptionTestRequest
+			if err := decodeJSON(r, &req); err != nil {
+				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+				return
+			}
+			startedAt := time.Now()
+			rawResult, err := s.integrations.TestProviderResource(r.Context(), parts[0], &req)
+			if err != nil {
+				httpErr := AsHTTPError(err)
+				s.recordAdminAuditWithStatus(r, user, "test", "provider_resource", parts[0], "failed", httpErr.Code, "", map[string]any{
+					"healthy":          false,
+					"model":            strings.TrimSpace(req.Model),
+					"reasoning_effort": strings.ToLower(strings.TrimSpace(req.ReasoningEffort)),
+					"speed":            strings.ToLower(strings.TrimSpace(req.Speed)),
+					"latency_ms":       time.Since(startedAt).Milliseconds(),
+					"error_code":       httpErr.Code,
+				})
+				writeError(w, r, err)
+				return
+			}
+			result, ok := rawResult.(ProviderProbeResult)
+			if !ok {
+				writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_probe_invalid_result", "Provider probe returned an invalid result"))
+				return
+			}
+			s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", map[string]any{
+				"healthy":          true,
+				"model":            result.Model,
+				"reasoning_effort": result.ReasoningEffort,
+				"speed":            result.Speed,
+				"latency_ms":       result.LatencyMS,
+				"usage":            result.Usage,
+			})
+			writeJSON(w, http.StatusOK, result)
+			return
+		}
+		tested, err := s.integrations.TestProviderResource(r.Context(), parts[0], nil)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", map[string]any{"healthy": resource.Healthy})
-		writeJSON(w, http.StatusOK, resource)
+		s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", tested)
+		writeJSON(w, http.StatusOK, tested)
 		return
 	}
 	if parts[1] == "refresh-token" {
@@ -3162,9 +4320,44 @@ func (s *Server) handleAdminModels(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
 			return
 		}
-		model := s.store.AddModel(req.Model)
+		req.Model.Name = strings.TrimSpace(req.Model.Name)
+		if req.Model.Name == "" {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_model", "name is required"))
+			return
+		}
+		priorities := routePriorityByModel(s.store.ListRoutes())
+		seenRoutes := existingProviderModelRouteSet(s.store.ListRoutes())
+		preparedRoutes := make([]ModelRoute, 0, len(req.Routes))
 		for _, route := range req.Routes {
-			route.ModelName = model.Name
+			route.ModelName = req.Model.Name
+			route.ProviderID = strings.TrimSpace(route.ProviderID)
+			route.ProviderModel = strings.TrimSpace(route.ProviderModel)
+			if route.ProviderID == "" || route.ProviderModel == "" {
+				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_route", "provider_id and provider_model are required"))
+				return
+			}
+			if err := s.validateRouteAdapter(route); err != nil {
+				writeError(w, r, err)
+				return
+			}
+			if err := s.validateImportedProviderModel(route); err != nil {
+				writeError(w, r, err)
+				return
+			}
+			routeKey := providerModelRouteKey(route.ProviderID, route.ProviderModel, route.ModelName)
+			if seenRoutes[routeKey] {
+				writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
+				return
+			}
+			seenRoutes[routeKey] = true
+			if route.Priority <= 0 {
+				route.Priority = takeNextRoutePriority(priorities, route.ModelName)
+			}
+			preparedRoutes = append(preparedRoutes, route)
+		}
+		req.Model = withExternalModelRole(req.Model)
+		model := s.store.AddModel(req.Model)
+		for _, route := range preparedRoutes {
 			s.store.AddRoute(route)
 		}
 		s.recordAdminAudit(r, user, "create", "model", model.Name, "", model)
@@ -3174,13 +4367,44 @@ func (s *Server) handleAdminModels(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleAdminModelsRestoreDefaults(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAdmin(w, r, "model", r.Method)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	catalogFile := strings.TrimSpace(s.config.ModelCatalogFile)
+	if catalogFile == "" {
+		catalogFile = defaultModelCatalogFile()
+	}
+	models, err := defaultModelCatalog(catalogFile)
+	if err != nil {
+		writeError(w, r, NewHTTPError(500, "model_catalog_restore_failed", err.Error()))
+		return
+	}
+	for _, model := range models {
+		s.store.AddModel(model)
+	}
+	s.recordAdminAudit(r, user, "restore_defaults", "model", "model_catalog", "", map[string]any{
+		"catalog_file": catalogFile,
+		"models":       len(models),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"restored": len(models),
+		"data":     s.accessibleModelsForAdminUser(user),
+	})
+}
+
 func (s *Server) handleAdminModelItem(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "model", r.Method)
 	if !ok {
 		return
 	}
-	modelName := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/models/"), "/")
-	if modelName == "" || strings.Contains(modelName, "/") {
+	modelName, ok := adminModelNameFromPath(r)
+	if !ok {
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 		return
 	}
@@ -3210,6 +4434,78 @@ func (s *Server) handleAdminModelItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func adminModelNameFromPath(r *http.Request) (string, bool) {
+	const prefix = "/api/admin/models/"
+	escaped := strings.TrimPrefix(r.URL.EscapedPath(), prefix)
+	escaped = strings.Trim(escaped, "/")
+	if escaped == "" || strings.Contains(escaped, "/") {
+		return "", false
+	}
+	modelName, err := url.PathUnescape(escaped)
+	if err != nil {
+		return "", false
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return "", false
+	}
+	return modelName, true
+}
+
+func (s *Server) handleAdminModelRoutingPolicy(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAdmin(w, r, "routing", r.Method)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPatch {
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	modelName, ok := adminModelRoutingPolicyNameFromPath(r)
+	if !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "not_found", "Not found"))
+		return
+	}
+	var policy ModelRoutePolicy
+	if err := decodeJSON(r, &policy); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		return
+	}
+	policy.Strategy = strings.TrimSpace(policy.Strategy)
+	if policy.Strategy == "" {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_route_strategy", "Routing strategy is required"))
+		return
+	}
+	if err := s.validateRoutePolicy(ModelRoute{Strategy: policy.Strategy}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	routes, err := s.store.UpdateModelRoutePolicy(modelName, policy)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "update", "model_routing_policy", modelName, "", map[string]any{
+		"strategy": policy.Strategy,
+		"routes":   routes,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"strategy": policy.Strategy, "data": routes})
+}
+
+func adminModelRoutingPolicyNameFromPath(r *http.Request) (string, bool) {
+	const prefix = "/api/admin/model-routing-policies/"
+	escaped := strings.Trim(strings.TrimPrefix(r.URL.EscapedPath(), prefix), "/")
+	if escaped == "" || strings.Contains(escaped, "/") {
+		return "", false
+	}
+	modelName, err := url.PathUnescape(escaped)
+	if err != nil {
+		return "", false
+	}
+	modelName = strings.TrimSpace(modelName)
+	return modelName, modelName != ""
+}
+
 func (s *Server) handleAdminRoutes(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "routing", r.Method)
 	if !ok {
@@ -3230,6 +4526,22 @@ func (s *Server) handleAdminRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Priority <= 0 {
 			req.Priority = takeNextRoutePriority(routePriorityByModel(s.store.ListRoutes()), req.ModelName)
+		}
+		if err := s.validateRouteAdapter(req); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if err := s.validateImportedProviderModel(req); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if modelRouteMappingExists(req, s.store.ListRoutes(), "") {
+			writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
+			return
+		}
+		if err := s.markExternalModel(req.ModelName); err != nil {
+			writeError(w, r, err)
+			return
 		}
 		route := s.store.AddRoute(req)
 		s.recordAdminAudit(r, user, "create", "routing_rule", route.ID, "", route)
@@ -3284,6 +4596,12 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 				QualityScore:     routeQualityScore(route.Route),
 				CostScore:        routeCostScore(route.Route),
 				Strategy:         routeStrategy(route.Route),
+				ProjectScope:     routeProjectScope(route.Route),
+				ProjectIDs:       route.Route.ProjectIDs,
+				EffectiveWeight:  routeEffectiveWeight(route),
+				Samples:          route.Runtime.Samples,
+				SuccessRate:      route.Runtime.SuccessRate,
+				LatencyMS:        route.Runtime.LatencyMS,
 				Status:           "candidate",
 			})
 		}
@@ -3295,6 +4613,28 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 		var req ModelRoute
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			return
+		}
+		current, found := modelRouteByID(s.store.ListRoutes(), routeID)
+		if !found {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "route_not_found", "Route not found"))
+			return
+		}
+		candidate := mergedModelRoute(current, req)
+		if err := s.validateRouteAdapter(candidate); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if err := s.validateImportedProviderModel(candidate); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if modelRouteMappingExists(candidate, s.store.ListRoutes(), routeID) {
+			writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
+			return
+		}
+		if err := s.markExternalModel(candidate.ModelName); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		route, err := s.store.UpdateRoute(routeID, req)
@@ -3314,6 +4654,109 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 	}
+}
+
+func (s *Server) validateRouteAdapter(route ModelRoute) error {
+	if err := s.validateRoutePolicy(route); err != nil {
+		return err
+	}
+	provider, ok := s.providerByID(route.ProviderID)
+	if !ok {
+		return NewHTTPError(http.StatusBadRequest, "route_provider_not_found", "Route provider does not exist")
+	}
+	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
+		return NewHTTPError(http.StatusBadRequest, "provider_adapter_missing", "Route provider adapter is not registered")
+	}
+	if strings.TrimSpace(route.ProviderResourceID) == "" {
+		return nil
+	}
+	resource, ok := s.providerResourceByID(route.ProviderResourceID)
+	if !ok || resource.ProviderID != provider.ID {
+		return NewHTTPError(http.StatusBadRequest, "route_resource_mismatch", "Route resource must belong to the selected Provider")
+	}
+	return nil
+}
+
+func (s *Server) validateRoutePolicy(route ModelRoute) error {
+	switch routeStrategy(route) {
+	case RouteStrategyBalanced, RouteStrategyAdaptive, RouteStrategyCost, RouteStrategyQuality, RouteStrategyPriorityWeighted, RouteStrategyPriorityOnly:
+	default:
+		return NewHTTPError(http.StatusBadRequest, "invalid_route_strategy", "Unsupported route strategy")
+	}
+	scope := strings.ToLower(strings.TrimSpace(route.ProjectScope))
+	switch scope {
+	case "", RouteProjectScopeAll:
+		return nil
+	case RouteProjectScopeInclude, RouteProjectScopeExclude:
+	default:
+		return NewHTTPError(http.StatusBadRequest, "invalid_route_project_scope", "Unsupported route project scope")
+	}
+	projectIDs := uniqueStrings(route.ProjectIDs)
+	if len(projectIDs) == 0 {
+		return NewHTTPError(http.StatusBadRequest, "route_projects_required", "Project-scoped routes require at least one project")
+	}
+	for _, projectID := range projectIDs {
+		if _, ok := s.store.GetProject(projectID); !ok {
+			return NewHTTPError(http.StatusBadRequest, "route_project_not_found", "Route project does not exist")
+		}
+	}
+	return nil
+}
+
+func (s *Server) validateImportedProviderModel(route ModelRoute) error {
+	providerID := strings.TrimSpace(route.ProviderID)
+	upstreamModel := strings.TrimSpace(route.ProviderModel)
+	for _, model := range s.store.ListProviderModels() {
+		if model.ProviderID == providerID && model.UpstreamModel == upstreamModel {
+			return nil
+		}
+	}
+	return NewHTTPError(http.StatusConflict, "provider_model_not_imported", "Import the upstream model for this Provider before creating a route")
+}
+
+func modelRouteMappingExists(candidate ModelRoute, routes []ModelRoute, excludeID string) bool {
+	for _, route := range routes {
+		if route.ID == excludeID {
+			continue
+		}
+		if strings.TrimSpace(route.ModelName) == strings.TrimSpace(candidate.ModelName) &&
+			strings.TrimSpace(route.ProviderID) == strings.TrimSpace(candidate.ProviderID) &&
+			strings.TrimSpace(route.ProviderModel) == strings.TrimSpace(candidate.ProviderModel) {
+			return true
+		}
+	}
+	return false
+}
+
+func modelRouteByID(routes []ModelRoute, routeID string) (ModelRoute, bool) {
+	for _, route := range routes {
+		if route.ID == routeID {
+			return route, true
+		}
+	}
+	return ModelRoute{}, false
+}
+
+func mergedModelRoute(current ModelRoute, patch ModelRoute) ModelRoute {
+	if patch.ModelName != "" {
+		current.ModelName = patch.ModelName
+	}
+	if patch.ProviderID != "" {
+		current.ProviderID = patch.ProviderID
+	}
+	current.ProviderResourceID = patch.ProviderResourceID
+	current.ResourceGroup = patch.ResourceGroup
+	if patch.ProviderModel != "" {
+		current.ProviderModel = patch.ProviderModel
+	}
+	if patch.Strategy != "" {
+		current.Strategy = patch.Strategy
+	}
+	if patch.ProjectScope != "" || patch.ProjectIDs != nil {
+		current.ProjectScope = patch.ProjectScope
+		current.ProjectIDs = patch.ProjectIDs
+	}
+	return current
 }
 
 func (s *Server) handleAdminResources(w http.ResponseWriter, r *http.Request) {
@@ -4069,7 +5512,7 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	case "usage":
-		_ = writer.Write([]string{"dimension", "id", "request_count", "input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd"})
+		_ = writer.Write([]string{"dimension", "id", "request_count", "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd"})
 		records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
 		if periodFilter != "" {
 			filtered := make([]UsageRecord, 0, len(records))
@@ -4091,6 +5534,7 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 					stringifyCSV(row["id"]),
 					stringifyCSV(row["request_count"]),
 					stringifyCSV(row["input_tokens"]),
+					stringifyCSV(row["cached_input_tokens"]),
 					stringifyCSV(row["output_tokens"]),
 					stringifyCSV(row["total_tokens"]),
 					stringifyCSV(row["estimated_cost_usd"]),
@@ -4131,6 +5575,7 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 			{Header: "allocated_cost_usd", Field: "allocated_cost_usd"},
 			{Header: "request_count", Field: "request_count"},
 			{Header: "input_tokens", Field: "input_tokens"},
+			{Header: "cached_input_tokens", Field: "cached_input_tokens"},
 			{Header: "output_tokens", Field: "output_tokens"},
 			{Header: "total_tokens", Field: "total_tokens"},
 			{Header: "allocation_rule", Field: "allocation_rule"},
@@ -4411,6 +5856,7 @@ func (s *Server) apiKeyUpdateApproval(user AdminUser, keyID string, patch APIKey
 	payload := map[string]any{
 		"api_key_id":       keyID,
 		"requested_action": trigger,
+		"owner_user_id":    patch.OwnerUserID,
 		"allowed_models":   patch.Allowed,
 		"limits":           patch.Limits,
 		"status":           patch.Status,
@@ -4792,7 +6238,10 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 		_ = conn.Close()
 		return err
 	}
-	defer client.Close()
+	// Close force-drops the connection as a safety net. Delivery is decided by Quit
+	// below, whose error is returned; a Close failure after that adds no information.
+	// The static type is *smtp.Client, so the io.Closer exemption does not apply.
+	defer client.Close() //nolint:errcheck // delivery result comes from Quit
 
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
@@ -4985,13 +6434,36 @@ func (s *Server) applyApprovalRequest(request ApprovalRequest, actor AdminUser) 
 	switch {
 	case request.Trigger == "api_key_create":
 		projectID := stringFromPayload(payload, "project_id")
+		ownerUserID := stringFromPayload(payload, "owner_user_id")
+		if ownerUserID == "" {
+			ownerUserID = request.RequesterID
+		}
+		owner, ok := s.findAdminUser(ownerUserID)
+		syntheticAdminOwner := !ok && ownerUserID == request.RequesterID && actor.ID == request.RequesterID && isPlatformAdminRole(actor.Role)
+		if !ok && !syntheticAdminOwner {
+			return nil, NewHTTPError(404, "api_key_owner_not_found", "API key owner not found")
+		}
+		if ok && owner.Status != "" && owner.Status != StatusActive {
+			return nil, NewHTTPError(400, "api_key_owner_inactive", "API key owner must be active")
+		}
+		requesterRole := ""
+		if requester, ok := s.findAdminUser(request.RequesterID); ok {
+			requesterRole = normalizeAdminRole(requester.Role)
+		} else if actor.ID == request.RequesterID {
+			requesterRole = normalizeAdminRole(actor.Role)
+		}
 		key, secret, err := s.store.CreateAPIKey(projectID, APIKey{
 			Name:        stringFromPayload(payload, "name"),
 			Group:       stringFromPayload(payload, "group"),
+			OwnerUserID: ownerUserID,
 			Allowed:     stringSliceFromPayload(payload["allowed_models"]),
 			IPAllowlist: stringSliceFromPayload(payload["ip_allowlist"]),
 			Limits:      quotaLimitsFromPayload(payload["limits"]),
 			Status:      StatusActive,
+			Metadata: map[string]string{
+				"created_by":      request.RequesterID,
+				"created_by_role": requesterRole,
+			},
 		}, "")
 		if err != nil {
 			return nil, err
@@ -5001,10 +6473,12 @@ func (s *Server) applyApprovalRequest(request ApprovalRequest, actor AdminUser) 
 			"api_key":                 secret,
 			"name":                    key.Name,
 			"project_id":              key.ProjectID,
+			"owner_user_id":           key.OwnerUserID,
 			"plain_text_visible_once": true,
 		}, nil
 	case request.ResourceType == "api_key":
 		key, err := s.store.UpdateAPIKey(request.ResourceID, APIKey{
+			OwnerUserID: stringFromPayload(payload, "owner_user_id"),
 			Allowed:     stringSliceFromPayload(payload["allowed_models"]),
 			IPAllowlist: stringSliceFromPayload(payload["ip_allowlist"]),
 			Limits:      quotaLimitsFromPayload(payload["limits"]),
@@ -5252,11 +6726,6 @@ func quotaLimitsFromPayload(value any) QuotaLimits {
 	}
 }
 
-func (s *Server) authorizeAdmin(w http.ResponseWriter, r *http.Request) bool {
-	_, ok := s.requireAdmin(w, r, "overview", r.Method)
-	return ok
-}
-
 func (s *Server) authorizeAdminUser(w http.ResponseWriter, r *http.Request) (AdminUser, bool) {
 	token := bearerToken(r)
 	if token == "" {
@@ -5441,11 +6910,12 @@ func (s *Server) linkProjectQuotaPolicy(quota AdminResource, payload map[string]
 func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
 	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
 	logs := s.filterRequestLogsForUser(user, s.store.ListRequestLogs())
-	var input, output, total int64
+	var input, cachedInput, output, total int64
 	var cost float64
 	errorsCount := 0
 	for _, record := range records {
 		input += record.InputTokens
+		cachedInput += record.CachedInputTokens
 		output += record.OutputTokens
 		total += record.TotalTokens
 		cost += record.CostUSD
@@ -5459,13 +6929,14 @@ func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
 		}
 	}
 	return map[string]any{
-		"request_count":      billableRequestLogCount(logs),
-		"usage_record_count": len(records),
-		"input_tokens":       input,
-		"output_tokens":      output,
-		"total_tokens":       total,
-		"estimated_cost_usd": cost,
-		"errors":             errorsCount,
+		"request_count":       billableRequestLogCount(logs),
+		"usage_record_count":  len(records),
+		"input_tokens":        input,
+		"cached_input_tokens": cachedInput,
+		"output_tokens":       output,
+		"total_tokens":        total,
+		"estimated_cost_usd":  cost,
+		"errors":              errorsCount,
 	}
 }
 
@@ -5507,21 +6978,92 @@ func (s *Server) aggregateUsageByMember(user AdminUser, records []UsageRecord) [
 	for _, item := range s.store.ListAdminUsers() {
 		usersByID[item.ID] = item
 	}
-	return aggregateUsage(records, func(record UsageRecord) string {
-		if key, ok := keysByID[record.APIKeyID]; ok {
-			if owner := strings.TrimSpace(key.Metadata["created_by"]); owner != "" {
-				if canAttributeUsageToMember(user, usersByID, owner) {
-					return owner
+
+	type bucket struct {
+		Key               string
+		Requests          int64
+		InputTokens       int64
+		CachedInputTokens int64
+		OutputTokens      int64
+		TotalTokens       int64
+		CostUSD           float64
+		UsedKeyIDs        map[string]bool
+	}
+	buckets := map[string]*bucket{}
+	ownedKeyCount := map[string]int{}
+	for _, key := range keysByID {
+		if key.Status == StatusRevoked {
+			continue
+		}
+		ownerUserID := usageAttributionUserID(key, projectsByID[key.ProjectID])
+		if canAttributeUsageToMember(user, usersByID, ownerUserID) {
+			ownedKeyCount[ownerUserID]++
+		}
+	}
+	for _, record := range records {
+		memberID := strings.TrimSpace(record.AttributedUserID)
+		if !canAttributeUsageToMember(user, usersByID, memberID) {
+			memberID = ""
+		}
+		if memberID == "" {
+			if key, ok := keysByID[record.APIKeyID]; ok {
+				candidate := usageAttributionUserID(key, projectsByID[key.ProjectID])
+				if canAttributeUsageToMember(user, usersByID, candidate) {
+					memberID = candidate
 				}
 			}
 		}
-		if project, ok := projectsByID[record.ProjectID]; ok {
-			if canAttributeUsageToMember(user, usersByID, project.OwnerUserID) {
-				return project.OwnerUserID
+		if memberID == "" {
+			if project, ok := projectsByID[record.ProjectID]; ok && canAttributeUsageToMember(user, usersByID, project.OwnerUserID) {
+				memberID = project.OwnerUserID
 			}
 		}
-		return "unknown"
+		if memberID == "" {
+			memberID = "unknown"
+		}
+		item, ok := buckets[memberID]
+		if !ok {
+			item = &bucket{Key: memberID, UsedKeyIDs: map[string]bool{}}
+			buckets[memberID] = item
+		}
+		item.Requests++
+		item.InputTokens += record.InputTokens
+		item.CachedInputTokens += record.CachedInputTokens
+		item.OutputTokens += record.OutputTokens
+		item.TotalTokens += record.TotalTokens
+		item.CostUSD += record.CostUSD
+		if record.APIKeyID != "" {
+			item.UsedKeyIDs[record.APIKeyID] = true
+		}
+	}
+	items := make([]bucket, 0, len(buckets))
+	for _, item := range buckets {
+		items = append(items, *item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].TotalTokens != items[j].TotalTokens {
+			return items[i].TotalTokens > items[j].TotalTokens
+		}
+		if items[i].Requests != items[j].Requests {
+			return items[i].Requests > items[j].Requests
+		}
+		return items[i].CostUSD > items[j].CostUSD
 	})
+	result := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		result = append(result, map[string]any{
+			"id":                  item.Key,
+			"request_count":       item.Requests,
+			"input_tokens":        item.InputTokens,
+			"cached_input_tokens": item.CachedInputTokens,
+			"output_tokens":       item.OutputTokens,
+			"total_tokens":        item.TotalTokens,
+			"estimated_cost_usd":  item.CostUSD,
+			"owned_key_count":     ownedKeyCount[item.Key],
+			"used_key_count":      len(item.UsedKeyIDs),
+		})
+	}
+	return result
 }
 
 func canAttributeUsageToMember(user AdminUser, usersByID map[string]AdminUser, memberID string) bool {
@@ -5558,12 +7100,13 @@ func (s *Server) usageTimeseriesForUser(user AdminUser, days int) []map[string]a
 		day := now.AddDate(0, 0, -i).Format("2006-01-02")
 		indexByDay[day] = len(series)
 		series = append(series, map[string]any{
-			"date":               day,
-			"request_count":      int64(0),
-			"input_tokens":       int64(0),
-			"output_tokens":      int64(0),
-			"total_tokens":       int64(0),
-			"estimated_cost_usd": float64(0),
+			"date":                day,
+			"request_count":       int64(0),
+			"input_tokens":        int64(0),
+			"cached_input_tokens": int64(0),
+			"output_tokens":       int64(0),
+			"total_tokens":        int64(0),
+			"estimated_cost_usd":  float64(0),
 		})
 	}
 	for _, record := range s.filterUsageRecordsForUser(user, s.store.ListUsageRecords()) {
@@ -5577,6 +7120,7 @@ func (s *Server) usageTimeseriesForUser(user AdminUser, days int) []map[string]a
 		}
 		series[idx]["request_count"] = series[idx]["request_count"].(int64) + 1
 		series[idx]["input_tokens"] = series[idx]["input_tokens"].(int64) + record.InputTokens
+		series[idx]["cached_input_tokens"] = series[idx]["cached_input_tokens"].(int64) + record.CachedInputTokens
 		series[idx]["output_tokens"] = series[idx]["output_tokens"].(int64) + record.OutputTokens
 		series[idx]["total_tokens"] = series[idx]["total_tokens"].(int64) + record.TotalTokens
 		series[idx]["estimated_cost_usd"] = series[idx]["estimated_cost_usd"].(float64) + record.CostUSD
@@ -5590,8 +7134,16 @@ func (s *Server) filterUsageRecordsForUser(user AdminUser, records []UsageRecord
 	}
 	visibleProjects := s.visibleProjectIDSet(user)
 	visibleKeys := s.visibleAPIKeyIDSet(user)
+	usersByID := map[string]AdminUser{}
+	for _, item := range s.store.ListAdminUsers() {
+		usersByID[item.ID] = item
+	}
 	out := make([]UsageRecord, 0, len(records))
 	for _, record := range records {
+		if record.AttributedUserID != "" && canAttributeUsageToMember(user, usersByID, record.AttributedUserID) {
+			out = append(out, record)
+			continue
+		}
 		if normalizeAdminRole(user.Role) == "team_leader" && visibleProjects[record.ProjectID] {
 			out = append(out, record)
 			continue
@@ -5737,12 +7289,52 @@ func (s *Server) canManageAPIKey(user AdminUser, keyID string) bool {
 	return false
 }
 
+func (s *Server) findAPIKey(keyID string) (APIKey, error) {
+	for _, key := range s.store.ListAPIKeys() {
+		if key.ID == keyID {
+			return key, nil
+		}
+	}
+	return APIKey{}, NewHTTPError(404, "api_key_not_found", "API key not found")
+}
+
+func (s *Server) resolveAPIKeyOwner(actor AdminUser, requestedUserID string) (string, error) {
+	ownerUserID := strings.TrimSpace(requestedUserID)
+	if ownerUserID == "" {
+		return actor.ID, nil
+	}
+	if ownerUserID == actor.ID {
+		return actor.ID, nil
+	}
+	owner, ok := s.findAdminUser(ownerUserID)
+	if !ok {
+		return "", NewHTTPError(404, "api_key_owner_not_found", "API key owner not found")
+	}
+	if owner.Status != "" && owner.Status != StatusActive {
+		return "", NewHTTPError(400, "api_key_owner_inactive", "API key owner must be active")
+	}
+	role := normalizeAdminRole(actor.Role)
+	if isPlatformAdminRole(role) {
+		return owner.ID, nil
+	}
+	if role == "team_leader" && actor.TeamID != "" && owner.TeamID == actor.TeamID {
+		ownerRole := normalizeAdminRole(owner.Role)
+		if ownerRole == "user" || ownerRole == "team_leader" {
+			return owner.ID, nil
+		}
+	}
+	return "", NewHTTPError(403, "api_key_owner_forbidden", "API key owner is not available for this user")
+}
+
 func (s *Server) canAccessAPIKey(user AdminUser, key APIKey) bool {
 	role := normalizeAdminRole(user.Role)
 	if isPlatformAdminRole(role) {
 		return true
 	}
-	if key.Metadata != nil && key.Metadata["created_by"] == user.ID {
+	if strings.TrimSpace(key.OwnerUserID) != "" && key.OwnerUserID == user.ID {
+		return true
+	}
+	if strings.TrimSpace(key.OwnerUserID) == "" && key.Metadata != nil && key.Metadata["created_by"] == user.ID {
 		return true
 	}
 	for _, project := range s.store.ListProjects() {
@@ -6211,6 +7803,10 @@ func adminResourcePermission(path string) string {
 }
 
 func (s *Server) recordAdminAudit(r *http.Request, user AdminUser, action string, resourceType string, resourceID string, before any, after any) {
+	s.recordAdminAuditWithStatus(r, user, action, resourceType, resourceID, "success", "", before, after)
+}
+
+func (s *Server) recordAdminAuditWithStatus(r *http.Request, user AdminUser, action string, resourceType string, resourceID string, status string, message string, before any, after any) {
 	s.store.RecordAuditEvent(AuditEvent{
 		ActorUserID:    user.ID,
 		ActorName:      user.Name,
@@ -6218,7 +7814,8 @@ func (s *Server) recordAdminAudit(r *http.Request, user AdminUser, action string
 		Action:         action,
 		ResourceType:   resourceType,
 		ResourceID:     resourceID,
-		Status:         "success",
+		Status:         status,
+		Message:        message,
 		BeforeSnapshot: snapshotJSON(before),
 		AfterSnapshot:  snapshotJSON(after),
 		IP:             s.clientIP(r),
@@ -6264,9 +7861,27 @@ func bearerToken(r *http.Request) string {
 
 func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
-	decoder := json.NewDecoder(io.LimitReader(r.Body, 4<<20))
+	const maxRequestBodyBytes = 4 << 20
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(data) > maxRequestBodyBytes {
+		return fmt.Errorf("request body exceeds %d bytes", maxRequestBodyBytes)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	return decoder.Decode(target)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("request body must contain a single JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -6277,13 +7892,18 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	httpErr := AsHTTPError(err)
+	requestID := strings.TrimSpace(w.Header().Get("x-request-id"))
+	if requestID == "" {
+		requestID = NewID("req")
+	}
+	w.Header().Set("x-request-id", requestID)
 	writeJSON(w, httpErr.Status, map[string]any{
 		"error": map[string]any{
 			"message": httpErr.Message,
 			"type":    httpErr.Code,
 			"code":    httpErr.Code,
 		},
-		"request_id": NewID("req"),
+		"request_id": requestID,
 	})
 }
 
@@ -6495,7 +8115,18 @@ func (s *Server) cors(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS")
-		w.Header().Set("access-control-allow-headers", "authorization,content-type")
+		allowHeaders := "authorization,content-type"
+		if reqHeaders := r.Header.Get("access-control-request-headers"); reqHeaders != "" {
+			seen := map[string]bool{"authorization": true, "content-type": true}
+			for _, h := range strings.Split(reqHeaders, ",") {
+				h = strings.ToLower(strings.TrimSpace(h))
+				if h != "" && !seen[h] {
+					allowHeaders += "," + h
+					seen[h] = true
+				}
+			}
+		}
+		w.Header().Set("access-control-allow-headers", allowHeaders)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

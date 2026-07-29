@@ -1,0 +1,29 @@
+[Unit]
+Description=TokenHub AI Gateway
+Documentation=https://github.com/astaxie/TokenHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+EnvironmentFile=@CONFIG_DIR@/tokenhub.env
+WorkingDirectory=@INSTALL_ROOT@/current
+ExecStart=@INSTALL_ROOT@/current/bin/tokenhub-run
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+KillMode=control-group
+UMask=0077
+LimitNOFILE=65535
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=@INSTALL_ROOT@ @STATE_DIR@
+
+[Install]
+WantedBy=multi-user.target

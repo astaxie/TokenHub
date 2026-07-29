@@ -1,5 +1,6 @@
+import { appRole } from "../core/navigation";
 import { clearSavedSession } from "../core/session";
-import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
+import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderCatalogModel, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
 import { inferModelCategoryText, normalizeNotificationChannelType, notificationChannelDescription, notificationChannelLabel, notificationChannelURLPlaceholder } from "../domain/catalog";
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
@@ -22,7 +23,18 @@ export function providerPayload(values: Record<string, string>) {
     model_category: values.model_category,
     create_routes: values.create_routes === "true",
     selected_models: splitList(values.selected_models),
+    custom_models: parseProviderCatalogModels(values.custom_models),
   };
+}
+
+function parseProviderCatalogModels(value?: string): ProviderCatalogModel[] {
+  if (!value?.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as ProviderCatalogModel[] : [];
+  } catch {
+    return [];
+  }
 }
 
 export function providerUpdatePayload(values: Record<string, string>) {
@@ -125,7 +137,23 @@ export function providerResourceToForm(item: ProviderResource) {
 }
 
 export function modelPayload(values: Record<string, string>) {
-  const payload = numberPayload(values, ["context_window", "input_price_usd_per_1m", "output_price_usd_per_1m", "embedding_price_usd_per_1m"]);
+  const payload = numberPayload(
+    {
+      name: values.name,
+      family: values.family,
+      modality: values.modality,
+      context_window: values.context_window,
+      input_price_usd_per_1m: values.input_price_usd_per_1m,
+      cache_read_price_usd_per_1m: values.cache_read_price_usd_per_1m,
+      output_price_usd_per_1m: values.output_price_usd_per_1m,
+      embedding_price_usd_per_1m: values.embedding_price_usd_per_1m,
+      status: values.status,
+    },
+    ["context_window", "input_price_usd_per_1m", "cache_read_price_usd_per_1m", "output_price_usd_per_1m", "embedding_price_usd_per_1m"],
+  );
+  if (values.modality === "embedding") {
+    payload.cache_read_price_usd_per_1m = 0;
+  }
   payload.category = values.category || inferModelCategoryText(values.name || values.family || "");
   payload.capabilities = splitList(values.capabilities);
   payload.supported_parameters = splitList(values.supported_parameters);
@@ -143,6 +171,8 @@ export function routePayload(values: Record<string, string>) {
     provider_model: values.provider_model,
     status: values.status,
     strategy: values.strategy,
+    project_scope: values.project_scope || "all",
+    project_ids: splitList(values.project_ids),
     sticky_session: values.sticky_session === "true",
     priority: numberOr(values.priority, 0),
     weight: numberOr(values.weight, 0),
@@ -152,16 +182,26 @@ export function routePayload(values: Record<string, string>) {
   return payload;
 }
 
-export async function createModelRoutes(ctx: ApiContext, values: Record<string, string>) {
+export async function createModelRoutes(ctx: ApiContext, values: Record<string, string>, data?: AppData) {
   const modelNames = splitList(values.model_name);
   if (modelNames.length === 0) {
-    throw new Error("请选择至少一个统一模型");
+    throw new Error("请选择模型目录中的模型");
   }
   for (const modelName of modelNames) {
+    const existingRoutes = data?.routes.filter((route) => route.model_name === modelName) ?? [];
+    const strategy = existingRoutes[0]?.strategy || "priority_weighted";
+    const priority = strategy === "priority_only"
+      ? Math.max(0, ...existingRoutes.map((route) => route.priority || 0)) + 1
+      : 1;
     const routeValues = {
       ...values,
       model_name: modelName,
       provider_model: values.provider_model?.trim() || modelName,
+      priority: String(priority),
+      weight: values.weight || "100",
+      quality_score: values.quality_score || "50",
+      cost_score: values.cost_score || "50",
+      strategy,
     };
     await adminMutate(ctx, "/api/admin/routing-rules", "POST", routePayload(routeValues));
   }
@@ -344,13 +384,15 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "weight") values[field.key] = "100";
     if (field.key === "quality_score") values[field.key] = "50";
     if (field.key === "cost_score") values[field.key] = "50";
-    if (field.key === "strategy") values[field.key] = "balanced";
+    if (field.key === "strategy") values[field.key] = config.view === "routes" ? "priority_weighted" : "balanced";
+    if (field.key === "project_scope") values[field.key] = "all";
     if (field.key === "provider_id") values[field.key] = firstActiveProvider(data)?.id ?? "";
     if (field.key === "model_name") values[field.key] = firstActiveModel(data)?.name ?? "";
     if (field.key === "group") values[field.key] = "default";
     if (field.key === "resource_type") values[field.key] = "api_key";
     if (field.key === "environment") values[field.key] = "prod";
     if (field.key === "project_id") values[field.key] = config.view === "api-keys" ? firstIssueableProject(data, currentUser) : (firstActiveProject(data)?.id ?? "");
+    if (field.key === "owner_user_id" && config.view === "api-keys") values[field.key] = currentUser && appRole(currentUser.role) !== "admin" ? currentUser.id : "";
     if (field.key === "team_id") values[field.key] = firstActiveTeam(data)?.id ?? "";
     if (field.key === "allowed_models") values[field.key] = "";
     if (field.key === "daily_requests") values[field.key] = "1000";
@@ -411,6 +453,7 @@ export function keyCreatePayload(values: Record<string, string>) {
   return {
     name: values.name,
     group: values.group || "default",
+    owner_user_id: values.owner_user_id,
     allowed_models: splitList(values.allowed_models),
     ip_allowlist: splitList(values.ip_allowlist),
     limits: keyLimits(values),
@@ -421,6 +464,7 @@ export function keyPatchPayload(values: Record<string, string>) {
   return {
     name: values.name,
     group: values.group || "default",
+    owner_user_id: values.owner_user_id,
     status: values.status || "active",
     allowed_models: splitList(values.allowed_models),
     ip_allowlist: splitList(values.ip_allowlist),
@@ -607,9 +651,36 @@ export async function adminMutate(ctx: ApiContext, path: string, method: "POST" 
   }
 }
 
+export async function testProviderAvailability(ctx: ApiContext, provider: { id: string }) {
+  const resourcesResp = await adminFetch(ctx, "/api/admin/provider-resources");
+  if (!resourcesResp.ok) throw new Error(await readAdminError(resourcesResp, tx("读取 Provider 账号资源")));
+  const payload = (await resourcesResp.json()) as { data?: ProviderResource[] };
+  const subscription = (payload.data ?? []).find((resource) =>
+    resource.provider_id === provider.id && resource.resource_type === "openai_subscription" && resource.status === "active",
+  );
+  if (!subscription) {
+    await adminMutate(ctx, `/api/admin/providers/${provider.id}/test`, "POST", {});
+    return;
+  }
+  const testResp = await adminFetch(ctx, `/api/admin/provider-resources/${subscription.id}/test`, {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gpt-5.6-luna",
+      reasoning_effort: "medium",
+      speed: "standard",
+      prompt: "请用一句话确认 Codex 连接正常。",
+    }),
+  });
+  if (!testResp.ok) throw new Error(await readAdminError(testResp, tx("Codex Luna 中等推理标准测试")));
+}
+
 export async function adminDelete(ctx: ApiContext, path: string) {
   const resp = await adminFetch(ctx, path, { method: "DELETE" });
   if (!resp.ok && resp.status !== 204) throw new Error(await readAdminError(resp, operationLabel("DELETE", path)));
+}
+
+export async function restoreDefaultModelCatalog(ctx: ApiContext) {
+  await adminMutate(ctx, "/api/admin/models/restore-defaults", "POST", {});
 }
 
 export async function readLoadError(resp: Response, name: string) {

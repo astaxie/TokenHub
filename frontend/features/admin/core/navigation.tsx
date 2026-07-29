@@ -13,7 +13,7 @@ export const userNavGroups: NavGroup[] = [
     title: "开始使用",
     items: [
       { view: "overview", label: "总览", icon: LayoutDashboard },
-      { view: "gateway", label: "接口文档", icon: Sparkles },
+      { view: "gateway", label: "快速接入", icon: Sparkles },
       { view: "playground", label: "模型演练场", icon: Send },
     ],
   },
@@ -57,7 +57,7 @@ export const teamLeaderNavGroups: NavGroup[] = [
       { view: "users", label: "团队成员", icon: Users },
       { view: "teams", label: "团队信息", icon: Users },
       { view: "audit", label: "请求日志", icon: FileText },
-      { view: "gateway", label: "接口文档", icon: Sparkles },
+      { view: "gateway", label: "快速接入", icon: Sparkles },
     ],
   },
 ];
@@ -68,6 +68,7 @@ export const adminNavGroups: NavGroup[] = [
     items: [
       { view: "overview", label: "平台总览", icon: LayoutDashboard },
       { view: "usage", label: "全局用量", icon: BarChart3 },
+      { view: "audit", label: "请求日志", icon: FileText },
       { view: "reports", label: "导出报表", icon: BarChart3 },
     ],
   },
@@ -436,7 +437,7 @@ export function topQuickActionsForUser(user: AdminUser): NavLeafItem[] {
       { view: "usage", label: "团队报表", icon: BarChart3 },
     ],
     user: [
-      { view: "gateway", label: "接口文档", icon: Sparkles },
+      { view: "gateway", label: "快速接入", icon: Sparkles },
       { view: "playground", label: "模型演练场", icon: Send },
       { view: "api-keys", label: "Key 管理", icon: KeyRound },
     ],
