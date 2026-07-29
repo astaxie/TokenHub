@@ -105,6 +105,7 @@ run_install() {
 weak_password_environment=$(cat <<'EOF'
 TOKENHUB_ENV=prod
 TOKENHUB_ADMIN_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+TOKENHUB_INTEGRATION_TOKEN=iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=short
 EOF
@@ -128,7 +129,7 @@ assert_not_contains "$(<"$CALL_LOG")" "up -d --build"
 
 unicode_whitespace=$'\302\205\302\240\341\232\200\342\200\200\342\200\201\342\200\202\342\200\203\342\200\204\342\200\205\342\200\206\342\200\207\342\200\210\342\200\211\342\200\212\342\200\250\342\200\251\342\200\257\342\201\237\343\200\200'
 unicode_password="${unicode_whitespace}aaaaaaaaaaa${unicode_whitespace}"
-unicode_whitespace_environment="$(printf 'TOKENHUB_ENV=prod\nTOKENHUB_ADMIN_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nTOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss\nTOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=%s\n' "$unicode_password")"
+unicode_whitespace_environment="$(printf 'TOKENHUB_ENV=prod\nTOKENHUB_ADMIN_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nTOKENHUB_INTEGRATION_TOKEN=iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii\nTOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss\nTOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=%s\n' "$unicode_password")"
 
 : >"$CALL_LOG"
 FAKE_COMPOSE_ENVIRONMENT="$unicode_whitespace_environment"
@@ -147,6 +148,7 @@ assert_not_contains "$(<"$CALL_LOG")" "up -d --build"
 strong_environment=$(cat <<'EOF'
 TOKENHUB_ENV=prod
 TOKENHUB_ADMIN_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+TOKENHUB_INTEGRATION_TOKEN=iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=strong-admin-password
 EOF
@@ -217,6 +219,7 @@ assert_contains "$(<"$CALL_LOG")" "ps"
 development_environment=$(cat <<'EOF'
 TOKENHUB_ENV=dev
 TOKENHUB_ADMIN_TOKEN=dev_admin_token
+TOKENHUB_INTEGRATION_TOKEN=dev_integration_token
 TOKENHUB_SECRET_KEY=dev_tokenhub_secret_key
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=admin123456
 EOF

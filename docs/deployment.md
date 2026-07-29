@@ -74,6 +74,7 @@ cp deploy/.env.example deploy/.env
 Edit `deploy/.env` before starting:
 
 - `TOKENHUB_ADMIN_TOKEN`: Admin API bootstrap token. Use a random value of at least 32 bytes.
+- `TOKENHUB_INTEGRATION_TOKEN`: Dedicated credential for external platform integration events and model access key control endpoints. Use a different random value of at least 32 bytes.
 - `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: Password used only when creating the initial `admin` user. Use at least 12 bytes.
 - `TOKENHUB_SECRET_KEY`: Backend secret key. Use a random value of at least 32 bytes and keep it stable.
 - `TOKENHUB_PUBLIC_BASE_URL`: Public backend URL shown to users.
@@ -165,6 +166,23 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 Only use `down -v` when you intentionally want to delete local data.
 
+### External platform integration endpoints
+
+The dedicated integration token authenticates these internal endpoints and must not be replaced by the Admin Token or a model access key:
+
+- `POST /api/internal/integration/events`: apply tenant, organization, principal, project, and workload projections.
+- `GET /api/internal/integration/reconciliation?tenant_id=...`: return the tenant Inbox event watermark and per-aggregate counts for upstream reconciliation. It does not return event payloads or projection records.
+- `GET /api/internal/model-access-keys?tenant_id=...`: list integration-managed model access keys within one tenant; optional `project_id`, `principal_id`, and effective `status` filters are evaluated by TokenHub. The endpoint supports `page` and `page_size` (maximum 100) and returns pagination metadata.
+- `POST /api/internal/model-access-keys`: issue a model access key for an active projected project and principal/workload. `request_id` is mandatory and idempotent; only the first successful response contains `api_key`.
+- `POST /api/internal/model-access-keys/{id}/reveal`: reveal an active key after exact `tenant_id`, `principal_type`, and `principal_id` ownership checks. Every successful reveal is audited and the key value is never included in audit data.
+- `POST /api/internal/model-access-keys/{id}/revoke`: revoke an integration-managed key within the supplied `tenant_id`. Optional `principal_type` and `principal_id` enforce self-service ownership. Revocation has no rotation or grace period.
+- `GET /api/internal/providers`: list providers with server-side `name`, `type`, `status`, and `health` filters and pagination. The response excludes API keys, headers, options, and resource secrets.
+- `GET /api/internal/routes`: list model routes with server-side `model_name`, `provider_id`, `strategy`, and `status` filters and pagination. The response includes safe provider/resource names and routing metadata only.
+
+Integration-managed projects are materialized into TokenHub serving projects in the same transaction that applies the project projection. Key creation is rejected until its tenant, project, and user/workload projections are active. Temporarily disabling a tenant, user, or workload makes its related keys unusable without changing their stored key status; eligible keys work again after the projection is re-enabled. Deleting a tenant or workload, or removing a user from a tenant, permanently revokes the affected keys. User status only controls personal keys and does not implicitly disable keys owned by that user's workloads. Explicitly revoked and expired keys never become usable again when a projection is re-enabled.
+
+Integration-managed model access keys store both a one-way authentication hash and an AES-GCM ciphertext encrypted with `TOKENHUB_SECRET_KEY`. Creation fails rather than persisting plaintext if encryption cannot be produced. Keep `TOKENHUB_SECRET_KEY` stable across restarts and replicas; changing it makes existing keys impossible to reveal, although hash-based gateway authentication continues to work.
+
 ## Backend Environment Variables
 
 | Variable | Default | Description |
@@ -175,6 +193,7 @@ Only use `down -v` when you intentionally want to delete local data.
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | empty | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For` |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | public URL | Comma-separated browser origins allowed to call the backend |
 | `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Bootstrap admin token for Admin API access |
+| `TOKENHUB_INTEGRATION_TOKEN` | `change-me-tokenhub-integration-token` | Dedicated token for external platform integration events and model access key control endpoints |
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | Password for the initial `admin` user; must be changed before production startup |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | Backend secret key |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | Database connection URL (sqlite:// or postgresql://) |

@@ -67,6 +67,63 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("lost cluster leases cancel guarded work", func(t *testing.T) {
 		testClusterLeaseLossCancelsWork(t, storeA, storeB)
 	})
+	t.Run("integration projection versions do not regress", func(t *testing.T) {
+		testConcurrentIntegrationProjectionVersions(t, storeA, storeB)
+	})
+}
+
+func testConcurrentIntegrationProjectionVersions(t *testing.T, storeA *GormStore, storeB *GormStore) {
+	t.Helper()
+	suffix := NewID("integration_e2e")
+	tenantID := "tenant_" + suffix
+	t.Cleanup(func() {
+		_ = storeA.db.Where("tenant_id = ?", tenantID).Delete(&IntegrationInbox{}).Error
+		_ = storeA.db.Where("external_tenant_id = ?", tenantID).Delete(&GatewayTenant{}).Error
+	})
+	baseTime := time.Now().UTC()
+	event := func(eventID string, version int64, name string) GatewayIntegrationEvent {
+		return GatewayIntegrationEvent{
+			SchemaVersion: 1, EventID: eventID, EventType: "tenant.updated", AggregateType: "tenant",
+			AggregateID: tenantID, TenantID: tenantID, Version: version, OccurredAt: baseTime.Add(time.Duration(version) * time.Second),
+			TraceID: "trace_" + eventID, SourceService: "external-orchestrator",
+			Payload: map[string]interface{}{"externalId": tenantID, "name": name, "status": StatusActive},
+		}
+	}
+	created := event("evt_"+suffix+"_1", 1, "version one")
+	created.EventType = "tenant.created"
+	if _, err := storeA.ApplyGatewayIntegrationEvent(created); err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, apply := range []struct {
+		store *GormStore
+		event GatewayIntegrationEvent
+	}{{storeA, event("evt_"+suffix+"_2", 2, "version two")}, {storeB, event("evt_"+suffix+"_3", 3, "version three")}} {
+		wg.Add(1)
+		go func(store *GormStore, integrationEvent GatewayIntegrationEvent) {
+			defer wg.Done()
+			<-start
+			_, err := store.ApplyGatewayIntegrationEvent(integrationEvent)
+			errs <- err
+		}(apply.store, apply.event)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var tenant GatewayTenant
+	if err := storeA.db.First(&tenant, "external_tenant_id = ?", tenantID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if tenant.Version != 3 || tenant.Name != "version three" {
+		t.Fatalf("expected latest integration projection, got %+v", tenant)
+	}
 }
 
 func testConcurrentMigrations(t *testing.T, adminStore *GormStore, config Config) {

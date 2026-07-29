@@ -74,6 +74,14 @@ type ClusterTaskState struct {
 }
 
 type Store interface {
+	ApplyGatewayIntegrationEvent(event GatewayIntegrationEvent) (GatewayIntegrationApplyResult, error)
+	GetGatewayIntegrationReconciliation(tenantExternalID string) (GatewayIntegrationReconciliationSummary, error)
+	CreateGatewayModelAccessKey(input GatewayModelAccessKeyCreateInput) (GatewayModelAccessKeyCreateResult, error)
+	ListGatewayModelAccessKeys(filter GatewayModelAccessKeyFilter) (GatewayModelAccessKeyPage, error)
+	RevealGatewayModelAccessKey(id string, tenantExternalID string, principalType string, principalID string, requestedBy string) (string, error)
+	RevokeGatewayModelAccessKey(id string, tenantExternalID string, principalType string, principalID string, reason string, requestedBy string) (APIKey, error)
+	ListGatewayRequestLogs(filter GatewayRequestLogFilter) (GatewayRequestLogPage, error)
+	GetGatewayUsage(filter GatewayUsageFilter) (GatewayUsageReport, error)
 	CreateProject(project Project) Project
 	ListProjects() []Project
 	UpdateProject(id string, patch Project) (Project, error)
@@ -381,6 +389,13 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 
 	migrate := func() error {
 		return db.AutoMigrate(
+			&GatewayTenant{},
+			&GatewayOrganization{},
+			&GatewayPrincipal{},
+			&GatewayPrincipalOrganizationBinding{},
+			&GatewayProject{},
+			&GatewayWorkload{},
+			&IntegrationInbox{},
 			&Project{},
 			&APIKey{},
 			&Provider{},
@@ -833,6 +848,9 @@ func (s *GormStore) UpdateProject(id string, patch Project) (Project, error) {
 	if err := s.db.First(&project, "id = ?", id).Error; err != nil {
 		return Project{}, notFound(err, "project_not_found", "Project not found")
 	}
+	if err := rejectGatewayManagedProjectMutation(s.db, id); err != nil {
+		return Project{}, err
+	}
 	if patch.Name != "" {
 		project.Name = patch.Name
 	}
@@ -855,6 +873,9 @@ func (s *GormStore) DeleteProject(id string) error {
 		var project Project
 		if err := tx.First(&project, "id = ?", id).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
+		}
+		if err := rejectGatewayManagedProjectMutation(tx, id); err != nil {
+			return err
 		}
 		var keys []APIKey
 		if err := tx.Where("project_id = ?", id).Find(&keys).Error; err != nil {
@@ -893,6 +914,9 @@ func (s *GormStore) CreateAPIKey(projectID string, key APIKey, rawSecret string)
 
 	if err := s.db.First(&Project{}, "id = ?", projectID).Error; err != nil {
 		return APIKey{}, "", notFound(err, "project_not_found", "Project not found")
+	}
+	if err := rejectGatewayManagedProjectMutation(s.db, projectID); err != nil {
+		return APIKey{}, "", err
 	}
 	if rawSecret == "" {
 		rawSecret = s.generateAPIKeySecret()
@@ -973,6 +997,9 @@ func (s *GormStore) UpdateAPIKey(id string, patch APIKey) (APIKey, error) {
 	if err := s.db.First(&key, "id = ?", id).Error; err != nil {
 		return APIKey{}, notFound(err, "api_key_not_found", "API key not found")
 	}
+	if err := rejectGatewayManagedAPIKeyMutation(key); err != nil {
+		return APIKey{}, err
+	}
 	hydrateAPIKey(&key)
 	if patch.Name != "" {
 		key.Name = patch.Name
@@ -1009,6 +1036,9 @@ func (s *GormStore) RotateAPIKey(id string, graceUntil *time.Time) (APIKey, stri
 	var oldKey APIKey
 	if err := s.db.First(&oldKey, "id = ?", id).Error; err != nil {
 		return APIKey{}, "", notFound(err, "api_key_not_found", "API key not found")
+	}
+	if err := rejectGatewayManagedAPIKeyMutation(oldKey); err != nil {
+		return APIKey{}, "", err
 	}
 	hydrateAPIKey(&oldKey)
 	now := time.Now().UTC()
@@ -1057,6 +1087,9 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 		if err := tx.First(&key, "id = ?", id).Error; err != nil {
 			return notFound(err, "api_key_not_found", "API key not found")
 		}
+		if err := rejectGatewayManagedAPIKeyMutation(key); err != nil {
+			return err
+		}
 		if err := tx.Where("key_id = ?", id).Delete(&QuotaBucket{}).Error; err != nil {
 			return err
 		}
@@ -1078,6 +1111,15 @@ func (s *GormStore) ValidateAPIKey(rawSecret string, clientIP string) (Project, 
 	hydrateAPIKey(&key)
 	if key.Status == StatusDisabled || key.Status == StatusRevoked {
 		if !(key.Status == StatusRevoked && key.GraceUntil != nil && time.Now().UTC().Before(*key.GraceUntil)) {
+			return Project{}, APIKey{}, ErrAPIKeyDisabled
+		}
+	}
+	if key.ManagedBy == gatewayModelAccessKeyManagedBy {
+		switch gatewayModelAccessKeyEffectiveStatus(s.db, key) {
+		case gatewayModelAccessKeyStatusExpired:
+			return Project{}, APIKey{}, ErrAPIKeyExpired
+		case StatusActive:
+		default:
 			return Project{}, APIKey{}, ErrAPIKeyDisabled
 		}
 	}
@@ -4111,6 +4153,7 @@ func hydrateAPIKey(key *APIKey) {
 
 func publicKey(key APIKey) APIKey {
 	key.KeyHash = ""
+	key.KeyCiphertext = ""
 	if key.Allowed == nil && key.AllowedModels != nil {
 		key.Allowed = make([]string, 0, len(key.AllowedModels))
 		for model := range key.AllowedModels {

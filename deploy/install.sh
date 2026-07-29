@@ -83,6 +83,7 @@ compose_environment="$("${compose[@]}" config --environment)" || {
 
 tokenhub_environment=""
 admin_token=""
+integration_token=""
 bootstrap_admin_password=""
 secret_key=""
 
@@ -90,6 +91,7 @@ while IFS= read -r line; do
   case "$line" in
     TOKENHUB_ENV=*) tokenhub_environment="${line#*=}" ;;
     TOKENHUB_ADMIN_TOKEN=*) admin_token="${line#*=}" ;;
+    TOKENHUB_INTEGRATION_TOKEN=*) integration_token="${line#*=}" ;;
     TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=*) bootstrap_admin_password="${line#*=}" ;;
     TOKENHUB_SECRET_KEY=*) secret_key="${line#*=}" ;;
   esac
@@ -99,6 +101,7 @@ unset compose_environment
 # These defaults mirror the ${VAR:-default} expressions in docker-compose.yml.
 tokenhub_environment="${tokenhub_environment:-prod}"
 admin_token="${admin_token:-change-me-tokenhub-admin-token}"
+integration_token="${integration_token:-change-me-tokenhub-integration-token}"
 bootstrap_admin_password="${bootstrap_admin_password:-change-me-tokenhub-admin-password}"
 secret_key="${secret_key:-change-me-tokenhub-secret-key}"
 
@@ -208,13 +211,15 @@ elif [[ "$environment" != "dev" && "$environment" != "development" && "$environm
 
   validate_secret "TOKENHUB_ADMIN_TOKEN" "$admin_token" 32 \
     "dev_admin_token" "change-me-tokenhub-admin-token"
+  validate_secret "TOKENHUB_INTEGRATION_TOKEN" "$integration_token" 32 \
+    "dev_integration_token" "change-me-tokenhub-integration-token"
   validate_secret "TOKENHUB_SECRET_KEY" "$secret_key" 32 \
     "dev_tokenhub_secret_key" "change-me-tokenhub-secret-key"
   validate_secret "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD" "$bootstrap_admin_password" 12 \
     "admin123456" "change-me-tokenhub-admin-password"
 fi
 
-unset admin_token bootstrap_admin_password secret_key
+unset admin_token integration_token bootstrap_admin_password secret_key
 
 if [ "${#validation_errors[@]}" -gt 0 ]; then
   error "deployment configuration is unsafe for $environment:"

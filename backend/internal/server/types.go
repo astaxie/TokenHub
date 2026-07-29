@@ -91,24 +91,33 @@ type Project struct {
 }
 
 type APIKey struct {
-	ID            string            `json:"id" gorm:"primaryKey"`
-	ProjectID     string            `json:"project_id" gorm:"index"`
-	Name          string            `json:"name"`
-	Group         string            `json:"group,omitempty" gorm:"index"`
-	KeyHash       string            `json:"-" gorm:"uniqueIndex"`
-	KeyPrefix     string            `json:"key_prefix"`
-	KeySuffix     string            `json:"key_suffix"`
-	AllowedModels map[string]bool   `json:"-" gorm:"-"`
-	Allowed       []string          `json:"allowed_models" gorm:"serializer:json"`
-	IPAllowlist   []string          `json:"ip_allowlist,omitempty" gorm:"serializer:json"`
-	Limits        QuotaLimits       `json:"limits" gorm:"embedded;embeddedPrefix:limit_"`
-	Status        string            `json:"status"`
-	ExpiresAt     *time.Time        `json:"expires_at,omitempty"`
-	RotatedFromID string            `json:"rotated_from_id,omitempty" gorm:"index"`
-	GraceUntil    *time.Time        `json:"grace_until,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	LastUsedAt    *time.Time        `json:"last_used_at,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
+	ID                   string            `json:"id" gorm:"primaryKey"`
+	ProjectID            string            `json:"project_id" gorm:"index"`
+	TenantExternalID     string            `json:"tenant_id,omitempty" gorm:"index:idx_api_key_gateway_scope,priority:1"`
+	ProjectExternalID    string            `json:"external_project_id,omitempty" gorm:"index:idx_api_key_gateway_scope,priority:2"`
+	PrincipalType        string            `json:"principal_type,omitempty" gorm:"index"`
+	PrincipalExternalID  string            `json:"principal_id,omitempty" gorm:"index"`
+	Environment          string            `json:"environment,omitempty" gorm:"index"`
+	ManagedBy            string            `json:"managed_by,omitempty" gorm:"index"`
+	ControlRequestID     *string           `json:"-" gorm:"uniqueIndex"`
+	ControlRequestDigest string            `json:"-"`
+	Name                 string            `json:"name"`
+	Group                string            `json:"group,omitempty" gorm:"index"`
+	KeyHash              string            `json:"-" gorm:"uniqueIndex"`
+	KeyCiphertext        string            `json:"-"`
+	KeyPrefix            string            `json:"key_prefix"`
+	KeySuffix            string            `json:"key_suffix"`
+	AllowedModels        map[string]bool   `json:"-" gorm:"-"`
+	Allowed              []string          `json:"allowed_models" gorm:"serializer:json"`
+	IPAllowlist          []string          `json:"ip_allowlist,omitempty" gorm:"serializer:json"`
+	Limits               QuotaLimits       `json:"limits" gorm:"embedded;embeddedPrefix:limit_"`
+	Status               string            `json:"status"`
+	ExpiresAt            *time.Time        `json:"expires_at,omitempty"`
+	RotatedFromID        string            `json:"rotated_from_id,omitempty" gorm:"index"`
+	GraceUntil           *time.Time        `json:"grace_until,omitempty"`
+	CreatedAt            time.Time         `json:"created_at"`
+	LastUsedAt           *time.Time        `json:"last_used_at,omitempty"`
+	Metadata             map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
 }
 
 type QuotaLimits struct {
