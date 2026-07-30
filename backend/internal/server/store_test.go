@@ -53,10 +53,28 @@ func TestAddProviderDoesNotPersistWhenEncryptionFails(t *testing.T) {
 	}
 }
 
-func TestSplitContentReturnsTerminalChunkForEmptyContent(t *testing.T) {
-	chunks := splitContent("", 48)
-	if len(chunks) != 1 || chunks[0] != "" {
-		t.Fatalf("splitContent empty result = %#v, want one empty chunk", chunks)
+func TestCreateImageJobDoesNotPersistWhenEncryptionFails(t *testing.T) {
+	store := NewMemoryStore()
+	previousReader := rand.Reader
+	rand.Reader = failingReader{}
+	t.Cleanup(func() { rand.Reader = previousReader })
+
+	const jobID = "imgjob_encrypt_failure"
+	if _, err := store.CreateImageJob(ImageJob{
+		ID:     jobID,
+		Status: "queued",
+		Model:  "gpt-image-1",
+		Action: "generate",
+	}, "sensitive prompt"); err == nil {
+		t.Fatal("expected image job prompt encryption to fail")
+	}
+
+	var count int64
+	if err := store.db.Model(&ImageJob{}).Where("id = ?", jobID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("image job persisted after encryption failure: count=%d", count)
 	}
 }
 

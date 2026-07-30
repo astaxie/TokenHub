@@ -1010,40 +1010,6 @@ func deterministicEmbedding(text string, dims int) []float64 {
 	return vector
 }
 
-// splitContent splits text into chunks of approximately maxRunes runes each,
-// preferring to break at word boundaries (spaces) for a natural progressive display.
-func splitContent(text string, maxRunes int) []string {
-	if maxRunes <= 0 {
-		return nil
-	}
-	if text == "" {
-		// Return a single empty chunk so streaming callers still emit a terminal
-		// chunk with finish_reason "stop" instead of only [DONE].
-		return []string{""}
-	}
-	runes := []rune(text)
-	var chunks []string
-	start := 0
-	for start < len(runes) {
-		end := start + maxRunes
-		if end >= len(runes) {
-			chunks = append(chunks, string(runes[start:]))
-			break
-		}
-		// Search backward from end for a word boundary (within 15 runes).
-		boundary := end
-		for j := end; j > start && j > end-15; j-- {
-			if runes[j] == ' ' || runes[j] == '\n' || runes[j] == '\t' {
-				boundary = j + 1
-				break
-			}
-		}
-		chunks = append(chunks, string(runes[start:boundary]))
-		start = boundary
-	}
-	return chunks
-}
-
 func joinURL(base string, endpoint string) string {
 	base = strings.TrimRight(base, "/")
 	endpoint = "/" + strings.TrimLeft(endpoint, "/")

@@ -185,10 +185,10 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 
 func TestImageModelsUseSeparateProviderTypes(t *testing.T) {
 	store := NewMemoryStore()
-	openAIProvider := store.AddProvider(Provider{
+	openAIProvider := mustAddProvider(t, store, Provider{
 		ID: "prv_platform_image", Name: "OpenAI Platform", Type: ProviderOpenAI, Status: StatusActive, Healthy: true,
 	})
-	codexProvider := store.AddProvider(Provider{
+	codexProvider := mustAddProvider(t, store, Provider{
 		ID: "prv_subscription_image", Name: "Codex Subscription", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
 	})
 	if _, err := store.AddProviderResource(ProviderResource{
@@ -418,7 +418,7 @@ func TestStaleUnsupportedCodexImageRouteIsRetried(t *testing.T) {
 
 func TestCodexImageForbiddenMarksResourceUnsupportedAndAllowsFailover(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_image_capability",
 		Name:    "Codex Image Capability",
 		Type:    ProviderOpenAICodex,
@@ -473,7 +473,7 @@ func TestImageAuthorizationHappensBeforeJobOrAssetPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID: "prv_rejected_image", Name: "Rejected Codex", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
 	})
 	store.AddModel(Model{Name: "gpt-5.6-luna", Modality: "chat", Status: StatusActive})
@@ -553,7 +553,7 @@ func TestCodexImageVirtualModelRequiresSupportedSubscriptionAccount(t *testing.T
 	if models := store.AccessibleModels(key); len(models) != 0 {
 		t.Fatalf("virtual image model must be hidden without a capable account: %+v", models)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_codex_image_model",
 		Name:    "Codex Image Model",
 		Type:    ProviderOpenAICodex,
@@ -624,7 +624,7 @@ func TestImageJobCompletionIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID: "prv_atomic_image", Name: "Atomic Image Provider", Type: ProviderOpenAI, Status: StatusActive, Healthy: true,
 	})
 	route := store.AddRoute(ModelRoute{
@@ -708,7 +708,7 @@ func TestImageGenerationTimesOutAfterConfiguredLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID: "prv_timed_image", Name: "Timed Codex", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
 	})
 	if _, err := store.AddProviderResource(ProviderResource{
@@ -769,7 +769,7 @@ func TestImageQueueHonorsWorkerAndCapacityLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID: "prv_image_queue", Name: "Image Queue Provider", Type: ProviderOpenAI, Status: StatusActive, Healthy: true,
 	})
 	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
@@ -927,7 +927,7 @@ func TestImageGenerationAsyncUsesCodexSubscriptionAndPersistsImage(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_image_codex",
 		Name:    "Codex Image Subscription",
 		Type:    ProviderOpenAICodex,

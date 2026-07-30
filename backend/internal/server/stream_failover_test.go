@@ -29,7 +29,7 @@ func newStreamFailoverGateway(t *testing.T, primaryURL string, secondaryURL stri
 	}
 	store.AddModel(Model{Name: model, Modality: "chat", Status: StatusActive})
 	for index, upstreamURL := range []string{primaryURL, secondaryURL} {
-		provider := store.AddProvider(Provider{
+		provider := mustAddProvider(t, store, Provider{
 			ID:      fmt.Sprintf("prv_stream_%d", index),
 			Name:    fmt.Sprintf("stream-%d", index),
 			Type:    ProviderOpenAICompatible,
@@ -338,7 +338,7 @@ func TestStreamAttemptCountIncludesCapacityFailures(t *testing.T) {
 
 	// First candidate: a resource whose RPM budget is already exhausted, so the
 	// capacity check rejects it before the callback ever runs.
-	exhausted := store.AddProvider(Provider{
+	exhausted := mustAddProvider(t, store, Provider{
 		ID: "prv_exhausted", Name: "exhausted", Type: ProviderOpenAICompatible,
 		BaseURL: served.URL, Status: StatusActive, Healthy: true,
 	})
@@ -355,7 +355,7 @@ func TestStreamAttemptCountIncludesCapacityFailures(t *testing.T) {
 		Priority: 1, Weight: 100, Status: StatusActive, Strategy: RouteStrategyPriorityOnly,
 	})
 
-	healthy := store.AddProvider(Provider{
+	healthy := mustAddProvider(t, store, Provider{
 		ID: "prv_healthy", Name: "healthy", Type: ProviderOpenAICompatible,
 		BaseURL: served.URL, Status: StatusActive, Healthy: true,
 	})

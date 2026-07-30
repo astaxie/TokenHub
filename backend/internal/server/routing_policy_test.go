@@ -68,7 +68,7 @@ func TestAccessibleModelsRespectProjectRouteScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := store.AddModel(Model{Name: "private-only-model", Modality: "chat", Status: StatusActive})
-	provider := store.AddProvider(Provider{ID: "prv_catalog_private", Name: "Private", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, store, Provider{ID: "prv_catalog_private", Name: "Private", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddRoute(ModelRoute{
 		ID: "route_catalog_private", ModelName: model.Name, ProviderID: provider.ID,
 		ProviderModel: "private-upstream", Priority: 1, Weight: 100, Status: StatusActive,
@@ -85,8 +85,8 @@ func TestAccessibleModelsRespectProjectRouteScope(t *testing.T) {
 
 func TestAdaptiveRoutingUsesPersistedLatencyAndSuccessRate(t *testing.T) {
 	store := NewMemoryStore()
-	providerFast := store.AddProvider(Provider{ID: "prv_adaptive_fast", Name: "Fast", Type: ProviderMock, Status: StatusActive, Healthy: true})
-	providerSlow := store.AddProvider(Provider{ID: "prv_adaptive_slow", Name: "Slow", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	providerFast := mustAddProvider(t, store, Provider{ID: "prv_adaptive_fast", Name: "Fast", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	providerSlow := mustAddProvider(t, store, Provider{ID: "prv_adaptive_slow", Name: "Slow", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	fastRoute := store.AddRoute(ModelRoute{ID: "route_adaptive_fast", ModelName: "adaptive-model", ProviderID: providerFast.ID, ProviderModel: "fast", Priority: 1, Weight: 100, Status: StatusActive, Strategy: RouteStrategyAdaptive})
 	slowRoute := store.AddRoute(ModelRoute{ID: "route_adaptive_slow", ModelName: "adaptive-model", ProviderID: providerSlow.ID, ProviderModel: "slow", Priority: 1, Weight: 100, Status: StatusActive, Strategy: RouteStrategyAdaptive})
 
@@ -122,8 +122,8 @@ func TestAdaptiveRoutingUsesPersistedLatencyAndSuccessRate(t *testing.T) {
 
 func TestAdaptiveRoutingPenalizesRouteWithOnlyFailures(t *testing.T) {
 	store := NewMemoryStore()
-	healthyProvider := store.AddProvider(Provider{ID: "prv_adaptive_healthy", Name: "Healthy", Type: ProviderMock, Status: StatusActive, Healthy: true})
-	failingProvider := store.AddProvider(Provider{ID: "prv_adaptive_failing", Name: "Failing", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	healthyProvider := mustAddProvider(t, store, Provider{ID: "prv_adaptive_healthy", Name: "Healthy", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	failingProvider := mustAddProvider(t, store, Provider{ID: "prv_adaptive_failing", Name: "Failing", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	healthyRoute := store.AddRoute(ModelRoute{ID: "route_adaptive_healthy", ModelName: "adaptive-failure-model", ProviderID: healthyProvider.ID, ProviderModel: "healthy", Priority: 1, Weight: 100, Status: StatusActive, Strategy: RouteStrategyAdaptive})
 	failingRoute := store.AddRoute(ModelRoute{ID: "route_adaptive_failing", ModelName: "adaptive-failure-model", ProviderID: failingProvider.ID, ProviderModel: "failing", Priority: 1, Weight: 100, Status: StatusActive, Strategy: RouteStrategyAdaptive})
 
@@ -203,7 +203,7 @@ func TestAdminUpdatesWholeModelRoutingPolicyAtomically(t *testing.T) {
 	if primaryRoute.ID == "" {
 		t.Fatalf("expected seeded route for %s", modelName)
 	}
-	secondaryProvider := store.AddProvider(Provider{ID: "prv_policy_secondary", Name: "Policy Secondary", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	secondaryProvider := mustAddProvider(t, store, Provider{ID: "prv_policy_secondary", Name: "Policy Secondary", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	store.AddProviderModel(ProviderModel{ProviderID: secondaryProvider.ID, UpstreamModel: "mock-secondary", DisplayName: "Mock Secondary", Status: StatusActive})
 	secondaryRoute := store.AddRoute(ModelRoute{
 		ID: "route_policy_secondary", ModelName: modelName, ProviderID: secondaryProvider.ID,

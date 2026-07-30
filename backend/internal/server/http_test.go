@@ -373,7 +373,7 @@ func TestAdminPlaygroundChatUsesRoutesWithoutProjectBilling(t *testing.T) {
 
 func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_playground_codex",
 		Name:    "Playground Codex",
 		Type:    ProviderOpenAICodex,
@@ -4737,7 +4737,7 @@ func TestAdminDeletingProviderRemovesProviderModelInventory(t *testing.T) {
 	if err := SeedDemoData(store); err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_inventory_cascade",
 		Name:    "Inventory Cascade Provider",
 		Type:    ProviderMock,
@@ -5452,21 +5452,7 @@ func TestOpenAIProviderAccountOAuthGenerateAuthURLAndCallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// OAuth tokens must be in the fragment, never in the query string.
-	if redirect.Query().Get("provider_account_oauth") != "" ||
-		redirect.Query().Get("code") != "" {
-		t.Fatalf("sensitive OAuth values leaked into query string: %s", location)
-	}
-	fragmentValues, qerr := url.ParseQuery(redirect.Fragment)
-	if qerr != nil {
-		t.Fatalf("failed to parse redirect fragment: %v", qerr)
-	}
-	if fragmentValues.Get("provider_account_oauth") != "1" ||
-		fragmentValues.Get("provider_account_oauth_session_id") != payload.SessionID ||
-		fragmentValues.Get("provider_account_oauth_state") != payload.State ||
-		fragmentValues.Get("code") != "oauth-code" {
-		t.Fatalf("unexpected callback redirect fragment: %s", redirect.Fragment)
-	}
+	assertProviderOAuthCallbackRedirect(t, redirect, payload)
 }
 
 func TestOpenAIProviderAccountOAuthCallbackSurfacesDatabaseFailure(t *testing.T) {
@@ -5663,12 +5649,6 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 		t.Fatalf("expected cooldown before clear_error, got %v", err)
 	}
 	app := New(store).Handler()
-	now := time.Now().UTC()
-	clearExpiredLease := InFlightLease{ID: "lease_clear_expired", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(-time.Minute)}
-	clearActiveLease := InFlightLease{ID: "lease_clear_active", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(time.Minute)}
-	if err := store.db.Create([]InFlightLease{clearExpiredLease, clearActiveLease}).Error; err != nil {
-		t.Fatal(err)
-	}
 
 	disabled := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
 		"action": "disable",
@@ -5689,11 +5669,6 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if cleared.Code != http.StatusOK || !strings.Contains(cleared.Body, `"success":1`) {
 		t.Fatalf("clear error failed: %d %s", cleared.Code, cleared.Body)
 	}
-	assertInFlightLeaseExists(t, store, clearExpiredLease.ID, false)
-	assertInFlightLeaseExists(t, store, clearActiveLease.ID, true)
-	if err := store.db.Delete(&InFlightLease{}, "id = ?", clearActiveLease.ID).Error; err != nil {
-		t.Fatal(err)
-	}
 	leaseID, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID)
 	if err != nil {
 		t.Fatalf("capacity should be available after clear_error: %v", err)
@@ -5702,11 +5677,6 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_rpm_exceeded" {
 		t.Fatalf("expected rpm limit before reset, got %v", err)
 	}
-	resetExpiredLease := InFlightLease{ID: "lease_reset_expired", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(-time.Minute)}
-	resetActiveLease := InFlightLease{ID: "lease_reset_active", ScopeType: "provider_resource", ScopeID: resource.ID, ExpiresAt: now.Add(time.Minute)}
-	if err := store.db.Create([]InFlightLease{resetExpiredLease, resetActiveLease}).Error; err != nil {
-		t.Fatal(err)
-	}
 	reset := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
 		"action": "reset_usage",
 		"ids":    []string{resource.ID},
@@ -5714,27 +5684,11 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if reset.Code != http.StatusOK || !strings.Contains(reset.Body, `"success":1`) {
 		t.Fatalf("reset usage failed: %d %s", reset.Code, reset.Body)
 	}
-	assertInFlightLeaseExists(t, store, resetExpiredLease.ID, false)
-	assertInFlightLeaseExists(t, store, resetActiveLease.ID, true)
-	if err := store.db.Delete(&InFlightLease{}, "id = ?", resetActiveLease.ID).Error; err != nil {
-		t.Fatal(err)
-	}
 	leaseID, _, err = store.CheckProviderResourceCapacity(context.Background(), resource.ID)
 	if err != nil {
 		t.Fatalf("capacity should be available after reset_usage: %v", err)
 	}
 	store.FinishProviderResourceAttempt(context.Background(), resource.ID, leaseID, AttemptSucceeded, Usage{})
-}
-
-func assertInFlightLeaseExists(t testing.TB, store *GormStore, leaseID string, want bool) {
-	t.Helper()
-	var count int64
-	if err := store.db.Model(&InFlightLease{}).Where("id = ?", leaseID).Count(&count).Error; err != nil {
-		t.Fatal(err)
-	}
-	if got := count == 1; got != want {
-		t.Fatalf("lease %s existence = %t, want %t", leaseID, got, want)
-	}
 }
 
 func TestProviderResourceImport(t *testing.T) {

@@ -2627,18 +2627,6 @@ func sanitizeOAuthErrorDetail(body []byte) string {
 	return raw
 }
 
-func oauthRedirectWithFragment(returnURL string, values url.Values) string {
-	target, err := url.Parse(returnURL)
-	if err != nil || target.Scheme == "" || target.Host == "" {
-		target, _ = url.Parse("http://localhost:3000/overview")
-	}
-	// Only place OAuth tokens in the URL fragment (never in the query string).
-	// Query strings are logged by proxies and load balancers; fragments stay
-	// client-side and are never transmitted to servers.
-	target.Fragment = values.Encode()
-	return target.String()
-}
-
 func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "overview", r.Method)
 	if !ok {

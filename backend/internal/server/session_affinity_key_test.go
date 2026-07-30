@@ -235,7 +235,7 @@ func TestSessionAffinityKeyRejectsInvalidIdentifier(t *testing.T) {
 func TestBalancedRoutingStillVariesByRequestID(t *testing.T) {
 	store := NewMemoryStore()
 	store.AddModel(Model{Name: "order-model", Modality: "chat", Status: StatusActive})
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_affinity_order",
 		Name:    "Affinity Order Provider",
 		Type:    ProviderOpenAICompatible,
