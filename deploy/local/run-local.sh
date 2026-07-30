@@ -50,7 +50,7 @@ error() { printf '[tokenhub] ERROR: %s\n' "$*" >&2; }
 
 usage() {
   cat <<'EOF'
-Usage: ./deploy/bare-metal/run-local.sh [command] [options]
+Usage: ./deploy/local/run-local.sh [command] [options]
 
 Commands:
   start (default)      Build if needed, then run the backend and console.

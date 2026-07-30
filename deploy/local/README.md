@@ -11,12 +11,12 @@ native systemd installer described in
 Docker Compose.
 
 ```bash
-./deploy/bare-metal/run-local.sh          # foreground, Ctrl-C stops both
-./deploy/bare-metal/run-local.sh -d       # background, returns immediately
-./deploy/bare-metal/run-local.sh status
-./deploy/bare-metal/run-local.sh logs -f
-./deploy/bare-metal/run-local.sh stop
-./deploy/bare-metal/run-local.sh restart -d
+./deploy/local/run-local.sh          # foreground, Ctrl-C stops both
+./deploy/local/run-local.sh -d       # background, returns immediately
+./deploy/local/run-local.sh status
+./deploy/local/run-local.sh logs -f
+./deploy/local/run-local.sh stop
+./deploy/local/run-local.sh restart -d
 ```
 
 Builds both components if needed, then runs them on loopback. All runtime state

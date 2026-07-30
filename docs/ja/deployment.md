@@ -305,14 +305,14 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 ## ローカルで本番ビルドを実行する（Docker なし）
 
-`deploy/bare-metal/run-local.sh` は、Docker も root も systemd も使わずに、自分のマシンで本番ビルドからバックエンドとコンソールを実行します。これは開発用の補助手段であり、デプロイ手段ではありません。サーバーに TokenHub をインストールする場合は[ネイティブ Release + systemd](#ネイティブ-release--systemd) または [Docker Compose](#docker-compose) を使用してください。
+`deploy/local/run-local.sh` は、Docker も root も systemd も使わずに、自分のマシンで本番ビルドからバックエンドとコンソールを実行します。これは開発用の補助手段であり、デプロイ手段ではありません。サーバーに TokenHub をインストールする場合は[ネイティブ Release + systemd](#ネイティブ-release--systemd) または [Docker Compose](#docker-compose) を使用してください。
 
 ```bash
-./deploy/bare-metal/run-local.sh          # フォアグラウンド。Ctrl-C で両方停止
-./deploy/bare-metal/run-local.sh -d       # バックグラウンド。すぐに戻る
-./deploy/bare-metal/run-local.sh status
-./deploy/bare-metal/run-local.sh logs -f
-./deploy/bare-metal/run-local.sh stop
+./deploy/local/run-local.sh          # フォアグラウンド。Ctrl-C で両方停止
+./deploy/local/run-local.sh -d       # バックグラウンド。すぐに戻る
+./deploy/local/run-local.sh status
+./deploy/local/run-local.sh logs -f
+./deploy/local/run-local.sh stop
 ```
 
 必要に応じて両コンポーネントをビルドし、ループバック上で実行します。バイナリ、コンソールバンドル、データベース、ログ、pid ファイルはすべてリポジトリ内の `.tokenhub/`（gitignore 済み）に置かれ、そのディレクトリを削除すればインスタンスをリセットできます。ビルド時にはフロントエンドの通常の無視対象成果物（`frontend/node_modules`、`frontend/.next`）も更新されることがあります。システム全体へのインストールもサービスアカウントの作成も行いません。

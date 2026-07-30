@@ -305,14 +305,14 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 ## 本地运行生产构建（不使用 Docker）
 
-`deploy/bare-metal/run-local.sh` 以完全不依赖 Docker、不需要 root、不需要 systemd 的方式，在自己的机器上用生产构建运行后端和控制台。它是开发辅助手段，不是部署方式：要把 TokenHub 装到服务器上，请使用[原生 Release + systemd](#原生-release--systemd) 或 [Docker Compose](#docker-compose)。
+`deploy/local/run-local.sh` 以完全不依赖 Docker、不需要 root、不需要 systemd 的方式，在自己的机器上用生产构建运行后端和控制台。它是开发辅助手段，不是部署方式：要把 TokenHub 装到服务器上，请使用[原生 Release + systemd](#原生-release--systemd) 或 [Docker Compose](#docker-compose)。
 
 ```bash
-./deploy/bare-metal/run-local.sh          # 前台运行，Ctrl-C 同时停止两者
-./deploy/bare-metal/run-local.sh -d       # 后台运行，立即返回
-./deploy/bare-metal/run-local.sh status
-./deploy/bare-metal/run-local.sh logs -f
-./deploy/bare-metal/run-local.sh stop
+./deploy/local/run-local.sh          # 前台运行，Ctrl-C 同时停止两者
+./deploy/local/run-local.sh -d       # 后台运行，立即返回
+./deploy/local/run-local.sh status
+./deploy/local/run-local.sh logs -f
+./deploy/local/run-local.sh stop
 ```
 
 按需构建两个组件，然后以 loopback 方式运行。二进制、控制台产物、数据库、日志和 pid 文件都放在仓库内的 `.tokenhub/`（已被 gitignore），删除该目录即可重置实例。构建过程还可能刷新前端的常规忽略产物（`frontend/node_modules`、`frontend/.next`）。不安装任何系统级内容，也不创建服务账号。

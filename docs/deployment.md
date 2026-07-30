@@ -305,14 +305,14 @@ Only use `down -v` when you intentionally want to delete local data.
 
 ## Running the Production Build Locally (without Docker)
 
-`deploy/bare-metal/run-local.sh` runs the backend and the console on your own machine from a production build, with no Docker, no root and no systemd. This is a development aid, not a deployment method: to install TokenHub on a server, use [Native Release with systemd](#native-release-with-systemd) or [Docker Compose](#docker-compose).
+`deploy/local/run-local.sh` runs the backend and the console on your own machine from a production build, with no Docker, no root and no systemd. This is a development aid, not a deployment method: to install TokenHub on a server, use [Native Release with systemd](#native-release-with-systemd) or [Docker Compose](#docker-compose).
 
 ```bash
-./deploy/bare-metal/run-local.sh          # foreground, Ctrl-C stops both
-./deploy/bare-metal/run-local.sh -d       # background, returns immediately
-./deploy/bare-metal/run-local.sh status
-./deploy/bare-metal/run-local.sh logs -f
-./deploy/bare-metal/run-local.sh stop
+./deploy/local/run-local.sh          # foreground, Ctrl-C stops both
+./deploy/local/run-local.sh -d       # background, returns immediately
+./deploy/local/run-local.sh status
+./deploy/local/run-local.sh logs -f
+./deploy/local/run-local.sh stop
 ```
 
 Builds both components if needed, then runs them on loopback. The binary, the console bundle, the database, the logs and the pid files all live in `.tokenhub/` inside the repository, which is gitignored; deleting that directory resets the instance. Building may also refresh the usual ignored frontend artefacts (`frontend/node_modules`, `frontend/.next`). Nothing is installed system-wide and no service account is created.
