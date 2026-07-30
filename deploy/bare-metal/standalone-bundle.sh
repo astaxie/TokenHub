@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Shared helper for assembling the Next.js standalone bundle.
 #
-# Sourced by build.sh (to package a release) and run-local.sh (to run the same
-# artefacts locally), so both produce a byte-identical layout and there is only
-# one place to get the tricky parts right:
+# Sourced by run-local.sh so a local run is laid out exactly like a deployment,
+# and so the tricky parts live in one place:
 #
 #   * Next infers outputFileTracingRoot from the surrounding workspace. In a
 #     repository checkout server.js therefore sits under a rebuilt path prefix

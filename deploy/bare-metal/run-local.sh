@@ -12,16 +12,17 @@
 #   ./run-local.sh status       report what is running
 #   ./run-local.sh logs -f      follow the logs
 #
-# This is not the deployment path. For a real installation see install.sh and
-# docs/deployment.md; this script exists to run the same artefacts a deployment
-# would run, on your own machine, with one command.
+# This is not the deployment path. For a real installation see the native
+# systemd installer in docs/deployment.md; this script exists to run the same
+# artefacts a deployment would run, on your own machine, with one command.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend"
 FRONTEND_DIR="$REPO_ROOT/frontend"
-# Same helper build.sh uses, so what runs here is laid out exactly like a release.
+# Lays the bundle out exactly like a release, so what runs here matches what a
+# deployment would run.
 # shellcheck source=standalone-bundle.sh
 . "$SCRIPT_DIR/standalone-bundle.sh"
 
@@ -67,8 +68,9 @@ Options:
   --console-port N     Console port (default 3000, or TOKENHUB_LOCAL_CONSOLE_PORT).
   -h, --help           Show this help message.
 
-Everything lives in .tokenhub/ inside the repository. Delete that directory to
-remove every trace.
+All runtime state lives in .tokenhub/ inside the repository; delete that
+directory to reset. Building may also refresh the usual ignored frontend
+artefacts (frontend/node_modules, frontend/.next).
 EOF
 }
 
@@ -390,8 +392,8 @@ else
   log "Console build is current"
 fi
 
-# Also reassemble when .next was rebuilt by something else (npm run build, or
-# build.sh), otherwise an older bundle would be served while looking current.
+# Also reassemble when .next was rebuilt by something else (npm run build),
+# otherwise an older bundle would be served while looking current.
 if [ ! -f "$WEB_DIR/server.js" ] || [ "$FRONTEND_DIR/.next/BUILD_ID" -nt "$WEB_DIR/server.js" ]; then
   log "Assembling console bundle"
   assemble_standalone_bundle "$FRONTEND_DIR" "$WEB_DIR" || exit 1
