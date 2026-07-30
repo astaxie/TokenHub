@@ -144,6 +144,7 @@ func BootstrapBaseData(store Store) error {
 }
 
 func BootstrapBaseDataWithConfig(store Store, config Config) error {
+	seedDefaultOrgResources(store)
 	if _, err := store.CreateAdminUser(AdminUser{
 		ID:       "usr_admin",
 		Username: "admin",
@@ -157,7 +158,6 @@ func BootstrapBaseDataWithConfig(store Store, config Config) error {
 			return err
 		}
 	}
-	seedDefaultOrgResources(store)
 	seedDefaultProject(store)
 	if err := seedBuiltinProviderCatalog(store); err != nil {
 		return err
@@ -468,6 +468,7 @@ func seedMockData(store Store) error {
 	if err != nil {
 		return err
 	}
+	seedMockResources(store)
 	for i := 1; i <= 80; i++ {
 		teamID := fmt.Sprintf("team_mock_%02d", ((i-1)%24)+1)
 		projectID := fmt.Sprintf("prj_mock_%03d", i)
@@ -606,7 +607,7 @@ func seedMockData(store Store) error {
 			Name:         fmt.Sprintf("Mock User %03d", i),
 			Email:        fmt.Sprintf("mock.user%03d@tokenhub.local", i),
 			Role:         mockRole(i),
-			TeamID:       fmt.Sprintf("team_mock_%02d", ((i-1)%24)+1),
+			TeamID:       mockActiveTeamID(i),
 			Status:       activeEvery(i, 16),
 			PasswordHash: mockPasswordHash,
 		}, "")
@@ -615,7 +616,6 @@ func seedMockData(store Store) error {
 		}
 	}
 
-	seedMockResources(store)
 	seedMockUsage(store)
 	return nil
 }
@@ -776,6 +776,14 @@ func activeEvery(index int, disabledEvery int) string {
 		return StatusDisabled
 	}
 	return StatusActive
+}
+
+func mockActiveTeamID(index int) string {
+	teamNumber := ((index - 1) % 24) + 1
+	if teamNumber%14 == 0 {
+		teamNumber++
+	}
+	return fmt.Sprintf("team_mock_%02d", teamNumber)
 }
 
 func mockAllowedModels(seed int) []string {

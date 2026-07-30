@@ -14,6 +14,31 @@ Language: [English](../team-leader-guide.md) | [简体中文](../zh-CN/team-lead
 | Models | Key が意図したモデル一覧を見られるか検証 |
 | Reports | メンバー、Project、モデル、Cost Center 別に利用量を確認 |
 
+## チーム横断コラボレーション
+
+1 つの Project に複数のチームを関連付けられます。Project の**プライマリチーム**は、既定の責任、コスト配賦、承認責任を担う単一主体のままです。Project owner も単一ユーザーのままです。別チームの関連付けはアクセス権だけを付与し、Project の API Key、モデル権限、クォータ、予算、ルーティングポリシーを複製しません。
+
+各関連チームには 1 つの Project ロールがあります。
+
+| チームの Project ロール | 有効な権限 |
+| --- | --- |
+| `viewer` | Project と閲覧可能なレポートを表示 |
+| `developer` | viewer 権限に加え、現在のユーザーを owner とする Project Key を発行 |
+| `maintainer` | developer 権限に加え、コンソールロールで許可された Project、メンバー、Key の管理 |
+
+直接の Project メンバーロールと、関連するすべてのチームロールは `owner` > `maintainer` > `developer` > `viewer` の固定順で統合されます。複数の関連チームに所属するユーザーには最上位ロールが適用され、管理者は **User Management** でプライマリチームと追加チームを設定できます。既存の単一チーム Project は互換モードで移行され、同じチームの一般ユーザーに新しい権限を与えず、従来のチームリーダー権限を維持します。管理者は Project 詳細で互換ロールを置き換えられます。
+
+**Project Spaces** で Project を選択し、**Linked Teams** からチームの追加、ロール変更、削除を行います。権限変更は次のリクエストから反映されます。ユーザーへの割り当てや Project への新規関連付けができるのは有効なチームだけです。関連チームを無効にすると、その Project ロールによるアクセス許可は直ちに停止します。別のプライマリチームを設定するまで現在のプライマリチームは削除できず、最後の関連チームも削除できません。Project またはユーザーから参照されているチーム自体も削除できません。
+
+管理 API でも同じ操作ができます。
+
+| メソッド | エンドポイント | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/admin/projects/{project_id}/teams?limit=50&offset=0` | 関連チームをページングして一覧表示 |
+| `POST` | `/api/admin/projects/{project_id}/teams` | `{ "team_id": "...", "role": "viewer|developer|maintainer" }` を関連付け |
+| `PATCH` | `/api/admin/projects/{project_id}/teams/{team_id}` | 関連チームのロールを変更 |
+| `DELETE` | `/api/admin/projects/{project_id}/teams/{team_id}` | プライマリでも最後でもないチーム関連を削除 |
+
 ## Project Key の発行
 
 1. **Project Spaces** で Project を作成または選択します。

@@ -3,6 +3,7 @@
 @import "./styles/legacy/gateway.css";
 @import "./styles/legacy/audit.css";
 @import "./styles/legacy/resources.css";
+@import "./styles/legacy/project-workspace.css";
 @import "./styles/legacy/models-routes.css";
 @import "./styles/legacy/model-directory.css";
 @import "./styles/legacy/overview.css";

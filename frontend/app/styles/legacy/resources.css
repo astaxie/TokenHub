@@ -1038,6 +1038,17 @@
   background: var(--surface);
 }
 
+.project-team-link-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.7fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.project-team-link-form .field {
+  margin: 0;
+}
+
 .project-member-row {
   min-width: 0;
   display: grid;
@@ -1114,6 +1125,11 @@
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.project-team-actions select {
+  min-width: 132px;
+  min-height: 32px;
 }
 
 .quota-status-row {

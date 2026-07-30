@@ -88,15 +88,25 @@ func AsHTTPError(err error) *HTTPError {
 }
 
 type Project struct {
-	ID              string    `json:"id" gorm:"primaryKey"`
-	Name            string    `json:"name"`
-	TeamID          string    `json:"team_id,omitempty"`
-	OwnerUserID     string    `json:"owner_user_id,omitempty"`
-	CostCenter      string    `json:"cost_center,omitempty" gorm:"index"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	DefaultQuotaRef string    `json:"default_quota_ref,omitempty"`
+	ID              string        `json:"id" gorm:"primaryKey"`
+	Name            string        `json:"name"`
+	TeamID          string        `json:"team_id,omitempty"`
+	Teams           []ProjectTeam `json:"teams,omitempty" gorm:"foreignKey:ProjectID;references:ID"`
+	OwnerUserID     string        `json:"owner_user_id,omitempty"`
+	CostCenter      string        `json:"cost_center,omitempty" gorm:"index"`
+	Status          string        `json:"status"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+	DefaultQuotaRef string        `json:"default_quota_ref,omitempty"`
+}
+
+type ProjectTeam struct {
+	ProjectID string    `json:"project_id" gorm:"primaryKey;index"`
+	TeamID    string    `json:"team_id" gorm:"primaryKey;index"`
+	Role      string    `json:"role" gorm:"index"`
+	IsPrimary bool      `json:"is_primary" gorm:"-"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type APIKey struct {
@@ -603,11 +613,51 @@ type AdminUser struct {
 	Email        string     `json:"email" gorm:"uniqueIndex"`
 	Role         string     `json:"role"`
 	TeamID       string     `json:"team_id,omitempty"`
+	TeamIDs      []string   `json:"team_ids,omitempty" gorm:"serializer:json"`
 	Status       string     `json:"status"`
 	PasswordHash string     `json:"-"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
+}
+
+func normalizedTeamIDs(primary string, additional []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(additional)+1)
+	for _, teamID := range append([]string{primary}, additional...) {
+		teamID = strings.TrimSpace(teamID)
+		if teamID == "" || seen[teamID] {
+			continue
+		}
+		seen[teamID] = true
+		result = append(result, teamID)
+	}
+	return result
+}
+
+func userHasTeam(user AdminUser, teamID string) bool {
+	teamID = strings.TrimSpace(teamID)
+	if teamID == "" {
+		return false
+	}
+	for _, candidate := range normalizedTeamIDs(user.TeamID, user.TeamIDs) {
+		if candidate == teamID {
+			return true
+		}
+	}
+	return false
+}
+
+func equalStringSlices(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 type AdminSession struct {

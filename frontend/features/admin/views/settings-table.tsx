@@ -272,6 +272,7 @@ export function EntityTable<T>({
   onDelete,
   onAction,
   onRowClick,
+  rowOpenLabel,
   selectedRowID,
   currentUser = null,
 }: {
@@ -286,6 +287,7 @@ export function EntityTable<T>({
   onDelete: (item: T) => void;
   onAction: (action: ResourceAction<T>, item: T) => void;
   onRowClick?: (item: T) => void;
+  rowOpenLabel?: string;
   selectedRowID?: string;
   currentUser?: AdminUser | null;
 }) {
@@ -330,6 +332,11 @@ export function EntityTable<T>({
               <td>
                 <div className="row-actions" onClick={(event) => event.stopPropagation()}>
                   {config.view === "api-keys" && apiBaseURL ? <APIKeyDownloadMenu baseURL={apiBaseURL} data={data} item={item as APIKey} /> : null}
+                  {onRowClick && rowOpenLabel ? (
+                    <button className="text-button" onClick={() => onRowClick(item)} type="button">
+                      {tx(rowOpenLabel)}
+                    </button>
+                  ) : null}
                   {(config.actions ?? [])
                     .filter((action) => action.visible?.(item) ?? true)
                     .map((action) => (

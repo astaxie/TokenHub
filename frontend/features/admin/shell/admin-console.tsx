@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { uniqueUIID, viewFromPath } from "../domain/formatting";
@@ -31,7 +31,7 @@ import { modelRoutePolicyPayload } from "../views/model-routing-policy";
 import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
 import { ProviderUpsertModal } from "../views/provider-editor";
-import { QuickAPIKeyModal } from "../views/quick-access";
+import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
 import { EditModal, SettingsView, usePagination } from "../views/settings-table";
 import { BillingView, UsageView } from "../views/usage-billing";
 
@@ -60,9 +60,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [modelCategoryFilter, setModelCategoryFilter] = useState("all");
   const [settingsTab, setSettingsTab] = useState<SettingsTabKey>("settings");
   const [modal, setModal] = useState<ModalState<any> | null>(null);
+  const [projectWorkspace, setProjectWorkspace] = useState<{ mode: ProjectWorkspaceMode; projectID?: string } | null>(null);
   const [providerCreateOpen, setProviderCreateOpen] = useState(false);
   const [providerEditItem, setProviderEditItem] = useState<Provider | null>(null);
-  const [quickAPIKeyOpen, setQuickAPIKeyOpen] = useState(false);
   const [apiKeyWizardOpen, setApiKeyWizardOpen] = useState(false);
   const [apiKeyWizardInitialValues, setApiKeyWizardInitialValues] = useState<Record<string, string>>({});
   const [userImportOpen, setUserImportOpen] = useState(false);
@@ -92,6 +92,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setIssuedKey("");
       setModelCategoryFilter(view === "notification-channels" ? "webhook" : "all");
     }
+    if (view !== "projects") setProjectWorkspace(null);
     setActiveView(view);
     const nextPath = viewRoutes[view];
     if (pathname === nextPath) return;
@@ -252,6 +253,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setCurrentUser(null);
       setData(emptyData());
       setModal(null);
+      setProjectWorkspace(null);
       setProviderCreateOpen(false);
       setProviderEditItem(null);
       setApiKeyWizardOpen(false);
@@ -460,6 +462,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setAdminToken("");
     setCurrentUser(null);
     setData(emptyData());
+    setProjectWorkspace(null);
     setUserImportOpen(false);
     setApiKeyWizardOpen(false);
     setApiKeyWizardInitialValues({});
@@ -481,6 +484,30 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       await load();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
+      setError(err instanceof Error ? err.message : tx("保存失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveProjectWorkspace(draft: ProjectWorkspaceDraft) {
+    const existing = projectWorkspace?.projectID
+      ? data.projects.find((project) => project.id === projectWorkspace.projectID)
+      : undefined;
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const saved = await saveProjectWorkspaceDraft(api, existing, draft);
+      await load("projects");
+      setProjectWorkspace({ mode: "view", projectID: saved.id });
+      setNotice(tx(existing ? "项目设置已保存" : "项目已创建，团队权限已配置"));
+    } catch (err) {
+      if (isAuthExpiredError(err)) return;
+      if (err instanceof ProjectWorkspaceSaveError && err.projectID) {
+        await load("projects");
+        setProjectWorkspace({ mode: "edit", projectID: err.projectID });
+      }
       setError(err instanceof Error ? err.message : tx("保存失败"));
     } finally {
       setLoading(false);
@@ -606,7 +633,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       return;
     }
     setIssuedKey("");
-    setQuickAPIKeyOpen(true);
+    setApiKeyWizardInitialValues({});
+    setApiKeyWizardOpen(true);
   }
 
   function quickCreateAPIKey(values: Record<string, string>, onCreated: () => void) {
@@ -622,6 +650,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     }
     if (activeConfig.view === "providers") {
       setProviderCreateOpen(true);
+      return;
+    }
+    if (activeConfig.view === "projects") {
+      setProjectWorkspace({ mode: "create" });
       return;
     }
     if (activeConfig.view === "notification-channels") {
@@ -667,6 +699,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     () => filteredItems.slice(crudPagination.startIndex, crudPagination.endIndex),
     [filteredItems, crudPagination.startIndex, crudPagination.endIndex],
   );
+  const workspaceProject = projectWorkspace?.projectID
+    ? data.projects.find((project) => project.id === projectWorkspace.projectID)
+    : undefined;
 
   if (!bootstrapped) {
     return <main className="login-shell" />;
@@ -831,6 +866,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onQuery={setQuery}
               onCreate={openCreateForCurrentView}
               onEdit={(item) => {
+                if (activeConfig.view === "projects") {
+                  setProjectWorkspace({ mode: "edit", projectID: (item as Project).id });
+                  return;
+                }
                 if (activeConfig.view === "providers") {
                   setProviderEditItem(item as Provider);
                   return;
@@ -839,14 +878,40 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               }}
               onDelete={(item) => setConfirmDelete({ config: activeConfig, item })}
               onAction={(action, item) => void runResourceAction(action, item, data)}
-              onProjectMemberCreate={(project) => setModal({ config: projectMemberConfig(), initialValues: projectMemberInitialValues(project) })}
-              onProjectMemberEdit={(member) => setModal({ config: projectMemberConfig(), item: member })}
-              onProjectMemberDelete={(member) => setConfirmDelete({ config: projectMemberConfig(), item: member })}
+              onProjectOpen={(project) => setProjectWorkspace({ mode: "view", projectID: project.id })}
               onToolbarAction={(action) => void runToolbarAction(action, filteredItems)}
             />
           ) : null}
         </div>
       </section>
+
+      {projectWorkspace && (!projectWorkspace.projectID || workspaceProject) ? (
+        <ProjectWorkspace
+          mode={projectWorkspace.mode}
+          data={data}
+          project={workspaceProject}
+          loading={loading}
+          onClose={() => {
+            if (!loading) setProjectWorkspace(null);
+          }}
+          onEdit={() => setProjectWorkspace((current) => current ? { ...current, mode: "edit" } : current)}
+          onSave={(draft) => void saveProjectWorkspace(draft)}
+          onIssueKey={() => {
+            if (!workspaceProject) return;
+            setIssuedKey("");
+            setApiKeyWizardInitialValues({ project_id: workspaceProject.id, name: `${workspaceProject.name} Key` });
+            setApiKeyWizardOpen(true);
+          }}
+          onAction={(action) => {
+            if (workspaceProject) void runResourceAction(action, workspaceProject, data);
+          }}
+          onCreateMember={() => {
+            if (workspaceProject) setModal({ config: projectMemberConfig(), initialValues: projectMemberInitialValues(workspaceProject) });
+          }}
+          onEditMember={(member) => setModal({ config: projectMemberConfig(), item: member })}
+          onDeleteMember={(member) => setConfirmDelete({ config: projectMemberConfig(), item: member })}
+        />
+      ) : null}
 
       {modal ? (
         <EditModal
@@ -905,18 +970,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           setLoading={setLoading}
           setError={setError}
           setNotice={setNotice}
-        />
-      ) : null}
-
-      {quickAPIKeyOpen ? (
-        <QuickAPIKeyModal
-          data={data}
-          user={currentUser}
-          loading={loading}
-          onClose={() => {
-            if (!loading) setQuickAPIKeyOpen(false);
-          }}
-          onCreate={(values) => quickCreateAPIKey(values, () => setQuickAPIKeyOpen(false))}
         />
       ) : null}
 

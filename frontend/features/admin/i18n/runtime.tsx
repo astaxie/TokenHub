@@ -71,6 +71,12 @@ export function translateGeneratedText(value: string, language: Exclude<AppLangu
   if (quotaSubmittedMatch) return language === "ja" ? `${quotaSubmittedMatch[1]} のクォータ増額申請を送信しました` : `${quotaSubmittedMatch[1]} quota increase request submitted`;
   const quotaSavedMatch = value.match(/^(.+) 的额度已保存$/);
   if (quotaSavedMatch) return language === "ja" ? `${quotaSavedMatch[1]} のクォータを保存しました` : `${quotaSavedMatch[1]} quota saved`;
+  const teamLinkedMatch = value.match(/^(.+) 已关联团队$/);
+  if (teamLinkedMatch) return language === "ja" ? `${teamLinkedMatch[1]} にチームを関連付けました` : `Team linked to ${teamLinkedMatch[1]}`;
+  const teamRoleMatch = value.match(/^(.+) 权限已更新$/);
+  if (teamRoleMatch) return language === "ja" ? `${teamRoleMatch[1]} の権限を更新しました` : `${teamRoleMatch[1]} permissions updated`;
+  const teamRemovedMatch = value.match(/^(.+) 已移除$/);
+  if (teamRemovedMatch) return language === "ja" ? `${teamRemovedMatch[1]} を削除しました` : `${teamRemovedMatch[1]} removed`;
   const statusMatch = value.match(/^(.+) 已(启用|禁用|轮换，新 Key 已展示)$/);
   if (statusMatch) {
     const action = statusMatch[2];

@@ -265,7 +265,7 @@ export function costCenterSelectOptions(data: AppData) {
 export function projectOptionLabel(data: AppData, project: Project) {
   return [
     project.name || project.id,
-    project.team_id ? `团队 ${teamLabel(data, project.team_id)}` : "",
+    project.teams?.length ? `团队 ${projectTeamLabels(data, project)}` : project.team_id ? `团队 ${teamLabel(data, project.team_id)}` : "",
     project.owner_user_id ? `负责人 ${ownerUserLabel(data, project.owner_user_id)}` : "",
   ]
     .filter(Boolean)
@@ -279,8 +279,35 @@ export function projectCanIssueKey(data: AppData, project: Project, currentUser?
   if (role === "admin") return true;
   if (role === "security") return false;
   if (project.owner_user_id && project.owner_user_id === currentUser.id) return true;
-  if (role === "team_leader" && currentUser.team_id && project.team_id === currentUser.team_id) return true;
+  if (projectTeamRoleRank(projectTeamRoleForUser(project, currentUser)) >= projectTeamRoleRank("developer")) return true;
   return projectIssueMembership(data, project.id, currentUser.id);
+}
+
+export function userTeamIDs(user?: AdminUser | null) {
+  return Array.from(new Set([user?.team_id, ...(user?.team_ids ?? [])].filter((teamID): teamID is string => Boolean(teamID))));
+}
+
+export function projectTeamRoleForUser(project: Project, user: AdminUser) {
+  const memberships = new Set(userTeamIDs(user));
+  let result = "";
+  for (const link of project.teams ?? []) {
+    if (!memberships.has(link.team_id)) continue;
+    let role = link.role;
+    if (role === "team_leader") {
+      if (appRole(user.role) !== "team_leader") continue;
+      role = "maintainer";
+    }
+    if (projectTeamRoleRank(role) > projectTeamRoleRank(result)) result = role;
+  }
+  return result;
+}
+
+export function projectTeamRoleRank(role: string) {
+  if (role === "owner") return 4;
+  if (role === "maintainer") return 3;
+  if (role === "developer") return 2;
+  if (role === "viewer") return 1;
+  return 0;
 }
 
 export function projectIssueMembership(data: AppData, projectID: string, userID: string) {
@@ -386,8 +413,12 @@ export function teamLabel(data: AppData, teamID: string) {
   return team?.name || teamID;
 }
 
+export function userTeamLabels(data: AppData, user: AdminUser) {
+  return userTeamIDs(user).map((teamID) => teamLabel(data, teamID)).join(", ") || "-";
+}
+
 export function teamMemberCount(data: AppData, team: AdminResource) {
-  return data.users.filter((user) => user.team_id === team.id).length;
+  return data.users.filter((user) => userTeamIDs(user).includes(team.id)).length;
 }
 
 export function costCenterLabel(data: AppData, costCenter: string) {
@@ -414,7 +445,12 @@ export function projectOwnerLabel(data: AppData, projectID: string) {
 
 export function projectTeamLabel(data: AppData, projectID: string) {
   const project = findProject(data, projectID);
-  return teamLabel(data, project?.team_id ?? "");
+  return project ? projectTeamLabels(data, project) : "-";
+}
+
+export function projectTeamLabels(data: AppData, project: Project) {
+  const teamIDs = project.teams?.map((link) => link.team_id) ?? (project.team_id ? [project.team_id] : []);
+  return teamIDs.map((teamID) => teamLabel(data, teamID)).join(", ") || "-";
 }
 
 export function modelRoutesFor(model: Model, data: AppData) {

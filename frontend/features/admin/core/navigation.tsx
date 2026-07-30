@@ -352,7 +352,7 @@ export function topSearchEntityItems(user: AdminUser, data: AppData): TopSearchI
         description: "项目、Key、额度和成本归属",
         icon: LayoutDashboard,
         tone: "entity",
-        keywords: [label, project.id, project.team_id, project.status, "project", "项目"].join(" "),
+        keywords: [label, project.id, project.team_id, ...(project.teams?.map((team) => team.team_id) ?? []), project.status, "project", "项目"].join(" "),
       });
     }
   }

@@ -2720,8 +2720,15 @@ func (s *Server) handleAdminProjects(w http.ResponseWriter, r *http.Request) {
 				req.OwnerUserID = user.ID
 			}
 		}
-		project := s.store.CreateProject(req)
+		project, err := s.store.CreateProjectChecked(req)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
 		s.recordAdminAudit(r, user, "create", "project", project.ID, "", project)
+		if link, found := projectTeamByID(project.Teams, project.TeamID); found {
+			s.recordAdminAudit(r, user, "create", "project_team", projectTeamAuditID(project.ID, link.TeamID), nil, link)
+		}
 		writeJSON(w, http.StatusCreated, project)
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
@@ -2750,6 +2757,10 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(403, "admin_forbidden", "Admin role is not allowed to perform this action"))
 		return
 	}
+	if len(parts) >= 2 && parts[1] == "teams" {
+		s.handleAdminProjectTeams(w, r, user, projectID, parts)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "quota-increase" {
 		s.handleAdminProjectQuotaIncrease(w, r, user, projectID)
 		return
@@ -2757,6 +2768,7 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 	if len(parts) == 1 {
 		switch r.Method {
 		case http.MethodPatch:
+			beforeProject, _ := s.store.GetProject(projectID)
 			var req Project
 			if err := decodeJSON(r, &req); err != nil {
 				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
@@ -2768,11 +2780,11 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 					writeError(w, r, err)
 					return
 				}
-				if !s.canAccessProject(user, existing) {
+				if !s.canManageProject(user, existing) {
 					writeError(w, r, NewHTTPError(403, "project_forbidden", "Project is not available for this user"))
 					return
 				}
-				req.TeamID = user.TeamID
+				req.TeamID = existing.TeamID
 				if strings.TrimSpace(req.OwnerUserID) == "" {
 					req.OwnerUserID = existing.OwnerUserID
 				}
@@ -2782,16 +2794,24 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 				writeError(w, r, err)
 				return
 			}
-			s.recordAdminAudit(r, user, "update", "project", project.ID, "", project)
+			s.recordAdminAudit(r, user, "update", "project", project.ID, beforeProject, project)
+			if project.TeamID != "" {
+				if _, existed := projectTeamByID(beforeProject.Teams, project.TeamID); !existed {
+					if link, found := projectTeamByID(project.Teams, project.TeamID); found {
+						s.recordAdminAudit(r, user, "create", "project_team", projectTeamAuditID(project.ID, link.TeamID), nil, link)
+					}
+				}
+			}
 			writeJSON(w, http.StatusOK, project)
 		case http.MethodDelete:
+			beforeProject, _ := s.store.GetProject(projectID)
 			if normalizeAdminRole(user.Role) == "team_leader" {
 				existing, err := s.findProject(projectID)
 				if err != nil {
 					writeError(w, r, err)
 					return
 				}
-				if !s.canAccessProject(user, existing) {
+				if !s.canManageProject(user, existing) {
 					writeError(w, r, NewHTTPError(403, "project_forbidden", "Project is not available for this user"))
 					return
 				}
@@ -2801,6 +2821,9 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 				return
 			}
 			s.recordAdminAudit(r, user, "delete", "project", projectID, "", nil)
+			for _, link := range beforeProject.Teams {
+				s.recordAdminAudit(r, user, "delete", "project_team", projectTeamAuditID(projectID, link.TeamID), link, nil)
+			}
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
@@ -2829,6 +2852,132 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (s *Server) handleAdminProjectTeams(w http.ResponseWriter, r *http.Request, user AdminUser, projectID string, parts []string) {
+	project, ok := s.store.GetProject(projectID)
+	if !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "project_not_found", "Project not found"))
+		return
+	}
+	if r.Method == http.MethodGet {
+		if len(parts) != 2 || !s.canAccessProject(user, project) {
+			writeError(w, r, NewHTTPError(http.StatusForbidden, "project_forbidden", "Project is not available for this user"))
+			return
+		}
+		limit := projectTeamPageValue(r.URL.Query().Get("limit"), 50, 1, 200)
+		offset := projectTeamPageValue(r.URL.Query().Get("offset"), 0, 0, math.MaxInt)
+		links, total, err := s.store.ListProjectTeams(projectID, offset, limit)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": links, "total": total, "limit": limit, "offset": offset})
+		return
+	}
+	if !s.canManageProject(user, project) {
+		writeError(w, r, NewHTTPError(http.StatusForbidden, "project_forbidden", "Project management permission is required"))
+		return
+	}
+
+	switch {
+	case len(parts) == 2 && r.Method == http.MethodPost:
+		var req struct {
+			TeamID string `json:"team_id"`
+			Role   string `json:"role"`
+		}
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+			return
+		}
+		req.TeamID = strings.TrimSpace(req.TeamID)
+		req.Role = normalizeProjectAccessRole(req.Role)
+		if req.TeamID == "" || !validProjectTeamRole(req.Role) {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_project_team", "team_id and a viewer, developer, or maintainer role are required"))
+			return
+		}
+		team, err := s.findResource("teams", req.TeamID)
+		if err != nil {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "team_not_found", "Team not found"))
+			return
+		}
+		if team.Status != "" && team.Status != StatusActive {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "team_inactive", "Only an active team can be linked to a project"))
+			return
+		}
+		link, err := s.store.AddProjectTeam(ProjectTeam{ProjectID: projectID, TeamID: req.TeamID, Role: req.Role})
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.recordAdminAudit(r, user, "create", "project_team", projectTeamAuditID(projectID, req.TeamID), nil, link)
+		writeJSON(w, http.StatusCreated, link)
+	case len(parts) == 3 && r.Method == http.MethodPatch:
+		teamID := strings.TrimSpace(parts[2])
+		var req struct {
+			Role string `json:"role"`
+		}
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+			return
+		}
+		req.Role = normalizeProjectAccessRole(req.Role)
+		if teamID == "" || !validProjectTeamRole(req.Role) {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_project_team", "A viewer, developer, or maintainer role is required"))
+			return
+		}
+		before, found := projectTeamByID(project.Teams, teamID)
+		if !found {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "project_team_not_found", "Project team link not found"))
+			return
+		}
+		link, err := s.store.UpdateProjectTeam(projectID, teamID, req.Role)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.recordAdminAudit(r, user, "update", "project_team", projectTeamAuditID(projectID, teamID), before, link)
+		writeJSON(w, http.StatusOK, link)
+	case len(parts) == 3 && r.Method == http.MethodDelete:
+		teamID := strings.TrimSpace(parts[2])
+		before, found := projectTeamByID(project.Teams, teamID)
+		if !found {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "project_team_not_found", "Project team link not found"))
+			return
+		}
+		if err := s.store.RemoveProjectTeam(projectID, teamID); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		s.recordAdminAudit(r, user, "delete", "project_team", projectTeamAuditID(projectID, teamID), before, nil)
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	}
+}
+
+func projectTeamPageValue(value string, fallback int, minimum int, maximum int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < minimum {
+		return fallback
+	}
+	if parsed > maximum {
+		return maximum
+	}
+	return parsed
+}
+
+func projectTeamByID(links []ProjectTeam, teamID string) (ProjectTeam, bool) {
+	for _, link := range links {
+		if link.TeamID == teamID {
+			return link, true
+		}
+	}
+	return ProjectTeam{}, false
+}
+
+func projectTeamAuditID(projectID string, teamID string) string {
+	return strings.TrimSpace(projectID) + ":" + strings.TrimSpace(teamID)
+}
+
 func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requireAdmin(w, r, "identity", r.Method)
 	if !ok {
@@ -2839,13 +2988,14 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"data": s.filterAdminUsersForUser(actor, s.store.ListAdminUsers())})
 	case http.MethodPost:
 		var req struct {
-			Username string `json:"username"`
-			Name     string `json:"name"`
-			Email    string `json:"email"`
-			Role     string `json:"role"`
-			TeamID   string `json:"team_id"`
-			Status   string `json:"status"`
-			Password string `json:"password"`
+			Username string   `json:"username"`
+			Name     string   `json:"name"`
+			Email    string   `json:"email"`
+			Role     string   `json:"role"`
+			TeamID   string   `json:"team_id"`
+			TeamIDs  []string `json:"team_ids"`
+			Status   string   `json:"status"`
+			Password string   `json:"password"`
 		}
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
@@ -2857,6 +3007,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			req.TeamID = actor.TeamID
+			req.TeamIDs = []string{actor.TeamID}
 			if normalizeAdminRole(req.Role) != "user" {
 				writeError(w, r, NewHTTPError(403, "role_forbidden", "Team leader can only create ordinary users"))
 				return
@@ -2868,6 +3019,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			Email:    req.Email,
 			Role:     req.Role,
 			TeamID:   req.TeamID,
+			TeamIDs:  req.TeamIDs,
 			Status:   req.Status,
 		}, req.Password)
 		if err != nil {
@@ -3184,13 +3336,14 @@ func (s *Server) handleAdminUserItem(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPatch:
 		var req struct {
-			Username string `json:"username"`
-			Name     string `json:"name"`
-			Email    string `json:"email"`
-			Role     string `json:"role"`
-			TeamID   string `json:"team_id"`
-			Status   string `json:"status"`
-			Password string `json:"password"`
+			Username string   `json:"username"`
+			Name     string   `json:"name"`
+			Email    string   `json:"email"`
+			Role     string   `json:"role"`
+			TeamID   string   `json:"team_id"`
+			TeamIDs  []string `json:"team_ids"`
+			Status   string   `json:"status"`
+			Password string   `json:"password"`
 		}
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
@@ -3198,7 +3351,7 @@ func (s *Server) handleAdminUserItem(w http.ResponseWriter, r *http.Request) {
 		}
 		if normalizeAdminRole(actor.Role) == "team_leader" {
 			target, ok := s.findAdminUser(userID)
-			if !ok || target.TeamID != actor.TeamID || normalizeAdminRole(target.Role) != "user" {
+			if !ok || !userHasTeam(target, actor.TeamID) || normalizeAdminRole(target.Role) != "user" {
 				writeError(w, r, NewHTTPError(403, "team_forbidden", "Team leader can only manage ordinary users in own team"))
 				return
 			}
@@ -3207,6 +3360,7 @@ func (s *Server) handleAdminUserItem(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			req.TeamID = actor.TeamID
+			req.TeamIDs = []string{actor.TeamID}
 			if req.Role != "" && normalizeAdminRole(req.Role) != "user" {
 				writeError(w, r, NewHTTPError(403, "role_forbidden", "Team leader cannot elevate user role"))
 				return
@@ -3219,6 +3373,7 @@ func (s *Server) handleAdminUserItem(w http.ResponseWriter, r *http.Request) {
 			Email:    req.Email,
 			Role:     req.Role,
 			TeamID:   req.TeamID,
+			TeamIDs:  req.TeamIDs,
 			Status:   req.Status,
 		}, req.Password)
 		if err != nil {
@@ -3234,7 +3389,7 @@ func (s *Server) handleAdminUserItem(w http.ResponseWriter, r *http.Request) {
 		}
 		if normalizeAdminRole(actor.Role) == "team_leader" {
 			target, ok := s.findAdminUser(userID)
-			if !ok || target.TeamID != actor.TeamID || normalizeAdminRole(target.Role) != "user" {
+			if !ok || !userHasTeam(target, actor.TeamID) || normalizeAdminRole(target.Role) != "user" {
 				writeError(w, r, NewHTTPError(403, "team_forbidden", "Team leader can only delete ordinary users in own team"))
 				return
 			}
@@ -3256,7 +3411,7 @@ func (s *Server) handleAdminUserResetPasswordEmail(w http.ResponseWriter, r *htt
 		writeError(w, r, NewHTTPError(404, "admin_user_not_found", "Admin user not found"))
 		return
 	}
-	if normalizeAdminRole(actor.Role) == "team_leader" && (target.TeamID != actor.TeamID || normalizeAdminRole(target.Role) != "user") {
+	if normalizeAdminRole(actor.Role) == "team_leader" && (!userHasTeam(target, actor.TeamID) || normalizeAdminRole(target.Role) != "user") {
 		writeError(w, r, NewHTTPError(403, "team_forbidden", "Team leader can only manage ordinary users in own team"))
 		return
 	}
@@ -3464,7 +3619,7 @@ func (s *Server) handleAdminAPIKeyItem(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, err)
 			return
 		}
-		if approval, required := s.apiKeyUpdateApproval(user, keyID, patch); required {
+		if approval, required := s.apiKeyUpdateApproval(user, existing, patch); required {
 			s.recordAdminAudit(r, user, "request_approval", "api_key", approval.ID, "", approval)
 			writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
 			return
@@ -4855,6 +5010,15 @@ func (s *Server) handleAdminResources(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(403, "team_forbidden", "Team leader cannot delete teams"))
 			return
 		}
+		if kind == "teams" {
+			if err := s.store.DeleteTeam(parts[1]); err != nil {
+				writeError(w, r, err)
+				return
+			}
+			s.recordAdminAudit(r, user, "delete", kind, parts[1], "", nil)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if err := s.store.DeleteResource(kind, parts[1]); err != nil {
 			writeError(w, r, err)
 			return
@@ -4876,7 +5040,7 @@ func (s *Server) handleAdminProjectQuotaIncrease(w http.ResponseWriter, r *http.
 		writeError(w, r, NewHTTPError(404, "project_not_found", "Project not found"))
 		return
 	}
-	if !s.canAccessProject(user, project) {
+	if !s.canManageProject(user, project) {
 		writeError(w, r, NewHTTPError(403, "project_forbidden", "Project is not available for this user"))
 		return
 	}
@@ -5784,6 +5948,13 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) requireApprovalRole(request ApprovalRequest, user AdminUser) error {
+	role := normalizeAdminRole(user.Role)
+	if projectID := approvalProjectID(request); projectID != "" && !isPlatformAdminRole(role) {
+		project, ok := s.store.GetProject(projectID)
+		if role != "team_leader" || !s.activeTeamIDSet()[user.TeamID] || !ok || strings.TrimSpace(user.TeamID) == "" || user.TeamID != project.TeamID {
+			return NewHTTPError(http.StatusForbidden, "approval_primary_team_forbidden", "Only the project's primary team leader can decide this approval")
+		}
+	}
 	if strings.TrimSpace(request.FlowID) == "" {
 		return nil
 	}
@@ -5799,6 +5970,21 @@ func (s *Server) requireApprovalRole(request ApprovalRequest, user AdminUser) er
 		return NewHTTPError(http.StatusForbidden, "approval_role_forbidden", "Admin role is not allowed to decide this approval")
 	}
 	return nil
+}
+
+func approvalProjectID(request ApprovalRequest) string {
+	payload := map[string]any{}
+	if strings.TrimSpace(request.Payload) == "" || json.Unmarshal([]byte(request.Payload), &payload) != nil {
+		return ""
+	}
+	if projectID := strings.TrimSpace(stringFromPayload(payload, "project_id")); projectID != "" {
+		return projectID
+	}
+	fields := fieldsFromPayload(payload["fields"])
+	if strings.ToLower(strings.TrimSpace(firstStringField(fields, "scope", "scope_type"))) != "project" {
+		return ""
+	}
+	return strings.TrimSpace(firstStringField(fields, "scope_id", "project_id"))
 }
 
 func (s *Server) approvalRequired(user AdminUser, trigger string, resourceType string, resourceID string, payload any) (ApprovalRequest, bool) {
@@ -5842,7 +6028,7 @@ func (s *Server) matchApprovalFlow(trigger string, payload any) (AdminResource, 
 	return AdminResource{}, false
 }
 
-func (s *Server) apiKeyUpdateApproval(user AdminUser, keyID string, patch APIKey) (ApprovalRequest, bool) {
+func (s *Server) apiKeyUpdateApproval(user AdminUser, key APIKey, patch APIKey) (ApprovalRequest, bool) {
 	trigger := ""
 	if patch.Limits != (QuotaLimits{}) {
 		trigger = "quota_increase"
@@ -5854,14 +6040,15 @@ func (s *Server) apiKeyUpdateApproval(user AdminUser, keyID string, patch APIKey
 		return ApprovalRequest{}, false
 	}
 	payload := map[string]any{
-		"api_key_id":       keyID,
+		"api_key_id":       key.ID,
+		"project_id":       key.ProjectID,
 		"requested_action": trigger,
 		"owner_user_id":    patch.OwnerUserID,
 		"allowed_models":   patch.Allowed,
 		"limits":           patch.Limits,
 		"status":           patch.Status,
 	}
-	return s.approvalRequired(user, trigger, "api_key", keyID, payload)
+	return s.approvalRequired(user, trigger, "api_key", key.ID, payload)
 }
 
 func (s *Server) adminResourceApproval(user AdminUser, kind string, resourceID string, resource AdminResource) (ApprovalRequest, bool) {
@@ -5874,6 +6061,11 @@ func (s *Server) adminResourceApproval(user AdminUser, kind string, resourceID s
 	default:
 		return ApprovalRequest{}, false
 	}
+	if resourceID != "" {
+		if existing, err := s.findResource(kind, resourceID); err == nil {
+			resource = mergedAdminResource(existing, resource)
+		}
+	}
 	payload := map[string]any{
 		"kind":             kind,
 		"resource_id":      resourceID,
@@ -5883,7 +6075,44 @@ func (s *Server) adminResourceApproval(user AdminUser, kind string, resourceID s
 		"fields":           resource.Fields,
 		"requested_action": trigger,
 	}
+	if projectID := s.approvalResourceProjectID(kind, resource); projectID != "" {
+		payload["project_id"] = projectID
+	}
 	return s.approvalRequired(user, trigger, kind, resourceID, payload)
+}
+
+func (s *Server) approvalResourceProjectID(kind string, resource AdminResource) string {
+	if projectID := projectScopedResourceProjectID(resource); projectID != "" {
+		return projectID
+	}
+	if kind != "quota-policies" || strings.TrimSpace(resource.ID) == "" {
+		return ""
+	}
+	projectID := ""
+	for _, project := range s.store.ListProjects() {
+		if strings.TrimSpace(project.DefaultQuotaRef) != resource.ID {
+			continue
+		}
+		if projectID != "" && projectID != project.ID {
+			return ""
+		}
+		projectID = project.ID
+	}
+	return projectID
+}
+
+func mergedAdminResource(existing AdminResource, patch AdminResource) AdminResource {
+	if patch.Name != "" {
+		existing.Name = patch.Name
+	}
+	existing.Description = patch.Description
+	if patch.Status != "" {
+		existing.Status = patch.Status
+	}
+	if patch.Fields != nil {
+		existing.Fields = patch.Fields
+	}
+	return existing
 }
 
 func approvalPayloadCost(payload any) float64 {
@@ -6832,9 +7061,11 @@ func (s *Server) filterProjectsForUser(user AdminUser, projects []Project) []Pro
 	if s.canViewGlobalOperations(user) {
 		return projects
 	}
+	memberships := s.store.ListResources("project-members")
+	activeTeams := s.activeTeamIDSet()
 	out := make([]Project, 0, len(projects))
 	for _, project := range projects {
-		if s.canAccessProject(user, project) {
+		if projectAccessRole(user, project, memberships, activeTeams) != "" {
 			out = append(out, project)
 		}
 	}
@@ -6845,13 +7076,92 @@ func (s *Server) canAccessProject(user AdminUser, project Project) bool {
 	if s.canViewGlobalOperations(user) {
 		return true
 	}
-	if project.OwnerUserID != "" && project.OwnerUserID == user.ID {
+	return projectAccessRole(user, project, s.store.ListResources("project-members"), s.activeTeamIDSet()) != ""
+}
+
+func (s *Server) canManageProject(user AdminUser, project Project) bool {
+	if s.canViewGlobalOperations(user) {
 		return true
 	}
-	if s.projectMemberGrantsProjectAccess(user, project.ID) {
-		return true
+	return projectAccessRoleRank(projectAccessRole(user, project, s.store.ListResources("project-members"), s.activeTeamIDSet())) >= projectAccessRoleRank("maintainer")
+}
+
+func (s *Server) activeTeamIDSet() map[string]bool {
+	activeTeams := map[string]bool{}
+	for _, team := range s.store.ListResources("teams") {
+		if team.Status == "" || team.Status == StatusActive {
+			activeTeams[team.ID] = true
+		}
 	}
-	return normalizeAdminRole(user.Role) == "team_leader" && user.TeamID != "" && project.TeamID == user.TeamID
+	return activeTeams
+}
+
+func projectAccessRole(user AdminUser, project Project, memberships []AdminResource, activeTeams map[string]bool) string {
+	if strings.TrimSpace(project.OwnerUserID) == user.ID {
+		return "owner"
+	}
+	role := ""
+	for _, member := range memberships {
+		if !projectMemberMatches(member, project.ID, user.ID) {
+			continue
+		}
+		role = higherProjectAccessRole(role, normalizeProjectAccessRole(memberRole(member)))
+	}
+	for _, link := range project.Teams {
+		if !activeTeams[link.TeamID] || !userHasTeam(user, link.TeamID) {
+			continue
+		}
+		candidate := normalizeProjectAccessRole(link.Role)
+		if candidate == "team_leader" {
+			if normalizeAdminRole(user.Role) != "team_leader" {
+				continue
+			}
+			candidate = "maintainer"
+		}
+		role = higherProjectAccessRole(role, candidate)
+	}
+	return role
+}
+
+func normalizeProjectAccessRole(role string) string {
+	role = strings.ToLower(strings.TrimSpace(role))
+	switch role {
+	case "owner", "maintainer", "developer", "viewer", "team_leader":
+		return role
+	default:
+		return ""
+	}
+}
+
+func validProjectTeamRole(role string) bool {
+	switch normalizeProjectAccessRole(role) {
+	case "maintainer", "developer", "viewer":
+		return true
+	default:
+		return false
+	}
+}
+
+func projectAccessRoleRank(role string) int {
+	switch normalizeProjectAccessRole(role) {
+	case "owner":
+		return 4
+	case "maintainer":
+		return 3
+	case "developer":
+		return 2
+	case "viewer":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func higherProjectAccessRole(left string, right string) string {
+	if projectAccessRoleRank(right) > projectAccessRoleRank(left) {
+		return normalizeProjectAccessRole(right)
+	}
+	return normalizeProjectAccessRole(left)
 }
 
 func (s *Server) projectQuotaPolicy(project Project) (AdminResource, bool) {
@@ -7077,7 +7387,7 @@ func canAttributeUsageToMember(user AdminUser, usersByID map[string]AdminUser, m
 	}
 	if role == "team_leader" {
 		member, ok := usersByID[memberID]
-		if !ok || member.TeamID != user.TeamID {
+		if !ok || !userHasTeam(member, user.TeamID) {
 			return false
 		}
 		memberRole := normalizeAdminRole(member.Role)
@@ -7236,9 +7546,15 @@ func (s *Server) filterAPIKeysForUser(user AdminUser, keys []APIKey) []APIKey {
 	if isPlatformAdminRole(role) {
 		return keys
 	}
+	projects := map[string]Project{}
+	for _, project := range s.store.ListProjects() {
+		projects[project.ID] = project
+	}
+	memberships := s.store.ListResources("project-members")
+	activeTeams := s.activeTeamIDSet()
 	out := make([]APIKey, 0, len(keys))
 	for _, key := range keys {
-		if s.canAccessAPIKey(user, key) {
+		if canAccessAPIKeyWithProjects(user, key, projects, memberships, activeTeams) {
 			out = append(out, key)
 		}
 	}
@@ -7317,7 +7633,7 @@ func (s *Server) resolveAPIKeyOwner(actor AdminUser, requestedUserID string) (st
 	if isPlatformAdminRole(role) {
 		return owner.ID, nil
 	}
-	if role == "team_leader" && actor.TeamID != "" && owner.TeamID == actor.TeamID {
+	if role == "team_leader" && actor.TeamID != "" && userHasTeam(owner, actor.TeamID) {
 		ownerRole := normalizeAdminRole(owner.Role)
 		if ownerRole == "user" || ownerRole == "team_leader" {
 			return owner.ID, nil
@@ -7331,27 +7647,12 @@ func (s *Server) canAccessAPIKey(user AdminUser, key APIKey) bool {
 	if isPlatformAdminRole(role) {
 		return true
 	}
-	if strings.TrimSpace(key.OwnerUserID) != "" && key.OwnerUserID == user.ID {
-		return true
+	project, ok := s.store.GetProject(key.ProjectID)
+	projects := map[string]Project{}
+	if ok {
+		projects[project.ID] = project
 	}
-	if strings.TrimSpace(key.OwnerUserID) == "" && key.Metadata != nil && key.Metadata["created_by"] == user.ID {
-		return true
-	}
-	for _, project := range s.store.ListProjects() {
-		if project.ID != key.ProjectID {
-			continue
-		}
-		if project.OwnerUserID != "" && project.OwnerUserID == user.ID {
-			return true
-		}
-		if role == "team_leader" && s.canAccessProject(user, project) {
-			return true
-		}
-		if s.projectMemberCanManageKeys(user, project.ID) {
-			return true
-		}
-	}
-	return false
+	return canAccessAPIKeyWithProjects(user, key, projects, s.store.ListResources("project-members"), s.activeTeamIDSet())
 }
 
 func (s *Server) canUseProjectForAPIKey(user AdminUser, projectID string) bool {
@@ -7359,52 +7660,37 @@ func (s *Server) canUseProjectForAPIKey(user AdminUser, projectID string) bool {
 	if isPlatformAdminRole(role) {
 		return true
 	}
-	for _, project := range s.store.ListProjects() {
-		if project.ID != projectID {
-			continue
-		}
-		if project.Status != "" && project.Status != StatusActive {
-			return false
-		}
-		if project.OwnerUserID != "" && project.OwnerUserID == user.ID {
-			return true
-		}
-		if role == "team_leader" && s.canAccessProject(user, project) {
-			return true
-		}
-		return s.projectMemberCanIssueKey(user, project.ID)
+	project, ok := s.store.GetProject(projectID)
+	if !ok || project.Status != "" && project.Status != StatusActive {
+		return false
 	}
-	return false
-}
-
-func (s *Server) projectMemberGrantsProjectAccess(user AdminUser, projectID string) bool {
-	for _, member := range s.store.ListResources("project-members") {
-		if !projectMemberMatches(member, projectID, user.ID) {
-			continue
-		}
+	memberships := s.store.ListResources("project-members")
+	if projectAccessRoleRank(projectAccessRole(user, project, memberships, s.activeTeamIDSet())) >= projectAccessRoleRank("developer") {
 		return true
 	}
-	return false
+	return projectMembersCanIssueKey(memberships, user, project.ID)
 }
 
-func (s *Server) projectMemberCanIssueKey(user AdminUser, projectID string) bool {
-	for _, member := range s.store.ListResources("project-members") {
+func canAccessAPIKeyWithProjects(user AdminUser, key APIKey, projects map[string]Project, memberships []AdminResource, activeTeams map[string]bool) bool {
+	if strings.TrimSpace(key.OwnerUserID) != "" && key.OwnerUserID == user.ID {
+		return true
+	}
+	if strings.TrimSpace(key.OwnerUserID) == "" && key.Metadata != nil && key.Metadata["created_by"] == user.ID {
+		return true
+	}
+	project, ok := projects[key.ProjectID]
+	if !ok {
+		return false
+	}
+	return projectAccessRoleRank(projectAccessRole(user, project, memberships, activeTeams)) >= projectAccessRoleRank("maintainer")
+}
+
+func projectMembersCanIssueKey(memberships []AdminResource, user AdminUser, projectID string) bool {
+	for _, member := range memberships {
 		if !projectMemberMatches(member, projectID, user.ID) {
 			continue
 		}
 		if projectMemberRoleCanIssueKey(memberRole(member)) || truthyField(member.Fields, "can_issue_keys") {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Server) projectMemberCanManageKeys(user AdminUser, projectID string) bool {
-	for _, member := range s.store.ListResources("project-members") {
-		if !projectMemberMatches(member, projectID, user.ID) {
-			continue
-		}
-		if projectMemberRoleCanManageKeys(memberRole(member)) {
 			return true
 		}
 	}
@@ -7424,15 +7710,6 @@ func memberRole(member AdminResource) string {
 func projectMemberRoleCanIssueKey(role string) bool {
 	switch role {
 	case "owner", "maintainer", "developer":
-		return true
-	default:
-		return false
-	}
-}
-
-func projectMemberRoleCanManageKeys(role string) bool {
-	switch role {
-	case "owner", "maintainer":
 		return true
 	default:
 		return false
@@ -7459,7 +7736,7 @@ func (s *Server) filterAdminUsersForUser(user AdminUser, users []AdminUser) []Ad
 	}
 	out := make([]AdminUser, 0, len(users))
 	for _, item := range users {
-		if item.TeamID == user.TeamID {
+		if userHasTeam(item, user.TeamID) {
 			out = append(out, item)
 		}
 	}
@@ -7467,22 +7744,34 @@ func (s *Server) filterAdminUsersForUser(user AdminUser, users []AdminUser) []Ad
 }
 
 func (s *Server) filterApprovalRequestsForUser(user AdminUser, approvals []ApprovalRequest) []ApprovalRequest {
-	if s.canViewGlobalOperations(user) {
+	role := normalizeAdminRole(user.Role)
+	if isPlatformAdminRole(role) {
 		return approvals
 	}
-	role := normalizeAdminRole(user.Role)
-	if role != "team_leader" {
-		return nil
-	}
-	teamUsers := map[string]bool{user.ID: true}
-	for _, item := range s.store.ListAdminUsers() {
-		if item.TeamID == user.TeamID {
-			teamUsers[item.ID] = true
+	teamUsers := map[string]bool{}
+	projects := map[string]Project{}
+	activeTeam := role == "team_leader" && s.activeTeamIDSet()[user.TeamID]
+	if activeTeam {
+		teamUsers[user.ID] = true
+		for _, item := range s.store.ListAdminUsers() {
+			if userHasTeam(item, user.TeamID) {
+				teamUsers[item.ID] = true
+			}
+		}
+		for _, project := range s.store.ListProjects() {
+			projects[project.ID] = project
 		}
 	}
 	out := make([]ApprovalRequest, 0, len(approvals))
 	for _, item := range approvals {
-		if teamUsers[item.RequesterID] {
+		if projectID := approvalProjectID(item); projectID != "" {
+			project, ok := projects[projectID]
+			if activeTeam && ok && strings.TrimSpace(user.TeamID) != "" && user.TeamID == project.TeamID {
+				out = append(out, item)
+			}
+			continue
+		}
+		if s.canViewGlobalOperations(user) || activeTeam && teamUsers[item.RequesterID] {
 			out = append(out, item)
 		}
 	}
@@ -7535,9 +7824,73 @@ func (s *Server) filterResourcesForUser(user AdminUser, kind string, resources [
 	if role != "team_leader" {
 		return nil
 	}
+	switch kind {
+	case "project-members":
+		return s.filterProjectMemberResourcesForTeamLeader(user, resources)
+	case "quota-policies":
+		return s.filterQuotaPoliciesForTeamLeader(user, resources)
+	}
 	out := make([]AdminResource, 0, len(resources))
 	for _, item := range resources {
 		if s.canAccessScopedResource(user, kind, item) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (s *Server) filterProjectMemberResourcesForTeamLeader(user AdminUser, resources []AdminResource) []AdminResource {
+	projects := map[string]Project{}
+	for _, project := range s.store.ListProjects() {
+		projects[project.ID] = project
+	}
+	memberships := s.store.ListResources("project-members")
+	activeTeams := s.activeTeamIDSet()
+	users := map[string]AdminUser{}
+	for _, item := range s.store.ListAdminUsers() {
+		users[item.ID] = item
+	}
+	out := make([]AdminResource, 0, len(resources))
+	for _, item := range resources {
+		projectID := strings.TrimSpace(stringField(item.Fields, "project_id"))
+		project, ok := projects[projectID]
+		if !ok || projectAccessRole(user, project, memberships, activeTeams) == "" {
+			continue
+		}
+		targetUser, ok := users[strings.TrimSpace(stringField(item.Fields, "user_id"))]
+		if ok && userHasTeam(targetUser, user.TeamID) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (s *Server) filterQuotaPoliciesForTeamLeader(user AdminUser, resources []AdminResource) []AdminResource {
+	visibleProjects := map[string]bool{}
+	visibleDefaultQuotas := map[string]bool{}
+	for _, project := range s.filterProjectsForUser(user, s.store.ListProjects()) {
+		visibleProjects[project.ID] = true
+		if quotaID := strings.TrimSpace(project.DefaultQuotaRef); quotaID != "" {
+			visibleDefaultQuotas[quotaID] = true
+		}
+	}
+	costCenters := s.teamCostCenterSet(user.TeamID)
+	out := make([]AdminResource, 0, len(resources))
+	for _, item := range resources {
+		scope := strings.ToLower(strings.TrimSpace(firstStringField(item.Fields, "scope", "scope_type")))
+		scopeID := strings.TrimSpace(stringField(item.Fields, "scope_id"))
+		visible := false
+		switch scope {
+		case "project":
+			visible = visibleProjects[scopeID]
+		case "team":
+			visible = scopeID == user.TeamID
+		case "cost_center", "cost-center":
+			visible = costCenters[normalizeScopeValue(scopeID)]
+		default:
+			visible = visibleDefaultQuotas[item.ID] || strings.TrimSpace(stringField(item.Fields, "team_id")) == user.TeamID || resourceMatchesCostCenterSet(item, costCenters)
+		}
+		if visible {
 			out = append(out, item)
 		}
 	}
@@ -7585,7 +7938,7 @@ func (s *Server) canAccessProjectMemberResource(user AdminUser, item AdminResour
 	}
 	targetUserID := strings.TrimSpace(stringField(item.Fields, "user_id"))
 	targetUser, ok := s.findAdminUser(targetUserID)
-	return ok && targetUser.TeamID == user.TeamID
+	return ok && userHasTeam(targetUser, user.TeamID)
 }
 
 func (s *Server) canAccessQuotaPolicy(user AdminUser, item AdminResource) bool {
@@ -7625,15 +7978,15 @@ func (s *Server) validateScopedResourceMutation(user AdminUser, kind string, res
 		if err != nil {
 			return err
 		}
-		if !s.canAccessQuotaPolicy(user, existing) {
+		if !s.canManageQuotaPolicy(user, existing) {
 			return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Quota policy is not available for this user")
 		}
 		if req.Fields == nil {
 			return nil
 		}
 	}
-	if !s.quotaPolicyReferencesVisibleProject(user, req) {
-		return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Quota policy must belong to a visible project")
+	if !s.quotaPolicyReferencesManageableProject(user, req) {
+		return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Quota policy must belong to a manageable project")
 	}
 	return nil
 }
@@ -7675,10 +8028,10 @@ func (s *Server) validateProjectMemberMutation(user AdminUser, resourceID string
 		return NewHTTPError(http.StatusNotFound, "admin_user_not_found", "Admin user not found")
 	}
 	if normalizeAdminRole(user.Role) == "team_leader" {
-		if strings.TrimSpace(project.TeamID) == "" || project.TeamID != user.TeamID {
+		if !s.canManageProject(user, project) {
 			return NewHTTPError(http.StatusForbidden, "project_member_forbidden", "Team leader can only assign own team projects")
 		}
-		if targetUser.TeamID != user.TeamID || normalizeAdminRole(targetUser.Role) != "user" {
+		if !userHasTeam(targetUser, user.TeamID) || normalizeAdminRole(targetUser.Role) != "user" {
 			return NewHTTPError(http.StatusForbidden, "project_member_forbidden", "Team leader can only assign ordinary users in own team")
 		}
 	}
@@ -7703,15 +8056,46 @@ func validProjectMemberRole(role string) bool {
 	}
 }
 
-func (s *Server) quotaPolicyReferencesVisibleProject(user AdminUser, item AdminResource) bool {
-	projectID := quotaPolicyProjectID(item)
+func (s *Server) canManageQuotaPolicy(user AdminUser, item AdminResource) bool {
+	projectID := projectScopedResourceProjectID(item)
+	projects := s.store.ListProjects()
+	memberships := s.store.ListResources("project-members")
+	activeTeams := s.activeTeamIDSet()
+	referencesProject := projectID != ""
+	foundScopedProject := projectID == ""
+	for _, project := range projects {
+		matchesScope := project.ID == projectID
+		matchesDefault := strings.TrimSpace(project.DefaultQuotaRef) == item.ID
+		if !matchesScope && !matchesDefault {
+			continue
+		}
+		referencesProject = true
+		if matchesScope {
+			foundScopedProject = true
+		}
+		if !s.canViewGlobalOperations(user) && projectAccessRoleRank(projectAccessRole(user, project, memberships, activeTeams)) < projectAccessRoleRank("maintainer") {
+			return false
+		}
+	}
+	if projectID != "" && !foundScopedProject {
+		return false
+	}
+	if referencesProject {
+		return true
+	}
+	return s.canAccessQuotaPolicy(user, item)
+}
+
+func (s *Server) quotaPolicyReferencesManageableProject(user AdminUser, item AdminResource) bool {
+	projectID := projectScopedResourceProjectID(item)
 	if projectID == "" {
 		return false
 	}
-	return s.visibleProjectIDSet(user)[projectID]
+	project, ok := s.store.GetProject(projectID)
+	return ok && s.canManageProject(user, project)
 }
 
-func quotaPolicyProjectID(item AdminResource) string {
+func projectScopedResourceProjectID(item AdminResource) string {
 	scope := strings.ToLower(strings.TrimSpace(firstStringField(item.Fields, "scope", "scope_type")))
 	if scope != "project" {
 		return ""
@@ -7727,7 +8111,10 @@ func (s *Server) resourceMatchesTeamOrCostCenter(teamID string, item AdminResour
 }
 
 func (s *Server) resourceMatchesTeamCostCenter(teamID string, item AdminResource) bool {
-	costCenters := s.teamCostCenterSet(teamID)
+	return resourceMatchesCostCenterSet(item, s.teamCostCenterSet(teamID))
+}
+
+func resourceMatchesCostCenterSet(item AdminResource, costCenters map[string]bool) bool {
 	for _, value := range []string{
 		item.ID,
 		item.Name,
@@ -7744,16 +8131,25 @@ func (s *Server) resourceMatchesTeamCostCenter(teamID string, item AdminResource
 
 func (s *Server) teamCostCenterSet(teamID string) map[string]bool {
 	out := map[string]bool{}
+	teamCostCenter := ""
 	for _, team := range s.store.ListResources("teams") {
 		if team.ID == teamID {
-			addScopeValue(out, stringField(team.Fields, "cost_center"))
+			teamCostCenter = stringField(team.Fields, "cost_center")
+			addScopeValue(out, teamCostCenter)
 			break
 		}
 	}
 	for _, project := range s.store.ListProjects() {
 		if project.TeamID == teamID {
 			addScopeValue(out, project.CostCenter)
-			addScopeValue(out, s.costCenterForProject(project))
+			if strings.TrimSpace(project.CostCenter) != "" {
+				continue
+			}
+			if strings.TrimSpace(teamCostCenter) != "" {
+				addScopeValue(out, teamCostCenter)
+			} else {
+				addScopeValue(out, teamID)
+			}
 		}
 	}
 	return out

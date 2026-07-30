@@ -19,10 +19,20 @@ export type Summary = {
 
 export const DEFAULT_PROJECT_ID = "prj_default";
 
+export type ProjectTeam = {
+  project_id: string;
+  team_id: string;
+  role: "team_leader" | "viewer" | "developer" | "maintainer";
+  is_primary?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type Project = {
   id: string;
   name: string;
   team_id?: string;
+  teams?: ProjectTeam[];
   owner_user_id?: string;
   cost_center?: string;
   status: string;
@@ -356,6 +366,7 @@ export type AdminUser = {
   email: string;
   role: string;
   team_id?: string;
+  team_ids?: string[];
   status: string;
   created_at?: string;
   updated_at?: string;

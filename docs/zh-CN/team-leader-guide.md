@@ -14,6 +14,31 @@ Language: [English](../team-leader-guide.md) | 简体中文 | [日本語](../ja/
 | Models | 验证 Key 能看到预期模型列表 |
 | Reports | 按成员、项目、模型和成本中心复盘用量 |
 
+## 跨团队协作
+
+一个项目可以关联多个团队。项目的**主团队**仍是默认责任、成本归属和审批责任的唯一主体，项目 Owner 也仍为单一用户。关联其他团队只授予访问权限，不会复制项目的 API Key、模型权限、额度、预算或路由策略。
+
+每个关联团队拥有一个项目角色：
+
+| 团队项目角色 | 生效权限 |
+| --- | --- |
+| `viewer` | 查看项目及其有权查看的报表 |
+| `developer` | 在 viewer 基础上，可为当前用户发放项目 Key |
+| `maintainer` | 在 developer 基础上，可执行当前后台角色允许的项目、成员和 Key 管理操作 |
+
+直接项目成员角色与所有关联团队角色按固定规则合并：`owner` > `maintainer` > `developer` > `viewer`。用户属于多个关联团队时取最高角色；管理员可在**用户管理**中配置用户的主团队和其他团队。现有单团队项目会以兼容模式迁移，只保留原团队 Leader 的访问权限，不会让同团队普通用户自动获得新权限；管理员可在项目详情中替换该兼容角色。
+
+在**项目空间**中选中项目，通过**关联团队**添加团队、修改角色或移除团队。权限变更从下一次请求立即生效。只能将活跃团队分配给用户或新关联到项目；禁用已关联团队后，该团队的项目角色会立即停止授权。更换主团队前不能移除主团队，不能移除最后一个关联团队；仍被项目或用户引用的团队也不能删除。
+
+管理 API 提供相同操作：
+
+| 方法 | 地址 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/admin/projects/{project_id}/teams?limit=50&offset=0` | 分页查看关联团队 |
+| `POST` | `/api/admin/projects/{project_id}/teams` | 关联 `{ "team_id": "...", "role": "viewer|developer|maintainer" }` |
+| `PATCH` | `/api/admin/projects/{project_id}/teams/{team_id}` | 修改关联团队角色 |
+| `DELETE` | `/api/admin/projects/{project_id}/teams/{team_id}` | 移除非主团队且非最后一个团队的关联 |
+
 ## 发放项目 Key
 
 1. 在 **项目空间** 中创建或选择项目。

@@ -397,8 +397,8 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "allowed_models") values[field.key] = "";
     if (field.key === "daily_requests") values[field.key] = "1000";
     if (field.key === "monthly_requests") values[field.key] = "30000";
-    if (field.key === "daily_tokens") values[field.key] = "1000000";
-    if (field.key === "monthly_tokens") values[field.key] = "20000000";
+    if (field.key === "daily_tokens") values[field.key] = config.view === "api-keys" ? "100000000" : "1000000";
+    if (field.key === "monthly_tokens") values[field.key] = config.view === "api-keys" ? "2000000000" : "20000000";
     if (field.key === "daily_cost_usd") values[field.key] = "100";
     if (field.key === "monthly_cost_usd") values[field.key] = "2000";
     if (field.key === "max_concurrency") values[field.key] = "20";
@@ -572,6 +572,7 @@ export function userPayload(values: Record<string, string>, includePassword: boo
     email: values.email,
     role: values.role || "user",
     team_id: values.team_id,
+    team_ids: Array.from(new Set([values.team_id, ...splitList(values.team_ids)].filter(Boolean))),
     status: values.status || "active",
   };
   if (includePassword || values.password) {

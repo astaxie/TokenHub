@@ -1,6 +1,6 @@
 import { Activity, BarChart3, Bell, Database, FileText, ShieldCheck } from "lucide-react";
 import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type ApiContext, type ApprovalRequest, type FieldConfig, type ResourceConfig, type SQLiteBackup, type ToolbarAction } from "../core/types";
-import { roleDisplayLabel, roleSelectOptions, stringifyValue, teamLabel, teamSelectOptions } from "../domain/entities";
+import { roleDisplayLabel, roleSelectOptions, stringifyValue, teamSelectOptions, userTeamIDs, userTeamLabels } from "../domain/entities";
 import { compactNumber, formatMoney, formatNumber, formatTime } from "../domain/formatting";
 import { alertMetricLabel, approvalPayloadSummary, approvalStatusLabel, approvalTriggerLabel, compactList, invoiceStatusLabel, numberFromUnknown, reportDatasetLabel, reportScheduleLabel, resourceTypeLabel, roleLabel } from "../domain/labels";
 import { tx } from "../i18n/runtime";
@@ -20,7 +20,7 @@ export function adminUserConfig(): ResourceConfig<AdminUser> {
       { key: "email", label: "邮箱" },
       { key: "username", label: "用户名" },
       { key: "role", label: "角色", render: (item, ctx) => roleDisplayLabel(ctx, item.role) },
-      { key: "team_id", label: "团队", render: (item, ctx) => teamLabel(ctx, item.team_id ?? "") },
+      { key: "team_id", label: "团队", render: (item, ctx) => userTeamLabels(ctx, item) },
       { key: "last_login_at", label: "最近登录", render: (item) => formatTime(item.last_login_at ?? "") },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
@@ -30,7 +30,15 @@ export function adminUserConfig(): ResourceConfig<AdminUser> {
       { key: "email", label: "邮箱", required: true },
       { key: "password", label: "密码", type: "password", placeholder: "编辑时留空则不修改" },
       { key: "role", label: "角色", type: "select", optionsFromData: roleSelectOptions, required: true },
-      { key: "team_id", label: "团队", type: "select", optionsFromData: teamSelectOptions },
+      { key: "team_id", label: "主团队", type: "select", optionsFromData: teamSelectOptions, help: "主团队用于默认责任和成本归属。" },
+      {
+        key: "team_ids",
+        label: "其他团队",
+        type: "multi-select",
+        optionsFromData: (data, _currentUser, values) => teamSelectOptions(data).filter((option) => option.value !== values?.team_id),
+        multiSelectOnEdit: true,
+        help: "用户可通过任一团队关联获得项目权限；多条权限按最高项目角色合并。",
+      },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     ],
     list: (ctx) => ctx.users,
@@ -60,6 +68,7 @@ export function adminUserConfig(): ResourceConfig<AdminUser> {
       password: "",
       role: item.role,
       team_id: item.team_id ?? "",
+      team_ids: userTeamIDs(item).filter((teamID) => teamID !== item.team_id).join(", "),
       status: item.status,
     }),
   };
