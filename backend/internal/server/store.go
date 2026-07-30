@@ -1020,11 +1020,6 @@ func (s *GormStore) createProject(project Project, requireActiveTeam bool) (Proj
 	project.UpdatedAt = now
 	project.Teams = nil
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if requireActiveTeam {
-			if err := rejectGatewayManagedProjectMutation(tx, project.ID); err != nil {
-				return err
-			}
-		}
 		if strings.TrimSpace(project.TeamID) != "" {
 			team, err := lockTeamForMutation(tx, project.TeamID)
 			if err != nil {
@@ -1032,6 +1027,11 @@ func (s *GormStore) createProject(project Project, requireActiveTeam bool) (Proj
 			}
 			if requireActiveTeam && team.Status != "" && team.Status != StatusActive {
 				return NewHTTPError(http.StatusBadRequest, "team_inactive", "Only an active team can be assigned to a project")
+			}
+		}
+		if requireActiveTeam {
+			if err := rejectGatewayManagedProjectMutation(tx, project.ID); err != nil {
+				return err
 			}
 		}
 		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&project).Error; err != nil {

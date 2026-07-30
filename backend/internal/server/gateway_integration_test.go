@@ -616,7 +616,7 @@ func TestGatewayModelAccessKeyReplayRemainsIdempotentAfterExpiry(t *testing.T) {
 
 func TestGatewayManagedProjectsAndKeysAreReadOnlyToLocalManagement(t *testing.T) {
 	store := NewMemoryStore()
-	app := NewWithConfig(store, Config{IntegrationToken: "integration_token", SecretKey: "test_secret"}).Handler()
+	app := NewWithConfig(store, Config{AdminToken: "admin_token", IntegrationToken: "integration_token", SecretKey: "test_secret"}).Handler()
 	seedGatewayModelAccessKeyScope(t, app)
 	created := createGatewayModelAccessKeyForTest(t, app, "request_read_only", "user", "user_01")
 
