@@ -1,9 +1,10 @@
 name: CI
 
 on:
+  # Deliberately unfiltered. A `branches:` filter here would mean a pull request
+  # targeting anything but main never starts this workflow at all, and a required
+  # check that never starts blocks such a pull request forever.
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
@@ -99,6 +100,54 @@ jobs:
       # against committing that flip stays a review-time concern; it cannot be
       # distinguished from CI simply having built in production mode.
 
+  deployment:
+    name: Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TOKENHUB_ADMIN_TOKEN: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD: strong-admin-password
+      TOKENHUB_DATABASE_URL: postgresql://tokenhub:test@db.example:5432/tokenhub?sslmode=require
+      TOKENHUB_PUBLIC_BASE_URL: https://tokenhub.example.com
+      TOKENHUB_SECRET_KEY: ssssssssssssssssssssssssssssssss
+      TOKENHUB_TRUSTED_PROXY_CIDRS: 127.0.0.1/32
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check shell syntax
+        run: |
+          bash -n \
+            .github/release/normalize-release-tag.sh \
+            .github/release/normalize-release-tag_test.sh \
+            deploy/install.sh \
+            deploy/install_test.sh \
+            deploy/native/install.sh \
+            deploy/native/install_test.sh \
+            deploy/native/tokenhub-run
+          sh -n \
+            deploy/container/tokenhub-build-id \
+            deploy/container/tokenhub-entrypoint
+
+      - name: Test deployment scripts
+        run: |
+          .github/release/normalize-release-tag_test.sh
+          deploy/install_test.sh
+          TOKENHUB_NATIVE_INTEGRATION=1 deploy/native/install_test.sh
+          deploy/container/tokenhub-entrypoint_test.sh
+
+      - name: Render Compose configurations
+        run: |
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config >/dev/null
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.postgres.yml config >/dev/null
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config >/dev/null
+          docker compose --env-file deploy/.env.example \
+            -f deploy/docker-compose.yml \
+            -f deploy/docker-compose.model-catalog.yml \
+            config >/dev/null
+
   repo-gates:
     name: Repository gates
     runs-on: ubuntu-latest
@@ -147,16 +196,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # A single stable check for branch protection to require. Without it, protecting
-    # three separately named jobs means editing the rule every time a job is added.
+    # four separately named jobs means editing the rule every time a job is added.
     needs:
       - backend
       - frontend
+      - deployment
       - repo-gates
     if: always()
     steps:
       - name: Verify every job succeeded
         env:
-          EXPECTED_JOBS: 3
+          EXPECTED_JOBS: 4
         run: |
           set -euo pipefail
           results='${{ join(needs.*.result, ' ') }}'

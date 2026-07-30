@@ -165,6 +165,8 @@ curl --request POST \
 
 Anthropic ネイティブルートでは Anthropic content block と beta header を保持します。OpenAI 互換ルートではテキスト、画像、クライアントツール、ツール結果、並列ツール呼び出し、ストリーミング event を変換します。OpenAI 互換 Provider で表現できない Anthropic サーバーツールには `400 unsupported_tool` を返します。
 
+`mid-conversation-system-2026-04-07` を有効にした Claude Code リクエストでは、`messages` 内に `system` エントリを含めることができます。TokenHub は Anthropic ネイティブルートではそのエントリを保持し、OpenAI 互換ルートでは順序を維持した system message に変換します。この beta がない場合、`messages` で使用できる role は引き続き `user` と `assistant` のみです。
+
 ローカル Claude Code には `/v1` suffix を付けず、TokenHub Host URL を設定します。
 
 ```bash

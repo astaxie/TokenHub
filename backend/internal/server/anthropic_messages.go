@@ -20,6 +20,8 @@ type anthropicMessagesRequest struct {
 	Stream    bool
 }
 
+const anthropicMidConversationSystemBeta = "mid-conversation-system-2026-04-07"
+
 func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeAnthropicError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
@@ -100,13 +102,14 @@ func decodeAnthropicMessagesRequest(r *http.Request, requireMaxTokens bool) (ant
 	if !ok || len(messages) == 0 {
 		return anthropicMessagesRequest{}, NewHTTPError(http.StatusBadRequest, "missing_messages", "messages are required")
 	}
+	allowSystemMessages := anthropicBetaEnabled(r.Header.Get("anthropic-beta"), anthropicMidConversationSystemBeta)
 	for _, item := range messages {
 		message, ok := item.(map[string]any)
 		if !ok {
 			return anthropicMessagesRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_message", "each message must be an object")
 		}
 		role, _ := message["role"].(string)
-		if role != "user" && role != "assistant" {
+		if role != "user" && role != "assistant" && !(allowSystemMessages && role == "system") {
 			return anthropicMessagesRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_message", "message role must be user or assistant")
 		}
 		if _, exists := message["content"]; !exists {
@@ -125,6 +128,15 @@ func decodeAnthropicMessagesRequest(r *http.Request, requireMaxTokens bool) (ant
 		Messages:  messages,
 		Stream:    stream,
 	}, nil
+}
+
+func anthropicBetaEnabled(header string, target string) bool {
+	for _, beta := range strings.Split(header, ",") {
+		if strings.TrimSpace(beta) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func keyCanAccessModel(store Store, key APIKey, model string) bool {
@@ -416,6 +428,13 @@ func anthropicSystemText(value any) (string, error) {
 
 func anthropicMessageToOpenAI(message map[string]any) ([]ChatMessage, error) {
 	role, _ := message["role"].(string)
+	if role == "system" {
+		content, err := anthropicSystemText(message["content"])
+		if err != nil {
+			return nil, err
+		}
+		return []ChatMessage{{Role: "system", Content: content}}, nil
+	}
 	blocks, err := anthropicContentBlocks(message["content"])
 	if err != nil {
 		return nil, err

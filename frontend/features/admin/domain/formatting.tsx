@@ -403,6 +403,7 @@ export function formatBytes(value: number) {
 export function routeStrategyLabel(value?: string) {
   const labels: Record<string, string> = {
     balanced: "平衡",
+    adaptive: "自适应",
     quality: "质量优先",
     cost: "成本优先",
     priority_weighted: "优先级 + 权重",

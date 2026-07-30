@@ -71,6 +71,12 @@ export function translateGeneratedText(value: string, language: Exclude<AppLangu
   if (quotaSubmittedMatch) return language === "ja" ? `${quotaSubmittedMatch[1]} のクォータ増額申請を送信しました` : `${quotaSubmittedMatch[1]} quota increase request submitted`;
   const quotaSavedMatch = value.match(/^(.+) 的额度已保存$/);
   if (quotaSavedMatch) return language === "ja" ? `${quotaSavedMatch[1]} のクォータを保存しました` : `${quotaSavedMatch[1]} quota saved`;
+  const teamLinkedMatch = value.match(/^(.+) 已关联团队$/);
+  if (teamLinkedMatch) return language === "ja" ? `${teamLinkedMatch[1]} にチームを関連付けました` : `Team linked to ${teamLinkedMatch[1]}`;
+  const teamRoleMatch = value.match(/^(.+) 权限已更新$/);
+  if (teamRoleMatch) return language === "ja" ? `${teamRoleMatch[1]} の権限を更新しました` : `${teamRoleMatch[1]} permissions updated`;
+  const teamRemovedMatch = value.match(/^(.+) 已移除$/);
+  if (teamRemovedMatch) return language === "ja" ? `${teamRemovedMatch[1]} を削除しました` : `${teamRemovedMatch[1]} removed`;
   const statusMatch = value.match(/^(.+) 已(启用|禁用|轮换，新 Key 已展示)$/);
   if (statusMatch) {
     const action = statusMatch[2];
@@ -83,6 +89,8 @@ export function translateGeneratedText(value: string, language: Exclude<AppLangu
   }
   const routeOrderMatch = value.match(/^已更新 (.+) 的 Provider 调用顺序$/);
   if (routeOrderMatch) return language === "ja" ? `${routeOrderMatch[1]} の Provider 呼び出し順を更新しました` : `Updated Provider call order for ${routeOrderMatch[1]}`;
+  const routePolicyMatch = value.match(/^已应用 (.+) 的模型路由策略$/);
+  if (routePolicyMatch) return language === "ja" ? `${routePolicyMatch[1]} のモデルルーティング戦略を適用しました` : `Applied the model routing strategy for ${routePolicyMatch[1]}`;
   const enabledRoutesMatch = value.match(/^(\d+)\/(\d+) 启用 · (.+)$/);
   if (enabledRoutesMatch) {
     return language === "ja"
@@ -152,6 +160,12 @@ export function selectedModelsText(count: number) {
   if (activeLanguage === "en") return `${count} models selected`;
   if (activeLanguage === "ja") return `${count} 件のモデルを選択済み`;
   return `已选择 ${count} 个模型`;
+}
+
+export function selectedOptionsText(count: number) {
+  if (activeLanguage === "en") return `${count} options selected`;
+  if (activeLanguage === "ja") return `${count} 件の項目を選択済み`;
+  return `已选择 ${count} 个选项`;
 }
 
 export function defaultPlaygroundSystemPrompt() {

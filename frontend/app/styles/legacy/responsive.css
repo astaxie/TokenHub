@@ -88,6 +88,45 @@
     grid-template-columns: 1fr;
   }
 
+  .project-team-link-form {
+    grid-template-columns: 1fr;
+  }
+
+  .project-workspace-backdrop {
+    padding: 10px;
+  }
+
+  .project-workspace {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .project-workspace-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-workspace-summary > span:nth-child(2) {
+    border-right: 0;
+  }
+
+  .project-workspace-summary > span:nth-child(3),
+  .project-workspace-summary > span:nth-child(4) {
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+
+  .project-basics-grid,
+  .project-readonly-grid,
+  .project-team-editor-grid,
+  .project-team-draft-row,
+  .project-workspace-quota .project-quota-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-team-remove {
+    width: fit-content;
+    margin-top: 0;
+  }
+
   .metrics,
   .two-column,
   .modal-body,
@@ -288,6 +327,12 @@
     align-items: start;
   }
 
+  .route-provider-row.route-policy-row {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: 26px 44px minmax(0, 1fr) auto;
+  }
+
   .route-provider-main,
   .route-upstream-model {
     grid-column: 3 / -1;
@@ -298,9 +343,30 @@
     justify-self: start;
   }
 
-  .route-row-actions {
+  .route-policy-row .route-policy-parameters,
+  .route-policy-row .route-policy-order-value {
+    grid-column: 3 / -1;
+    justify-self: stretch;
+  }
+
+  .route-policy-row .route-policy-parameters {
+    min-width: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .route-policy-row .route-policy-order-value {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .route-policy-row > .pill {
+    grid-row: 4;
+  }
+
+  .route-policy-row .route-row-actions {
     grid-column: 4 / 5;
-    grid-row: 3;
+    grid-row: 4;
     align-self: center;
   }
 
@@ -328,6 +394,96 @@
 @media (max-width: 640px) {
   h1 {
     font-size: 22px;
+  }
+
+  .project-workspace-backdrop {
+    padding: 0;
+  }
+
+  .project-workspace {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .project-workspace-header {
+    min-height: 0;
+    padding: 13px 14px;
+  }
+
+  .project-workspace-icon,
+  .project-workspace-title > div > p:last-child {
+    display: none;
+  }
+
+  .project-workspace-header-actions .secondary-button,
+  .project-workspace-header-actions .button {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+    overflow: hidden;
+    color: transparent;
+    font-size: 0;
+    gap: 0;
+  }
+
+  .project-workspace-header-actions .secondary-button svg,
+  .project-workspace-header-actions .button svg {
+    color: currentColor;
+  }
+
+  .project-workspace-header-actions .secondary-button svg {
+    color: var(--text);
+  }
+
+  .project-workspace-header-actions .button svg {
+    color: #fff;
+  }
+
+  .project-workspace-summary {
+    padding: 8px 14px;
+  }
+
+  .project-workspace-body {
+    padding: 12px;
+  }
+
+  .project-workspace-section-head,
+  .project-workspace-section-body {
+    padding: 12px;
+  }
+
+  .project-workspace-section-head {
+    align-items: flex-start;
+  }
+
+  .project-workspace-section-head > button {
+    width: auto;
+    max-width: 92px;
+    white-space: nowrap;
+  }
+
+  .project-team-card-title,
+  .project-additional-teams-head,
+  .project-team-access-row,
+  .project-workspace-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-workspace-actions {
+    padding: 10px 12px;
+  }
+
+  .project-workspace-actions > div:first-child {
+    display: none;
+  }
+
+  .project-workspace-actions > div:last-child,
+  .project-workspace-actions > div:last-child button {
+    width: 100%;
   }
 
   .metric {
@@ -359,6 +515,28 @@
 
   .model-card {
     padding: 12px;
+  }
+
+  .model-route-policy-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .route-policy-save {
+    width: fit-content;
+  }
+
+  .route-strategy-guide-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .route-strategy-guide-grid > div + div {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .route-strategy-guide-head {
+    align-items: flex-start;
   }
 
   .model-card-pricing {

@@ -14,6 +14,31 @@ This guide is for team leaders who help applications call approved large languag
 | Models | Verify the key can see the intended model list |
 | Reports | Review usage by member, project, model, and cost center |
 
+## Collaborate Across Teams
+
+A project can link multiple teams. The project's **primary team** remains the single accountable team for default ownership, cost attribution, and approval responsibility. The project owner also remains a single user. Linking another team grants access; it does not copy the project's API keys, model permissions, quota, budget, or routing policy.
+
+Each linked team has one project role:
+
+| Team project role | Effective permission |
+| --- | --- |
+| `viewer` | View the project and its permitted reports |
+| `developer` | Viewer access plus issuing a project key owned by the current user |
+| `maintainer` | Developer access plus project, member, and key management allowed by the user's console role |
+
+Direct project membership and every linked-team role are merged deterministically: `owner` > `maintainer` > `developer` > `viewer`. A user who belongs to several linked teams receives the highest role. Administrators manage a user's primary and additional memberships in **User Management**. Existing single-team projects migrate in compatibility mode, which preserves access for their team leader without granting new access to ordinary same-team users; an administrator can replace that compatibility role in Project Details.
+
+In **Project Spaces**, select a project and use **Linked Teams** to add a team, change its role, or remove it. Access changes take effect on the next request. Only active teams can be assigned to users or newly linked to projects; disabling a linked team immediately stops its project role from granting access. The primary team cannot be removed until another primary team is assigned, the last linked team cannot be removed, and a team referenced by a project or user cannot be deleted.
+
+The management API exposes the same operations:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/admin/projects/{project_id}/teams?limit=50&offset=0` | List linked teams with pagination |
+| `POST` | `/api/admin/projects/{project_id}/teams` | Link `{ "team_id": "...", "role": "viewer|developer|maintainer" }` |
+| `PATCH` | `/api/admin/projects/{project_id}/teams/{team_id}` | Change the linked team's role |
+| `DELETE` | `/api/admin/projects/{project_id}/teams/{team_id}` | Remove a non-primary, non-last team link |
+
 ## Roll Out a Project Key
 
 1. Create or select a project in **Project Spaces**.

@@ -34,16 +34,21 @@ export const SKIP_DIRECTORIES = new Set([
  *
  * Raising an entry is deliberately not something `--update` can do. It only lowers,
  * so every increase lands as a visible diff a reviewer has to agree to — which is the
- * whole point of a ratchet. The three backend entries below were raised once, by hand,
- * to absorb the image generation feature that merged while this gate was in review.
+ * whole point of a ratchet. Every entry below records the size the file has on `main`,
+ * which this branch has had to re-measure twice: once for the image generation feature
+ * and again for the project workspace, native release and version update work that
+ * merged while this gate was in review. `frontend/features/admin/i18n/ja.tsx` is frozen
+ * for the first time here — it crossed 1,500 lines on `main`, where the frontend-only
+ * checker this gate absorbs had already recorded it.
  */
 export const FROZEN = new Map([
-  ["backend/internal/server/anthropic_messages.go", 1504],
-  ["backend/internal/server/http_test.go", 5584],
-  ["backend/internal/server/http.go", 7771],
-  ["backend/internal/server/store.go", 5406],
-  ["frontend/app/styles/legacy/resources.css", 1492],
-  ["frontend/features/admin/i18n/en.tsx", 1513],
+  ["backend/internal/server/anthropic_messages.go", 1523],
+  ["backend/internal/server/http_test.go", 6522],
+  ["backend/internal/server/http.go", 8551],
+  ["backend/internal/server/store.go", 5989],
+  ["frontend/app/styles/legacy/resources.css", 1508],
+  ["frontend/features/admin/i18n/en.tsx", 1540],
+  ["frontend/features/admin/i18n/ja.tsx", 1526],
   ["frontend/features/admin/views/provider-editor.tsx", 2009],
 ]);
 

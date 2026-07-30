@@ -22,6 +22,8 @@ export const KNOWN_CONSUMERS = {
     ["TOKENHUB_BACKEND_PORT", "docker-compose port publishing"],
     ["TOKENHUB_FRONTEND_PORT", "docker-compose port publishing"],
     ["TOKENHUB_GATEWAY_PORT", "docker-compose port publishing (remote-postgres)"],
+    ["TOKENHUB_BACKEND_REPLICAS", "docker-compose scale (remote-postgres)"],
+    ["TOKENHUB_FRONTEND_REPLICAS", "docker-compose scale (remote-postgres)"],
     ["TOKENHUB_STOP_GRACE_PERIOD", "docker-compose stop_grace_period"],
     ["TOKENHUB_MODEL_CATALOG_PATH", "docker-compose catalog bind mount"],
     ["TOKENHUB_API_BASE_URL", "Next.js frontend runtime configuration"],

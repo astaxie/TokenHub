@@ -5,7 +5,7 @@ import { modelCategory, modelCategoryLabel } from "../domain/catalog";
 import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelRoutesFor } from "../domain/entities";
 import { compactNumber, fallbackDays, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
-import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, translatedCell, tx } from "../i18n/runtime";
+import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
 import { PaginationControls, usePagination } from "../views/settings-table";
 
 export function ConfirmDialog({
@@ -119,10 +119,10 @@ export function FieldInput({
   const autoComplete = field.autoComplete ?? "off";
   const inputName = `tokenhub-${field.key}`;
   let options = field.optionsFromData?.(data, currentUser, values) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
-  if (value && !options.some((option) => option.value === value)) {
+  if (field.type !== "multi-select" && value && !options.some((option) => option.value === value)) {
     options = [...options, { value, label: value }];
   }
-  if (field.type === "multi-select" && !editing) {
+  if (field.type === "multi-select" && (!editing || field.multiSelectOnEdit)) {
     const selected = new Set(splitList(value));
     const normalizedFilter = filter.trim().toLowerCase();
     const filteredOptions = normalizedFilter
@@ -137,7 +137,7 @@ export function FieldInput({
           <input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder={tx("搜索模型")}
+            placeholder={tx(field.key === "model_name" ? "搜索模型" : "搜索选项")}
             type="search"
           />
           <button
@@ -153,7 +153,7 @@ export function FieldInput({
         </div>
         <div className="multi-select-list">
           {filteredOptions.length === 0 ? (
-            <div className="empty">{tx("没有匹配的模型")}</div>
+            <div className="empty">{tx(field.key === "model_name" ? "没有匹配的模型" : "没有匹配的选项")}</div>
           ) : filteredOptions.map((option) => (
             <label className="multi-select-option" key={option.value}>
               <input
@@ -173,7 +173,7 @@ export function FieldInput({
             </label>
           ))}
         </div>
-        <small>{selectedCount > 0 ? selectedModelsText(selectedCount) : tx("请选择至少一个统一模型")}</small>
+        <small>{selectedCount > 0 ? (field.key === "model_name" ? selectedModelsText(selectedCount) : selectedOptionsText(selectedCount)) : tx(field.key === "model_name" ? "请选择至少一个统一模型" : "请选择至少一个选项")}</small>
         {field.help ? <small>{tx(field.help)}</small> : null}
       </div>
     );

@@ -2,7 +2,7 @@ import { ChevronDown, Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type AdminResource, type APIKey, type AppData, type FieldConfig, type Project, type ResourceAction, type ResourceConfig } from "../core/types";
-import { costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
+import { apiKeyOwnerSelectOptions, apiKeyOwnerUserID, costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
 import { apiGatewayBaseURL } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, keyPatchPayload, projectQuotaSummary, updateAPIKeyStatus } from "./payloads";
@@ -14,10 +14,10 @@ export function projectConfig(): ResourceConfig<Project> {
     title: "项目空间",
     eyebrow: "项目列表",
     description: "项目是企业内部 AI 使用、Key、额度和成本归属的基本单元。",
-    createLabel: "新增项目",
+    createLabel: "新建项目并配置团队",
     columns: [
       { key: "name", label: "项目" },
-      { key: "team_id", label: "团队", render: (item, ctx) => teamLabel(ctx, item.team_id ?? "") },
+      { key: "team_id", label: "关联团队", render: (item, ctx) => <ProjectTeamListCell data={ctx} project={item} /> },
       { key: "owner_user_id", label: "负责人", render: (item, ctx) => ownerUserLabel(ctx, item.owner_user_id ?? "") },
       { key: "cost_center", label: "成本中心", render: (item, ctx) => costCenterLabel(ctx, item.cost_center ?? "") },
       { key: "quota", label: "额度", render: (item, ctx) => projectQuotaSummary(ctx, item) },
@@ -25,7 +25,7 @@ export function projectConfig(): ResourceConfig<Project> {
     ],
     fields: [
       { key: "name", label: "项目名称", required: true },
-      { key: "team_id", label: "所属团队", type: "select", optionsFromData: teamSelectOptions, help: "管理员分配项目归属团队；团队 Leader 创建时会自动固定为自己的团队。" },
+      { key: "team_id", label: "默认团队", type: "select", optionsFromData: teamSelectOptions, help: "默认团队继续承担成本、审批和责任归属；协作团队在同一个项目工作台中配置。" },
       { key: "owner_user_id", label: "项目负责人", type: "select", optionsFromData: userSelectOptions, help: "负责人默认拥有该项目的 Key 管理权限。" },
       { key: "cost_center", label: "成本中心", type: "select", optionsFromData: costCenterSelectOptions },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
@@ -49,6 +49,20 @@ export function projectConfig(): ResourceConfig<Project> {
     ],
     toForm: (item) => stringifyForm(item),
   };
+}
+
+export function ProjectTeamListCell({ data, project }: { data: AppData; project: Project }) {
+  const primaryTeamID = project.team_id || project.teams?.find((link) => link.is_primary)?.team_id || "";
+  const additionalCount = new Set((project.teams ?? []).map((link) => link.team_id).filter((teamID) => teamID && teamID !== primaryTeamID)).size;
+  return (
+    <div className="project-list-team-cell">
+      <span className={primaryTeamID ? "" : "missing"}>
+        <strong>{primaryTeamID ? teamLabel(data, primaryTeamID) : tx("未配置主团队")}</strong>
+        {primaryTeamID ? <em>{tx("主团队")}</em> : null}
+      </span>
+      {additionalCount > 0 ? <small>+{additionalCount} {tx("协作团队")}</small> : null}
+    </div>
+  );
 }
 
 export function projectMemberConfig(): ResourceConfig<AdminResource> {
@@ -146,7 +160,8 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     columns: [
       { key: "name", label: "名称" },
       { key: "project_id", label: "归属项目", render: (item, ctx) => projectName(ctx, item.project_id) },
-      { key: "project_owner", label: "负责人", render: (item, ctx) => projectOwnerLabel(ctx, item.project_id) },
+      { key: "owner_user_id", label: "归属用户", render: (item, ctx) => ownerUserLabel(ctx, apiKeyOwnerUserID(ctx, item)) },
+      { key: "project_owner", label: "项目负责人", render: (item, ctx) => projectOwnerLabel(ctx, item.project_id) },
       { key: "project_team", label: "团队", render: (item, ctx) => projectTeamLabel(ctx, item.project_id) },
       { key: "key_prefix", label: "Key", render: (item) => `${item.key_prefix}...${item.key_suffix}` },
       { key: "allowed_models", label: "模型", render: (item) => (item.allowed_models ?? []).join(", ") || tx("全部") },
@@ -163,6 +178,14 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
         optionsFromData: projectSelectOptions,
         help: "只显示当前账号拥有发 Key 权限的项目；一个人可以被分配到多个项目。",
         readOnlyOnEdit: true,
+      },
+      {
+        key: "owner_user_id",
+        label: "归属用户",
+        type: "select",
+        required: true,
+        optionsFromData: apiKeyOwnerSelectOptions,
+        help: "Key 的用量会计入该用户；平台管理员发放时请明确选择实际使用人。",
       },
       { key: "name", label: "Key 名称", required: true },
       { key: "group", label: "用途/环境", placeholder: "prod、dev、backend-service" },
@@ -199,6 +222,7 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     ],
     toForm: (item) => ({
       project_id: item.project_id,
+      owner_user_id: item.owner_user_id || item.metadata?.created_by || "",
       name: item.name,
       group: item.group ?? "default",
       allowed_models: (item.allowed_models ?? []).join(", "),

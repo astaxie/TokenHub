@@ -1,7 +1,10 @@
 package server
 
 import (
+	"database/sql"
 	"math"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -108,6 +111,7 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 	call := CallContext{
 		RequestID: "req_cached_usage",
 		Project:   Project{ID: "project_cached_usage"},
+		Key:       APIKey{ID: "key_cached_usage", OwnerUserID: "user_cached_usage"},
 		Model: Model{
 			Name:                   "cached-chat",
 			Modality:               "chat",
@@ -131,6 +135,9 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 	}
 	if records[0].CachedInputTokens != 400 {
 		t.Fatalf("persisted cached input tokens = %d, want 400", records[0].CachedInputTokens)
+	}
+	if records[0].AttributedUserID != "user_cached_usage" {
+		t.Fatalf("persisted attributed user = %q, want user_cached_usage", records[0].AttributedUserID)
 	}
 	if math.Abs(records[0].CostUSD-0.0022) > 1e-12 {
 		t.Fatalf("persisted cost = %.12f, want 0.0022", records[0].CostUSD)
@@ -196,6 +203,395 @@ func TestAdminUserChangesAllowedWhenAnotherAdminRemains(t *testing.T) {
 	}
 	if updated.Role != "user" {
 		t.Fatalf("expected demoted user role, got %q", updated.Role)
+	}
+}
+
+func TestLegacyProjectTeamMigrationPreservesAccess(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite3", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE projects (
+		id text primary key,
+		name text,
+		team_id text,
+		owner_user_id text,
+		cost_center text,
+		status text,
+		created_at datetime,
+		updated_at datetime,
+		default_quota_ref text
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO projects (id, name, team_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"prj_legacy_team", "Legacy Team Project", "team_legacy", StatusActive, time.Now().UTC(), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewSQLiteStore("sqlite://" + databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, ok := store.GetProject("prj_legacy_team")
+	if !ok || len(project.Teams) != 1 {
+		t.Fatalf("legacy project team was not migrated: %+v", project)
+	}
+	if link := project.Teams[0]; link.TeamID != "team_legacy" || link.Role != "team_leader" || !link.IsPrimary {
+		t.Fatalf("unexpected migrated project team: %+v", link)
+	}
+	legacyTeams := store.ListResources("teams")
+	if len(legacyTeams) != 1 || legacyTeams[0].ID != "team_legacy" || legacyTeams[0].Status != StatusActive {
+		t.Fatalf("legacy project team resource was not migrated as active: %+v", legacyTeams)
+	}
+	server := New(store)
+	if server.canAccessProject(AdminUser{ID: "usr_member", Role: "user", TeamID: "team_legacy"}, project) {
+		t.Fatal("legacy migration must not grant new access to ordinary same-team users")
+	}
+	if !server.canManageProject(AdminUser{ID: "usr_leader", Role: "team_leader", TeamID: "team_legacy"}, project) {
+		t.Fatal("legacy team leader should retain project management access")
+	}
+}
+
+func TestLegacyUserTeamMigrationPreservesLogin(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "legacy-user.db")
+	store, err := NewSQLiteStore("sqlite://" + databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	passwordHash := HashSecret("legacy-password")
+	if err := store.db.Exec(`INSERT INTO admin_users
+		(id, username, name, email, role, team_id, status, password_hash, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"usr_legacy_login", "legacy-login", "Legacy Login", "legacy-login@example.com", "admin",
+		"team_legacy_login", StatusActive, passwordHash, time.Now().UTC(), time.Now().UTC()).Error; err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := store.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := NewSQLiteStore("sqlite://" + databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, _, err := reopened.AuthenticateAdminUser("legacy-login", "legacy-password", time.Hour)
+	if err != nil {
+		t.Fatalf("legacy user should still authenticate after team migration: %v", err)
+	}
+	if len(user.TeamIDs) != 1 || user.TeamIDs[0] != "team_legacy_login" {
+		t.Fatalf("legacy user teams were not normalized as JSON: %+v", user.TeamIDs)
+	}
+}
+
+func TestConcurrentProjectTeamLinkIsUnique(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_primary", Name: "Primary Team", Status: StatusActive})
+	store.CreateResource("teams", AdminResource{ID: "team_shared", Name: "Shared Team", Status: StatusActive})
+	project := store.CreateProject(Project{Name: "Concurrent Team Project", TeamID: "team_primary", Status: StatusActive})
+
+	const attempts = 12
+	results := make(chan error, attempts)
+	var group sync.WaitGroup
+	for index := 0; index < attempts; index++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_shared", Role: "viewer"})
+			results <- err
+		}()
+	}
+	group.Wait()
+	close(results)
+
+	succeeded := 0
+	conflicted := 0
+	for err := range results {
+		if err == nil {
+			succeeded++
+			continue
+		}
+		if AsHTTPError(err).Code == "project_team_conflict" {
+			conflicted++
+			continue
+		}
+		t.Fatalf("unexpected concurrent link error: %v", err)
+	}
+	if succeeded != 1 || conflicted != attempts-1 {
+		t.Fatalf("concurrent uniqueness result succeeded=%d conflicted=%d", succeeded, conflicted)
+	}
+	links, total, err := store.ListProjectTeams(project.ID, 0, 100)
+	if err != nil || total != 2 || len(links) != 2 {
+		t.Fatalf("expected primary plus one unique shared link, total=%d links=%+v err=%v", total, links, err)
+	}
+}
+
+func TestConcurrentProjectTeamRemovalAcrossStoresPreservesLastLink(t *testing.T) {
+	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "shared-removal.db")
+	storeA, err := NewSQLiteStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeB, err := NewSQLiteStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, teamID := range []string{"team_one", "team_two"} {
+		storeA.CreateResource("teams", AdminResource{ID: teamID, Name: teamID, Status: StatusActive})
+	}
+	project := storeA.CreateProject(Project{Name: "Cross Store Removal", Status: StatusActive})
+	for _, teamID := range []string{"team_one", "team_two"} {
+		if _, err := storeA.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: teamID, Role: "viewer"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results := make(chan error, 2)
+	start := make(chan struct{})
+	for index, store := range []*GormStore{storeA, storeB} {
+		teamID := []string{"team_one", "team_two"}[index]
+		go func(store *GormStore, teamID string) {
+			<-start
+			results <- store.RemoveProjectTeam(project.ID, teamID)
+		}(store, teamID)
+	}
+	close(start)
+	firstErr := <-results
+	secondErr := <-results
+
+	succeeded := 0
+	blocked := 0
+	for _, err := range []error{firstErr, secondErr} {
+		if err == nil {
+			succeeded++
+		} else if AsHTTPError(err).Code == "project_last_team" {
+			blocked++
+		} else {
+			t.Fatalf("unexpected concurrent removal error: %v", err)
+		}
+	}
+	if succeeded != 1 || blocked != 1 {
+		t.Fatalf("expected one removal and one last-link block, succeeded=%d blocked=%d", succeeded, blocked)
+	}
+	links, total, err := storeA.ListProjectTeams(project.ID, 0, 10)
+	if err != nil || total != 1 || len(links) != 1 {
+		t.Fatalf("expected one surviving link, total=%d links=%+v err=%v", total, links, err)
+	}
+}
+
+func TestConcurrentTeamDeletionAndLinkAcrossStoresCannotCreateOrphan(t *testing.T) {
+	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "shared-team-delete.db")
+	storeA, err := NewSQLiteStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeB, err := NewSQLiteStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeA.CreateResource("teams", AdminResource{ID: "team_race", Name: "Race Team", Status: StatusActive})
+	project := storeA.CreateProject(Project{Name: "Team Delete Race", Status: StatusActive})
+
+	start := make(chan struct{})
+	linkResult := make(chan error, 1)
+	deleteResult := make(chan error, 1)
+	go func() {
+		<-start
+		_, err := storeA.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_race", Role: "viewer"})
+		linkResult <- err
+	}()
+	go func() {
+		<-start
+		deleteResult <- storeB.DeleteTeam("team_race")
+	}()
+	close(start)
+	linkErr := <-linkResult
+	deleteErr := <-deleteResult
+
+	links, total, err := storeA.ListProjectTeams(project.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamExists := false
+	for _, team := range storeA.ListResources("teams") {
+		teamExists = teamExists || team.ID == "team_race"
+	}
+	switch {
+	case linkErr == nil:
+		if AsHTTPError(deleteErr).Code != "team_has_projects" || !teamExists || total != 1 || len(links) != 1 {
+			t.Fatalf("successful link must block deletion: link=%v delete=%v team=%v links=%+v", linkErr, deleteErr, teamExists, links)
+		}
+	case deleteErr == nil:
+		if AsHTTPError(linkErr).Code != "team_not_found" || teamExists || total != 0 || len(links) != 0 {
+			t.Fatalf("successful deletion must block linking: link=%v delete=%v team=%v links=%+v", linkErr, deleteErr, teamExists, links)
+		}
+	default:
+		t.Fatalf("expected either linking or deletion to succeed: link=%v delete=%v", linkErr, deleteErr)
+	}
+}
+
+func TestConcurrentTeamDeletionAndPrimaryAssignmentAcrossStoresCannotCreateOrphan(t *testing.T) {
+	for _, mode := range []string{"create", "update"} {
+		t.Run(mode, func(t *testing.T) {
+			databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "shared-primary-assignment.db")
+			storeA, err := NewSQLiteStore(databaseURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			storeB, err := NewSQLiteStore(databaseURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			storeA.CreateResource("teams", AdminResource{ID: "team_race", Name: "Race Team", Status: StatusActive})
+			projectID := "prj_primary_race"
+			if mode == "update" {
+				storeA.CreateProject(Project{ID: projectID, Name: "Primary Update Race", Status: StatusActive})
+			}
+
+			start := make(chan struct{})
+			assignmentResult := make(chan error, 1)
+			deleteResult := make(chan error, 1)
+			go func() {
+				<-start
+				if mode == "create" {
+					_, err := storeA.CreateProjectChecked(Project{ID: projectID, Name: "Primary Create Race", TeamID: "team_race", Status: StatusActive})
+					assignmentResult <- err
+					return
+				}
+				_, err := storeA.UpdateProject(projectID, Project{Name: "Primary Update Race", TeamID: "team_race", Status: StatusActive})
+				assignmentResult <- err
+			}()
+			go func() {
+				<-start
+				deleteResult <- storeB.DeleteTeam("team_race")
+			}()
+			close(start)
+			assignmentErr := <-assignmentResult
+			deleteErr := <-deleteResult
+
+			project, projectExists := storeA.GetProject(projectID)
+			teamExists := false
+			for _, team := range storeA.ListResources("teams") {
+				teamExists = teamExists || team.ID == "team_race"
+			}
+			switch {
+			case assignmentErr == nil:
+				if AsHTTPError(deleteErr).Code != "team_has_projects" || !teamExists || !projectExists || project.TeamID != "team_race" {
+					t.Fatalf("successful primary assignment must block deletion: assign=%v delete=%v team=%v project=%+v", assignmentErr, deleteErr, teamExists, project)
+				}
+				if link, ok := projectTeamByID(project.Teams, "team_race"); !ok || !link.IsPrimary {
+					t.Fatalf("successful primary assignment must create a primary link: %+v", project.Teams)
+				}
+			case deleteErr == nil:
+				if AsHTTPError(assignmentErr).Code != "team_not_found" || teamExists {
+					t.Fatalf("successful deletion must block primary assignment: assign=%v delete=%v team=%v", assignmentErr, deleteErr, teamExists)
+				}
+				if mode == "create" && projectExists {
+					t.Fatalf("failed checked create must not leave a project: %+v", project)
+				}
+				if mode == "update" && (!projectExists || project.TeamID != "" || len(project.Teams) != 0) {
+					t.Fatalf("failed primary update must leave the project teamless: %+v", project)
+				}
+			default:
+				t.Fatalf("expected either primary assignment or deletion to succeed: assign=%v delete=%v", assignmentErr, deleteErr)
+			}
+		})
+	}
+}
+
+func TestConcurrentTeamDeletionAndUserAssignmentAcrossStoresCannotCreateOrphan(t *testing.T) {
+	for _, mode := range []string{"create", "update"} {
+		t.Run(mode, func(t *testing.T) {
+			databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "shared-user-assignment.db")
+			storeA, err := NewSQLiteStore(databaseURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			storeB, err := NewSQLiteStore(databaseURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, teamID := range []string{"team_home", "team_race"} {
+				storeA.CreateResource("teams", AdminResource{ID: teamID, Name: teamID, Status: StatusActive})
+			}
+			userID := "usr_team_race"
+			if mode == "update" {
+				if _, err := storeA.CreateAdminUser(AdminUser{
+					ID: userID, Username: "team-race-user", Name: "Team Race User", Email: "team-race-user@tokenhub.local",
+					Role: "user", TeamID: "team_home", Status: StatusActive,
+				}, "user123456"); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			start := make(chan struct{})
+			assignmentResult := make(chan error, 1)
+			deleteResult := make(chan error, 1)
+			go func() {
+				<-start
+				assignment := AdminUser{TeamID: "team_home", TeamIDs: []string{"team_home", "team_race"}}
+				if mode == "create" {
+					assignment.ID = userID
+					assignment.Username = "team-race-user"
+					assignment.Name = "Team Race User"
+					assignment.Email = "team-race-user@tokenhub.local"
+					assignment.Role = "user"
+					assignment.Status = StatusActive
+					_, err := storeA.CreateAdminUser(assignment, "user123456")
+					assignmentResult <- err
+					return
+				}
+				_, err := storeA.UpdateAdminUser(userID, assignment, "")
+				assignmentResult <- err
+			}()
+			go func() {
+				<-start
+				deleteResult <- storeB.DeleteTeam("team_race")
+			}()
+			close(start)
+			assignmentErr := <-assignmentResult
+			deleteErr := <-deleteResult
+
+			var user AdminUser
+			userExists := false
+			for _, item := range storeA.ListAdminUsers() {
+				if item.ID == userID {
+					user = item
+					userExists = true
+					break
+				}
+			}
+			teamExists := false
+			for _, team := range storeA.ListResources("teams") {
+				teamExists = teamExists || team.ID == "team_race"
+			}
+			switch {
+			case assignmentErr == nil:
+				if AsHTTPError(deleteErr).Code != "team_has_users" || !teamExists || !userExists || !userHasTeam(user, "team_race") {
+					t.Fatalf("successful user assignment must block deletion: assign=%v delete=%v team=%v user=%+v", assignmentErr, deleteErr, teamExists, user)
+				}
+			case deleteErr == nil:
+				if AsHTTPError(assignmentErr).Code != "team_not_found" || teamExists {
+					t.Fatalf("successful deletion must block user assignment: assign=%v delete=%v team=%v", assignmentErr, deleteErr, teamExists)
+				}
+				if mode == "create" && userExists {
+					t.Fatalf("failed user creation must not leave a user: %+v", user)
+				}
+				if mode == "update" && (!userExists || userHasTeam(user, "team_race") || !userHasTeam(user, "team_home")) {
+					t.Fatalf("failed user update must preserve existing teams: %+v", user)
+				}
+			default:
+				t.Fatalf("expected either user assignment or deletion to succeed: assign=%v delete=%v", assignmentErr, deleteErr)
+			}
+		})
 	}
 }
 

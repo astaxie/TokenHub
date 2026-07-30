@@ -222,6 +222,61 @@
   border-radius: 12px;
 }
 
+.route-strategy-tab.active {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-weak-2);
+}
+
+.route-model-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.route-model-add {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.model-route-policy-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.model-route-policy-title .route-policy-help {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--muted);
+}
+
+.model-route-policy-title .route-policy-help:hover,
+.model-route-policy-title .route-policy-help[aria-expanded="true"] {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.route-strategy-guide,
+.route-policy-share-note {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
+.route-strategy-guide-head em {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.route-policy-parameters input {
+  border-color: var(--border-2);
+  background: var(--surface);
+  color: var(--ink);
+}
+
 .modal-backdrop {
   background: rgba(11, 11, 15, 0.34);
   backdrop-filter: blur(6px);

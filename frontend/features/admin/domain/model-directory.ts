@@ -1,6 +1,6 @@
 import { type AppData, type Model, type ModelRoute, type ProviderModel } from "../core/types";
 import { modelCategory } from "./catalog";
-import { findProvider, modelRoutesFor } from "./entities";
+import { findProvider, modelIsInDirectory, modelRoutesFor } from "./entities";
 
 export type ModelPublicationState = "published" | "draft" | "disabled";
 export type ModelRuntimeState = "healthy" | "degraded" | "unavailable" | "unmapped";
@@ -26,12 +26,7 @@ export function modelRuntimeState(model: Model, data: AppData): ModelRuntimeStat
 
 export function externalModels(data: AppData, readOnly = false) {
   if (readOnly) return data.models;
-  return data.models.filter((model) => {
-    if (model.metadata?.directory_role === "external") return true;
-    if (modelRoutesFor(model, data).length > 0) return true;
-    const source = model.metadata?.source ?? "";
-    return source !== "tokenhub-standard-catalog" && source !== "public-provider-conf";
-  });
+  return data.models.filter((model) => modelIsInDirectory(model, data));
 }
 
 export function candidateModels(data: AppData) {

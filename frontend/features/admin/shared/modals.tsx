@@ -1,7 +1,7 @@
 import { BookOpen, Boxes, Check, ExternalLink, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 import { type Dispatch, type FormEvent, type SetStateAction, useMemo, useState } from "react";
 import { type AdminResource, type AdminUser, type AppData, type FieldConfig, type ModalState } from "../core/types";
-import { findProject, projectOwnerLabel, projectSelectOptions, projectTeamLabel } from "../domain/entities";
+import { findProject, ownerUserLabel, projectOwnerLabel, projectSelectOptions, projectTeamLabel } from "../domain/entities";
 import { keyWizardModelOptions, modelAvailabilitySummary } from "../domain/formatting";
 import { identityProviderDefaultGrantLabel, identityProviderIconLabel, identityProviderTypeLabel, splitList } from "../domain/labels";
 import { tx } from "../i18n/runtime";
@@ -395,7 +395,7 @@ export function APIKeyWizardModal({
   }
 
   function canContinue(targetStep = step) {
-    if (targetStep === 0) return Boolean(values.project_id);
+    if (targetStep === 0) return Boolean(values.project_id && values.owner_user_id);
     if (targetStep === 1) return Boolean(values.name?.trim());
     if (targetStep === 2) return modelScope === "all" || selectedModels.length > 0;
     return true;
@@ -478,6 +478,9 @@ export function APIKeyWizardModal({
                   })}
                 </div>
               )}
+              <div className="wizard-form-grid">
+                {renderField("owner_user_id")}
+              </div>
             </section>
           ) : null}
 
@@ -561,6 +564,7 @@ export function APIKeyWizardModal({
               </div>
               <div className="wizard-review-grid">
                 <ReviewItem label="归属项目" value={selectedProject?.name || values.project_id || "-"} />
+                <ReviewItem label="归属用户" value={ownerUserLabel(data, values.owner_user_id)} />
                 <ReviewItem label="用途/环境" value={values.group || "default"} />
                 <ReviewItem label="Key 名称" value={values.name || "-"} />
                 <ReviewItem label="模型范围" value={modelScope === "all" ? tx("全部可路由模型") : selectedModels.join(", ") || "-"} />
