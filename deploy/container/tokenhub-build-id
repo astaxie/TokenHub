@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+[ "$#" -eq 1 ] || {
+  printf 'Usage: tokenhub-build-id IMAGE_ROOT\n' >&2
+  exit 2
+}
+
+image_root="$(cd "$1" && pwd -P)"
+output="$image_root/BUILD_ID"
+temporary="$(mktemp)"
+trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
+
+find "$image_root" -type f ! -path "$output" -print0 |
+  sort -z |
+  xargs -0 sha256sum |
+  sha256sum |
+  cut -d ' ' -f 1 >"$temporary"
+chmod 0644 "$temporary"
+mv "$temporary" "$output"
+trap - EXIT HUP INT TERM

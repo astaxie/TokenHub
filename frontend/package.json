@@ -1,13 +1,13 @@
 {
   "name": "tokenhub-admin",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
-    "check:lines": "node check-source-lines.mjs",
+    "check:lines": "node ../tools/check-source-lines.mjs",
     "typecheck": "npm run check:lines && tsc --noEmit"
   },
   "dependencies": {

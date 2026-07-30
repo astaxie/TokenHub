@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+release_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+backend_pid=""
+frontend_pid=""
+
+terminate_child() {
+  local pid="$1"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null || true
+  fi
+}
+
+cleanup() {
+  trap - EXIT INT TERM
+  terminate_child "$frontend_pid"
+  terminate_child "$backend_pid"
+  [ -z "$frontend_pid" ] || wait "$frontend_pid" 2>/dev/null || true
+  [ -z "$backend_pid" ] || wait "$backend_pid" 2>/dev/null || true
+}
+
+handle_signal() {
+  cleanup
+  exit 0
+}
+
+trap handle_signal INT TERM
+trap cleanup EXIT
+
+"$release_dir/bin/tokenhub" &
+backend_pid=$!
+
+(
+  cd "$release_dir/frontend"
+  exec env \
+    NODE_ENV=production \
+    HOSTNAME="${TOKENHUB_FRONTEND_HOST:-0.0.0.0}" \
+    PORT="${TOKENHUB_FRONTEND_PORT:-3000}" \
+    "$release_dir/bin/node" server.js
+) &
+frontend_pid=$!
+
+exit_code=0
+while kill -0 "$backend_pid" 2>/dev/null && kill -0 "$frontend_pid" 2>/dev/null; do
+  sleep 1
+done
+
+set +e
+if ! kill -0 "$backend_pid" 2>/dev/null; then
+  wait "$backend_pid"
+  exit_code=$?
+else
+  wait "$frontend_pid"
+  exit_code=$?
+fi
+set -e
+
+cleanup
+exit "$exit_code"

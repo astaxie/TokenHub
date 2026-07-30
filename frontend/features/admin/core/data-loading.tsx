@@ -5,6 +5,7 @@ export type LoadPlan = {
   overview: boolean;
   providers: boolean;
   providerResources: boolean;
+  providerModels: boolean;
   keys: boolean;
   routes: boolean;
   logs: boolean;
@@ -30,6 +31,7 @@ export function emptyLoadPlan(): LoadPlan {
     overview: false,
     providers: false,
     providerResources: false,
+    providerModels: false,
     keys: false,
     routes: false,
     logs: false,
@@ -111,15 +113,19 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.auditEvents = canViewAdminAudit(user);
       plan.breakdown = can("usage") || can("billing");
       plan.providerCatalog = true;
+      plan.providerModels = true;
       plan.providerMonitoring = true;
       break;
     case "models":
       plan.overview = true;
       plan.routes = can("routes");
+      plan.providerModels = can("routes");
+      plan.providerCatalog = can("routes");
       break;
     case "routes":
       plan.overview = true;
       plan.routes = true;
+      plan.providerModels = true;
       break;
     case "projects":
       plan.overview = true;
@@ -203,6 +209,7 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     projects: loaded.projects ?? current.projects,
     providers: loaded.providers ?? current.providers,
     providerResources: loaded.providerResources ?? current.providerResources,
+    providerModels: loaded.providerModels ?? current.providerModels,
     models: loaded.models ?? current.models,
     routes: loaded.routes ?? current.routes,
     logs: loaded.logs ?? current.logs,

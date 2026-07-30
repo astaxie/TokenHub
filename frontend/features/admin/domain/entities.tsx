@@ -1,5 +1,5 @@
 import { appRole } from "../core/navigation";
-import { type AdminResource, type AdminUser, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
+import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabel, roleLabel, splitList } from "./labels";
@@ -67,7 +67,8 @@ export function firstIssueableProject(data: AppData, currentUser?: AdminUser | n
 }
 
 export function firstActiveModel(data: AppData) {
-  return data.models.find((model) => model.status === "active") ?? data.models[0];
+  const directoryModels = data.models.filter((model) => modelIsInDirectory(model, data));
+  return directoryModels.find((model) => model.status === "active") ?? directoryModels[0];
 }
 
 export function firstActiveProvider(data: AppData) {
@@ -124,6 +125,7 @@ export function oauthDefaultProjectRoleOptions() {
 
 export function modelSelectOptions(data: AppData) {
   return data.models
+    .filter((model) => modelIsInDirectory(model, data))
     .slice()
     .sort((left, right) => modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name))
     .map((model) => ({
@@ -140,6 +142,26 @@ export function providerSelectOptions(data: AppData) {
       value: provider.id,
       label: `${providerDisplayName(provider, data.providerResources)} / ${providerTypeLabel(providerDisplayType(provider, data.providerResources))}${provider.status !== "active" ? ` / ${enumValueLabel(provider.status)}` : ""}`,
     }));
+}
+
+export function providerModelSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
+  const providerID = values?.provider_id?.trim();
+  if (!providerID) return [];
+  const seen = new Set<string>();
+  return data.providerModels
+    .filter((model) => model.provider_id === providerID)
+    .filter((model) => {
+      if (seen.has(model.upstream_model)) return false;
+      seen.add(model.upstream_model);
+      return true;
+    })
+    .map((model) => ({
+      value: model.upstream_model,
+      label: model.display_name && model.display_name !== model.upstream_model
+        ? `${model.upstream_model} / ${model.display_name}`
+        : model.upstream_model,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 export function providerDisplayName(provider: Provider, _resources: ProviderResource[]) {
@@ -196,6 +218,27 @@ export function userSelectOptions(data: AppData) {
     }));
 }
 
+export function apiKeyOwnerSelectOptions(data: AppData, currentUser?: AdminUser | null) {
+  const role = currentUser ? appRole(currentUser.role) : "admin";
+  const users = data.users.slice();
+  if (currentUser && !users.some((user) => user.id === currentUser.id)) {
+    users.push(currentUser);
+  }
+  return users
+    .filter((user) => user.status === "active")
+    .filter((user) => {
+      if (!currentUser || role === "admin") return true;
+      if (role === "team_leader") return Boolean(currentUser.team_id) && user.team_id === currentUser.team_id;
+      return user.id === currentUser.id;
+    })
+    .slice()
+    .sort((left, right) => (left.name || left.username).localeCompare(right.name || right.username))
+    .map((user) => ({
+      value: user.id,
+      label: `${user.name || user.username} / ${user.email || user.username}`,
+    }));
+}
+
 export function teamSelectOptions(data: AppData) {
   return (data.resources.teams ?? [])
     .slice()
@@ -222,7 +265,7 @@ export function costCenterSelectOptions(data: AppData) {
 export function projectOptionLabel(data: AppData, project: Project) {
   return [
     project.name || project.id,
-    project.team_id ? `团队 ${teamLabel(data, project.team_id)}` : "",
+    project.teams?.length ? `团队 ${projectTeamLabels(data, project)}` : project.team_id ? `团队 ${teamLabel(data, project.team_id)}` : "",
     project.owner_user_id ? `负责人 ${ownerUserLabel(data, project.owner_user_id)}` : "",
   ]
     .filter(Boolean)
@@ -236,8 +279,35 @@ export function projectCanIssueKey(data: AppData, project: Project, currentUser?
   if (role === "admin") return true;
   if (role === "security") return false;
   if (project.owner_user_id && project.owner_user_id === currentUser.id) return true;
-  if (role === "team_leader" && currentUser.team_id && project.team_id === currentUser.team_id) return true;
+  if (projectTeamRoleRank(projectTeamRoleForUser(project, currentUser)) >= projectTeamRoleRank("developer")) return true;
   return projectIssueMembership(data, project.id, currentUser.id);
+}
+
+export function userTeamIDs(user?: AdminUser | null) {
+  return Array.from(new Set([user?.team_id, ...(user?.team_ids ?? [])].filter((teamID): teamID is string => Boolean(teamID))));
+}
+
+export function projectTeamRoleForUser(project: Project, user: AdminUser) {
+  const memberships = new Set(userTeamIDs(user));
+  let result = "";
+  for (const link of project.teams ?? []) {
+    if (!memberships.has(link.team_id)) continue;
+    let role = link.role;
+    if (role === "team_leader") {
+      if (appRole(user.role) !== "team_leader") continue;
+      role = "maintainer";
+    }
+    if (projectTeamRoleRank(role) > projectTeamRoleRank(result)) result = role;
+  }
+  return result;
+}
+
+export function projectTeamRoleRank(role: string) {
+  if (role === "owner") return 4;
+  if (role === "maintainer") return 3;
+  if (role === "developer") return 2;
+  if (role === "viewer") return 1;
+  return 0;
 }
 
 export function projectIssueMembership(data: AppData, projectID: string, userID: string) {
@@ -326,6 +396,12 @@ export function ownerUserLabel(data: AppData, owner: string) {
   return [user.name || user.username, user.email].filter(Boolean).join(" / ");
 }
 
+export function apiKeyOwnerUserID(data: AppData, key: APIKey) {
+  if (key.owner_user_id) return key.owner_user_id;
+  if (key.metadata?.created_by) return key.metadata.created_by;
+  return findProject(data, key.project_id)?.owner_user_id || "";
+}
+
 export function usageMemberLabel(data: AppData, memberID: string) {
   if (!memberID || memberID === "unknown") return "未归属成员";
   return ownerUserLabel(data, memberID);
@@ -337,8 +413,12 @@ export function teamLabel(data: AppData, teamID: string) {
   return team?.name || teamID;
 }
 
+export function userTeamLabels(data: AppData, user: AdminUser) {
+  return userTeamIDs(user).map((teamID) => teamLabel(data, teamID)).join(", ") || "-";
+}
+
 export function teamMemberCount(data: AppData, team: AdminResource) {
-  return data.users.filter((user) => user.team_id === team.id).length;
+  return data.users.filter((user) => userTeamIDs(user).includes(team.id)).length;
 }
 
 export function costCenterLabel(data: AppData, costCenter: string) {
@@ -365,7 +445,12 @@ export function projectOwnerLabel(data: AppData, projectID: string) {
 
 export function projectTeamLabel(data: AppData, projectID: string) {
   const project = findProject(data, projectID);
-  return teamLabel(data, project?.team_id ?? "");
+  return project ? projectTeamLabels(data, project) : "-";
+}
+
+export function projectTeamLabels(data: AppData, project: Project) {
+  const teamIDs = project.teams?.map((link) => link.team_id) ?? (project.team_id ? [project.team_id] : []);
+  return teamIDs.map((teamID) => teamLabel(data, teamID)).join(", ") || "-";
 }
 
 export function modelRoutesFor(model: Model, data: AppData) {
@@ -374,10 +459,37 @@ export function modelRoutesFor(model: Model, data: AppData) {
     .sort((left, right) => (left.priority - right.priority) || (right.weight - left.weight));
 }
 
+export function modelIsInDirectory(model: Model, data: AppData) {
+  if (model.metadata?.directory_role === "external") return true;
+  if (modelRoutesFor(model, data).length > 0) return true;
+  const source = model.metadata?.source ?? "";
+  return source !== "tokenhub-standard-catalog" && source !== "public-provider-conf";
+}
+
+export const codexImageModelName = "codex-gpt-image-2";
+
+export function isCodexSubscriptionImageModel(model: Model | undefined) {
+  return model?.name === codexImageModelName ||
+    model?.metadata?.execution_type === "codex_subscription_image_generation";
+}
+
+export function codexImageCapableResources(data: AppData) {
+  const codexProviderIDs = new Set(
+    data.providers
+      .filter((provider) => provider.type === "openai_codex" && provider.status === "active" && provider.healthy !== false)
+      .map((provider) => provider.id),
+  );
+  return data.providerResources.filter((resource) =>
+    codexProviderIDs.has(resource.provider_id) &&
+    resource.status === "active" &&
+    resource.healthy !== false &&
+    resource.options?.image_generation_capability === "supported",
+  );
+}
+
 export function routeModelCategories(data: AppData) {
   const counts = new Map<string, number>();
-  for (const model of data.models) {
-    if (modelRoutesFor(model, data).length === 0) continue;
+  for (const model of data.models.filter((item) => modelIsInDirectory(item, data))) {
     const category = modelCategory(model);
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }
@@ -391,6 +503,7 @@ export function routeModelCategories(data: AppData) {
 export function filterRouteModels(data: AppData, category: string, scope: "configured" | "all", query: string) {
   const normalizedQuery = query.trim().toLowerCase();
   return data.models
+    .filter((model) => modelIsInDirectory(model, data))
     .filter((model) => {
       const routes = modelRoutesFor(model, data);
       if (scope === "configured" && routes.length === 0) return false;
@@ -529,15 +642,21 @@ export function apiKeyAuditLabel(data: AppData, apiKeyID?: string) {
 
 export function providerRouteDefaults(provider: Provider, data: AppData) {
   const firstModel = firstActiveModel(data);
+  const matchingProviderModel = data.providerModels.find((providerModel) =>
+    providerModel.provider_id === provider.id
+      && (providerModel.upstream_model === firstModel?.name || providerModel.canonical_name === firstModel?.name),
+  );
   return {
     model_name: firstModel?.name ?? "",
     provider_id: provider.id,
-    provider_model: firstModel?.name ?? "",
+    provider_model: matchingProviderModel?.upstream_model ?? "",
     priority: "1",
     weight: "100",
     quality_score: "50",
     cost_score: "50",
-    strategy: "balanced",
+    strategy: "priority_weighted",
+    project_scope: "all",
+    project_ids: "",
     sticky_session: "false",
     status: "active",
   };
@@ -545,15 +664,21 @@ export function providerRouteDefaults(provider: Provider, data: AppData) {
 
 export function modelRouteDefaults(model: Model, data: AppData) {
   const firstProvider = firstActiveProvider(data);
+  const matchingProviderModel = data.providerModels.find((providerModel) =>
+    providerModel.provider_id === firstProvider?.id
+      && (providerModel.upstream_model === model.name || providerModel.canonical_name === model.name),
+  );
   return {
     model_name: model.name,
     provider_id: firstProvider?.id ?? "",
-    provider_model: model.name,
+    provider_model: matchingProviderModel?.upstream_model ?? "",
     priority: "1",
     weight: "100",
     quality_score: "50",
     cost_score: "50",
-    strategy: "balanced",
+    strategy: "priority_weighted",
+    project_scope: "all",
+    project_ids: "",
     sticky_session: "false",
     status: "active",
   };
@@ -561,6 +686,14 @@ export function modelRouteDefaults(model: Model, data: AppData) {
 
 export function routeScoreSummary(route: ModelRoute) {
   return `质量 ${route.quality_score ?? 50} / 成本 ${route.cost_score ?? 50}`;
+}
+
+export function routeProjectScopeSummary(route: ModelRoute, data: AppData) {
+  const scope = route.project_scope || "all";
+  if (scope === "all") return tx("所有项目");
+  const names = (route.project_ids ?? []).map((projectID) => findProject(data, projectID)?.name || projectID);
+  const prefix = scope === "include" ? tx("仅指定项目") : tx("排除指定项目");
+  return `${prefix}: ${compactList(names) || "-"}`;
 }
 
 export function modelCapabilitySummary(model: Model) {

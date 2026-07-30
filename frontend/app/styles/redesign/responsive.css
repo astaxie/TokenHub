@@ -105,8 +105,13 @@
     flex-wrap: nowrap;
   }
 
+  .top-version-status {
+    display: flex;
+  }
+
   .top-search-wrap {
     flex: 1 1 auto;
+    min-width: 0;
     max-width: none;
   }
 
@@ -155,6 +160,15 @@
 
   .table-result-count {
     width: fit-content;
+  }
+
+  .provider-monitor-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provider-monitor-summary {
+    justify-content: flex-start;
   }
 
   .system-settings-preference,
@@ -280,6 +294,84 @@
 }
 
 @media (max-width: 640px) {
+  .version-modal-backdrop {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .version-modal {
+    max-height: calc(100dvh - 20px);
+    border-radius: 14px;
+  }
+
+  .version-modal-header {
+    min-height: 58px;
+    padding-left: 18px;
+  }
+
+  .version-modal-body {
+    padding: 20px 16px 22px;
+  }
+
+  .version-summary-line strong {
+    font-size: 30px;
+  }
+
+  .version-release-card {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .version-release-card > a {
+    grid-column: 2;
+    width: fit-content;
+    min-height: 34px;
+    padding-left: 0;
+  }
+
+  .version-native-result {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .version-native-result button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .version-option label {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .version-option label span {
+    grid-column: 2;
+    margin-top: -9px;
+    padding-bottom: 7px;
+  }
+
+  .topbar {
+    gap: 8px;
+  }
+
+  .top-search span,
+  .top-scope-pill {
+    display: none;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .top-version-status .version {
+    max-width: 78px;
+    padding: 0 8px;
+    overflow: hidden;
+  }
+
+  .top-version-status .version > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .login-shell {
     padding: 12px;
     align-items: start;
@@ -451,6 +543,23 @@
 
   h1 {
     font-size: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .version-trigger,
+  .version-native-action,
+  .version-rollback-trigger > svg,
+  .version-option {
+    transition: none;
+  }
+
+  .version-modal .spin {
+    animation: none;
+  }
+
+  .confirm-modal.version-confirm-modal {
+    animation: none;
   }
 }
 

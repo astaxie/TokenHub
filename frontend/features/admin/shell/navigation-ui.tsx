@@ -6,7 +6,6 @@ import { formatMoney, formatNumber, playgroundModels } from "../domain/formattin
 import { roleLabel, userInitial } from "../domain/labels";
 import { displayText, tx } from "../i18n/runtime";
 import { resourceConfigFor } from "../resources/settings-config";
-import { VersionCheck } from "./version-check";
 
 export function Sidebar({
   activeView,
@@ -17,8 +16,6 @@ export function Sidebar({
   onToggleCollapse,
   openGroups,
   onToggleGroup,
-  baseURL,
-  adminToken,
 }: {
   activeView: ViewKey;
   onSelect: (view: ViewKey) => void;
@@ -28,8 +25,6 @@ export function Sidebar({
   onToggleCollapse: () => void;
   openGroups: Record<string, boolean>;
   onToggleGroup: (title: string) => void;
-  baseURL: string;
-  adminToken: string;
 }) {
   const visibleGroups = navGroupsForUser(user)
     .map((group) => ({ ...group, items: group.items.map((item) => filterNavItemByAccess(item, user)).filter((item): item is NavItem => Boolean(item)) }))
@@ -39,7 +34,7 @@ export function Sidebar({
       <div className="brand">
         <img src="/brand/tokenhub-logo.png" alt="TokenHub" className="brand-logo" />
         <span className="brand-name">TokenHub</span>
-        <VersionCheck baseURL={baseURL} adminToken={adminToken} />
+        <div className="sidebar-version-status" id="sidebar-version-status" />
         <button
           className="sidebar-toggle"
           aria-label={collapsed ? tx("展开菜单") : tx("折叠菜单")}
@@ -443,6 +438,7 @@ export function TopNav({
       </div>
       <div className="topbar-spacer" />
       <div className="topbar-actions">
+        <div className="top-version-status" id="top-version-status" />
         <div className="top-quick-actions" aria-label={tx("常用操作")}>
           {quickActions.map((item) => {
             const Icon = item.icon;

@@ -113,7 +113,7 @@ flowchart LR
 
 ## モデルリクエスト経路
 
-`ModelRoute` は統一モデル名を上流の `ProviderModel` に対応付けるため、呼び出し側は Provider 固有のモデル名を意識しません。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings` は同じ認証、クォータ、ルーティング入口を共有します。
+`Model` は外部 API 契約、`ProviderModel` は 1 つの Provider に対する永続化された上流モデルインベントリ、`ModelRoute` はその間のマッピングです。外部モデルには明示的で永続化されたディレクトリロールが付くため、最後のルートを削除しても候補テンプレートへ戻らず、下書きとして残ります。ルートの作成または編集では、選択した `ProviderModel` がインベントリに存在する必要があります。これにより、同名 1:1 マッピングとカスタムエイリアスの両方を支持し、呼び出し側は Provider 固有のモデル名を意識しません。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings` は同じ認証、クォータ、ルーティング入口を共有します。
 
 ```mermaid
 sequenceDiagram
@@ -153,7 +153,7 @@ Provider 認証情報は `TOKENHUB_SECRET_KEY` から導出した AES-GCM で暗
 | カテゴリー | 主なエンティティ | 用途 |
 | --- | --- | --- |
 | テナントと認証情報 | `Project`、`APIKey`、`AdminUser`、`AdminSession` | Project 所有、アプリケーションアクセス、管理セッション |
-| ルーティング | `Provider`、`ProviderResource`、`Model`、`ModelRoute` | 上流チャネル、リソースプール、統一モデル、ルート |
+| ルーティング | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute` | 上流チャネル、リソースプール、上流インベントリ、外部モデル、ルート |
 | ガバナンスと計量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | クォータ、利用量/コスト、レプリカ間並行数 |
 | マルチインスタンス協調 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | カタログ同期、クラスタ操作、Codex セッションの Resource バインド |
 | 可観測性 | `RequestLog`、`RequestPayloadLog`、`RouteAttemptLog`、`ProviderObservation`、`AuditEvent` | リクエスト追跡、ペイロード監査、ルート試行、Provider 観測、管理監査 |

@@ -19,10 +19,20 @@ export type Summary = {
 
 export const DEFAULT_PROJECT_ID = "prj_default";
 
+export type ProjectTeam = {
+  project_id: string;
+  team_id: string;
+  role: "team_leader" | "viewer" | "developer" | "maintainer";
+  is_primary?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type Project = {
   id: string;
   name: string;
   team_id?: string;
+  teams?: ProjectTeam[];
   owner_user_id?: string;
   cost_center?: string;
   status: string;
@@ -33,6 +43,7 @@ export type Project = {
 export type APIKey = {
   id: string;
   project_id: string;
+  owner_user_id?: string;
   name: string;
   group?: string;
   key_prefix: string;
@@ -45,6 +56,7 @@ export type APIKey = {
   rotated_from_id?: string;
   grace_until?: string;
   last_used_at?: string;
+  metadata?: Record<string, string>;
 };
 
 export type DatabaseStatus = {
@@ -171,6 +183,31 @@ export type ProviderCatalogEntry = {
   models?: ProviderCatalogModel[];
 };
 
+export type ProviderModel = {
+  id: string;
+  provider_id: string;
+  upstream_model: string;
+  display_name?: string;
+  canonical_name?: string;
+  category?: string;
+  family?: string;
+  modality?: string;
+  context_window?: number;
+  input_price_usd_per_1m?: number;
+  cache_read_price_usd_per_1m?: number;
+  output_price_usd_per_1m?: number;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  capabilities?: string[];
+  supported_parameters?: string[];
+  metadata?: Record<string, string>;
+  source?: string;
+  status: string;
+  last_seen_at?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type ProviderResource = {
   id: string;
   provider_id: string;
@@ -230,7 +267,23 @@ export type ModelRoute = {
   cost_score?: number;
   status: string;
   strategy?: string;
+  project_scope?: "all" | "include" | "exclude";
+  project_ids?: string[];
   last_used_at?: string;
+};
+
+export type ModelRouteStrategy = "priority_weighted" | "adaptive" | "quality" | "cost" | "priority_only" | "balanced";
+
+export type ModelRoutePolicyRoute = {
+  route_id: string;
+  weight: number;
+  quality_score: number;
+  cost_score: number;
+};
+
+export type ModelRoutePolicy = {
+  strategy: ModelRouteStrategy;
+  routes: ModelRoutePolicyRoute[];
 };
 
 export type ChatRole = "system" | "user" | "assistant";
@@ -313,6 +366,7 @@ export type AdminUser = {
   email: string;
   role: string;
   team_id?: string;
+  team_ids?: string[];
   status: string;
   created_at?: string;
   updated_at?: string;
@@ -412,6 +466,7 @@ export type UsageRecord = {
   request_id: string;
   project_id: string;
   api_key_id: string;
+  attributed_user_id?: string;
   model: string;
   provider_id?: string;
   provider_resource_id?: string;
@@ -436,6 +491,8 @@ export type RouteAttemptLog = {
   status_code: number;
   error_code?: string;
   error_message?: string;
+  invoked: boolean;
+  latency_ms?: number;
   created_at: string;
 };
 
@@ -481,6 +538,8 @@ export type UsageBreakdownRow = {
   output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  owned_key_count?: number;
+  used_key_count?: number;
 };
 
 export type UsageBreakdown = {
@@ -615,16 +674,17 @@ export type FieldConfig = {
   label: string;
   type?: FieldType;
   options?: string[];
-  optionsFromData?: (data: AppData, currentUser?: AdminUser | null) => Array<{ value: string; label: string }>;
+  optionsFromData?: (data: AppData, currentUser?: AdminUser | null, values?: Record<string, string>) => Array<{ value: string; label: string }>;
   placeholder?: string;
   autoComplete?: string;
   required?: boolean;
   help?: string;
   readOnlyOnEdit?: boolean;
+  multiSelectOnEdit?: boolean;
   visible?: (values: Record<string, string>) => boolean;
 };
 
-export type ProviderCredentialMode = "provider_api_key" | "account_integration" | "later";
+export type ProviderCredentialMode = "provider_api_key" | "account_integration";
 
 export type ColumnConfig<T> = {
   key: string;
@@ -680,6 +740,7 @@ export type AppData = {
   keys: APIKey[];
   providers: Provider[];
   providerResources: ProviderResource[];
+  providerModels: ProviderModel[];
   models: Model[];
   routes: ModelRoute[];
   logs: RequestLog[];

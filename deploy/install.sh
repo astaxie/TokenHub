@@ -301,7 +301,7 @@ if [ -n "$backend_container_id_before" ]; then
   backend_started_at_before="$("$DOCKER_BIN" inspect --format '{{.State.StartedAt}}' "$backend_container_id_before" 2>/dev/null || true)"
 fi
 
-if "${compose[@]}" up -d --no-build --pull never; then
+if "${compose[@]}" up -d --remove-orphans --no-build --pull never --wait --wait-timeout 180; then
   log "TokenHub started successfully"
   "${compose[@]}" ps
 else
@@ -333,7 +333,7 @@ else
   case "$backend_state" in
     exited|restarting|dead) backend_failed=true ;;
   esac
-  if [ "$backend_health" = "unhealthy" ]; then
+  if [ -n "$backend_health" ] && [ "$backend_health" != "healthy" ]; then
     backend_failed=true
   fi
 
@@ -343,7 +343,7 @@ else
     "${compose[@]}" logs --no-color --tail=100 --since "$backend_logs_since" tokenhub-backend >&2 || \
       error "unable to read tokenhub-backend logs"
   else
-    error "tokenhub-backend did not both change and enter a failed state during this startup attempt; its logs were not included"
+    error "tokenhub-backend did not both change and fail readiness during this startup attempt; its logs were not included"
   fi
   exit "$status"
 fi

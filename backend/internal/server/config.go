@@ -3,11 +3,18 @@ package server
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type Config struct {
 	Environment              string
+	AppVersion               string
+	BuildType                string
+	DeploymentType           string
+	ManagedUpdates           bool
+	ReleaseRepository        string
+	InstallRoot              string
 	AdminToken               string
 	BootstrapAdminPassword   string
 	PublicBaseURL            string
@@ -54,11 +61,22 @@ type Config struct {
 	// concurrent sessions share the value, pinning all their traffic to a single
 	// account and creating a hotspot.
 	CacheAffinityAllowUserScope bool
+	ImageStorageDir             string
+	ImageWorkerConcurrency      int
+	ImageQueueCapacity          int
+	ImageJobTimeoutSeconds      int
+	ImageCapabilityRetrySecs    int
 }
 
 func ConfigFromEnv() Config {
 	return Config{
 		Environment:                getenv("TOKENHUB_ENV", "dev"),
+		AppVersion:                 DefaultAppVersion,
+		BuildType:                  defaultBuildType,
+		DeploymentType:             sourceDeploymentType,
+		ManagedUpdates:             getenvBool("TOKENHUB_MANAGED_UPDATES", false),
+		ReleaseRepository:          getenv("TOKENHUB_RELEASE_REPOSITORY", defaultReleaseRepository),
+		InstallRoot:                getenv("TOKENHUB_INSTALL_ROOT", defaultNativeInstallRoot),
 		AdminToken:                 getenv("TOKENHUB_ADMIN_TOKEN", "dev_admin_token"),
 		BootstrapAdminPassword:     getenv("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "admin123456"),
 		PublicBaseURL:              getenv("TOKENHUB_PUBLIC_BASE_URL", ""),
@@ -86,10 +104,26 @@ func ConfigFromEnv() Config {
 		CacheAffinityEnabled:        getenvBool("TOKENHUB_CACHE_AFFINITY_ENABLED", false),
 		CacheAffinityModels:         getenvList("TOKENHUB_CACHE_AFFINITY_MODELS"),
 		CacheAffinityAllowUserScope: getenvBool("TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE", false),
+		ImageStorageDir:             getenv("TOKENHUB_IMAGE_STORAGE_DIR", defaultImageStorageDir()),
+		ImageWorkerConcurrency:      getenvInt("TOKENHUB_IMAGE_WORKER_CONCURRENCY", 2),
+		ImageQueueCapacity:          getenvInt("TOKENHUB_IMAGE_QUEUE_CAPACITY", 64),
+		ImageJobTimeoutSeconds:      getenvInt("TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS", 300),
+		ImageCapabilityRetrySecs:    getenvInt("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", 86400),
 	}
 }
 
 func (c Config) ValidateForStartup() error {
+	if repository := strings.TrimSpace(c.ReleaseRepository); repository != "" && !validReleaseRepository(repository) {
+		return fmt.Errorf("invalid TOKENHUB_RELEASE_REPOSITORY: expected owner/repository")
+	}
+	deploymentType := normalizeDeploymentType(c.DeploymentType, c.BuildType)
+	if deploymentType == nativeDeploymentType ||
+		(deploymentType == containerDeploymentType && c.ManagedUpdates) {
+		root := filepath.Clean(strings.TrimSpace(c.InstallRoot))
+		if !filepath.IsAbs(root) || root == string(filepath.Separator) {
+			return fmt.Errorf("invalid TOKENHUB_INSTALL_ROOT: managed updates require a non-root absolute path")
+		}
+	}
 	environment := strings.ToLower(strings.TrimSpace(c.Environment))
 	if environment == "" {
 		return fmt.Errorf("unsafe TOKENHUB_ENV configuration: set an explicit environment")

@@ -2,13 +2,13 @@
 .github
 .idea
 .vscode
-deploy
 docs
-frontend
 sdk
 tmp
 output
 *.log
+**/.next
+**/node_modules
 backend/data
 backend/tokenhub
 data/*

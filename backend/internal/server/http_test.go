@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func TestGatewayModelsAndChatCompletion(t *testing.T) {
@@ -79,6 +81,38 @@ func TestGatewayModelsAndChatCompletion(t *testing.T) {
 	}
 	if !strings.Contains(timeseries.Body, `"data"`) || !strings.Contains(timeseries.Body, `"total_tokens"`) {
 		t.Fatalf("expected timeseries data: %s", timeseries.Body)
+	}
+}
+
+func TestGatewayModelsOnlyListPublishedRoutedModels(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "catalog-only-model", Modality: "chat", Status: StatusActive})
+	store.AddModel(Model{Name: "disabled-route-model", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ModelName:     "disabled-route-model",
+		ProviderID:    "prv_mock",
+		ProviderModel: "disabled-route-model",
+		Status:        StatusDisabled,
+	})
+	project := store.CreateProject(Project{Name: "Published Model Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Unrestricted Models"}, "thk_unrestricted_models"); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSON(t, New(store).Handler(), http.MethodGet, "/v1/models", nil, "thk_unrestricted_models")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, `"id":"gpt-4.1-mini"`) {
+		t.Fatalf("expected published demo model: %s", resp.Body)
+	}
+	for _, hidden := range []string{"catalog-only-model", "disabled-route-model"} {
+		if strings.Contains(resp.Body, hidden) {
+			t.Fatalf("model %q has no active route and must not be published: %s", hidden, resp.Body)
+		}
 	}
 }
 
@@ -232,6 +266,12 @@ func TestGatewayRetrieveModelSupportsEscapedModelIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.AddModel(Model{Name: "provider/model", Modality: "chat", ContextWindow: 32000, Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ModelName:     "provider/model",
+		ProviderID:    "prv_path_model",
+		ProviderModel: "provider/model",
+		Status:        StatusActive,
+	})
 	app := New(store).Handler()
 
 	resp := doJSON(t, app, http.MethodGet, "/v1/models/provider%2Fmodel", nil, "thk_path_model")
@@ -485,6 +525,7 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	for name, category := range map[string]string{
 		"gpt-5.5":                            "openai",
 		"kimi-k3":                            "kimi",
+		"kimi-k3-256k":                       "kimi",
 		"zai-org/glm-5.2":                    "glm",
 		"moonshotai/kimi-k2.7-code":          "kimi",
 		"minimax/minimax-m3":                 "minimax",
@@ -518,6 +559,12 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	if k3 := byName["kimi-k3"]; slices.Contains(k3.SupportedParameters, "temperature") || !slices.Contains(k3.SupportedParameters, "reasoning") {
 		t.Fatalf("unexpected Kimi K3 parameters: %+v", k3.SupportedParameters)
 	}
+	if k3256 := byName["kimi-k3-256k"]; k3256.ContextWindow != 262144 ||
+		!slices.Contains(k3256.InputModalities, "image") ||
+		slices.Contains(k3256.InputModalities, "video") ||
+		!slices.Contains(k3256.SupportedParameters, "reasoning") {
+		t.Fatalf("unexpected Kimi K3 256K metadata: %+v", k3256)
+	}
 	for name, expected := range map[string]struct {
 		input, cacheRead, output float64
 	}{
@@ -532,6 +579,12 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 	}
 	if byName["gpt-image-2"].Modality != "image" {
 		t.Fatalf("expected gpt-image-2 image modality, got %s", byName["gpt-image-2"].Modality)
+	}
+	if byName[codexImageModelName].Modality != "image" ||
+		byName[codexImageModelName].Metadata["execution_type"] != "codex_subscription_image_generation" ||
+		byName[codexImageModelName].InputPriceUSDPer1M != 0 ||
+		byName[codexImageModelName].OutputPriceUSDPer1M != 0 {
+		t.Fatalf("expected subscription-backed Codex image model, got %+v", byName[codexImageModelName])
 	}
 	if byName["gemini-3-pro-image"].Modality != "image" {
 		t.Fatalf("expected gemini-3-pro-image image modality, got %s", byName["gemini-3-pro-image"].Modality)
@@ -769,6 +822,7 @@ func TestUserCreatesPersonalAPIKeyWithoutProjectMembership(t *testing.T) {
 
 func TestUserCanReadRoutedAdminModels(t *testing.T) {
 	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_platform", Name: "Platform Team", Status: StatusActive})
 	if _, err := store.CreateAdminUser(AdminUser{
 		Username: "model.viewer",
 		Email:    "model.viewer@tokenhub.local",
@@ -1005,6 +1059,7 @@ func TestAdminImportsUsersFromHeaderlessCSV(t *testing.T) {
 	if err := BootstrapBaseData(store); err != nil {
 		t.Fatal(err)
 	}
+	store.CreateResource("teams", AdminResource{ID: "team_UK8jwEcIIoFmNVmJ", Name: "Imported Team", Status: StatusActive})
 	messages := configureTestSMTPChannel(t, store)
 	app := New(store).Handler()
 
@@ -1076,6 +1131,7 @@ func TestGatewayQuotaExceeded(t *testing.T) {
 
 func TestQuotaPolicyAppliesAtRuntime(t *testing.T) {
 	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_policy", Name: "Policy Team", Status: StatusActive})
 	project := store.CreateProject(Project{Name: "Policy Limited", TeamID: "team_policy"})
 	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
 		Name:    "policy-key",
@@ -1286,7 +1342,7 @@ func TestAdminCreatesProjectAndKey(t *testing.T) {
 	app := newTestServer()
 	project := doJSON(t, app, http.MethodPost, "/api/admin/projects", map[string]any{
 		"name":    "Production App",
-		"team_id": "team_ai",
+		"team_id": "team_platform",
 	}, "")
 	if project.Code != http.StatusCreated {
 		t.Fatalf("expected project created, got %d: %s", project.Code, project.Body)
@@ -1309,6 +1365,30 @@ func TestAdminCreatesProjectAndKey(t *testing.T) {
 	}
 	if !strings.Contains(key.Body, `"plain_text_visible_once":true`) || !strings.Contains(key.Body, `"api_key":"sk_`) {
 		t.Fatalf("expected one-time key response: %s", key.Body)
+	}
+}
+
+func TestAdminProjectCreateRequiresExistingActivePrimaryTeam(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_inactive", Name: "Inactive Team", Status: StatusDisabled})
+	app := New(store).Handler()
+
+	missing := doJSON(t, app, http.MethodPost, "/api/admin/projects", map[string]any{
+		"name":    "Missing Team Project",
+		"team_id": "team_missing",
+	}, "")
+	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body, "team_not_found") {
+		t.Fatalf("missing primary team should be rejected, got %d: %s", missing.Code, missing.Body)
+	}
+	inactive := doJSON(t, app, http.MethodPost, "/api/admin/projects", map[string]any{
+		"name":    "Inactive Team Project",
+		"team_id": "team_inactive",
+	}, "")
+	if inactive.Code != http.StatusBadRequest || !strings.Contains(inactive.Body, "team_inactive") {
+		t.Fatalf("inactive primary team should be rejected, got %d: %s", inactive.Code, inactive.Body)
+	}
+	if projects := store.ListProjects(); len(projects) != 0 {
+		t.Fatalf("invalid primary teams must not create projects: %+v", projects)
 	}
 }
 
@@ -1475,6 +1555,387 @@ func TestProjectQuotaIncreaseApprovalCreatesAndLinksPolicy(t *testing.T) {
 	if !ok || updatedProject.DefaultQuotaRef != quotas[0].ID {
 		t.Fatalf("expected project quota ref %s, got %+v", quotas[0].ID, updatedProject)
 	}
+}
+
+func TestLinkedTeamQuotaPermissionsAndPrimaryTeamApprovalResponsibility(t *testing.T) {
+	store := NewMemoryStore()
+	for _, teamID := range []string{"team_primary", "team_viewer", "team_maintainer"} {
+		store.CreateResource("teams", AdminResource{ID: teamID, Name: teamID, Status: StatusActive})
+	}
+	primaryLeader, err := store.CreateAdminUser(AdminUser{
+		Username: "primary-approval-leader",
+		Name:     "Primary Approval Leader",
+		Email:    "primary-approval-leader@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_primary",
+		Status:   StatusActive,
+	}, "leader123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewerLeader, err := store.CreateAdminUser(AdminUser{
+		Username: "viewer-approval-leader",
+		Name:     "Viewer Approval Leader",
+		Email:    "viewer-approval-leader@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_viewer",
+		Status:   StatusActive,
+	}, "leader123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maintainerLeader, err := store.CreateAdminUser(AdminUser{
+		Username: "maintainer-approval-leader",
+		Name:     "Maintainer Approval Leader",
+		Email:    "maintainer-approval-leader@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_maintainer",
+		Status:   StatusActive,
+	}, "leader123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Shared Quota Project", TeamID: "team_primary", Status: StatusActive})
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_viewer", Role: "viewer"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_maintainer", Role: "maintainer"}); err != nil {
+		t.Fatal(err)
+	}
+	quota := store.CreateResource("quota-policies", AdminResource{
+		ID:     "quota_shared_project",
+		Name:   "Shared Project Quota",
+		Status: StatusActive,
+		Fields: map[string]any{"daily_requests": 100},
+	})
+	if _, err := store.UpdateProject(project.ID, Project{
+		TeamID:          project.TeamID,
+		OwnerUserID:     project.OwnerUserID,
+		CostCenter:      project.CostCenter,
+		Status:          project.Status,
+		DefaultQuotaRef: quota.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, primarySession, err := store.AuthenticateAdminUser(primaryLeader.Email, "leader123456", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, viewerSession, err := store.AuthenticateAdminUser(viewerLeader.Email, "leader123456", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, maintainerSession, err := store.AuthenticateAdminUser(maintainerLeader.Email, "leader123456", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	viewerRequest := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/quota-increase", map[string]any{
+		"fields": map[string]any{"daily_requests": 200},
+	}, viewerSession.Token)
+	if viewerRequest.Code != http.StatusForbidden {
+		t.Fatalf("viewer-linked team must not request quota increases, got %d: %s", viewerRequest.Code, viewerRequest.Body)
+	}
+	viewerMutation := doJSON(t, app, http.MethodPatch, "/api/admin/resources/quota-policies/"+quota.ID, map[string]any{
+		"name": "Viewer Changed Quota",
+	}, viewerSession.Token)
+	if viewerMutation.Code != http.StatusForbidden {
+		t.Fatalf("viewer-linked team must not mutate project quota policies, got %d: %s", viewerMutation.Code, viewerMutation.Body)
+	}
+
+	maintainerRequest := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/quota-increase", map[string]any{
+		"fields": map[string]any{"daily_requests": 300},
+	}, maintainerSession.Token)
+	if maintainerRequest.Code != http.StatusAccepted {
+		t.Fatalf("maintainer-linked team should request quota increases, got %d: %s", maintainerRequest.Code, maintainerRequest.Body)
+	}
+	approvals := store.ListApprovalRequests()
+	if len(approvals) != 1 || approvalProjectID(approvals[0]) != project.ID {
+		t.Fatalf("expected one project approval, got %+v", approvals)
+	}
+
+	secondaryList := doJSON(t, app, http.MethodGet, "/api/admin/approvals", nil, maintainerSession.Token)
+	if secondaryList.Code != http.StatusOK || strings.Contains(secondaryList.Body, approvals[0].ID) {
+		t.Fatalf("secondary team leader must not see project approvals: %d %s", secondaryList.Code, secondaryList.Body)
+	}
+	primaryList := doJSON(t, app, http.MethodGet, "/api/admin/approvals", nil, primarySession.Token)
+	if primaryList.Code != http.StatusOK || !strings.Contains(primaryList.Body, approvals[0].ID) {
+		t.Fatalf("primary team leader should see project approvals: %d %s", primaryList.Code, primaryList.Body)
+	}
+	secondaryDecision := doJSON(t, app, http.MethodPost, "/api/admin/approvals/"+approvals[0].ID+"/approve", map[string]any{}, maintainerSession.Token)
+	if secondaryDecision.Code != http.StatusForbidden || !strings.Contains(secondaryDecision.Body, "approval_primary_team_forbidden") {
+		t.Fatalf("secondary team leader must not decide project approvals: %d %s", secondaryDecision.Code, secondaryDecision.Body)
+	}
+	primaryDecision := doJSON(t, app, http.MethodPost, "/api/admin/approvals/"+approvals[0].ID+"/approve", map[string]any{}, primarySession.Token)
+	if primaryDecision.Code != http.StatusOK {
+		t.Fatalf("primary team leader should decide project approvals: %d %s", primaryDecision.Code, primaryDecision.Body)
+	}
+
+	secondRequest := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/quota-increase", map[string]any{
+		"fields": map[string]any{"daily_requests": 400},
+	}, maintainerSession.Token)
+	if secondRequest.Code != http.StatusAccepted {
+		t.Fatalf("expected second quota approval request, got %d: %s", secondRequest.Code, secondRequest.Body)
+	}
+	approvals = store.ListApprovalRequests()
+	if len(approvals) != 2 {
+		t.Fatalf("expected two project approvals, got %+v", approvals)
+	}
+	pendingApproval := approvals[0]
+	if pendingApproval.Status != "pending" {
+		t.Fatalf("expected newest approval to be pending, got %+v", pendingApproval)
+	}
+	adminList := doJSON(t, app, http.MethodGet, "/api/admin/approvals", nil, "")
+	if adminList.Code != http.StatusOK || !strings.Contains(adminList.Body, pendingApproval.ID) {
+		t.Fatalf("platform admin should see project approvals: %d %s", adminList.Code, adminList.Body)
+	}
+	adminDecision := doJSON(t, app, http.MethodPost, "/api/admin/approvals/"+pendingApproval.ID+"/approve", map[string]any{}, "")
+	if adminDecision.Code != http.StatusOK {
+		t.Fatalf("platform admin should decide project approvals: %d %s", adminDecision.Code, adminDecision.Body)
+	}
+
+	if _, err := store.UpdateResource("quota-policies", quota.ID, AdminResource{
+		Name:   "Unscoped Default Quota",
+		Status: StatusActive,
+		Fields: map[string]any{"daily_requests": 400},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("approval-flows", AdminResource{
+		ID:     "apf_partial_quota_update",
+		Name:   "Partial Quota Update",
+		Status: StatusActive,
+		Fields: map[string]any{"trigger": "quota_increase", "approver_role": "team_leader"},
+	})
+	partialUpdate := doJSON(t, app, http.MethodPatch, "/api/admin/resources/quota-policies/"+quota.ID, map[string]any{
+		"name": "Partially Updated Quota",
+	}, maintainerSession.Token)
+	if partialUpdate.Code != http.StatusAccepted {
+		t.Fatalf("maintainer partial quota update should require approval, got %d: %s", partialUpdate.Code, partialUpdate.Body)
+	}
+	partialApproval := store.ListApprovalRequests()[0]
+	if approvalProjectID(partialApproval) != project.ID {
+		t.Fatalf("partial quota approval lost project context: %+v", partialApproval)
+	}
+	secondaryList = doJSON(t, app, http.MethodGet, "/api/admin/approvals", nil, maintainerSession.Token)
+	if secondaryList.Code != http.StatusOK || strings.Contains(secondaryList.Body, partialApproval.ID) {
+		t.Fatalf("secondary team leader must not see partial quota approvals: %d %s", secondaryList.Code, secondaryList.Body)
+	}
+	primaryList = doJSON(t, app, http.MethodGet, "/api/admin/approvals", nil, primarySession.Token)
+	if primaryList.Code != http.StatusOK || !strings.Contains(primaryList.Body, partialApproval.ID) {
+		t.Fatalf("primary team leader should see partial quota approvals: %d %s", primaryList.Code, primaryList.Body)
+	}
+	secondaryDecision = doJSON(t, app, http.MethodPost, "/api/admin/approvals/"+partialApproval.ID+"/approve", map[string]any{}, maintainerSession.Token)
+	if secondaryDecision.Code != http.StatusForbidden || !strings.Contains(secondaryDecision.Body, "approval_primary_team_forbidden") {
+		t.Fatalf("secondary team leader must not decide partial quota approvals: %d %s", secondaryDecision.Code, secondaryDecision.Body)
+	}
+	primaryDecision = doJSON(t, app, http.MethodPost, "/api/admin/approvals/"+partialApproval.ID+"/approve", map[string]any{}, primarySession.Token)
+	if primaryDecision.Code != http.StatusOK {
+		t.Fatalf("primary team leader should decide partial quota approvals: %d %s", primaryDecision.Code, primaryDecision.Body)
+	}
+	var updatedQuota AdminResource
+	for _, item := range store.ListResources("quota-policies") {
+		if item.ID == quota.ID {
+			updatedQuota = item
+			break
+		}
+	}
+	if updatedQuota.Name != "Partially Updated Quota" || int64Field(updatedQuota.Fields, "daily_requests") != 400 || stringField(updatedQuota.Fields, "scope_id") != "" {
+		t.Fatalf("partial quota approval should preserve the existing default-policy fields: %+v", updatedQuota)
+	}
+}
+
+func TestApprovalProjectIDSupportsDirectAndScopedPayloads(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{name: "direct", payload: `{"project_id":"prj_direct"}`, want: "prj_direct"},
+		{name: "scoped fields", payload: `{"fields":{"scope":"project","scope_id":"prj_scoped"}}`, want: "prj_scoped"},
+		{name: "other scope", payload: `{"fields":{"scope":"team","scope_id":"team_one"}}`},
+		{name: "invalid", payload: `{`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := approvalProjectID(ApprovalRequest{Payload: test.payload}); got != test.want {
+				t.Fatalf("approvalProjectID() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestAPIKeyUpdateApprovalUsesProjectPrimaryTeam(t *testing.T) {
+	store := NewMemoryStore()
+	for _, teamID := range []string{"team_key_primary", "team_key_secondary"} {
+		store.CreateResource("teams", AdminResource{ID: teamID, Name: teamID, Status: StatusActive})
+	}
+	primaryLeader, err := store.CreateAdminUser(AdminUser{
+		Username: "primary-key-approver",
+		Name:     "Primary Key Approver",
+		Email:    "primary-key-approver@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_key_primary",
+		Status:   StatusActive,
+	}, "leader123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondaryLeader, err := store.CreateAdminUser(AdminUser{
+		Username: "secondary-key-requester",
+		Name:     "Secondary Key Requester",
+		Email:    "secondary-key-requester@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_key_secondary",
+		Status:   StatusActive,
+	}, "leader123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Primary Key Approval Project", TeamID: "team_key_primary", Status: StatusActive})
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_key_secondary", Role: "maintainer"}); err != nil {
+		t.Fatal(err)
+	}
+	key, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Approval Key", Allowed: []string{"old-model"}, Status: StatusActive}, "thk_primary_approval")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("approval-flows", AdminResource{
+		ID:     "apf_key_model_access",
+		Name:   "Key Model Access",
+		Status: StatusActive,
+		Fields: map[string]any{"trigger": "model_access", "approver_role": "team_leader"},
+	})
+	_, primarySession, err := store.AuthenticateAdminUser(primaryLeader.Email, "leader123456", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secondarySession, err := store.AuthenticateAdminUser(secondaryLeader.Email, "leader123456", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	requested := doJSON(t, app, http.MethodPatch, "/api/admin/api-keys/"+key.ID, map[string]any{
+		"allowed_models": []string{"new-model"},
+	}, secondarySession.Token)
+	if requested.Code != http.StatusAccepted {
+		t.Fatalf("secondary maintainer should request key model access, got %d: %s", requested.Code, requested.Body)
+	}
+	approvals := store.ListApprovalRequests()
+	if len(approvals) != 1 || approvalProjectID(approvals[0]) != project.ID {
+		t.Fatalf("API-key approval must retain its project: %+v", approvals)
+	}
+	secondaryList := doJSON(t, app, http.MethodGet, "/api/admin/approvals", nil, secondarySession.Token)
+	if secondaryList.Code != http.StatusOK || strings.Contains(secondaryList.Body, approvals[0].ID) {
+		t.Fatalf("secondary team leader must not see key approvals: %d %s", secondaryList.Code, secondaryList.Body)
+	}
+	primaryList := doJSON(t, app, http.MethodGet, "/api/admin/approvals", nil, primarySession.Token)
+	if primaryList.Code != http.StatusOK || !strings.Contains(primaryList.Body, approvals[0].ID) {
+		t.Fatalf("primary team leader should see key approvals: %d %s", primaryList.Code, primaryList.Body)
+	}
+	secondaryDecision := doJSON(t, app, http.MethodPost, "/api/admin/approvals/"+approvals[0].ID+"/approve", map[string]any{}, secondarySession.Token)
+	if secondaryDecision.Code != http.StatusForbidden || !strings.Contains(secondaryDecision.Body, "approval_primary_team_forbidden") {
+		t.Fatalf("secondary team leader must not decide key approvals: %d %s", secondaryDecision.Code, secondaryDecision.Body)
+	}
+	primaryDecision := doJSON(t, app, http.MethodPost, "/api/admin/approvals/"+approvals[0].ID+"/approve", map[string]any{}, primarySession.Token)
+	if primaryDecision.Code != http.StatusOK {
+		t.Fatalf("primary team leader should decide key approvals: %d %s", primaryDecision.Code, primaryDecision.Body)
+	}
+	updatedKeys := store.ListProjectKeys(project.ID)
+	if len(updatedKeys) != 1 || len(updatedKeys[0].Allowed) != 1 || updatedKeys[0].Allowed[0] != "new-model" {
+		t.Fatalf("approved model access was not applied: %+v", updatedKeys)
+	}
+}
+
+func TestTeamLeaderScopedResourceFilteringUsesConstantQueries(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{
+		ID:     "team_filter",
+		Name:   "Filter Team",
+		Status: StatusActive,
+		Fields: map[string]any{"cost_center": "CC-FILTER"},
+	})
+	leader, err := store.CreateAdminUser(AdminUser{
+		Username: "filter-leader",
+		Name:     "Filter Leader",
+		Email:    "filter-leader@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_filter",
+		Status:   StatusActive,
+	}, "leader123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Filter Project", TeamID: "team_filter", Status: StatusActive})
+	memberships := make([]AdminResource, 0, 24)
+	quotas := make([]AdminResource, 0, 24)
+	for index := 0; index < 24; index++ {
+		user, err := store.CreateAdminUser(AdminUser{
+			Username: "filter-member-" + strconv.Itoa(index),
+			Name:     "Filter Member " + strconv.Itoa(index),
+			Email:    "filter-member-" + strconv.Itoa(index) + "@tokenhub.local",
+			Role:     "user",
+			TeamID:   "team_filter",
+			Status:   StatusActive,
+		}, "member123456")
+		if err != nil {
+			t.Fatal(err)
+		}
+		memberships = append(memberships, store.CreateResource("project-members", AdminResource{
+			Name:   "Filter Membership " + strconv.Itoa(index),
+			Status: StatusActive,
+			Fields: map[string]any{"project_id": project.ID, "user_id": user.ID, "role": "viewer"},
+		}))
+		quotas = append(quotas, store.CreateResource("quota-policies", AdminResource{
+			Name:   "Filter Quota " + strconv.Itoa(index),
+			Status: StatusActive,
+			Fields: map[string]any{"scope": "project", "scope_id": project.ID},
+		}))
+	}
+	server := New(store)
+
+	for _, test := range []struct {
+		name  string
+		kind  string
+		items []AdminResource
+	}{
+		{name: "project members", kind: "project-members", items: memberships},
+		{name: "quota policies", kind: "quota-policies", items: quotas},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var small, large []AdminResource
+			smallQueries := countStoreQueries(t, store, func() {
+				small = server.filterResourcesForUser(leader, test.kind, test.items[:1])
+			})
+			largeQueries := countStoreQueries(t, store, func() {
+				large = server.filterResourcesForUser(leader, test.kind, test.items)
+			})
+			if len(small) != 1 || len(large) != len(test.items) {
+				t.Fatalf("unexpected filtered resources: small=%d large=%d", len(small), len(large))
+			}
+			if largeQueries > smallQueries {
+				t.Fatalf("query count grew with rows: small=%d large=%d", smallQueries, largeQueries)
+			}
+		})
+	}
+}
+
+func countStoreQueries(t *testing.T, store *GormStore, fn func()) int {
+	t.Helper()
+	callbackName := "test:count-queries:" + NewID("callback")
+	count := 0
+	if err := store.db.Callback().Query().Before("gorm:query").Register(callbackName, func(*gorm.DB) {
+		count++
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fn()
+	if err := store.db.Callback().Query().Remove(callbackName); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }
 
 func TestAlertWebhookDeliveryIsRecorded(t *testing.T) {
@@ -2488,6 +2949,7 @@ func TestRolePermissionsForDeveloperAndTeamLeaderWorkspaces(t *testing.T) {
 
 func TestRegularUserModelsComeFromActiveRoutesNotKeys(t *testing.T) {
 	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_platform", Name: "Platform Team", Status: StatusActive})
 	_, err := store.CreateAdminUser(AdminUser{
 		Username: "model-viewer",
 		Name:     "Model Viewer",
@@ -2537,6 +2999,8 @@ func TestRegularUserModelsComeFromActiveRoutesNotKeys(t *testing.T) {
 
 func TestTeamLeaderProjectManagementIsTeamScoped(t *testing.T) {
 	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_project", Name: "Project Team", Status: StatusActive})
+	store.CreateResource("teams", AdminResource{ID: "team_other", Name: "Other Team", Status: StatusActive})
 	leader, err := store.CreateAdminUser(AdminUser{
 		Username: "project-leader",
 		Name:     "Project Leader",
@@ -2638,6 +3102,7 @@ func TestTeamLeaderProjectManagementIsTeamScoped(t *testing.T) {
 
 func TestProjectMembersAssignMultipleProjectsAndKeyIssueScope(t *testing.T) {
 	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_member", Name: "Member Team", Status: StatusActive})
 	user, err := store.CreateAdminUser(AdminUser{
 		Username: "project-member",
 		Name:     "Project Member",
@@ -2729,6 +3194,13 @@ func TestProjectMembersAssignMultipleProjectsAndKeyIssueScope(t *testing.T) {
 	if createdKey.Code != http.StatusCreated || !strings.Contains(createdKey.Body, `"api_key"`) {
 		t.Fatalf("developer member should issue key, got %d: %s", createdKey.Code, createdKey.Body)
 	}
+	forbiddenOwner := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+developerProject.ID+"/keys", map[string]any{
+		"name":          "Wrong Owner Key",
+		"owner_user_id": otherUser.ID,
+	}, payload.Token)
+	if forbiddenOwner.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user should not assign a key to another user, got %d: %s", forbiddenOwner.Code, forbiddenOwner.Body)
+	}
 	viewerKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+viewerProject.ID+"/keys", map[string]any{
 		"name": "Viewer Key",
 	}, payload.Token)
@@ -2740,6 +3212,521 @@ func TestProjectMembersAssignMultipleProjectsAndKeyIssueScope(t *testing.T) {
 	}, payload.Token)
 	if unassignedKey.Code != http.StatusForbidden {
 		t.Fatalf("same-team unassigned user should not issue key, got %d: %s", unassignedKey.Code, unassignedKey.Body)
+	}
+}
+
+func TestProjectTeamAssociationGrantsRoleBasedAccessAndRevokesImmediately(t *testing.T) {
+	store := NewMemoryStore()
+	if _, err := store.CreateAdminUser(AdminUser{
+		ID:       "usr_project_team_admin",
+		Username: "project-team-admin",
+		Name:     "Project Team Admin",
+		Email:    "project-team-admin@tokenhub.local",
+		Role:     "admin",
+		Status:   StatusActive,
+	}, "admin123456"); err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("teams", AdminResource{ID: "team_primary", Name: "Primary Team", Status: StatusActive})
+	store.CreateResource("teams", AdminResource{ID: "team_shared", Name: "Shared Team", Status: StatusActive})
+	project := store.CreateProject(Project{Name: "Shared Project", TeamID: "team_primary", Status: StatusActive})
+	user, err := store.CreateAdminUser(AdminUser{
+		Username: "shared-team-member",
+		Name:     "Shared Team Member",
+		Email:    "shared-team-member@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_shared",
+		Status:   StatusActive,
+	}, "member123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/teams", map[string]any{
+		"team_id": "team_shared",
+		"role":    "viewer",
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("project team create failed: %d %s", created.Code, created.Body)
+	}
+	duplicate := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/teams", map[string]any{
+		"team_id": "team_shared",
+		"role":    "developer",
+	}, "")
+	if duplicate.Code != http.StatusConflict {
+		t.Fatalf("duplicate project team should conflict, got %d: %s", duplicate.Code, duplicate.Body)
+	}
+	listed := doJSON(t, app, http.MethodGet, "/api/admin/projects/"+project.ID+"/teams?limit=1&offset=1", nil, "")
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body, `"total":2`) || !strings.Contains(listed.Body, `"team_id":"team_shared"`) {
+		t.Fatalf("paginated project team list failed: %d %s", listed.Code, listed.Body)
+	}
+
+	login := doJSON(t, app, http.MethodPost, "/api/admin/auth/login", map[string]any{
+		"identity": user.Email,
+		"password": "member123456",
+	}, "")
+	var session struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(login.Body), &session); err != nil {
+		t.Fatal(err)
+	}
+	projects := doJSON(t, app, http.MethodGet, "/api/admin/projects", nil, session.Token)
+	if projects.Code != http.StatusOK || !strings.Contains(projects.Body, project.ID) {
+		t.Fatalf("viewer team member should see the project: %d %s", projects.Code, projects.Body)
+	}
+	viewerKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{"name": "Viewer Key"}, session.Token)
+	if viewerKey.Code != http.StatusForbidden {
+		t.Fatalf("viewer team member should not issue keys, got %d: %s", viewerKey.Code, viewerKey.Body)
+	}
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/projects/"+project.ID+"/teams/team_shared", map[string]any{"role": "developer"}, "")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("project team update failed: %d %s", updated.Code, updated.Body)
+	}
+	developerKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{"name": "Developer Key"}, session.Token)
+	if developerKey.Code != http.StatusCreated {
+		t.Fatalf("developer team member should issue own key, got %d: %s", developerKey.Code, developerKey.Body)
+	}
+
+	removed := doJSON(t, app, http.MethodDelete, "/api/admin/projects/"+project.ID+"/teams/team_shared", nil, "")
+	if removed.Code != http.StatusNoContent {
+		t.Fatalf("project team delete failed: %d %s", removed.Code, removed.Body)
+	}
+	projects = doJSON(t, app, http.MethodGet, "/api/admin/projects", nil, session.Token)
+	if projects.Code != http.StatusOK || strings.Contains(projects.Body, project.ID) {
+		t.Fatalf("removed team member should lose access immediately: %d %s", projects.Code, projects.Body)
+	}
+	audit := doJSON(t, app, http.MethodGet, "/api/admin/audit/events", nil, "")
+	for _, action := range []string{`"action":"create"`, `"action":"update"`, `"action":"delete"`} {
+		if !strings.Contains(audit.Body, action) || !strings.Contains(audit.Body, `"resource_type":"project_team"`) {
+			t.Fatalf("project team changes should be audited: %s", audit.Body)
+		}
+	}
+}
+
+func TestDisabledLinkedTeamRevokesProjectAccessAndRejectsNewAssignments(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_active_primary", Name: "Active Primary Team", Status: StatusActive})
+	store.CreateResource("teams", AdminResource{ID: "team_disable_shared", Name: "Shared Team", Status: StatusActive})
+	project := store.CreateProject(Project{Name: "Disable Team Project", TeamID: "team_active_primary", Status: StatusActive})
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_disable_shared", Role: "developer"}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := store.CreateAdminUser(AdminUser{
+		Username: "disabled-team-member",
+		Name:     "Disabled Team Member",
+		Email:    "disabled-team-member@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_disable_shared",
+		Status:   StatusActive,
+	}, "member123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	login := doJSON(t, app, http.MethodPost, "/api/admin/auth/login", map[string]any{
+		"identity": user.Email,
+		"password": "member123456",
+	}, "")
+	var session struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(login.Body), &session); err != nil {
+		t.Fatal(err)
+	}
+	createdKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{"name": "Active Team Key"}, session.Token)
+	if createdKey.Code != http.StatusCreated {
+		t.Fatalf("active linked team should grant developer access: %d %s", createdKey.Code, createdKey.Body)
+	}
+
+	if _, err := store.UpdateResource("teams", "team_disable_shared", AdminResource{Status: StatusDisabled}); err != nil {
+		t.Fatal(err)
+	}
+	projects := doJSON(t, app, http.MethodGet, "/api/admin/projects", nil, session.Token)
+	if projects.Code != http.StatusOK || strings.Contains(projects.Body, project.ID) {
+		t.Fatalf("disabled linked team must revoke project visibility immediately: %d %s", projects.Code, projects.Body)
+	}
+	forbiddenKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{"name": "Disabled Team Key"}, session.Token)
+	if forbiddenKey.Code != http.StatusForbidden {
+		t.Fatalf("disabled linked team must revoke project mutation access: %d %s", forbiddenKey.Code, forbiddenKey.Body)
+	}
+
+	_, err = store.CreateAdminUser(AdminUser{
+		Username: "new-disabled-team-member",
+		Name:     "New Disabled Team Member",
+		Email:    "new-disabled-team-member@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_disable_shared",
+		Status:   StatusActive,
+	}, "member123456")
+	if err == nil || AsHTTPError(err).Code != "team_inactive" {
+		t.Fatalf("new user assignment to a disabled team must fail with team_inactive, got %v", err)
+	}
+}
+
+func TestProjectAccessMergesRolesAcrossUserTeamsWithoutDuplicatingProjects(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_primary", Name: "Primary Team", Status: StatusActive})
+	store.CreateResource("teams", AdminResource{ID: "team_viewer", Name: "Viewer Team", Status: StatusActive})
+	store.CreateResource("teams", AdminResource{ID: "team_developer", Name: "Developer Team", Status: StatusActive})
+	user, err := store.CreateAdminUser(AdminUser{
+		Username: "multi-team-member",
+		Name:     "Multi Team Member",
+		Email:    "multi-team-member@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_viewer",
+		TeamIDs:  []string{"team_viewer", "team_developer"},
+		Status:   StatusActive,
+	}, "member123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Role Merge Project", TeamID: "team_primary", Status: StatusActive})
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_viewer", Role: "viewer"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_developer", Role: "developer"}); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	login := doJSON(t, app, http.MethodPost, "/api/admin/auth/login", map[string]any{
+		"identity": user.Email,
+		"password": "member123456",
+	}, "")
+	var session struct {
+		Token string    `json:"token"`
+		User  AdminUser `json:"user"`
+	}
+	if err := json.Unmarshal([]byte(login.Body), &session); err != nil {
+		t.Fatal(err)
+	}
+	if len(session.User.TeamIDs) != 2 {
+		t.Fatalf("user team memberships were not returned: %+v", session.User.TeamIDs)
+	}
+
+	projects := doJSON(t, app, http.MethodGet, "/api/admin/projects", nil, session.Token)
+	var projectList struct {
+		Data []Project `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(projects.Body), &projectList); err != nil {
+		t.Fatal(err)
+	}
+	if len(projectList.Data) != 1 || projectList.Data[0].ID != project.ID {
+		t.Fatalf("multiple team access must return one project row: %s", projects.Body)
+	}
+	createdKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{"name": "Merged Role Key"}, session.Token)
+	if createdKey.Code != http.StatusCreated {
+		t.Fatalf("highest developer role should allow key issuance: %d %s", createdKey.Code, createdKey.Body)
+	}
+	if keys := store.ListProjectKeys(project.ID); len(keys) != 1 {
+		t.Fatalf("project resources must not be copied per team: %+v", keys)
+	}
+
+	if _, err := store.UpdateProjectTeam(project.ID, "team_developer", "viewer"); err != nil {
+		t.Fatal(err)
+	}
+	viewerKey := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{"name": "Viewer Only Key"}, session.Token)
+	if viewerKey.Code != http.StatusForbidden {
+		t.Fatalf("merged viewer roles should not issue keys, got %d: %s", viewerKey.Code, viewerKey.Body)
+	}
+	projects = doJSON(t, app, http.MethodGet, "/api/admin/projects", nil, session.Token)
+	if projects.Code != http.StatusOK || !strings.Contains(projects.Body, project.ID) {
+		t.Fatalf("viewer access from either team should remain stable: %d %s", projects.Code, projects.Body)
+	}
+}
+
+func TestAdminUserAPIStoresPrimaryAndAdditionalTeams(t *testing.T) {
+	store := NewMemoryStore()
+	for _, teamID := range []string{"team_primary", "team_secondary"} {
+		store.CreateResource("teams", AdminResource{ID: teamID, Name: teamID, Status: StatusActive})
+	}
+	if _, err := store.CreateAdminUser(AdminUser{
+		ID:       "usr_multi_team_admin",
+		Username: "multi-team-admin",
+		Name:     "Multi Team Admin",
+		Email:    "multi-team-admin@tokenhub.local",
+		Role:     "admin",
+		Status:   StatusActive,
+	}, "admin123456"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	created := doJSON(t, app, http.MethodPost, "/api/admin/users", map[string]any{
+		"username": "api-multi-team-user",
+		"name":     "API Multi Team User",
+		"email":    "api-multi-team-user@tokenhub.local",
+		"password": "member123456",
+		"role":     "user",
+		"team_id":  "team_primary",
+		"team_ids": []string{"team_primary", "team_secondary", "team_secondary"},
+		"status":   StatusActive,
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("multi-team user create failed: %d %s", created.Code, created.Body)
+	}
+	var user AdminUser
+	if err := json.Unmarshal([]byte(created.Body), &user); err != nil {
+		t.Fatal(err)
+	}
+	if user.TeamID != "team_primary" || !equalStringSlices(user.TeamIDs, []string{"team_primary", "team_secondary"}) {
+		t.Fatalf("unexpected normalized team memberships: primary=%s teams=%v", user.TeamID, user.TeamIDs)
+	}
+}
+
+func TestProjectTeamRemovalAndTeamDeletionAreSafe(t *testing.T) {
+	store := NewMemoryStore()
+	if _, err := store.CreateAdminUser(AdminUser{
+		ID:       "usr_team_safety_admin",
+		Username: "team-safety-admin",
+		Name:     "Team Safety Admin",
+		Email:    "team-safety-admin@tokenhub.local",
+		Role:     "admin",
+		Status:   StatusActive,
+	}, "admin123456"); err != nil {
+		t.Fatal(err)
+	}
+	for _, teamID := range []string{"team_primary", "team_secondary", "team_only"} {
+		store.CreateResource("teams", AdminResource{ID: teamID, Name: teamID, Status: StatusActive})
+	}
+	project := store.CreateProject(Project{Name: "Safe Team Project", TeamID: "team_primary", Status: StatusActive})
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: project.ID, TeamID: "team_secondary", Role: "viewer"}); err != nil {
+		t.Fatal(err)
+	}
+	teamlessProject := store.CreateProject(Project{Name: "Last Team Project", Status: StatusActive})
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: teamlessProject.ID, TeamID: "team_only", Role: "viewer"}); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	linkedDelete := doJSON(t, app, http.MethodDelete, "/api/admin/resources/teams/team_secondary", nil, "")
+	if linkedDelete.Code != http.StatusConflict || !strings.Contains(linkedDelete.Body, "team_has_projects") {
+		t.Fatalf("linked team deletion should be blocked: %d %s", linkedDelete.Code, linkedDelete.Body)
+	}
+	primaryRemove := doJSON(t, app, http.MethodDelete, "/api/admin/projects/"+project.ID+"/teams/team_primary", nil, "")
+	if primaryRemove.Code != http.StatusConflict || !strings.Contains(primaryRemove.Body, "project_primary_team") {
+		t.Fatalf("primary team removal should be blocked: %d %s", primaryRemove.Code, primaryRemove.Body)
+	}
+	lastRemove := doJSON(t, app, http.MethodDelete, "/api/admin/projects/"+teamlessProject.ID+"/teams/team_only", nil, "")
+	if lastRemove.Code != http.StatusConflict || !strings.Contains(lastRemove.Body, "project_last_team") {
+		t.Fatalf("last team removal should be blocked: %d %s", lastRemove.Code, lastRemove.Body)
+	}
+
+	unlinked := doJSON(t, app, http.MethodDelete, "/api/admin/projects/"+project.ID+"/teams/team_secondary", nil, "")
+	if unlinked.Code != http.StatusNoContent {
+		t.Fatalf("secondary team unlink failed: %d %s", unlinked.Code, unlinked.Body)
+	}
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/resources/teams/team_secondary", nil, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("unlinked team should be deletable: %d %s", deleted.Code, deleted.Body)
+	}
+}
+
+func TestAdminAPIKeyOwnerAttributionAndUsageSnapshot(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_key_owner", Name: "Key Owner Team", Status: StatusActive})
+	if _, err := store.CreateAdminUser(AdminUser{
+		ID:       "usr_admin",
+		Username: "key-owner-admin",
+		Name:     "Key Owner Admin",
+		Email:    "key-owner-admin@tokenhub.local",
+		Role:     "admin",
+		Status:   StatusActive,
+	}, "admin123456"); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := store.CreateAdminUser(AdminUser{
+		Username: "key-owner",
+		Name:     "Key Owner",
+		Email:    "key-owner@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_key_owner",
+		Status:   StatusActive,
+	}, "owner123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherOwner, err := store.CreateAdminUser(AdminUser{
+		Username: "key-owner-other",
+		Name:     "Other Key Owner",
+		Email:    "key-owner-other@tokenhub.local",
+		Role:     "user",
+		TeamID:   "team_key_owner",
+		Status:   StatusActive,
+	}, "owner123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Key Attribution Project", TeamID: owner.TeamID, Status: StatusActive})
+	server := New(store)
+	app := server.Handler()
+
+	createKey := func(name string) APIKey {
+		t.Helper()
+		resp := doJSON(t, app, http.MethodPost, "/api/admin/projects/"+project.ID+"/keys", map[string]any{
+			"name":          name,
+			"owner_user_id": owner.ID,
+		}, "")
+		if resp.Code != http.StatusCreated {
+			t.Fatalf("create owned key failed: %d %s", resp.Code, resp.Body)
+		}
+		var payload struct {
+			ID          string `json:"id"`
+			OwnerUserID string `json:"owner_user_id"`
+		}
+		if err := json.Unmarshal([]byte(resp.Body), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.OwnerUserID != owner.ID {
+			t.Fatalf("created key owner = %q, want %q", payload.OwnerUserID, owner.ID)
+		}
+		for _, key := range store.ListAPIKeys() {
+			if key.ID == payload.ID {
+				return key
+			}
+		}
+		t.Fatalf("created key %q not found", payload.ID)
+		return APIKey{}
+	}
+
+	keyA := createKey("Owner Key A")
+	keyB := createKey("Owner Key B")
+	if keyA.Metadata["created_by"] != "usr_admin" {
+		t.Fatalf("key issuer metadata = %q, want usr_admin", keyA.Metadata["created_by"])
+	}
+	finishUsage := func(requestID string, key APIKey, totalTokens int64) {
+		store.FinishCall(CallContext{
+			RequestID: requestID,
+			Project:   project,
+			Key:       key,
+			Model:     Model{Name: "gpt-4.1-mini"},
+			StartedAt: time.Now(),
+		}, RouteSelection{}, Usage{PromptTokens: totalTokens, TotalTokens: totalTokens}, http.StatusOK, "", "127.0.0.1", "owner-test")
+	}
+	finishUsage("req_owner_a_before_transfer", keyA, 100)
+
+	transfer := doJSON(t, app, http.MethodPatch, "/api/admin/api-keys/"+keyA.ID, map[string]any{
+		"owner_user_id": otherOwner.ID,
+	}, "")
+	if transfer.Code != http.StatusOK {
+		t.Fatalf("transfer key owner failed: %d %s", transfer.Code, transfer.Body)
+	}
+	updatedKeyA, err := server.findAPIKey(keyA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishUsage("req_owner_a_after_transfer", updatedKeyA, 300)
+	finishUsage("req_owner_b", keyB, 200)
+
+	rotate := doJSON(t, app, http.MethodPost, "/api/admin/api-keys/"+keyA.ID+"/rotate", map[string]any{}, "")
+	if rotate.Code != http.StatusCreated {
+		t.Fatalf("rotate transferred key failed: %d %s", rotate.Code, rotate.Body)
+	}
+	var rotatedPayload struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(rotate.Body), &rotatedPayload); err != nil {
+		t.Fatal(err)
+	}
+	rotatedKey, err := server.findAPIKey(rotatedPayload.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotatedKey.OwnerUserID != otherOwner.ID {
+		t.Fatalf("rotated key owner = %q, want %q", rotatedKey.OwnerUserID, otherOwner.ID)
+	}
+
+	resp := doJSON(t, app, http.MethodGet, "/api/admin/usage/breakdown", nil, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("usage breakdown failed: %d %s", resp.Code, resp.Body)
+	}
+	var breakdown struct {
+		Members []struct {
+			ID            string `json:"id"`
+			RequestCount  int64  `json:"request_count"`
+			TotalTokens   int64  `json:"total_tokens"`
+			OwnedKeyCount int    `json:"owned_key_count"`
+			UsedKeyCount  int    `json:"used_key_count"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(resp.Body), &breakdown); err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]struct {
+		requests int64
+		tokens   int64
+		owned    int
+		used     int
+	}{}
+	for _, row := range breakdown.Members {
+		rows[row.ID] = struct {
+			requests int64
+			tokens   int64
+			owned    int
+			used     int
+		}{row.RequestCount, row.TotalTokens, row.OwnedKeyCount, row.UsedKeyCount}
+	}
+	if got := rows[owner.ID]; got.requests != 2 || got.tokens != 300 || got.owned != 1 || got.used != 2 {
+		t.Fatalf("original owner usage = %+v, want requests=2 tokens=300 owned=1 used=2", got)
+	}
+	if got := rows[otherOwner.ID]; got.requests != 1 || got.tokens != 300 || got.owned != 1 || got.used != 1 {
+		t.Fatalf("new owner usage = %+v, want requests=1 tokens=300 owned=1 used=1", got)
+	}
+}
+
+func TestAPIKeyCreateApprovalPreservesOwnerAndIssuer(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_approval_key", Name: "Approval Key Team", Status: StatusActive})
+	requester, err := store.CreateAdminUser(AdminUser{
+		Username: "approval-key-requester",
+		Name:     "Approval Key Requester",
+		Email:    "approval-key-requester@tokenhub.local",
+		Role:     "team_leader",
+		TeamID:   "team_approval_key",
+		Status:   StatusActive,
+	}, "requester123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := store.CreateAdminUser(AdminUser{
+		Username: "approval-key-owner",
+		Name:     "Approval Key Owner",
+		Email:    "approval-key-owner@tokenhub.local",
+		Role:     "user",
+		TeamID:   requester.TeamID,
+		Status:   StatusActive,
+	}, "owner123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Approval Key Project", TeamID: requester.TeamID, Status: StatusActive})
+	server := New(store)
+	result, err := server.applyApprovalRequest(ApprovalRequest{
+		ID:           "approval_key_create",
+		Trigger:      "api_key_create",
+		ResourceType: "api_key",
+		RequesterID:  requester.ID,
+		Status:       "pending",
+		Payload: snapshotJSON(map[string]any{
+			"project_id":    project.ID,
+			"name":          "Approved Owned Key",
+			"owner_user_id": owner.ID,
+		}),
+	}, AdminUser{ID: "approval-admin", Role: "admin", Status: StatusActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, ok := result.(map[string]any)
+	if !ok || payload["owner_user_id"] != owner.ID {
+		t.Fatalf("approval result = %#v, want owner %q", result, owner.ID)
+	}
+	keys := store.ListAPIKeys()
+	if len(keys) != 1 {
+		t.Fatalf("approved keys = %d, want 1", len(keys))
+	}
+	if keys[0].OwnerUserID != owner.ID || keys[0].Metadata["created_by"] != requester.ID {
+		t.Fatalf("approved key attribution = owner %q issuer %q", keys[0].OwnerUserID, keys[0].Metadata["created_by"])
 	}
 }
 
@@ -2852,6 +3839,8 @@ func TestUserRequestAuditIsScopedToOwnLogs(t *testing.T) {
 
 func TestTeamLeaderUsageBreakdownIncludesMembers(t *testing.T) {
 	store := NewMemoryStore()
+	store.CreateResource("teams", AdminResource{ID: "team_usage", Name: "Usage Team", Status: StatusActive})
+	store.CreateResource("teams", AdminResource{ID: "team_other", Name: "Other Team", Status: StatusActive})
 	leader, err := store.CreateAdminUser(AdminUser{
 		Username: "usage-leader",
 		Name:     "Usage Leader",
@@ -2961,7 +3950,11 @@ func TestTeamLeaderUsageBreakdownIncludesMembers(t *testing.T) {
 }
 
 func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
-	app := newTestServer()
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
 
 	providerResp := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
 		"name":     "Local vLLM",
@@ -2981,6 +3974,14 @@ func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := providerPayload.Provider
+	for _, upstreamModel := range []string{"qwen2.5-coder", "qwen2.5-coder-backup"} {
+		store.AddProviderModel(ProviderModel{
+			ProviderID:    provider.ID,
+			UpstreamModel: upstreamModel,
+			DisplayName:   upstreamModel,
+			Status:        StatusActive,
+		})
+	}
 
 	modelResp := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
 		"name":                    "local-coder",
@@ -3225,6 +4226,84 @@ func TestAdminProviderCatalogAndTemplateRouteMapping(t *testing.T) {
 	}
 }
 
+func TestAdminKimiCodingTemplateMapsOfficialModels(t *testing.T) {
+	store := NewMemoryStore()
+	config := Config{
+		AdminToken:             "dev_admin_token",
+		BootstrapAdminPassword: "kimi-coding-test-password",
+		ModelCatalogFile:       "../../../data/model-catalog.yaml",
+		ProviderCatalogFile:    "../../../data/provider-catalog.json",
+	}
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, config)
+	if _, err := server.InitializeProviderCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	app := server.Handler()
+
+	catalogResp := doJSON(t, app, http.MethodGet, "/api/admin/provider-catalog/kimi-for-coding", nil, "")
+	if catalogResp.Code != http.StatusOK {
+		t.Fatalf("expected Kimi catalog, got %d: %s", catalogResp.Code, catalogResp.Body)
+	}
+	var catalogPayload struct {
+		Data ProviderCatalogEntry `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(catalogResp.Body), &catalogPayload); err != nil {
+		t.Fatal(err)
+	}
+	expectedModels := map[string]string{
+		"k3":                        "kimi-k3",
+		"k3-256k":                   "kimi-k3-256k",
+		"kimi-for-coding":           "kimi-k2.7-code",
+		"kimi-for-coding-highspeed": "kimi-k2.7-code-highspeed",
+	}
+	if len(catalogPayload.Data.Models) != len(expectedModels) {
+		t.Fatalf("expected %d Kimi models, got %+v", len(expectedModels), catalogPayload.Data.Models)
+	}
+	for _, model := range catalogPayload.Data.Models {
+		if canonical, ok := expectedModels[model.ID]; !ok || canonical != model.CanonicalName {
+			t.Fatalf("unexpected Kimi catalog model: %+v", model)
+		}
+	}
+
+	createResp := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":      "kimi-for-coding",
+		"id":              "prv_kimi_coding",
+		"name":            "Kimi Coding",
+		"base_url":        "https://api.kimi.com/coding/v1",
+		"api_key":         "test-key",
+		"status":          "active",
+		"healthy":         true,
+		"model_category":  "kimi",
+		"create_routes":   true,
+		"selected_models": []string{"k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"},
+	}, "")
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("expected Kimi provider creation, got %d: %s", createResp.Code, createResp.Body)
+	}
+
+	expectedRoutes := map[string]string{
+		"kimi-k3":                  "k3",
+		"kimi-k3-256k":             "k3-256k",
+		"kimi-k2.7-code":           "kimi-for-coding",
+		"kimi-k2.7-code-highspeed": "kimi-for-coding-highspeed",
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID != "prv_kimi_coding" {
+			continue
+		}
+		if upstream, ok := expectedRoutes[route.ModelName]; !ok || upstream != route.ProviderModel {
+			t.Fatalf("unexpected Kimi route: %+v", route)
+		}
+		delete(expectedRoutes, route.ModelName)
+	}
+	if len(expectedRoutes) != 0 {
+		t.Fatalf("missing Kimi routes: %+v", expectedRoutes)
+	}
+}
+
 func TestAdminCustomProviderCatalogLoadsUpstreamModels(t *testing.T) {
 	app := newTestServer()
 	seenAuth := ""
@@ -3335,6 +4414,505 @@ func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	}
 	if got := normalizeProviderBaseURL("dmxapi", "https://www.dmxapi.cn"); got != "https://www.dmxapi.cn/v1" {
 		t.Fatalf("expected dmxapi OpenAI-compatible base URL to include /v1, got %s", got)
+	}
+}
+
+func TestAdminImportsProviderModelWithoutPublishing(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     false,
+		"models": []map[string]any{
+			{
+				"id":             "vendor/private-alpha",
+				"display_name":   "Private Alpha",
+				"category":       "custom",
+				"type":           "chat",
+				"context_window": 131072,
+				"capabilities":   []string{"chat", "tools"},
+			},
+		},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected provider model import 201, got %d: %s", imported.Code, imported.Body)
+	}
+
+	providerModels := doJSON(t, app, http.MethodGet, "/api/admin/provider-models", nil, "")
+	if providerModels.Code != http.StatusOK || !strings.Contains(providerModels.Body, `"upstream_model":"vendor/private-alpha"`) {
+		t.Fatalf("expected imported provider model inventory: %d %s", providerModels.Code, providerModels.Body)
+	}
+	if strings.Contains(providerModels.Body, `"published_model":"vendor/private-alpha"`) {
+		t.Fatalf("unpublished provider model must not claim an external model: %s", providerModels.Body)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderModel == "vendor/private-alpha" {
+			t.Fatalf("import-only operation must not create a route: %+v", route)
+		}
+	}
+}
+
+func TestAdminPublishesProviderModelWithCustomExternalName(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Alias Mapping Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Alias Test Key"}, "thk_alias_models"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.5": "DeepSeek",
+		},
+		"models": []map[string]any{
+			{
+				"id":             "vendor/gpt-4.5",
+				"display_name":   "GPT 4.5",
+				"category":       "openai",
+				"type":           "chat",
+				"context_window": 128000,
+				"capabilities":   []string{"chat", "tools"},
+			},
+		},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected published provider model import 201, got %d: %s", imported.Code, imported.Body)
+	}
+	if !strings.Contains(imported.Body, `"created_models":1`) || !strings.Contains(imported.Body, `"created_routes":1`) {
+		t.Fatalf("expected one external model and mapping: %s", imported.Body)
+	}
+
+	models := doJSON(t, app, http.MethodGet, "/v1/models", nil, "thk_alias_models")
+	if models.Code != http.StatusOK || !strings.Contains(models.Body, `"id":"DeepSeek"`) {
+		t.Fatalf("expected custom external model to be published: %d %s", models.Code, models.Body)
+	}
+	routes := store.ListRoutes()
+	found := false
+	for _, route := range routes {
+		if route.ModelName == "DeepSeek" && route.ProviderID == "prv_mock" && route.ProviderModel == "vendor/gpt-4.5" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected DeepSeek to map to provider model vendor/gpt-4.5: %+v", routes)
+	}
+}
+
+func TestAdminProviderImportUsesExactExternalModelIdentity(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	project := store.CreateProject(Project{Name: "Exact Alias Test", Status: StatusActive})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Exact Alias Key"}, "thk_exact_alias"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.1-mini": "openai/gpt-4.1-mini",
+		},
+		"models": []map[string]any{{
+			"id":           "vendor/gpt-4.1-mini",
+			"display_name": "GPT 4.1 Mini Vendor Deployment",
+			"type":         "chat",
+		}},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected exact alias import 201, got %d: %s", imported.Code, imported.Body)
+	}
+	if _, ok := modelByNameForTest(store.ListModels(), "openai/gpt-4.1-mini"); !ok {
+		t.Fatalf("external aliases must use exact API identity even when their canonical name already exists: %+v", store.ListModels())
+	}
+	models := doJSON(t, app, http.MethodGet, "/v1/models", nil, "thk_exact_alias")
+	if models.Code != http.StatusOK || !strings.Contains(models.Body, `"id":"openai/gpt-4.1-mini"`) {
+		t.Fatalf("expected exact slash-qualified external alias in /v1/models: %d %s", models.Code, models.Body)
+	}
+}
+
+func TestAdminProviderImportKeepsDistinctExactAliases(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	for _, externalName := range []string{"gpt-4.1-mini", "openai/gpt-4.1-mini"} {
+		imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+			"provider_id": "prv_mock",
+			"publish":     true,
+			"external_names": map[string]string{
+				"vendor/gpt-4.1-mini": externalName,
+			},
+			"models": []map[string]any{{
+				"id":           "vendor/gpt-4.1-mini",
+				"display_name": "GPT 4.1 Mini Vendor Deployment",
+				"type":         "chat",
+			}},
+		}, "")
+		if imported.Code != http.StatusCreated {
+			t.Fatalf("expected exact alias import 201 for %q, got %d: %s", externalName, imported.Code, imported.Body)
+		}
+	}
+
+	found := map[string]bool{}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID == "prv_mock" && route.ProviderModel == "vendor/gpt-4.1-mini" {
+			found[route.ModelName] = true
+		}
+	}
+	if !found["gpt-4.1-mini"] || !found["openai/gpt-4.1-mini"] {
+		t.Fatalf("exact external aliases must keep distinct routes: %+v", store.ListRoutes())
+	}
+}
+
+func TestAdminProviderImportRepublishesExistingExternalModel(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "DeepSeek", Modality: "chat", Status: StatusDisabled})
+	app := New(store).Handler()
+
+	imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-models/import", map[string]any{
+		"provider_id": "prv_mock",
+		"publish":     true,
+		"external_names": map[string]string{
+			"vendor/gpt-4.5": "DeepSeek",
+		},
+		"models": []map[string]any{{"id": "vendor/gpt-4.5", "type": "chat"}},
+	}, "")
+	if imported.Code != http.StatusCreated {
+		t.Fatalf("expected existing external model publication 201, got %d: %s", imported.Code, imported.Body)
+	}
+	model, ok := modelByNameForTest(store.ListModels(), "DeepSeek")
+	if !ok || model.Status != StatusActive {
+		t.Fatalf("publish import must reactivate an existing external model: %+v", model)
+	}
+}
+
+func TestAdminProviderCreationImportsSelectedModelsWithoutPublishing(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":              "prv_inventory_only",
+		"catalog_id":      "openai",
+		"name":            "OpenAI Inventory Only",
+		"type":            ProviderOpenAI,
+		"base_url":        "https://api.openai.com/v1",
+		"status":          StatusActive,
+		"create_routes":   false,
+		"selected_models": []string{"gpt-4.1-mini"},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", created.Code, created.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(created.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ImportedModels != 1 || result.CreatedRoutes != 0 {
+		t.Fatalf("expected inventory import without publication, got %+v", result)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ProviderID == "prv_inventory_only" {
+			t.Fatalf("inventory-only provider creation must not publish a route: %+v", route)
+		}
+	}
+	found := false
+	for _, model := range store.ListProviderModels() {
+		if model.ProviderID == "prv_inventory_only" && model.UpstreamModel == "gpt-4.1-mini" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected selected model in provider inventory")
+	}
+}
+
+func TestAdminRejectsDeletingProviderModelUsedByRoute(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	var providerModel ProviderModel
+	for _, item := range store.ListProviderModels() {
+		if item.ProviderID == "prv_mock" && item.UpstreamModel == "mock-chat" {
+			providerModel = item
+			break
+		}
+	}
+	if providerModel.ID == "" {
+		t.Fatal("expected route backfill to create provider inventory")
+	}
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/provider-models/"+providerModel.ID, nil, "")
+	if deleted.Code != http.StatusConflict || !strings.Contains(deleted.Body, "provider_model_in_use") {
+		t.Fatalf("expected in-use conflict, got %d: %s", deleted.Code, deleted.Body)
+	}
+}
+
+func TestAdminUpdatesProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	providerModel := store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/editable-model",
+		DisplayName:   "Editable Model",
+		Modality:      "chat",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/provider-models/"+providerModel.ID, map[string]any{
+		"display_name":   "Edited Provider Model",
+		"context_window": 131072,
+		"capabilities":   []string{"chat", "tools"},
+		"status":         StatusDisabled,
+	}, "")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected provider model patch 200, got %d: %s", updated.Code, updated.Body)
+	}
+	var result ProviderModel
+	if err := json.Unmarshal([]byte(updated.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ID != providerModel.ID ||
+		result.ProviderID != "prv_mock" ||
+		result.UpstreamModel != "vendor/editable-model" ||
+		result.DisplayName != "Edited Provider Model" ||
+		result.ContextWindow != 131072 ||
+		result.Status != StatusDisabled ||
+		!slices.Equal(result.Capabilities, []string{"chat", "tools"}) {
+		t.Fatalf("unexpected updated provider model: %+v", result)
+	}
+}
+
+func TestAdminDeletesUnusedProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	providerModel := store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/unused-model",
+		DisplayName:   "Unused Model",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/provider-models/"+providerModel.ID, nil, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected unused provider model delete 204, got %d: %s", deleted.Code, deleted.Body)
+	}
+	for _, item := range store.ListProviderModels() {
+		if item.ID == providerModel.ID {
+			t.Fatalf("deleted provider model remains in inventory: %+v", item)
+		}
+	}
+}
+
+func TestAdminDeletingProviderRemovesProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID:      "prv_inventory_cascade",
+		Name:    "Inventory Cascade Provider",
+		Type:    ProviderMock,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    provider.ID,
+		UpstreamModel: "vendor/cascade-model",
+		DisplayName:   "Cascade Model",
+		Status:        StatusActive,
+	})
+	app := New(store).Handler()
+
+	deleted := doJSON(t, app, http.MethodDelete, "/api/admin/providers/"+provider.ID, nil, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected provider delete 204, got %d: %s", deleted.Code, deleted.Body)
+	}
+	for _, item := range store.ListProviderModels() {
+		if item.ProviderID == provider.ID {
+			t.Fatalf("provider deletion left inventory behind: %+v", item)
+		}
+	}
+}
+
+func TestAdminRouteUpdateRequiresImportedProviderModelInventory(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	var route ModelRoute
+	for _, item := range store.ListRoutes() {
+		if item.ProviderID == "prv_mock" && item.ProviderModel == "mock-chat" {
+			route = item
+			break
+		}
+	}
+	if route.ID == "" {
+		t.Fatal("expected demo route for provider inventory update")
+	}
+	app := New(store).Handler()
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"provider_model": "vendor/changed-upstream",
+	}, "")
+	if updated.Code != http.StatusConflict || !strings.Contains(updated.Body, "provider_model_not_imported") {
+		t.Fatalf("expected unimported provider model conflict, got %d: %s", updated.Code, updated.Body)
+	}
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "vendor/changed-upstream",
+		DisplayName:   "Changed Upstream",
+		Status:        StatusActive,
+	})
+	updated = doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"provider_model": "vendor/changed-upstream",
+	}, "")
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body, `"provider_model":"vendor/changed-upstream"`) {
+		t.Fatalf("expected imported provider model patch 200, got %d: %s", updated.Code, updated.Body)
+	}
+}
+
+func TestAdminCreatesExternalModelWithValidatedImportedRoute(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
+		"name":   "invalid-partial-model",
+		"status": StatusActive,
+		"routes": []map[string]any{{
+			"provider_id":    "missing-provider",
+			"provider_model": "gpt-4.5",
+			"status":         StatusActive,
+		}},
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, "route_provider_not_found") {
+		t.Fatalf("expected nested route validation failure, got %d: %s", invalid.Code, invalid.Body)
+	}
+	if _, ok := modelByNameForTest(store.ListModels(), "invalid-partial-model"); ok {
+		t.Fatal("route validation failure must not leave a partial external model")
+	}
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "gpt-4.5",
+		DisplayName:   "GPT 4.5",
+		Status:        StatusActive,
+	})
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
+		"name":         "DeepSeek",
+		"family":       "deepseek",
+		"modality":     "chat",
+		"status":       StatusActive,
+		"capabilities": []string{"chat", "tools"},
+		"routes": []map[string]any{{
+			"provider_id":    "prv_mock",
+			"provider_model": "gpt-4.5",
+			"status":         StatusActive,
+		}},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected model and route creation 201, got %d: %s", created.Code, created.Body)
+	}
+	foundRoute := false
+	for _, route := range store.ListRoutes() {
+		if route.ModelName == "DeepSeek" && route.ProviderID == "prv_mock" && route.ProviderModel == "gpt-4.5" {
+			foundRoute = route.Priority > 0
+		}
+	}
+	if !foundRoute {
+		t.Fatalf("expected prioritized DeepSeek alias route: %+v", store.ListRoutes())
+	}
+	foundInventory := false
+	for _, model := range store.ListProviderModels() {
+		if model.ProviderID == "prv_mock" && model.UpstreamModel == "gpt-4.5" {
+			foundInventory = true
+		}
+	}
+	if !foundInventory {
+		t.Fatal("expected manual nested route to retain imported Provider inventory")
+	}
+}
+
+func TestAdminRejectsUnimportedAndDuplicateProviderModelRoutes(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	unimported := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "gpt-4.1-mini",
+		"provider_id":    "prv_mock",
+		"provider_model": "vendor/not-imported",
+		"status":         StatusActive,
+	}, "")
+	if unimported.Code != http.StatusConflict || !strings.Contains(unimported.Body, "provider_model_not_imported") {
+		t.Fatalf("expected unimported provider model conflict, got %d: %s", unimported.Code, unimported.Body)
+	}
+
+	duplicate := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "gpt-4.1-mini",
+		"provider_id":    "prv_mock",
+		"provider_model": "mock-chat",
+		"status":         StatusActive,
+	}, "")
+	if duplicate.Code != http.StatusConflict || !strings.Contains(duplicate.Body, "model_route_conflict") {
+		t.Fatalf("expected duplicate model route conflict, got %d: %s", duplicate.Code, duplicate.Body)
+	}
+}
+
+func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
+	store := NewMemoryStore()
+	external := store.AddModel(Model{
+		Name:     "catalog-backed-external",
+		Modality: "chat",
+		Metadata: map[string]string{
+			"source":              "tokenhub-standard-catalog",
+			modelDirectoryRoleKey: modelDirectoryRoleExternal,
+		},
+		Status: StatusDisabled,
+	})
+	store.AddModel(Model{
+		Name:     external.Name,
+		Modality: "chat",
+		Metadata: map[string]string{"source": "tokenhub-standard-catalog"},
+		Status:   StatusActive,
+	})
+
+	model, ok := modelByNameForTest(store.ListModels(), external.Name)
+	if !ok || model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal || model.Status != StatusDisabled {
+		t.Fatalf("candidate refresh must preserve external role and publication state: %+v", model)
 	}
 }
 

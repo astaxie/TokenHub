@@ -68,6 +68,7 @@ export const adminNavGroups: NavGroup[] = [
     items: [
       { view: "overview", label: "平台总览", icon: LayoutDashboard },
       { view: "usage", label: "全局用量", icon: BarChart3 },
+      { view: "audit", label: "请求日志", icon: FileText },
       { view: "reports", label: "导出报表", icon: BarChart3 },
     ],
   },
@@ -351,7 +352,7 @@ export function topSearchEntityItems(user: AdminUser, data: AppData): TopSearchI
         description: "项目、Key、额度和成本归属",
         icon: LayoutDashboard,
         tone: "entity",
-        keywords: [label, project.id, project.team_id, project.status, "project", "项目"].join(" "),
+        keywords: [label, project.id, project.team_id, ...(project.teams?.map((team) => team.team_id) ?? []), project.status, "project", "项目"].join(" "),
       });
     }
   }

@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -328,6 +327,121 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	if !strings.Contains(resp.Body.String(), `"model":"claude-tokenhub-test"`) ||
 		!strings.Contains(resp.Body.String(), `"type":"tool_use"`) {
 		t.Fatalf("native response was not preserved and remapped: %s", resp.Body)
+	}
+}
+
+func TestAnthropicMessagesConvertsMidConversationSystemForOpenAI(t *testing.T) {
+	var upstreamPayload map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"chatcmpl_mid_system",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}
+		}`)
+	}))
+	defer upstream.Close()
+
+	handler, _, secret := newAnthropicGateway(t, upstream.URL, ProviderOpenAICompatible)
+	resp := doAnthropicRequestWithBeta(t, handler, "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 1024,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Inspect the repository."},
+			map[string]any{
+				"role": "system",
+				"content": []any{
+					map[string]any{
+						"type":          "text",
+						"text":          "Keep the next response concise.",
+						"cache_control": map[string]any{"type": "ephemeral"},
+					},
+				},
+			},
+			map[string]any{"role": "user", "content": "Summarize it."},
+		},
+	}, "Bearer "+secret, "", "interleaved-thinking-2025-05-14, "+anthropicMidConversationSystemBeta)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	messages, _ := upstreamPayload["messages"].([]any)
+	if len(messages) != 3 {
+		t.Fatalf("expected three ordered upstream messages, got %#v", messages)
+	}
+	systemMessage, _ := messages[1].(map[string]any)
+	if systemMessage["role"] != "system" || systemMessage["content"] != "Keep the next response concise." {
+		t.Fatalf("expected translated mid-conversation system message, got %#v", systemMessage)
+	}
+}
+
+func TestAnthropicMessagesPreservesMidConversationSystemForNativeRoute(t *testing.T) {
+	var upstreamPayload map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("anthropic-beta") != anthropicMidConversationSystemBeta {
+			t.Errorf("unexpected beta %q", r.Header.Get("anthropic-beta"))
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_mid_system",
+			"type":"message",
+			"role":"assistant",
+			"model":"upstream-model",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"stop_sequence":null,
+			"usage":{"input_tokens":10,"output_tokens":1}
+		}`)
+	}))
+	defer upstream.Close()
+
+	handler, _, secret := newAnthropicGateway(t, upstream.URL, ProviderAnthropic)
+	resp := doAnthropicRequestWithBeta(t, handler, "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 1024,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Inspect the repository."},
+			map[string]any{"role": "system", "content": "Keep the next response concise."},
+			map[string]any{"role": "user", "content": "Summarize it."},
+		},
+	}, "Bearer "+secret, "", anthropicMidConversationSystemBeta)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	messages, _ := upstreamPayload["messages"].([]any)
+	if len(messages) != 3 {
+		t.Fatalf("expected native messages to be preserved, got %#v", messages)
+	}
+	systemMessage, _ := messages[1].(map[string]any)
+	if systemMessage["role"] != "system" || systemMessage["content"] != "Keep the next response concise." {
+		t.Fatalf("expected native mid-conversation system message, got %#v", systemMessage)
+	}
+}
+
+func TestAnthropicMessagesRejectsSystemRoleWithoutBeta(t *testing.T) {
+	body := bytes.NewBufferString(`{
+		"model":"claude-tokenhub-test",
+		"max_tokens":1024,
+		"messages":[
+			{"role":"user","content":"Inspect the repository."},
+			{"role":"system","content":"Keep the next response concise."}
+		]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", body)
+	req.Header.Set("content-type", "application/json")
+
+	_, err := decodeAnthropicMessagesRequest(req, true)
+	if err == nil {
+		t.Fatal("expected system role without beta to be rejected")
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusBadRequest || httpErr.Code != "invalid_message" {
+		t.Fatalf("expected invalid_message, got %#v", httpErr)
 	}
 }
 
@@ -717,6 +831,19 @@ func doAnthropicRequest(
 	apiKey string,
 ) *httptest.ResponseRecorder {
 	t.Helper()
+	return doAnthropicRequestWithBeta(t, handler, path, payload, authorization, apiKey, findTestBeta(payload))
+}
+
+func doAnthropicRequestWithBeta(
+	t *testing.T,
+	handler http.Handler,
+	path string,
+	payload any,
+	authorization string,
+	apiKey string,
+	beta string,
+) *httptest.ResponseRecorder {
+	t.Helper()
 	body, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatal(err)
@@ -730,10 +857,7 @@ func doAnthropicRequest(
 	if apiKey != "" {
 		req.Header.Set("x-api-key", apiKey)
 	}
-	if strings.Contains(fmt.Sprint(payload), "interleaved-thinking") {
-		req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
-	}
-	if beta := findTestBeta(payload); beta != "" {
+	if beta != "" {
 		req.Header.Set("anthropic-beta", beta)
 	}
 	resp := httptest.NewRecorder()

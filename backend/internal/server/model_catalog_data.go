@@ -91,11 +91,12 @@ func buildCatalogModel(seed modelCatalogSeed) Model {
 		contextWindow = inferCatalogContextWindow(name, modality)
 	}
 	inputPrice := seed.InputPriceUSDPer1M
-	if inputPrice == 0 {
+	subscriptionBilled := strings.EqualFold(strings.TrimSpace(seed.Metadata["billing_mode"]), "subscription")
+	if inputPrice == 0 && !subscriptionBilled {
 		inputPrice = catalogInputPrice(name, modality)
 	}
 	outputPrice := seed.OutputPriceUSDPer1M
-	if outputPrice == 0 {
+	if outputPrice == 0 && !subscriptionBilled {
 		outputPrice = catalogOutputPrice(name, modality)
 	}
 	metadata := map[string]string{}

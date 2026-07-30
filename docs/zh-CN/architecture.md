@@ -116,7 +116,7 @@ Provider 类型与主要能力如下：
 
 ## 模型请求链路
 
-统一模型名由 `ModelRoute` 映射为上游 `ProviderModel`，调用方无需感知具体 Provider。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
+`Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
 
 ```mermaid
 sequenceDiagram
@@ -158,7 +158,7 @@ Provider API Key 和 Provider Resource 凭证写入数据库前使用 `TOKENHUB_
 | 类别 | 核心实体 | 用途 |
 | --- | --- | --- |
 | 租户与凭证 | `Project`、`APIKey`、`AdminUser`、`AdminSession` | 项目归属、调用权限与管理会话 |
-| 路由配置 | `Provider`、`ProviderResource`、`Model`、`ModelRoute` | 上游渠道、资源池、统一模型和路由规则 |
+| 路由配置 | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute` | 上游渠道、资源池、上游模型库存、对外模型和路由规则 |
 | 治理与计量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | 配额、Token 与成本计量、跨副本并发控制 |
 | 多实例协调 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | 配置同步、集群操作与 Codex 会话资源绑定 |
 | 可观测性 | `RequestLog`、`RequestPayloadLog`、`RouteAttemptLog`、`ProviderObservation`、`AuditEvent` | 请求追踪、载荷审计、路由尝试、Provider 观测与管理审计 |

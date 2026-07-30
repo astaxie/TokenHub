@@ -1,14 +1,14 @@
-import { AlertCircle, Boxes, ChevronDown, CircleHelp, Gauge, GripVertical, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { AlertCircle, Boxes, ChevronDown, CircleHelp, Gauge, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { type AppData, type Model, type ModelRoute, type Provider, type ResourceAction, type ResourceConfig, type ViewKey } from "../core/types";
+import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type ResourceAction, type ResourceConfig, type ViewKey } from "../core/types";
 import { filterModelCatalog, hasThirdPartyRoute, modelCapabilityLabel, modelCatalogCapabilityTabs, modelCatalogCategories, modelCatalogFilterLabel, modelCategory, modelCategoryInitial, modelCategoryLabel, modelCategoryTabs, notificationChannelTabs, priceMetric } from "../domain/catalog";
-import { filterRouteModels, findProvider, modelRoutesFor, reorderRoutes, routeModelCategories } from "../domain/entities";
-import { activeRouteCount, formatNumber, modelAvailabilitySummary, modelCatalogEmptyText, modelCategoryRank, routeStrategyLabel } from "../domain/formatting";
-import { providerTypeLabel } from "../domain/labels";
+import { filterRouteModels, isCodexSubscriptionImageModel, modelIsInDirectory, modelRoutesFor, reorderRoutes, routeModelCategories } from "../domain/entities";
+import { activeRouteCount, formatNumber, modelAvailabilitySummary, modelCatalogEmptyText, modelCategoryRank } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
 import { DataSection, ModelRouteProviders, StatusPill } from "../shared/ui";
 import { clampNumber } from "./crud-projects";
 import { modelBrandIconSource, modelCatalogMoney, modelCatalogPriceBaseline, modelCatalogPriceRow, modelCatalogPriceValue, modelDisplayTitle, modelEstimatedMonthlyCost } from "./database-model-pricing";
+import { ModelRoutingPolicyEditor, modelRoutePolicySignature } from "./model-routing-policy";
 import { PaginationControls, RouteStrategyHint, usePagination } from "./settings-table";
 
 export function ModelCategoryTabs({
@@ -446,17 +446,19 @@ export function RouteStrategyView({
   onEdit,
   onDelete,
   onReorder,
+  onSavePolicy,
 }: {
   config: ResourceConfig<ModelRoute>;
   data: AppData;
   loading: boolean;
-  onCreate: () => void;
+  onCreate: (model: Model) => void;
   onEdit: (item: ModelRoute) => void;
   onDelete: (item: ModelRoute) => void;
   onReorder: (model: Model, routes: ModelRoute[]) => void;
+  onSavePolicy: (model: Model, policy: ModelRoutePolicy) => void;
 }) {
   const [category, setCategory] = useState("all");
-  const [scope, setScope] = useState<"configured" | "all">("configured");
+  const [scope, setScope] = useState<"configured" | "all">("all");
   const [query, setQuery] = useState("");
   const [draggedRouteID, setDraggedRouteID] = useState("");
   const categories = routeModelCategories(data);
@@ -465,6 +467,7 @@ export function RouteStrategyView({
     [data, category, scope, query],
   );
   const configuredCount = data.models.filter((model) => modelRoutesFor(model, data).length > 0).length;
+  const directoryModelCount = data.models.filter((model) => modelIsInDirectory(model, data)).length;
   const activeRouteCount = data.routes.filter((route) => route.status === "active").length;
 
   return (
@@ -515,7 +518,7 @@ export function RouteStrategyView({
               >
                 <Boxes size={14} />
                 <span>{tx("全部模型")}</span>
-                <em>{data.models.length}</em>
+                <em>{directoryModelCount}</em>
               </button>
             </div>
             <div className="model-catalog-actions">
@@ -523,10 +526,6 @@ export function RouteStrategyView({
                 <Search size={16} />
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tx("搜索模型或 Provider")} />
               </div>
-              <button className="button" onClick={onCreate} type="button">
-                <Plus size={17} />
-                {tx(config.createLabel ?? "新增路由")}
-              </button>
             </div>
           </div>
 
@@ -557,6 +556,8 @@ export function RouteStrategyView({
                   }}
                   onEdit={onEdit}
                   onDelete={onDelete}
+                  onCreate={() => onCreate(model)}
+                  onSavePolicy={onSavePolicy}
                 />
               ))}
             </div>
@@ -577,6 +578,8 @@ export function RouteModelCard({
   onDrop,
   onEdit,
   onDelete,
+  onCreate,
+  onSavePolicy,
 }: {
   model: Model;
   data: AppData;
@@ -587,6 +590,8 @@ export function RouteModelCard({
   onDrop: (targetRouteID: string) => void;
   onEdit: (route: ModelRoute) => void;
   onDelete: (route: ModelRoute) => void;
+  onCreate: () => void;
+  onSavePolicy: (model: Model, policy: ModelRoutePolicy) => void;
 }) {
   const routes = modelRoutesFor(model, data);
   const activeRoutes = routes.filter((route) => route.status === "active");
@@ -605,97 +610,36 @@ export function RouteModelCard({
           <h2>{model.name}</h2>
         </div>
         <div className="route-model-stats">
-          <StatusPill status={routes.length > 0 ? "active" : "disabled"} label={routes.length > 0 ? `${activeRoutes.length}/${routes.length} ${tx("启用")}` : tx("未配置")} />
-          <span>{tx("按上到下顺序调用")}</span>
+          <div className="route-model-actions">
+            <StatusPill status={routes.length > 0 ? "active" : "disabled"} label={routes.length > 0 ? `${activeRoutes.length}/${routes.length} ${tx("启用")}` : tx("未配置")} />
+            <button className="secondary-button route-model-add" disabled={loading} onClick={onCreate} type="button">
+              <Plus size={15} />
+              {tx("添加线路")}
+            </button>
+          </div>
+          <span>{tx("模型级路由策略")}</span>
         </div>
       </div>
 
       {routes.length === 0 ? (
         <div className="empty route-empty">{tx("该统一模型还没有 Provider 线路")}</div>
       ) : (
-        <div className="route-order-list">
-          {routes.map((route, index) => (
-            <RouteProviderRow
-              key={route.id}
-              route={route}
-              index={index}
-              provider={findProvider(data, route.provider_id)}
-              dragging={draggedRouteID === route.id}
-              loading={loading}
-              onDragStart={() => onDragStart(route.id)}
-              onDragEnd={onDragEnd}
-              onDrop={() => onDrop(route.id)}
-              onEdit={() => onEdit(route)}
-              onDelete={() => onDelete(route)}
-            />
-          ))}
-        </div>
+        <ModelRoutingPolicyEditor
+          key={modelRoutePolicySignature(routes)}
+          model={model}
+          routes={routes}
+          data={data}
+          loading={loading}
+          draggedRouteID={draggedRouteID}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDrop={onDrop}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onSave={onSavePolicy}
+        />
       )}
     </article>
-  );
-}
-
-export function RouteProviderRow({
-  route,
-  provider,
-  index,
-  dragging,
-  loading,
-  onDragStart,
-  onDragEnd,
-  onDrop,
-  onEdit,
-  onDelete,
-}: {
-  route: ModelRoute;
-  provider?: Provider;
-  index: number;
-  dragging: boolean;
-  loading: boolean;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onDrop: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div
-      className={dragging ? "route-provider-row dragging" : "route-provider-row"}
-      draggable={!loading}
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = "move";
-        onDragStart();
-      }}
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-      }}
-      onDragEnd={onDragEnd}
-      onDrop={(event) => {
-        event.preventDefault();
-        onDrop();
-      }}
-    >
-      <button className="route-drag-handle" disabled={loading} title={tx("拖动调整调用顺序")} type="button">
-        <GripVertical size={15} />
-      </button>
-      <div className="route-order-badge">{index === 0 ? tx("主") : index + 1}</div>
-      <div className="route-provider-main">
-        <strong>{provider?.name || route.provider_id}</strong>
-        <span>{providerTypeLabel(provider?.type)} · {provider?.base_url || tx("未配置 Base URL")}</span>
-      </div>
-      <div className="route-upstream-model">
-        <strong>{route.provider_model}</strong>
-        <span>{routeStrategyLabel(route.strategy)} · P{route.priority} · W{route.weight}</span>
-      </div>
-      <StatusPill status={route.status} />
-      <div className="route-row-actions">
-        <button className="text-button" onClick={onEdit} type="button">{tx("编辑")}</button>
-        <button className="danger-button" onClick={onDelete} title={tx("删除")} type="button">
-          <Trash2 size={15} />
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -720,6 +664,7 @@ export function ModelCatalogCard({
   const availability = modelAvailabilitySummary(model, data, readOnly);
   const routeCount = availability.activeRoutes;
   const hasConfiguredRoute = availability.activeRoutes > 0;
+  const codexSubscriptionImage = isCodexSubscriptionImageModel(model);
   const cardClassName = !readOnly && availability.tone === "blocked" ? "model-card unrouted" : "model-card";
   return (
     <article className={cardClassName}>
@@ -742,7 +687,11 @@ export function ModelCatalogCard({
           <span className="official">{tx(availability.label)}</span>
         ) : (
           <>
-            <span className={hasConfiguredRoute ? undefined : "unrouted-tag"}>{hasConfiguredRoute ? `${routeCount} ${tx("条线路")}` : tx("未配置线路")}</span>
+            <span className={hasConfiguredRoute ? undefined : "unrouted-tag"}>
+              {codexSubscriptionImage
+                ? (hasConfiguredRoute ? `${routeCount} ${tx("个生图账号")}` : tx("暂无可生图账号"))
+                : (hasConfiguredRoute ? `${routeCount} ${tx("条线路")}` : tx("未配置线路"))}
+            </span>
             {hasThirdPartyRoute(model, data) ? <span className="third">{tx("三方资源")}</span> : <span className="official">{tx("官方资源")}</span>}
           </>
         )}

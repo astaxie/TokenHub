@@ -278,6 +278,12 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	cost := catalogObjectField(raw, "cost")
 	limit := catalogObjectField(raw, "limit")
 	modalities := catalogObjectField(raw, "modalities")
+	canonicalName := strings.TrimSpace(catalogStringField(raw, "canonical_name"))
+	if canonicalName == "" {
+		canonicalName = canonicalModelName(id, displayName)
+	} else {
+		canonicalName = canonicalModelName(canonicalName, canonicalName)
+	}
 	metadata := map[string]string{
 		"source": "local-provider-catalog",
 	}
@@ -290,7 +296,7 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 		ID:                     id,
 		Name:                   name,
 		DisplayName:            displayName,
-		CanonicalName:          canonicalModelName(id, displayName),
+		CanonicalName:          canonicalName,
 		Category:               inferModelCategory(id, displayName),
 		Family:                 firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
 		Type:                   modelType,
@@ -816,6 +822,15 @@ func catalogCategorySummary(models []ProviderCatalogModel) ([]string, map[string
 func stableCatalogRouteID(providerID string, modelID string) string {
 	sum := sha256.Sum256([]byte(providerID + ":" + modelID))
 	return "route_catalog_" + hex.EncodeToString(sum[:])[:16]
+}
+
+func stableProviderModelRouteID(providerID string, modelID string, externalName string) string {
+	defaultName := canonicalModelName(modelID, modelID)
+	if strings.TrimSpace(externalName) == strings.TrimSpace(defaultName) {
+		return stableCatalogRouteID(providerID, modelID)
+	}
+	sum := sha256.Sum256([]byte(providerID + ":" + modelID + ":" + externalName))
+	return "route_import_" + hex.EncodeToString(sum[:])[:16]
 }
 
 func sanitizeIdentifier(value string) string {

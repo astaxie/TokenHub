@@ -13,11 +13,23 @@ import (
 	"tokenhub/backend/internal/server"
 )
 
+var (
+	buildVersion   = server.DefaultAppVersion
+	buildType      = "source"
+	deploymentType = "source"
+)
+
 func main() {
 	loadDotEnv()
 
 	addr := getenv("TOKENHUB_HTTP_ADDR", ":8080")
 	config := server.ConfigFromEnv()
+	config.AppVersion = buildVersion
+	config.BuildType = buildType
+	config.DeploymentType = deploymentType
+	if runtimeDeploymentType := os.Getenv("TOKENHUB_DEPLOYMENT_TYPE"); runtimeDeploymentType != "" {
+		config.DeploymentType = runtimeDeploymentType
+	}
 	if err := config.ValidateForStartup(); err != nil {
 		log.Fatal(err)
 	}
@@ -70,6 +82,9 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("tokenhub graceful shutdown failed: %v", err)
 		_ = srv.Close()
+	}
+	if err := app.Shutdown(shutdownCtx); err != nil {
+		log.Printf("tokenhub image worker shutdown failed: %v", err)
 	}
 	if err := <-serveErr; err != nil && err != http.ErrServerClosed {
 		log.Printf("tokenhub server stopped with error: %v", err)

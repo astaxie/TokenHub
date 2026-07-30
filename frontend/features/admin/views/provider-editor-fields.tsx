@@ -1,4 +1,4 @@
-import { Boxes, KeyRound, Search, Server, Settings, UserRoundCheck } from "lucide-react";
+import { Boxes, KeyRound, Search, Server, UserRoundCheck } from "lucide-react";
 import { type FieldConfig, type ProviderCredentialMode } from "../core/types";
 import { enumOptionLabel } from "../domain/labels";
 import { clearCustomValidity, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
@@ -102,16 +102,16 @@ export function providerCredentialOptions(): Array<{ key: ProviderCredentialMode
       description: "适合 OpenAI 账号、Subscription 或多账号轮询，默认通道会自动推荐。",
       icon: UserRoundCheck,
     },
-    {
-      key: "later",
-      label: "稍后配置",
-      description: "先创建 Provider 和路由，稍后再添加 Key 或账号资源。",
-      icon: Settings,
-    },
   ];
 }
 
-export function providerCreateWizardSteps(): Array<{ title: string; icon: typeof Search }> {
+export function providerCreateWizardSteps(credentialMode: ProviderCredentialMode): Array<{ title: string; icon: typeof Search }> {
+  if (credentialMode === "provider_api_key") {
+    return [
+      { title: "接入方式", icon: UserRoundCheck },
+      { title: "渠道与 API Key", icon: KeyRound },
+    ];
+  }
   return [
     { title: "接入方式", icon: UserRoundCheck },
     { title: "渠道信息", icon: Server },
@@ -124,8 +124,7 @@ export function providerCreateWizardStepTitle(title: string, credentialMode: Pro
   if (credentialMode === "account_integration" && title === "渠道信息") return "默认通道";
   if (title === "账号与凭据") {
     if (credentialMode === "account_integration") return "账号授权";
-    if (credentialMode === "provider_api_key") return "直接 API Key";
-    return "稍后配置";
+    return "直接 API Key";
   }
   return title;
 }

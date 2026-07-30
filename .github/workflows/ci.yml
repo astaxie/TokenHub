@@ -1,0 +1,229 @@
+name: CI
+
+on:
+  # Deliberately unfiltered. A `branches:` filter here would mean a pull request
+  # targeting anything but main never starts this workflow at all, and a required
+  # check that never starts blocks such a pull request forever.
+  pull_request:
+  push:
+    branches:
+      - main
+  merge_group:
+
+# Read-only by default, matching container-images.yml. No job here needs more, and
+# untrusted pull request code runs go test, npm scripts and a production build.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # The version lives in one place. setup-go looks at the repository root by
+          # default, and this module is not there.
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Check formatting
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            echo "These files are not gofmt-formatted:" >&2
+            echo "$unformatted" >&2
+            echo "Run: gofmt -w $unformatted" >&2
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          working-directory: backend
+
+      - name: Test
+        run: go test ./...
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # There is deliberately no post-build check on next-env.d.ts. Next.js rewrites
+      # its routes import to match the build mode — the committed file references
+      # .next/dev/types, and every production build flips it to .next/types — so such
+      # a check would fail on every run, including on a clean main. AGENTS.md's rule
+      # against committing that flip stays a review-time concern; it cannot be
+      # distinguished from CI simply having built in production mode.
+
+  deployment:
+    name: Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TOKENHUB_ADMIN_TOKEN: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD: strong-admin-password
+      TOKENHUB_DATABASE_URL: postgresql://tokenhub:test@db.example:5432/tokenhub?sslmode=require
+      TOKENHUB_PUBLIC_BASE_URL: https://tokenhub.example.com
+      TOKENHUB_SECRET_KEY: ssssssssssssssssssssssssssssssss
+      TOKENHUB_TRUSTED_PROXY_CIDRS: 127.0.0.1/32
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check shell syntax
+        run: |
+          bash -n \
+            .github/release/normalize-release-tag.sh \
+            .github/release/normalize-release-tag_test.sh \
+            deploy/install.sh \
+            deploy/install_test.sh \
+            deploy/native/install.sh \
+            deploy/native/install_test.sh \
+            deploy/native/tokenhub-run
+          sh -n \
+            deploy/container/tokenhub-build-id \
+            deploy/container/tokenhub-entrypoint
+
+      - name: Test deployment scripts
+        run: |
+          .github/release/normalize-release-tag_test.sh
+          deploy/install_test.sh
+          TOKENHUB_NATIVE_INTEGRATION=1 deploy/native/install_test.sh
+          deploy/container/tokenhub-entrypoint_test.sh
+
+      - name: Render Compose configurations
+        run: |
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config >/dev/null
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.postgres.yml config >/dev/null
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config >/dev/null
+          docker compose --env-file deploy/.env.example \
+            -f deploy/docker-compose.yml \
+            -f deploy/docker-compose.model-catalog.yml \
+            config >/dev/null
+
+  repo-gates:
+    name: Repository gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # The translation gate diffs the event's base against its head, so the full
+          # history has to be present. With the default shallow fetch it fails closed.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test the gates
+        run: node --test tools/*.test.mjs
+
+      - name: Check documentation translations
+        run: node tools/check-doc-translations.mjs
+
+      - name: Check environment variable contract
+        run: node tools/check-env-contract.mjs
+
+      - name: Check source file sizes
+        run: node tools/check-source-lines.mjs
+
+      - name: Check for whitespace errors
+        env:
+          # merge_group carries neither of the first two, and a newly created branch
+          # reports an all-zero before, so the base is resolved rather than assumed.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
+            echo "No usable base commit for this event; skipping the whitespace check."
+            exit 0
+          fi
+          git diff --check "${BASE_SHA}" HEAD
+
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # A single stable check for branch protection to require. Without it, protecting
+    # four separately named jobs means editing the rule every time a job is added.
+    needs:
+      - backend
+      - frontend
+      - deployment
+      - repo-gates
+    if: always()
+    steps:
+      - name: Verify every job succeeded
+        env:
+          EXPECTED_JOBS: 4
+        run: |
+          set -euo pipefail
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "Job results: $results"
+
+          # An empty or short list would otherwise pass vacuously, which is the one
+          # way a required check can go green while nothing actually ran. Keep this
+          # count in step with the needs: list above.
+          count="$(echo $results | wc -w)"
+          if [[ "$count" -ne "$EXPECTED_JOBS" ]]; then
+            echo "Expected $EXPECTED_JOBS job results but saw $count." >&2
+            exit 1
+          fi
+
+          for result in $results; do
+            if [[ "$result" != "success" ]]; then
+              echo "A required job did not succeed." >&2
+              exit 1
+            fi
+          done

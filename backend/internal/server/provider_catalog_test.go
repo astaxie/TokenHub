@@ -11,6 +11,25 @@ import (
 	"time"
 )
 
+func TestNormalizeProviderCatalogModelUsesExplicitCanonicalName(t *testing.T) {
+	explicit := normalizeProviderCatalogModel(map[string]any{
+		"id":             "k3",
+		"display_name":   "Kimi K3",
+		"canonical_name": "KIMI_K3",
+	})
+	if explicit.CanonicalName != "kimi-k3" {
+		t.Fatalf("expected explicit canonical name kimi-k3, got %q", explicit.CanonicalName)
+	}
+
+	fallback := normalizeProviderCatalogModel(map[string]any{
+		"id":           "k3",
+		"display_name": "Kimi K3",
+	})
+	if fallback.CanonicalName != "k3" {
+		t.Fatalf("expected ID-derived canonical name k3, got %q", fallback.CanonicalName)
+	}
+}
+
 func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	store := NewMemoryStore()
 	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
@@ -44,6 +63,53 @@ func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	}
 	if source != "local-provider-catalog" || !providerCatalogContains(persisted, "fresh-provider") {
 		t.Fatalf("expected persisted local catalog, source=%q entries=%+v", source, persisted)
+	}
+}
+
+func TestCreateProviderCatalogRoutesAddsExplicitlySelectedMissingModel(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	catalog := ProviderCatalogEntry{
+		ID: "provider-with-auto-model",
+		Models: []ProviderCatalogModel{
+			{
+				ID:                     "auto",
+				Name:                   "Auto",
+				DisplayName:            "Auto",
+				CanonicalName:          "auto",
+				Category:               "custom",
+				Family:                 "auto",
+				Type:                   "chat",
+				ContextWindow:          196608,
+				InputPriceUSDPer1M:     1,
+				CacheReadPriceUSDPer1M: 0.1,
+				OutputPriceUSDPer1M:    2,
+				Capabilities:           []string{"chat", "tool_call"},
+				SupportedParameters:    []string{"temperature"},
+			},
+		},
+	}
+
+	created, modelNames, routeIDs := server.createProviderCatalogRoutes(
+		"prv_auto",
+		catalog,
+		ProviderCreateRequest{SelectedModels: []string{"auto"}},
+	)
+
+	if created != 1 || len(modelNames) != 1 || modelNames[0] != "auto" || len(routeIDs) != 1 {
+		t.Fatalf("expected selected provider model route, created=%d models=%v routes=%v", created, modelNames, routeIDs)
+	}
+	models := store.ListModels()
+	if len(models) != 1 {
+		t.Fatalf("expected selected provider model to be added to the model catalog, got %+v", models)
+	}
+	model := models[0]
+	if model.Name != "auto" || model.Category != "custom" || model.Family != "auto" ||
+		model.Modality != "chat" || model.ContextWindow != 196608 || model.Status != StatusActive {
+		t.Fatalf("unexpected selected provider model: %+v", model)
+	}
+	if len(store.ListRoutes()) != 1 {
+		t.Fatalf("expected selected provider model route to be persisted")
 	}
 }
 

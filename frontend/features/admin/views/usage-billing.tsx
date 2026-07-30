@@ -271,6 +271,7 @@ export function ExecutiveMemberTable({ rows, totalTokens }: { rows: ExecutiveMem
             <th>{tx("排名")}</th>
             <th>{tx("成员")}</th>
             <th>{tx("部门")}</th>
+            <th>{tx("Key（已用/归属）")}</th>
             <th>{tx("请求")}</th>
             <th>{tx("输入 Token")}</th>
             <th>{tx("输出 Token")}</th>
@@ -287,6 +288,7 @@ export function ExecutiveMemberTable({ rows, totalTokens }: { rows: ExecutiveMem
                 <td><span className="executive-rank-badge">{index + 1}</span></td>
                 <td><strong>{row.name}</strong><small>{row.id}</small></td>
                 <td>{tx(row.department)}</td>
+                <td>{formatNumber(row.used_key_count ?? 0)} / {formatNumber(row.owned_key_count ?? 0)}</td>
                 <td>{formatNumber(row.request_count)}</td>
                 <td>{compactNumber(row.input_tokens)}</td>
                 <td>{compactNumber(row.output_tokens)}</td>
@@ -379,6 +381,8 @@ export function addUsageRow(target: UsageBreakdownRow, source: UsageBreakdownRow
   target.output_tokens += source.output_tokens;
   target.total_tokens += source.total_tokens;
   target.estimated_cost_usd += source.estimated_cost_usd;
+  target.owned_key_count = (target.owned_key_count ?? 0) + (source.owned_key_count ?? 0);
+  target.used_key_count = (target.used_key_count ?? 0) + (source.used_key_count ?? 0);
 }
 
 export function findUsageUser(data: AppData, id: string) {

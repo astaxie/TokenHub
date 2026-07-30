@@ -1074,6 +1074,204 @@
   font-weight: 650;
 }
 
+.model-route-policy {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.model-route-policy-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.model-route-policy-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.model-route-policy-head strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.model-route-policy-head span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.route-policy-save {
+  min-width: 104px;
+  flex: 0 0 auto;
+}
+
+.route-strategy-tabs {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.route-strategy-tab {
+  min-width: 104px;
+  min-height: 38px;
+  border-bottom: 2px solid transparent;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.route-strategy-tab:hover {
+  color: var(--text);
+  background: var(--surface-soft);
+}
+
+.route-strategy-tab.active {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+.route-strategy-tab:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.route-strategy-guide {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.route-strategy-guide-head {
+  min-width: 0;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.route-strategy-guide-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.route-strategy-guide-head strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 760;
+}
+.route-strategy-guide-head span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.route-strategy-guide-head em {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.route-strategy-guide-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+}
+.route-strategy-guide-grid > div {
+  min-width: 0;
+  padding: 9px 11px;
+}
+.route-strategy-guide-grid > div + div {
+  border-left: 1px solid var(--border);
+}
+.route-strategy-guide-grid span,
+.route-strategy-guide-example span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.route-strategy-guide-grid p {
+  margin: 0;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.route-strategy-guide-example {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding: 8px 11px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-soft));
+}
+
+.route-strategy-guide-example strong {
+  display: block;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.route-policy-warning,
+.route-policy-share-note {
+  min-width: 0;
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.route-policy-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--warn);
+  background: var(--warn-weak);
+}
+
+.route-policy-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.route-policy-share-note {
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.route-policy-list {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
 .route-order-list {
   display: grid;
   gap: 7px;
@@ -1101,6 +1299,10 @@
   background: #fbfbfb;
 }
 
+.route-provider-row.route-policy-row {
+  grid-template-columns: 26px 44px minmax(130px, 0.85fr) minmax(145px, 1fr) minmax(150px, auto) auto auto;
+}
+
 .route-drag-handle {
   width: 26px;
   height: 32px;
@@ -1113,21 +1315,24 @@
 }
 
 .route-drag-handle:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.55;
 }
 
 .route-order-badge {
-  width: 28px;
+  width: auto;
+  min-width: 28px;
   height: 28px;
+  padding: 0 5px;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: #111;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .route-provider-main,
@@ -1163,6 +1368,62 @@
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.route-policy-parameters {
+  min-width: 145px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.route-policy-parameters.multi {
+  min-width: 228px;
+}
+
+.route-policy-parameters label {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.route-policy-parameters label span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.route-policy-parameters input {
+  width: 60px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.route-policy-parameters input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.route-policy-parameters > strong,
+.route-policy-order-value {
+  min-width: 48px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.route-policy-order-value {
+  color: var(--muted);
 }
 
 .route-empty {

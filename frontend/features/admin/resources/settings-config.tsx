@@ -76,8 +76,6 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     { key: "audit_retention", label: "审计保留", help: "请求审计日志的默认保留周期，例如 180d。" },
     { key: "api_key_prefix", label: "API Key 前缀", placeholder: "sk_", help: "新建和轮换 Key 时使用；建议以 _ 结尾，例如 sk_。" },
     { key: "api_key_random_length", label: "API Key 随机长度", type: "number", placeholder: "48", help: "前缀后面的随机字符数，系统会限制在 24-128 之间。" },
-    { key: "version_update_url", label: "更新检测地址", placeholder: "https://api.github.com/repos/astaxie/TokenHub/tags", help: "用于左上角版本提示；支持 GitHub Releases latest/tags API 或返回 latest_version/tag_name 的 JSON 地址。" },
-    { key: "version_release_url", label: "更新日志地址", placeholder: "https://github.com/astaxie/TokenHub/releases", help: "点击立即更新或查看更新日志时打开；留空时使用检测结果里的发布页面。" },
   ]);
   return {
     ...base,

@@ -1,0 +1,442 @@
+.version-summary {
+  padding: 4px 0 8px;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+.version-summary-line {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.version-summary-line strong {
+  color: var(--ink);
+  font-size: 34px;
+  font-weight: 780;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.version-summary-line svg.current {
+  color: var(--pos);
+}
+
+.version-summary-line svg.update {
+  color: var(--warn);
+}
+
+.version-summary-line .neutral {
+  display: inline-flex;
+  color: var(--ink-3);
+}
+
+.version-summary p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.version-build-type {
+  min-height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.version-release-link {
+  min-height: 44px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+.version-release-link:hover {
+  color: var(--accent);
+}
+
+.version-release-card {
+  min-height: 68px;
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--border));
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  background: var(--warn-weak);
+}
+
+.version-release-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface));
+  color: var(--warn);
+}
+
+.version-release-copy {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.version-release-copy span,
+.version-release-copy small {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.version-release-copy strong {
+  color: var(--ink);
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.version-release-copy small {
+  grid-column: 1 / -1;
+}
+
+.version-release-card > a {
+  min-height: 40px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 680;
+  text-decoration: none;
+}
+
+.version-message {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.version-message svg {
+  flex: 0 0 auto;
+}
+
+.version-message span {
+  min-width: 0;
+  flex: 1;
+}
+
+.version-message.warning {
+  border-color: color-mix(in srgb, var(--warn) 30%, var(--border));
+  background: var(--warn-weak);
+  color: var(--warn);
+}
+
+.version-message.neutral {
+  background: var(--surface-2);
+}
+
+.version-message button {
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: transparent;
+  color: currentColor;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.version-message button:hover {
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.version-native-action {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 9px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    filter 180ms ease,
+    opacity 180ms ease;
+}
+
+.version-native-action.rollback {
+  background: var(--red);
+  color: #fff;
+}
+
+.version-native-action:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.version-native-action:focus-visible,
+.version-native-result button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  outline-offset: 2px;
+}
+
+.version-native-action:disabled,
+.version-native-result button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.version-native-result {
+  min-height: 68px;
+  border: 1px solid color-mix(in srgb, var(--pos) 30%, var(--border));
+  border-radius: 10px;
+  padding: 10px 10px 10px 12px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  background: var(--pos-weak);
+  color: var(--pos);
+}
+
+.version-native-result > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.version-native-result strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.version-native-result span {
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.version-native-result button {
+  min-width: 104px;
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.version-rollback {
+  margin-top: 2px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.version-rollback-trigger {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 9px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.version-rollback-trigger > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.version-rollback-trigger > svg {
+  transition: transform 180ms ease;
+}
+
+.version-rollback.open .version-rollback-trigger > svg {
+  transform: rotate(180deg);
+}
+
+.version-rollback-trigger:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+.version-rollback-content {
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.version-rollback-content > p {
+  margin: 0 2px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.version-list-state {
+  min-height: 72px;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.version-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.version-option {
+  min-height: 54px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 7px 0 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: center;
+  background: var(--surface);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.version-option:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.version-option.selected {
+  border-color: color-mix(in srgb, var(--warn) 48%, var(--border));
+  background: var(--warn-weak);
+}
+
+.version-option label {
+  min-width: 0;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.version-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--warn);
+}
+
+.version-option strong {
+  color: var(--ink);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.version-option label span {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.version-option > a {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+}
+
+.version-option > a:hover {
+  background: var(--surface-3);
+  color: var(--accent);
+}
+
+.version-rollback-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.version-rollback-warning svg {
+  margin-top: 1px;
+  flex: 0 0 auto;
+}
+
+.version-modal .sr-only {
+  width: 1px;
+  height: 1px;
+  position: absolute;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.version-modal .spin {
+  animation: version-spin 800ms linear infinite;
+}
+
+@keyframes version-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

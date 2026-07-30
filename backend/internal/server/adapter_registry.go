@@ -20,6 +20,7 @@ const (
 	AdapterCapabilityAffinity       AdapterCapability = "session_affinity"
 	AdapterCapabilityCompact        AdapterCapability = "responses_compact"
 	AdapterCapabilityWebSocket      AdapterCapability = "responses_websocket"
+	AdapterCapabilityImageGenerate  AdapterCapability = "image_generation"
 )
 
 type AdapterDescriptor struct {

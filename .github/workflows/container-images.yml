@@ -24,9 +24,13 @@ jobs:
     name: Prepare image publication
     runs-on: ubuntu-latest
     outputs:
+      build_version: ${{ steps.tags.outputs.build_version }}
       final_tags: ${{ steps.tags.outputs.final_tags }}
       staging_tag: ${{ steps.tags.outputs.staging_tag }}
     steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
       - name: Validate tags
         id: tags
         env:
@@ -38,30 +42,28 @@ jobs:
           set -euo pipefail
 
           staging_tag="staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA::12}"
+          build_version=""
           final_tags=()
 
           if [[ "$EVENT_NAME" == "release" ]]; then
-            numeric_identifier='(0|[1-9][0-9]*)'
-            prerelease_identifier='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
-            semver_pattern="^v?${numeric_identifier}\.${numeric_identifier}\.${numeric_identifier}(-${prerelease_identifier}(\.${prerelease_identifier})*)?$"
-            if [[ ! "$RELEASE_TAG" =~ $semver_pattern ]]; then
-              echo "Release tag must be semantic, for example v0.3.1 or v0.3.1-rc.1" >&2
-              exit 1
-            fi
-
-            version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+            version="$(.github/release/normalize-release-tag.sh "$RELEASE_TAG")"
+            stable_version="${version%%-*}"
+            IFS=. read -r major minor _patch <<<"$stable_version"
+            build_version="$version"
             final_tags+=("$version")
-            if [[ "$RELEASE_PRERELEASE" != "true" && -z "${BASH_REMATCH[4]}" ]]; then
-              final_tags+=("${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" "latest")
+            if [[ "$RELEASE_PRERELEASE" != "true" && "$version" != *-* ]]; then
+              final_tags+=("${major}.${minor}" "latest")
             fi
           else
             if [[ "$MANUAL_TAG" != "edge" && ! "$MANUAL_TAG" =~ ^manual-[A-Za-z0-9_][A-Za-z0-9_.-]{0,120}$ ]]; then
               echo "Manual image tag must be edge or start with manual-" >&2
               exit 1
             fi
+            build_version="$MANUAL_TAG"
             final_tags+=("$MANUAL_TAG")
           fi
 
+          echo "build_version=$build_version" >>"$GITHUB_OUTPUT"
           echo "staging_tag=$staging_tag" >>"$GITHUB_OUTPUT"
           {
             echo "final_tags<<EOF"
@@ -70,7 +72,7 @@ jobs:
           } >>"$GITHUB_OUTPUT"
 
   build:
-    name: Build ${{ matrix.name }} image
+    name: Build managed TokenHub image
     needs: prepare
     runs-on: ubuntu-latest
     permissions:
@@ -78,18 +80,6 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: backend
-            context: .
-            file: backend/Dockerfile
-            image: tokenhub-backend
-          - name: frontend
-            context: frontend
-            file: frontend/Dockerfile
-            image: tokenhub-frontend
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -111,7 +101,7 @@ jobs:
         id: metadata
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          images: ghcr.io/${{ github.repository_owner }}/tokenhub-backend
           flavor: latest=false
           tags: |
             type=raw,value=${{ needs.prepare.outputs.staging_tag }}
@@ -120,24 +110,29 @@ jobs:
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
+          context: .
+          file: backend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }},ignore-error=true
+          labels: |
+            ${{ steps.metadata.outputs.labels }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.build_version }}
+          build-args: |
+            TOKENHUB_VERSION=${{ needs.prepare.outputs.build_version }}
+            TOKENHUB_BUILD_TYPE=release
+          cache-from: type=gha,scope=managed-tokenhub
+          cache-to: type=gha,mode=max,scope=managed-tokenhub,ignore-error=true
 
       - name: Attest image provenance
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
         with:
-          subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          subject-name: ghcr.io/${{ github.repository_owner }}/tokenhub-backend
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
   promote:
-    name: Publish paired image tags
+    name: Publish image tags
     needs:
       - prepare
       - build
@@ -156,7 +151,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify and publish paired tags
+      - name: Verify and publish tags
         env:
           FINAL_TAGS: ${{ needs.prepare.outputs.final_tags }}
           IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
@@ -164,16 +159,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          images=(tokenhub-backend tokenhub-frontend)
-          for image in "${images[@]}"; do
-            docker buildx imagetools inspect "$IMAGE_PREFIX/$image:$STAGING_TAG" >/dev/null
-          done
+          image="tokenhub-backend"
+          docker buildx imagetools inspect "$IMAGE_PREFIX/$image:$STAGING_TAG" >/dev/null
 
           while IFS= read -r final_tag; do
             [[ -n "$final_tag" ]] || continue
-            for image in "${images[@]}"; do
-              docker buildx imagetools create \
-                --tag "$IMAGE_PREFIX/$image:$final_tag" \
-                "$IMAGE_PREFIX/$image:$STAGING_TAG"
-            done
+            docker buildx imagetools create \
+              --tag "$IMAGE_PREFIX/$image:$final_tag" \
+              "$IMAGE_PREFIX/$image:$STAGING_TAG"
           done <<<"$FINAL_TAGS"

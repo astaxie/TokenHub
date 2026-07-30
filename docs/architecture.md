@@ -113,7 +113,7 @@ The default image uses the model catalog bundled at build time so the executable
 
 ## Model Request Flow
 
-`ModelRoute` maps a unified model name to an upstream `ProviderModel`, so callers do not need provider-specific model names. `POST /v1/chat/completions`, `POST /v1/responses`, `POST /v1/responses/compact`, and `POST /v1/embeddings` share the same authentication, quota, and routing entry point.
+`Model` is the external API contract, `ProviderModel` is a persisted upstream inventory item for one Provider, and `ModelRoute` maps between them. External models carry an explicit persisted directory role, so removing their last route leaves them as drafts instead of turning them back into candidate templates. Route creation and editing require the selected `ProviderModel` to exist in inventory. This allows a same-name 1:1 mapping or a custom alias without exposing provider-specific model names to callers. `POST /v1/chat/completions`, `POST /v1/responses`, `POST /v1/responses/compact`, and `POST /v1/embeddings` share the same authentication, quota, and routing entry point.
 
 ```mermaid
 sequenceDiagram
@@ -153,7 +153,7 @@ Provider credentials are AES-GCM encrypted from `TOKENHUB_SECRET_KEY`; project A
 | Category | Key entities | Purpose |
 | --- | --- | --- |
 | Tenancy and credentials | `Project`, `APIKey`, `AdminUser`, `AdminSession` | Project ownership, application access, and admin sessions |
-| Routing | `Provider`, `ProviderResource`, `Model`, `ModelRoute` | Upstream channels, resource pools, unified models, and routes |
+| Routing | `Provider`, `ProviderResource`, `ProviderModel`, `Model`, `ModelRoute` | Upstream channels, resource pools, upstream inventory, external models, and routes |
 | Governance and metering | `QuotaBucket`, `UsageRecord`, `ProviderResourceBucket`, `InFlightLease` | Quotas, usage/cost, and cross-replica concurrency |
 | Multi-instance coordination | `ClusterLease`, `ClusterTaskState`, `AdapterSessionBinding` | Catalog sync, cluster operations, and Codex session resource bindings |
 | Observability | `RequestLog`, `RequestPayloadLog`, `RouteAttemptLog`, `ProviderObservation`, `AuditEvent` | Request traceability, payload audit, route attempts, provider observations, and admin audit |

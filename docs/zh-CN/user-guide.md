@@ -165,6 +165,8 @@ curl --request POST \
 
 原生 Anthropic 路由保留 Anthropic 内容块与 beta Header。OpenAI 兼容路由转换文本、图片、客户端工具、工具结果、并行工具调用和流式事件。Anthropic 服务端工具无法转换到 OpenAI 兼容 Provider 时，接口返回 `400 unsupported_tool`。
 
+启用 `mid-conversation-system-2026-04-07` 的 Claude Code 请求可以在 `messages` 中包含 `system` 条目。TokenHub 会在原生 Anthropic 路由中保留这些条目，并在 OpenAI 兼容路由中将其转换为保持原顺序的系统消息。未启用该 beta 时，`messages` 仍只接受 `user` 和 `assistant` role。
+
 本地 Claude Code 使用 TokenHub Host URL，不添加 `/v1` 后缀：
 
 ```bash
@@ -176,6 +178,20 @@ claude
 ```
 
 `ANTHROPIC_AUTH_TOKEN` 通过 `Authorization: Bearer` 发送 TokenHub Key。没有 Authorization Header 时，也可通过 `ANTHROPIC_API_KEY` 使用 `x-api-key`。Token 估算会检查 Key 和模型权限，但不生成计费推理记录。
+
+## Codex 订阅生图
+
+`POST /v1/images/generations` 接受 OpenAI 兼容的 `model`、`prompt`、`quality`、`size`、`n` 和 `response_format` 字段。请使用对外虚拟模型 `model: "codex-gpt-image-2"` 与 `n: 1`。`gpt-image-2` 是独立的标准 API 模型，绝不会路由到 Codex 订阅能力。添加 `Prefer: respond-async` 可先获得图片任务，再轮询 `GET /v1/image-jobs/{id}`。
+
+`POST /v1/images/edits` 通过 multipart 的 `image` 或 `image[]` 接收参考图。`gpt-image-2` 可把单个 `mask` 转发给 OpenAI API；Codex 订阅账号暂不支持遮罩编辑。TokenHub 不安装或启动 Codex CLI，而是直接请求 Codex 订阅 Images 接口；提示词在数据库中加密保存，输入图与输出图保留在服务器上，下载 URL 签名有效期为 24 小时。URL 过期后文件仍会保留，再次查询任务即可获得新 URL。被选中的 Codex 账号必须具备生图权限。
+
+生图任务默认最多执行 5 分钟，可通过 `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` 调整。
+
+TokenHub 根据账号的真实调用结果记录生图能力。已确认支持的账号会被优先选择；返回 `403` 的账号会被临时跳过；尚未检测的账号仍可在首次使用时完成检测。经过 `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（默认 24 小时）后，不支持的账号会重新进入模型发现和路由范围，由下一次真实请求低频复测。TokenHub 不会为了探测恢复而在后台自动生成图片。
+
+至少一个健康的 Codex 接入账号已确认支持生图或进入低频复测窗口时，`codex-gpt-image-2` 会出现在 `GET /v1/models` 中。它是订阅制虚拟模型，不需要配置普通 Provider 模型路由。独立的 `gpt-image-2` 模型使用 OpenAI API Provider，绝不会消耗 Codex 订阅额度。
+
+完整的 curl、异步轮询、参考图、Node.js 和 Python 测试流程见 [Codex 生图 API 调用与测试指南](codex-image-generation-api.md)。
 
 ## SDK 配置
 
