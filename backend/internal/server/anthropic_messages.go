@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 )
 
 type anthropicMessagesRequest struct {
@@ -49,16 +50,13 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 
 	resp, route, usage, attempts, err := s.executeRoutedAnthropicMessages(r, routed, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, err)
-		s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditErrorPayload(err, routed.Call.RequestID))
+		s.finishFailedRoutedCall(r, routed, attempts, err, req.Raw)
 		writeAnthropicError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
-	s.recordRequestPayload(routed.Call.RequestID, req.Raw, resp)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req.Raw, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
@@ -155,13 +153,12 @@ func (s *Server) startAnthropicRoutedCall(
 	key APIKey,
 	req anthropicMessagesRequest,
 ) (RoutedCall, bool) {
+	admittedAt := time.Now().UTC()
 	call, err := s.store.StartCall(r.Context(), project, key, req.Model)
 	call.Stream = req.Stream
 	if err != nil {
-		httpErr := AsHTTPError(err)
-		requestID := s.store.RecordRejectedRequest(project, key, req.Model, req.Stream, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, req.Raw)
 		w.Header().Set("x-request-id", requestID)
-		s.recordRequestPayload(requestID, req.Raw, auditErrorPayload(err, requestID))
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
@@ -171,17 +168,13 @@ func (s *Server) startAnthropicRoutedCall(
 	}
 	routes, err := s.store.SelectRouteCandidates(req.Model)
 	if err != nil {
-		httpErr := AsHTTPError(err)
-		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, err, req.Raw)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	affinity, err := s.anthropicCacheLocalityAffinity(key.ID, req.Model, r.Header, req.Raw)
 	if err != nil {
-		httpErr := AsHTTPError(err)
-		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, err, req.Raw)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
@@ -963,8 +956,7 @@ func (s *Server) handleAnthropicMessagesStream(
 ) {
 	compatible, compatibilityErr := compatibleAnthropicRoutes(routed, req)
 	if compatibilityErr != nil {
-		s.finishFailedRoutedCall(r, routed, nil, compatibilityErr)
-		s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditErrorPayload(compatibilityErr, routed.Call.RequestID))
+		s.finishFailedRoutedCall(r, routed, nil, compatibilityErr, req.Raw)
 		writeAnthropicError(w, r, compatibilityErr)
 		return
 	}
@@ -1012,9 +1004,17 @@ func (s *Server) handleAnthropicMessagesStream(
 		s.store.MarkRouteUsed(route.Route.ID)
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
-	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, usage, status, code, s.clientIP(r), r.UserAgent())
-	s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditStreamPayload(status, code, err))
+	s.finishRoutedCall(r, GatewayCallCompletion{
+		Call:            routed.Call,
+		Route:           route,
+		Usage:           usage,
+		Attempts:        attempts,
+		StatusCode:      status,
+		ErrorCode:       code,
+		ErrorMessage:    errorMessageOrEmpty(err),
+		RequestPayload:  req.Raw,
+		ResponsePayload: auditStreamPayload(status, code, err),
+	})
 	if err != nil {
 		if tracker.Wrote() {
 			_ = writeAnthropicStreamError(tracker, err)

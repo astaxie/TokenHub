@@ -44,7 +44,7 @@ export const SKIP_DIRECTORIES = new Set([
 export const FROZEN = new Map([
   ["backend/internal/server/anthropic_messages.go", 1523],
   ["backend/internal/server/http_test.go", 712],
-  ["backend/internal/server/http.go", 401],
+  ["backend/internal/server/http.go", 319],
   ["backend/internal/server/store.go", 262],
   ["frontend/app/styles/legacy/resources.css", 1508],
   ["frontend/features/admin/i18n/en.tsx", 1540],
