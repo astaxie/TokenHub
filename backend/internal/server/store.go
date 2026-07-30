@@ -1020,6 +1020,11 @@ func (s *GormStore) createProject(project Project, requireActiveTeam bool) (Proj
 	project.UpdatedAt = now
 	project.Teams = nil
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if requireActiveTeam {
+			if err := rejectGatewayManagedProjectMutation(tx, project.ID); err != nil {
+				return err
+			}
+		}
 		if strings.TrimSpace(project.TeamID) != "" {
 			team, err := lockTeamForMutation(tx, project.TeamID)
 			if err != nil {
@@ -1240,6 +1245,9 @@ func (s *GormStore) AddProjectTeam(link ProjectTeam) (ProjectTeam, error) {
 		if err := tx.First(&project, "id = ?", link.ProjectID).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
 		}
+		if err := rejectGatewayManagedProjectMutation(tx, link.ProjectID); err != nil {
+			return err
+		}
 		if err := tx.Create(&link).Error; err != nil {
 			return writeConflict(err, "project_team_conflict", "Team is already linked to this project")
 		}
@@ -1256,6 +1264,9 @@ func (s *GormStore) UpdateProjectTeam(projectID string, teamID string, role stri
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := rejectGatewayManagedProjectMutation(s.db, projectID); err != nil {
+		return ProjectTeam{}, err
+	}
 	var link ProjectTeam
 	if err := s.db.First(&link, "project_id = ? AND team_id = ?", projectID, teamID).Error; err != nil {
 		return ProjectTeam{}, notFound(err, "project_team_not_found", "Project team link not found")
@@ -1278,6 +1289,9 @@ func (s *GormStore) RemoveProjectTeam(projectID string, teamID string) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		project, err := lockProjectForTeamMutation(tx, projectID)
 		if err != nil {
+			return err
+		}
+		if err := rejectGatewayManagedProjectMutation(tx, projectID); err != nil {
 			return err
 		}
 		if strings.TrimSpace(project.TeamID) == strings.TrimSpace(teamID) {

@@ -181,6 +181,9 @@ func (s *GormStore) CreateGatewayModelAccessKey(input GatewayModelAccessKeyCreat
 	if result, found, err := findGatewayModelAccessKeyRequest(s.db, controlRequestID, digest); found || err != nil {
 		return result, err
 	}
+	if err := validateNewGatewayModelAccessKeyInput(normalized, time.Now().UTC()); err != nil {
+		return GatewayModelAccessKeyCreateResult{}, err
+	}
 
 	rawSecret := s.generateAPIKeySecret()
 	prefix, suffix := PrefixSuffix(rawSecret)
@@ -561,9 +564,6 @@ func normalizeGatewayModelAccessKeyCreateInput(input GatewayModelAccessKeyCreate
 	}
 	if input.ExpiresAt != nil {
 		expiresAt := input.ExpiresAt.UTC()
-		if !expiresAt.After(time.Now().UTC()) {
-			return GatewayModelAccessKeyCreateInput{}, "", NewHTTPError(http.StatusBadRequest, "invalid_model_access_key", "Expiration must be in the future")
-		}
 		input.ExpiresAt = &expiresAt
 	}
 	payload, err := json.Marshal(input)
@@ -572,6 +572,13 @@ func normalizeGatewayModelAccessKeyCreateInput(input GatewayModelAccessKeyCreate
 	}
 	digestBytes := sha256.Sum256(payload)
 	return input, hex.EncodeToString(digestBytes[:]), nil
+}
+
+func validateNewGatewayModelAccessKeyInput(input GatewayModelAccessKeyCreateInput, now time.Time) error {
+	if input.ExpiresAt != nil && !input.ExpiresAt.After(now) {
+		return NewHTTPError(http.StatusBadRequest, "invalid_model_access_key", "Expiration must be in the future")
+	}
+	return nil
 }
 
 func gatewayModelAccessKeyControlRequestID(tenantID string, requestID string) string {
@@ -627,6 +634,12 @@ func resolveGatewayModelAccessKeyScope(db *gorm.DB, input GatewayModelAccessKeyC
 	if err := db.First(&project, "tenant_id = ? AND external_project_id = ? AND status = ?", tenant.ID, input.ProjectExternalID, StatusActive).Error; err != nil {
 		return GatewayTenant{}, GatewayProject{}, NewHTTPError(http.StatusConflict, "gateway_project_unavailable", "Gateway project projection is not active")
 	}
+	if project.OrganizationID != "" {
+		var organization GatewayOrganization
+		if err := db.First(&organization, "id = ? AND tenant_id = ? AND status = ?", project.OrganizationID, tenant.ID, StatusActive).Error; err != nil {
+			return GatewayTenant{}, GatewayProject{}, NewHTTPError(http.StatusConflict, "gateway_organization_unavailable", "Gateway project organization is not active")
+		}
+	}
 	return tenant, project, nil
 }
 
@@ -635,6 +648,12 @@ func validateGatewayModelAccessKeyPrincipal(db *gorm.DB, tenant GatewayTenant, p
 		var principal GatewayPrincipal
 		if err := db.First(&principal, "tenant_id = ? AND external_principal_id = ? AND status = ?", tenant.ID, input.PrincipalExternalID, StatusActive).Error; err != nil {
 			return NewHTTPError(http.StatusConflict, "gateway_principal_unavailable", "Gateway principal projection is not active")
+		}
+		if project.OrganizationID != "" {
+			var binding GatewayPrincipalOrganizationBinding
+			if err := db.First(&binding, "tenant_id = ? AND principal_id = ? AND organization_id = ? AND status = ?", tenant.ID, principal.ID, project.OrganizationID, StatusActive).Error; err != nil {
+				return NewHTTPError(http.StatusConflict, "gateway_organization_membership_unavailable", "Gateway principal is not active in the project organization")
+			}
 		}
 		return nil
 	}
@@ -667,10 +686,22 @@ func validateGatewayModelAccessKeyEffectiveScope(db *gorm.DB, key APIKey) error 
 	if err := db.First(&project, "id = ? AND tenant_id = ? AND status = ?", key.ProjectID, tenant.ID, StatusActive).Error; err != nil {
 		return ErrAPIKeyDisabled
 	}
+	if project.OrganizationID != "" {
+		var organization GatewayOrganization
+		if err := db.First(&organization, "id = ? AND tenant_id = ? AND status = ?", project.OrganizationID, tenant.ID, StatusActive).Error; err != nil {
+			return ErrAPIKeyDisabled
+		}
+	}
 	if key.PrincipalType == "user" {
 		var principal GatewayPrincipal
 		if err := db.First(&principal, "tenant_id = ? AND external_principal_id = ? AND status = ?", tenant.ID, key.PrincipalExternalID, StatusActive).Error; err != nil {
 			return ErrAPIKeyDisabled
+		}
+		if project.OrganizationID != "" {
+			var binding GatewayPrincipalOrganizationBinding
+			if err := db.First(&binding, "tenant_id = ? AND principal_id = ? AND organization_id = ? AND status = ?", tenant.ID, principal.ID, project.OrganizationID, StatusActive).Error; err != nil {
+				return ErrAPIKeyDisabled
+			}
 		}
 		return nil
 	}
@@ -696,6 +727,12 @@ func revokeGatewayWorkloadModelAccessKeys(db *gorm.DB, tenantExternalID string, 
 	return revokeGatewayModelAccessKeyQuery(db.Model(&APIKey{}).
 		Where("managed_by = ? AND tenant_external_id = ? AND principal_type <> ? AND principal_external_id = ?",
 			gatewayModelAccessKeyManagedBy, tenantExternalID, "user", workloadExternalID))
+}
+
+func revokeGatewayOrganizationModelAccessKeys(db *gorm.DB, tenantExternalID string, organizationID string) error {
+	projects := db.Model(&GatewayProject{}).Select("id").Where("organization_id = ?", organizationID)
+	return revokeGatewayModelAccessKeyQuery(db.Model(&APIKey{}).
+		Where("managed_by = ? AND tenant_external_id = ? AND project_id IN (?)", gatewayModelAccessKeyManagedBy, tenantExternalID, projects))
 }
 
 func revokeGatewayModelAccessKeyQuery(query *gorm.DB) error {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,11 +42,33 @@ type GatewayIntegrationApplyResult struct {
 }
 
 type GatewayIntegrationReconciliationSummary struct {
-	TenantID          string           `json:"tenant_id"`
-	ReceivedEvents    int64            `json:"received_events"`
-	AggregateCounts   map[string]int64 `json:"aggregate_counts"`
-	LatestReceivedAt  *time.Time       `json:"latest_received_at"`
-	LatestProcessedAt *time.Time       `json:"latest_processed_at"`
+	TenantID            string                                            `json:"tenant_id"`
+	ReceivedEvents      int64                                             `json:"received_events"`
+	AggregateCounts     map[string]int64                                  `json:"aggregate_counts"`
+	ProjectionSummaries map[string]GatewayProjectionReconciliationSummary `json:"projection_summaries"`
+	LatestReceivedAt    *time.Time                                        `json:"latest_received_at"`
+	LatestProcessedAt   *time.Time                                        `json:"latest_processed_at"`
+}
+
+type GatewayProjectionReconciliationSummary struct {
+	Count      int64  `json:"count"`
+	MaxVersion int64  `json:"max_version"`
+	Digest     string `json:"digest"`
+}
+
+type gatewayProjectionDigestItem struct {
+	ExternalID     string `json:"external_id"`
+	PrincipalID    string `json:"principal_id,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	ParentID       string `json:"parent_id,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
+	OwnerID        string `json:"owner_id,omitempty"`
+	Name           string `json:"name,omitempty"`
+	WorkloadType   string `json:"workload_type,omitempty"`
+	Environment    string `json:"environment,omitempty"`
+	Status         string `json:"status"`
+	Version        int64  `json:"version"`
+	Deleted        bool   `json:"deleted"`
 }
 
 type GatewayTenant struct {
@@ -308,7 +331,114 @@ func (s *GormStore) GetGatewayIntegrationReconciliation(tenantExternalID string)
 	} else if err == nil {
 		summary.LatestProcessedAt = processed.ProcessedAt
 	}
+	projectionSummaries, err := s.gatewayProjectionReconciliation(tenantID)
+	if err != nil {
+		return GatewayIntegrationReconciliationSummary{}, err
+	}
+	summary.ProjectionSummaries = projectionSummaries
 	return summary, nil
+}
+
+func (s *GormStore) gatewayProjectionReconciliation(tenantExternalID string) (map[string]GatewayProjectionReconciliationSummary, error) {
+	itemsByType := map[string][]gatewayProjectionDigestItem{
+		"tenant": {}, "organization": {}, "tenant_member": {},
+		"organization_member": {}, "project": {}, "workload": {},
+	}
+	var tenant GatewayTenant
+	if err := s.db.First(&tenant, "external_tenant_id = ?", tenantExternalID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return gatewayProjectionSummaries(itemsByType), nil
+		}
+		return nil, err
+	}
+	itemsByType["tenant"] = append(itemsByType["tenant"], gatewayProjectionDigestItem{
+		ExternalID: tenant.ExternalTenantID, Name: tenant.Name, Status: tenant.Status,
+		Version: tenant.Version, Deleted: tenant.DeletedAt != nil,
+	})
+
+	var organizations []GatewayOrganization
+	if err := s.db.Where("tenant_id = ?", tenant.ID).Find(&organizations).Error; err != nil {
+		return nil, err
+	}
+	organizationIDs := make(map[string]string, len(organizations))
+	for _, item := range organizations {
+		organizationIDs[item.ID] = item.ExternalOrganizationID
+	}
+	for _, item := range organizations {
+		itemsByType["organization"] = append(itemsByType["organization"], gatewayProjectionDigestItem{
+			ExternalID: item.ExternalOrganizationID, ParentID: organizationIDs[item.ParentID], Name: item.Name,
+			Status: item.Status, Version: item.Version, Deleted: item.DeletedAt != nil,
+		})
+	}
+
+	var principals []GatewayPrincipal
+	if err := s.db.Where("tenant_id = ?", tenant.ID).Find(&principals).Error; err != nil {
+		return nil, err
+	}
+	principalIDs := make(map[string]string, len(principals))
+	for _, item := range principals {
+		principalIDs[item.ID] = item.ExternalPrincipalID
+		itemsByType["tenant_member"] = append(itemsByType["tenant_member"], gatewayProjectionDigestItem{
+			ExternalID: item.ExternalMembershipID, PrincipalID: item.ExternalPrincipalID, Name: item.DisplayName,
+			Status: item.Status, Version: item.Version, Deleted: item.DeletedAt != nil,
+		})
+	}
+
+	var bindings []GatewayPrincipalOrganizationBinding
+	if err := s.db.Where("tenant_id = ?", tenant.ID).Find(&bindings).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range bindings {
+		itemsByType["organization_member"] = append(itemsByType["organization_member"], gatewayProjectionDigestItem{
+			ExternalID: item.ExternalMembershipID, PrincipalID: principalIDs[item.PrincipalID], OrganizationID: organizationIDs[item.OrganizationID],
+			Status: item.Status, Version: item.Version, Deleted: item.DeletedAt != nil,
+		})
+	}
+
+	var projects []GatewayProject
+	if err := s.db.Where("tenant_id = ?", tenant.ID).Find(&projects).Error; err != nil {
+		return nil, err
+	}
+	projectIDs := make(map[string]string, len(projects))
+	for _, item := range projects {
+		projectIDs[item.ID] = item.ExternalProjectID
+		itemsByType["project"] = append(itemsByType["project"], gatewayProjectionDigestItem{
+			ExternalID: item.ExternalProjectID, OrganizationID: organizationIDs[item.OrganizationID], OwnerID: principalIDs[item.OwnerPrincipalID],
+			Name: item.Name, Status: item.Status, Version: item.Version, Deleted: item.DeletedAt != nil,
+		})
+	}
+
+	var workloads []GatewayWorkload
+	if err := s.db.Where("tenant_id = ?", tenant.ID).Find(&workloads).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range workloads {
+		itemsByType["workload"] = append(itemsByType["workload"], gatewayProjectionDigestItem{
+			ExternalID: item.ExternalWorkloadID, ProjectID: projectIDs[item.ProjectID], OwnerID: principalIDs[item.OwnerPrincipalID],
+			Name: item.Name, WorkloadType: item.WorkloadType, Environment: item.Environment,
+			Status: item.Status, Version: item.Version, Deleted: item.DeletedAt != nil,
+		})
+	}
+	return gatewayProjectionSummaries(itemsByType), nil
+}
+
+func gatewayProjectionSummaries(itemsByType map[string][]gatewayProjectionDigestItem) map[string]GatewayProjectionReconciliationSummary {
+	summaries := make(map[string]GatewayProjectionReconciliationSummary, len(itemsByType))
+	for aggregateType, items := range itemsByType {
+		sort.Slice(items, func(i, j int) bool { return items[i].ExternalID < items[j].ExternalID })
+		maxVersion := int64(0)
+		for _, item := range items {
+			if item.Version > maxVersion {
+				maxVersion = item.Version
+			}
+		}
+		payload, _ := json.Marshal(items)
+		digest := sha256.Sum256(payload)
+		summaries[aggregateType] = GatewayProjectionReconciliationSummary{
+			Count: int64(len(items)), MaxVersion: maxVersion, Digest: hex.EncodeToString(digest[:]),
+		}
+	}
+	return summaries
 }
 
 func validateGatewayIntegrationEvent(event GatewayIntegrationEvent) error {
@@ -522,6 +652,11 @@ func applyGatewayOrganization(tx *gorm.DB, event GatewayIntegrationEvent, now ti
 	item.Version, item.SyncedAt = event.Version, now
 	if err := tx.Save(&item).Error; err != nil {
 		return "", "organization", 0, "", err
+	}
+	if item.DeletedAt != nil {
+		if err := revokeGatewayOrganizationModelAccessKeys(tx, tenant.ExternalTenantID, item.ID); err != nil {
+			return "", "organization", 0, "", err
+		}
 	}
 	return item.ID, "organization", item.Version, "applied", nil
 }

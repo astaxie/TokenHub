@@ -307,7 +307,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 以下内部接口统一使用专用 Integration Token 认证，不得替换为 Admin Token 或模型访问 Key：
 
 - `POST /api/internal/integration/events`：同步租户、组织、人员、项目和工作负载投影。
-- `GET /api/internal/integration/reconciliation?tenant_id=...`：返回指定租户的 Inbox 事件水位和各业务对象事件数量，用于上游平台对账；不返回事件 payload 或投影记录。
+- `GET /api/internal/integration/reconciliation?tenant_id=...`：返回指定租户的 Inbox 事件水位、各业务对象事件数量和 `projection_summaries`，用于上游平台对账。每项投影摘要包含 `count`、`max_version` 和 SHA-256 `digest`；摘要按外部 ID 排序计算，并覆盖关系、名称、生命周期状态、版本和删除标记等稳定拓扑字段，但不返回事件 payload 或投影记录。
 - `GET /api/internal/model-access-keys?tenant_id=...`：在单一租户范围内查询集成管理的模型访问 Key；可选的 `project_id`、`principal_id` 和有效 `status` 筛选由 TokenHub 执行。接口支持 `page` 和 `page_size`（最大 100），并返回分页元数据。
 - `POST /api/internal/model-access-keys`：为已生效的项目和人员/工作负载签发模型访问 Key。`request_id` 必填且幂等，仅首次成功响应返回 `api_key` 明文。
 - `POST /api/internal/model-access-keys/{id}/reveal`：精确校验 `tenant_id`、`principal_type`、`principal_id` 所有权后展示 active Key。每次成功展示都会写审计，审计数据不包含 Key 原文。
@@ -315,7 +315,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 - `GET /api/internal/providers`：查询 Provider，支持服务端 `name`、`type`、`status`、`health` 筛选和分页；响应不包含 API Key、Headers、Options 或资源 Secret。
 - `GET /api/internal/routes`：查询模型路由，支持服务端 `model_name`、`provider_id`、`strategy`、`status` 筛选和分页；响应仅包含安全的 Provider/资源名称及路由元数据。
 
-集成管理的项目投影会在同一事务中物化为 TokenHub 服务项目。租户、项目和人员/工作负载投影未生效时，Key 创建请求将被拒绝。临时禁用租户、人员或工作负载会使其关联 Key 暂时不可用，但不修改 Key 自身的持久化状态；投影重新启用后，原本有效且未过期、未吊销的 Key 自动恢复。删除租户或工作负载、将人员移出租户时，受影响的 Key 将被永久吊销。人员状态只控制个人 Key，不会隐式禁用该人员所拥有工作负载的 Key。显式吊销或已过期的 Key 不会因投影重新启用而恢复。
+集成管理的项目投影会在同一事务中物化为 TokenHub 服务项目。租户、项目和人员/工作负载投影未生效时，Key 创建请求将被拒绝。项目关联组织后，该组织也是授权生命周期边界：用户 Key 要求组织和用户的组织成员关系均为 active，工作负载 Key 则通过项目继承组织状态。临时禁用租户、组织、人员、组织成员关系或工作负载会使适用的 Key 暂时不可用，但不修改 Key 自身的持久化状态；投影重新启用后，原本有效且未过期、未吊销的 Key 自动恢复。删除租户、组织或工作负载、将人员移出租户时，受影响的 Key 将被永久吊销。人员状态和组织成员关系只控制个人 Key，不会隐式禁用该人员所拥有工作负载的 Key。显式吊销或已过期的 Key 不会因投影重新启用而恢复。
 
 集成管理的模型访问 Key 同时保存单向认证 Hash，以及由 `TOKENHUB_SECRET_KEY` 进行 AES-GCM 加密的密文。无法生成密文时创建操作直接失败，禁止明文入库。所有副本和重启过程必须保持 `TOKENHUB_SECRET_KEY` 稳定；更换该值会导致已有 Key 无法再次展示，但基于 Hash 的网关鉴权仍可继续工作。
 

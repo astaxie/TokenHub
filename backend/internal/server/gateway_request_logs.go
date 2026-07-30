@@ -183,7 +183,7 @@ func (s *GormStore) ListGatewayRequestLogs(filter GatewayRequestLogFilter) (Gate
 	}
 	items := make([]GatewayRequestLogItem, 0)
 	err := base.
-		Joins("LEFT JOIN usage_records AS ur ON ur.request_id = rl.request_id").
+		Joins("LEFT JOIN usage_records AS ur ON ur.request_id = rl.request_id AND ur.api_key_id = rl.api_key_id").
 		Select(`rl.request_id,
 			ak.principal_type,
 			ak.principal_external_id,

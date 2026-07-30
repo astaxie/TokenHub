@@ -411,9 +411,9 @@ type Usage struct {
 
 type UsageRecord struct {
 	ID                 string    `json:"id" gorm:"primaryKey"`
-	RequestID          string    `json:"request_id" gorm:"index"`
+	RequestID          string    `json:"request_id" gorm:"index;index:idx_usage_request_key,priority:1"`
 	ProjectID          string    `json:"project_id" gorm:"index"`
-	APIKeyID           string    `json:"api_key_id" gorm:"index"`
+	APIKeyID           string    `json:"api_key_id" gorm:"index;index:idx_usage_request_key,priority:2"`
 	AttributedUserID   string    `json:"attributed_user_id,omitempty" gorm:"index"`
 	ModelName          string    `json:"model" gorm:"index"`
 	ProviderID         string    `json:"provider_id" gorm:"index"`

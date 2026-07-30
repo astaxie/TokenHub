@@ -112,6 +112,27 @@ func TestGatewayIntegrationReconciliationReturnsTenantEventWatermark(t *testing.
 	if summary.LatestReceivedAt == nil || summary.LatestReceivedAt.IsZero() || summary.LatestProcessedAt == nil || summary.LatestProcessedAt.IsZero() {
 		t.Fatalf("expected reconciliation timestamps: %+v", summary)
 	}
+	tenantProjection := summary.ProjectionSummaries["tenant"]
+	organizationProjection := summary.ProjectionSummaries["organization"]
+	if tenantProjection.Count != 1 || tenantProjection.MaxVersion != 1 || len(tenantProjection.Digest) != 64 ||
+		organizationProjection.Count != 1 || organizationProjection.MaxVersion != 1 || len(organizationProjection.Digest) != 64 {
+		t.Fatalf("expected topology projection summaries, got %+v", summary.ProjectionSummaries)
+	}
+	previousDigest := organizationProjection.Digest
+	applyGatewayIntegrationEventForTest(t, app, gatewayIntegrationEvent("evt_org_watermark_update", "organization.updated", "organization", "org_01", "tenant_01", 2, map[string]interface{}{
+		"externalId": "org_01", "name": "研发中心", "status": StatusDisabled,
+	}))
+	updated := doJSON(t, app, http.MethodGet, "/api/internal/integration/reconciliation?tenant_id=tenant_01", nil, "integration_token")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected updated reconciliation summary, got %d: %s", updated.Code, updated.Body)
+	}
+	if err := json.Unmarshal([]byte(updated.Body), &summary); err != nil {
+		t.Fatal(err)
+	}
+	organizationProjection = summary.ProjectionSummaries["organization"]
+	if organizationProjection.MaxVersion != 2 || organizationProjection.Digest == previousDigest {
+		t.Fatalf("expected projection digest to reflect topology state, got %+v", organizationProjection)
+	}
 }
 
 func TestGatewayModelCatalogRequiresIntegrationTokenAndFiltersOnServer(t *testing.T) {
@@ -409,6 +430,18 @@ func TestGatewayModelAccessKeyLifecycleIsTenantScopedAndIdempotent(t *testing.T)
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := store.db.Create(&APIKey{
+		ID: "key_other_tenant", TenantExternalID: "tenant_02", ManagedBy: gatewayModelAccessKeyManagedBy,
+		Name: "Other tenant key", KeyHash: HashSecret("other_tenant_secret"), Status: StatusActive, CreatedAt: requestTime,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&UsageRecord{
+		ID: "usage_other_tenant_same_request", RequestID: "req_integration_01", APIKeyID: "key_other_tenant",
+		InputTokens: 900, OutputTokens: 100, TotalTokens: 1000, CostUSD: 9, CreatedAt: requestTime,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := store.db.Create(&RequestLog{
 		ID: "log_integration_error", RequestID: "req_integration_error", ProjectID: createdPayload.Data.ProjectID,
 		APIKeyID: createdPayload.Data.ID, ModelName: "gpt-4.1", ProviderID: "provider_01",
@@ -541,6 +574,46 @@ func TestGatewayModelAccessKeyRequestIDIsTenantScoped(t *testing.T) {
 	}
 }
 
+func TestGatewayModelAccessKeyReplayRemainsIdempotentAfterExpiry(t *testing.T) {
+	store := NewMemoryStore()
+	app := NewWithConfig(store, Config{IntegrationToken: "integration_token", SecretKey: "test_secret"}).Handler()
+	seedGatewayModelAccessKeyScope(t, app)
+	expiresAt := time.Now().UTC().Add(-time.Hour)
+	input := GatewayModelAccessKeyCreateInput{
+		RequestID: "request_expired_replay", TenantExternalID: "tenant_01", ProjectExternalID: "project_01",
+		PrincipalType: "user", PrincipalExternalID: "user_01", Name: "Expired replay", ExpiresAt: &expiresAt,
+	}
+	normalized, digest, err := normalizeGatewayModelAccessKeyCreateInput(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tenant GatewayTenant
+	if err := store.db.First(&tenant, "external_tenant_id = ?", "tenant_01").Error; err != nil {
+		t.Fatal(err)
+	}
+	var project GatewayProject
+	if err := store.db.First(&project, "tenant_id = ? AND external_project_id = ?", tenant.ID, "project_01").Error; err != nil {
+		t.Fatal(err)
+	}
+	controlRequestID := gatewayModelAccessKeyControlRequestID(normalized.TenantExternalID, normalized.RequestID)
+	if err := store.db.Create(&APIKey{
+		ID: "key_expired_replay", ProjectID: project.ID, TenantExternalID: normalized.TenantExternalID,
+		ProjectExternalID: normalized.ProjectExternalID, PrincipalType: normalized.PrincipalType,
+		PrincipalExternalID: normalized.PrincipalExternalID, ManagedBy: gatewayModelAccessKeyManagedBy,
+		ControlRequestID: &controlRequestID, ControlRequestDigest: digest, Name: normalized.Name,
+		KeyHash: HashSecret("expired_replay_secret"), Status: StatusActive, ExpiresAt: &expiresAt, CreatedAt: expiresAt.Add(-time.Hour),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.CreateGatewayModelAccessKey(input)
+	if err != nil {
+		t.Fatalf("expected expired request replay to remain idempotent, got %v", err)
+	}
+	if result.Created || result.Key.ID != "key_expired_replay" || result.Key.Status != gatewayModelAccessKeyStatusExpired {
+		t.Fatalf("unexpected expired replay result: %+v", result)
+	}
+}
+
 func TestGatewayManagedProjectsAndKeysAreReadOnlyToLocalManagement(t *testing.T) {
 	store := NewMemoryStore()
 	app := NewWithConfig(store, Config{IntegrationToken: "integration_token", SecretKey: "test_secret"}).Handler()
@@ -550,8 +623,30 @@ func TestGatewayManagedProjectsAndKeysAreReadOnlyToLocalManagement(t *testing.T)
 	if _, err := store.UpdateProject(created.Data.ProjectID, Project{Name: "Local override"}); AsHTTPError(err).Code != "integration_managed_project_read_only" {
 		t.Fatalf("expected managed project update rejection, got %v", err)
 	}
+	override := doJSON(t, app, http.MethodPost, "/api/admin/projects", map[string]interface{}{
+		"id": created.Data.ProjectID, "name": "Local create override", "status": StatusActive,
+	}, "admin_token")
+	if override.Code != http.StatusConflict || !jsonBodyHasCode(override.Body, "integration_managed_project_read_only") {
+		t.Fatalf("expected managed project create rejection, got %d: %s", override.Code, override.Body)
+	}
+	if project, found := store.GetProject(created.Data.ProjectID); !found || project.Name == "Local create override" {
+		t.Fatalf("managed project was overwritten through create: %+v", project)
+	}
 	if err := store.DeleteProject(created.Data.ProjectID); AsHTTPError(err).Code != "integration_managed_project_read_only" {
 		t.Fatalf("expected managed project delete rejection, got %v", err)
+	}
+	team := store.CreateResource("teams", AdminResource{ID: "team_gateway_read_only", Name: "Gateway read-only team", Status: StatusActive})
+	if _, err := store.AddProjectTeam(ProjectTeam{ProjectID: created.Data.ProjectID, TeamID: team.ID, Role: "viewer"}); AsHTTPError(err).Code != "integration_managed_project_read_only" {
+		t.Fatalf("expected managed project team addition rejection, got %v", err)
+	}
+	if err := store.db.Create(&ProjectTeam{ProjectID: created.Data.ProjectID, TeamID: team.ID, Role: "viewer"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateProjectTeam(created.Data.ProjectID, team.ID, "maintainer"); AsHTTPError(err).Code != "integration_managed_project_read_only" {
+		t.Fatalf("expected managed project team update rejection, got %v", err)
+	}
+	if err := store.RemoveProjectTeam(created.Data.ProjectID, team.ID); AsHTTPError(err).Code != "integration_managed_project_read_only" {
+		t.Fatalf("expected managed project team removal rejection, got %v", err)
 	}
 	if _, _, err := store.CreateAPIKey(created.Data.ProjectID, APIKey{Name: "Local key"}, ""); AsHTTPError(err).Code != "integration_managed_project_read_only" {
 		t.Fatalf("expected local key creation rejection, got %v", err)
@@ -735,6 +830,68 @@ func TestGatewayManagedUserKeyFollowsTenantAndPrincipalStatus(t *testing.T) {
 		"externalId": "tenant_01", "name": "企业一", "status": "active",
 	}))
 	assertGatewayModelAccessKeyDisabled(t, store, workloadKey.APIKey)
+}
+
+func TestGatewayManagedUserKeyFollowsOrganizationLifecycle(t *testing.T) {
+	store := NewMemoryStore()
+	app := NewWithConfig(store, Config{IntegrationToken: "integration_token", SecretKey: "test_secret"}).Handler()
+	for _, event := range []map[string]interface{}{
+		gatewayIntegrationEvent("evt_org_scope_tenant", "tenant.created", "tenant", "tenant_01", "tenant_01", 1, map[string]interface{}{
+			"externalId": "tenant_01", "name": "Tenant one",
+		}),
+		gatewayIntegrationEvent("evt_org_scope_principal", "tenant_member.added", "tenant_member", "membership_01", "tenant_01", 1, map[string]interface{}{
+			"externalId": "membership_01", "principalExternalId": "user_01", "name": "User one",
+		}),
+		gatewayIntegrationEvent("evt_org_scope_org", "organization.created", "organization", "org_01", "tenant_01", 1, map[string]interface{}{
+			"externalId": "org_01", "name": "Organization one",
+		}),
+		gatewayIntegrationEvent("evt_org_scope_binding", "organization_member.added", "organization_member", "org_membership_01", "tenant_01", 1, map[string]interface{}{
+			"externalId": "org_membership_01", "principalExternalId": "user_01", "organizationExternalId": "org_01",
+		}),
+		gatewayIntegrationEvent("evt_org_scope_project", "project.created", "project", "project_01", "tenant_01", 1, map[string]interface{}{
+			"externalId": "project_01", "name": "Project one", "ownerExternalId": "user_01", "organizationExternalId": "org_01",
+		}),
+	} {
+		applyGatewayIntegrationEventForTest(t, app, event)
+	}
+	created := createGatewayModelAccessKeyForTest(t, app, "request_org_lifecycle", "user", "user_01")
+
+	applyGatewayIntegrationEventForTest(t, app, gatewayIntegrationEvent("evt_org_disabled", "organization.disabled", "organization", "org_01", "tenant_01", 2, map[string]interface{}{
+		"externalId": "org_01", "name": "Organization one", "status": StatusDisabled,
+	}))
+	assertGatewayModelAccessKeyDisabled(t, store, created.APIKey)
+	disabledCreate := doJSON(t, app, http.MethodPost, "/api/internal/model-access-keys", map[string]interface{}{
+		"request_id": "request_disabled_org", "tenant_id": "tenant_01", "project_id": "project_01",
+		"principal_type": "user", "principal_id": "user_01", "name": "Disabled organization",
+	}, "integration_token")
+	if disabledCreate.Code != http.StatusConflict || !jsonBodyHasCode(disabledCreate.Body, "gateway_organization_unavailable") {
+		t.Fatalf("expected disabled organization to block key creation, got %d: %s", disabledCreate.Code, disabledCreate.Body)
+	}
+
+	applyGatewayIntegrationEventForTest(t, app, gatewayIntegrationEvent("evt_org_reenabled", "organization.updated", "organization", "org_01", "tenant_01", 3, map[string]interface{}{
+		"externalId": "org_01", "name": "Organization one", "status": StatusActive,
+	}))
+	assertGatewayModelAccessKeyActive(t, store, created.APIKey)
+	applyGatewayIntegrationEventForTest(t, app, gatewayIntegrationEvent("evt_org_member_removed", "organization_member.removed", "organization_member", "org_membership_01", "tenant_01", 2, map[string]interface{}{
+		"externalId": "org_membership_01", "principalExternalId": "user_01", "organizationExternalId": "org_01", "status": StatusDisabled,
+	}))
+	assertGatewayModelAccessKeyDisabled(t, store, created.APIKey)
+	missingMembershipCreate := doJSON(t, app, http.MethodPost, "/api/internal/model-access-keys", map[string]interface{}{
+		"request_id": "request_missing_org_membership", "tenant_id": "tenant_01", "project_id": "project_01",
+		"principal_type": "user", "principal_id": "user_01", "name": "Missing membership",
+	}, "integration_token")
+	if missingMembershipCreate.Code != http.StatusConflict || !jsonBodyHasCode(missingMembershipCreate.Body, "gateway_organization_membership_unavailable") {
+		t.Fatalf("expected inactive organization membership to block key creation, got %d: %s", missingMembershipCreate.Code, missingMembershipCreate.Body)
+	}
+	applyGatewayIntegrationEventForTest(t, app, gatewayIntegrationEvent("evt_org_member_readded", "organization_member.updated", "organization_member", "org_membership_01", "tenant_01", 3, map[string]interface{}{
+		"externalId": "org_membership_01", "principalExternalId": "user_01", "organizationExternalId": "org_01", "status": StatusActive,
+	}))
+	assertGatewayModelAccessKeyActive(t, store, created.APIKey)
+
+	applyGatewayIntegrationEventForTest(t, app, gatewayIntegrationEvent("evt_org_deleted", "organization.deleted", "organization", "org_01", "tenant_01", 4, map[string]interface{}{
+		"externalId": "org_01", "name": "Organization one", "status": integrationStatusDeleted,
+	}))
+	assertGatewayModelAccessKeyRevoked(t, store, created)
 }
 
 func TestGatewayManagedWorkloadKeyFollowsWorkloadStatus(t *testing.T) {
