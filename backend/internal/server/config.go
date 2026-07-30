@@ -2,8 +2,10 @@ package server
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -42,7 +44,33 @@ type Config struct {
 	MetricsToken string
 	// MetricsProjectLabel adds project_id to every gateway metric. Off by default
 	// because it multiplies the series count of every metric by the project count.
-	MetricsProjectLabel      bool
+	MetricsProjectLabel bool
+	// TracingEnabled exports one OpenTelemetry trace per gateway call over OTLP/HTTP.
+	// Off by default: it sends operational data to a third party, which is an
+	// explicit operator decision rather than something a deployment inherits.
+	TracingEnabled bool
+	// TracingEndpoint is the signal-specific OTLP traces URL, used verbatim. For
+	// Langfuse that is <host>/api/public/otel/v1/traces. Nothing is appended to it,
+	// because a guessed suffix fails as a silent 404 rather than as a startup error.
+	TracingEndpoint string
+	// TracingHeaders authenticates the export, as comma-separated name=value pairs.
+	// It is kept in its raw form so ValidateForStartup can reject a malformed value
+	// instead of silently exporting without credentials. It holds a credential, so
+	// it is never logged and never returned by an admin endpoint.
+	TracingHeaders string
+	// TracingCapturePayloads adds prompts, responses and upstream error text to the
+	// exported spans. Separate from TracingEnabled and off by default: shipping
+	// prompt content to another system is a data-egress decision distinct from
+	// wanting latency and cost telemetry.
+	TracingCapturePayloads bool
+	// TracingSampleRatio is the fraction of calls exported, from 0 to 1.
+	TracingSampleRatio float64
+	// TracingTimeoutSeconds bounds a single export attempt.
+	TracingTimeoutSeconds int
+	// TracingQueueSize bounds the completions waiting to become spans. When it is
+	// full new completions are dropped rather than queued into request latency, and
+	// the drops are counted.
+	TracingQueueSize         int
 	InFlightLeaseTTLSeconds  int
 	ClusterLockTTLSeconds    int
 	GracefulShutdownSeconds  int
@@ -94,6 +122,13 @@ func ConfigFromEnv() Config {
 		MetricsEnabled:             getenvBool("TOKENHUB_METRICS_ENABLED", false),
 		MetricsToken:               getenv("TOKENHUB_METRICS_TOKEN", ""),
 		MetricsProjectLabel:        getenvBool("TOKENHUB_METRICS_PROJECT_LABEL", false),
+		TracingEnabled:             getenvBool("TOKENHUB_TRACING_ENABLED", false),
+		TracingEndpoint:            getenv("TOKENHUB_TRACING_ENDPOINT", ""),
+		TracingHeaders:             getenv("TOKENHUB_TRACING_HEADERS", ""),
+		TracingCapturePayloads:     getenvBool("TOKENHUB_TRACING_CAPTURE_PAYLOADS", false),
+		TracingSampleRatio:         getenvFloat("TOKENHUB_TRACING_SAMPLE_RATIO", 1),
+		TracingTimeoutSeconds:      getenvSetInt("TOKENHUB_TRACING_TIMEOUT_SECONDS", 10),
+		TracingQueueSize:           getenvSetInt("TOKENHUB_TRACING_QUEUE_SIZE", 2048),
 		InFlightLeaseTTLSeconds:    getenvInt("TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS", 300),
 		ClusterLockTTLSeconds:      getenvInt("TOKENHUB_CLUSTER_LOCK_TTL_SECONDS", 180),
 		GracefulShutdownSeconds:    getenvInt("TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS", 150),
@@ -115,6 +150,11 @@ func ConfigFromEnv() Config {
 func (c Config) ValidateForStartup() error {
 	if repository := strings.TrimSpace(c.ReleaseRepository); repository != "" && !validReleaseRepository(repository) {
 		return fmt.Errorf("invalid TOKENHUB_RELEASE_REPOSITORY: expected owner/repository")
+	}
+	// Checked in every environment, not only production: a tracing setting that is
+	// wrong fails as silence, which is the one failure mode an operator cannot see.
+	if err := c.validateTracing(); err != nil {
+		return err
 	}
 	deploymentType := normalizeDeploymentType(c.DeploymentType, c.BuildType)
 	if deploymentType == nativeDeploymentType ||
@@ -301,6 +341,36 @@ func getenvInt(key string, fallback int) int {
 	}
 	if parsed <= 0 {
 		return fallback
+	}
+	return parsed
+}
+
+// getenvFloat returns NaN when the variable is set to something that is not a
+// number, so validation can reject the deployment instead of quietly substituting a
+// default the operator did not ask for.
+func getenvFloat(key string, fallback float64) float64 {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return math.NaN()
+	}
+	return parsed
+}
+
+// getenvSetInt returns -1 when the variable is set to something that is not a
+// positive integer. It differs from getenvInt, which treats a malformed value as
+// absent; here the difference has to survive as far as validation.
+func getenvSetInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return -1
 	}
 	return parsed
 }

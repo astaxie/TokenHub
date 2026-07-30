@@ -360,6 +360,13 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_METRICS_ENABLED` | `false` | 采集 Prometheus 指标并提供 `GET /metrics` |
 | `TOKENHUB_METRICS_TOKEN` | 空 | `/metrics` 的 Bearer 令牌；留空时回落到管理员令牌 |
 | `TOKENHUB_METRICS_PROJECT_LABEL` | `false` | 为网关指标添加 `project_id` 标签，会按项目数放大时间序列数量 |
+| `TOKENHUB_TRACING_ENABLED` | `false` | 通过 OTLP/HTTP 为每次网关调用导出一条 OpenTelemetry 链路 |
+| `TOKENHUB_TRACING_ENDPOINT` | 空 | OTLP traces 的信号级 URL，按原样使用；Langfuse 为 `<host>/api/public/otel/v1/traces` |
+| `TOKENHUB_TRACING_HEADERS` | 空 | 逗号分隔的 `name=value` 导出请求头，包含凭据 |
+| `TOKENHUB_TRACING_CAPTURE_PAYLOADS` | `false` | 在导出的 span 中包含提示词、响应和上游错误文本 |
+| `TOKENHUB_TRACING_SAMPLE_RATIO` | `1` | 导出比例，取值 0 到 1 |
+| `TOKENHUB_TRACING_TIMEOUT_SECONDS` | `10` | 单次导出尝试的时间上限 |
+| `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | 等待转换成 span 的完成事件数；队列满时丢弃链路而不是拖慢请求 |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | 集群并发租约的过期时间及续租周期基准 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | 集群协调锁的过期时间及续租周期基准 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停机时等待在途请求完成的最长秒数 |

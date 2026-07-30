@@ -456,6 +456,11 @@ func (s *Server) enqueueImageJob(work imageJobWork) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Traces are flushed last, once every producer of completions has stopped.
+	// Deferring it also makes the flush survive the early returns below: failing to
+	// drain the image queue is bad, failing to drain it and silently discarding
+	// every buffered trace is worse.
+	defer s.shutdownTracing()
 	if s.billing != nil {
 		if err := s.billing.Shutdown(ctx); err != nil {
 			return err

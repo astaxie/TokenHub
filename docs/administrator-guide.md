@@ -105,6 +105,8 @@ TokenHub can expose Prometheus metrics at `GET /metrics`. Collection is off by d
 | `tokenhub_gateway_requests_in_flight` | gauge | Model API requests currently being served. Admin traffic and scrapes are excluded. |
 | `tokenhub_gateway_tokens_total` | counter | Tokens by kind: `prompt`, `completion`, `cached`, `cache_write`, `reasoning`. |
 | `tokenhub_gateway_cost_usd_total` | counter | Unified external billing estimate from Model Directory prices. Provider actual cost remains in privileged request audit rather than this metric. |
+| `tokenhub_gateway_trace_completions_total` | counter | Finished calls by what trace export did with them: `converted` or `dropped`. Only present when tracing is on. |
+| `tokenhub_gateway_trace_spans_total` | counter | Spans by what the OTLP exporter did with them: `exported` or `failed`. Only present when tracing is on. |
 
 Go runtime and process metrics are exposed alongside them.
 
@@ -114,7 +116,35 @@ Requests refused before routing — a bad API key, an exhausted quota, an unknow
 
 Labels are `model`, `provider_type`, `provider_id`, `resource_id`, `status_code`, `error_code` and `stream`. Setting `TOKENHUB_METRICS_PROJECT_LABEL=true` adds `project_id`, which multiplies the series count of every gateway metric by the number of active projects; leave it off unless you need per-project dashboards, and use the usage reports for per-key attribution instead.
 
-To push instead of scrape, point an OpenTelemetry Collector's `prometheus` receiver at this endpoint and forward from there; the gateway itself speaks only the Prometheus exposition format.
+To push metrics instead of having them scraped, point an OpenTelemetry Collector's `prometheus` receiver at this endpoint and forward from there. Traces are a separate signal and are pushed directly; see below.
+
+## Trace Export
+
+TokenHub can export one OpenTelemetry trace per gateway call over OTLP/HTTP. Each trace is a root span for the request plus one generation span for every candidate that entered the invocation path, so a failover shows both candidates with the tokens and cost each of them consumed. A candidate skipped for lack of capacity never reached a provider and is recorded as an event on the root instead. Metrics tell you that latency rose; a trace tells you which account served the request and what it cost. Export is off by default: it sends operational data to another system.
+
+Set `TOKENHUB_TRACING_ENDPOINT` to the signal-specific OTLP traces URL, including its full path. It is used verbatim — nothing is appended — because a guessed path suffix fails as a silent 404 rather than as a startup error. A URL without a path, or one carrying a query, fragment or userinfo, is rejected at startup rather than quietly exported somewhere else. Any OTLP/HTTP backend works; no OpenTelemetry Collector is needed, because the gateway speaks OTLP over HTTP directly rather than gRPC.
+
+For Langfuse:
+
+```bash
+TOKENHUB_TRACING_ENABLED=true
+TOKENHUB_TRACING_ENDPOINT=https://cloud.langfuse.com/api/public/otel/v1/traces
+TOKENHUB_TRACING_HEADERS="Authorization=Basic $(printf '%s' 'pk-lf-...:sk-lf-...' | base64),x-langfuse-ingestion-version=4"
+```
+
+The attribute mapping targets the Langfuse v4 ingestion model, which is generally available for self-hosted deployments and the default for Langfuse Cloud organizations created after 2026-04-14. Self-hosting Langfuse v4 requires ClickHouse 25.12 or newer alongside PostgreSQL, Redis and object storage. TokenHub does not bundle Langfuse into its own Compose files: that is a second stateful stack with its own upgrade cycle, and coupling the two would make a Langfuse migration a gateway outage.
+
+Whether prompts and responses are exported is a separate decision from whether tracing is on, and `TOKENHUB_TRACING_CAPTURE_PAYLOADS` is off by default. With it off a trace still carries status, latency, the provider and resource that served each attempt, tokens, cost, transport and upstream request IDs. With it on, request and response bodies go through the same redaction and truncation as the stored payload log, and upstream error text is treated as payload for the same reason: an upstream error can embed a response body, a URL or an account identifier.
+
+Usage and cost are attached to the generation spans and never to the root. Langfuse v4 aggregates over observations, so repeating them on the root would double every token and every dollar in the project totals. Token counts are also rewritten into mutually exclusive buckets on the way out. TokenHub's input and output totals already contain their detail categories — cached, cache-write and audio input; reasoning, audio and prediction output — while Langfuse sums the buckets it is given, so each detail is subtracted from its total and capped by what remains. The cost exported is the billed figure only; the Provider's own cost stays in the privileged request audit, where TokenHub deliberately confines it.
+
+![A failover trace in Langfuse: the root request span, two failed attempts on the unreachable account, and the generation that served it with its own token count and cost](assets/screenshots/tracing-langfuse-trace-en.png)
+
+Trace and span IDs are both derived from the request ID, so the `x-request-id` header returned to a client leads straight to its trace without a lookup table. That is a lookup convenience and not a deduplication guarantee: Langfuse can still create a duplicate observation for a span ID it has already seen. Export retries are therefore disabled and delivery is at-most-once — a batch lost to a transient failure is not resent. For traces carrying token counts and spend, inflated cost is the worse failure, and this pipeline already drops rather than waits when it is saturated. Playground traffic is exported with a `playground` tag so it can be excluded from cost analysis, and requests refused before routing are exported too, since a quota or admission failure is usually what you are trying to explain.
+
+![The Langfuse trace list showing gateway, playground and rejected traffic side by side, filterable by tag](assets/screenshots/tracing-langfuse-list-en.png)
+
+Export never delays a request. Completions are queued and turned into spans on a separate goroutine; when the queue is full the completion is dropped rather than made to wait. Drops are counted in `tokenhub_gateway_trace_completions_total` with `outcome="dropped"` and logged at most once a minute, so a gap in Langfuse is distinguishable from a gateway that received no traffic. Delivery is counted separately in `tokenhub_gateway_trace_spans_total`, because a full queue and a backend that refuses every batch are different problems with different fixes. Image generation jobs are not traced yet: they complete asynchronously on a worker and need their own idempotency design first.
 
 ## Prompt Cache Pricing
 

@@ -360,6 +360,13 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_METRICS_ENABLED` | `false` | Collect Prometheus metrics and serve `GET /metrics` |
 | `TOKENHUB_METRICS_TOKEN` | empty | Bearer token for `/metrics`; falls back to the admin token when empty |
 | `TOKENHUB_METRICS_PROJECT_LABEL` | `false` | Add `project_id` to gateway metrics; raises series count by the project count |
+| `TOKENHUB_TRACING_ENABLED` | `false` | Export one OpenTelemetry trace per gateway call over OTLP/HTTP |
+| `TOKENHUB_TRACING_ENDPOINT` | empty | Signal-specific OTLP traces URL, used verbatim; for Langfuse `<host>/api/public/otel/v1/traces` |
+| `TOKENHUB_TRACING_HEADERS` | empty | Comma-separated `name=value` export headers; holds a credential |
+| `TOKENHUB_TRACING_CAPTURE_PAYLOADS` | `false` | Include prompts, responses and upstream error text in exported spans |
+| `TOKENHUB_TRACING_SAMPLE_RATIO` | `1` | Fraction of calls exported, from 0 to 1 |
+| `TOKENHUB_TRACING_TIMEOUT_SECONDS` | `10` | Time limit for one export attempt |
+| `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | Completions waiting to become spans; a full queue drops traces instead of slowing requests |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | Expiry and renewal basis for cluster-wide concurrency leases |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | Expiry and renewal basis for cluster coordination locks |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | Maximum time to drain in-flight requests during shutdown |

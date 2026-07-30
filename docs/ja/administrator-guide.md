@@ -105,6 +105,8 @@ TokenHub は `GET /metrics` で Prometheus メトリクスを公開できます�
 | `tokenhub_gateway_requests_in_flight` | gauge | 処理中のモデル API リクエスト数。管理トラフィックとスクレイプは含みません。 |
 | `tokenhub_gateway_tokens_total` | counter | 種別ごとの Token：`prompt`、`completion`、`cached`、`cache_write`、`reasoning`。 |
 | `tokenhub_gateway_cost_usd_total` | counter | Model Directory 価格による統一外部請求見積もり。Provider 実コストは権限付きリクエスト監査にのみ保持され、このメトリクスには含まれません。 |
+| `tokenhub_gateway_trace_completions_total` | counter | 完了した呼び出しのトレースエクスポートでの行き先: `converted` または `dropped`。トレース有効時のみ。 |
+| `tokenhub_gateway_trace_spans_total` | counter | span の OTLP エクスポート結果: `exported` または `failed`。トレース有効時のみ。 |
 
 あわせて Go ランタイムとプロセスのメトリクスも公開されます。
 
@@ -114,7 +116,35 @@ TokenHub は `GET /metrics` で Prometheus メトリクスを公開できます�
 
 ラベルは `model`、`provider_type`、`provider_id`、`resource_id`、`status_code`、`error_code`、`stream` です。`TOKENHUB_METRICS_PROJECT_LABEL=true` を設定すると `project_id` が追加され、各ゲートウェイメトリクスの系列数がアクティブなプロジェクト数だけ増加します。プロジェクト単位のダッシュボードが必要な場合を除き無効のままにし、Key 単位の集計には使用量レポートを利用してください。
 
-スクレイプではなく push が必要な場合は、OpenTelemetry Collector の `prometheus` receiver でこのエンドポイントを収集して転送してください。ゲートウェイ自体は Prometheus exposition 形式のみを提供します。
+メトリクスをスクレイプではなく push したい場合は、OpenTelemetry Collector の `prometheus` receiver でこのエンドポイントを収集して転送してください。トレースは別のシグナルで、ゲートウェイが直接送信します。次節を参照してください。
+
+## トレースのエクスポート
+
+TokenHub はゲートウェイ呼び出しごとに 1 本の OpenTelemetry トレースを OTLP/HTTP でエクスポートできます。各トレースはリクエストを表すルート span と、呼び出し処理に入った候補ごとの generation span で構成されます。そのためフェイルオーバーが起きた場合は両方の候補が、それぞれが消費した Token とコストとともに表示されます。容量を確保できずスキップされた候補は Provider に到達していないため、ルート span 上の event として記録します。メトリクスは遅延が増えたことしか伝えませんが、トレースはどのアカウントが処理し、いくらかかったのかを示します。既定では無効です。運用データを別のシステムへ送信するためです。
+
+`TOKENHUB_TRACING_ENDPOINT` にはシグナル固有の OTLP traces URL を、パスまで含めて設定します。値はそのまま使用され、パスは一切追加されません。推測したパス接尾辞は起動エラーではなく静かな 404 として失敗するためです。パスのない URL や、query・fragment・userinfo を含む URL は、意図しない宛先へ静かに送信されるのではなく起動時に拒否されます。OTLP/HTTP に対応する任意のバックエンドを利用できます。ゲートウェイは gRPC ではなく OTLP over HTTP を直接話すため、**OpenTelemetry Collector は不要です**。
+
+Langfuse の場合:
+
+```bash
+TOKENHUB_TRACING_ENABLED=true
+TOKENHUB_TRACING_ENDPOINT=https://cloud.langfuse.com/api/public/otel/v1/traces
+TOKENHUB_TRACING_HEADERS="Authorization=Basic $(printf '%s' 'pk-lf-...:sk-lf-...' | base64),x-langfuse-ingestion-version=4"
+```
+
+属性のマッピングは Langfuse v4 のインジェストモデルを対象としています。v4 はセルフホスト環境で一般提供されており、2026-04-14 以降に作成された Langfuse Cloud 組織の既定バージョンです。Langfuse v4 のセルフホストには、PostgreSQL・Redis・オブジェクトストレージに加えて ClickHouse 25.12 以降が必要です。TokenHub は Langfuse を自身の Compose ファイルに同梱しません。Langfuse は独自の更新サイクルを持つもう 1 つのステートフルなスタックであり、両者を結合すると Langfuse の移行がゲートウェイの停止に直結するためです。
+
+プロンプトとレスポンスをエクスポートするかどうかは、トレースを有効にするかどうかとは別の判断であり、`TOKENHUB_TRACING_CAPTURE_PAYLOADS` は既定で無効です。無効でもトレースにはステータス、レイテンシ、各試行を処理した Provider とリソース、Token、コスト、トランスポート、上流リクエスト ID が含まれます。有効にすると、リクエストとレスポンスの本文は保存済みペイロードログと同じマスキングと切り詰めを経て送信されます。上流のエラー本文も同じ理由でペイロードとして扱います。上流エラーにはレスポンス本文・URL・アカウント識別子が含まれ得るためです。
+
+使用量とコストは generation span にのみ付与し、ルート span には決して付与しません。Langfuse v4 は observation 単位で集計するため、ルートにも重複して持たせるとプロジェクト合計で Token もコストも二重計上されます。Token 数はエクスポート時に互いに排他的なバケットへ書き換えられます。TokenHub の入力・出力の合計には各明細カテゴリ（入力側はキャッシュ読み取り・キャッシュ書き込み・音声、出力側は推論・音声・予測）がすでに含まれている一方、Langfuse は受け取ったバケットをそのまま合計するため、各明細を合計から差し引き、残量を上限として割り当てます。エクスポートするコストは請求額のみです。Provider 自身のコストは送信しません。TokenHub が意図的に特権リクエスト監査の中に限定しているためです。
+
+![Langfuse に表示されたフェイルオーバーのトレース: ルートのリクエスト span、到達不能なアカウントへの 2 回の失敗、そして実際に処理し独自の Token 数とコストを持つ generation](../assets/screenshots/tracing-langfuse-trace-en.png)
+
+トレース ID と span ID はいずれもリクエスト ID から導出されるため、クライアントへ返した `x-request-id` だけで対応するトレースに到達できます。ただしこれは検索の利便性であって重複排除の保証ではありません。Langfuse は既知の span ID に対しても重複した observation を作成し得ます。そのためエクスポートのリトライは無効化しており、配送は at-most-once です。一時的な失敗で失われたバッチは再送しません。Token 数とコストを含むトレースでは、コストが過大に計上される方が深刻な失敗であり、そもそもこのパイプラインは飽和時に待たずに破棄します。Playground のトラフィックは `playground` タグ付きでエクスポートされるため、コスト分析から除外できます。ルーティング前に拒否されたリクエストもエクスポートします。クォータや受け入れ制御による失敗こそ、調査したい対象であることが多いためです。
+
+![ゲートウェイ・Playground・拒否されたリクエストが並ぶ Langfuse のトレース一覧。タグで絞り込めます](../assets/screenshots/tracing-langfuse-list-en.png)
+
+エクスポートがリクエストを遅らせることはありません。完了イベントはキューに入り、別の goroutine が span へ変換します。キューが満杯のときは待たせるのではなく破棄します。破棄数は `tokenhub_gateway_trace_completions_total` の `outcome="dropped"` に計上され、ログは最大 1 分に 1 回に抑えられます。実際に到達したかどうかは `tokenhub_gateway_trace_spans_total` に別途計上します。キューの飽和とバックエンドの拒否は別種の問題であり、対処も異なるためです。これにより Langfuse 側の空白期間が「トラフィックがなかった」のか「破棄された」のかを区別できます。画像生成ジョブはまだトレース対象外です。ワーカー上で非同期に完了するため、先に冪等性の設計が必要です。
 
 ## Prompt Cache の料金
 
