@@ -85,13 +85,14 @@ func TestCodexSubscriptionModelsUsesLiveVisibleCatalog(t *testing.T) {
 
 func TestCodexModelCatalogUsesETagAndPersistedSnapshot(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_models_etag",
 		Name:    "Codex Models ETag",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_models_etag",
 		ProviderID:   provider.ID,
@@ -150,13 +151,14 @@ func TestCodexModelCatalogUsesETagAndPersistedSnapshot(t *testing.T) {
 
 func TestCodexRouteFilteringUsesPerAccountModels(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_codex_pool",
 		Name:    "Codex Pool",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	solResource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_codex_sol",
 		ProviderID:   provider.ID,
@@ -204,13 +206,14 @@ func TestCodexRouteFilteringUsesPerAccountModels(t *testing.T) {
 
 func TestCodexRouteFilteringUsesPersistedAccountCatalog(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_codex_live_pool",
 		Name:    "Codex Live Pool",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	for _, resource := range []ProviderResource{
 		{
 			ID:           "rsrc_codex_live_sol",
@@ -300,13 +303,14 @@ func TestCodexRouteFilteringUsesPersistedAccountCatalog(t *testing.T) {
 
 func TestCodexUnsupportedModelFailsOverAndUpdatesAccountModels(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_codex_failover",
 		Name:    "Codex Failover Pool",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	unsupported, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_codex_unsupported",
 		ProviderID:   provider.ID,
@@ -426,7 +430,7 @@ func TestCodexSessionAffinityPersistsRebindsAndPreservesProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_codex_session",
 		Name:    "Codex Session Provider",
 		Type:    ProviderOpenAICodex,
@@ -434,6 +438,7 @@ func TestCodexSessionAffinityPersistsRebindsAndPreservesProtocol(t *testing.T) {
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	for _, account := range []string{"account_session_a", "account_session_b"} {
 		if _, err := store.AddProviderResource(ProviderResource{
 			ID:           "rsrc_" + account,
@@ -650,13 +655,14 @@ func TestCodexResponsesLiteEnvelopePreservesReasoningFields(t *testing.T) {
 
 func TestCodexSessionBindingCommitsAfterClientCancellation(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_cancelled_session",
 		Name:    "Cancelled Session",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_cancelled_session",
 		ProviderID:   provider.ID,
@@ -708,7 +714,7 @@ func TestCodexCompactPreservesSessionAndUpstreamMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_compact",
 		Name:    "Codex Compact",
 		Type:    ProviderOpenAICodex,
@@ -717,6 +723,7 @@ func TestCodexCompactPreservesSessionAndUpstreamMetadata(t *testing.T) {
 		Healthy: true,
 		Options: map[string]string{"allowed_codex_hosts": "chatgpt.example"},
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_compact",
 		ProviderID:   provider.ID,
@@ -796,13 +803,14 @@ func TestCodexCompactPreservesSessionAndUpstreamMetadata(t *testing.T) {
 
 func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_monitoring",
 		Name:    "Codex Monitoring",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_monitoring",
 		ProviderID:   provider.ID,
@@ -944,13 +952,14 @@ func TestCodexSubscriptionProbeAllowsFastModeForAnyModel(t *testing.T) {
 
 func TestProviderTestUsesCodexDefaultProbeProfile(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_default_probe",
 		Name:    "Codex Default Probe",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	if _, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_default_probe",
 		ProviderID:   provider.ID,
@@ -1007,13 +1016,14 @@ func TestProviderTestUsesCodexDefaultProbeProfile(t *testing.T) {
 
 func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	store := NewMemoryStore()
-	codex := store.AddProvider(Provider{
+	codex := mustAddProvider(t, store, Provider{
 		ID:      "prv_strict_codex",
 		Name:    "Strict Codex",
 		Type:    ProviderOpenAICodex,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	if _, err := store.AddProviderResource(ProviderResource{
 		ProviderID:   codex.ID,
 		Name:         "Invalid API Key",
@@ -1023,7 +1033,7 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	}); AsHTTPError(err).Code != "provider_adapter_resource_conflict" {
 		t.Fatalf("Codex Provider accepted API-key resource: %v", err)
 	}
-	openAIWithKey := store.AddProvider(Provider{
+	openAIWithKey := mustAddProvider(t, store, Provider{
 		ID:      "prv_strict_openai",
 		Name:    "Strict OpenAI",
 		Type:    ProviderOpenAI,
@@ -1031,6 +1041,7 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	if _, err := store.AddProviderResource(ProviderResource{
 		ProviderID:   openAIWithKey.ID,
 		Name:         "Invalid Subscription",
@@ -1040,13 +1051,14 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	}); AsHTTPError(err).Code != "provider_adapter_resource_conflict" {
 		t.Fatalf("OpenAI API Provider accepted subscription resource: %v", err)
 	}
-	emptyOpenAI := store.AddProvider(Provider{
+	emptyOpenAI := mustAddProvider(t, store, Provider{
 		ID:      "prv_auto_codex",
 		Name:    "Auto Codex",
 		Type:    ProviderOpenAI,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	if _, err := store.AddProviderResource(ProviderResource{
 		ProviderID:   emptyOpenAI.ID,
 		Name:         "First Subscription",
@@ -1061,7 +1073,7 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 		t.Fatalf("empty OpenAI Provider was not normalized to Codex: %+v", normalized)
 	}
 
-	legacy := store.AddProvider(Provider{
+	legacy := mustAddProvider(t, store, Provider{
 		ID:       "prv_legacy_mixed",
 		Name:     "Legacy Mixed",
 		Type:     ProviderOpenAI,
@@ -1070,6 +1082,7 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 		Healthy:  true,
 		Priority: 3,
 	})
+
 	direct := ProviderResource{
 		ID:           "rsrc_legacy_direct",
 		ProviderID:   legacy.ID,

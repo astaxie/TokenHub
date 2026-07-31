@@ -608,7 +608,7 @@ func TestAnthropicMessagesSkipsIncompatibleRouteWithoutProviderPenalty(t *testin
 		ContextWindow: 200000,
 		Status:        StatusActive,
 	})
-	openAIProvider := store.AddProvider(Provider{
+	openAIProvider := mustAddProvider(t, store, Provider{
 		ID:      "prv_incompatible_openai",
 		Name:    "Incompatible OpenAI",
 		Type:    ProviderOpenAICompatible,
@@ -616,6 +616,7 @@ func TestAnthropicMessagesSkipsIncompatibleRouteWithoutProviderPenalty(t *testin
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	openAIResource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_incompatible_openai",
 		ProviderID:   openAIProvider.ID,
@@ -629,7 +630,7 @@ func TestAnthropicMessagesSkipsIncompatibleRouteWithoutProviderPenalty(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	nativeProvider := store.AddProvider(Provider{
+	nativeProvider := mustAddProvider(t, store, Provider{
 		ID:      "prv_compatible_anthropic",
 		Name:    "Compatible Anthropic",
 		Type:    ProviderAnthropic,
@@ -638,6 +639,7 @@ func TestAnthropicMessagesSkipsIncompatibleRouteWithoutProviderPenalty(t *testin
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	store.AddRoute(ModelRoute{
 		ID:                 "route_incompatible_openai",
 		ModelName:          "claude-route-compatibility",
@@ -800,7 +802,7 @@ func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) 
 		SupportedParameters: []string{"tools", "image_input", "reasoning"},
 		Status:              StatusActive,
 	})
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_claude_code",
 		Name:    "Claude Code Test Provider",
 		Type:    providerType,
@@ -809,6 +811,7 @@ func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) 
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	store.AddRoute(ModelRoute{
 		ID:            "route_claude_code",
 		ModelName:     "claude-tokenhub-test",

@@ -170,7 +170,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	project := storeA.CreateProject(Project{ID: "prj_" + suffix, Name: "Multi-instance E2E", Status: StatusActive})
 	modelName := "model-" + suffix
 	storeA.AddModel(Model{ID: modelName, Name: modelName, Modality: "chat", Status: StatusActive})
-	provider := storeA.AddProvider(Provider{ID: "prv_" + suffix, Name: "E2E Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, storeA, Provider{ID: "prv_" + suffix, Name: "E2E Mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
 	resource, err := storeA.AddProviderResource(ProviderResource{
 		ID:           "rsrc_" + suffix,
 		ProviderID:   provider.ID,
@@ -500,7 +500,7 @@ func testSharedOAuthAndRefresh(t *testing.T, storeA *GormStore, storeB *GormStor
 
 	tokenRequests.Store(0)
 	suffix := NewID("oauth")
-	provider := storeA.AddProvider(Provider{ID: "prv_" + suffix, Name: "OAuth Provider", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	provider := mustAddProvider(t, storeA, Provider{ID: "prv_" + suffix, Name: "OAuth Provider", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
 	resource, err := storeA.AddProviderResource(ProviderResource{
 		ID:           "rsrc_" + suffix,
 		ProviderID:   provider.ID,

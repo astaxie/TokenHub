@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -26,9 +27,9 @@ type openAIOrganizationClaim struct {
 	IsDefault bool   `json:"is_default"`
 }
 
-func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource) {
+func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource) error {
 	if resource == nil || !isOpenAIAccountResource(resource.ResourceType) {
-		return
+		return nil
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
 		resource.BaseURL = openAICodexBaseURL
@@ -36,12 +37,12 @@ func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource)
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
-	s.mergeOpenAIAccountCredentials(resource, nil)
+	return s.mergeOpenAIAccountCredentials(resource, nil)
 }
 
-func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource, patch ProviderResource) {
+func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource, patch ProviderResource) error {
 	if resource == nil || !isOpenAIAccountResource(resource.ResourceType) {
-		return
+		return nil
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
 		resource.BaseURL = openAICodexBaseURL
@@ -49,10 +50,10 @@ func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource,
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
-	s.mergeOpenAIAccountCredentials(resource, &patch)
+	return s.mergeOpenAIAccountCredentials(resource, &patch)
 }
 
-func (s *GormStore) mergeOpenAIAccountCredentials(resource *ProviderResource, patch *ProviderResource) {
+func (s *GormStore) mergeOpenAIAccountCredentials(resource *ProviderResource, patch *ProviderResource) error {
 	creds := ProviderResourceCredentials{}
 	if resource.Credentials != nil {
 		creds = *resource.Credentials
@@ -79,12 +80,17 @@ func (s *GormStore) mergeOpenAIAccountCredentials(resource *ProviderResource, pa
 		resource.APIKey = creds.AccessToken
 	}
 	if hasOpenAIAccountSecret(creds) {
-		resource.CredentialBlob = s.encryptOpenAIAccountCredentialBlob(creds)
+		encrypted, err := s.encryptOpenAIAccountCredentialBlob(creds)
+		if err != nil {
+			return fmt.Errorf("encrypt credential blob: %w", err)
+		}
+		resource.CredentialBlob = encrypted
 	} else if patch == nil && resource.CredentialBlob == "" {
 		resource.CredentialBlob = ""
 	}
 	applyOpenAIAccountOptions(resource.Options, creds)
 	resource.Credentials = nil
+	return nil
 }
 
 func hasOpenAIAccountSecret(creds ProviderResourceCredentials) bool {
@@ -96,7 +102,7 @@ func hasOpenAIAccountSecret(creds ProviderResourceCredentials) bool {
 		strings.TrimSpace(creds.ExpiresAt) != ""
 }
 
-func (s *GormStore) encryptOpenAIAccountCredentialBlob(creds ProviderResourceCredentials) string {
+func (s *GormStore) encryptOpenAIAccountCredentialBlob(creds ProviderResourceCredentials) (string, error) {
 	secret := map[string]string{}
 	addNonEmpty(secret, "auth_type", creds.AuthType)
 	addNonEmpty(secret, "refresh_token", creds.RefreshToken)
@@ -112,7 +118,7 @@ func (s *GormStore) encryptOpenAIAccountCredentialBlob(creds ProviderResourceCre
 	addNonEmpty(secret, "plan_type", creds.PlanType)
 	data, err := json.Marshal(secret)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("marshal credential blob: %w", err)
 	}
 	return s.encryptSecret(string(data))
 }
@@ -202,7 +208,11 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			s.mu.Unlock()
 			return notFound(err, "provider_resource_not_found", "Provider resource not found")
 		}
-		creds := s.providerResourceCredentialsForRuntime(resource)
+		creds, err := s.providerResourceCredentialsForRuntime(resource)
+		if err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("read credentials for runtime: %w", err)
+		}
 		if !isOpenAIAccountResource(resource.ResourceType) {
 			result = creds
 			s.mu.Unlock()
@@ -243,16 +253,23 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			current.Options = map[string]string{}
 		}
 		current.Credentials = &refreshed
-		s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
+		if err := s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed}); err != nil {
+			return err
+		}
 		if strings.TrimSpace(current.APIKey) != "" {
-			current.APIKey = s.encryptSecret(current.APIKey)
+			encrypted, err := s.encryptSecret(current.APIKey)
+			if err != nil {
+				return fmt.Errorf("encrypt refreshed API key: %w", err)
+			}
+			current.APIKey = encrypted
 		}
 		current.UpdatedAt = time.Now().UTC()
 		if err := s.db.WithContext(leaseCtx).Save(&current).Error; err != nil {
 			return err
 		}
-		result = s.providerResourceCredentialsForRuntime(current)
-		return nil
+		var credsErr error
+		result, credsErr = s.providerResourceCredentialsForRuntime(current)
+		return credsErr
 	})
 	if err != nil {
 		return result, err
@@ -260,13 +277,21 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 	return result, nil
 }
 
-func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResource) ProviderResourceCredentials {
+func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResource) (ProviderResourceCredentials, error) {
 	creds := ProviderResourceCredentials{}
 	if strings.TrimSpace(resource.APIKey) != "" {
-		creds.AccessToken = s.decryptSecret(resource.APIKey)
+		decrypted, err := s.decryptSecret(resource.APIKey)
+		if err != nil {
+			return ProviderResourceCredentials{}, fmt.Errorf("decrypt API key: %w", err)
+		}
+		creds.AccessToken = decrypted
 	}
 	if strings.TrimSpace(resource.CredentialBlob) != "" {
-		if secret := s.decryptSecret(resource.CredentialBlob); strings.TrimSpace(secret) != "" {
+		secret, err := s.decryptSecret(resource.CredentialBlob)
+		if err != nil {
+			return ProviderResourceCredentials{}, fmt.Errorf("decrypt credential blob: %w", err)
+		}
+		if strings.TrimSpace(secret) != "" {
 			var blob ProviderResourceCredentials
 			if err := json.Unmarshal([]byte(secret), &blob); err == nil {
 				mergeProviderResourceCredentials(&creds, blob)
@@ -286,7 +311,7 @@ func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResou
 	if strings.TrimSpace(creds.AuthType) == "" {
 		creds.AuthType = "oauth"
 	}
-	return creds
+	return creds, nil
 }
 
 func mergeProviderResourceCredentials(target *ProviderResourceCredentials, source ProviderResourceCredentials) {

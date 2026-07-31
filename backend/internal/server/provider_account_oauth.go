@@ -61,10 +61,14 @@ func (s *GormStore) SaveProviderAccountOAuthSession(session providerAccountOAuth
 	if session.CreatedAt.IsZero() {
 		session.CreatedAt = now
 	}
+	encryptedVerifier, err := s.encryptSecret(session.CodeVerifier)
+	if err != nil {
+		return fmt.Errorf("encrypt OAuth code verifier: %w", err)
+	}
 	record := providerAccountOAuthSessionRecord{
 		ID:                    session.ID,
 		StateHash:             HashSecret(session.State),
-		CodeVerifierEncrypted: s.encryptSecret(session.CodeVerifier),
+		CodeVerifierEncrypted: encryptedVerifier,
 		ClientID:              session.ClientID,
 		RedirectURI:           session.RedirectURI,
 		ReturnURL:             session.ReturnURL,
@@ -135,9 +139,12 @@ func (s *GormStore) ConsumeProviderAccountOAuthSession(id string, state string) 
 }
 
 func (s *GormStore) providerAccountOAuthSessionFromRecord(record providerAccountOAuthSessionRecord, state string) (providerAccountOAuthSession, error) {
-	codeVerifier := s.decryptSecret(record.CodeVerifierEncrypted)
+	codeVerifier, err := s.decryptSecret(record.CodeVerifierEncrypted)
+	if err != nil {
+		return providerAccountOAuthSession{}, fmt.Errorf("decrypt OAuth code verifier: %w", err)
+	}
 	if strings.TrimSpace(codeVerifier) == "" {
-		return providerAccountOAuthSession{}, fmt.Errorf("provider account OAuth verifier could not be decrypted")
+		return providerAccountOAuthSession{}, fmt.Errorf("provider account OAuth verifier is empty")
 	}
 	return providerAccountOAuthSession{
 		ID:           record.ID,
@@ -277,18 +284,12 @@ func (s *Server) handleOpenAIAccountOAuthCallback(w http.ResponseWriter, r *http
 		http.Redirect(w, r, providerAccountOAuthRedirectWithError(session.ReturnURL, "missing_code"), http.StatusFound)
 		return
 	}
-	target, err := url.Parse(session.ReturnURL)
-	if err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_return_url", "OAuth return URL is invalid"))
-		return
-	}
-	values := target.Query()
+	values := url.Values{}
 	values.Set("provider_account_oauth", "1")
 	values.Set("provider_account_oauth_session_id", session.ID)
 	values.Set("provider_account_oauth_state", session.State)
 	values.Set("code", code)
-	target.RawQuery = values.Encode()
-	http.Redirect(w, r, target.String(), http.StatusFound)
+	http.Redirect(w, r, oauthRedirectWithFragment(session.ReturnURL, values), http.StatusFound)
 }
 
 func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter, r *http.Request) {
@@ -314,6 +315,8 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 		writeError(w, r, NewHTTPError(400, "missing_oauth_code", "OAuth authorization code is required"))
 		return
 	}
+	// Atomically consume the session before exchanging the code so concurrent
+	// requests cannot use the same PKCE verifier against the token endpoint.
 	session, ok, err := s.store.ConsumeProviderAccountOAuthSession(req.SessionID, req.State)
 	if err != nil {
 		writeError(w, r, err)
@@ -329,9 +332,6 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 	}
 	token, err := exchangeOpenAIAccountOAuthCode(r.Context(), code, session.CodeVerifier, redirectURI, session.ClientID)
 	if err != nil {
-		// Preserve retryability when the token endpoint fails before consuming
-		// the authorization code. Concurrent exchanges are still serialized by
-		// the atomic session consume operation.
 		if restoreErr := s.store.SaveProviderAccountOAuthSession(session); restoreErr != nil {
 			writeError(w, r, fmt.Errorf("restore OAuth session after token exchange failure: %w", restoreErr))
 			return

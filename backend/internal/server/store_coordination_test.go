@@ -59,13 +59,14 @@ func TestLeaseHeartbeatCancelsWhenOwnershipIsLost(t *testing.T) {
 
 func TestFinishProviderAttemptReleasesLeaseAfterAccountingFailure(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "provider-fallback-release",
 		Name:    "Fallback release",
 		Type:    ProviderMock,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:             "resource-fallback-release",
 		ProviderID:     provider.ID,
@@ -101,13 +102,14 @@ func TestFinishProviderAttemptReleasesLeaseAfterAccountingFailure(t *testing.T) 
 
 func TestReleaseProviderCapacityDoesNotRecordProviderFailure(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "provider-neutral-release",
 		Name:    "Neutral release",
 		Type:    ProviderMock,
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:             "resource-neutral-release",
 		ProviderID:     provider.ID,

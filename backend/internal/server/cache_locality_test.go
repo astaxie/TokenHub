@@ -13,7 +13,7 @@ func newCacheLocalityStore(t *testing.T, providerModels []string) (*GormStore, [
 	t.Helper()
 	store := NewMemoryStore()
 	store.AddModel(Model{Name: "locality-model", Modality: "chat", Status: StatusActive})
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_locality",
 		Name:    "locality",
 		Type:    ProviderOpenAICompatible,
@@ -249,7 +249,7 @@ func TestDeterministicStrategiesIgnoreAffinity(t *testing.T) {
 		t.Run(strategy, func(t *testing.T) {
 			store := NewMemoryStore()
 			store.AddModel(Model{Name: "locality-model", Modality: "chat", Status: StatusActive})
-			provider := store.AddProvider(Provider{
+			provider := mustAddProvider(t, store, Provider{
 				ID: "prv_locality", Name: "locality", Type: ProviderOpenAICompatible,
 				BaseURL: "https://upstream.invalid", Status: StatusActive, Healthy: true,
 			})
@@ -285,7 +285,7 @@ func TestDeterministicStrategiesIgnoreAffinity(t *testing.T) {
 func TestStickyBypassOnlyForCacheLocality(t *testing.T) {
 	store := NewMemoryStore()
 	store.AddModel(Model{Name: "locality-model", Modality: "chat", Status: StatusActive})
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID: "prv_locality", Name: "locality", Type: ProviderOpenAICompatible,
 		BaseURL: "https://upstream.invalid", Status: StatusActive, Healthy: true,
 	})
@@ -379,7 +379,7 @@ func TestSwitchOffIsByteIdenticalToLegacyRouting(t *testing.T) {
 func TestResourceBackedRoutesFormDistinctCacheDomains(t *testing.T) {
 	store := NewMemoryStore()
 	store.AddModel(Model{Name: "locality-model", Modality: "chat", Status: StatusActive})
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID: "prv_multi_account", Name: "multi-account", Type: ProviderOpenAICompatible,
 		BaseURL: "https://upstream.invalid", Status: StatusActive, Healthy: true,
 	})

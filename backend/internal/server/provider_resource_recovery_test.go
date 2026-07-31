@@ -37,7 +37,7 @@ func newProbeRecoveryServer(t *testing.T, probeErr error, calls *int) (*GormStor
 	t.Helper()
 	store := NewMemoryStore()
 	store.failureThreshold = 2
-	provider := store.AddProvider(Provider{
+	provider := mustAddProvider(t, store, Provider{
 		ID:      "prv_probe",
 		Name:    "Probe Provider",
 		Type:    "probe_test",

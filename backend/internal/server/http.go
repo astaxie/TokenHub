@@ -1764,7 +1764,7 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(400, "invalid_reset_request", "token and password are required"))
 		return
 	}
-	if len(req.Password) < 8 {
+	if len(strings.TrimSpace(req.Password)) < 8 {
 		writeError(w, r, NewHTTPError(400, "weak_password", "Password must be at least 8 characters"))
 		return
 	}
@@ -2625,23 +2625,6 @@ func sanitizeOAuthErrorDetail(body []byte) string {
 		raw = raw[:240]
 	}
 	return raw
-}
-
-func oauthRedirectWithFragment(returnURL string, values url.Values) string {
-	target, err := url.Parse(returnURL)
-	if err != nil || target.Scheme == "" || target.Host == "" {
-		target, _ = url.Parse("http://localhost:3000/overview")
-	}
-	query := target.Query()
-	for key, items := range values {
-		query.Del(key)
-		for _, item := range items {
-			query.Add(key, item)
-		}
-	}
-	target.RawQuery = query.Encode()
-	target.Fragment = values.Encode()
-	return target.String()
 }
 
 func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
@@ -3657,7 +3640,11 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(400, "invalid_provider", "name and type are required"))
 			return
 		}
-		created := s.store.AddProvider(provider)
+		created, err := s.store.AddProvider(provider)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
 		result := ProviderCreateResult{
 			Provider:      created,
 			CatalogSource: catalogSource,

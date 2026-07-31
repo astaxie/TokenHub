@@ -61,7 +61,7 @@ func TestClaudeCodeLiveE2E(t *testing.T) {
 		SupportedParameters: []string{"tools", "image_input"},
 		Status:              StatusActive,
 	})
-	provider := st.AddProvider(Provider{
+	provider := mustAddProvider(t, st, Provider{
 		ID:      "prv_ark_live",
 		Name:    "ark-live",
 		Type:    ProviderOpenAICompatible,
@@ -69,6 +69,7 @@ func TestClaudeCodeLiveE2E(t *testing.T) {
 		Status:  StatusActive,
 		Healthy: true,
 	})
+
 	st.AddRoute(ModelRoute{
 		ID:            "route_ark_live",
 		ModelName:     liveAnthropicPublicModel,
