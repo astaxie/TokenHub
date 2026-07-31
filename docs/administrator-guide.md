@@ -86,6 +86,11 @@ A provider resource that fails `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` times in a 
 Only the trial request's own success closes the breaker. A request that was already in flight when the breaker tripped cannot close it, however it ends. A client that disconnects mid-stream, a policy refusal, or an unsupported model counts neither for nor against the resource: it adds no failure, but it also clears none, so an alternating failure/disconnect pattern still trips the breaker.
 
 Testing a resource from the console still recovers it immediately when the adapter supports probing, because that probe issues a real upstream request. Disabling a resource remains an administrative override: a disabled resource is never readmitted by recovery, whatever the upstream reports.
+
+## Request Usage Audit
+
+Each request row in **Request Logs** includes its total tokens and estimated cost. The detail panel retains the upstream billing breakdown when it is available: cached, cache-write, and audio input tokens, plus reasoning, audio, accepted-prediction, and rejected-prediction output tokens. Providers that do not return a field are shown as zero. Input and output totals already contain their detail categories, so do not add the detail values to the totals again.
+
 ## Metrics
 
 TokenHub can expose Prometheus metrics at `GET /metrics`. Collection is off by default; set `TOKENHUB_METRICS_ENABLED=true` to enable it. While disabled, nothing is collected and the endpoint returns 404. The endpoint always authenticates: metrics disclose model names, provider and resource identifiers, and spend, so it is never anonymous. Send `Authorization: Bearer <token>` using `TOKENHUB_METRICS_TOKEN`, or the admin token when that variable is empty. A dedicated token is recommended so the scrape configuration does not carry the admin credential. A token supplied in the query string is rejected, because it would be captured in access logs.

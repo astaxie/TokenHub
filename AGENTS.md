@@ -29,6 +29,17 @@ npm run typecheck
 npm run build
 ```
 
+Run the repository gates from the repository root. These enforce the change guidelines below, so a failure names the rule that was broken:
+
+```bash
+node --test tools/*.test.mjs
+node tools/check-doc-translations.mjs
+node tools/check-env-contract.mjs
+node tools/check-source-lines.mjs
+```
+
+The translation gate compares the pull request base against its head. Outside CI there is usually no base to compare against, so it runs the existence half and reports that the rest was skipped; pass `--base <sha> --head <sha>` to run it in full.
+
 Run SDK smoke tests from `sdk/` only when a compatible backend is available and the required environment variables are configured:
 
 ```bash

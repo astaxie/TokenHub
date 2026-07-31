@@ -636,7 +636,9 @@ func (s *Server) failImageJob(job ImageJob, code string, message string) {
 
 func (s *Server) saveImageAsset(job ImageJob, data []byte, role string, ordinal int) (ImageAsset, error) {
 	contentType := http.DetectContentType(data)
-	extension := ".bin"
+	// No fallback value: the default branch rejects anything unrecognised, so every
+	// path that reaches the filename below has set a real extension.
+	var extension string
 	switch contentType {
 	case "image/png":
 		extension = ".png"
@@ -667,7 +669,9 @@ func (s *Server) saveImageAsset(job ImageJob, data []byte, role string, ordinal 
 		return ImageAsset{}, err
 	}
 	tempName := temp.Name()
-	defer os.Remove(tempName)
+	// Best effort: on the success path the file has already been renamed away, so a
+	// failure here means there is nothing left to remove.
+	defer func() { _ = os.Remove(tempName) }()
 	if err := temp.Chmod(0o600); err != nil {
 		temp.Close()
 		return ImageAsset{}, err
@@ -1005,11 +1009,6 @@ func (s *Server) filterAndPrioritizeCodexImageRoutes(routes []RouteSelection) []
 		prioritized = append(prioritized, recoveryDue[1:]...)
 	}
 	return prioritized
-}
-
-func statusAndCodeString(err error) string {
-	_, code := statusAndCode(err)
-	return code
 }
 
 func imageJobErrorStatus(code string) int {

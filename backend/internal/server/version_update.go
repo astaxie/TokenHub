@@ -382,7 +382,9 @@ func extractNativeArchive(archivePath string, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer gzipReader.Close()
+	// Close on a gzip reader only reports a deferred decompression error, and every
+	// read below already checks its own error, so there is nothing left to learn here.
+	defer func() { _ = gzipReader.Close() }()
 	if err := os.Mkdir(destination, 0750); err != nil {
 		return err
 	}
@@ -426,7 +428,10 @@ func extractNativeArchive(archivePath string, destination string) error {
 			if err := os.MkdirAll(target, 0755); err != nil {
 				return err
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		// tar.TypeRegA is not listed: since Go 1.11 the reader rewrites that legacy
+		// typeflag to TypeReg, or to TypeDir when the name ends in a slash, before the
+		// header reaches this switch.
+		case tar.TypeReg:
 			if header.Size < 0 || header.Size > maxNativeArchiveFileBytes || totalBytes > maxNativeExtractedBytes-header.Size {
 				return fmt.Errorf("archive file %q exceeds the extraction limit", header.Name)
 			}

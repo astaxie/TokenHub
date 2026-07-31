@@ -124,9 +124,15 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 	route := RouteSelection{Provider: Provider{ID: "provider_cached_usage"}}
 
 	store.FinishCall(call, route, Usage{
-		PromptTokens:      1000,
-		CachedInputTokens: 400,
-		CompletionTokens:  100,
+		PromptTokens:             1000,
+		CachedInputTokens:        400,
+		CacheWriteInputTokens:    25,
+		InputAudioTokens:         10,
+		CompletionTokens:         100,
+		ReasoningOutputTokens:    30,
+		OutputAudioTokens:        5,
+		AcceptedPredictionTokens: 7,
+		RejectedPredictionTokens: 8,
 	}, 200, "", "127.0.0.1", "store-test")
 
 	records := store.ListUsageRecords()
@@ -135,6 +141,13 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 	}
 	if records[0].CachedInputTokens != 400 {
 		t.Fatalf("persisted cached input tokens = %d, want 400", records[0].CachedInputTokens)
+	}
+	if records[0].CacheWriteTokens != 25 || records[0].InputAudioTokens != 10 {
+		t.Fatalf("persisted input details = %+v, want cache write 25 and audio 10", records[0])
+	}
+	if records[0].ReasoningTokens != 30 || records[0].OutputAudioTokens != 5 ||
+		records[0].AcceptedPredictionTokens != 7 || records[0].RejectedPredictionTokens != 8 {
+		t.Fatalf("persisted output details = %+v", records[0])
 	}
 	if records[0].AttributedUserID != "user_cached_usage" {
 		t.Fatalf("persisted attributed user = %q, want user_cached_usage", records[0].AttributedUserID)

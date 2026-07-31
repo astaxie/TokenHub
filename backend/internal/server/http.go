@@ -165,16 +165,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/images/edits", s.handleImageEdits)
 	s.mux.HandleFunc("/v1/image-jobs/", s.handleImageJob)
 	s.mux.HandleFunc("/v1/image-assets/", s.handleImageAsset)
-	s.mux.HandleFunc("/api/internal/integration/events", s.handleGatewayIntegrationEvent)
-	s.mux.HandleFunc("/api/internal/integration/reconciliation", s.handleGatewayIntegrationReconciliation)
-	s.mux.HandleFunc("/api/internal/models", s.handleGatewayModels)
-	s.mux.HandleFunc("/api/internal/providers", s.handleGatewayProviders)
-	s.mux.HandleFunc("/api/internal/routes", s.handleGatewayRoutes)
-	s.mux.HandleFunc("/api/internal/model-access-keys", s.handleGatewayModelAccessKeys)
-	s.mux.HandleFunc("/api/internal/model-access-keys/", s.handleGatewayModelAccessKeyItem)
-	s.mux.HandleFunc("/api/internal/request-logs", s.handleGatewayRequestLogs)
-	s.mux.HandleFunc("/api/internal/usage", s.handleGatewayUsage)
-
+	s.registerGatewayRoutes()
 	s.mux.HandleFunc("/api/admin/auth/login", s.handleAdminLogin)
 	s.mux.HandleFunc("/api/admin/auth/logout", s.handleAdminLogout)
 	s.mux.HandleFunc("/api/admin/auth/me", s.handleAdminMe)
@@ -5591,7 +5582,7 @@ func (s *Server) handleAdminRequestLogs(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.filterRequestLogsForUser(user, s.store.ListRequestLogs())})
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.requestLogsWithUsageForUser(user)})
 }
 
 func (s *Server) handleAdminRequestDetail(w http.ResponseWriter, r *http.Request) {

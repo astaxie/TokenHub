@@ -207,6 +207,8 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
                         <span className="request-row-meta">
                           <span>{providerAuditLabel(data, log)}</span>
                           <span>{formatTime(log.created_at)}</span>
+                          {log.usage_record_count ? <span>{compactNumber(log.total_tokens ?? 0)} Token</span> : null}
+                          {log.usage_record_count ? <span>${formatMoney(log.estimated_cost_usd ?? 0)}</span> : null}
                         </span>
                         <span className="request-row-tail">
                           <StatusPill status={log.status_code >= 400 ? "error" : "ok"} label={String(log.status_code || "-")} />
@@ -302,11 +304,38 @@ export function RequestDetailPanel({
     (sum, item) => ({
       input_tokens: sum.input_tokens + (item.input_tokens || 0),
       cached_input_tokens: sum.cached_input_tokens + (item.cached_input_tokens || 0),
+      cache_write_input_tokens: sum.cache_write_input_tokens + (item.cache_write_input_tokens || 0),
+      input_audio_tokens: sum.input_audio_tokens + (item.input_audio_tokens || 0),
       output_tokens: sum.output_tokens + (item.output_tokens || 0),
+      reasoning_output_tokens: sum.reasoning_output_tokens + (item.reasoning_output_tokens || 0),
+      output_audio_tokens: sum.output_audio_tokens + (item.output_audio_tokens || 0),
+      accepted_prediction_tokens: sum.accepted_prediction_tokens + (item.accepted_prediction_tokens || 0),
+      rejected_prediction_tokens: sum.rejected_prediction_tokens + (item.rejected_prediction_tokens || 0),
       total_tokens: sum.total_tokens + (item.total_tokens || 0),
       estimated_cost_usd: sum.estimated_cost_usd + (item.estimated_cost_usd || 0),
     }),
-    { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 },
+    {
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_write_input_tokens: 0,
+      input_audio_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      output_audio_tokens: 0,
+      accepted_prediction_tokens: 0,
+      rejected_prediction_tokens: 0,
+      total_tokens: 0,
+      estimated_cost_usd: 0,
+    },
+  );
+  const regularInputTokens = Math.max(
+    0,
+    usageTotals.input_tokens - usageTotals.cached_input_tokens - usageTotals.cache_write_input_tokens - usageTotals.input_audio_tokens,
+  );
+  const regularOutputTokens = Math.max(
+    0,
+    usageTotals.output_tokens - usageTotals.reasoning_output_tokens - usageTotals.output_audio_tokens -
+      usageTotals.accepted_prediction_tokens - usageTotals.rejected_prediction_tokens,
   );
   const isError = log.status_code >= 400;
 
@@ -357,11 +386,31 @@ export function RequestDetailPanel({
           <span>{tx("Token 与成本")}</span>
           <strong>{detail.usage.length ? countWithUnit(detail.usage.length, "条记录", "record", "件の記録") : tx("暂无记录")}</strong>
         </div>
-        <div className="request-usage-strip">
-          <UsageStat label="输入" value={compactNumber(usageTotals.input_tokens)} />
-          <UsageStat label="缓存读" value={compactNumber(usageTotals.cached_input_tokens)} />
-          <UsageStat label="输出" value={compactNumber(usageTotals.output_tokens)} />
-          <UsageStat label="总量" value={compactNumber(usageTotals.total_tokens)} />
+        <div className="request-usage-breakdown">
+          <UsageBreakdownGroup
+            label="输入"
+            total={usageTotals.input_tokens}
+            rows={[
+              ["input", regularInputTokens],
+              ["input_cached_tokens", usageTotals.cached_input_tokens],
+              ["input_cache_write_tokens", usageTotals.cache_write_input_tokens],
+              ["input_audio_tokens", usageTotals.input_audio_tokens],
+            ]}
+          />
+          <UsageBreakdownGroup
+            label="输出"
+            total={usageTotals.output_tokens}
+            rows={[
+              ["output", regularOutputTokens],
+              ["output_reasoning_tokens", usageTotals.reasoning_output_tokens],
+              ["output_audio_tokens", usageTotals.output_audio_tokens],
+              ["output_accepted_prediction_tokens", usageTotals.accepted_prediction_tokens],
+              ["output_rejected_prediction_tokens", usageTotals.rejected_prediction_tokens],
+            ]}
+          />
+        </div>
+        <div className="request-usage-total">
+          <UsageStat label="总量" value={formatNumber(usageTotals.total_tokens)} />
           <UsageStat label="估算成本" value={`$${formatMoney(usageTotals.estimated_cost_usd)}`} />
         </div>
       </div>
@@ -427,6 +476,33 @@ export function UsageStat({ label, value }: { label: string; value: string }) {
     <div className="usage-stat">
       <span>{tx(label)}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+export function UsageBreakdownGroup({
+  label,
+  total,
+  rows,
+}: {
+  label: string;
+  total: number;
+  rows: Array<[string, number]>;
+}) {
+  return (
+    <div className="usage-breakdown-group">
+      <div className="usage-breakdown-head">
+        <span>{tx(label)}</span>
+        <strong>{formatNumber(total)}</strong>
+      </div>
+      <div className="usage-breakdown-rows">
+        {rows.map(([rowLabel, value]) => (
+          <div className="usage-breakdown-row" key={rowLabel}>
+            <code>{rowLabel}</code>
+            <strong>{formatNumber(value)}</strong>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

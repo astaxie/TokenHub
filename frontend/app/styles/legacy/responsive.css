@@ -495,7 +495,9 @@
   }
 
   .request-detail-grid,
-  .request-usage-strip {
+  .request-usage-strip,
+  .request-usage-breakdown,
+  .request-usage-total {
     grid-template-columns: 1fr;
   }
 

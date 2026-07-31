@@ -459,6 +459,18 @@ export type RequestLog = {
   client_ip?: string;
   user_agent?: string;
   created_at: string;
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  cache_write_input_tokens?: number;
+  input_audio_tokens?: number;
+  output_tokens?: number;
+  reasoning_output_tokens?: number;
+  output_audio_tokens?: number;
+  accepted_prediction_tokens?: number;
+  rejected_prediction_tokens?: number;
+  total_tokens?: number;
+  estimated_cost_usd?: number;
+  usage_record_count?: number;
 };
 
 export type UsageRecord = {
@@ -473,8 +485,12 @@ export type UsageRecord = {
   input_tokens: number;
   cached_input_tokens?: number;
   cache_write_input_tokens?: number;
+  input_audio_tokens?: number;
   output_tokens: number;
   reasoning_output_tokens?: number;
+  output_audio_tokens?: number;
+  accepted_prediction_tokens?: number;
+  rejected_prediction_tokens?: number;
   total_tokens: number;
   estimated_cost_usd: number;
   created_at: string;

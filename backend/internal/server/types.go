@@ -395,58 +395,78 @@ type ModelRoutePolicy struct {
 }
 
 type Usage struct {
-	PromptTokens          int64       `json:"prompt_tokens"`
-	CachedInputTokens     int64       `json:"cached_input_tokens,omitempty"`
-	CacheWriteInputTokens int64       `json:"cache_write_input_tokens,omitempty"`
-	CompletionTokens      int64       `json:"completion_tokens"`
-	ReasoningOutputTokens int64       `json:"reasoning_output_tokens,omitempty"`
-	TotalTokens           int64       `json:"total_tokens"`
-	CostUSD               float64     `json:"estimated_cost_usd,omitempty"`
-	UpstreamRequestID     string      `json:"upstream_request_id,omitempty"`
-	ServedModel           string      `json:"served_model,omitempty"`
-	ModelETag             string      `json:"model_etag,omitempty"`
-	Transport             string      `json:"transport,omitempty"`
-	ResponseHeaders       http.Header `json:"-"`
+	PromptTokens             int64       `json:"prompt_tokens"`
+	CachedInputTokens        int64       `json:"cached_input_tokens,omitempty"`
+	CacheWriteInputTokens    int64       `json:"cache_write_input_tokens,omitempty"`
+	InputAudioTokens         int64       `json:"input_audio_tokens,omitempty"`
+	CompletionTokens         int64       `json:"completion_tokens"`
+	ReasoningOutputTokens    int64       `json:"reasoning_output_tokens,omitempty"`
+	OutputAudioTokens        int64       `json:"output_audio_tokens,omitempty"`
+	AcceptedPredictionTokens int64       `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int64       `json:"rejected_prediction_tokens,omitempty"`
+	TotalTokens              int64       `json:"total_tokens"`
+	CostUSD                  float64     `json:"estimated_cost_usd,omitempty"`
+	UpstreamRequestID        string      `json:"upstream_request_id,omitempty"`
+	ServedModel              string      `json:"served_model,omitempty"`
+	ModelETag                string      `json:"model_etag,omitempty"`
+	Transport                string      `json:"transport,omitempty"`
+	ResponseHeaders          http.Header `json:"-"`
 }
 
 type UsageRecord struct {
-	ID                 string    `json:"id" gorm:"primaryKey"`
-	RequestID          string    `json:"request_id" gorm:"index;index:idx_usage_request_key,priority:1"`
-	ProjectID          string    `json:"project_id" gorm:"index"`
-	APIKeyID           string    `json:"api_key_id" gorm:"index;index:idx_usage_request_key,priority:2"`
-	AttributedUserID   string    `json:"attributed_user_id,omitempty" gorm:"index"`
-	ModelName          string    `json:"model" gorm:"index"`
-	ProviderID         string    `json:"provider_id" gorm:"index"`
-	ProviderResourceID string    `json:"provider_resource_id,omitempty" gorm:"index"`
-	InputTokens        int64     `json:"input_tokens"`
-	CachedInputTokens  int64     `json:"cached_input_tokens,omitempty"`
-	CacheWriteTokens   int64     `json:"cache_write_input_tokens,omitempty"`
-	OutputTokens       int64     `json:"output_tokens"`
-	ReasoningTokens    int64     `json:"reasoning_output_tokens,omitempty"`
-	TotalTokens        int64     `json:"total_tokens"`
-	CostUSD            float64   `json:"estimated_cost_usd"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                       string    `json:"id" gorm:"primaryKey"`
+	RequestID                string    `json:"request_id" gorm:"index;index:idx_usage_request_key,priority:1"`
+	ProjectID                string    `json:"project_id" gorm:"index"`
+	APIKeyID                 string    `json:"api_key_id" gorm:"index;index:idx_usage_request_key,priority:2"`
+	AttributedUserID         string    `json:"attributed_user_id,omitempty" gorm:"index"`
+	ModelName                string    `json:"model" gorm:"index"`
+	ProviderID               string    `json:"provider_id" gorm:"index"`
+	ProviderResourceID       string    `json:"provider_resource_id,omitempty" gorm:"index"`
+	InputTokens              int64     `json:"input_tokens"`
+	CachedInputTokens        int64     `json:"cached_input_tokens,omitempty"`
+	CacheWriteTokens         int64     `json:"cache_write_input_tokens,omitempty"`
+	InputAudioTokens         int64     `json:"input_audio_tokens,omitempty"`
+	OutputTokens             int64     `json:"output_tokens"`
+	ReasoningTokens          int64     `json:"reasoning_output_tokens,omitempty"`
+	OutputAudioTokens        int64     `json:"output_audio_tokens,omitempty"`
+	AcceptedPredictionTokens int64     `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int64     `json:"rejected_prediction_tokens,omitempty"`
+	TotalTokens              int64     `json:"total_tokens"`
+	CostUSD                  float64   `json:"estimated_cost_usd"`
+	CreatedAt                time.Time `json:"created_at"`
 }
 
 type RequestLog struct {
-	ID                 string    `json:"id" gorm:"primaryKey"`
-	RequestID          string    `json:"request_id" gorm:"index"`
-	ProjectID          string    `json:"project_id" gorm:"index"`
-	APIKeyID           string    `json:"api_key_id" gorm:"index"`
-	ModelName          string    `json:"model" gorm:"index"`
-	ProviderID         string    `json:"provider_id,omitempty" gorm:"index"`
-	ProviderResourceID string    `json:"provider_resource_id,omitempty" gorm:"index"`
-	ProviderModel      string    `json:"provider_model,omitempty"`
-	UpstreamRequestID  string    `json:"upstream_request_id,omitempty"`
-	ServedModel        string    `json:"served_model,omitempty"`
-	ModelETag          string    `json:"model_etag,omitempty"`
-	Transport          string    `json:"transport,omitempty"`
-	StatusCode         int       `json:"status_code"`
-	ErrorCode          string    `json:"error_code,omitempty"`
-	LatencyMS          int64     `json:"latency_ms"`
-	ClientIP           string    `json:"client_ip,omitempty"`
-	UserAgent          string    `json:"user_agent,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                       string    `json:"id" gorm:"primaryKey"`
+	RequestID                string    `json:"request_id" gorm:"index"`
+	ProjectID                string    `json:"project_id" gorm:"index"`
+	APIKeyID                 string    `json:"api_key_id" gorm:"index"`
+	ModelName                string    `json:"model" gorm:"index"`
+	ProviderID               string    `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID       string    `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel            string    `json:"provider_model,omitempty"`
+	UpstreamRequestID        string    `json:"upstream_request_id,omitempty"`
+	ServedModel              string    `json:"served_model,omitempty"`
+	ModelETag                string    `json:"model_etag,omitempty"`
+	Transport                string    `json:"transport,omitempty"`
+	StatusCode               int       `json:"status_code"`
+	ErrorCode                string    `json:"error_code,omitempty"`
+	LatencyMS                int64     `json:"latency_ms"`
+	ClientIP                 string    `json:"client_ip,omitempty"`
+	UserAgent                string    `json:"user_agent,omitempty"`
+	CreatedAt                time.Time `json:"created_at"`
+	InputTokens              int64     `json:"input_tokens,omitempty" gorm:"-"`
+	CachedInputTokens        int64     `json:"cached_input_tokens,omitempty" gorm:"-"`
+	CacheWriteTokens         int64     `json:"cache_write_input_tokens,omitempty" gorm:"-"`
+	InputAudioTokens         int64     `json:"input_audio_tokens,omitempty" gorm:"-"`
+	OutputTokens             int64     `json:"output_tokens,omitempty" gorm:"-"`
+	ReasoningTokens          int64     `json:"reasoning_output_tokens,omitempty" gorm:"-"`
+	OutputAudioTokens        int64     `json:"output_audio_tokens,omitempty" gorm:"-"`
+	AcceptedPredictionTokens int64     `json:"accepted_prediction_tokens,omitempty" gorm:"-"`
+	RejectedPredictionTokens int64     `json:"rejected_prediction_tokens,omitempty" gorm:"-"`
+	TotalTokens              int64     `json:"total_tokens,omitempty" gorm:"-"`
+	EstimatedCostUSD         float64   `json:"estimated_cost_usd,omitempty" gorm:"-"`
+	UsageRecordCount         int64     `json:"usage_record_count,omitempty" gorm:"-"`
 }
 
 type RequestPayloadLog struct {

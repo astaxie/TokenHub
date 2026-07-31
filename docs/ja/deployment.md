@@ -8,6 +8,8 @@ TokenHub は、Go バックエンド、Next.js 管理コンソール、SQLite �
 
 TokenHub は 2 種類のデータベースバックエンドをサポートしています。
 
+以下のコマンドは Docker Compose を使用します。どちらのバックエンドも Docker なしで同様にサポートされます。[ネイティブ Release + systemd](#ネイティブ-release--systemd)を参照してください。
+
 ### SQLite（デフォルト）
 
 **利点：**
@@ -318,6 +320,29 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 連携管理プロジェクトの投影は、投影適用と同じトランザクションで TokenHub のサービス用プロジェクトへ反映されます。テナント、プロジェクト、プリンシパル/ワークロード投影が有効になるまではキー作成を拒否します。プロジェクトが組織に所属する場合、その組織も認可ライフサイクルの境界になります。ユーザーキーには有効な組織と有効な組織メンバーシップが必要で、ワークロードキーはプロジェクトを通じて組織の状態を継承します。テナント、組織、ユーザー、組織メンバーシップ、またはワークロードを一時的に無効化すると、キー自体の永続化ステータスを変更せずに対象キーを使用不可にし、投影を再び有効化すると、元々有効で期限切れでも失効済みでもないキーだけが自動的に復帰します。テナント、組織、またはワークロードの削除、あるいはユーザーのテナントからの除外では、対象キーを恒久的に失効します。ユーザー状態と組織メンバーシップが制御するのは個人キーだけで、そのユーザーが所有するワークロードのキーを暗黙に無効化しません。明示的に失効したキーや期限切れキーは、投影を再び有効化しても復帰しません。
 
 連携管理のモデルアクセスキーは、一方向の認証 Hash と、`TOKENHUB_SECRET_KEY` で AES-GCM 暗号化した ciphertext の両方を保存します。暗号化値を生成できない場合、平文を保存せず作成を失敗させます。再起動やレプリカ間で `TOKENHUB_SECRET_KEY` を安定して維持してください。変更すると既存キーを再表示できなくなりますが、Hash ベースのゲートウェイ認証は継続できます。
+## ローカルで本番ビルドを実行する（Docker なし）
+
+`deploy/local/run-local.sh` は、Docker も root も systemd も使わずに、自分のマシンで本番ビルドからバックエンドとコンソールを実行します。これは開発用の補助手段であり、デプロイ手段ではありません。サーバーに TokenHub をインストールする場合は[ネイティブ Release + systemd](#ネイティブ-release--systemd) または [Docker Compose](#docker-compose) を使用してください。
+
+```bash
+./deploy/local/run-local.sh          # フォアグラウンド。Ctrl-C で両方停止
+./deploy/local/run-local.sh -d       # バックグラウンド。すぐに戻る
+./deploy/local/run-local.sh status
+./deploy/local/run-local.sh logs -f
+./deploy/local/run-local.sh stop
+```
+
+必要に応じて両コンポーネントをビルドし、ループバック上で実行します。バイナリ、コンソールバンドル、データベース、ログ、pid ファイルはすべてリポジトリ内の `.tokenhub/`（gitignore 済み）に置かれ、そのディレクトリを削除すればインスタンスをリセットできます。ビルド時にはフロントエンドの通常の無視対象成果物（`frontend/node_modules`、`frontend/.next`）も更新されることがあります。システム全体へのインストールもサービスアカウントの作成も行いません。
+
+実行されるのは dev サーバーではなく**本番ビルド**（デプロイ時と同じ standalone バンドル）なので、本番ビルドでのみ現れる問題を検出できます。開発用の資格情報（`admin` / `admin123456`）を使用し、ループバックのみにバインドし、データは `.tokenhub/tokenhub.db` の SQLite に保存されます。
+
+`-d` を付けるとサービスは起動元のシェルから切り離され、シェルの終了後もターミナルを閉じた後も動き続けます。ただし再起動後は自動で復帰しません。それが必要な場合は正式なインストール方法を使用してください。どちらのモードでも pid ファイルを記録するため、`status` と `stop` はフォアグラウンドのインスタンスにも有効です。`stop` はシグナルを送る前に記録された pid が本当にこのインスタンスのものかを検証するので、再利用された pid を誤って kill することはありません。また起動前に両方のポートを確保するため、既に他のサービスが応答しているポートを「起動成功」と誤認することもありません。
+
+バックエンドは cgo 経由で SQLite をリンクするため、Go（バージョンは `backend/go.mod` を参照）、Node 22 以上、npm、C コンパイラが必要です。
+
+以上は Linux で検証済みです。macOS には `setsid` がないため、停止時はプロセスツリーをたどる方式にフォールバックします。この経路は実装済みですが macOS 上では未検証です。
+
+オプション: `--rebuild`、`--reset`（ローカルデータベースを破棄）、`--backend-port N`、`--console-port N`、`restart`。
 
 ## バックエンド環境変数
 
@@ -327,6 +352,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_HTTP_ADDR` | `:8080` | バックエンド待受アドレス |
 | `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:8080` | ユーザーに表示するバックエンド URL |
 | `TOKENHUB_RELEASE_REPOSITORY` | `astaxie/TokenHub` | バージョン確認に使用する信頼済み公開 GitHub リポジトリ。形式は `owner/repository` |
+| `TOKENHUB_DEPLOYMENT_TYPE` | ビルド時の値 | バイナリに埋め込まれたデプロイ種別を上書きします: `source`、`container`、`native`。Compose ファイルは `container` を設定します |
+| `TOKENHUB_MANAGED_UPDATES` | `false` | コンテナデプロイでオンライン更新とロールバックを許可します。ネイティブデプロイでは常に許可されます |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | 管理対象 Release のオンライン更新とロールバックで使用するインストールルート |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For` を提供できるプロキシ IP または CIDR（カンマ区切り） |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せるブラウザー Origin（カンマ区切り） |
@@ -335,11 +362,16 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初期 `admin` ユーザーのパスワード。本番起動前に変更が必要 |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | バックエンド秘密鍵 |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | コンテナ内 SQLite データベースパス |
+| `TOKENHUB_DB_HOST` | 空 | PostgreSQL ホスト。設定すると `TOKENHUB_DATABASE_URL` ではなく `TOKENHUB_DB_*` の各フィールドから DSN を組み立てるため、パスワードに `#`、`?`、`/`、`%` が含まれる場合の URL エンコードを回避できます。両方設定した場合は `TOKENHUB_DATABASE_URL` が優先されます |
+| `TOKENHUB_DB_PORT` | `5432` | PostgreSQL ポート。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_USER` | 空 | PostgreSQL ユーザー。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_PASSWORD` | 空 | PostgreSQL パスワード。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_NAME` | 空 | PostgreSQL データベース名。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
+| `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | バックアップ出力ディレクトリ |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 管理対象デプロイの標準モデルカタログファイル |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 管理対象デプロイの Provider テンプレートと候補モデルのカタログファイル |
 | `TOKENHUB_SEED_DEMO` | `false` | デモデータを投入するか |
-| `TOKENHUB_LOG_LEVEL` | `info` | ログレベル |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider リソースをクールダウンするまでの失敗しきい値 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | クールダウンした Provider リソースがハーフオープン再試行を得るまでの基本待機秒数 |
 | `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` | `3600` | 復旧失敗が続く場合の指数バックオフの上限秒数 |
@@ -353,6 +385,11 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | 同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 段階的ロールアウト用のモデル許可リスト（カンマ区切り）。空の場合は全モデルが対象 |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | ユーザー単位の識別子もアフィニティキーとして受け入れるか。同一ユーザーの並行セッションが同じ値を共有し単一アカウントに集中するため既定では無効 |
+| `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | 生成された画像アセットを保存するディレクトリ |
+| `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | 画像生成キューを処理するワーカー数 |
+| `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | キューで待機できる画像ジョブの上限 |
+| `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | 単一の画像生成ジョブのタイムアウト。超過すると失敗として扱われます |
+| `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | 画像生成非対応と記録されたプロバイダーリソースを再検査するまでの待機時間 |
 
 ## フロントエンド環境変数
 

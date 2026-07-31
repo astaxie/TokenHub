@@ -21,20 +21,52 @@ func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 				"prompt_tokens_details": map[string]any{
 					"cached_tokens": float64(1920),
 				},
+				"completion_tokens_details": map[string]any{
+					"reasoning_tokens":           float64(60),
+					"audio_tokens":               float64(10),
+					"accepted_prediction_tokens": float64(5),
+					"rejected_prediction_tokens": float64(2),
+				},
 			}},
-			want: Usage{PromptTokens: 2006, CachedInputTokens: 1920, CompletionTokens: 300, TotalTokens: 2306},
+			want: Usage{
+				PromptTokens:             2006,
+				CachedInputTokens:        1920,
+				CompletionTokens:         300,
+				ReasoningOutputTokens:    60,
+				OutputAudioTokens:        10,
+				AcceptedPredictionTokens: 5,
+				RejectedPredictionTokens: 2,
+				TotalTokens:              2306,
+			},
 		},
 		{
 			name: "responses details",
 			body: map[string]any{"usage": map[string]any{
 				"input_tokens":  float64(100),
-				"output_tokens": float64(20),
-				"total_tokens":  float64(120),
+				"output_tokens": float64(40),
+				"total_tokens":  float64(140),
 				"input_tokens_details": map[string]any{
 					"cached_tokens": float64(40),
+					"audio_tokens":  float64(5),
+				},
+				"output_tokens_details": map[string]any{
+					"reasoning_tokens":           float64(10),
+					"audio_tokens":               float64(2),
+					"accepted_prediction_tokens": float64(3),
+					"rejected_prediction_tokens": float64(4),
 				},
 			}},
-			want: Usage{PromptTokens: 100, CachedInputTokens: 40, CompletionTokens: 20, TotalTokens: 120},
+			want: Usage{
+				PromptTokens:             100,
+				CachedInputTokens:        40,
+				InputAudioTokens:         5,
+				CompletionTokens:         40,
+				ReasoningOutputTokens:    10,
+				OutputAudioTokens:        2,
+				AcceptedPredictionTokens: 3,
+				RejectedPredictionTokens: 4,
+				TotalTokens:              140,
+			},
 		},
 		{
 			name: "deepseek cache hit",
@@ -73,9 +105,10 @@ func TestProviderSpecificUsageIncludesCachedInputTokens(t *testing.T) {
 		"promptTokenCount":        float64(500),
 		"cachedContentTokenCount": float64(350),
 		"candidatesTokenCount":    float64(25),
-		"totalTokenCount":         float64(525),
+		"thoughtsTokenCount":      float64(15),
+		"totalTokenCount":         float64(540),
 	}})
-	if !reflect.DeepEqual(gemini, Usage{PromptTokens: 500, CachedInputTokens: 350, CompletionTokens: 25, TotalTokens: 525}) {
+	if !reflect.DeepEqual(gemini, Usage{PromptTokens: 500, CachedInputTokens: 350, CompletionTokens: 40, ReasoningOutputTokens: 15, TotalTokens: 540}) {
 		t.Fatalf("unexpected Gemini usage: %+v", gemini)
 	}
 }

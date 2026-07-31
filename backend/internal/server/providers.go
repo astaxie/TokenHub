@@ -836,11 +836,13 @@ func anthropicUsage(body map[string]any) Usage {
 
 func geminiUsage(body map[string]any) Usage {
 	usageMap, _ := body["usageMetadata"].(map[string]any)
+	reasoningTokens := int64FromAny(usageMap["thoughtsTokenCount"])
 	usage := Usage{
-		PromptTokens:      int64FromAny(usageMap["promptTokenCount"]),
-		CachedInputTokens: int64FromAny(firstNonNil(usageMap["cachedContentTokenCount"], usageMap["totalCachedTokens"])),
-		CompletionTokens:  int64FromAny(usageMap["candidatesTokenCount"]),
-		TotalTokens:       int64FromAny(usageMap["totalTokenCount"]),
+		PromptTokens:          int64FromAny(usageMap["promptTokenCount"]),
+		CachedInputTokens:     int64FromAny(firstNonNil(usageMap["cachedContentTokenCount"], usageMap["totalCachedTokens"])),
+		CompletionTokens:      int64FromAny(usageMap["candidatesTokenCount"]) + reasoningTokens,
+		ReasoningOutputTokens: reasoningTokens,
+		TotalTokens:           int64FromAny(usageMap["totalTokenCount"]),
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
@@ -851,7 +853,7 @@ func geminiUsage(body map[string]any) Usage {
 func usageFromMap(body map[string]any) Usage {
 	usageMap, _ := body["usage"].(map[string]any)
 	inputDetails, _ := firstNonNil(usageMap["prompt_tokens_details"], usageMap["input_tokens_details"]).(map[string]any)
-	outputDetails, _ := usageMap["output_tokens_details"].(map[string]any)
+	outputDetails, _ := firstNonNil(usageMap["completion_tokens_details"], usageMap["output_tokens_details"]).(map[string]any)
 	usage := Usage{
 		PromptTokens: int64FromAny(firstNonNil(usageMap["prompt_tokens"], usageMap["input_tokens"])),
 		CachedInputTokens: int64FromAny(firstNonNil(
@@ -862,9 +864,21 @@ func usageFromMap(body map[string]any) Usage {
 			usageMap["total_cached_tokens"],
 		)),
 		CacheWriteInputTokens: int64FromAny(firstNonNil(usageMap["cache_write_input_tokens"], inputDetails["cache_write_tokens"])),
+		InputAudioTokens:      int64FromAny(firstNonNil(inputDetails["audio_tokens"], usageMap["input_audio_tokens"])),
 		CompletionTokens:      int64FromAny(firstNonNil(usageMap["completion_tokens"], usageMap["output_tokens"])),
 		ReasoningOutputTokens: int64FromAny(firstNonNil(usageMap["reasoning_output_tokens"], outputDetails["reasoning_tokens"])),
-		TotalTokens:           int64FromAny(usageMap["total_tokens"]),
+		OutputAudioTokens:     int64FromAny(firstNonNil(outputDetails["audio_tokens"], usageMap["output_audio_tokens"])),
+		AcceptedPredictionTokens: int64FromAny(firstNonNil(
+			outputDetails["accepted_prediction_tokens"],
+			usageMap["accepted_prediction_tokens"],
+			usageMap["output_accepted_prediction_tokens"],
+		)),
+		RejectedPredictionTokens: int64FromAny(firstNonNil(
+			outputDetails["rejected_prediction_tokens"],
+			usageMap["rejected_prediction_tokens"],
+			usageMap["output_rejected_prediction_tokens"],
+		)),
+		TotalTokens: int64FromAny(usageMap["total_tokens"]),
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens

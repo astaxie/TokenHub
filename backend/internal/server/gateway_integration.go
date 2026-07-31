@@ -19,6 +19,18 @@ const (
 	integrationStatusDeleted = "deleted"
 )
 
+func (s *Server) registerGatewayRoutes() {
+	s.mux.HandleFunc("/api/internal/integration/events", s.handleGatewayIntegrationEvent)
+	s.mux.HandleFunc("/api/internal/integration/reconciliation", s.handleGatewayIntegrationReconciliation)
+	s.mux.HandleFunc("/api/internal/models", s.handleGatewayModels)
+	s.mux.HandleFunc("/api/internal/providers", s.handleGatewayProviders)
+	s.mux.HandleFunc("/api/internal/routes", s.handleGatewayRoutes)
+	s.mux.HandleFunc("/api/internal/model-access-keys", s.handleGatewayModelAccessKeys)
+	s.mux.HandleFunc("/api/internal/model-access-keys/", s.handleGatewayModelAccessKeyItem)
+	s.mux.HandleFunc("/api/internal/request-logs", s.handleGatewayRequestLogs)
+	s.mux.HandleFunc("/api/internal/usage", s.handleGatewayUsage)
+}
+
 type GatewayIntegrationEvent struct {
 	SchemaVersion int                    `json:"schemaVersion"`
 	EventID       string                 `json:"eventId"`

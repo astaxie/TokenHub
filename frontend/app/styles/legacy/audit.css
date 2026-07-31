@@ -389,10 +389,67 @@
   font-weight: 720;
 }
 
-.request-usage-strip {
+.request-usage-strip,
+.request-usage-breakdown,
+.request-usage-total {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.request-usage-breakdown {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.request-usage-total {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.usage-breakdown-group {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.usage-breakdown-head,
+.usage-breakdown-row {
+  min-height: 34px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.usage-breakdown-head {
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-breakdown-head span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.usage-breakdown-head strong,
+.usage-breakdown-row strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-breakdown-row + .usage-breakdown-row {
+  border-top: 1px solid var(--border);
+}
+
+.usage-breakdown-row code {
+  min-width: 0;
+  color: var(--muted-strong);
+  font-size: 10px;
+  overflow-wrap: anywhere;
 }
 
 .payload-grid {

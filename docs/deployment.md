@@ -8,6 +8,8 @@ TokenHub is designed for private deployment with a Go backend, a Next.js admin c
 
 TokenHub supports two database backends:
 
+The commands below use Docker Compose. Both backends are equally supported without Docker; see [Native Release with systemd](#native-release-with-systemd).
+
 ### SQLite (Default)
 
 **Advantages:**
@@ -318,6 +320,29 @@ The dedicated integration token authenticates these internal endpoints and must 
 Integration-managed projects are materialized into TokenHub serving projects in the same transaction that applies the project projection. Key creation is rejected until its tenant, project, and user/workload projections are active. When a project belongs to an organization, that organization is also an authorization lifecycle boundary: a user key requires both the organization and the user's organization membership to be active, while a workload key inherits the organization state through its project. Temporarily disabling a tenant, organization, user, organization membership, or workload makes the applicable keys unusable without changing their stored key status; eligible keys work again after the projection is re-enabled. Deleting a tenant, organization, or workload, or removing a user from a tenant, permanently revokes the affected keys. User status and organization membership only control personal keys and do not implicitly disable keys owned by that user's workloads. Explicitly revoked and expired keys never become usable again when a projection is re-enabled.
 
 Integration-managed model access keys store both a one-way authentication hash and an AES-GCM ciphertext encrypted with `TOKENHUB_SECRET_KEY`. Creation fails rather than persisting plaintext if encryption cannot be produced. Keep `TOKENHUB_SECRET_KEY` stable across restarts and replicas; changing it makes existing keys impossible to reveal, although hash-based gateway authentication continues to work.
+## Running the Production Build Locally (without Docker)
+
+`deploy/local/run-local.sh` runs the backend and the console on your own machine from a production build, with no Docker, no root and no systemd. This is a development aid, not a deployment method: to install TokenHub on a server, use [Native Release with systemd](#native-release-with-systemd) or [Docker Compose](#docker-compose).
+
+```bash
+./deploy/local/run-local.sh          # foreground, Ctrl-C stops both
+./deploy/local/run-local.sh -d       # background, returns immediately
+./deploy/local/run-local.sh status
+./deploy/local/run-local.sh logs -f
+./deploy/local/run-local.sh stop
+```
+
+Builds both components if needed, then runs them on loopback. The binary, the console bundle, the database, the logs and the pid files all live in `.tokenhub/` inside the repository, which is gitignored; deleting that directory resets the instance. Building may also refresh the usual ignored frontend artefacts (`frontend/node_modules`, `frontend/.next`). Nothing is installed system-wide and no service account is created.
+
+This runs the **production** build — the same standalone bundle a deployment runs — rather than a dev server, so it surfaces problems that only appear in a production build. It uses development credentials (`admin` / `admin123456`), binds loopback only, and keeps its data in SQLite at `.tokenhub/tokenhub.db`.
+
+With `-d` the services detach from the launching shell and keep running after it exits — and after the terminal closes — but not across a reboot; use a real installation for that. Both modes write pid files, so `status` and `stop` also work on a foreground instance. `stop` verifies that the recorded pid still belongs to this instance before signalling it, so a recycled pid is never killed by mistake, and both ports are claimed before anything starts so the script cannot report success against an unrelated service already listening.
+
+Requires Go (the version in `backend/go.mod`), Node 22 or newer, npm and a C compiler, because the backend links SQLite through cgo.
+
+Verified on Linux. macOS lacks `setsid`, so the script falls back to walking the process tree when stopping; that path is implemented but untested on macOS.
+
+Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, `--console-port N`, `restart`.
 
 ## Backend Environment Variables
 
@@ -327,6 +352,8 @@ Integration-managed model access keys store both a one-way authentication hash a
 | `TOKENHUB_HTTP_ADDR` | `:8080` | Backend listen address |
 | `TOKENHUB_PUBLIC_BASE_URL` | `http://localhost:8080` | Public backend URL shown to users |
 | `TOKENHUB_RELEASE_REPOSITORY` | `astaxie/TokenHub` | Trusted public GitHub repository used for version checks, in `owner/repository` form |
+| `TOKENHUB_DEPLOYMENT_TYPE` | build-time value | Overrides the deployment type compiled into the binary: `source`, `container` or `native`. The Compose files set `container` |
+| `TOKENHUB_MANAGED_UPDATES` | `false` | Allows a container deployment to perform online update and rollback. A native deployment always allows it |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | Managed Release installation root used for online update and rollback |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | empty | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For` |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | public URL | Comma-separated browser origins allowed to call the backend |
@@ -335,11 +362,16 @@ Integration-managed model access keys store both a one-way authentication hash a
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | Password for the initial `admin` user; must be changed before production startup |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | Backend secret key |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | Database connection URL (sqlite:// or postgresql://) |
+| `TOKENHUB_DB_HOST` | empty | PostgreSQL host. Setting it builds the DSN from the `TOKENHUB_DB_*` fields instead of `TOKENHUB_DATABASE_URL`, which avoids URL encoding when the password contains `#`, `?`, `/` or `%`. `TOKENHUB_DATABASE_URL` still takes precedence when both are set |
+| `TOKENHUB_DB_PORT` | `5432` | PostgreSQL port; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_USER` | empty | PostgreSQL user; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_PASSWORD` | empty | PostgreSQL password; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_NAME` | empty | PostgreSQL database name; used only when `TOKENHUB_DB_HOST` is set |
+| `TOKENHUB_DB_SSLMODE` | `disable` | PostgreSQL sslmode; used only when `TOKENHUB_DB_HOST` is set |
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | Backup output directory |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | Standard model catalog file in managed deployments |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | Provider templates and candidate-model catalog file in managed deployments |
 | `TOKENHUB_SEED_DEMO` | `false` | Whether to seed demo data |
-| `TOKENHUB_LOG_LEVEL` | `info` | Log level |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider resource failure threshold before cooldown |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Base cooldown before a parked provider resource is given a half-open retry |
 | `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` | `3600` | Upper bound for the exponential backoff applied to repeated recovery failures |
@@ -353,6 +385,11 @@ Integration-managed model access keys store both a one-way authentication hash a
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Pin a session to one upstream account so the provider's prompt cache keeps hitting. Off by default because it changes routing behaviour |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | empty | Comma-separated model allowlist for staged rollout; empty means every model |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Also accept user-scoped identifiers as affinity keys; off by default because one user's concurrent sessions would share a single account |
+| `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | Directory holding generated image assets |
+| `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | Number of workers draining the image generation queue |
+| `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | Maximum image jobs that may wait in the queue |
+| `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | Time limit for a single image generation job before it is failed |
+| `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | How long a provider resource marked as lacking image support is skipped before it is probed again |
 | `TOKENHUB_DB_MAX_OPEN_CONNS` | `25` | Maximum open database connections (PostgreSQL only) |
 | `TOKENHUB_DB_MAX_IDLE_CONNS` | `5` | Maximum idle database connections (PostgreSQL only) |
 | `TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES` | `30` | Maximum connection lifetime in minutes (PostgreSQL only) |
