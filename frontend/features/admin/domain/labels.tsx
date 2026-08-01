@@ -406,18 +406,6 @@ export function approvalStatusLabel(status: string) {
   };
   return tx(labels[status] ?? status);
 }
-
-export function invoiceStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    pending: "待确认",
-    confirmed: "已确认",
-    rejected: "已驳回",
-    active: "有效",
-    disabled: "停用",
-  };
-  return tx(labels[status] ?? status);
-}
-
 export function approvalPayloadSummary(payload?: string) {
   if (!payload) return "-";
   try {

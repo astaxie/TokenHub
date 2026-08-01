@@ -240,7 +240,7 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 		resource.Status = StatusActive
 	}
 	if resource.ResourceType == "" {
-		resource.ResourceType = "api_key"
+		resource.ResourceType = ProviderResourceAPIKey
 	}
 	if !resource.Healthy {
 		resource.Healthy = true
@@ -573,7 +573,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			resource.Status = StatusActive
 		}
 		if resource.ResourceType == "" {
-			resource.ResourceType = "api_key"
+			resource.ResourceType = ProviderResourceAPIKey
 		}
 		if !resource.Healthy {
 			resource.Healthy = true

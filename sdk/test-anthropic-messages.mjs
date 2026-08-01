@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { loadDotEnv, maskKey } from "./lib/env.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadDotEnv(resolve(__dirname, ".env"));
@@ -124,33 +125,6 @@ async function responseJSON(response, label) {
   }
 }
 
-function loadDotEnv(path) {
-  if (!existsSync(path)) return;
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq < 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const raw = trimmed.slice(eq + 1).trim();
-    if (!key || process.env[key] !== undefined) continue;
-    process.env[key] = stripEnvQuotes(raw);
-  }
-}
-
-function stripEnvQuotes(value) {
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
 function normalizeHostURL(value) {
   return value.replace(/\/+$/, "").replace(/\/v1$/, "");
-}
-
-function maskKey(value) {
-  if (value.length <= 10) return "***";
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }

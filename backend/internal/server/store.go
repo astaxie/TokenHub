@@ -173,10 +173,6 @@ type Store interface {
 	ListImageAssets(jobID string) []ImageAsset
 	GetImageAsset(id string) (ImageAsset, bool)
 	ListUsageRecords() []UsageRecord
-	UsageSummary() map[string]any
-	UsageBreakdown() map[string]any
-	UsageBreakdownForPeriod(period string) map[string]any
-	UsageTimeseries(days int) []map[string]any
 	GenerateBillingPeriod(period string) (map[string]any, error)
 	ListRequestLogs() []RequestLog
 	ListProviderObservations(since time.Time) []ProviderObservation
@@ -233,6 +229,9 @@ type Store interface {
 	GetDatabaseStatus() (map[string]interface{}, error)
 	Ping(ctx context.Context) error
 }
+
+var _ Store = (*GormStore)(nil)
+
 type GormStore struct {
 	db                   *gorm.DB
 	mu                   *sync.Mutex

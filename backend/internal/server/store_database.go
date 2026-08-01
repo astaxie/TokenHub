@@ -124,10 +124,6 @@ func redactDatabaseURL(databaseURL string) string {
 	return u.String()
 }
 
-func OpenStore(databaseURL string) (*GormStore, error) {
-	return OpenStoreWithConfig(databaseURL, ConfigFromEnv())
-}
-
 func OpenStoreWithConfig(databaseURL string, config Config) (*GormStore, error) {
 	if strings.TrimSpace(databaseURL) == "" {
 		databaseURL = defaultConfigDatabaseURL()

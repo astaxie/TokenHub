@@ -203,7 +203,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	release := make(chan struct{})
 	blocking := &multiInstanceBlockingAdapter{started: make(chan struct{}), release: release}
 	serverA := NewWithConfig(storeA, config)
-	serverA.adapters[ProviderMock] = blocking
+	registerTestAdapter(serverA, ProviderMock, blocking)
 	httpA := httptest.NewServer(serverA.Handler())
 	defer httpA.Close()
 	httpB := httptest.NewServer(NewWithConfig(storeB, config).Handler())
@@ -254,8 +254,8 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 		storeA.inFlightLeaseTTL = 600 * time.Millisecond
 		defer func() { storeA.inFlightLeaseTTL = previousTTL }()
 		lostLeaseAdapter := &multiInstanceBlockingAdapter{started: make(chan struct{}), release: make(chan struct{})}
-		serverA.adapters[ProviderMock] = lostLeaseAdapter
-		defer func() { serverA.adapters[ProviderMock] = MockAdapter{} }()
+		registerTestAdapter(serverA, ProviderMock, lostLeaseAdapter)
+		defer func() { registerTestAdapter(serverA, ProviderMock, MockAdapter{}) }()
 		result := make(chan struct {
 			status int
 			body   string
@@ -297,8 +297,8 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 		storeA.inFlightLeaseTTL = 600 * time.Millisecond
 		defer func() { storeA.inFlightLeaseTTL = previousTTL }()
 		lostLeaseAdapter := &multiInstanceBlockingAdapter{started: make(chan struct{}), release: make(chan struct{})}
-		serverA.adapters[ProviderMock] = lostLeaseAdapter
-		defer func() { serverA.adapters[ProviderMock] = MockAdapter{} }()
+		registerTestAdapter(serverA, ProviderMock, lostLeaseAdapter)
+		defer func() { registerTestAdapter(serverA, ProviderMock, MockAdapter{}) }()
 		result := make(chan struct{}, 1)
 		go func() {
 			_, _ = postChatStream(httpA.URL, concurrencySecret, modelName)
@@ -390,7 +390,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	defer storeA.DeleteAPIKey(providerKey.ID)
 	providerRelease := make(chan struct{})
 	providerBlocking := &multiInstanceBlockingAdapter{started: make(chan struct{}), release: providerRelease}
-	serverA.adapters[ProviderMock] = providerBlocking
+	registerTestAdapter(serverA, ProviderMock, providerBlocking)
 	providerFirstStatus := make(chan int, 1)
 	go func() {
 		status, _ := postChat(httpA.URL, providerSecret, modelName)
@@ -427,7 +427,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 		t.Fatal(err)
 	}
 	defer storeA.DeleteAPIKey(rpmKey.ID)
-	serverA.adapters[ProviderMock] = MockAdapter{}
+	registerTestAdapter(serverA, ProviderMock, MockAdapter{})
 	if status, body := postChat(httpA.URL, rpmSecret, modelName); status != http.StatusOK {
 		t.Fatalf("first provider RPM request failed: status=%d body=%s", status, body)
 	}

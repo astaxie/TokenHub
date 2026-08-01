@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -376,22 +374,6 @@ func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []st
 		}
 	}
 	return catalogUniqueStrings(parameters)
-}
-
-func ProviderCatalogModelRoute(providerID string, model ProviderCatalogModel) ModelRoute {
-	modelName := firstNonEmpty(model.CanonicalName, canonicalModelName(model.ID, model.DisplayName), model.ID)
-	return ModelRoute{
-		ID:            stableCatalogRouteID(providerID, model.ID),
-		ModelName:     modelName,
-		ProviderID:    providerID,
-		ProviderModel: model.ID,
-		Priority:      1,
-		Weight:        100,
-		Status:        StatusActive,
-		QualityScore:  60,
-		CostScore:     60,
-		Strategy:      RouteStrategyBalanced,
-	}
 }
 
 func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
@@ -817,11 +799,6 @@ func catalogCategorySummary(models []ProviderCatalogModel) ([]string, map[string
 	}
 	sort.Strings(categories)
 	return categories, counts
-}
-
-func stableCatalogRouteID(providerID string, modelID string) string {
-	sum := sha256.Sum256([]byte(providerID + ":" + modelID))
-	return "route_catalog_" + hex.EncodeToString(sum[:])[:16]
 }
 
 func sanitizeIdentifier(value string) string {
