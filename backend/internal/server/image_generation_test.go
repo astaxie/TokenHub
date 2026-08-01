@@ -132,7 +132,7 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 		ImageStorageDir: t.TempDir(),
 	})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	server.adapters[ProviderOpenAI] = OpenAICompatibleAdapter{Client: upstream.Client()}
+	registerTestAdapter(server, ProviderOpenAI, OpenAICompatibleAdapter{Client: upstream.Client()})
 	route := RouteSelection{
 		Provider: Provider{
 			ID:      "prv_openai_image",

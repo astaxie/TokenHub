@@ -37,7 +37,7 @@ func (s *Server) executeOpenAIImage(ctx context.Context, route RouteSelection, j
 	if err != nil {
 		return nil, "", Usage{}, err
 	}
-	adapter, ok := s.adapters[ProviderOpenAI].(OpenAICompatibleAdapter)
+	adapter, ok := resolveTypedAdapter[OpenAICompatibleAdapter](s.adapterRegistry, ProviderOpenAI)
 	if !ok {
 		return nil, "", Usage{}, NewHTTPError(http.StatusServiceUnavailable, "image_provider_unavailable", "OpenAI image adapter is unavailable")
 	}

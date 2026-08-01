@@ -85,7 +85,6 @@ func TestClaudeCodeLiveE2E(t *testing.T) {
 		apiKey:   upstreamAPIKey,
 		delegate: OpenAICompatibleAdapter{},
 	}
-	app.adapters[ProviderOpenAICompatible] = liveAdapter
 	app.adapterRegistry.Register(
 		ProviderOpenAICompatible,
 		liveAdapter,

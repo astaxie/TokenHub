@@ -15,7 +15,6 @@ import (
 
 type Server struct {
 	store             Store
-	adapters          map[string]ProviderAdapter
 	adapterRegistry   *AdapterRegistry
 	integrations      *IntegrationService
 	codexSubscription *CodexSubscriptionAdapter
@@ -76,7 +75,7 @@ func NewWithConfig(store Store, config Config) *Server {
 		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 	}
-	registry := NewAdapterRegistry(adapters)
+	registry := NewAdapterRegistry()
 	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
 	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
 	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
@@ -89,7 +88,6 @@ func NewWithConfig(store Store, config Config) *Server {
 	}
 	s := &Server{
 		store:             store,
-		adapters:          adapters,
 		adapterRegistry:   registry,
 		integrations:      NewIntegrationService(store, registry),
 		codexSubscription: codexSubscription,
