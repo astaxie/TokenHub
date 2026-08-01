@@ -113,6 +113,23 @@ const en: Record<string, string> = {
   "还没有路由策略": "No routing policies yet",
   "为对外模型添加 Provider 线路，并设置优先级、权重与流量策略。路由不会改变统一对外价格。": "Add Provider routes for external models and configure priority, weight, and traffic policies. Routing does not change unified external pricing.",
   "为模型添加路由": "Add a Model Route",
+  // Model-availability and Key-issuing copy. It lives here rather than in en.tsx because
+  // that file is frozen at its current line count by tools/source-lines.mjs, and the
+  // Japanese half was missing for long enough that ja users saw the raw Chinese source.
+  "当前没有可选择的启用模型。请先在模型目录和路由策略里启用模型。": "No enabled models are available. Enable models in the model catalog and routing policy first.",
+  "可以先使用默认额度，之后再按调用量调整。IP 白名单留空表示不限来源。": "You can start with the default limits and adjust later. Leave IP allowlist empty to allow any source.",
+  "完整 Key 只会展示一次。关闭弹窗后只能看到前后缀，后续需要通过轮换生成新 Key。": "The full Key is shown only once. After closing the modal, only the prefix and suffix are visible; rotate to generate a new Key later.",
+  "普通用户看到的是当前账号可见的模型；实际调用还会受项目 Key 白名单和项目权限限制。": "Users see models visible to this account; actual calls are still limited by the project Key allowlist and project permissions.",
+  "可用模型需要同时满足：模型目录启用、至少一条路由启用、Provider 或账号资源健康。": "Available models require an enabled catalog entry, at least one enabled route, and a healthy Provider or account resource.",
+  "模型目录状态不是启用，前台不会作为可调用模型。": "The model catalog status is not active, so it is not callable from the frontend.",
+  "当前账号可见此模型；实际调用还会受项目 Key 白名单和运行时路由策略限制。": "This model is visible to the account; actual calls are still limited by the project Key allowlist and runtime routing policy.",
+  "管理员需要在路由策略中把该模型映射到一个 Provider 上游模型。": "An admin needs to map this model to an upstream Provider model in routing policy.",
+  "已有 Provider 线路，但线路状态未启用，运行时不会命中。": "Provider routes exist, but none are enabled, so runtime traffic will not hit them.",
+  "启用线路存在，但 Provider 或账号资源不是健康启用状态。": "Enabled routes exist, but the Provider or account resource is not active and healthy.",
+  "当前没有可调用模型。通常原因是管理员还没有启用模型目录或路由策略，或你的项目/Key 未被授予模型范围。": "No callable models are available. Usually the model catalog or routing policy is not enabled, or your project/Key has no model scope.",
+  "当前还没有模型目录。请先维护模型目录，再配置路由策略。": "No model catalog exists yet. Maintain the model catalog first, then configure routing policy.",
+  "当前筛选下没有可见模型。可用性由模型目录、路由策略、项目成员和 Key 白名单共同决定。": "No visible models match the current filters. Availability is determined by the model catalog, routing policy, project membership, and Key allowlist.",
+  "当前没有可演练模型。请先在路由策略里启用至少一条模型线路。": "No playground-ready models are available. Enable at least one model route first.",
 };
 
 const ja: Record<string, string> = {
@@ -230,6 +247,20 @@ const ja: Record<string, string> = {
   "还没有路由策略": "ルーティングポリシーがまだありません",
   "为对外模型添加 Provider 线路，并设置优先级、权重与流量策略。路由不会改变统一对外价格。": "外部モデルに Provider ルートを追加し、優先度、重み、トラフィックポリシーを設定します。ルーティングによって統一外部価格は変わりません。",
   "为模型添加路由": "モデルルートを追加",
+  "当前没有可选择的启用模型。请先在模型目录和路由策略里启用模型。": "選択できる有効なモデルがありません。先にモデルカタログとルーティングポリシーでモデルを有効化してください。",
+  "可以先使用默认额度，之后再按调用量调整。IP 白名单留空表示不限来源。": "まずは既定のクォータで開始し、後から利用量に応じて調整できます。IP 許可リストを空欄にすると送信元を制限しません。",
+  "完整 Key 只会展示一次。关闭弹窗后只能看到前后缀，后续需要通过轮换生成新 Key。": "完全な Key は一度だけ表示されます。ダイアログを閉じるとプレフィックスとサフィックスのみ確認でき、以降は新しい Key をローテーションで生成する必要があります。",
+  "普通用户看到的是当前账号可见的模型；实际调用还会受项目 Key 白名单和项目权限限制。": "一般ユーザーには現在のアカウントで表示可能なモデルが表示されます。実際の呼び出しはプロジェクトの Key 許可リストとプロジェクト権限による制限も受けます。",
+  "可用模型需要同时满足：模型目录启用、至少一条路由启用、Provider 或账号资源健康。": "利用可能なモデルには、モデルカタログが有効であること、有効なルートが 1 件以上あること、Provider またはアカウントリソースが正常であることのすべてが必要です。",
+  "模型目录状态不是启用，前台不会作为可调用模型。": "モデルカタログの状態が有効ではないため、呼び出し可能なモデルとしては表示されません。",
+  "当前账号可见此模型；实际调用还会受项目 Key 白名单和运行时路由策略限制。": "現在のアカウントではこのモデルを表示できます。実際の呼び出しはプロジェクトの Key 許可リストと実行時のルーティングポリシーによる制限も受けます。",
+  "管理员需要在路由策略中把该模型映射到一个 Provider 上游模型。": "管理者がルーティングポリシーで、このモデルを Provider の上流モデルへマッピングする必要があります。",
+  "已有 Provider 线路，但线路状态未启用，运行时不会命中。": "Provider ルートは存在しますが、有効なルートがないため実行時には使用されません。",
+  "启用线路存在，但 Provider 或账号资源不是健康启用状态。": "有効なルートはありますが、Provider またはアカウントリソースが有効かつ正常な状態ではありません。",
+  "当前没有可调用模型。通常原因是管理员还没有启用模型目录或路由策略，或你的项目/Key 未被授予模型范围。": "呼び出し可能なモデルがありません。通常は、管理者がモデルカタログまたはルーティングポリシーを有効化していないか、所属プロジェクトや Key にモデル範囲が付与されていないことが原因です。",
+  "当前还没有模型目录。请先维护模型目录，再配置路由策略。": "モデルカタログがまだありません。先にモデルカタログを整備してから、ルーティングポリシーを設定してください。",
+  "当前筛选下没有可见模型。可用性由模型目录、路由策略、项目成员和 Key 白名单共同决定。": "現在の絞り込み条件に一致するモデルがありません。利用可否はモデルカタログ、ルーティングポリシー、プロジェクトメンバー、Key 許可リストによって決まります。",
+  "当前没有可演练模型。请先在路由策略里启用至少一条模型线路。": "プレイグラウンドで利用できるモデルがありません。先にルーティングポリシーでモデルルートを 1 件以上有効化してください。",
 };
 
 export const modelGovernanceTranslations = { en, ja } satisfies Record<"en" | "ja", Record<string, string>>;
