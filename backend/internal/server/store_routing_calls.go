@@ -833,6 +833,13 @@ func (s *GormStore) observeGatewayCall(call CallContext, route RouteSelection, u
 		Duration:     elapsed,
 		Attempts:     gatewayAttemptSamples(call.RouteAttempts),
 	}
+	if !call.FirstByteAt.IsZero() {
+		// Use the local admission reference, not StartedAt, because StartedAt is the
+		// database clock and can skew from the application host clock.
+		if start := call.measuredStart(); !start.IsZero() {
+			sample.TimeToFirstByte = call.FirstByteAt.Sub(start)
+		}
+	}
 	s.metrics.ObserveGatewayCall(sample)
 }
 

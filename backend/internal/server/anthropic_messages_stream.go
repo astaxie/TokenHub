@@ -38,9 +38,17 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, model string, provider Provider) (Usage, error) {
 	events := newSSEDecoder(body)
 	var usage Usage
+	sawEvent := false
+	sawMessageStop := false
 	for {
 		event, err := events.Next()
 		if err == io.EOF {
+			// A stream that delivered events but never reached message_stop was
+			// truncated: the client saw bytes, then the stream died. An empty
+			// body stays a confirmed empty success, which the handler commits.
+			if sawEvent && !sawMessageStop {
+				return usage, NewHTTPError(http.StatusBadGateway, "provider_stream_error", "Anthropic provider stream ended before message_stop")
+			}
 			return usage, nil
 		}
 		if err != nil {
@@ -89,12 +97,83 @@ func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, mode
 		if isErrorEvent {
 			output = redactProviderStreamEventSecrets(event, provider)
 		}
+		// Anthropic keeps streams alive with protocol-level `event: ping` frames. They
+		// carry no semantic output, so a keepalive-only stream stays a confirmed empty
+		// success instead of a truncation. The frame is still forwarded below.
+		if !(event.Event == "ping" || (ok && payload["type"] == "ping")) && (event.Event != "" || len(event.Data) > 0) {
+			sawEvent = true
+		}
+		if isErrorEvent {
+			// The upstream's terminal error frame is redacted, forwarded once — the
+			// client must see it — then the stream is reported failed. The marker
+			// tells the handler the terminal event already reached the client, so it
+			// must not append a second one.
+			if _, err := writer.Write(output); err != nil {
+				return usage, err
+			}
+			if flusher, ok := writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			errorType, message := "api_error", "Anthropic provider stream error"
+			// Classify against the redacted payload: the message also reaches
+			// RouteAttempt.Error and the audit log, so a provider error echoing an
+			// API key or sensitive header value must not survive into either.
+			var redacted map[string]any
+			if err := json.Unmarshal(redactProviderErrorSecrets([]byte(event.Data), provider), &redacted); err == nil {
+				if errorObj, ok := redacted["error"].(map[string]any); ok {
+					if value, ok := errorObj["type"].(string); ok {
+						errorType = value
+					}
+					if value, ok := errorObj["message"].(string); ok {
+						message = value
+					}
+				}
+			}
+			return usage, &anthropicErrorFrameForwarded{err: NewHTTPError(anthropicErrorStatus(errorType), "provider_stream_error", message)}
+		}
+		if event.Event == "message_stop" || (ok && payload["type"] == "message_stop") {
+			sawMessageStop = true
+		}
 		if _, err := writer.Write(output); err != nil {
 			return usage, err
 		}
 		if flusher, ok := writer.(http.Flusher); ok {
 			flusher.Flush()
 		}
+	}
+}
+
+// anthropicErrorFrameForwarded marks a native Anthropic stream whose upstream
+// event: error frame was already forwarded to the client. The handler must
+// classify the stream as failed without appending a second terminal error
+// event.
+type anthropicErrorFrameForwarded struct {
+	err error
+}
+
+func (e *anthropicErrorFrameForwarded) Error() string { return e.err.Error() }
+
+func (e *anthropicErrorFrameForwarded) Unwrap() error { return e.err }
+
+// anthropicErrorStatus maps a native Anthropic error type to the HTTP status
+// the gateway reports for it. Unrecognized types are upstream failures, so
+// they surface as gateway errors rather than client errors.
+func anthropicErrorStatus(errorType string) int {
+	switch errorType {
+	case "rate_limit_error":
+		return http.StatusTooManyRequests
+	case "overloaded_error":
+		return http.StatusServiceUnavailable
+	case "authentication_error":
+		return http.StatusUnauthorized
+	case "permission_error":
+		return http.StatusForbidden
+	case "invalid_request_error", "request_too_large":
+		return http.StatusBadRequest
+	case "not_found_error":
+		return http.StatusNotFound
+	default:
+		return http.StatusBadGateway
 	}
 }
 
@@ -227,6 +306,30 @@ func (c *openAIAnthropicStreamConverter) consumeEvent(frame serverSentEvent) err
 	}
 	if parsed := usageFromMap(event); parsed.TotalTokens > 0 {
 		c.usage = parsed
+	}
+	if raw, ok := event["error"]; ok && raw != nil {
+		// The upstream signaled a terminal error inside the 200 stream. Emit an
+		// Anthropic error event so the client sees the failure, then fail the
+		// stream through the forwarded marker so the handler does not append a
+		// second terminal event. Only a non-nil error object is terminal, and the
+		// message is redacted because it also reaches RouteAttempt.Error and the
+		// audit log.
+		errorType, message := "api_error", "OpenAI provider stream error"
+		if errorObj, ok := raw.(map[string]any); ok {
+			if value, ok := errorObj["type"].(string); ok && value != "" {
+				errorType = value
+			}
+			if value, ok := errorObj["message"].(string); ok && value != "" {
+				message = string(redactProviderErrorSecrets([]byte(value), c.provider))
+			}
+		}
+		if err := c.emit("error", map[string]any{
+			"type":  "error",
+			"error": map[string]any{"type": errorType, "message": message},
+		}); err != nil {
+			return err
+		}
+		return &anthropicErrorFrameForwarded{err: NewHTTPError(openAIErrorStatus(errorType), "provider_stream_error", message)}
 	}
 	choices, ok := anySlice(event["choices"])
 	if !ok || len(choices) == 0 {

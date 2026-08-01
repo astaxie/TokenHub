@@ -1238,7 +1238,11 @@ type CallContext struct {
 	// RouteAttempts carries the per-candidate outcomes for observability output.
 	// It is filled from the completion's Attempts just before FinishCall and never
 	// influences routing.
-	RouteAttempts  []RouteAttempt
+	RouteAttempts []RouteAttempt
+	// FirstByteAt records when the first response byte reached the client on a
+	// streamed request. Zero means no byte was ever written. Like Stream, it only
+	// labels observability output and never influences routing.
+	FirstByteAt    time.Time
 	Affinity       *RequestAffinity
 	requestContext context.Context
 }

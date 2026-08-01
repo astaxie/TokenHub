@@ -248,6 +248,11 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		s.store.MarkRouteUsed(route.Route.ID)
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
+	// Only FirstByteAt is wired: StreamOutputCommitted would keep the full TPM
+	// reservation on an interrupted stream with no provider token usage
+	// (store_routing_calls.go), changing quota behavior beyond this
+	// observability-only PR. Interruptions key off FirstByteAt alone.
+	routed.Call.FirstByteAt = tracker.firstByteTime(streamErr == nil)
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,

@@ -33,6 +33,11 @@ var gatewayDurationBuckets = []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 60
 // latency clamp, and multi-second overhead is already a clear outlier.
 var gatewayOverheadBuckets = []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
 
+// gatewayTTFBBuckets is sized for client-perceived time to first byte. The lowest
+// buckets catch sub-100ms cached responses; the top bucket catches rare long-tail
+// startup including failover retry time.
+var gatewayTTFBBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60}
+
 // GatewayMetrics holds the Prometheus collectors for the model API.
 //
 // It owns its registry rather than using the default one, so tests get an isolated
@@ -82,6 +87,13 @@ type GatewayMetrics struct {
 	responseExecution  *prometheus.HistogramVec
 	responseJobs       *prometheus.CounterVec
 	responseRecoveries *prometheus.CounterVec
+	// timeToFirstByte records client-perceived latency until the first streamed
+	// byte. It is measured from the local admission reference so it includes any
+	// failover retry time, which is what the caller actually waited for.
+	timeToFirstByte *prometheus.HistogramVec
+	// interruptions counts streams that failed after the first byte was written.
+	// The error_code label distinguishes upstream failures from client disconnects.
+	interruptions *prometheus.CounterVec
 }
 
 const (
@@ -121,6 +133,10 @@ type GatewayCallSample struct {
 	// tried — the request was refused before routing or failed during route
 	// selection — and both still count in requests_total.
 	Attempts []GatewayAttemptSample
+	// TimeToFirstByte is the streamed latency until the first byte reached the
+	// client, measured from the local admission reference. Zero means the request
+	// was not streamed or no byte was written.
+	TimeToFirstByte time.Duration
 }
 
 // NewGatewayMetrics builds the collectors. When projectLabel is true every metric
@@ -247,7 +263,21 @@ func NewGatewayMetrics(projectLabel bool) *GatewayMetrics {
 		Help:      "Expired durable Responses leases by safe recovery decision.",
 	}, []string{"decision"})
 
-	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans, m.routeAttempts, m.attemptDuration, m.routedRequests, m.overhead, m.responseQueueDepth, m.responseQueueWait, m.responseExecution, m.responseJobs, m.responseRecoveries)
+	m.timeToFirstByte = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "time_to_first_byte_seconds",
+		Help:      "Client-perceived time to first byte for streamed requests, measured from local admission so failover retry time is included. Empty-body 200 responses record first byte at stream end.",
+		Buckets:   gatewayTTFBBuckets,
+	}, withProject("model", "provider_type"))
+	m.interruptions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "stream_interruptions_total",
+		Help:      "Streamed requests that failed after the first byte was written. error_code is the final classified error code: HTTP-level upstream failures keep their code, while transport-level failures and client disconnects both collapse to internal_error.",
+	}, withProject("model", "provider_type", "provider_id", "error_code"))
+
+	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans, m.routeAttempts, m.attemptDuration, m.routedRequests, m.overhead, m.responseQueueDepth, m.responseQueueWait, m.responseExecution, m.responseJobs, m.responseRecoveries, m.timeToFirstByte, m.interruptions)
 	// Process and Go runtime metrics are what an operator reaches for first when the
 	// gateway itself is the suspect, and they cost nothing to collect.
 	m.registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -478,6 +508,19 @@ func (m *GatewayMetrics) ObserveGatewayCall(sample GatewayCallSample) {
 		}
 		m.overhead.WithLabelValues(m.labels(sample.ProjectID, stream)...).Observe(overhead.Seconds())
 	}
+
+	// Time to first byte is only meaningful for streamed requests where bytes
+	// actually reached the client. An empty-body 200 records first byte at stream
+	// end (synthesized from the commit time), which is the real latency the
+	// client experienced.
+	if sample.Stream && sample.TimeToFirstByte > 0 {
+		m.timeToFirstByte.WithLabelValues(m.labels(sample.ProjectID, model, providerType)...).Observe(sample.TimeToFirstByte.Seconds())
+		// A committed stream never fails over (ProviderErrorStreamCommitted), so a
+		// stream with a first byte and a final error is an interruption.
+		if sample.StatusCode >= 400 {
+			m.interruptions.WithLabelValues(m.labels(sample.ProjectID, model, providerType, providerID, metricsLabel(interruptionErrorCode(sample.ErrorCode)))...).Inc()
+		}
+	}
 }
 
 // labels appends the project id when that label is enabled. It takes the project id as
@@ -493,6 +536,21 @@ func (m *GatewayMetrics) labels(projectID string, values ...string) []string {
 	out := make([]string, 0, len(values)+1)
 	out = append(out, values...)
 	return append(out, metricsLabel(projectID))
+}
+
+// interruptionErrorCode normalizes transport-originated interruption codes to
+// internal_error at the metric boundary, honoring the collector's advertised
+// contract: HTTP-level upstream failures keep their code, while transport-level
+// failures and client disconnects both collapse to internal_error. Idle-timeout
+// codes are artifacts of the upstream connection, not of the provider surface,
+// so they must not leak through as distinct label values.
+func interruptionErrorCode(code string) string {
+	switch code {
+	case "provider_stream_idle_timeout", "codex_stream_idle_timeout",
+		"codex_stream_incomplete", "codex_stream_failed":
+		return "internal_error"
+	}
+	return code
 }
 
 func metricsLabel(value string) string {

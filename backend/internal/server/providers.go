@@ -1018,6 +1018,64 @@ func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider P
 		if parsed, ok := usageFromServerSentEvent(event); ok {
 			usage = parsed
 		}
+		if failure, ok := openAIErrorFrame(event, provider); ok {
+			// The provider's terminal error frame is already on the wire (it is a
+			// data frame the client is owed), so surface the classified error
+			// instead of recording the stream as a silent success.
+			return usage, failure
+		}
+	}
+}
+
+// openAIErrorFrame detects a terminal error carried inside a 200 SSE response
+// (`data: {"error": {...}}`). The frame itself is forwarded to the client; the
+// returned error classifies the stream as failed so the gateway records the
+// interruption instead of a successful stream.
+func openAIErrorFrame(frame serverSentEvent, provider Provider) (error, bool) {
+	// Classify against the redacted payload: the message also reaches
+	// RouteAttempt.Error and the audit log, so a provider error echoing an API
+	// key or sensitive header value must not survive into either.
+	var payload map[string]any
+	if err := json.Unmarshal(redactProviderErrorSecrets([]byte(frame.Data), provider), &payload); err != nil {
+		return nil, false
+	}
+	raw, ok := payload["error"]
+	if !ok || raw == nil {
+		// The key may be present with a null value; only a non-nil error object
+		// is a terminal failure, matching providerStreamEventIsError semantics.
+		return nil, false
+	}
+	errorType, message := "api_error", "OpenAI provider stream error"
+	if errorObj, ok := raw.(map[string]any); ok {
+		if value, ok := errorObj["type"].(string); ok && value != "" {
+			errorType = value
+		}
+		if value, ok := errorObj["message"].(string); ok && value != "" {
+			message = value
+		}
+	}
+	return NewHTTPError(openAIErrorStatus(errorType), "provider_stream_error", message), true
+}
+
+// openAIErrorStatus maps an OpenAI error type to the HTTP status the gateway
+// reports for it. Unrecognized types are upstream failures, so they surface as
+// gateway errors rather than client errors.
+func openAIErrorStatus(errorType string) int {
+	switch errorType {
+	case "rate_limit_error":
+		return http.StatusTooManyRequests
+	case "authentication_error":
+		return http.StatusUnauthorized
+	case "permission_error":
+		return http.StatusForbidden
+	case "invalid_request_error", "context_length_exceeded", "request_too_large":
+		return http.StatusBadRequest
+	case "not_found_error":
+		return http.StatusNotFound
+	case "server_error", "server_overloaded":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusBadGateway
 	}
 }
 

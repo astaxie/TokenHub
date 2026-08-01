@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
+	"errors"
 	"io"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -118,6 +121,148 @@ func TestCopyOpenAIStreamIgnoresMalformedEventForUsage(t *testing.T) {
 	}
 }
 
+// A terminal error frame carried inside a 200 SSE response is forwarded to the
+// client once and classifies the stream as failed instead of a silent success.
+func TestCopyOpenAIStreamErrorFrameForwardsAndFails(t *testing.T) {
+	stream := "data: {\"id\":\"chatcmpl\",\"choices\":[{\"delta\":{\"content\":\"partial\"},\"index\":0}]}\n\n" +
+		"data: {\"error\":{\"type\":\"server_error\",\"message\":\"boom\"}}\n\n"
+	var output strings.Builder
+
+	usage, err := copyOpenAIStreamAndUsage(&output, strings.NewReader(stream))
+	if err == nil {
+		t.Fatal("an in-band error frame must fail the stream")
+	}
+	if status, code := statusAndCode(err); status != http.StatusInternalServerError || code != "provider_stream_error" {
+		t.Fatalf("status/code = %d/%q, want 500/provider_stream_error", status, code)
+	}
+	if output.String() != stream {
+		t.Fatalf("the error frame must be forwarded verbatim once:\n%q", output.String())
+	}
+	if usage.TotalTokens != 0 {
+		t.Fatalf("usage = %+v, want zero", usage)
+	}
+}
+
+// openAIErrorStatus maps native OpenAI error types to gateway statuses, with
+// unrecognized types surfacing as upstream failures rather than client errors.
+func TestOpenAIErrorStatusMapping(t *testing.T) {
+	cases := []struct {
+		errorType string
+		want      int
+	}{
+		{"rate_limit_error", http.StatusTooManyRequests},
+		{"authentication_error", http.StatusUnauthorized},
+		{"permission_error", http.StatusForbidden},
+		{"invalid_request_error", http.StatusBadRequest},
+		{"context_length_exceeded", http.StatusBadRequest},
+		{"not_found_error", http.StatusNotFound},
+		{"server_error", http.StatusInternalServerError},
+		{"server_overloaded", http.StatusInternalServerError},
+		{"unknown_type", http.StatusBadGateway},
+	}
+	for _, tc := range cases {
+		if got := openAIErrorStatus(tc.errorType); got != tc.want {
+			t.Errorf("openAIErrorStatus(%q) = %d, want %d", tc.errorType, got, tc.want)
+		}
+	}
+}
+
+// A null error value is not a terminal failure: `data: {"error":null}` keeps the
+// stream successful, matching providerStreamEventIsError semantics.
+func TestOpenAIErrorFrameIgnoresNullError(t *testing.T) {
+	stream := "data: {\"id\":\"chatcmpl\",\"choices\":[{\"delta\":{\"content\":\"partial\"},\"index\":0}]}\n\n" +
+		"data: {\"error\":null}\n\n"
+	var output strings.Builder
+	if _, err := copyOpenAIStreamAndUsage(&output, strings.NewReader(stream)); err != nil {
+		t.Fatalf("a null error value must not fail the stream: %v", err)
+	}
+	if output.String() != stream {
+		t.Fatalf("frames must be forwarded verbatim:\n%q", output.String())
+	}
+}
+
+// The classified error is built from the redacted payload: the message also
+// reaches RouteAttempt.Error and the audit log, so provider secrets must not
+// survive there even when the upstream error echoes them.
+func TestOpenAIErrorFrameMessageRedactsSecrets(t *testing.T) {
+	provider := Provider{APIKey: "provider-api-secret"}
+	stream := "data: {\"error\":{\"type\":\"server_error\",\"message\":\"provider-api-secret failed\"}}\n\n"
+	var output bytes.Buffer
+	_, err := copyOpenAIStreamAndUsageForProvider(&output, strings.NewReader(stream), provider)
+	if err == nil {
+		t.Fatal("an in-band error frame must fail the stream")
+	}
+	if strings.Contains(err.Error(), "provider-api-secret") {
+		t.Fatalf("classified error leaked the provider secret: %v", err)
+	}
+	if !strings.Contains(err.Error(), providerHeaderMask) {
+		t.Fatalf("classified error did not show redaction: %v", err)
+	}
+}
+
+// A null error value is not terminal on the bridge either: the converter must
+// not emit an Anthropic error event or fail the stream.
+func TestOpenAIAnthropicBridgeNullErrorNotTerminal(t *testing.T) {
+	var nullOutput strings.Builder
+	nullConverter := newOpenAIAnthropicStreamConverter(&nullOutput, "bridge-model", 4, Provider{})
+	if _, err := nullConverter.Write([]byte("data: {\"error\":null}\n\n")); err != nil {
+		t.Fatalf("null error must not fail the bridge stream: %v", err)
+	}
+	if strings.Contains(nullOutput.String(), "event: error") {
+		t.Fatalf("null error must not emit an error event: %s", nullOutput.String())
+	}
+}
+
+// The native Anthropic stream classifies the terminal error frame from the
+// redacted payload, so provider secrets echoed by the upstream do not reach
+// RouteAttempt.Error or the audit log.
+func TestCopyNativeAnthropicStreamErrorFrameRedactsClassification(t *testing.T) {
+	provider := Provider{APIKey: "provider-api-secret"}
+	stream := "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"provider-api-secret failed\"}}\n\n"
+	var output bytes.Buffer
+	_, err := copyNativeAnthropicStreamForProvider(&output, strings.NewReader(stream), "model", provider)
+	if err == nil {
+		t.Fatal("an in-band error frame must fail the stream")
+	}
+	if strings.Contains(err.Error(), "provider-api-secret") {
+		t.Fatalf("classified error leaked the provider secret: %v", err)
+	}
+	if !strings.Contains(err.Error(), providerHeaderMask) {
+		t.Fatalf("classified error did not show redaction: %v", err)
+	}
+}
+
+// The /v1/messages OpenAI bridge converts an in-band error frame into an
+// Anthropic error event and fails the stream through the forwarded marker, so
+// the handler appends no second terminal event.
+func TestOpenAIAnthropicBridgeErrorFrameEmitsAnthropicError(t *testing.T) {
+	var output strings.Builder
+	converter := newOpenAIAnthropicStreamConverter(&output, "bridge-model", 4, Provider{})
+
+	_, err := converter.Write([]byte("data: {\"id\":\"chatcmpl\",\"choices\":[{\"delta\":{\"content\":\"partial\"},\"index\":0}]}\n\n"))
+	if err != nil {
+		t.Fatalf("chunk write failed: %v", err)
+	}
+	_, err = converter.Write([]byte("data: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}\n\n"))
+	if err == nil {
+		t.Fatal("an in-band error frame must fail the bridge stream")
+	}
+	var forwarded *anthropicErrorFrameForwarded
+	if !errors.As(err, &forwarded) {
+		t.Fatalf("err = %v, want an anthropicErrorFrameForwarded marker", err)
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusTooManyRequests || httpErr.Code != "provider_stream_error" {
+		t.Fatalf("status/code = %d/%q, want 429/provider_stream_error", httpErr.Status, httpErr.Code)
+	}
+	if strings.Count(output.String(), "event: error") != 1 {
+		t.Fatalf("the bridge must emit exactly one Anthropic error event:\n%q", output.String())
+	}
+	if !strings.Contains(output.String(), "rate_limit_error") || !strings.Contains(output.String(), "slow down") {
+		t.Fatalf("the Anthropic error event must carry the upstream type and message:\n%q", output.String())
+	}
+}
+
 func TestCopyNativeAnthropicStreamPreservesFramingAndRewritesModel(t *testing.T) {
 	stream := ": heartbeat\r\n" +
 		"\r\n" +
@@ -130,6 +275,9 @@ func TestCopyNativeAnthropicStreamPreservesFramingAndRewritesModel(t *testing.T)
 		"data: {\"usage\":{\"output_tokens\":4}}\n" +
 		"\n" +
 		"data: [DONE]\n" +
+		"\n" +
+		"event: message_stop\n" +
+		"data: {\"type\":\"message_stop\"}\n" +
 		"\n"
 	var output strings.Builder
 
@@ -577,6 +725,9 @@ func TestCopyNativeAnthropicStreamKeepsTheDataLineTerminator(t *testing.T) {
 		"\r\n" +
 		"event: message_delta\n" +
 		"data: {\"usage\":{\"output_tokens\":2}}\n" +
+		"\n" +
+		"event: message_stop\n" +
+		"data: {\"type\":\"message_stop\"}\n" +
 		"\n"
 	var output strings.Builder
 
@@ -696,6 +847,9 @@ func TestCopyNativeAnthropicStreamForwardsFramesNeedingNoRewriteVerbatim(t *test
 		"event: message_delta\n" +
 		"data: {\"zebra\":3,\n" +
 		"data: \"usage\":{\"output_tokens\":7}}\n" +
+		"\n" +
+		"event: message_stop\n" +
+		"data: {\"type\":\"message_stop\"}\n" +
 		"\n"
 	var output strings.Builder
 
@@ -717,6 +871,9 @@ func TestCopyNativeAnthropicStreamRewritesMultiLineModelFrame(t *testing.T) {
 	stream := "event: message_start\r\n" +
 		"data: {\"message\":\r\n" +
 		"data: {\"model\":\"upstream\",\"usage\":{\"input_tokens\":5}}}\r\n" +
+		"\r\n" +
+		"event: message_stop\r\n" +
+		"data: {\"type\":\"message_stop\"}\r\n" +
 		"\r\n"
 	var output strings.Builder
 
@@ -737,10 +894,104 @@ func TestCopyNativeAnthropicStreamRewritesMultiLineModelFrame(t *testing.T) {
 	if !strings.HasSuffix(got, "\r\n\r\n") {
 		t.Fatalf("the rewritten data line lost its CRLF terminator:\n%q", got)
 	}
-	if strings.Count(got, "data: ") != 1 {
+	if strings.Count(strings.SplitN(got, "event: message_stop", 2)[0], "data: ") != 1 {
 		t.Fatalf("the rewritten payload should occupy one data line:\n%q", got)
 	}
 	if usage.PromptTokens != 5 {
 		t.Fatalf("usage = %+v, want 5 prompt tokens", usage)
+	}
+}
+
+// An upstream terminal error frame is forwarded verbatim, and the stream is
+// reported failed through a marker the handler recognizes, so no second
+// terminal error event is appended.
+func TestCopyNativeAnthropicStreamErrorFrameForwardsAndMarks(t *testing.T) {
+	stream := "event: message_start\n" +
+		"data: {\"type\":\"message_start\",\"message\":{\"model\":\"upstream\"}}\n\n" +
+		"event: error\n" +
+		"data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"upstream overloaded\"}}\n\n"
+	var output strings.Builder
+
+	_, err := copyNativeAnthropicStream(&output, strings.NewReader(stream), "gateway-model")
+	var forwarded *anthropicErrorFrameForwarded
+	if !errors.As(err, &forwarded) {
+		t.Fatalf("err = %v, want an anthropicErrorFrameForwarded marker", err)
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusServiceUnavailable || httpErr.Code != "provider_stream_error" {
+		t.Fatalf("status/code = %d/%q, want 503/provider_stream_error", httpErr.Status, httpErr.Code)
+	}
+	if !strings.Contains(output.String(), "event: error\n") || !strings.Contains(output.String(), "overloaded_error") {
+		t.Fatalf("the upstream error frame was not forwarded verbatim:\n%q", output.String())
+	}
+	if strings.Count(output.String(), "event: error") != 1 {
+		t.Fatalf("the error event must not be duplicated:\n%q", output.String())
+	}
+}
+
+// A stream that delivers events but ends before message_stop was truncated:
+// the frames already written stay with the client, and the stream fails.
+func TestCopyNativeAnthropicStreamEOFBeforeMessageStopFails(t *testing.T) {
+	stream := "event: message_start\n" +
+		"data: {\"type\":\"message_start\",\"message\":{\"model\":\"upstream\"}}\n\n" +
+		"event: message_delta\n" +
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n"
+	var output strings.Builder
+
+	_, err := copyNativeAnthropicStream(&output, strings.NewReader(stream), "gateway-model")
+	if err == nil {
+		t.Fatal("a stream ending before message_stop must be reported as truncated")
+	}
+	if status, code := statusAndCode(err); status != http.StatusBadGateway || code != "provider_stream_error" {
+		t.Fatalf("status/code = %d/%q, want 502/provider_stream_error", status, code)
+	}
+	if !strings.Contains(output.String(), "event: message_delta") {
+		t.Fatalf("delivered frames must still reach the client:\n%q", output.String())
+	}
+}
+
+// An empty body is a confirmed empty success: the handler commits it and the
+// stream must not be reported as truncated.
+func TestCopyNativeAnthropicStreamEmptyBodyStaysEmptySuccess(t *testing.T) {
+	var output strings.Builder
+	if _, err := copyNativeAnthropicStream(&output, strings.NewReader(""), "gateway-model"); err != nil {
+		t.Fatalf("an empty body is a confirmed empty success, got %v", err)
+	}
+}
+
+// Heartbeats alone deliver no semantic event, so a keepalive-only stream that
+// closes cleanly is not a truncated stream.
+func TestCopyNativeAnthropicStreamHeartbeatOnlyStaysSuccess(t *testing.T) {
+	var output strings.Builder
+	if _, err := copyNativeAnthropicStream(&output, strings.NewReader(heartbeatOnlyStream(3)), "gateway-model"); err != nil {
+		t.Fatalf("heartbeats only are not a truncated stream: %v", err)
+	}
+}
+
+// Anthropic keepalives are named events (`event: ping` / `data: {"type":"ping"}`),
+// not SSE comment lines. They carry no semantic output, so a stream that delivers
+// only pings and ends cleanly stays a confirmed empty success.
+func TestCopyNativeAnthropicStreamNamedPingStaysEmptySuccess(t *testing.T) {
+	stream := "event: ping\ndata: {\"type\":\"ping\"}\n\n" +
+		"event: ping\ndata: {\"type\":\"ping\"}\n\n"
+	var output strings.Builder
+	if _, err := copyNativeAnthropicStream(&output, strings.NewReader(stream), "gateway-model"); err != nil {
+		t.Fatalf("named pings only are not a truncated stream: %v", err)
+	}
+}
+
+// A named ping does not mask real truncation: content followed by EOF before
+// message_stop still classifies as failed.
+func TestCopyNativeAnthropicStreamNamedPingWithContentStillDetectsTruncation(t *testing.T) {
+	stream := "event: message_start\n" +
+		"data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"upstream-model\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n" +
+		"event: ping\ndata: {\"type\":\"ping\"}\n\n"
+	var output strings.Builder
+	_, err := copyNativeAnthropicStream(&output, strings.NewReader(stream), "gateway-model")
+	if err == nil {
+		t.Fatal("content followed by EOF before message_stop must stay a truncation")
+	}
+	if status, code := statusAndCode(err); status != http.StatusBadGateway || code != "provider_stream_error" {
+		t.Fatalf("status/code = %d/%q, want 502/provider_stream_error", status, code)
 	}
 }

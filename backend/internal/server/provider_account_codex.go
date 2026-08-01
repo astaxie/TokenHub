@@ -402,6 +402,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 	})
 	streamStarted := tracker.Wrote()
 	routed.Call.StreamOutputCommitted = tracker.WroteData()
+	routed.Call.FirstByteAt = tracker.firstByteTime(err == nil)
 	if err != nil {
 		if streamStarted {
 			// The client already has a 200, so any usage the upstream reported

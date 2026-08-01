@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -902,6 +903,7 @@ func (s *Server) handleAnthropicMessagesStream(
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
 	routed.Call.StreamOutputCommitted = tracker.WroteData()
+	routed.Call.FirstByteAt = tracker.firstByteTime(err == nil)
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,
@@ -915,7 +917,12 @@ func (s *Server) handleAnthropicMessagesStream(
 	})
 	if err != nil {
 		if tracker.Wrote() {
-			_ = writeAnthropicStreamError(tracker, err)
+			// A native stream that already forwarded the upstream's terminal
+			// error frame must not append a second one.
+			var forwarded *anthropicErrorFrameForwarded
+			if !errors.As(err, &forwarded) {
+				_ = writeAnthropicStreamError(tracker, err)
+			}
 		} else {
 			// Nothing reached the client, so onFirstWrite never ran. Emit routing
 			// headers alongside the JSON error so callers can still see the attempts.
@@ -1021,5 +1028,12 @@ func writeAnthropicStreamError(writer io.Writer, err error) error {
 		return marshalErr
 	}
 	_, writeErr := fmt.Fprintf(writer, "event: error\ndata: %s\n\n", payload)
+	if writeErr == nil {
+		// Match the streaming handlers: a terminal error frame must reach the
+		// client promptly, not wait for the connection to close.
+		if flusher, ok := writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}
 	return writeErr
 }
