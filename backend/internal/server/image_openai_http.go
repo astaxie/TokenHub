@@ -84,7 +84,7 @@ func executeOpenAIImageGeneration(
 		Size:         normalizedImageOption(job.Size, "auto"),
 		OutputFormat: "png",
 	}
-	resp, err := adapter.doRaw(ctx, route.Provider, http.MethodPost, "/images/generations", payload)
+	resp, err := adapter.doRaw(ctx, route.Provider, http.MethodPost, "/images/generations", payload, false)
 	if err != nil {
 		return openAIImageResponse{}, nil, err
 	}

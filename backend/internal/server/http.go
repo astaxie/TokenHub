@@ -58,11 +58,11 @@ func NewWithConfig(store Store, config Config) *Server {
 		config.ImageCapabilityRetrySecs = 86400
 	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
-	client := &http.Client{Timeout: 120 * time.Second}
-	codexClient := &http.Client{}
-	openai := OpenAICompatibleAdapter{Client: client}
+	client, streamClient, streamIdleTimeout := newUpstreamClients(config)
+	openai := OpenAICompatibleAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout}
 	codexSubscription := &CodexSubscriptionAdapter{
-		Client:             codexClient,
+		Client:             &http.Client{},
+		StreamIdleTimeout:  streamIdleTimeout,
 		RefreshCredentials: store.RefreshProviderResourceCredentials,
 	}
 	adapters := map[string]ProviderAdapter{
@@ -72,9 +72,9 @@ func NewWithConfig(store Store, config Config) *Server {
 		"deepseek":               openai,
 		"qwen":                   openai,
 		"local":                  openai,
-		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client},
-		ProviderAnthropic:        AnthropicAdapter{Client: client},
-		ProviderGemini:           GeminiAdapter{Client: client},
+		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
+		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
+		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 	}
 	registry := NewAdapterRegistry(adapters)
 	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)

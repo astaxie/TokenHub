@@ -874,7 +874,7 @@ func (s *Server) executeNativeAnthropicMessages(
 	payload := cloneAnyMap(req.Raw)
 	payload["model"] = route.ProviderModel
 	payload["stream"] = false
-	resp, err := s.doNativeAnthropicRequest(ctx, route.Provider, "/v1/messages", payload, headers)
+	resp, err := s.doNativeAnthropicRequest(ctx, route.Provider, "/v1/messages", payload, headers, false)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -895,6 +895,7 @@ func (s *Server) doNativeAnthropicRequest(
 	endpoint string,
 	payload map[string]any,
 	downstreamHeaders http.Header,
+	stream bool,
 ) (*http.Response, error) {
 	baseURL := strings.TrimRight(provider.BaseURL, "/")
 	if baseURL == "" {
@@ -924,11 +925,10 @@ func (s *Server) doNativeAnthropicRequest(
 	for key, value := range provider.Headers {
 		req.Header.Set(key, value)
 	}
-	client := http.DefaultClient
-	if adapter, ok := s.adapters[ProviderAnthropic].(AnthropicAdapter); ok && adapter.Client != nil {
-		client = adapter.Client
-	}
-	resp, err := client.Do(req)
+	// The native path builds its own request but must follow the same streaming
+	// policy as the adapter: a total deadline would truncate a live stream.
+	adapter, _ := s.adapters[ProviderAnthropic].(AnthropicAdapter)
+	resp, err := sendUpstream(adapter.Client, adapter.StreamClient, adapter.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
@@ -1038,7 +1038,7 @@ func (s *Server) streamNativeAnthropicMessages(
 	payload := cloneAnyMap(req.Raw)
 	payload["model"] = route.ProviderModel
 	payload["stream"] = true
-	resp, err := s.doNativeAnthropicRequest(ctx, route.Provider, "/v1/messages", payload, headers)
+	resp, err := s.doNativeAnthropicRequest(ctx, route.Provider, "/v1/messages", payload, headers, true)
 	if err != nil {
 		return Usage{}, err
 	}

@@ -162,6 +162,10 @@ func (a MockAdapter) Embeddings(ctx context.Context, provider Provider, provider
 
 type OpenAICompatibleAdapter struct {
 	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
 }
 
 func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -181,7 +185,7 @@ func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provid
 	req.Stream = true
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	req = includeOpenAIStreamUsage(req)
-	resp, err := a.doRaw(ctx, provider, http.MethodPost, "/chat/completions", req)
+	resp, err := a.doRaw(ctx, provider, http.MethodPost, "/chat/completions", req, true)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -203,7 +207,7 @@ func (a OpenAICompatibleAdapter) OpenResponses(ctx context.Context, provider Pro
 	req.Model = providerModel
 	req.Stream = true
 	req = normalizedResponsesReasoning(req)
-	return a.doRaw(ctx, provider, http.MethodPost, "/responses", req)
+	return a.doRaw(ctx, provider, http.MethodPost, "/responses", req, true)
 }
 
 func (a OpenAICompatibleAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -216,7 +220,7 @@ func (a OpenAICompatibleAdapter) Embeddings(ctx context.Context, provider Provid
 }
 
 func (a OpenAICompatibleAdapter) doJSON(ctx context.Context, provider Provider, method, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, method, endpoint, payload)
+	resp, err := a.doRaw(ctx, provider, method, endpoint, payload, false)
 	if err != nil {
 		return err
 	}
@@ -224,7 +228,7 @@ func (a OpenAICompatibleAdapter) doJSON(ctx context.Context, provider Provider, 
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any) (*http.Response, error) {
+func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any, stream bool) (*http.Response, error) {
 	if provider.BaseURL == "" {
 		return nil, NewHTTPError(503, "provider_not_configured", "Provider base_url is required")
 	}
@@ -244,11 +248,7 @@ func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, m
 	for key, value := range provider.Headers {
 		req.Header.Set(key, value)
 	}
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +277,10 @@ func applyOpenAICompatibleAccountHeaders(req *http.Request, provider Provider) {
 
 type AzureOpenAIAdapter struct {
 	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
 }
 
 func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -296,7 +300,7 @@ func (a AzureOpenAIAdapter) ChatStream(ctx context.Context, provider Provider, p
 	req.Stream = true
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	req = includeOpenAIStreamUsage(req)
-	resp, err := a.doRaw(ctx, provider, providerModel, "/chat/completions", req)
+	resp, err := a.doRaw(ctx, provider, providerModel, "/chat/completions", req, true)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -318,7 +322,7 @@ func (a AzureOpenAIAdapter) Embeddings(ctx context.Context, provider Provider, p
 }
 
 func (a AzureOpenAIAdapter) doJSON(ctx context.Context, provider Provider, deployment string, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, deployment, endpoint, payload)
+	resp, err := a.doRaw(ctx, provider, deployment, endpoint, payload, false)
 	if err != nil {
 		return err
 	}
@@ -326,7 +330,7 @@ func (a AzureOpenAIAdapter) doJSON(ctx context.Context, provider Provider, deplo
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deployment string, endpoint string, payload any) (*http.Response, error) {
+func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deployment string, endpoint string, payload any, stream bool) (*http.Response, error) {
 	apiVersion := provider.Options["api_version"]
 	if apiVersion == "" {
 		apiVersion = "2024-02-15-preview"
@@ -345,11 +349,7 @@ func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deploy
 	}
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("api-key", provider.APIKey)
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
@@ -363,6 +363,10 @@ func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deploy
 
 type AnthropicAdapter struct {
 	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
 }
 
 func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
@@ -396,7 +400,7 @@ func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, pro
 		return Usage{}, err
 	}
 	payload["stream"] = true
-	resp, err := a.doRaw(ctx, provider, "/v1/messages", payload)
+	resp, err := a.doRaw(ctx, provider, "/v1/messages", payload, true)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -428,7 +432,7 @@ func (a AnthropicAdapter) Embeddings(ctx context.Context, provider Provider, pro
 }
 
 func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, endpoint, payload)
+	resp, err := a.doRaw(ctx, provider, endpoint, payload, false)
 	if err != nil {
 		return err
 	}
@@ -436,7 +440,7 @@ func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoin
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint string, payload any) (*http.Response, error) {
+func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint string, payload any, stream bool) (*http.Response, error) {
 	if provider.BaseURL == "" {
 		provider.BaseURL = "https://api.anthropic.com"
 	}
@@ -455,11 +459,7 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("x-api-key", provider.APIKey)
 	req.Header.Set("anthropic-version", version)
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
@@ -473,6 +473,10 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 
 type GeminiAdapter struct {
 	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
 }
 
 func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -497,7 +501,7 @@ func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, provid
 	if err != nil {
 		return Usage{}, err
 	}
-	resp, err := a.doRaw(ctx, provider, providerModel, ":streamGenerateContent?alt=sse", payload)
+	resp, err := a.doRaw(ctx, provider, providerModel, ":streamGenerateContent?alt=sse", payload, true)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -553,7 +557,7 @@ func (a GeminiAdapter) Embeddings(ctx context.Context, provider Provider, provid
 }
 
 func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model string, action string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, model, action, payload)
+	resp, err := a.doRaw(ctx, provider, model, action, payload, false)
 	if err != nil {
 		return err
 	}
@@ -564,7 +568,7 @@ func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model stri
 // doRaw issues a Gemini request. The action may already carry a query string
 // (streaming uses ":streamGenerateContent?alt=sse"), so the API key separator is
 // chosen accordingly.
-func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model string, action string, payload any) (*http.Response, error) {
+func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model string, action string, payload any, stream bool) (*http.Response, error) {
 	if provider.BaseURL == "" {
 		provider.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
 	}
@@ -588,11 +592,7 @@ func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model strin
 		return nil, err
 	}
 	req.Header.Set("content-type", "application/json")
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
