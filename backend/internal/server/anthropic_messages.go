@@ -832,22 +832,6 @@ func anySlice(value any) ([]any, bool) {
 	}
 }
 
-func openAIFinishReasonToAnthropic(reason string, hasTools bool) string {
-	if hasTools || reason == "tool_calls" || reason == "function_call" {
-		return "tool_use"
-	}
-	switch reason {
-	case "length":
-		return "max_tokens"
-	case "stop", "":
-		return "end_turn"
-	case "content_filter":
-		return "refusal"
-	default:
-		return "end_turn"
-	}
-}
-
 func anthropicUsageObject(usage Usage) map[string]any {
 	cachedInputTokens := minInt64(maxInt64(usage.CachedInputTokens, 0), maxInt64(usage.PromptTokens, 0))
 	return map[string]any{
