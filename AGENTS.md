@@ -45,6 +45,7 @@ Run SDK smoke tests from `sdk/` only when a compatible backend is available and 
 ```bash
 npm ci
 npm run test:deepseek
+npm run test:anthropic-messages
 npm run test:security-policy
 ```
 
@@ -70,7 +71,7 @@ Use a workflow only when the user explicitly names it; otherwise follow the norm
 - Never commit real credentials, local `.env` files, SQLite databases, generated backups, or runtime logs.
 - Keep environment variable additions synchronized across relevant `.env.example` files, `deploy/docker-compose.yml`, `start.sh`, and deployment documentation.
 - Keep user-facing documentation synchronized across English, Simplified Chinese, and Japanese when changing shared behavior.
-- `frontend/app/page.tsx` and `frontend/app/globals.css` are intentionally large. Avoid broad formatting or unrelated restructuring when making a targeted UI fix.
+- A few source files are over the line-count ceiling and are frozen at their current size in the `FROZEN` table in `tools/source-lines.mjs`. Avoid broad formatting or unrelated restructuring in them when making a targeted fix; `node tools/check-source-lines.mjs` reports which files are affected.
 - Next.js may rewrite `frontend/next-env.d.ts` during development or production builds. Do not commit incidental mode-dependent changes to that generated file.
 - Keep `data/model-catalog.yaml` tracked; other files under runtime data directories are intentionally ignored.
 

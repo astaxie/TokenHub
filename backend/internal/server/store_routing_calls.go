@@ -965,7 +965,7 @@ func (s *GormStore) CreateImageJob(job ImageJob, prompt string) (ImageJob, error
 		job.ID = NewID("imgjob")
 	}
 	if strings.TrimSpace(job.Status) == "" {
-		job.Status = "queued"
+		job.Status = imageJobStatusQueued
 	}
 	if job.CreatedAt.IsZero() {
 		job.CreatedAt = time.Now().UTC()
@@ -981,8 +981,8 @@ func (s *GormStore) CreateImageJob(job ImageJob, prompt string) (ImageJob, error
 func (s *GormStore) ClaimImageJob(id string) (ImageJob, bool, error) {
 	now := time.Now().UTC()
 	result := s.db.Model(&ImageJob{}).
-		Where("id = ? AND status = ?", id, "queued").
-		Updates(map[string]any{"status": "running", "started_at": now})
+		Where("id = ? AND status = ?", id, imageJobStatusQueued).
+		Updates(map[string]any{"status": imageJobStatusRunning, "started_at": now})
 	if result.Error != nil {
 		return ImageJob{}, false, result.Error
 	}
@@ -1027,16 +1027,17 @@ func (s *GormStore) FailUnfinishedImageJobs(code string, message string) ([]Imag
 	now := time.Now().UTC()
 	var jobs []ImageJob
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("status IN ?", []string{"queued", "running"}).Find(&jobs).Error; err != nil {
+		unfinished := []string{imageJobStatusQueued, imageJobStatusRunning}
+		if err := tx.Where("status IN ?", unfinished).Find(&jobs).Error; err != nil {
 			return err
 		}
 		if len(jobs) == 0 {
 			return nil
 		}
 		if err := tx.Model(&ImageJob{}).
-			Where("status IN ?", []string{"queued", "running"}).
+			Where("status IN ?", unfinished).
 			Updates(map[string]any{
-				"status":        "failed",
+				"status":        imageJobStatusFailed,
 				"error_code":    code,
 				"error_message": message,
 				"completed_at":  now,
@@ -1076,7 +1077,7 @@ func (s *GormStore) FailUnfinishedImageJobs(code string, message string) ([]Imag
 		return nil, err
 	}
 	for index := range jobs {
-		jobs[index].Status = "failed"
+		jobs[index].Status = imageJobStatusFailed
 		jobs[index].ErrorCode = code
 		jobs[index].ErrorMessage = message
 		jobs[index].CompletedAt = &now
@@ -1126,9 +1127,9 @@ func (s *GormStore) CompleteImageJob(call CallContext, job ImageJob, revisedProm
 				return err
 			}
 			result := tx.Model(&ImageJob{}).
-				Where("id = ? AND status = ?", job.ID, "running").
+				Where("id = ? AND status = ?", job.ID, imageJobStatusRunning).
 				Updates(map[string]any{
-					"status":                    "completed",
+					"status":                    imageJobStatusCompleted,
 					"provider_id":               job.ProviderID,
 					"provider_resource_id":      job.ProviderResourceID,
 					"provider_model":            job.ProviderModel,

@@ -1,9 +1,9 @@
 import { Check, Copy, KeyRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { type AdminUser, type AppData, type FieldConfig, type Model, type UsagePoint } from "../core/types";
+import { type AdminUser, type AppData, type FieldConfig, type Model } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
 import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelRoutesFor } from "../domain/entities";
-import { compactNumber, fallbackDays, routeStrategyLabel } from "../domain/formatting";
+import { compactNumber, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
 import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
 import { PaginationControls, usePagination } from "../views/settings-table";
@@ -340,53 +340,6 @@ export function PaginatedSimpleTable({
       </div>
       <PaginationControls pagination={pagination} totalItems={rows.length} />
     </>
-  );
-}
-
-export function UsageBarChart({ data }: { data: UsagePoint[] }) {
-  const points = data.length ? data : fallbackDays();
-  const max = Math.max(...points.map((point) => point.total_tokens), 1);
-  const width = 1240;
-  const height = 330;
-  const chartTop = 24;
-  const chartBottom = 52;
-  const chartHeight = height - chartTop - chartBottom;
-  const gap = 8;
-  const barWidth = Math.max(8, (width - 100 - gap * points.length) / points.length);
-
-  return (
-    <div className="chart-wrap">
-      <div className="legend">
-        <span className="legend-dot" />
-        <span>{points.some((point) => point.total_tokens > 0) ? tx("模型调用 Token") : tx("等待调用数据")}</span>
-      </div>
-      <svg className="chart" viewBox={`0 0 ${width} ${height}`} role="img">
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-          const y = chartTop + chartHeight - chartHeight * ratio;
-          return (
-            <g key={ratio}>
-              <line x1="40" x2={width - 20} y1={y} y2={y} />
-              <text x="8" y={y + 4}>{compactNumber(Math.round(max * ratio))}</text>
-            </g>
-          );
-        })}
-        {points.map((point, index) => {
-          const x = 60 + index * (barWidth + gap);
-          const barHeight = (point.total_tokens / max) * chartHeight;
-          const y = chartTop + chartHeight - barHeight;
-          return (
-            <g key={point.date}>
-              <rect x={x} y={y} width={barWidth} height={Math.max(1, barHeight)} rx="1" />
-              {index % 2 === 0 ? (
-                <text x={x + barWidth / 2} y={height - 18} textAnchor="middle">
-                  {point.date.slice(5)}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
   );
 }
 

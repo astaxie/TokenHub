@@ -202,7 +202,7 @@ export const standaloneViewMeta: Partial<Record<ViewKey, { title: string; descri
 
 export const roleViewAccess: Record<AppRole, ViewKey[]> = {
   admin: (Object.keys(viewRoutes) as ViewKey[]).filter(
-    (view) => view !== "project-members" && view !== "quota-policies" && view !== "approval-flows" && view !== "budgets" && view !== "chargebacks" && view !== "invoices",
+    (view) => view !== "project-members" && view !== "quota-policies" && view !== "approval-flows",
   ),
   security: ["overview", "gateway", "usage", "audit", "alerts", "alert-events", "notification-channels", "alert-deliveries", "security-policies", "approvals"],
   team_leader: ["overview", "gateway", "playground", "models", "projects", "api-keys", "teams", "users", "usage", "billing", "audit", "approvals"],

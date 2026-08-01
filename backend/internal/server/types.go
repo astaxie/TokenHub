@@ -765,8 +765,6 @@ type ChatMessage struct {
 	raw                      map[string]json.RawMessage
 }
 
-type ReasoningOptions = ResponsesReasoning
-
 type ChatCompletionRequest struct {
 	Model             string         `json:"model"`
 	Messages          []ChatMessage  `json:"messages"`
@@ -1168,10 +1166,6 @@ func NewID(prefix string) string {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
 	return prefix + "_" + base64.RawURLEncoding.EncodeToString(buf[:])
-}
-
-func GenerateAPIKey() string {
-	return GenerateAPIKeyWithOptions(DefaultAPIKeyPrefix, DefaultAPIKeyRandomLength)
 }
 
 func GenerateAPIKeyWithOptions(prefix string, randomLength int) string {

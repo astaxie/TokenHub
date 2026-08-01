@@ -1,4 +1,4 @@
-import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type ProviderCatalogModel, routeViews, type UsagePoint, type ViewKey } from "../core/types";
+import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type ProviderCatalogModel, routeViews, type ViewKey } from "../core/types";
 import { modelCategory } from "./catalog";
 import { codexImageCapableResources, findProvider, findProviderResource, isCodexSubscriptionImageModel, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { tx } from "../i18n/runtime";
@@ -252,19 +252,6 @@ export function routeHasHealthyTarget(route: ModelRoute, data: AppData) {
   }
   return true;
 }
-
-export function modelCatalogEmptyText(data: AppData, readOnly: boolean, query: string) {
-  if (query.trim()) return tx("没有匹配的模型");
-  if (data.models.length === 0) {
-    return readOnly
-      ? tx("当前没有可调用模型。通常原因是管理员还没有启用模型目录或路由策略，或你的项目/Key 未被授予模型范围。")
-      : tx("当前还没有模型目录。请先维护模型目录，再配置路由策略。");
-  }
-  return readOnly
-    ? tx("当前筛选下没有可见模型。可用性由模型目录、路由策略、项目成员和 Key 白名单共同决定。")
-    : tx("没有匹配的模型");
-}
-
 export function keyWizardModelOptions(data: AppData) {
   const activeChatModels = playgroundModels(data, data.routes.length > 0);
   const routed = activeChatModels.filter((model) => data.routes.length === 0 || activeRouteCount(model.name, data) > 0);
@@ -323,18 +310,6 @@ export function stringifyChatContent(content: unknown): string {
   if (content == null) return "";
   if (typeof content === "object") return JSON.stringify(content, null, 2);
   return String(content);
-}
-
-export function fallbackDays(): UsagePoint[] {
-  return Array.from({ length: 31 }, (_, index) => ({
-    date: `2026-06-${String(index + 1).padStart(2, "0")}`,
-    request_count: 0,
-    input_tokens: 0,
-    cached_input_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    estimated_cost_usd: 0,
-  }));
 }
 
 export function formatNumber(value: number) {

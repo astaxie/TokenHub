@@ -1,7 +1,6 @@
-import { Activity, BarChart3, Bell, Boxes, Database, FileText, Send, Sparkles, Users } from "lucide-react";
 import { type AdminResource, type AppData, type Model, notificationChannelTypes, type Provider, type ProviderCatalogEntry, type ProviderCatalogModel, type Summary, type ViewKey } from "../core/types";
-import { findProvider, modelRoutesFor, providerRoutesFor, stringifyValue } from "./entities";
-import { formatMoney, modelCategoryRank } from "./formatting";
+import { providerRoutesFor, stringifyValue } from "./entities";
+import { formatMoney } from "./formatting";
 import { compactList } from "./labels";
 import { tx } from "../i18n/runtime";
 import { modelCategoryLabels, preferredModelCategories } from "../shared/ui";
@@ -323,116 +322,6 @@ export function maskWebhookURL(url: string) {
   } catch {
     return url.length > 24 ? `${url.slice(0, 14)}...${url.slice(-6)}` : url;
   }
-}
-
-export function modelCatalogCategories(data: AppData) {
-  const counts = new Map<string, number>();
-  for (const model of data.models) {
-    const category = modelCategory(model);
-    counts.set(category, (counts.get(category) ?? 0) + 1);
-  }
-  const ordered = preferredModelCategories.filter((item) => counts.has(item));
-  for (const category of Array.from(counts.keys()).sort()) {
-    if (!ordered.includes(category)) ordered.push(category);
-  }
-  return [
-    { key: "all", label: modelCategoryLabel("all"), count: data.models.length },
-    ...ordered.map((key) => ({ key, label: modelCategoryLabel(key), count: counts.get(key) ?? 0 })),
-  ];
-}
-
-export function modelCatalogCapabilityTabs(data: AppData) {
-  const models = data.models;
-  const tabs: Array<{ key: string; label: string; icon: typeof Boxes; count: number }> = [
-    { key: "all", label: "所有模型", icon: Boxes, count: models.length },
-    { key: "featured", label: "精选", icon: Sparkles, count: models.filter(isFeaturedModel).length },
-    { key: "text", label: "文本", icon: FileText, count: models.filter((model) => modelCapabilityKeys(model).includes("text")).length },
-    { key: "image", label: "图像", icon: Activity, count: models.filter((model) => modelCapabilityKeys(model).includes("image")).length },
-    { key: "video", label: "视频", icon: Send, count: models.filter((model) => modelCapabilityKeys(model).includes("video")).length },
-    { key: "audio", label: "音频", icon: Bell, count: models.filter((model) => modelCapabilityKeys(model).includes("audio")).length },
-    { key: "embedding", label: "嵌入", icon: Database, count: models.filter((model) => modelCapabilityKeys(model).includes("embedding")).length },
-    { key: "rerank", label: "重排序", icon: BarChart3, count: models.filter((model) => modelCapabilityKeys(model).includes("rerank")).length },
-    { key: "third_party", label: "三方资源", icon: Users, count: models.filter((model) => hasThirdPartyRoute(model, data)).length },
-  ];
-  return tabs.filter((tab) => tab.key === "all" || tab.key === "third_party" || tab.count > 0);
-}
-
-export function filterModelCatalog(models: Model[], data: AppData, category: string, capability: string, query: string) {
-  const normalized = query.trim().toLowerCase();
-  return models
-    .filter((model) => category === "all" || modelCategory(model) === category)
-    .filter((model) => {
-      if (capability === "all") return true;
-      if (capability === "featured") return isFeaturedModel(model);
-      if (capability === "third_party") return hasThirdPartyRoute(model, data);
-      return modelCapabilityKeys(model).includes(capability);
-    })
-    .filter((model) => {
-      if (!normalized) return true;
-      return [
-        model.name,
-        model.id,
-        model.family,
-        model.modality,
-        model.category,
-        ...(model.capabilities ?? []),
-        ...(model.supported_parameters ?? []),
-      ].filter(Boolean).join(" ").toLowerCase().includes(normalized);
-    })
-    .sort((left, right) => {
-      const featuredDiff = Number(isFeaturedModel(right)) - Number(isFeaturedModel(left));
-      return featuredDiff || modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name);
-    });
-}
-
-export function modelCapabilityKey(model: Model) {
-  return modelCapabilityKeys(model)[0] ?? "text";
-}
-
-export function modelCapabilityKeys(model: Model) {
-  const values = [model.modality, ...(model.capabilities ?? []), ...(model.input_modalities ?? []), ...(model.output_modalities ?? [])]
-    .join(" ")
-    .toLowerCase();
-  const keys = new Set<string>();
-  if (values.includes("chat") || values.includes("text") || values.includes("llm")) keys.add("text");
-  if (values.includes("embed")) keys.add("embedding");
-  if (values.includes("rerank")) keys.add("rerank");
-  if (values.includes("image") || values.includes("vision") || values.includes("ocr")) keys.add("image");
-  if (values.includes("video")) keys.add("video");
-  if (values.includes("audio") || values.includes("tts") || values.includes("asr")) keys.add("audio");
-  if (keys.size === 0) keys.add("text");
-  return Array.from(keys);
-}
-
-export function modelCapabilityLabel(model: Model) {
-  const labels: Record<string, string> = {
-    text: "文本",
-    image: "图像",
-    video: "视频",
-    audio: "音频",
-    embedding: "嵌入",
-    rerank: "重排序",
-  };
-  return modelCapabilityKeys(model).map((key) => tx(labels[key] ?? key)).slice(0, 3).join(" / ");
-}
-
-export function isFeaturedModel(model: Model) {
-  const routes = model.name.toLowerCase();
-  return model.status === "active" && (
-    routes.includes("gpt-5")
-    || routes.includes("claude")
-    || routes.includes("deepseek")
-    || routes.includes("gemini")
-    || routes.includes("qwen")
-  );
-}
-
-export function hasThirdPartyRoute(model: Model, data: AppData) {
-  return modelRoutesFor(model, data).some((route) => {
-    const provider = findProvider(data, route.provider_id);
-    if (!provider) return false;
-    return provider.type === "openai_compatible" || provider.type === "local" || provider.type === "mock";
-  });
 }
 
 export function modelCategoryInitial(category: string, label: string) {

@@ -1,8 +1,8 @@
 import { Activity, BarChart3, Bell, Database, FileText, ShieldCheck } from "lucide-react";
 import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type ApiContext, type ApprovalRequest, type FieldConfig, type ResourceConfig, type SQLiteBackup, type ToolbarAction } from "../core/types";
 import { roleDisplayLabel, roleSelectOptions, stringifyValue, teamSelectOptions, userTeamIDs, userTeamLabels } from "../domain/entities";
-import { compactNumber, formatMoney, formatNumber, formatTime } from "../domain/formatting";
-import { alertMetricLabel, approvalPayloadSummary, approvalStatusLabel, approvalTriggerLabel, compactList, invoiceStatusLabel, numberFromUnknown, reportDatasetLabel, reportScheduleLabel, resourceTypeLabel, roleLabel } from "../domain/labels";
+import { formatMoney, formatTime } from "../domain/formatting";
+import { alertMetricLabel, approvalPayloadSummary, approvalStatusLabel, approvalTriggerLabel, compactList, numberFromUnknown, reportDatasetLabel, reportScheduleLabel, resourceTypeLabel, roleLabel } from "../domain/labels";
 import { tx } from "../i18n/runtime";
 import { genericResourceConfig, runApprovalAction } from "./generic-config";
 import { adminDelete, adminFetch, adminMutate, userPayload } from "./payloads";
@@ -213,32 +213,6 @@ export function costCenterConfig(): ResourceConfig<AdminResource> {
   };
 }
 
-export function chargebackConfig(): ResourceConfig<AdminResource> {
-  const fields: FieldConfig[] = [
-    { key: "period", label: "账期", required: true },
-    { key: "cost_center", label: "成本中心", required: true },
-    { key: "project_id", label: "项目 ID" },
-    { key: "team_id", label: "团队 ID" },
-    { key: "allocated_cost_usd", label: "分摊成本 USD", type: "number" },
-    { key: "request_count", label: "请求数", type: "number" },
-    { key: "total_tokens", label: "Token", type: "number" },
-    { key: "allocation_rule", label: "分摊规则" },
-  ];
-  return {
-    ...genericResourceConfig("chargebacks", "部门分摊", "将模型成本按部门、项目或成本中心进行内部归集", fields),
-    columns: [
-      { key: "period", label: "账期", render: (item) => stringifyValue(item.fields?.period) },
-      { key: "cost_center", label: "成本中心", render: (item) => stringifyValue(item.fields?.cost_center) },
-      { key: "project_id", label: "项目", render: (item) => stringifyValue(item.fields?.project_id) || "-" },
-      { key: "team_id", label: "团队", render: (item) => stringifyValue(item.fields?.team_id) || "-" },
-      { key: "allocated_cost_usd", label: "分摊成本", render: (item) => `$${formatMoney(numberFromUnknown(item.fields?.allocated_cost_usd))}` },
-      { key: "request_count", label: "请求", render: (item) => formatNumber(numberFromUnknown(item.fields?.request_count)) },
-      { key: "total_tokens", label: "Token", render: (item) => compactNumber(numberFromUnknown(item.fields?.total_tokens)) },
-      { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
-    ],
-  };
-}
-
 export function approvalFlowConfig(): ResourceConfig<AdminResource> {
   const fields: FieldConfig[] = [
     { key: "trigger", label: "触发条件", type: "select", options: ["api_key_create", "budget_change", "model_access", "quota_increase", "invoice_confirm", "invoice_reject"], required: true },
@@ -291,79 +265,6 @@ export function reportConfig(): ResourceConfig<AdminResource> {
       },
     ],
     toolbarActions: reportExportActions(),
-  };
-}
-
-export function invoiceConfig(): ResourceConfig<AdminResource> {
-  const fields: FieldConfig[] = [
-    { key: "period", label: "账期", required: true },
-    { key: "cost_center", label: "成本中心", required: true },
-    { key: "amount_usd", label: "金额 USD", type: "number" },
-    { key: "invoice_note", label: "发票备注", type: "textarea" },
-    { key: "confirmed_by", label: "确认人" },
-    { key: "confirmed_at", label: "确认时间" },
-    { key: "reject_reason", label: "驳回原因", type: "textarea" },
-  ];
-  const base = genericResourceConfig("invoices", "内部账单", "生成内部账单、备注和成本中心确认记录", fields);
-  return {
-    ...base,
-    columns: [
-      { key: "name", label: "名称" },
-      { key: "period", label: "账期", render: (item) => stringifyValue(item.fields?.period) },
-      { key: "cost_center", label: "成本中心", render: (item) => stringifyValue(item.fields?.cost_center) },
-      { key: "amount_usd", label: "金额", render: (item) => `$${formatMoney(numberFromUnknown(item.fields?.amount_usd))}` },
-      { key: "invoice_note", label: "发票备注", render: (item) => stringifyValue(item.fields?.invoice_note) || "-" },
-      { key: "confirmed_by", label: "确认人", render: (item) => stringifyValue(item.fields?.confirmed_by) || "-" },
-      { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} label={invoiceStatusLabel(item.status)} /> },
-    ],
-    actions: [
-      {
-        label: "确认",
-        title: "确认该内部账单",
-        run: async (ctx, item) => {
-          if (item.status !== "pending") return;
-          const resp = await adminFetch(ctx, `/api/admin/resources/invoices/${item.id}/confirm`, {
-            method: "POST",
-            body: JSON.stringify({ invoice_note: stringifyValue(item.fields?.invoice_note) }),
-          });
-          if (!resp.ok) throw new Error(`confirm invoice ${resp.status}`);
-          await handleApprovalOrJSON(resp);
-        },
-        doneMessage: (item) => `${item.name} 已确认`,
-      },
-      {
-        label: "驳回",
-        title: "驳回该内部账单",
-        run: async (ctx, item) => {
-          if (item.status !== "pending") return;
-          const reason = window.prompt("请输入驳回原因", stringifyValue(item.fields?.reject_reason));
-          if (reason === null) return;
-          const resp = await adminFetch(ctx, `/api/admin/resources/invoices/${item.id}/reject`, {
-            method: "POST",
-            body: JSON.stringify({ reject_reason: reason }),
-          });
-          if (!resp.ok) throw new Error(`reject invoice ${resp.status}`);
-          await handleApprovalOrJSON(resp);
-        },
-        doneMessage: (item) => `${item.name} 已驳回`,
-      },
-    ],
-    toolbarActions: [
-      {
-        label: "生成本月",
-        title: "按当前账期生成分摊和内部账单",
-        run: async (ctx) => {
-          const period = window.prompt("输入账期 YYYY-MM，留空则生成本月", currentBillingPeriod());
-          if (period === null) return;
-          const resp = await adminFetch(ctx, "/api/admin/billing/generate", {
-            method: "POST",
-            body: JSON.stringify({ period: period.trim() }),
-          });
-          if (!resp.ok) throw new Error(`generate billing ${resp.status}`);
-        },
-        doneMessage: () => tx("已生成分摊和内部账单"),
-      },
-    ],
   };
 }
 

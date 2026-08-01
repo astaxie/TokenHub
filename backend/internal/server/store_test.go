@@ -156,12 +156,12 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 		t.Fatalf("persisted cost = %.12f, want 0.0022", records[0].CostUSD)
 	}
 
-	summary := store.UsageSummary()
+	summary := summarizeUsage(store.ListUsageRecords(), store.ListRequestLogs())
 	if got := summary["cached_input_tokens"]; got != int64(400) {
 		t.Fatalf("summary cached input tokens = %#v, want 400", got)
 	}
 
-	breakdown := store.UsageBreakdown()
+	breakdown := New(store).usageBreakdownFromRecords(store.ListUsageRecords())
 	models, ok := breakdown["models"].([]map[string]any)
 	if !ok || len(models) != 1 {
 		t.Fatalf("model breakdown = %#v, want one row", breakdown["models"])

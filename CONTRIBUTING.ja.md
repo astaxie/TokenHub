@@ -43,6 +43,7 @@ npm run dev
 ```bash
 npm ci
 npm run test:deepseek
+npm run test:anthropic-messages
 npm run test:security-policy
 ```
 

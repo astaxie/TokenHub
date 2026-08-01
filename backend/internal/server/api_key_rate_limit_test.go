@@ -107,7 +107,6 @@ func TestAPIKeyRPMRejectsBeforeProviderAndReturnsRetryHeaders(t *testing.T) {
 	store.AddRoute(ModelRoute{ModelName: "gpt-4.1-mini", ProviderID: provider.ID, ProviderModel: "mock-chat", Status: StatusActive})
 	adapter := &countingRateLimitAdapter{}
 	server := New(store)
-	server.adapters[ProviderMock] = adapter
 	server.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
 	app := server.Handler()
 

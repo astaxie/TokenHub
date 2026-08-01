@@ -356,7 +356,7 @@ func TestAnthropicAdapterTranslatesReasoningEffort(t *testing.T) {
 	_, _, err = adapter.Responses(context.Background(), provider, "claude-sonnet-5", ResponsesRequest{
 		Model: "reasoning-model",
 		Input: "reason",
-		Reasoning: &ReasoningOptions{
+		Reasoning: &ResponsesReasoning{
 			Effort: &effort,
 		},
 	})
@@ -458,7 +458,7 @@ func TestGeminiAdapterTranslatesReasoningEffort(t *testing.T) {
 				_, _, err := adapter.Responses(context.Background(), provider, test.providerModel, ResponsesRequest{
 					Model: "reasoning-model",
 					Input: "reason",
-					Reasoning: &ReasoningOptions{
+					Reasoning: &ResponsesReasoning{
 						Effort: &test.effort,
 					},
 				})
@@ -1147,7 +1147,6 @@ func TestStreamingEffortFallbackSurfacesPreStreamErrors(t *testing.T) {
 func TestStreamingEffortFallbackDoesNotRetryAfterWriting(t *testing.T) {
 	server, _, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
 	adapter := &partialStreamEffortRejectAdapter{}
-	server.adapters[ProviderOpenAICompatible] = adapter
 	server.adapterRegistry.Register(
 		ProviderOpenAICompatible,
 		adapter,

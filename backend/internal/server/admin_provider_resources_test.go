@@ -326,7 +326,7 @@ func TestProviderCredentialsAreEncryptedAndUsable(t *testing.T) {
 	})
 	adapter := &captureAdapter{}
 	server := New(store)
-	server.adapters["capture"] = adapter
+	registerTestAdapter(server, "capture", adapter)
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
@@ -388,7 +388,7 @@ func TestOpenAISubscriptionResourceSuppliesRouteCredentials(t *testing.T) {
 	})
 	adapter := &captureAdapter{}
 	server := New(store)
-	server.adapters["capture"] = adapter
+	registerTestAdapter(server, "capture", adapter)
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
@@ -482,7 +482,7 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	})
 	adapter := &captureAdapter{}
 	server := New(store)
-	server.adapters["capture"] = adapter
+	registerTestAdapter(server, "capture", adapter)
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{

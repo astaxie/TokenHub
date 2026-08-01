@@ -15,17 +15,20 @@ const VAR = "TOKENHUB_[A-Z0-9_]+";
  * Variables that appear in an .env.example without being read by Go, because a
  * non-Go consumer owns them. Anything not listed here and not read by Go is a
  * phantom knob: an operator can set it and nothing happens.
+ *
+ * An entry only ever exempts a variable an .env.example already offers, so a key that
+ * no .env.example mentions exempts nothing and is dead bookkeeping. The test suite
+ * enforces that, which is how the two entries that outlived their .env.example lines
+ * were found.
  */
 export const KNOWN_CONSUMERS = {
   "deploy/.env.example": new Map([
     ["TOKENHUB_IMAGE_TAG", "docker-compose image tag"],
     ["TOKENHUB_BACKEND_PORT", "docker-compose port publishing"],
     ["TOKENHUB_FRONTEND_PORT", "docker-compose port publishing"],
-    ["TOKENHUB_GATEWAY_PORT", "docker-compose port publishing (remote-postgres)"],
     ["TOKENHUB_BACKEND_REPLICAS", "docker-compose scale (remote-postgres)"],
     ["TOKENHUB_FRONTEND_REPLICAS", "docker-compose scale (remote-postgres)"],
     ["TOKENHUB_STOP_GRACE_PERIOD", "docker-compose stop_grace_period"],
-    ["TOKENHUB_MODEL_CATALOG_PATH", "docker-compose catalog bind mount"],
     ["TOKENHUB_API_BASE_URL", "Next.js frontend runtime configuration"],
   ]),
   "backend/.env.example": new Map(),
