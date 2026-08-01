@@ -10,12 +10,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func (s *GormStore) UsageSummary() map[string]any {
-	var records []UsageRecord
-	var logs []RequestLog
-	_ = s.db.Find(&records).Error
-	_ = s.db.Find(&logs).Error
-
+// summarizeUsage totals an already-scoped set of usage records and request
+// logs. Callers decide which rows are in scope; this only aggregates them.
+func summarizeUsage(records []UsageRecord, logs []RequestLog) map[string]any {
 	var input, cachedInput, cacheWrite, output, reasoningOutput, total int64
 	var cost float64
 	errorsCount := 0
@@ -68,78 +65,6 @@ func (s *GormStore) ListUsageRecords() []UsageRecord {
 	var records []UsageRecord
 	_ = s.db.Find(&records).Error
 	return records
-}
-
-func (s *GormStore) UsageBreakdown() map[string]any {
-	var records []UsageRecord
-	_ = s.db.Find(&records).Error
-	return s.usageBreakdownFromRecords(records)
-}
-
-func (s *GormStore) UsageBreakdownForPeriod(period string) map[string]any {
-	period = normalizeBillingPeriod(period, time.Now().UTC())
-	var records []UsageRecord
-	_ = s.db.Where("created_at >= ? AND created_at < ?", periodStart(period), periodEnd(period)).Find(&records).Error
-	return s.usageBreakdownFromRecords(records)
-}
-
-func (s *GormStore) usageBreakdownFromRecords(records []UsageRecord) map[string]any {
-	return map[string]any{
-		"projects":  aggregateUsage(records, func(record UsageRecord) string { return record.ProjectID }),
-		"models":    aggregateUsage(records, func(record UsageRecord) string { return record.ModelName }),
-		"providers": aggregateUsage(records, func(record UsageRecord) string { return record.ProviderID }),
-		"provider_resources": aggregateUsage(records, func(record UsageRecord) string {
-			return record.ProviderResourceID
-		}),
-		"cost_centers": aggregateUsage(records, func(record UsageRecord) string {
-			project, ok := s.GetProject(record.ProjectID)
-			if !ok {
-				return "unknown"
-			}
-			return s.costCenterForProject(project)
-		}),
-	}
-}
-
-func (s *GormStore) UsageTimeseries(days int) []map[string]any {
-	if days <= 0 {
-		days = 31
-	}
-	if days > 90 {
-		days = 90
-	}
-	now := time.Now().UTC()
-	series := make([]map[string]any, 0, days)
-	indexByDay := map[string]int{}
-	for i := days - 1; i >= 0; i-- {
-		day := now.AddDate(0, 0, -i).Format("2006-01-02")
-		indexByDay[day] = len(series)
-		series = append(series, map[string]any{
-			"date":                day,
-			"request_count":       int64(0),
-			"input_tokens":        int64(0),
-			"cached_input_tokens": int64(0),
-			"output_tokens":       int64(0),
-			"total_tokens":        int64(0),
-			"estimated_cost_usd":  float64(0),
-		})
-	}
-	var records []UsageRecord
-	_ = s.db.Where("created_at >= ?", now.AddDate(0, 0, -days+1)).Find(&records).Error
-	for _, record := range records {
-		day := record.CreatedAt.UTC().Format("2006-01-02")
-		idx, ok := indexByDay[day]
-		if !ok {
-			continue
-		}
-		series[idx]["request_count"] = series[idx]["request_count"].(int64) + 1
-		series[idx]["input_tokens"] = series[idx]["input_tokens"].(int64) + record.InputTokens
-		series[idx]["cached_input_tokens"] = series[idx]["cached_input_tokens"].(int64) + record.CachedInputTokens
-		series[idx]["output_tokens"] = series[idx]["output_tokens"].(int64) + record.OutputTokens
-		series[idx]["total_tokens"] = series[idx]["total_tokens"].(int64) + record.TotalTokens
-		series[idx]["estimated_cost_usd"] = series[idx]["estimated_cost_usd"].(float64) + record.CostUSD
-	}
-	return series
 }
 
 func (s *GormStore) GenerateBillingPeriod(period string) (map[string]any, error) {
