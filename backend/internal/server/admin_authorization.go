@@ -272,13 +272,15 @@ func (s *Server) linkProjectQuotaPolicy(quota AdminResource, payload map[string]
 func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
 	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
 	logs := s.filterRequestLogsForUser(user, s.store.ListRequestLogs())
-	var input, cachedInput, output, total int64
+	var input, cachedInput, cacheWrite, output, reasoningOutput, total int64
 	var cost float64
 	errorsCount := 0
 	for _, record := range records {
 		input += record.InputTokens
 		cachedInput += record.CachedInputTokens
+		cacheWrite += record.CacheWriteTokens
 		output += record.OutputTokens
+		reasoningOutput += record.ReasoningTokens
 		total += record.TotalTokens
 		cost += record.CostUSD
 	}
@@ -291,14 +293,16 @@ func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
 		}
 	}
 	return map[string]any{
-		"request_count":       billableRequestLogCount(logs),
-		"usage_record_count":  len(records),
-		"input_tokens":        input,
-		"cached_input_tokens": cachedInput,
-		"output_tokens":       output,
-		"total_tokens":        total,
-		"estimated_cost_usd":  cost,
-		"errors":              errorsCount,
+		"request_count":            billableRequestLogCount(logs),
+		"usage_record_count":       len(records),
+		"input_tokens":             input,
+		"cached_input_tokens":      cachedInput,
+		"cache_write_input_tokens": cacheWrite,
+		"output_tokens":            output,
+		"reasoning_output_tokens":  reasoningOutput,
+		"total_tokens":             total,
+		"estimated_cost_usd":       cost,
+		"errors":                   errorsCount,
 	}
 }
 
