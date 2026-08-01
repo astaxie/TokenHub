@@ -43,6 +43,7 @@ Run the SDK smoke tests from `sdk/` only when a compatible backend is available 
 ```bash
 npm ci
 npm run test:deepseek
+npm run test:anthropic-messages
 npm run test:security-policy
 ```
 
