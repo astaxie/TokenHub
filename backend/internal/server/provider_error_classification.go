@@ -1,9 +1,15 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"strings"
 )
+
+// providerErrorBodyPrefix is how much of a failed upstream response is read for
+// the error message. Provider error bodies are small; the bound is what keeps a
+// misbehaving upstream from making the gateway buffer an arbitrary amount.
+const providerErrorBodyPrefix = 4096
 
 // An upstream failure has to answer three separate questions, and collapsing them
 // into one status code answers none of them well:
@@ -96,6 +102,23 @@ func newProviderMisconfigured(message string) error {
 		Err:         NewHTTPError(http.StatusServiceUnavailable, "provider_not_configured", message),
 		Disposition: ProviderErrorResourceBroken,
 	}
+}
+
+// checkProviderResponse reports whether an upstream response carries a failure,
+// and if so consumes it: a bounded prefix of the body becomes the error message
+// and the body is closed. It deliberately only inspects a response someone else
+// sent, because how a request is sent is not shared — a streaming call runs on a
+// client with no total deadline and an idle budget, and folding sending into
+// this check would put every caller on one policy.
+//
+// A nil error leaves the body open and owned by the caller.
+func checkProviderResponse(resp *http.Response) error {
+	if resp.StatusCode < http.StatusBadRequest {
+		return nil
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, providerErrorBodyPrefix))
+	return newProviderHTTPError(resp.StatusCode, resp.Header, data)
 }
 
 // newProviderHTTPError turns one upstream failure into the error the rest of the
