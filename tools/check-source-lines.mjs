@@ -67,6 +67,12 @@ function update(root, measured) {
     if (entry.reason === "gone") {
       next.delete(entry.path);
       console.log(`- ${entry.path}: removed (file no longer present)`);
+    } else if (entry.reason === "graduated") {
+      next.delete(entry.path);
+      console.log(
+        `- ${entry.path}: removed (${entry.lines} lines now fits the default limit` +
+          ` ${DEFAULT_MAX_LINES})`,
+      );
     } else {
       next.set(entry.path, entry.lines);
       console.log(`- ${entry.path}: ${entry.baseline} -> ${entry.lines}`);
