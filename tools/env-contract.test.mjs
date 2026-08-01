@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
+  KNOWN_CONSUMERS,
   checkBackendCompleteness,
   checkComposeDefaults,
   checkDocumented,
@@ -12,6 +16,8 @@ import {
   parseEnvExample,
   stripGoComments,
 } from "./env-contract.mjs";
+
+const REPOSITORY_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("Go comment stripping", () => {
   it("blanks line comments but keeps the newline", () => {
@@ -266,4 +272,22 @@ describe("rules", () => {
     });
     assert.deepEqual(failures, []);
   });
+});
+
+describe("KNOWN_CONSUMERS", () => {
+  // An exemption is only reachable through the file it is keyed under, so a key that
+  // file no longer mentions can never fire. Without this check those entries accumulate
+  // silently and read like a record of variables the deployment still offers.
+  for (const [fileName, consumers] of Object.entries(KNOWN_CONSUMERS)) {
+    it(`only exempts variables ${fileName} actually offers`, () => {
+      const parsed = parseEnvExample(readFileSync(join(REPOSITORY_ROOT, fileName), "utf8"));
+      const mentioned = new Set([...parsed.active, ...parsed.commented]);
+      const dead = [...consumers.keys()].filter((name) => !mentioned.has(name)).sort();
+      assert.deepEqual(
+        dead,
+        [],
+        `${fileName} no longer offers ${dead.join(", ")}, so the entries exempt nothing`,
+      );
+    });
+  }
 });
