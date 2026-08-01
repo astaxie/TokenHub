@@ -180,10 +180,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       break;
     case "quota-policies":
     case "cost-centers":
-    case "budgets":
-    case "chargebacks":
     case "approval-flows":
-    case "invoices":
     case "reports":
     case "notification-channels":
     case "monitors":
