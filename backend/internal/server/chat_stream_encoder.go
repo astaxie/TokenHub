@@ -1,11 +1,8 @@
 package server
 
 import (
-	"bufio"
 	"encoding/json"
-	"fmt"
 	"io"
-	"strings"
 	"time"
 )
 
@@ -233,124 +230,4 @@ func (e *openAIChatStreamEncoder) write(payload string) error {
 		flusher.Flush()
 	}
 	return nil
-}
-
-// serverSentEvent is one decoded SSE frame.
-type serverSentEvent struct {
-	Event string
-	Data  string
-}
-
-// maxSSEEventBytes bounds a single decoded event. bufio.Scanner's 64 KiB
-// default is too small for reasoning and tool-argument frames, but an unbounded
-// reader lets a faulty or hostile upstream grow one event until the process runs
-// out of memory.
-const maxSSEEventBytes = 8 << 20
-
-// sseDecoder reads Server-Sent Events without the 64 KiB ceiling bufio.Scanner
-// imposes by default.
-type sseDecoder struct {
-	reader *bufio.Reader
-}
-
-func newSSEDecoder(r io.Reader) *sseDecoder {
-	return &sseDecoder{reader: bufio.NewReader(r)}
-}
-
-// Next returns the next event, or io.EOF once the stream is exhausted.
-func (d *sseDecoder) Next() (serverSentEvent, error) {
-	var (
-		event serverSentEvent
-		data  []string
-		seen  bool
-		size  int
-	)
-	for {
-		line, err := d.readLine(&size)
-		if err != nil && err != io.EOF {
-			return serverSentEvent{}, err
-		}
-		if line != "" {
-			trimmed := strings.TrimRight(line, "\r\n")
-			switch {
-			case trimmed == "":
-				// Blank line terminates the frame. Ignore stray separators
-				// between frames.
-				if seen {
-					event.Data = strings.Join(data, "\n")
-					return event, nil
-				}
-			case strings.HasPrefix(trimmed, ":"):
-				// Comment/heartbeat line.
-				seen = true
-			default:
-				name, value := splitSSEField(trimmed)
-				seen = true
-				switch name {
-				case "event":
-					event.Event = value
-				case "data":
-					data = append(data, value)
-				default:
-					// id/retry and unknown fields are not meaningful here.
-				}
-			}
-		}
-		if err != nil {
-			if err == io.EOF {
-				if seen {
-					event.Data = strings.Join(data, "\n")
-					return event, nil
-				}
-				return serverSentEvent{}, io.EOF
-			}
-			return serverSentEvent{}, err
-		}
-	}
-}
-
-// readLine reads one line while charging its bytes against the event budget.
-// bufio.Reader.ReadString would allocate the whole line before returning, so a
-// line that never terminates could exhaust memory before any limit was checked.
-// ReadSlice hands back bounded chunks, letting the budget stop the read early.
-func (d *sseDecoder) readLine(size *int) (string, error) {
-	var builder strings.Builder
-	for {
-		chunk, err := d.reader.ReadSlice('\n')
-		*size += len(chunk)
-		if *size > maxSSEEventBytes {
-			return "", invalidProviderResponseError("provider sent a stream event that exceeds the size limit")
-		}
-		builder.Write(chunk)
-		if err == bufio.ErrBufferFull {
-			continue
-		}
-		return builder.String(), err
-	}
-}
-
-func splitSSEField(line string) (string, string) {
-	colon := strings.Index(line, ":")
-	if colon < 0 {
-		return line, ""
-	}
-	name := line[:colon]
-	value := line[colon+1:]
-	// A single leading space after the colon is part of the framing.
-	value = strings.TrimPrefix(value, " ")
-	return name, value
-}
-
-// decodeSSEData unmarshals an event payload, rejecting malformed frames rather
-// than skipping them: a dropped frame silently truncates the response.
-func decodeSSEData(event serverSentEvent) (map[string]any, error) {
-	payload := strings.TrimSpace(event.Data)
-	if payload == "" {
-		return nil, nil
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
-		return nil, invalidProviderResponseError(fmt.Sprintf("provider sent a malformed stream event: %v", err))
-	}
-	return decoded, nil
 }

@@ -49,7 +49,6 @@ export const SKIP_DIRECTORIES = new Set([
  * table into a stricter-than-default limit on one file.
  */
 export const FROZEN = new Map([
-  ["backend/internal/server/anthropic_messages.go", 1519],
   ["frontend/app/styles/legacy/resources.css", 1508],
   ["frontend/features/admin/views/provider-editor.tsx", 2009],
 ]);

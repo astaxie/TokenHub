@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -898,34 +897,68 @@ func includeOpenAIStreamUsage(req ChatCompletionRequest) ChatCompletionRequest {
 	return req
 }
 
+// copyOpenAIStreamAndUsage forwards an upstream OpenAI-compatible event stream
+// to the client verbatim while reading usage out of it. Framing is delegated to
+// sseDecoder, which bounds a single event; the frame's raw bytes are what reach
+// the client, so the provider's framing survives the round trip untouched.
 func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
-	reader := bufio.NewReader(body)
+	events := newSSEDecoder(body)
 	var usage Usage
 	for {
-		line, readErr := reader.ReadString('\n')
-		if line != "" {
-			if _, err := io.WriteString(w, line); err != nil {
-				return usage, err
-			}
-			if parsed, ok := usageFromServerSentEvent(line); ok {
-				usage = parsed
-			}
+		event, err := events.Next()
+		if err == io.EOF {
+			return usage, nil
 		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				return usage, nil
+		if err != nil {
+			// A stream that fails mid-frame has already put those bytes on the
+			// wire; the client is owed them before the failure surfaces.
+			if pending := events.Pending(); len(pending) > 0 {
+				if _, writeErr := w.Write(pending); writeErr != nil {
+					return usage, writeErr
+				}
 			}
-			return usage, readErr
+			return usage, err
+		}
+		if _, err := w.Write(event.Raw); err != nil {
+			return usage, err
+		}
+		if flusher, ok := w.(streamFlusher); ok {
+			flusher.Flush()
+		}
+		if parsed, ok := usageFromServerSentEvent(event); ok {
+			usage = parsed
 		}
 	}
 }
 
-func usageFromServerSentEvent(line string) (Usage, bool) {
-	payload := strings.TrimSpace(line)
-	if !strings.HasPrefix(payload, "data:") {
+// usageFromServerSentEvent reads usage out of one frame. A frame it cannot parse
+// is reported as carrying no usage rather than as an error: this is a
+// pass-through, and the client is owed the frame either way.
+func usageFromServerSentEvent(frame serverSentEvent) (Usage, bool) {
+	if usage, ok := usageFromSSEPayload(frame.Data); ok {
+		return usage, true
+	}
+	// Some OpenAI-compatible servers separate chunks with a single newline
+	// rather than the blank line SSE requires, which leaves every payload joined
+	// into one frame. Scanning the joined segments keeps usage — and so billing —
+	// working for those upstreams instead of silently recording zero.
+	if !strings.Contains(frame.Data, "\n") {
 		return Usage{}, false
 	}
-	payload = strings.TrimSpace(strings.TrimPrefix(payload, "data:"))
+	var (
+		usage Usage
+		found bool
+	)
+	for _, segment := range strings.Split(frame.Data, "\n") {
+		if parsed, ok := usageFromSSEPayload(segment); ok {
+			usage, found = parsed, true
+		}
+	}
+	return usage, found
+}
+
+func usageFromSSEPayload(data string) (Usage, bool) {
+	payload := strings.TrimSpace(data)
 	if payload == "" || payload == "[DONE]" {
 		return Usage{}, false
 	}
