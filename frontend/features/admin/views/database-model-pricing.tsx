@@ -1,9 +1,10 @@
 import { Activity, AlertCircle, Check, Database, Server, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ApiContext, type AppData, type DatabaseStatus, type Model } from "../core/types";
 import { hasThirdPartyRoute, modelCategory, modelCategoryLabel } from "../domain/catalog";
 import { formatNumber, modelAvailabilitySummary } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
+import { adminFetch, isAuthExpiredError } from "../resources/payloads";
 import { DataSection } from "../shared/ui";
 
 export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }) {
@@ -11,21 +12,24 @@ export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Holds whichever request is outstanding, from the mount-time load or the refresh
+  // button. A newer load cancels the older one so a slow response cannot overwrite a
+  // fresher one, and unmounting cancels the last.
+  const inFlight = useRef<AbortController | null>(null);
+
   useEffect(() => {
-    fetchDatabaseStatus();
+    void fetchDatabaseStatus();
+    return () => inFlight.current?.abort();
   }, []);
 
   const fetchDatabaseStatus = async () => {
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${api.baseURL}/api/admin/system/db-status`, {
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${api.adminToken}`,
-        },
-        credentials: "include",
-      });
+      const res = await adminFetch(api, "/api/admin/system/db-status", { signal: controller.signal });
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -34,10 +38,14 @@ export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }
       const data: DatabaseStatus = await res.json();
       setStatus(data);
     } catch (err) {
+      // Aborted by a newer load or by unmounting, or an expired session the logout event
+      // adminFetch dispatches already handles. Neither is this view's error to report.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (isAuthExpiredError(err)) return;
       console.error("Failed to fetch database status:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
@@ -74,7 +82,7 @@ export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }
         <div className="database-status-actions">
           <button
             type="button"
-            onClick={fetchDatabaseStatus}
+            onClick={() => void fetchDatabaseStatus()}
             className="button"
           >
             {tx("刷新")}
