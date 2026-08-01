@@ -509,6 +509,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	requestID := NewID("pg")
+	startedAt := time.Now()
 	routed := RoutedCall{
 		Call: CallContext{
 			RequestID: requestID,
@@ -517,8 +518,9 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 			// The catalog model, not a bare name: pricing lives on it, and per-attempt
 			// cost is computed from whatever this carries. A name-only model silently
 			// reports every playground generation as free.
-			Model:     playgroundModel(s.store, req.Model),
-			StartedAt: time.Now().UTC(),
+			Model:      playgroundModel(s.store, req.Model),
+			StartedAt:  startedAt.UTC(),
+			measuredAt: startedAt,
 		},
 	}
 	routed.Routes = s.planRouteOrder(routed.Call, routes)

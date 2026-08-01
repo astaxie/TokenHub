@@ -1069,12 +1069,63 @@ type CallContext struct {
 	Project   Project
 	Key       APIKey
 	Model     Model
+	// StartedAt is the database clock reading taken when the call was admitted:
+	// StartCall derives the quota buckets and the lease expiry from that reading
+	// so every replica agrees on them, and reports it here for callers that want
+	// the admission timestamp. It is *not* a valid reference for measuring how
+	// long the call ran — no production path reads it for that any more.
 	StartedAt time.Time
+	// measuredAt is the local reference used to measure how long the call ran.
+	// It is deliberately separate from StartedAt: on PostgreSQL deployments the
+	// database and the application usually run on different hosts, and any clock
+	// skew between them would otherwise land directly in request_logs.latency_ms
+	// (a database host running four minutes ahead produced latencies near
+	// -240000ms). time.Now keeps its monotonic reading here, so the measurement
+	// also survives wall-clock adjustments on this host.
+	measuredAt time.Time
 	// Stream records whether the client asked for a streamed response. It only
 	// labels observability output and never influences routing.
 	Stream         bool
 	Affinity       *RequestAffinity
 	requestContext context.Context
+}
+
+// measuredStart reports when the call began, on the clock its duration is
+// measured against. Anything paired with a timestamp this process stamps — an
+// elapsed time, a trace span end — has to start here rather than at StartedAt,
+// which the database clock produced.
+func (c CallContext) measuredStart() time.Time {
+	if !c.measuredAt.IsZero() {
+		return c.measuredAt
+	}
+	// Contexts assembled by hand rather than by StartCall carry only StartedAt.
+	// Falling back to it keeps their reporting working; callers clamp the result.
+	return c.StartedAt
+}
+
+// elapsed reports how long the call has been running. It never returns a
+// negative duration: callers persist the result as latency_ms, and a negative
+// latency is always a clock artefact rather than a real measurement.
+func (c CallContext) elapsed() time.Duration {
+	reference := c.measuredStart()
+	if reference.IsZero() {
+		return 0
+	}
+	if elapsed := time.Since(reference); elapsed > 0 {
+		return elapsed
+	}
+	return 0
+}
+
+// latencyMillis converts an interval into the non-negative value stored in a
+// latency_ms column. Intervals derived from a persisted timestamp can come out
+// negative when the replica that wrote it ran ahead of the replica reading it,
+// and a negative latency is never a real measurement.
+func latencyMillis(interval time.Duration) int64 {
+	if interval <= 0 {
+		return 0
+	}
+	return interval.Milliseconds()
 }
 
 func NewID(prefix string) string {

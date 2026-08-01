@@ -111,7 +111,10 @@ func randomSpanID() trace.SpanID {
 // record converts one completion into a trace: a root span for the request, and a
 // generation child for every candidate that entered the invocation path.
 func (e *otlpTraceEmitter) record(completion GatewayCallCompletion) {
-	startedAt := completion.Call.StartedAt
+	// The local reading, not the database one in StartedAt: it is compared with
+	// FinishedAt, which this process stamps, so a database host running ahead
+	// would otherwise place the whole trace in the future.
+	startedAt := completion.Call.measuredStart()
 	if startedAt.IsZero() {
 		startedAt = completion.FinishedAt
 	}
@@ -176,7 +179,7 @@ func (e *otlpTraceEmitter) record(completion GatewayCallCompletion) {
 func (e *otlpTraceEmitter) recordAttempt(ctx context.Context, completion GatewayCallCompletion, shared []attribute.KeyValue, index int, attempt RouteAttempt, traceID trace.TraceID) {
 	startedAt := attempt.StartedAt
 	if startedAt.IsZero() {
-		startedAt = completion.Call.StartedAt
+		startedAt = completion.Call.measuredStart()
 	}
 	endedAt := attempt.EndedAt
 	if endedAt.Before(startedAt) {
