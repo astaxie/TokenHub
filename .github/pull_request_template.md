@@ -11,7 +11,7 @@
 
 ## Changes
 
-<!-- Describe the main changes. Group related backend, frontend, SDK, deployment, catalog, and documentation updates. -->
+<!-- List the key changes. Keep implementation details brief. -->
 
 -
 
@@ -25,26 +25,15 @@
 
 ## Verification
 
-<!-- List the exact commands or manual checks you ran and their results. Explain why any relevant check was skipped. -->
-
-- [ ] Backend: `gofmt` on changed Go files, `go test ./...`, and `go vet ./...`
-- [ ] Frontend: `npm run typecheck` and `npm run build`
-- [ ] SDK smoke tests against a compatible backend
-- [ ] Docker Compose configuration rendered successfully
-- [ ] Other focused or manual verification described below
-
-Verification details:
+<!-- List the checks run and their results. Note any relevant checks that were skipped. -->
 
 -
 
 ## Compatibility, Security, and Operations
 
-<!-- Call out API contract changes, migrations, rollout/rollback needs, and security-sensitive behavior. Use "None" where applicable. -->
+<!-- Note any API, security, data, configuration, deployment, rollout, or rollback impact. Use "None" if there is none. -->
 
-- OpenAI-compatible `/v1` API impact:
-- Security or credential-handling impact:
-- Database, environment, or deployment impact:
-- Rollout and rollback considerations:
+None.
 
 ## Checklist
 
