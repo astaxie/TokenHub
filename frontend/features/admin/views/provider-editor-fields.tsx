@@ -139,3 +139,20 @@ export function providerAccountResourceReady(values: Record<string, string>) {
   }
   return Boolean(values.api_key?.trim());
 }
+
+// Identifies the upstream a custom Provider's model list was loaded from. These
+// are exactly the fields the discovery request sends, so an unchanged key means
+// a reload would return the same list — and reloading clears the operator's
+// selection, so the wizard compares this key before doing it. An out-of-date key
+// also means the listed models no longer describe the configured upstream.
+export function customUpstreamConnectionKey(values: Record<string, string>) {
+  return JSON.stringify([values.base_url, values.api_key]);
+}
+
+// Whether a custom Provider's listed models can be imported. Creating a
+// Provider imports at least one model, and the models it imports have to be the
+// ones the configured upstream reported — a list that is empty, or that predates
+// an edit to the connection, is neither.
+export function customUpstreamModelsAreCurrent(modelCount: number, loadedConnection: string, connection: string) {
+  return modelCount > 0 && loadedConnection === connection;
+}

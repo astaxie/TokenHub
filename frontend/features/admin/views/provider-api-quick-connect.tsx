@@ -170,8 +170,8 @@ export function ProviderAPIQuickConnect({
 
       {activeTab === "models" ? (
         <div className="provider-quick-tab-panel">
-          {custom ? (
-            <p className="provider-quick-custom-note">{tx("自定义渠道创建后，可在模型映射中加载上游模型并配置路由。")}</p>
+          {custom && !values.base_url?.trim() ? (
+            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL 和 API Key，这里会加载自定义渠道的上游模型。")}</p>
           ) : (
             <>
               <div className="provider-quick-model-summary">

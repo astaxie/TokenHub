@@ -12,7 +12,7 @@ import { ReviewItem } from "../shared/modals";
 import { providerTypeOptions } from "../shared/ui";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
-import { ProviderInlineField, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
+import { ProviderInlineField, customUpstreamConnectionKey, customUpstreamModelsAreCurrent, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields } from "./provider-editor-sections";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatProviderAccountDate, formatQuotaPercent, type OpenAIQuotaWindow, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 
@@ -205,6 +205,8 @@ export function ProviderUpsertModal({
   const accountCallbackURL = useMemo(() => providerAccountOAuthCallbackURL(), []);
   const modalRef = useRef<HTMLFormElement | null>(null);
   const preserveCatalogValuesOnReload = useRef(false);
+  const loadedCustomConnection = useRef("");
+  const customConnectionKey = customUpstreamConnectionKey(values);
   const accountNameInputRef = useRef<HTMLInputElement | null>(null);
   const existingRouteModels = useMemo(
     () => new Set(routes.filter((route) => provider && route.provider_id === provider.id).map((route) => route.model_name)),
@@ -246,12 +248,14 @@ export function ProviderUpsertModal({
     preserveCatalogValuesOnReload.current = false;
     if (!preserveCatalogValues) setModelQuery("");
     setModelError("");
-    if (entry && mode === "create" && !preserveCatalogValues) {
+    // A custom Provider has no template: its name, type and Base URL are the
+    // operator's own input, so reloading its models must not rewrite them.
+    if (entry && mode === "create" && !preserveCatalogValues && catalogID !== "custom") {
       setValues((current) => ({
         ...current,
-        name: catalogID === "custom" ? (current.name === initialEntry?.display_name ? "" : current.name) : entry.display_name || entry.name || current.name,
+        name: entry.display_name || entry.name || current.name,
         type: entry.type || current.type || "openai_compatible",
-        base_url: catalogID === "custom" ? current.base_url : entry.base_url ?? "",
+        base_url: entry.base_url ?? "",
       }));
     }
     let cancelled = false;
@@ -449,12 +453,15 @@ export function ProviderUpsertModal({
   }, [createStep, mode]);
 
   useEffect(() => {
-    if (mode === "create" && createStep === 3 && catalogID === "custom" && values.base_url?.trim()) {
-      setCatalogReloadKey((current) => current + 1);
-    }
-    // Load custom upstream models when the wizard reaches route confirmation.
+    if (mode !== "create" || catalogID !== "custom" || !values.base_url?.trim()) return;
+    // Load custom upstream models once model selection is on screen: behind a
+    // tab in the quick connect UI, at its model step in the stepped wizard.
+    if (quickAPIConnect ? quickAPITab !== "models" : createStep !== 3) return;
+    if (loadedCustomConnection.current === customConnectionKey) return;
+    loadedCustomConnection.current = customConnectionKey;
+    setCatalogReloadKey((current) => current + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogID, createStep, mode]);
+  }, [catalogID, createStep, mode, quickAPIConnect, quickAPITab]);
 
   useEffect(() => {
     if (mode !== "edit" || editTab !== "advanced") return;
@@ -921,6 +928,7 @@ export function ProviderUpsertModal({
 
   function selectCatalog(entry: ProviderCatalogEntry) {
     if (entry.id === catalogID) return;
+    loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     const nextName = entry.display_name || entry.name || values.name;
     setCatalogID(entry.id);
@@ -942,6 +950,7 @@ export function ProviderUpsertModal({
 
   function selectCustomCatalog() {
     if (catalogID === "custom") return;
+    loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     setCatalogID("custom");
     setCatalogReloadKey((current) => current + 1);
@@ -961,6 +970,7 @@ export function ProviderUpsertModal({
   }
 
   function reloadSelectedCatalog() {
+    loadedCustomConnection.current = customConnectionKey;
     preserveCatalogValuesOnReload.current = true;
     catalogRefreshRequested.current = catalogID !== "custom" && !usesCodexCatalog;
     setCatalogReloadKey((current) => current + 1);
@@ -1038,6 +1048,12 @@ export function ProviderUpsertModal({
       return;
     }
     if (quickAPIConnect && !validateCreateStep(createStep)) return;
+    if (mode === "create" && catalogID === "custom"
+      && !customUpstreamModelsAreCurrent(models.length, loadedCustomConnection.current, customConnectionKey)) {
+      if (quickAPIFlow) setQuickAPITab("models");
+      setError(tx("请先加载自定义渠道的上游模型，再选择要引入的模型。"));
+      return;
+    }
     if (mode === "create" && models.length > 0 && selectedModelIDs.length === 0) {
       setError(tx("请至少选择一个要引入 Provider 的上游模型。"));
       return;
