@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // chunkedReader replays a stream in fixed-size pieces so a test can prove that
@@ -591,5 +592,155 @@ func TestCopyNativeAnthropicStreamKeepsTheDataLineTerminator(t *testing.T) {
 	}
 	if strings.Contains(got, "\r\n\r\n\r") {
 		t.Fatalf("a terminator was duplicated:\n%q", got)
+	}
+}
+
+// heartbeatOnlyStream is a keepalive-only stream: SSE comments need no blank
+// line, so an upstream may send these for minutes before its first real frame.
+func heartbeatOnlyStream(count int) string {
+	return strings.Repeat(": ping\n", count)
+}
+
+func TestCopyOpenAIStreamForwardsCommentHeartbeatsImmediately(t *testing.T) {
+	// Held back, these never reach the client and it times out waiting. The
+	// upstream here never closes, so only an immediate forward can satisfy this.
+	reader, writer := io.Pipe()
+	defer func() { _ = reader.Close() }()
+	sink := &observingWriter{seen: make(chan string, 8)}
+
+	go func() {
+		_, _ = copyOpenAIStreamAndUsage(sink, reader)
+	}()
+	if _, err := writer.Write([]byte(": ping\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-sink.seen:
+		if got != ": ping\n" {
+			t.Fatalf("forwarded %q, want the heartbeat", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the heartbeat was withheld from the client")
+	}
+	_ = writer.Close()
+}
+
+// observingWriter reports each write on a channel so a test can see a forwarded
+// byte without waiting for the stream to end.
+type observingWriter struct {
+	seen chan string
+}
+
+func (w *observingWriter) Write(data []byte) (int, error) {
+	w.seen <- string(data)
+	return len(data), nil
+}
+
+func TestCopyOpenAIStreamDoesNotChargeCommentHeartbeatsToOneEvent(t *testing.T) {
+	// A comment opens no frame, so a keepalive-only stream must never accumulate
+	// toward the per-event limit.
+	stream := heartbeatOnlyStream(3 * (maxSSEEventBytes / len(": ping\n")))
+	var output strings.Builder
+
+	if _, err := copyOpenAIStreamAndUsage(&output, strings.NewReader(stream)); err != nil {
+		t.Fatalf("heartbeats must not exhaust the event budget: %v", err)
+	}
+	if output.String() != stream {
+		t.Fatalf("heartbeats were not forwarded: got %d of %d bytes", output.Len(), len(stream))
+	}
+}
+
+func TestSSEDecoderKeepsCommentsInsideAFrameWithTheFrame(t *testing.T) {
+	// A comment between a frame's own lines belongs to that frame; splitting it
+	// out would reorder the bytes a pass-through forwards.
+	raw := "data: {\"a\":1}\n: mid-frame\ndata: extra\n\n"
+	decoder := newSSEDecoder(strings.NewReader(raw))
+
+	event, err := decoder.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(event.Raw) != raw {
+		t.Fatalf("frame raw = %q, want the whole frame", event.Raw)
+	}
+	if event.Data != "{\"a\":1}\nextra" {
+		t.Fatalf("data = %q, want both data lines joined", event.Data)
+	}
+	if _, err := decoder.Next(); err != io.EOF {
+		t.Fatalf("expected EOF, got %v", err)
+	}
+}
+
+func TestAnthropicConverterIgnoresCommentHeartbeats(t *testing.T) {
+	// The converter emits a translated stream, so an upstream comment is not
+	// something it forwards; it must simply produce nothing.
+	writer := &recordingWriter{}
+	converter := newOpenAIAnthropicStreamConverter(writer, "gateway-model", 1)
+
+	if _, err := converter.Write([]byte(heartbeatOnlyStream(4))); err != nil {
+		t.Fatal(err)
+	}
+	if writer.builder.Len() != 0 {
+		t.Fatalf("converter forwarded a comment:\n%q", writer.builder.String())
+	}
+}
+
+func TestCopyNativeAnthropicStreamForwardsFramesNeedingNoRewriteVerbatim(t *testing.T) {
+	// Only message_start carries a model name. Re-encoding the others would
+	// reorder their JSON keys and collapse their data lines for nothing.
+	stream := "event: content_block_delta\r\n" +
+		"data: {\"zebra\":1,\"alpha\":2,\r\n" +
+		"data: \"index\":0}\r\n" +
+		"\r\n" +
+		"event: message_delta\n" +
+		"data: {\"zebra\":3,\n" +
+		"data: \"usage\":{\"output_tokens\":7}}\n" +
+		"\n"
+	var output strings.Builder
+
+	usage, err := copyNativeAnthropicStream(&output, strings.NewReader(stream), "gateway-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != stream {
+		t.Fatalf("a frame with no model to replace was re-framed:\n%q", output.String())
+	}
+	if usage.CompletionTokens != 7 {
+		t.Fatalf("usage = %+v, want 7 completion tokens", usage)
+	}
+}
+
+func TestCopyNativeAnthropicStreamRewritesMultiLineModelFrame(t *testing.T) {
+	// The one frame that does need rewriting may still arrive across several
+	// data lines. It is re-framed onto one line, keeping that line's terminator.
+	stream := "event: message_start\r\n" +
+		"data: {\"message\":\r\n" +
+		"data: {\"model\":\"upstream\",\"usage\":{\"input_tokens\":5}}}\r\n" +
+		"\r\n"
+	var output strings.Builder
+
+	usage, err := copyNativeAnthropicStream(&output, strings.NewReader(stream), "gateway-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	if !strings.HasPrefix(got, "event: message_start\r\n") {
+		t.Fatalf("the event name was not preserved:\n%q", got)
+	}
+	if !strings.Contains(got, "\"model\":\"gateway-model\"") {
+		t.Fatalf("the model was not rewritten:\n%q", got)
+	}
+	if strings.Contains(got, "upstream") {
+		t.Fatalf("the upstream model name leaked:\n%q", got)
+	}
+	if !strings.HasSuffix(got, "\r\n\r\n") {
+		t.Fatalf("the rewritten data line lost its CRLF terminator:\n%q", got)
+	}
+	if strings.Count(got, "data: ") != 1 {
+		t.Fatalf("the rewritten payload should occupy one data line:\n%q", got)
+	}
+	if usage.PromptTokens != 5 {
+		t.Fatalf("usage = %+v, want 5 prompt tokens", usage)
 	}
 }

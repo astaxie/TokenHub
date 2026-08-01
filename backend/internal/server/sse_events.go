@@ -32,8 +32,11 @@ type sseEventAssembler struct {
 	event serverSentEvent
 	data  []string
 	raw   []byte
-	seen  bool
-	size  int
+	// fields records that a semantic field (data, event, id, ...) is waiting for
+	// its terminator. Comments are deliberately not semantic: on their own they
+	// are a complete keepalive, but inside a frame they belong to it.
+	fields bool
+	size   int
 }
 
 // remaining reports how many more bytes the event being assembled may consume.
@@ -76,11 +79,18 @@ func (a *sseEventAssembler) consumeLine(line string) (serverSentEvent, bool) {
 		// event carrying no fields, which every decoder already ignores.
 		return a.complete(), true
 	case strings.HasPrefix(trimmed, ":"):
-		// Comment/heartbeat line.
-		a.seen = true
+		// A comment needs no blank line to be complete, so one that opens no
+		// frame is delivered on its own. Holding it back would strand a
+		// keepalive-only stream — the client would see nothing until the
+		// upstream finally sent a real frame, and every ping would be charged
+		// against a single event budget until it tripped the size limit.
+		// Inside a frame the comment stays part of it, so its bytes survive.
+		if !a.fields {
+			return a.complete(), true
+		}
 	default:
 		name, value := splitSSEField(trimmed)
-		a.seen = true
+		a.fields = true
 		switch name {
 		case "event":
 			a.event.Event = value
@@ -97,7 +107,7 @@ func (a *sseEventAssembler) consumeLine(line string) (serverSentEvent, bool) {
 // Trailing bytes that carry no fields are still returned so a pass-through path
 // can forward them.
 func (a *sseEventAssembler) flush() (serverSentEvent, bool) {
-	if !a.seen && len(a.raw) == 0 {
+	if len(a.raw) == 0 {
 		return serverSentEvent{}, false
 	}
 	return a.complete(), true
@@ -110,7 +120,7 @@ func (a *sseEventAssembler) complete() serverSentEvent {
 	a.event = serverSentEvent{}
 	a.data = nil
 	a.raw = nil
-	a.seen = false
+	a.fields = false
 	a.size = 0
 	return event
 }
@@ -290,6 +300,12 @@ func splitSSEField(line string) (string, string) {
 // by a single data line carrying payload. Comments, event names and the blank
 // terminator are copied byte for byte: a gateway that rewrites the payload still
 // owes the client the framing the provider chose.
+//
+// A frame whose payload arrived across several data lines is re-framed onto one,
+// because the re-encoded JSON has no correspondence to the split the provider
+// chose and any other division risks cutting a string literal in half. Receivers
+// join data lines with "\n" before parsing, so the payload a client reconstructs
+// is unchanged; only the number of lines carrying it differs.
 func rewriteSSEEventData(raw []byte, payload string) []byte {
 	output := make([]byte, 0, len(raw)+len(payload))
 	written := false

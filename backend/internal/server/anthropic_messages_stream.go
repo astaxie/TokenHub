@@ -56,7 +56,8 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 			return usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Anthropic provider returned invalid stream JSON")
 		}
 		if ok {
-			if message, ok := payload["message"].(map[string]any); ok {
+			message, rewrite := payload["message"].(map[string]any)
+			if rewrite {
 				message["model"] = model
 				if eventUsage, ok := message["usage"].(map[string]any); ok {
 					usage = mergeAnthropicStreamUsage(usage, eventUsage)
@@ -65,11 +66,17 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 			if eventUsage, ok := payload["usage"].(map[string]any); ok {
 				usage = mergeAnthropicStreamUsage(usage, eventUsage)
 			}
-			encoded, err := json.Marshal(payload)
-			if err != nil {
-				return usage, err
+			// Only a frame carrying a model name needs rewriting. Re-encoding the
+			// rest would reorder their JSON keys and re-frame their data lines for
+			// no reason; forwarding the provider's own bytes is both faithful and
+			// cheaper, and every frame but message_start takes this path.
+			if rewrite {
+				encoded, err := json.Marshal(payload)
+				if err != nil {
+					return usage, err
+				}
+				output = rewriteSSEEventData(event.Raw, string(encoded))
 			}
-			output = rewriteSSEEventData(event.Raw, string(encoded))
 		}
 		if _, err := writer.Write(output); err != nil {
 			return usage, err
