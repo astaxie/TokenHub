@@ -1066,6 +1066,7 @@ func newRouteAttemptLog(requestID string, index int, attempt RouteAttempt, now t
 		ProviderResourceID:       routeResourceID(attempt.Selection),
 		ProviderModel:            attempt.Selection.ProviderModel,
 		StatusCode:               attempt.Status,
+		UpstreamStatus:           attempt.UpstreamStatus,
 		ErrorCode:                attempt.ErrorCode,
 		ErrorMessage:             attempt.Error,
 		Invoked:                  attempt.Invoked,

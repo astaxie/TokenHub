@@ -606,10 +606,11 @@ func executeRoutedWithStore[T any](
 		if err != nil {
 			status, code := statusAndCode(err)
 			attempts = append(attempts, RouteAttempt{
-				Selection: route,
-				Status:    status,
-				ErrorCode: code,
-				Error:     errorMessage(err),
+				Selection:      route,
+				Status:         status,
+				UpstreamStatus: AsHTTPError(err).upstreamStatusOrZero(),
+				ErrorCode:      code,
+				Error:          errorMessage(err),
 			})
 			lastErr = err
 			if !shouldFailoverRoutedError(err, routeIsBound) {
@@ -630,24 +631,29 @@ func executeRoutedWithStore[T any](
 			// not even via the effort fallback on the same route. These checks are
 			// load-bearing: ProviderInvocationError implements Unwrap, so
 			// isReasoningEffortRejection sees through the wrapper and would
-			// otherwise return true for an error that must not be retried.
+			// otherwise return true for an error that must not be retried. The
+			// disconnect is excluded directly rather than through the client
+			// disposition, which an effort rejection now also carries: refusing a
+			// bad parameter is a client error, and dropping the effort is exactly
+			// how the gateway fixes it.
 			disposition := providerErrorDisposition(err)
 			retryWithoutEffort := allowReasoningEffortFallback &&
 				!omitReasoningEffort &&
 				disposition != ProviderErrorStreamCommitted &&
-				disposition != ProviderErrorClient &&
+				!clientDisconnected(leaseCtx, err) &&
 				isReasoningEffortRejection(err)
 			if !retryWithoutEffort {
 				finishProviderResourceAttempt(leaseCtx, store, resourceID, leaseID, err, usage)
 			}
 			status, code := routeAttemptStatusAndCode(err, retryWithoutEffort)
 			attempts = append(attempts, RouteAttempt{
-				Selection: route,
-				Status:    status,
-				ErrorCode: code,
-				Error:     errorMessage(err),
-				Invoked:   true,
-				LatencyMS: latencyMS,
+				Selection:      route,
+				Status:         status,
+				UpstreamStatus: AsHTTPError(err).upstreamStatusOrZero(),
+				ErrorCode:      code,
+				Error:          errorMessage(err),
+				Invoked:        true,
+				LatencyMS:      latencyMS,
 				// Priced per attempt so a failover reports what each candidate cost
 				// rather than attributing the whole request to the winner. Tokens
 				// burned by an attempt that later failed were still billed.
@@ -671,10 +677,11 @@ func executeRoutedWithStore[T any](
 					store.ReleaseProviderResourceCapacity(resourceID, leaseID)
 					status, code = statusAndCode(retryErr)
 					attempts = append(attempts, RouteAttempt{
-						Selection: route,
-						Status:    status,
-						ErrorCode: code,
-						Error:     errorMessage(retryErr),
+						Selection:      route,
+						Status:         status,
+						UpstreamStatus: AsHTTPError(retryErr).upstreamStatusOrZero(),
+						ErrorCode:      code,
+						Error:          errorMessage(retryErr),
 					})
 					lastErr = retryErr
 					if !shouldFailoverRoutedError(retryErr, routeIsBound) {
@@ -692,6 +699,14 @@ func executeRoutedWithStore[T any](
 		}
 	}
 	return zero, RouteSelection{}, Usage{}, attempts, lastErr
+}
+
+// clientDisconnected reports that there is no longer anyone to answer. The
+// context is consulted as well as the error because classifyStreamError marks a
+// mid-stream disconnect by its disposition without the error itself carrying a
+// context.Canceled chain.
+func clientDisconnected(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) || (ctx != nil && errors.Is(ctx.Err(), context.Canceled))
 }
 
 func routeAttemptStatusAndCode(err error, reasoningEffortRejected bool) (int, string) {

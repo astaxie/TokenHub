@@ -113,7 +113,7 @@ Responses は OpenAI 互換のネスト形式を受け付けます。
 }
 ```
 
-TokenHub は推論強度をベストエフォートのヒントとして扱い、ルートの順序を変更しません。OpenAI 互換 Provider には値をそのまま渡します。Anthropic のネイティブルートでは対応する値を `output_config.effort` に変換します。Gemini のネイティブルートでは、モデル固有の対応表に従って Gemini 3 以降の `thinkingLevel`、または Gemini 2.5 の公式 `thinkingBudget` に変換します。対応しない値や空値は省略され、上流モデルのデフォルト動作が使われます。上流 Provider が推論強度フィールドを明示する `400` または `422` のパラメーターエラーを返した場合、TokenHub は同じルートでそのフィールドを除いて一度再試行し、その後は従来のフェイルオーバー処理を適用します。物理的な再試行はそれぞれ Provider Resource RPM に加算され、ルート試行として記録されます。
+TokenHub は推論強度をベストエフォートのヒントとして扱い、ルートの順序を変更しません。OpenAI 互換 Provider には値をそのまま渡します。Anthropic のネイティブルートでは対応する値を `output_config.effort` に変換します。Gemini のネイティブルートでは、モデル固有の対応表に従って Gemini 3 以降の `thinkingLevel`、または Gemini 2.5 の公式 `thinkingBudget` に変換します。対応しない値や空値は省略され、上流モデルのデフォルト動作が使われます。上流 Provider が推論強度フィールドを明示する `400` または `422` のパラメーターエラーを返した場合、TokenHub は同じルートでそのフィールドを除いて一度再試行します。推論強度の拒否ではない `400` / `422` は、他の Provider で再試行せずそのまま返します。上流が不正と判断したリクエストは、どの Provider でも不正だからです。物理的な再試行はそれぞれ Provider Resource RPM に加算され、ルート試行として記録されます。
 
 Responses の推論強度は OpenAI 互換、Anthropic、Gemini の各ルートで利用できます。Azure OpenAI Responses と Responses のストリーミングは未実装で、`501 provider_capability_not_supported` を返します。
 

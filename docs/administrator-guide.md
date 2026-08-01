@@ -86,9 +86,30 @@ A provider resource that fails `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` times in a 
 | Recovered | The trial reaching the upstream successfully clears the breaker, resets the failure count and raises a `provider_resource_recovered` alert |
 | Re-parked | A failed trial immediately arms the next cooldown, doubling each time up to `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` |
 
-Only the trial request's own success closes the breaker. A request that was already in flight when the breaker tripped cannot close it, however it ends. A client that disconnects mid-stream, a policy refusal, or an unsupported model counts neither for nor against the resource: it adds no failure, but it also clears none, so an alternating failure/disconnect pattern still trips the breaker.
+Only the trial request's own success closes the breaker. A request that was already in flight when the breaker tripped cannot close it, however it ends. What counts is decided by what the upstream failure proved about the resource, not by the status the caller was given. A client that disconnects mid-stream, a policy refusal, an unsupported model, a request the upstream rejected as malformed, and anything else that is about the request rather than the account count neither for nor against the resource: they add no failure, but they also clear none, so an alternating failure/disconnect pattern still trips the breaker. A rejected credential, an unpayable account, a rate limit and any upstream fault do count against it.
 
 Testing a resource from the console still recovers it immediately when the adapter supports probing, because that probe issues a real upstream request. Disabling a resource remains an administrative override: a disabled resource is never readmitted by recovery, whatever the upstream reports.
+
+## Upstream Error Classification
+
+An upstream failure is graded on three separate questions, because one status code cannot answer all of them: what the caller is told, whether the router tries another candidate, and whether the attempt counts against the Provider Resource. A malformed request is malformed at every provider, so it is reported to the caller and no other candidate is tried. A rejected credential is specific to one account, so the request moves on and the account is blamed.
+
+| Upstream | Caller sees | Error code | Another candidate | Counts against the resource |
+| --- | --- | --- | --- | --- |
+| `400`, `422` | the same status | `provider_invalid_request` | No | No |
+| `401`, `403` | `502` | `provider_auth_error` | Yes | Yes |
+| `402` | `502` | `provider_payment_required` | Yes | Yes |
+| `404` | `502` | `provider_model_not_found` | Yes | No |
+| `408` | `504` | `provider_upstream_timeout` | Yes | Yes |
+| `413` | `413` | `provider_invalid_request` | No | No |
+| `429` | `429` with `Retry-After` | `provider_rate_limited` | Yes | Yes |
+| `502`, `503`, `504` | the same status | `provider_upstream_unavailable` | Yes | Yes |
+| other `5xx` | `502` | `provider_upstream_error` | Yes | Yes |
+| other `4xx` | `502` | `provider_error` | No | No |
+
+An upstream `401` or `403` is not forwarded as such: it means the gateway's own credential for that provider was rejected, and a caller reading `401` would conclude their TokenHub API key had expired. For the same reason the upstream body is withheld on those two, since providers quote the rejected key back in it. The original status is recorded as `upstream_status` on each route attempt, where an operator can see it.
+
+Every route attempt records both: `status_code` is what the caller was told, `upstream_status` is what the provider answered.
 
 ## Request Usage Audit
 
@@ -114,7 +135,7 @@ Go runtime and process metrics are exposed alongside them.
 
 Requests refused before routing — a bad API key, an exhausted quota, an unknown model — increment the request counter only. They never reached a provider, so they contribute no tokens, cost or duration. A model name that the catalog does not know is reported as `unknown` rather than verbatim, so a client looping over invented model names cannot inflate the series count.
 
-Labels are `model`, `provider_type`, `provider_id`, `resource_id`, `status_code`, `error_code` and `stream`. Setting `TOKENHUB_METRICS_PROJECT_LABEL=true` adds `project_id`, which multiplies the series count of every gateway metric by the number of active projects; leave it off unless you need per-project dashboards, and use the usage reports for per-key attribution instead.
+Labels are `model`, `provider_type`, `provider_id`, `resource_id`, `status_code`, `error_code` and `stream`. Upstream failures no longer report a single `provider_error` at `status_code="502"`; they carry the codes and statuses listed under Upstream Error Classification, so dashboards and alerts that match on the old pair need updating. Upstream failures no longer report a single `provider_error` at `status_code="502"`; they carry the codes and statuses listed under Upstream Error Classification, so dashboards and alerts that match on the old pair need updating. Setting `TOKENHUB_METRICS_PROJECT_LABEL=true` adds `project_id`, which multiplies the series count of every gateway metric by the number of active projects; leave it off unless you need per-project dashboards, and use the usage reports for per-key attribution instead.
 
 To push metrics instead of having them scraped, point an OpenTelemetry Collector's `prometheus` receiver at this endpoint and forward from there. Traces are a separate signal and are pushed directly; see below.
 

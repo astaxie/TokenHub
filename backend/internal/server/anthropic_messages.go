@@ -935,7 +935,7 @@ func (s *Server) doNativeAnthropicRequest(
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
 	}
 	return resp, nil
 }
@@ -1471,11 +1471,7 @@ func estimateAnthropicValueTokens(value any) int64 {
 
 func writeAnthropicError(w http.ResponseWriter, r *http.Request, err error) {
 	httpErr := AsHTTPError(err)
-	requestID := strings.TrimSpace(w.Header().Get("x-request-id"))
-	if requestID == "" {
-		requestID = NewID("req")
-	}
-	w.Header().Set("x-request-id", requestID)
+	requestID := errorResponseHeaders(w, err)
 	writeJSON(w, httpErr.Status, map[string]any{
 		"type": "error",
 		"error": map[string]any{

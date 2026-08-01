@@ -76,6 +76,15 @@ func NewHTTPError(status int, code, message string) *HTTPError {
 	return &HTTPError{Status: status, Code: code, Message: message}
 }
 
+// upstreamStatusOrZero is nil-safe: the attempt records call it on the result of
+// AsHTTPError, which is nil when there was no error to describe.
+func (e *HTTPError) upstreamStatusOrZero() int {
+	if e == nil {
+		return 0
+	}
+	return e.UpstreamStatus
+}
+
 func AsHTTPError(err error) *HTTPError {
 	if err == nil {
 		return nil
@@ -517,6 +526,7 @@ type RouteAttemptLog struct {
 	ProviderResourceID       string  `json:"provider_resource_id,omitempty" gorm:"index"`
 	ProviderModel            string  `json:"provider_model,omitempty"`
 	StatusCode               int     `json:"status_code"`
+	UpstreamStatus           int     `json:"upstream_status,omitempty"`
 	ErrorCode                string  `json:"error_code,omitempty"`
 	ErrorMessage             string  `json:"error_message,omitempty"`
 	Invoked                  bool    `json:"invoked" gorm:"index;index:idx_route_attempt_adaptive,priority:2"`
@@ -1036,9 +1046,14 @@ type RouteExplainStep struct {
 
 type RouteAttempt struct {
 	Selection RouteSelection `json:"selection"`
-	Status    int            `json:"status"`
-	ErrorCode string         `json:"error_code,omitempty"`
-	Error     string         `json:"error,omitempty"`
+	// Status is what the caller was told. UpstreamStatus is what the provider
+	// actually answered, which the mapping to Status deliberately does not
+	// preserve — an upstream 401 is reported as 502 so a caller does not read it
+	// as their own key being rejected. Diagnosing a route needs both.
+	Status         int    `json:"status"`
+	UpstreamStatus int    `json:"upstream_status,omitempty"`
+	ErrorCode      string `json:"error_code,omitempty"`
+	Error          string `json:"error,omitempty"`
 	// Invoked reports that this candidate entered the invocation path, not that a
 	// request necessarily reached the upstream: acquiring credentials or resolving an
 	// adapter can still fail first. It is the boundary that distinguishes a candidate

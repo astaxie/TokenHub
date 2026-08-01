@@ -209,7 +209,7 @@ func (a OpenAICompatibleAdapter) doMultipartRaw(
 	if resp.StatusCode >= http.StatusBadRequest {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
 	}
 	return resp, nil
 }

@@ -230,7 +230,7 @@ func (a OpenAICompatibleAdapter) doJSON(ctx context.Context, provider Provider, 
 
 func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any, stream bool) (*http.Response, error) {
 	if provider.BaseURL == "" {
-		return nil, NewHTTPError(503, "provider_not_configured", "Provider base_url is required")
+		return nil, newProviderMisconfigured("Provider base_url is required")
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -255,7 +255,7 @@ func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, m
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
 	}
 	return resp, nil
 }
@@ -336,7 +336,7 @@ func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deploy
 		apiVersion = "2024-02-15-preview"
 	}
 	if provider.BaseURL == "" {
-		return nil, NewHTTPError(503, "provider_not_configured", "Azure OpenAI base_url is required")
+		return nil, newProviderMisconfigured("Azure OpenAI base_url is required")
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -356,7 +356,7 @@ func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deploy
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
 	}
 	return resp, nil
 }
@@ -466,7 +466,7 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
 	}
 	return resp, nil
 }
@@ -599,7 +599,7 @@ func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model strin
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
 	}
 	return resp, nil
 }
@@ -644,8 +644,10 @@ func withoutResponsesReasoningEffort(req ResponsesRequest) ResponsesRequest {
 
 func isReasoningEffortRejection(err error) bool {
 	httpErr := AsHTTPError(err)
+	// Both codes: an upstream 400 or 422 is classified as provider_invalid_request,
+	// while anything unrecognised still arrives as provider_error.
 	if httpErr == nil ||
-		httpErr.Code != "provider_error" ||
+		(httpErr.Code != "provider_error" && httpErr.Code != "provider_invalid_request") ||
 		(httpErr.UpstreamStatus != http.StatusBadRequest && httpErr.UpstreamStatus != http.StatusUnprocessableEntity) {
 		return false
 	}
@@ -1030,22 +1032,12 @@ func joinURL(base string, endpoint string) string {
 	return base + endpoint
 }
 
-func newProviderHTTPError(upstreamStatus int, data []byte) *HTTPError {
-	err := NewHTTPError(
-		statusForProvider(upstreamStatus),
-		"provider_error",
-		strings.TrimSpace(string(data)),
-	)
-	err.UpstreamStatus = upstreamStatus
-	return err
-}
-
+// statusForProvider is the flat mapping the routed paths no longer use; see
+// provider_error_classification.go. It remains for the catalog probe, which
+// reports on a provider the operator is configuring rather than routing to.
 func statusForProvider(status int) int {
 	if status == http.StatusTooManyRequests {
 		return http.StatusTooManyRequests
-	}
-	if status >= 500 {
-		return http.StatusBadGateway
 	}
 	return http.StatusBadGateway
 }

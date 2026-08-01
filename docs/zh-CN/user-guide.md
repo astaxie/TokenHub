@@ -113,7 +113,7 @@ Responses 接受 OpenAI 兼容的嵌套格式：
 }
 ```
 
-TokenHub 将推理强度作为尽力应用的提示字段，不改变路由顺序。OpenAI 兼容 Provider 接收原值；原生 Anthropic 路由将支持的值转换为 `output_config.effort`；原生 Gemini 路由根据具体模型的支持矩阵转换为 Gemini 3 及以上模型的 `thinkingLevel`，或 Gemini 2.5 模型的官方 `thinkingBudget`。不支持的值或空值会被省略，继续使用上游模型的默认行为。如果上游返回 `400` 或 `422` 参数错误，并且错误信息明确指向推理强度字段，TokenHub 会在同一路由内移除该字段并重试一次，之后再按原有故障转移逻辑处理。每次物理重试均计入 Provider Resource RPM，并记录为一次路由尝试。
+TokenHub 将推理强度作为尽力应用的提示字段，不改变路由顺序。OpenAI 兼容 Provider 接收原值；原生 Anthropic 路由将支持的值转换为 `output_config.effort`；原生 Gemini 路由根据具体模型的支持矩阵转换为 Gemini 3 及以上模型的 `thinkingLevel`，或 Gemini 2.5 模型的官方 `thinkingBudget`。不支持的值或空值会被省略，继续使用上游模型的默认行为。如果上游返回 `400` 或 `422` 参数错误，并且错误信息明确指向推理强度字段，TokenHub 会在同一路由内移除该字段并重试一次。不属于推理强度拒绝的 `400` / `422` 会直接返回给你，而不会切换到其它 Provider 重试：上游认定格式错误的请求，换任何 Provider 都是错的。每次物理重试均计入 Provider Resource RPM，并记录为一次路由尝试。
 
 Responses 推理强度支持 OpenAI 兼容、Anthropic 和 Gemini 路由。Azure OpenAI Responses 与 Responses 流式响应尚未实现，此类请求返回 `501 provider_capability_not_supported`。
 

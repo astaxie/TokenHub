@@ -56,7 +56,7 @@ For JieKou, keep TokenHub's external/unified model as `deepseek-chat` if you wan
 
 ## Troubleshooting
 
-If `GET /v1/models` succeeds but `generateText` returns `provider_error` / `MODEL_NOT_FOUND`, TokenHub has accepted the internal API Key and selected a route, but the upstream Provider rejected the route's `provider_model`.
+If `GET /v1/models` succeeds but `generateText` returns `provider_model_not_found` or `provider_invalid_request`, TokenHub has accepted the internal API Key and selected a route, but the upstream Provider rejected the route's `provider_model`.
 
 Fix it in TokenHub Admin:
 

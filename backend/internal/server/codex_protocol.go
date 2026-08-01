@@ -255,8 +255,12 @@ func classifyCodexHTTPError(status int, headers http.Header, body []byte) error 
 	if message == "" {
 		message = http.StatusText(status)
 	}
+	httpErr := NewHTTPError(publicStatus, publicCode, message)
+	// The public status is deliberately not the upstream one, so record what the
+	// account actually answered for the route attempt log to report.
+	httpErr.UpstreamStatus = status
 	return &ProviderInvocationError{
-		Err:         NewHTTPError(publicStatus, publicCode, message),
+		Err:         httpErr,
 		Disposition: disposition,
 		RetryAfter:  retryAfter,
 	}

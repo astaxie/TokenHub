@@ -357,7 +357,7 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 	candidates, _ := body["candidates"].([]any)
 	if len(candidates) == 0 {
 		if reason := geminiPromptBlockReason(body); reason != "" {
-			return nil, NewHTTPError(400, "content_filter", fmt.Sprintf("Gemini blocked the prompt: %s", reason))
+			return nil, newProviderPolicyRefusal(fmt.Sprintf("Gemini blocked the prompt: %s", reason))
 		}
 		return nil, invalidProviderResponseError("Gemini returned no candidates")
 	}
