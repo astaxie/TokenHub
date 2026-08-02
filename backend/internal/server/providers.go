@@ -159,6 +159,133 @@ func (a MockAdapter) Embeddings(ctx context.Context, provider Provider, provider
 	}, usage, nil
 }
 
+// preservesReasoningContent reports whether an OpenAI-compatible upstream
+// understands the reasoning_content it produced being handed back on the next
+// turn. DeepSeek does and needs it for multi-turn reasoning; for everyone else
+// the field is a TokenHub-local extension and is stripped.
+func preservesReasoningContent(provider Provider) bool {
+	return provider.Type == "deepseek"
+}
+
+// dropsReasoningContent is the Azure policy: reasoning_content never reaches a
+// deployment. It is stated as the adapter's own rule rather than inferred from
+// the provider type, because nothing enforces which types an adapter is
+// registered under and Azure's answer does not depend on that.
+func dropsReasoningContent(Provider) bool {
+	return false
+}
+
+// providerRequestBuilder builds the upstream request for one OpenAI-shaped call.
+// The URL and the auth headers are the whole wire-format difference between the
+// OpenAI-compatible and Azure OpenAI adapters; everything around it — sending,
+// failure checking, decoding, streaming — is shared by openAICompatibleCore.
+type providerRequestBuilder func(ctx context.Context, provider Provider, method string, model string, endpoint string, body []byte) (*http.Request, error)
+
+// openAICompatibleCore is the request machinery the OpenAI-compatible and Azure
+// OpenAI adapters share. The adapters hold it through a core() method rather
+// than embedding it, and it stays unexported, because embedding would also hand
+// AzureOpenAIAdapter the OpenAI adapter's Responses and OpenResponses methods:
+// /v1/responses dispatches on those interfaces without consulting the
+// capability registry, so Azure would stop answering 501 and start calling an
+// endpoint Azure deployments do not serve.
+type openAICompatibleCore struct {
+	client *http.Client
+	// streamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to client when it is unset.
+	streamClient      *http.Client
+	streamIdleTimeout time.Duration
+	// baseURLRequired is the misconfiguration reported when the provider has no
+	// base URL. Both adapters require one; only the wording differs.
+	baseURLRequired string
+	// preserveReasoningContent is the adapter's rule for whether TokenHub's
+	// reasoning_content extension may be forwarded to this provider.
+	preserveReasoningContent func(provider Provider) bool
+	build                    providerRequestBuilder
+}
+
+func (c openAICompatibleCore) chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	req = withoutGatewayExtensions(req, c.preserveReasoningContent(provider))
+	req.Model = providerModel
+	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
+	var body map[string]any
+	if err := c.doJSON(ctx, provider, http.MethodPost, providerModel, "/chat/completions", req, &body); err != nil {
+		return nil, Usage{}, err
+	}
+	return body, usageFromMap(body), nil
+}
+
+func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
+	req = withoutGatewayExtensions(req, c.preserveReasoningContent(provider))
+	req.Model = providerModel
+	req.Stream = true
+	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
+	req = includeOpenAIStreamUsage(req)
+	resp, err := c.doRaw(ctx, provider, http.MethodPost, providerModel, "/chat/completions", req, true)
+	if err != nil {
+		return Usage{}, err
+	}
+	defer resp.Body.Close()
+	return copyOpenAIStreamAndUsage(w, resp.Body)
+}
+
+func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
+	req.Model = providerModel
+	var body map[string]any
+	if err := c.doJSON(ctx, provider, http.MethodPost, providerModel, "/embeddings", req, &body); err != nil {
+		return nil, Usage{}, err
+	}
+	return body, usageFromMap(body), nil
+}
+
+func (c openAICompatibleCore) doJSON(ctx context.Context, provider Provider, method string, model string, endpoint string, payload any, target any) error {
+	resp, err := c.doRaw(ctx, provider, method, model, endpoint, payload, false)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (c openAICompatibleCore) doRaw(ctx context.Context, provider Provider, method string, model string, endpoint string, payload any, stream bool) (*http.Response, error) {
+	if provider.BaseURL == "" {
+		return nil, newProviderMisconfigured(c.baseURLRequired)
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.build(ctx, provider, method, model, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := sendUpstream(c.client, c.streamClient, c.streamIdleTimeout, req, stream)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// openAICompatibleRequest addresses an OpenAI-compatible base URL directly: the
+// model travels in the body, so the model argument is unused here.
+func openAICompatibleRequest(ctx context.Context, provider Provider, method string, _ string, endpoint string, body []byte) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, joinURL(provider.BaseURL, endpoint), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("content-type", "application/json")
+	if provider.APIKey != "" {
+		req.Header.Set("authorization", "Bearer "+provider.APIKey)
+	}
+	applyOpenAICompatibleAccountHeaders(req, provider)
+	for key, value := range provider.Headers {
+		req.Header.Set(key, value)
+	}
+	return req, nil
+}
+
 type OpenAICompatibleAdapter struct {
 	Client *http.Client
 	// StreamClient carries no total deadline; see provider_stream_timeout.go.
@@ -167,29 +294,23 @@ type OpenAICompatibleAdapter struct {
 	StreamIdleTimeout time.Duration
 }
 
-func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	req = withoutGatewayExtensions(req, provider.Type == "deepseek")
-	req.Model = providerModel
-	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, http.MethodPost, "/chat/completions", req, &body); err != nil {
-		return nil, Usage{}, err
+func (a OpenAICompatibleAdapter) core() openAICompatibleCore {
+	return openAICompatibleCore{
+		client:                   a.Client,
+		streamClient:             a.StreamClient,
+		streamIdleTimeout:        a.StreamIdleTimeout,
+		baseURLRequired:          "Provider base_url is required",
+		preserveReasoningContent: preservesReasoningContent,
+		build:                    openAICompatibleRequest,
 	}
-	return body, usageFromMap(body), nil
+}
+
+func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	return a.core().chat(ctx, provider, providerModel, req)
 }
 
 func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	req = withoutGatewayExtensions(req, provider.Type == "deepseek")
-	req.Model = providerModel
-	req.Stream = true
-	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
-	req = includeOpenAIStreamUsage(req)
-	resp, err := a.doRaw(ctx, provider, http.MethodPost, "/chat/completions", req, true)
-	if err != nil {
-		return Usage{}, err
-	}
-	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsage(w, resp.Body)
+	return a.core().chatStream(ctx, provider, providerModel, req, w)
 }
 
 func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -210,53 +331,15 @@ func (a OpenAICompatibleAdapter) OpenResponses(ctx context.Context, provider Pro
 }
 
 func (a OpenAICompatibleAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
-	req.Model = providerModel
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, http.MethodPost, "/embeddings", req, &body); err != nil {
-		return nil, Usage{}, err
-	}
-	return body, usageFromMap(body), nil
+	return a.core().embeddings(ctx, provider, providerModel, req)
 }
 
 func (a OpenAICompatibleAdapter) doJSON(ctx context.Context, provider Provider, method, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, method, endpoint, payload, false)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
+	return a.core().doJSON(ctx, provider, method, "", endpoint, payload, target)
 }
 
 func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any, stream bool) (*http.Response, error) {
-	if provider.BaseURL == "" {
-		return nil, newProviderMisconfigured("Provider base_url is required")
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, method, joinURL(provider.BaseURL, endpoint), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("content-type", "application/json")
-	if provider.APIKey != "" {
-		req.Header.Set("authorization", "Bearer "+provider.APIKey)
-	}
-	applyOpenAICompatibleAccountHeaders(req, provider)
-	for key, value := range provider.Headers {
-		req.Header.Set(key, value)
-	}
-	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
-	}
-	return resp, nil
+	return a.core().doRaw(ctx, provider, method, "", endpoint, payload, stream)
 }
 
 func applyOpenAICompatibleAccountHeaders(req *http.Request, provider Provider) {
@@ -274,6 +357,34 @@ func applyOpenAICompatibleAccountHeaders(req *http.Request, provider Provider) {
 	}
 }
 
+// azureOpenAIDefaultAPIVersion is used when the provider does not pin one.
+const azureOpenAIDefaultAPIVersion = "2024-02-15-preview"
+
+// azureOpenAIRequest addresses one Azure OpenAI deployment: the model names a
+// deployment in the path, the API version is a query parameter, and the key is
+// an api-key header rather than a bearer token. Provider.Headers are not applied
+// here — Azure has never forwarded them, and adding that now would change which
+// headers reach every existing deployment.
+func azureOpenAIRequest(ctx context.Context, provider Provider, method string, deployment string, endpoint string, body []byte) (*http.Request, error) {
+	apiVersion := provider.Options["api_version"]
+	if apiVersion == "" {
+		apiVersion = azureOpenAIDefaultAPIVersion
+	}
+	u := fmt.Sprintf("%s/openai/deployments/%s%s?api-version=%s", strings.TrimRight(provider.BaseURL, "/"), url.PathEscape(deployment), endpoint, url.QueryEscape(apiVersion))
+	req, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("api-key", provider.APIKey)
+	return req, nil
+}
+
+// AzureOpenAIAdapter speaks the OpenAI wire format against Azure deployments. It
+// shares openAICompatibleCore with OpenAICompatibleAdapter but stays a separate
+// type on purpose: it must not acquire that adapter's Responses or
+// OpenResponses, which the /v1/responses paths dispatch on directly. See
+// openAICompatibleCore.
 type AzureOpenAIAdapter struct {
 	Client *http.Client
 	// StreamClient carries no total deadline; see provider_stream_timeout.go.
@@ -282,29 +393,23 @@ type AzureOpenAIAdapter struct {
 	StreamIdleTimeout time.Duration
 }
 
-func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	req = withoutGatewayExtensions(req, false)
-	req.Model = providerModel
-	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, providerModel, "/chat/completions", req, &body); err != nil {
-		return nil, Usage{}, err
+func (a AzureOpenAIAdapter) core() openAICompatibleCore {
+	return openAICompatibleCore{
+		client:                   a.Client,
+		streamClient:             a.StreamClient,
+		streamIdleTimeout:        a.StreamIdleTimeout,
+		baseURLRequired:          "Azure OpenAI base_url is required",
+		preserveReasoningContent: dropsReasoningContent,
+		build:                    azureOpenAIRequest,
 	}
-	return body, usageFromMap(body), nil
+}
+
+func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	return a.core().chat(ctx, provider, providerModel, req)
 }
 
 func (a AzureOpenAIAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	req = withoutGatewayExtensions(req, false)
-	req.Model = providerModel
-	req.Stream = true
-	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
-	req = includeOpenAIStreamUsage(req)
-	resp, err := a.doRaw(ctx, provider, providerModel, "/chat/completions", req, true)
-	if err != nil {
-		return Usage{}, err
-	}
-	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsage(w, resp.Body)
+	return a.core().chatStream(ctx, provider, providerModel, req, w)
 }
 
 func (a AzureOpenAIAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -312,52 +417,7 @@ func (a AzureOpenAIAdapter) Responses(ctx context.Context, provider Provider, pr
 }
 
 func (a AzureOpenAIAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
-	req.Model = providerModel
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, providerModel, "/embeddings", req, &body); err != nil {
-		return nil, Usage{}, err
-	}
-	return body, usageFromMap(body), nil
-}
-
-func (a AzureOpenAIAdapter) doJSON(ctx context.Context, provider Provider, deployment string, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, deployment, endpoint, payload, false)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
-}
-
-func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deployment string, endpoint string, payload any, stream bool) (*http.Response, error) {
-	apiVersion := provider.Options["api_version"]
-	if apiVersion == "" {
-		apiVersion = "2024-02-15-preview"
-	}
-	if provider.BaseURL == "" {
-		return nil, newProviderMisconfigured("Azure OpenAI base_url is required")
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("%s/openai/deployments/%s%s?api-version=%s", strings.TrimRight(provider.BaseURL, "/"), url.PathEscape(deployment), endpoint, url.QueryEscape(apiVersion))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("content-type", "application/json")
-	req.Header.Set("api-key", provider.APIKey)
-	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
-	}
-	return resp, nil
+	return a.core().embeddings(ctx, provider, providerModel, req)
 }
 
 type AnthropicAdapter struct {
@@ -462,10 +522,8 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -595,10 +653,8 @@ func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model strin
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
