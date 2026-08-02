@@ -929,10 +929,8 @@ func (s *Server) doNativeAnthropicRequest(
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, resp.Header, data)
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
