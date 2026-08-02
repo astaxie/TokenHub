@@ -394,37 +394,3 @@ func anthropicChatResponse(body map[string]any, model string, usage Usage) (map[
 		"usage": usage,
 	}, nil
 }
-
-// anthropicFinishReason maps a stop reason. Unknown values are surfaced as an
-// upstream error rather than being flattened to "stop", which would report a
-// truncated or refused generation as a normal completion.
-func anthropicFinishReason(stopReason string, hasToolCalls bool) (string, error) {
-	switch stopReason {
-	case "tool_use":
-		return "tool_calls", nil
-	case "pause_turn":
-		// A paused server-tool loop expects the assistant content to be replayed
-		// verbatim so the provider can resume it. That is not something an
-		// OpenAI-shaped client can do, and reporting tool_calls would tell the
-		// client to run a tool that was never requested.
-		return "", unsupportedCapabilityError("provider paused a server-side tool loop, which this route cannot resume")
-	case "end_turn", "stop_sequence":
-		if hasToolCalls {
-			return "tool_calls", nil
-		}
-		return "stop", nil
-	case "max_tokens", "model_context_window_exceeded":
-		return "length", nil
-	case "refusal":
-		return "content_filter", nil
-	case "":
-		// Streaming responses report the stop reason in message_delta; a
-		// non-streaming body without one is still in flight or malformed.
-		if hasToolCalls {
-			return "tool_calls", nil
-		}
-		return "stop", nil
-	default:
-		return "", invalidProviderResponseError(fmt.Sprintf("provider returned an unrecognized stop_reason %q", stopReason))
-	}
-}

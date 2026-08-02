@@ -341,39 +341,6 @@ func TestAnthropicResponseUsesNullContentForToolOnlyTurn(t *testing.T) {
 	}
 }
 
-func TestAnthropicFinishReasonMapping(t *testing.T) {
-	cases := map[string]string{
-		"end_turn":                      "stop",
-		"stop_sequence":                 "stop",
-		"max_tokens":                    "length",
-		"model_context_window_exceeded": "length",
-		"tool_use":                      "tool_calls",
-		"refusal":                       "content_filter",
-	}
-	for stopReason, want := range cases {
-		got, err := anthropicFinishReason(stopReason, false)
-		if err != nil {
-			t.Fatalf("%s: %v", stopReason, err)
-		}
-		if got != want {
-			t.Fatalf("%s: expected %q, got %q", stopReason, want, got)
-		}
-	}
-
-	// pause_turn means a server-side tool loop paused and expects the assistant
-	// content to be replayed verbatim. Reporting tool_calls would tell the client
-	// to run a tool that was never requested.
-	if _, err := anthropicFinishReason("pause_turn", false); err == nil {
-		t.Fatalf("pause_turn must not be presented as a client tool call")
-	}
-
-	// An unrecognized value must not be flattened to "stop": that would report a
-	// truncated or refused generation as a normal completion.
-	if _, err := anthropicFinishReason("something_new", false); err == nil {
-		t.Fatalf("unknown stop reasons must surface as an upstream error")
-	}
-}
-
 func TestAnthropicRebuildsSignedThinkingBlockWithEmptyText(t *testing.T) {
 	// Models may return a signed thinking block with no visible text. The block
 	// still has to be replayed verbatim, so the signature alone gates rebuilding.
