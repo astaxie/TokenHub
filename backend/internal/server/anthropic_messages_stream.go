@@ -87,16 +87,24 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 	}
 }
 
+// mergeAnthropicStreamUsage folds one streamed usage snapshot into the running
+// total. A stream splits its usage across message_start and message_delta, and
+// a frame that reports nothing new omits the fields entirely, so a frame only
+// overwrites what it actually carries. The three input classes move together as
+// one group: any positive component replaces the whole input side, including
+// siblings the frame left out, because a frame that restates the input counts
+// restates all of them. The output count is merged on its own.
 func mergeAnthropicStreamUsage(current Usage, raw map[string]any) Usage {
-	inputTokens := int64FromAny(raw["input_tokens"])
-	cacheCreationInputTokens := int64FromAny(raw["cache_creation_input_tokens"])
-	cacheReadInputTokens := int64FromAny(raw["cache_read_input_tokens"])
-	if inputTokens > 0 || cacheCreationInputTokens > 0 || cacheReadInputTokens > 0 {
-		current.PromptTokens = inputTokens + cacheCreationInputTokens + cacheReadInputTokens
-		current.CachedInputTokens = cacheReadInputTokens
+	snapshot := anthropicUsageFromRawMap(raw)
+	if snapshot.PromptTokens > 0 || snapshot.CachedInputTokens > 0 || snapshot.CacheWriteInputTokens > 0 {
+		current.PromptTokens = snapshot.PromptTokens
+		current.CachedInputTokens = snapshot.CachedInputTokens
+		// CacheWriteInputTokens is knowingly left unmerged here. This path has
+		// never reported it, and starting to would change billed usage, which is
+		// a behavior change rather than part of consolidating the parsing.
 	}
-	if value := int64FromAny(raw["output_tokens"]); value > 0 {
-		current.CompletionTokens = value
+	if snapshot.CompletionTokens > 0 {
+		current.CompletionTokens = snapshot.CompletionTokens
 	}
 	current.TotalTokens = current.PromptTokens + current.CompletionTokens
 	return current

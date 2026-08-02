@@ -453,13 +453,13 @@ func geminiFinishReason(reason string, hasToolCalls bool) (string, error) {
 	switch reason {
 	case "STOP", "":
 		if hasToolCalls {
-			return "tool_calls", nil
+			return openAIFinishReasonToolCalls, nil
 		}
-		return "stop", nil
+		return openAIFinishReasonStop, nil
 	case "MAX_TOKENS":
-		return "length", nil
+		return openAIFinishReasonLength, nil
 	case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY":
-		return "content_filter", nil
+		return openAIFinishReasonContentFilter, nil
 	case "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL", "MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE":
 		return "", invalidProviderResponseError(fmt.Sprintf("Gemini reported a protocol failure: %s", reason))
 	default:
