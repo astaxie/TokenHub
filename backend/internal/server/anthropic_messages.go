@@ -416,11 +416,11 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 	if len(toolCalls) > 0 && content == nil {
 		content = ""
 	}
-	return []ChatMessage{{
-		Role:      "assistant",
-		Content:   content,
-		ToolCalls: toolCalls,
-	}}, nil
+	message := ChatMessage{Role: "assistant", Content: content}
+	if len(toolCalls) > 0 {
+		message.ToolCalls = toolCalls
+	}
+	return []ChatMessage{message}, nil
 }
 
 func anthropicUserMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, error) {
