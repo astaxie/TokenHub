@@ -4,7 +4,8 @@ import { savePendingOAuthBaseURL } from "../core/session";
 import { type LoginIdentityProvider, viewRoutes } from "../core/types";
 import { stringifyValue } from "../domain/entities";
 import { identityProviderIconLabel } from "../domain/labels";
-import { activeLanguage, tx } from "../i18n/runtime";
+import { LanguageSwitcher } from "../i18n/language-switcher";
+import { activeLanguage, type AppLanguage, tx } from "../i18n/runtime";
 
 export const identityProviderIconOptions = [
   "auto",
@@ -528,7 +529,9 @@ export function LoginView({
   baseURL,
   identityProviders,
   oauthReturnURL,
+  language,
   theme,
+  onLanguageChange,
   onThemeToggle,
   onLogin,
 }: {
@@ -537,7 +540,9 @@ export function LoginView({
   baseURL: string;
   identityProviders: LoginIdentityProvider[];
   oauthReturnURL: string;
+  language: AppLanguage;
   theme: "light" | "dark";
+  onLanguageChange: (language: AppLanguage) => void;
   onThemeToggle: () => void;
   onLogin: (identity: string, password: string) => void;
 }) {
@@ -628,6 +633,7 @@ export function LoginView({
         <form className="login-card" onSubmit={submit}>
           <div className="login-card-head">
             <h1>{tx("登录控制台")}</h1>
+            <LanguageSwitcher className="login-language-switcher" language={language} onChange={onLanguageChange} />
           </div>
           <label className="field">
             <span>{tx("账号 / 邮箱")}</span>
@@ -709,14 +715,18 @@ export function LoginView({
 export function ResetPasswordView({
   loading,
   error,
+  language,
   theme,
+  onLanguageChange,
   onThemeToggle,
   token,
   onReset,
 }: {
   loading: boolean;
   error: string;
+  language: AppLanguage;
   theme: "light" | "dark";
+  onLanguageChange: (language: AppLanguage) => void;
   onThemeToggle: () => void;
   token: string;
   onReset: (token: string, password: string) => void;
@@ -742,6 +752,7 @@ export function ResetPasswordView({
           <div className="login-card-head">
             <h1>{tx("重置密码")}</h1>
             <p>{tx("请设置新的控制台登录密码。")}</p>
+            <LanguageSwitcher className="login-language-switcher" language={language} onChange={onLanguageChange} />
           </div>
           <label className="field">
             <span>{tx("新密码")}</span>
