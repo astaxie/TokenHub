@@ -132,7 +132,7 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 		ImageStorageDir: t.TempDir(),
 	})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	server.adapters[ProviderOpenAI] = OpenAICompatibleAdapter{Client: upstream.Client()}
+	registerTestAdapter(server, ProviderOpenAI, OpenAICompatibleAdapter{Client: upstream.Client()})
 	route := RouteSelection{
 		Provider: Provider{
 			ID:      "prv_openai_image",
@@ -462,7 +462,7 @@ type imageStartRejectStore struct {
 	Store
 }
 
-func (s imageStartRejectStore) StartCall(context.Context, Project, APIKey, string) (CallContext, error) {
+func (s imageStartRejectStore) StartCall(context.Context, Project, APIKey, string, int64) (CallContext, error) {
 	return CallContext{}, ErrModelNotAllowed
 }
 
@@ -609,7 +609,7 @@ func TestCodexImageModelPermissionIsNotInheritedFromGPTImage2(t *testing.T) {
 	}
 	store.AddModel(Model{Name: "gpt-image-2", Modality: "image", Status: StatusActive})
 	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
-	if _, err := store.StartCall(context.Background(), project, key, codexImageModelName); err != ErrModelNotAllowed {
+	if _, err := store.StartCall(context.Background(), project, key, codexImageModelName, 0); err != ErrModelNotAllowed {
 		t.Fatalf("gpt-image-2 permission must not grant Codex image access: %v", err)
 	}
 }
@@ -631,7 +631,7 @@ func TestImageJobCompletionIsAtomic(t *testing.T) {
 		ModelName: model.Name, ProviderID: provider.ID, ProviderModel: openAIImageModelName,
 		Priority: 1, Weight: 100, Status: StatusActive,
 	})
-	call, err := store.StartCall(context.Background(), project, key, model.Name)
+	call, err := store.StartCall(context.Background(), project, key, model.Name, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -886,6 +886,88 @@ func TestImageQueueHonorsWorkerAndCapacityLimits(t *testing.T) {
 		if assets := store.ListImageAssets(jobID); len(assets) != 1 || assets[0].Role != "output" {
 			t.Fatalf("completed queued job %s has unexpected assets: %+v", jobID, assets)
 		}
+	}
+}
+
+func TestCodexImageRequestUsesSubscriptionCompatibleResponse(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Codex App Image Project"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "codex-app-image-key",
+		Allowed: []string{codexImageModelName},
+		Status:  StatusActive,
+	}, "thk_codex_app_image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_codex_app_image", Name: "Codex App Image", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_codex_app_image", ProviderID: provider.ID, Name: "Codex App Image Account",
+		ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
+		Options: map[string]string{codexImageCapabilityOption: codexImageCapabilitySupported},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
+
+	server := NewWithConfig(store, Config{
+		AdminToken: "test-admin-token", SecretKey: "codex-app-image-secret", ImageStorageDir: t.TempDir(),
+	})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	var selectedRoute RouteSelection
+	var selectedJob ImageJob
+	server.imageRunner = func(_ context.Context, route RouteSelection, job ImageJob) ([]byte, string, Usage, error) {
+		selectedRoute = route
+		selectedJob = job
+		return imageBytes, "", Usage{}, nil
+	}
+
+	markers := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{name: "current originator", headers: map[string]string{"Originator": "codex_cli_rs"}},
+		{name: "image turn header", headers: map[string]string{"x-codex-image-turn-id": "turn_test"}},
+	}
+	for _, marker := range markers {
+		t.Run(marker.name, func(t *testing.T) {
+			selectedRoute = RouteSelection{}
+			selectedJob = ImageJob{}
+			response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+				"model":      openAIImageModelName,
+				"prompt":     "Draw one red square.",
+				"background": "auto",
+				"quality":    "auto",
+				"size":       "auto",
+			}, secret, marker.headers)
+			if response.Code != http.StatusOK {
+				t.Fatalf("Codex image request: status=%d body=%s", response.Code, response.Body)
+			}
+			var payload struct {
+				Data []struct {
+					B64JSON string `json:"b64_json"`
+					URL     string `json:"url"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal([]byte(response.Body), &payload); err != nil {
+				t.Fatal(err)
+			}
+			if len(payload.Data) != 1 || payload.Data[0].B64JSON == "" || payload.Data[0].URL != "" {
+				t.Fatalf("Codex image response must contain b64_json and no URL: %s", response.Body)
+			}
+			decoded, err := base64.StdEncoding.DecodeString(payload.Data[0].B64JSON)
+			if err != nil || !bytes.Equal(decoded, imageBytes) {
+				t.Fatalf("Codex image response contains invalid image data: err=%v bytes=%d", err, len(decoded))
+			}
+			if selectedJob.Model != codexImageModelName || selectedRoute.Provider.Type != ProviderOpenAICodex ||
+				selectedRoute.Resource == nil || selectedRoute.Resource.ID != resource.ID {
+				t.Fatalf("Codex image request used the wrong route: job=%+v route=%+v", selectedJob, selectedRoute)
+			}
+		})
 	}
 }
 

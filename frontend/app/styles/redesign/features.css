@@ -322,6 +322,47 @@
   background: var(--surface);
 }
 
+.playground-advanced,
+.playground-candidate-head button,
+.playground-diagnostics,
+.playground-route-summary strong,
+.playground-route-summary span,
+.playground-attempts > div,
+.playground-payload-grid pre,
+.playground-new-content {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.playground-diagnostics-body,
+.playground-metric-summary > span,
+.playground-usage-summary > span {
+  background: var(--surface-2);
+}
+
+.playground-advanced > summary,
+.playground-capability-note span,
+.playground-candidate-head > span,
+.playground-live-metrics,
+.playground-metric-summary,
+.playground-usage-summary,
+.playground-ephemeral {
+  color: var(--ink-3);
+}
+
+.playground-live-metrics strong,
+.playground-capability-note strong,
+.playground-route-diagnostics h4,
+.playground-payload-grid h4,
+.playground-attempts strong {
+  color: var(--ink);
+}
+
+.playground-payload-grid pre {
+  color: var(--ink-2);
+}
+
 .playground-model-select,
 .playground-model-bar,
 .playground-detail-strip,

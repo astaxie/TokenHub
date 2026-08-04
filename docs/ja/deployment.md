@@ -191,6 +191,8 @@ cp deploy/.env.example deploy/.env
 
 スクリプトは Compose の環境変数を検証し、公開済みイメージを取得して、ローカルではビルドせずに管理対象アプリケーションコンテナを起動します。Compose のヘルスチェックが成功するまで最大 180 秒待ってから成功を報告します。以前の 2 コンテナ構成から更新する場合、廃止された個別フロントエンドコンテナを削除しますが、`tokenhub-data` ボリュームは保持します。GHCR イメージの初回公開中に取得できない場合は、現在のチェックアウトからのビルドへ自動的に切り替えます。秘密値を表示せずに安全でない変数を個別に報告します。新しいバックエンドが起動に失敗するか healthy にならない場合、その試行のログを最大 100 行表示します。
 
+インストーラーは現在の `docker compose` CLI プラグインを優先し、それがなく旧式コマンドだけが利用可能な場合に `docker-compose` へフォールバックします。`config --format` は利用できるものの `config --environment` を持たない Compose リリースにも対応し、この互換経路では `python3` が必要です。
+
 イメージを取得したりコンテナを起動したりせず、設定だけを検証するには次を実行します。
 
 ```bash
@@ -378,18 +380,28 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_METRICS_ENABLED` | `false` | Prometheus メトリクスを収集し `GET /metrics` を提供 |
 | `TOKENHUB_METRICS_TOKEN` | 空 | `/metrics` の Bearer トークン。空の場合は管理者トークンにフォールバック |
 | `TOKENHUB_METRICS_PROJECT_LABEL` | `false` | ゲートウェイメトリクスに `project_id` を追加。プロジェクト数だけ系列数が増加 |
+| `TOKENHUB_TRACING_ENABLED` | `false` | ゲートウェイ呼び出しごとに 1 本の OpenTelemetry トレースを OTLP/HTTP でエクスポート |
+| `TOKENHUB_TRACING_ENDPOINT` | 空 | シグナル固有の OTLP traces URL。そのまま使用。Langfuse は `<host>/api/public/otel/v1/traces` |
+| `TOKENHUB_TRACING_HEADERS` | 空 | カンマ区切りの `name=value` エクスポートヘッダー。資格情報を含む |
+| `TOKENHUB_TRACING_CAPTURE_PAYLOADS` | `false` | プロンプト・レスポンス・上流エラー本文をエクスポートする span に含める |
+| `TOKENHUB_TRACING_SAMPLE_RATIO` | `1` | エクスポートする割合。0 から 1 |
+| `TOKENHUB_TRACING_TIMEOUT_SECONDS` | `10` | 1 回のエクスポート試行の時間上限 |
+| `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | span 化を待つ完了イベント数。満杯時はリクエストを遅らせずトレースを破棄 |
+| `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 非ストリーミングの上流リクエスト 1 件あたりの全体タイムアウト |
+| `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | ストリーミング呼び出しに全体タイムアウトはありません。この値はレスポンスヘッダーの待機時間と、その後ストリームが無音でいられる時間を制限します。1 バイト受信するたびに計測し直します |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停止時に処理中リクエストを待機する最大秒数 |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Docker がバックエンドを強制停止するまでの Compose 猶予時間 |
-| `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | 同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
+| `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Chat Completions、Anthropic Messages、Responses で同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 段階的ロールアウト用のモデル許可リスト（カンマ区切り）。空の場合は全モデルが対象 |
-| `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | ユーザー単位の識別子もアフィニティキーとして受け入れるか。同一ユーザーの並行セッションが同じ値を共有し単一アカウントに集中するため既定では無効 |
+| `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Chat/Responses の `user` と Anthropic の `metadata.user_id` もアフィニティキーとして受け入れるか。同一ユーザーの並行セッションが同じ値を共有し単一アカウントに集中するため既定では無効 |
 | `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | 生成された画像アセットを保存するディレクトリ |
 | `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | 画像生成キューを処理するワーカー数 |
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | キューで待機できる画像ジョブの上限 |
 | `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | 単一の画像生成ジョブのタイムアウト。超過すると失敗として扱われます |
 | `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | 画像生成非対応と記録されたプロバイダーリソースを再検査するまでの待機時間 |
+| `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI が対象とする Admin API の URL。この CLI のみが読み取り、バックエンドサーバーは読み取りません。`--to` で上書きされます |
 
 ## フロントエンド環境変数
 
@@ -425,11 +437,11 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 ./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml
 ```
 
-カスタムファイルはイメージ内の候補テンプレートカタログを上書きするため、そのバージョンは `TOKENHUB_IMAGE_TAG` とは別に管理します。ファイルを更新した後、バックエンドコンテナを再起動し、「モデルディレクトリ」の「候補テンプレート」タブで内容を確認します。
+カスタムファイルはイメージ内の追跡対象モデルカタログを上書きするため、そのバージョンは `TOKENHUB_IMAGE_TAG` とは別に管理します。ファイルを更新した後、バックエンドコンテナを再起動するかシステム設定の同期操作を実行し、モデルカタログエラーなしで完了することを確認します。
 
-設定済みカタログファイルを更新した後は、バックエンドを再起動するか、「モデルディレクトリ」の「候補テンプレート」タブで「候補テンプレートを復元」を実行できます。この操作は参照メタデータを更新し、カスタム外部モデルを保持しますが、テンプレートを公開しません。
+設定済みカタログファイルを更新した後は、バックエンドを再起動するか、**システム設定 → 基本設定** で **モデル参照カタログを同期** を実行します。どちらも参照メタデータを同期し、カスタム外部モデルを保持しますが、モデルは公開しません。
 
-`data/model-catalog.yaml` は候補テンプレートの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデル候補を提供します。選択項目を取り込むと永続化された Provider モデルインベントリが作成され、公開を選ぶと外部モデルの作成または再利用と有効なマッピングの追加も行われます。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
+`data/model-catalog.yaml` は追跡対象カタログの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデルを提供します。選択項目の取り込みでは永続化された Provider モデルインベントリだけが作成されます。外部モデルと統一された顧客向け価格は Model Directory で個別に作成し、Routing Policies で取り込み済みの Provider モデルへマッピングします。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
 
 ## リバースプロキシ
 

@@ -1,7 +1,7 @@
-import { AlertCircle, Ban, Check, Copy, KeyRound, Plus, Search, Send, Trash2, UserRoundCheck } from "lucide-react";
+import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderResource } from "../core/types";
+import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategory, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
@@ -11,10 +11,11 @@ import { assertProviderAccountResourceReady, defaultProviderResourceName, provid
 import { ReviewItem } from "../shared/modals";
 import { providerTypeOptions } from "../shared/ui";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
-import { ProviderInlineField, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
+import { ProviderModelInventory } from "./provider-model-inventory";
+import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
+import { ProviderInlineField, customUpstreamConnectionKey, customUpstreamModelsAreCurrent, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields } from "./provider-editor-sections";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatProviderAccountDate, formatQuotaPercent, type OpenAIQuotaWindow, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
-
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
 
 type OpenAIAccountQuota = {
@@ -88,6 +89,7 @@ export function ProviderUpsertModal({
   catalog,
   standardModels,
   routes = [],
+  providerModels = [],
   resources = [],
   loading,
   onClose,
@@ -103,6 +105,7 @@ export function ProviderUpsertModal({
   catalog: ProviderCatalogEntry[];
   standardModels: Model[];
   routes?: ModelRoute[];
+  providerModels?: ProviderModel[];
   resources?: ProviderResource[];
   loading: boolean;
   onClose: () => void;
@@ -161,7 +164,6 @@ export function ProviderUpsertModal({
     priority: String(provider?.priority ?? 10),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
-    create_routes: mode === "create" ? "true" : "false",
   }));
   const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingCodexSubscription ? "account_integration" : "provider_api_key");
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() =>
@@ -203,6 +205,8 @@ export function ProviderUpsertModal({
   const accountCallbackURL = useMemo(() => providerAccountOAuthCallbackURL(), []);
   const modalRef = useRef<HTMLFormElement | null>(null);
   const preserveCatalogValuesOnReload = useRef(false);
+  const loadedCustomConnection = useRef("");
+  const customConnectionKey = customUpstreamConnectionKey(values);
   const accountNameInputRef = useRef<HTMLInputElement | null>(null);
   const existingRouteModels = useMemo(
     () => new Set(routes.filter((route) => provider && route.provider_id === provider.id).map((route) => route.model_name)),
@@ -244,12 +248,14 @@ export function ProviderUpsertModal({
     preserveCatalogValuesOnReload.current = false;
     if (!preserveCatalogValues) setModelQuery("");
     setModelError("");
-    if (entry && mode === "create" && !preserveCatalogValues) {
+    // A custom Provider has no template: its name, type and Base URL are the
+    // operator's own input, so reloading its models must not rewrite them.
+    if (entry && mode === "create" && !preserveCatalogValues && catalogID !== "custom") {
       setValues((current) => ({
         ...current,
-        name: catalogID === "custom" ? (current.name === initialEntry?.display_name ? "" : current.name) : entry.display_name || entry.name || current.name,
+        name: entry.display_name || entry.name || current.name,
         type: entry.type || current.type || "openai_compatible",
-        base_url: catalogID === "custom" ? current.base_url : entry.base_url ?? "",
+        base_url: entry.base_url ?? "",
       }));
     }
     let cancelled = false;
@@ -447,19 +453,22 @@ export function ProviderUpsertModal({
   }, [createStep, mode]);
 
   useEffect(() => {
-    if (mode === "create" && createStep === 3 && catalogID === "custom" && values.base_url?.trim()) {
-      setCatalogReloadKey((current) => current + 1);
-    }
-    // Load custom upstream models when the wizard reaches route confirmation.
+    if (mode !== "create" || catalogID !== "custom" || !values.base_url?.trim()) return;
+    // Load custom upstream models once model selection is on screen: behind a
+    // tab in the quick connect UI, at its model step in the stepped wizard.
+    if (quickAPIConnect ? quickAPITab !== "models" : createStep !== 3) return;
+    if (loadedCustomConnection.current === customConnectionKey) return;
+    loadedCustomConnection.current = customConnectionKey;
+    setCatalogReloadKey((current) => current + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogID, createStep, mode]);
+  }, [catalogID, createStep, mode, quickAPIConnect, quickAPITab]);
 
   useEffect(() => {
     if (mode !== "edit" || editTab !== "advanced") return;
     for (const resource of selectedAccountResources) {
       if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
     }
-    // Query when the visible account scope changes; successful results remain cached for manual refresh.
+    const timer = window.setInterval(() => { for (const resource of selectedAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editTab, mode, selectedAccountResources]);
 
@@ -488,15 +497,6 @@ export function ProviderUpsertModal({
     }),
     [catalogID, effectiveDetail, modelCategory, quickAPIFlow, standardModels, usesCodexCatalog],
   );
-  useEffect(() => {
-    if (mode !== "create" || !effectiveDetail || values.create_routes !== "true") return;
-    if (quickAPIFlow) return;
-    const nextSelected: Record<string, boolean> = {};
-    for (const model of models) {
-      nextSelected[model.id] = true;
-    }
-    setSelectedModels(nextSelected);
-  }, [effectiveDetail, mode, models, quickAPIFlow, values.create_routes]);
   const listedCatalog = useMemo(
     () => quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
     [categoryCatalog, directCredentialCatalog, quickAPIFlow],
@@ -520,11 +520,15 @@ export function ProviderUpsertModal({
       .filter((model) => JSON.stringify(model).toLowerCase().includes(normalized))
       .slice(0, 80);
   }, [models, modelQuery]);
+  const importedModels = useMemo(
+    () => provider ? providerModels.filter((model) => model.provider_id === provider.id) : [],
+    [provider, providerModels],
+  );
+  const importedModelIDs = useMemo(() => new Set(importedModels.map((model) => model.upstream_model)), [importedModels]);
   const selectedModelIDs = Object.entries(selectedModels)
-    .filter(([, selected]) => selected)
+    .filter(([id, selected]) => selected && !importedModelIDs.has(id))
     .map(([id]) => id);
-  const autoRouteEnabled = values.create_routes === "true";
-  const selectedRouteCount = autoRouteEnabled ? selectedModelIDs.length : 0;
+  const selectedModelCount = selectedModelIDs.length;
   const selectedEntry = usesCodexCatalog
     ? codexCatalog ?? codexProviderCatalogSummary
     : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
@@ -728,7 +732,7 @@ export function ProviderUpsertModal({
     setAccountOAuthNoticeOpen(true);
   }
 
-  async function openProviderAccountAuthorization() {
+  async function startProviderAccountAuthorization(action: ProviderAccountOAuthAction) {
     try {
       setAccountOAuthBusy(true);
       setAccountOAuthNoticeError("");
@@ -739,12 +743,12 @@ export function ProviderUpsertModal({
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("生成账号授权地址")));
       const generated = (await resp.json()) as ProviderAccountOAuthGenerateResponse;
       savePendingProviderAccountOAuthSession({ session_id: generated.session_id, state: generated.state });
+      await launchProviderAccountAuthorization(action, generated.auth_url);
       setAccountOAuthNoticeOpen(false);
-      window.open(generated.auth_url, "_blank", "noopener,noreferrer");
       setAccountOAuthCallback("");
       setAccountOAuthCallbackModalError("");
       setAccountOAuthCallbackModalOpen(true);
-      setAccountOAuthStatus(tx("已打开 OpenAI/Codex 授权页。授权后请复制浏览器地址栏中的完整 localhost callback URL，并粘贴到回调结果。"));
+      setAccountOAuthStatus(tx(action === "copy" ? "已复制 OpenAI/Codex 授权链接。请在新标签页打开链接并完成授权。" : "已打开 OpenAI/Codex 授权页。授权后请复制浏览器地址栏中的完整 localhost callback URL，并粘贴到回调结果。"));
       setError("");
     } catch (err) {
       if (isAuthExpiredError(err)) return;
@@ -767,24 +771,23 @@ export function ProviderUpsertModal({
     }
   }
 
-  async function queryAccountQuota(resource: ProviderResource) {
+  async function queryAccountQuota(resource: ProviderResource, force = false) {
     setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: true }));
-    setAccountQuotaErrors((current) => {
-      const next = { ...current };
-      delete next[resource.id];
-      return next;
-    });
+    setAccountQuotaErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
     try {
-      const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/quota`);
+      const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/quota${force ? "?refresh=true" : ""}`);
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询订阅额度")));
       const quota = (await resp.json()) as OpenAIAccountQuota;
       setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
+      return true;
     } catch (err) {
-      if (isAuthExpiredError(err)) return;
+      setAccountQuotas((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
+      if (isAuthExpiredError(err)) return false;
       setAccountQuotaErrors((current) => ({
         ...current,
         [resource.id]: err instanceof Error ? err.message : tx("查询订阅额度失败"),
       }));
+      return false;
     } finally {
       setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: false }));
     }
@@ -924,6 +927,7 @@ export function ProviderUpsertModal({
 
   function selectCatalog(entry: ProviderCatalogEntry) {
     if (entry.id === catalogID) return;
+    loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     const nextName = entry.display_name || entry.name || values.name;
     setCatalogID(entry.id);
@@ -939,13 +943,13 @@ export function ProviderUpsertModal({
       type: entry.type || current.type || "openai_compatible",
       base_url: mode === "create" ? entry.base_url ?? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
-      create_routes: quickAPIFlow ? "true" : current.create_routes,
     }));
     syncAccountDefaults(nextName, entry.base_url);
   }
 
   function selectCustomCatalog() {
     if (catalogID === "custom") return;
+    loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     setCatalogID("custom");
     setCatalogReloadKey((current) => current + 1);
@@ -960,12 +964,12 @@ export function ProviderUpsertModal({
       type: current.type || "openai_compatible",
       base_url: mode === "create" ? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
-      create_routes: quickAPIFlow ? "false" : current.create_routes,
     }));
     syncAccountDefaults(values.name || "Provider", "");
   }
 
   function reloadSelectedCatalog() {
+    loadedCustomConnection.current = customConnectionKey;
     preserveCatalogValuesOnReload.current = true;
     catalogRefreshRequested.current = catalogID !== "custom" && !usesCodexCatalog;
     setCatalogReloadKey((current) => current + 1);
@@ -1010,6 +1014,11 @@ export function ProviderUpsertModal({
       setError(tx("请填写 API Key。"));
       return false;
     }
+    if (targetStep === lastCreateStep && models.length > 0 && selectedModelIDs.length === 0) {
+      if (quickAPIFlow) setQuickAPITab("models");
+      setError(tx("请至少选择一个要引入 Provider 的上游模型。"));
+      return false;
+    }
     if (targetStep === 2 && credentialMode === "account_integration") {
       if (!accountValues.name?.trim()) {
         setError(tx("请填写账号资源名称。"));
@@ -1038,6 +1047,16 @@ export function ProviderUpsertModal({
       return;
     }
     if (quickAPIConnect && !validateCreateStep(createStep)) return;
+    if (mode === "create" && catalogID === "custom"
+      && !customUpstreamModelsAreCurrent(models.length, loadedCustomConnection.current, customConnectionKey)) {
+      if (quickAPIFlow) setQuickAPITab("models");
+      setError(tx("请先加载自定义渠道的上游模型，再选择要引入的模型。"));
+      return;
+    }
+    if (mode === "create" && models.length > 0 && selectedModelIDs.length === 0) {
+      setError(tx("请至少选择一个要引入 Provider 的上游模型。"));
+      return;
+    }
     setLoading(true);
     setError("");
     setNotice("");
@@ -1049,18 +1068,17 @@ export function ProviderUpsertModal({
       const payload = (mode === "edit" ? providerUpdatePayload : providerPayload)({
         ...values,
         api_key: mode === "create" && credentialMode !== "provider_api_key" ? "" : values.api_key,
-        create_routes: autoRouteEnabled && selectedModelIDs.length > 0 ? "true" : "false",
         catalog_id: catalogID,
         model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
-        custom_models: catalogID === "custom" && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
+        custom_models: (catalogID === "custom" || usesCodexCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, `${mode === "edit" ? tx("更新") : tx("创建")} ${tx("Provider 渠道")}`));
-      const result = (await resp.json()) as { created_routes?: number; provider?: Provider };
+      const result = (await resp.json()) as { imported_models?: number; provider?: Provider };
       let accountResourceCreated = false;
       if (mode === "create" && credentialMode === "account_integration") {
         const payloadProviderID = typeof payload.id === "string" ? payload.id : "";
@@ -1079,8 +1097,8 @@ export function ProviderUpsertModal({
         if (!resourceResp.ok) throw new Error(await readAdminError(resourceResp, tx("创建账号资源")));
         accountResourceCreated = true;
       }
-      const routed = result.created_routes ?? 0;
-      setNotice(providerSaveMessage(mode === "edit", accountResourceCreated, routed, modelCategoryLabel(modelCategory)));
+      const imported = result.imported_models ?? 0;
+      setNotice(providerSaveMessage(mode === "edit", accountResourceCreated, imported, modelCategoryLabel(modelCategory)));
       await onSaved();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
@@ -1306,7 +1324,7 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "create" && createStep === 1 ? (
               quickAPIConnect ? (
-                <ProviderAPIQuickConnect
+                <ProviderAPIQuickConnect api={api}
                   key={catalogID}
                   catalogID={catalogID}
                   entry={selectedEntry}
@@ -1329,7 +1347,7 @@ export function ProviderUpsertModal({
               <section className="provider-wizard-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx(credentialMode === "account_integration" ? "确认账号通道和基础信息" : "选择渠道和基础信息")}</h3>
-                  <p>{tx(credentialMode === "account_integration" ? "账号资源池已为你选好默认通道。这里通常只确认 Base URL；账号走企业代理时再修改。" : "选择上游渠道商模板，TokenHub 会带出类型、Base URL 和可映射模型。")}</p>
+                  <p>{tx(credentialMode === "account_integration" ? "账号资源池已为你选好默认通道。这里通常只确认 Base URL；账号走企业代理时再修改。" : "选择上游渠道商模板，TokenHub 会带出类型、Base URL 和可引入模型。")}</p>
                 </div>
                 {credentialMode === "account_integration" ? (
                   <div className="provider-account-channel-note">
@@ -1342,7 +1360,7 @@ export function ProviderUpsertModal({
                     <ReviewItem label={credentialMode === "account_integration" ? "模型协议" : "模型类型"} value={modelCategoryLabel(modelCategory)} />
                     <ReviewItem label={credentialMode === "account_integration" ? "默认通道" : "渠道商"} value={selectedEntry?.display_name || selectedEntry?.name || "-"} />
                     <ReviewItem label={credentialMode === "account_integration" ? "兼容协议" : "渠道商类型"} value={providerTypeLabel(selectedEntry?.type || values.type || "openai_compatible")} />
-                    <ReviewItem label="可映射模型" value={effectiveDetail ? `${models.length}/${effectiveDetail.models_count}` : codexCatalogError || tx("加载中")} />
+                    <ReviewItem label="可引入模型" value={effectiveDetail ? `${models.length}/${effectiveDetail.models_count}` : codexCatalogError || tx("加载中")} />
                   </div>
                 ) : null}
               </section>
@@ -1363,14 +1381,13 @@ export function ProviderUpsertModal({
             {mode === "create" && createStep === 3 ? (
               <section className="provider-wizard-panel">
                 <div className="wizard-panel-head">
-                  <h3>{tx("确认路由策略")}</h3>
-                  <p>{tx("选择是否自动创建默认路由，并确认要映射到标准模型目录的上游模型。")}</p>
+                  <h3>{tx("选择引入模型")}</h3>
+                  <p>{tx("这里只建立 Provider 上游模型库存；对外模型和路由将在后续步骤独立配置。")}</p>
                 </div>
                 <div className="wizard-review-grid provider-create-review">
                   <ReviewItem label="渠道商" value={values.name || selectedEntry?.display_name || selectedEntry?.name || "-"} />
                   <ReviewItem label="凭据方式" value={tx(providerCredentialModeLabel(credentialMode))} />
-                  <ReviewItem label="自动路由" value={autoRouteEnabled ? tx("开启") : tx("关闭开关")} />
-                  <ReviewItem label="已选模型" value={selectedRouteCount ? String(selectedRouteCount) : tx("无")} />
+                  <ReviewItem label="待引入模型" value={selectedModelCount ? String(selectedModelCount) : tx("无")} />
                 </div>
               </section>
             ) : null}
@@ -1509,7 +1526,7 @@ export function ProviderUpsertModal({
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("订阅额度")}</h3>
-                  <p>{tx("实时查询 ChatGPT/Codex 套餐用量和重置时间；不会显示虚构的美元余额。")}</p>
+                  <p>{tx("实时查询 ChatGPT/Codex 套餐用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
                 </div>
                 <div className="provider-quota-list">
                   {selectedAccountResources.map((resource) => {
@@ -1532,8 +1549,8 @@ export function ProviderUpsertModal({
                             <span className={`provider-image-capability ${imageCapability || "unknown"}`}>
                               {tx(formatImageGenerationCapabilityTag(imageCapability))}
                             </span>
-                            <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource)} type="button">
-                              {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新额度" : "查询额度")}
+                            <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
+                              {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
                             {resource.status === "active" ? (
                               <button
@@ -1586,7 +1603,6 @@ export function ProviderUpsertModal({
                               <div className="provider-quota-highlights">
                                 <QuotaMetric label="套餐" value={quota.plan_type || resource.credential_summary?.plan_type || "-"} />
                                 <QuotaMetric label="生图能力" value={formatImageGenerationCapability(resource.options?.image_generation_capability)} />
-                                <QuotaMetric label="重置额度" value={quota.rate_limit_reset_credits ? String(quota.rate_limit_reset_credits.available_count) : "-"} />
                                 <QuotaMetric label="主窗口重置时间" value={quotaWindowResetLabel(primary)} />
                               </div>
                             </div>
@@ -1609,6 +1625,7 @@ export function ProviderUpsertModal({
                             {tx(accountQuotaBusyIDs[resource.id] ? "正在自动查询该真实账号的套餐与额度信息。" : "暂未获取到该账号的套餐与额度信息，可点击查询重试。")}
                           </p>
                         )}
+                        <ProviderAccountQuotaReset api={api} quotaBusy={Boolean(accountQuotaBusyIDs[resource.id])} resource={resource} onRefreshQuota={() => queryAccountQuota(resource, true)} />
                         {accountQuotaErrors[resource.id] ? <p className="provider-quota-error">{accountQuotaErrors[resource.id]}</p> : null}
                       </article>
                     );
@@ -1761,6 +1778,7 @@ export function ProviderUpsertModal({
 
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
+            {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
             {mode === "edit" && editingCodexSubscription && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">
                 {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}
@@ -1768,35 +1786,16 @@ export function ProviderUpsertModal({
             ) : null}
             <div className="provider-import-options">
               <div>
-                <strong>{tx("自动路由")}</strong>
-                <span>{mode === "edit" ? tx("开启后会为下方勾选模型补齐缺失线路，不覆盖已有策略。") : tx("保存渠道时会自动创建下方勾选模型的默认路由。")}</span>
+                <strong>{tx(mode === "edit" ? "继续引入模型" : "引入 Provider 上游模型")}</strong>
+                <span>{tx("勾选结果只进入当前 Provider 的模型库存，不会创建对外模型或路由。")}</span>
               </div>
-              <div className="boolean-toggle provider-route-toggle" role="radiogroup" aria-label={tx("自动路由")}>
-                <button
-                  aria-checked={autoRouteEnabled}
-                  className={autoRouteEnabled ? "active" : ""}
-                  onClick={() => update("create_routes", "true")}
-                  role="radio"
-                  type="button"
-                >
-                  {tx("开启")}
-                </button>
-                <button
-                  aria-checked={!autoRouteEnabled}
-                  className={!autoRouteEnabled ? "active" : ""}
-                  onClick={() => update("create_routes", "false")}
-                  role="radio"
-                  type="button"
-                >
-                  {tx("关闭开关")}
-                </button>
-              </div>
+              <strong>{selectedModelCount} {tx("个待引入")}</strong>
             </div>
 
             <div className="provider-model-head">
               <div>
-                <strong>{tx("上游模型映射")}</strong>
-                <span>{effectiveDetail ? `${models.length}/${effectiveDetail.models_count} ${tx("个可映射模型")}` : effectiveCatalogError || tx("加载中")}</span>
+                <strong>{tx("Provider 模型目录")}</strong>
+                <span>{effectiveDetail ? `${models.length}/${effectiveDetail.models_count} ${tx("个可引入模型")}` : effectiveCatalogError || tx("加载中")}</span>
               </div>
               <div className="provider-model-tools">
                 <input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tx("搜索模型、能力、参数")} />
@@ -1811,12 +1810,13 @@ export function ProviderUpsertModal({
               ) : effectiveCatalogError ? (
                 <div className="empty">{effectiveCatalogError}</div>
               ) : filteredModels.length === 0 ? (
-                <div className="empty">{models.length === 0 ? tx("该渠道商暂无可匹配当前标准模型目录的上游模型") : tx("没有匹配的模型")}</div>
-              ) : filteredModels.map((model) => (
-                <label className="model-option" key={model.id}>
+                <div className="empty">{models.length === 0 ? tx("该渠道商暂无可引入的上游模型") : tx("没有匹配的模型")}</div>
+              ) : filteredModels.map((model) => {
+                const alreadyImported = importedModelIDs.has(model.id);
+                return <label className="model-option" key={model.id}>
                   <input
-                    checked={autoRouteEnabled && selectedModels[model.id] === true}
-                    disabled={!autoRouteEnabled}
+                    checked={alreadyImported || selectedModels[model.id] === true}
+                    disabled={alreadyImported}
                     onChange={(event) => setSelectedModels((current) => ({ ...current, [model.id]: event.target.checked }))}
                     type="checkbox"
                   />
@@ -1825,21 +1825,20 @@ export function ProviderUpsertModal({
                     <span>{model.canonical_name || model.id} ← {model.id}</span>
                     <small>
                       {modelCategoryLabel(modelCategoryForCatalog(model))} · {model.family || "model"} · {model.type || "chat"} · {formatModelPrice(model)} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}
+                      {alreadyImported ? ` · ${tx("已引入")}` : ""}
                       {existingRouteModels.has(model.canonical_name || canonicalModelNameForUI(model.id, model.display_name)) ? ` · ${tx("已有路由")}` : ""}
                     </small>
                     <div className="capability-row">
                       {modelCapabilities(model).map((capability) => <em key={capability}>{capability}</em>)}
                     </div>
                   </div>
-                </label>
-              ))}
+                </label>;
+              })}
             </div>
             <p className="provider-import-hint">
-              {!autoRouteEnabled
-                ? tx("已关闭自动路由：保存后只创建 Provider，不生成路由策略。")
-                : selectedRouteCount > 0
-                  ? `${tx("保存后会为")} ${selectedRouteCount} ${tx("个已选")} ${modelCategoryLabel(modelCategory)} ${tx("模型创建缺失的默认路由。")}`
-                  : tx("当前没有勾选模型，保存后不会生成路由策略。")}
+              {selectedModelCount > 0
+                ? `${tx("保存后会引入")} ${selectedModelCount} ${tx("个上游模型；请前往模型目录创建对外模型、设置统一价格并选择初始线路。")}`
+                : tx("当前没有选择新模型，保存后不会改变 Provider 模型库存。")}
             </p>
               </>
             ) : null}
@@ -1943,7 +1942,7 @@ export function ProviderUpsertModal({
         busy={accountOAuthBusy}
         error={accountOAuthNoticeError}
         onClose={() => setAccountOAuthNoticeOpen(false)}
-        onConfirm={() => void openProviderAccountAuthorization()}
+        onConfirm={() => startProviderAccountAuthorization("open")} onCopy={() => startProviderAccountAuthorization("copy")}
         open={accountOAuthNoticeOpen}
       />
       <ProviderOAuthCallbackModal

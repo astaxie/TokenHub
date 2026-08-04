@@ -131,7 +131,9 @@ Invoke-WebRequest `
   -Body $tokenHubRequestBody
 ```
 
-TokenHub が `responses_stream_unsupported` を返す場合、管理者がモデルルートまたはプロバイダーリソース種別を修正する必要があります。
+TokenHub が `provider_capability_not_supported` を返す場合、管理者がモデルルートまたはプロバイダーリソース種別を修正する必要があります。
+
+DeepSeek 公式 Provider では、Responses と Codex の能力はモデル単位です。現在は `deepseek-v4-flash` を使用してください。DeepSeek が上流で正式に有効化するまで、TokenHub は `deepseek-v4-pro` を Responses 対応として公開しません。DeepSeek のコンテキストキャッシュは自動管理です。`TOKENHUB_CACHE_AFFINITY_ENABLED=true` を有効にすると、TokenHub は `session-id`、`client_metadata.session_id`、`prompt_cache_key` などの安定した Codex セッションヒントを使い、連続する Responses リクエストを同じ上流アカウントへ固定します。このキーはゲートウェイルーティング専用であり、TokenHub 内に別のレスポンスキャッシュを作成するものではありません。
 
 ---
 
@@ -332,7 +334,7 @@ Codex を完全に再起動し、ローカルタスクを作成してモデル�
 | HTTP 404 | Base URL またはモデル ID が不正 | `/v1` を確認し、`GET /v1/models` を再実行 |
 | HTTP 429 / `quota_exceeded` | リクエスト数、トークン数、コスト、同時実行数、プロバイダーの制限 | 制限の回復を待つか、ポリシーを調整 |
 | HTTP 503 / `provider_unavailable` | 正常なルートが存在しない | ルート、プロバイダー、アカウントリソースの状態を確認 |
-| HTTP 400 / `responses_stream_unsupported` | ルートが Responses ストリーミングに非対応 | ルートまたはプロバイダーリソースを変更 |
+| HTTP 501 / `provider_capability_not_supported` | ルートが Responses または Responses ストリーミングに非対応 | モデルルートまたはプロバイダーリソースを変更 |
 
 Key の値を表示せず、設定済みかどうかだけを確認するには次を実行します。
 

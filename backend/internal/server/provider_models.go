@@ -11,6 +11,30 @@ const (
 	modelDirectoryRoleExternal = "external"
 )
 
+type providerModelPatchRequest struct {
+	ProviderModel
+	InputPriceUSDPer1M     *float64 `json:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M *float64 `json:"cache_read_price_usd_per_1m"`
+	OutputPriceUSDPer1M    *float64 `json:"output_price_usd_per_1m"`
+}
+
+func (patch providerModelPatchRequest) withCurrentCosts(current ProviderModel) ProviderModel {
+	model := patch.ProviderModel
+	model.InputPriceUSDPer1M = current.InputPriceUSDPer1M
+	model.CacheReadPriceUSDPer1M = current.CacheReadPriceUSDPer1M
+	model.OutputPriceUSDPer1M = current.OutputPriceUSDPer1M
+	if patch.InputPriceUSDPer1M != nil {
+		model.InputPriceUSDPer1M = *patch.InputPriceUSDPer1M
+	}
+	if patch.CacheReadPriceUSDPer1M != nil {
+		model.CacheReadPriceUSDPer1M = *patch.CacheReadPriceUSDPer1M
+	}
+	if patch.OutputPriceUSDPer1M != nil {
+		model.OutputPriceUSDPer1M = *patch.OutputPriceUSDPer1M
+	}
+	return model
+}
+
 func (s *Server) handleAdminProviderModels(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
 		return
@@ -44,6 +68,10 @@ func (s *Server) handleAdminProviderModelImport(w http.ResponseWriter, r *http.R
 	}
 	var req ProviderModelImportRequest
 	if err := decodeJSON(r, &req); err != nil {
+		if costErr := providerModelCostDecodeError(err); costErr != nil {
+			writeError(w, r, costErr)
+			return
+		}
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
 		return
 	}
@@ -68,9 +96,31 @@ func (s *Server) handleAdminProviderModelItem(w http.ResponseWriter, r *http.Req
 	}
 	switch r.Method {
 	case http.MethodPatch:
-		var req ProviderModel
-		if err := decodeJSON(r, &req); err != nil {
+		var patch providerModelPatchRequest
+		if err := decodeJSON(r, &patch); err != nil {
+			if costErr := providerModelCostDecodeError(err); costErr != nil {
+				writeError(w, r, costErr)
+				return
+			}
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+			return
+		}
+		var current ProviderModel
+		found := false
+		for _, model := range s.store.ListProviderModels() {
+			if model.ID == id {
+				current = model
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_model_not_found", "Provider model not found"))
+			return
+		}
+		req := patch.withCurrentCosts(current)
+		if err := validateProviderModelCosts(req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		model, err := s.store.UpdateProviderModel(id, req)
@@ -101,27 +151,30 @@ func (s *Server) importProviderModels(req ProviderModelImportRequest) (ProviderM
 	if providerID == "" {
 		return ProviderModelImportResult{}, NewHTTPError(http.StatusBadRequest, "provider_required", "provider_id is required")
 	}
-	provider, ok := s.store.GetProvider(providerID)
+	_, ok := s.store.GetProvider(providerID)
 	if !ok {
 		return ProviderModelImportResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
 	if req.Publish {
-		if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
-			return ProviderModelImportResult{}, NewHTTPError(http.StatusBadRequest, "provider_adapter_missing", "Provider adapter is not registered")
-		}
+		return ProviderModelImportResult{}, NewHTTPError(
+			http.StatusBadRequest,
+			"provider_model_publication_must_be_configured_separately",
+			"Create external models in Model Directory and routes in Routing Policies",
+		)
 	}
 	if len(req.Models) == 0 {
 		return ProviderModelImportResult{}, NewHTTPError(http.StatusBadRequest, "provider_models_required", "Select at least one provider model")
 	}
+	for _, catalogModel := range req.Models {
+		if strings.TrimSpace(catalogModel.ID) == "" {
+			continue
+		}
+		if err := validateProviderModelCosts(providerModelFromCatalog(providerID, catalogModel)); err != nil {
+			return ProviderModelImportResult{}, err
+		}
+	}
 
 	result := ProviderModelImportResult{ProviderModels: []ProviderModel{}}
-	knownModels := map[string]Model{}
-	for _, model := range s.store.ListModels() {
-		knownModels[strings.TrimSpace(model.Name)] = model
-	}
-	existingRoutes := s.store.ListRoutes()
-	routePriorities := routePriorityByModel(existingRoutes)
-	seenRoutes := existingProviderModelRouteSet(existingRoutes)
 	for _, catalogModel := range req.Models {
 		catalogModel.ID = strings.TrimSpace(catalogModel.ID)
 		if catalogModel.ID == "" {
@@ -131,51 +184,6 @@ func (s *Server) importProviderModels(req ProviderModelImportRequest) (ProviderM
 		providerModel = s.store.AddProviderModel(providerModel)
 		result.ProviderModels = append(result.ProviderModels, providerModel)
 		result.ImportedModels++
-		if !req.Publish {
-			continue
-		}
-
-		externalName := strings.TrimSpace(req.ExternalNames[catalogModel.ID])
-		if externalName == "" {
-			externalName = firstNonEmpty(catalogModel.CanonicalName, canonicalModelName(catalogModel.ID, catalogModel.DisplayName), catalogModel.ID)
-		}
-		existingModel, exists := knownModels[externalName]
-		if !exists {
-			record := withExternalModelRole(providerCatalogModelRecord(catalogModel, externalName))
-			if record.Metadata == nil {
-				record.Metadata = map[string]string{}
-			}
-			record.Metadata["source"] = "provider-import"
-			record.Metadata["provider_id"] = providerID
-			record.Metadata["upstream_model"] = catalogModel.ID
-			s.store.AddModel(record)
-			knownModels[externalName] = record
-			result.CreatedModels++
-		} else if existingModel.Status != StatusActive {
-			existingModel.Status = StatusActive
-			updated, err := s.store.UpdateModel(externalName, existingModel)
-			if err != nil {
-				return ProviderModelImportResult{}, err
-			}
-			knownModels[externalName] = updated
-		}
-		if err := s.markExternalModel(externalName); err != nil {
-			return ProviderModelImportResult{}, err
-		}
-		result.ModelNames = appendUniqueString(result.ModelNames, externalName)
-
-		routeKey := providerModelRouteKey(providerID, catalogModel.ID, externalName)
-		if seenRoutes[routeKey] {
-			continue
-		}
-		route := ProviderCatalogModelRoute(providerID, catalogModel)
-		route.ID = stableProviderModelRouteID(providerID, catalogModel.ID, externalName)
-		route.ModelName = externalName
-		route.Priority = takeNextRoutePriority(routePriorities, externalName)
-		route = s.store.AddRoute(route)
-		seenRoutes[routeKey] = true
-		result.CreatedRoutes++
-		result.RouteIDs = append(result.RouteIDs, route.ID)
 	}
 	if result.ImportedModels == 0 {
 		return ProviderModelImportResult{}, NewHTTPError(http.StatusBadRequest, "provider_models_required", "Select at least one provider model")
@@ -233,15 +241,6 @@ func providerModelHasRoutes(id string, models []ProviderModel, routes []ModelRou
 		return false
 	}
 	return false
-}
-
-func appendUniqueString(items []string, value string) []string {
-	for _, item := range items {
-		if item == value {
-			return items
-		}
-	}
-	return append(items, value)
 }
 
 func backfillProviderModelsFromRoutes(store Store) {

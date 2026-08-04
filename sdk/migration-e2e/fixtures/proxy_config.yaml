@@ -1,0 +1,26 @@
+litellm_settings:
+  version: 1.58.2
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_base: http://localhost:8081/v1
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: chat
+key_management_settings:
+  teams:
+    - team_id: team-red
+      team_alias: Red Team
+  users:
+    - user_id: user-alice
+      user_email: alice@example.com
+      user_alias: Alice
+      team_id: team-red
+  virtual_keys:
+    - key_alias: red-team-key
+      token: sk-red-team
+      models:
+        - gpt-4o-mini
+      team_id: team-red
+      user_id: user-alice

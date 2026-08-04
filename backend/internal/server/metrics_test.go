@@ -99,6 +99,53 @@ func TestMetricsRecordRejectedCall(t *testing.T) {
 	}
 }
 
+func TestMetricsRecordAPIKeyRateLimitHitsWithMaskedIdentifier(t *testing.T) {
+	store, server, secret := newMetricsTestServer(t, false)
+	key := store.ListAPIKeys()[0]
+	rpm := int64(1)
+	if _, err := store.UpdateAPIKey(key.ID, APIKey{RateLimitRPM: &rpm, RateLimitSet: true}); err != nil {
+		t.Fatal(err)
+	}
+	app := server.Handler()
+	if code := chatOnce(t, app, secret, false); code != http.StatusOK {
+		t.Fatalf("first chat failed: %d", code)
+	}
+	if code := chatOnce(t, app, secret, false); code != http.StatusTooManyRequests {
+		t.Fatalf("second chat should be rate limited: %d", code)
+	}
+	masked := maskedAPIKeyMetricLabel(key.ID)
+	if strings.Contains(masked, key.ID) {
+		t.Fatalf("masked metric identifier exposed the API key ID: %q", masked)
+	}
+	if got := testutil.ToFloat64(server.metrics.rateLimitHits.WithLabelValues("api_key", "rpm", masked)); got != 1 {
+		t.Fatalf("expected one RPM limit hit, got %v", got)
+	}
+}
+
+func TestMetricsRecordInheritedRateLimitScopeWithoutPerKeySeries(t *testing.T) {
+	store, server, secret := newMetricsTestServer(t, false)
+	project := store.ListProjects()[0]
+	store.CreateResource("quota-policies", AdminResource{
+		Name:   "Project RPM",
+		Status: StatusActive,
+		Fields: map[string]any{
+			"scope":          "project",
+			"scope_id":       project.ID,
+			"rate_limit_rpm": int64(1),
+		},
+	})
+	app := server.Handler()
+	if code := chatOnce(t, app, secret, false); code != http.StatusOK {
+		t.Fatalf("first chat failed: %d", code)
+	}
+	if code := chatOnce(t, app, secret, false); code != http.StatusTooManyRequests {
+		t.Fatalf("second chat should be rate limited: %d", code)
+	}
+	if got := testutil.ToFloat64(server.metrics.rateLimitHits.WithLabelValues("project", "rpm", metricsLabelUnset)); got != 1 {
+		t.Fatalf("expected one project RPM limit hit without a key reference, got %v", got)
+	}
+}
+
 // The cost reported to Prometheus must be the priced value, which is only computed
 // inside FinishCall — instrumenting earlier would have reported zero.
 func TestMetricsCostMatchesUsageRecord(t *testing.T) {

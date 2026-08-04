@@ -193,6 +193,19 @@ func TestSSEDecoderHandlesFramingVariants(t *testing.T) {
 
 	decoder := newSSEDecoder(strings.NewReader(raw))
 
+	// The leading comment opens no frame, so it is delivered on its own rather
+	// than waiting for one: a keepalive needs no blank line to be complete.
+	heartbeat, err := decoder.Next()
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	if heartbeat.Event != "" || heartbeat.Data != "" {
+		t.Fatalf("a comment carries no fields, got %+v", heartbeat)
+	}
+	if string(heartbeat.Raw) != ": heartbeat\r\n" {
+		t.Fatalf("heartbeat raw = %q", heartbeat.Raw)
+	}
+
 	first, err := decoder.Next()
 	if err != nil {
 		t.Fatalf("first event: %v", err)

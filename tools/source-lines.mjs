@@ -40,15 +40,16 @@ export const SKIP_DIRECTORIES = new Set([
  * merged while this gate was in review. `frontend/features/admin/i18n/ja.tsx` is frozen
  * for the first time here — it crossed 1,500 lines on `main`, where the frontend-only
  * checker this gate absorbs had already recorded it.
+ *
+ * Every baseline here is above DEFAULT_MAX_LINES, and that is an invariant rather than
+ * a coincidence. A frozen entry may only ever relax the default; once a file is split
+ * back down to the default limit it graduates out of the table entirely, because the
+ * default already covers it. `--update` removes graduated entries, and `allowedFor`
+ * floors any baseline at the default so a hand-edited low number cannot turn this
+ * table into a stricter-than-default limit on one file.
  */
 export const FROZEN = new Map([
-  ["backend/internal/server/anthropic_messages.go", 1523],
-  ["backend/internal/server/http_test.go", 6522],
-  ["backend/internal/server/http.go", 8551],
-  ["backend/internal/server/store.go", 5989],
   ["frontend/app/styles/legacy/resources.css", 1508],
-  ["frontend/features/admin/i18n/en.tsx", 1540],
-  ["frontend/features/admin/i18n/ja.tsx", 1526],
   ["frontend/features/admin/views/provider-editor.tsx", 2009],
 ]);
 
@@ -57,7 +58,12 @@ export function countLines(contents) {
 }
 
 export function allowedFor(path, frozen = FROZEN) {
-  return frozen.get(path) ?? DEFAULT_MAX_LINES;
+  const baseline = frozen.get(path);
+  if (baseline === undefined) return DEFAULT_MAX_LINES;
+  // A frozen entry exists to relax the default, never to tighten it. A baseline that
+  // somehow fell below the default is stale bookkeeping, not a stricter rule for that
+  // one file, so it must not fail a change the default would have allowed.
+  return Math.max(baseline, DEFAULT_MAX_LINES);
 }
 
 /**
@@ -78,6 +84,10 @@ export function findViolations(measured, frozen = FROZEN) {
  * Baselines that shrank and can be tightened. `--update` exists only to record this:
  * it never adds an entry and never raises one, because a checker that can bless any
  * number on request is just a slower way of deleting the gate.
+ *
+ * Three reasons, all of which only ever tighten: "gone" for a deleted file, "graduated"
+ * for a file that now fits under DEFAULT_MAX_LINES and so no longer needs an exemption,
+ * and "shrank" for one that is smaller than its baseline but still over the default.
  */
 export function findTightenable(measured, frozen = FROZEN) {
   const tightenable = [];
@@ -85,6 +95,8 @@ export function findTightenable(measured, frozen = FROZEN) {
     const lines = measured.get(path);
     if (lines === undefined) {
       tightenable.push({ path, lines: null, baseline, reason: "gone" });
+    } else if (lines <= DEFAULT_MAX_LINES) {
+      tightenable.push({ path, lines, baseline, reason: "graduated" });
     } else if (lines < baseline) {
       tightenable.push({ path, lines, baseline, reason: "shrank" });
     }

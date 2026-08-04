@@ -131,7 +131,9 @@ Invoke-WebRequest `
   -Body $tokenHubRequestBody
 ```
 
-If TokenHub returns `responses_stream_unsupported`, an administrator must correct the model route or provider resource type.
+If TokenHub returns `provider_capability_not_supported`, an administrator must correct the model route or provider resource type.
+
+For the official DeepSeek provider, Responses and Codex are currently model-scoped: use `deepseek-v4-flash`; TokenHub does not advertise `deepseek-v4-pro` as Responses-capable until DeepSeek enables it upstream. DeepSeek manages context caching automatically. When `TOKENHUB_CACHE_AFFINITY_ENABLED=true`, TokenHub uses stable Codex session hints such as `session-id`, `client_metadata.session_id`, or `prompt_cache_key` to keep successive Responses turns on the same upstream account; this key controls gateway routing and does not create a separate TokenHub response cache.
 
 ---
 
@@ -332,7 +334,7 @@ To recover, restore `config.toml`, remove only the `TOKENHUB_API_KEY` line added
 | HTTP 404 | Wrong Base URL or model ID | Confirm `/v1` and query `GET /v1/models` again |
 | HTTP 429 / `quota_exceeded` | Request, token, cost, concurrency, or provider limit | Wait for recovery or adjust policy |
 | HTTP 503 / `provider_unavailable` | No healthy route | Check route, provider, and account resource health |
-| HTTP 400 / `responses_stream_unsupported` | Route cannot stream Responses | Change the route or provider resource |
+| HTTP 501 / `provider_capability_not_supported` | Route cannot provide Responses or streaming Responses | Change the model route or provider resource |
 
 Check only whether the key exists:
 

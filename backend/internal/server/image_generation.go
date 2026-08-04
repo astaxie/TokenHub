@@ -80,6 +80,12 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
 		return
 	}
+	originator := strings.ToLower(strings.TrimSpace(r.Header.Get("originator")))
+	if strings.TrimSpace(request.Model) == openAIImageModelName &&
+		(strings.TrimSpace(r.Header.Get("x-codex-image-turn-id")) != "" || strings.HasPrefix(originator, "codex")) {
+		request.Model = codexImageModelName
+		request.ResponseFormat = "b64_json"
+	}
 	if err := normalizeImageGenerationRequest(&request); err != nil {
 		writeError(w, r, err)
 		return
@@ -409,7 +415,7 @@ func (s *Server) handleImageAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startImageCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, request imageGenerationRequest) (CallContext, bool) {
-	call, err := s.store.StartCall(s.imageContext, project, key, request.Model)
+	call, err := s.store.StartCall(s.imageContext, project, key, request.Model, EstimateTextTokens(request.Prompt))
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		requestID := s.store.RecordRejectedRequest(project, key, request.Model, false, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
@@ -421,6 +427,7 @@ func (s *Server) startImageCall(w http.ResponseWriter, r *http.Request, project 
 		return CallContext{}, false
 	}
 	w.Header().Set("x-request-id", call.RequestID)
+	writeRateLimitHeaders(w.Header(), call.RateLimitHeaders)
 	return call, true
 }
 
@@ -456,6 +463,16 @@ func (s *Server) enqueueImageJob(work imageJobWork) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Traces are flushed last, once every producer of completions has stopped.
+	// Deferring it also makes the flush survive the early returns below: failing to
+	// drain the image queue is bad, failing to drain it and silently discarding
+	// every buffered trace is worse.
+	defer s.shutdownTracing()
+	if s.billing != nil {
+		if err := s.billing.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
 	s.imageWorkerStop.Do(func() {
 		s.imageCancel()
 	})
@@ -506,6 +523,14 @@ func (s *Server) processImageJob(work imageJobWork) {
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(s.config.ImageJobTimeoutSeconds)*time.Second)
 	defer cancel()
 	routes, routeErr := s.imageRouteCandidates(job.Model)
+	if routeErr != nil {
+		routeErr = s.annotateRoutingPolicyForCandidateError(&work.call, routeErr)
+		httpErr := AsHTTPError(routeErr)
+		s.finishImageJobFailure(work, job, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, httpErr.Message)
+		return
+	}
+	routes, resolution, routeErr := s.resolveScopedRoutingPolicy(work.call, routes)
+	applyRoutingPolicyResolution(&work.call, resolution)
 	if routeErr != nil {
 		httpErr := AsHTTPError(routeErr)
 		s.finishImageJobFailure(work, job, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, httpErr.Message)

@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,7 +41,26 @@ type GatewayMetrics struct {
 	inFlight prometheus.Gauge
 	tokens   *prometheus.CounterVec
 	cost     *prometheus.CounterVec
+	// rateLimitHits uses a per-key reference only for limits owned by an API key.
+	// Inherited scopes use a fixed label to avoid multiplying global, project or
+	// team policy series by the number of keys that happen to hit them.
+	rateLimitHits *prometheus.CounterVec
+	// traceCompletions and traceSpans cover the two places a trace can be lost, and
+	// they are separate because the fixes are different: a full queue means the
+	// gateway is producing faster than it can convert, while a failed export means
+	// the backend is unreachable or rejecting. Without both, a gap in Langfuse looks
+	// like a gateway that received no traffic.
+	traceCompletions *prometheus.CounterVec
+	traceSpans       *prometheus.CounterVec
 }
+
+const (
+	traceCompletionOutcomeConverted = "converted"
+	traceCompletionOutcomeDropped   = "dropped"
+
+	traceSpanOutcomeExported = "exported"
+	traceSpanOutcomeFailed   = "failed"
+)
 
 // GatewayCallSample is one finished gateway request, successful or not.
 type GatewayCallSample struct {
@@ -101,12 +121,61 @@ func NewGatewayMetrics(projectLabel bool) *GatewayMetrics {
 		Name:      "cost_usd_total",
 		Help:      "Estimated cost in USD attributed to model API requests.",
 	}, withProject("model", "provider_type", "provider_id"))
+	m.rateLimitHits = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "rate_limit_hits_total",
+		Help:      "Rate-limit rejections by effective policy scope and limit type. key_ref is a masked identifier only for api_key scope and is none for inherited scopes.",
+	}, []string{"scope", "limit", "key_ref"})
 
-	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost)
+	m.traceCompletions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "trace_completions_total",
+		Help:      "Finished gateway calls by what tracing did with them. \"dropped\" means the conversion queue was full and no span was ever built.",
+	}, []string{"outcome"})
+	m.traceSpans = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "trace_spans_total",
+		Help:      "Spans by what the OTLP exporter did with them. \"failed\" means the trace backend rejected them or could not be reached.",
+	}, []string{"outcome"})
+
+	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans)
 	// Process and Go runtime metrics are what an operator reaches for first when the
 	// gateway itself is the suspect, and they cost nothing to collect.
 	m.registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	return m
+}
+
+func (m *GatewayMetrics) ObserveRateLimitHit(keyID string, limit string, scope string) {
+	if m == nil {
+		return
+	}
+	scope = minuteLimitMetricScope(scope)
+	keyRef := metricsLabelUnset
+	if scope == "api_key" {
+		if strings.TrimSpace(keyID) == "" {
+			return
+		}
+		keyRef = maskedAPIKeyMetricLabel(keyID)
+	}
+	m.rateLimitHits.WithLabelValues(scope, metricsLabel(limit), keyRef).Inc()
+}
+
+func minuteLimitMetricScope(scope string) string {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	switch scope {
+	case "api_key", "global", "project", "team":
+		return scope
+	default:
+		return "api_key"
+	}
+}
+
+func maskedAPIKeyMetricLabel(keyID string) string {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(keyID)))
+	return "key_" + hex.EncodeToString(digest[:6])
 }
 
 // MetricsSink is implemented by stores that can report gateway metrics. The server
@@ -141,6 +210,23 @@ func (m *GatewayMetrics) decInFlight() {
 
 // ObserveGatewayCall records one finished request. Every method is nil-safe so callers
 // do not have to branch on whether metrics are enabled.
+// ObserveTraceCompletion counts one finished gateway call's fate in the conversion
+// queue.
+func (m *GatewayMetrics) ObserveTraceCompletion(outcome string) {
+	if m == nil {
+		return
+	}
+	m.traceCompletions.WithLabelValues(outcome).Inc()
+}
+
+// ObserveTraceSpans counts spans by what the OTLP exporter managed to do with them.
+func (m *GatewayMetrics) ObserveTraceSpans(outcome string, count int) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.traceSpans.WithLabelValues(outcome).Add(float64(count))
+}
+
 func (m *GatewayMetrics) ObserveGatewayCall(sample GatewayCallSample) {
 	if m == nil {
 		return

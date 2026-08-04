@@ -28,19 +28,19 @@ type AdapterDescriptor struct {
 	Capabilities []AdapterCapability `json:"capabilities"`
 }
 
+// AdapterRegistry is the single source of truth for which adapter serves a
+// provider type and which capabilities that adapter advertises. An adapter may
+// be present without a descriptor: capabilities are only declared through
+// Register, so Describe reporting "unknown" means "capabilities undeclared",
+// not "adapter missing".
 type AdapterRegistry struct {
 	adapters    map[string]any
-	legacy      map[string]ProviderAdapter
 	descriptors map[string]AdapterDescriptor
 }
 
-func NewAdapterRegistry(adapters map[string]ProviderAdapter) *AdapterRegistry {
-	if adapters == nil {
-		adapters = map[string]ProviderAdapter{}
-	}
+func NewAdapterRegistry() *AdapterRegistry {
 	return &AdapterRegistry{
 		adapters:    map[string]any{},
-		legacy:      adapters,
 		descriptors: map[string]AdapterDescriptor{},
 	}
 }
@@ -70,12 +70,24 @@ func (r *AdapterRegistry) Resolve(adapterType string) (any, error) {
 	}
 	adapter, ok := r.adapters[adapterType]
 	if !ok {
-		adapter, ok = r.legacy[adapterType]
-	}
-	if !ok {
 		return nil, NewHTTPError(503, "provider_adapter_missing", "Provider adapter is not registered")
 	}
 	return adapter, nil
+}
+
+// resolveTypedAdapter resolves adapterType and narrows it to T. It reports
+// false when the type is unregistered or the registered adapter is not a T.
+func resolveTypedAdapter[T any](r *AdapterRegistry, adapterType string) (T, bool) {
+	var zero T
+	adapter, err := r.Resolve(adapterType)
+	if err != nil {
+		return zero, false
+	}
+	typed, ok := adapter.(T)
+	if !ok {
+		return zero, false
+	}
+	return typed, true
 }
 
 func (r *AdapterRegistry) Describe(adapterType string) (AdapterDescriptor, bool) {

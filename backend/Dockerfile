@@ -44,16 +44,15 @@ RUN cd backend && \
       -ldflags="-s -w -linkmode external -extldflags '-static' -X main.buildVersion=${TOKENHUB_VERSION} -X main.buildType=${TOKENHUB_BUILD_TYPE} -X main.deploymentType=container" \
       -o /out/tokenhub ./cmd/tokenhub
 
-FROM debian:bookworm-slim
+FROM ${NODE_IMAGE}
 
 ARG TOKENHUB_VERSION=0.4.0
 LABEL org.opencontainers.image.version="${TOKENHUB_VERSION}"
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends bash ca-certificates gosu && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd --gid 1000 node && \
-    useradd --uid 1000 --gid node --create-home --shell /usr/sbin/nologin node
+COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN command -v bash >/dev/null && \
+    command -v setpriv >/dev/null && \
+    test -s /etc/ssl/certs/ca-certificates.crt
 
 ENV NODE_ENV=production \
     TOKENHUB_DEPLOYMENT_TYPE=container \
@@ -73,8 +72,7 @@ COPY --chown=node:node data/provider-catalog.json /usr/local/lib/tokenhub-image/
 COPY deploy/container/tokenhub-build-id /usr/local/bin/tokenhub-build-id
 COPY deploy/container/tokenhub-entrypoint /usr/local/bin/tokenhub-entrypoint
 
-RUN ln -s /usr/local/lib/tokenhub-image/bin/node /usr/local/bin/node && \
-    printf '%s\n' "$TOKENHUB_VERSION" >/usr/local/lib/tokenhub-image/VERSION && \
+RUN printf '%s\n' "$TOKENHUB_VERSION" >/usr/local/lib/tokenhub-image/VERSION && \
     chmod 0755 \
       /usr/local/bin/tokenhub-build-id \
       /usr/local/bin/tokenhub-entrypoint \

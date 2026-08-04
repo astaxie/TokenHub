@@ -930,4 +930,106 @@
   display: grid;
   gap: 8px;
 }
+.billing-connector-toolbar {
+  min-height: 42px;
+  padding: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 
+.billing-connector-status {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.billing-inline-error,
+.billing-inline-notice {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--red) 7%, var(--surface));
+  color: var(--red);
+  font-size: 12px;
+}
+
+.billing-inline-notice {
+  border-color: color-mix(in srgb, var(--green) 35%, var(--border));
+  background: color-mix(in srgb, var(--green) 7%, var(--surface));
+  color: var(--green);
+}
+
+.billing-source-name,
+.billing-sync-state {
+  display: grid;
+  gap: 3px;
+}
+
+.billing-source-name {
+  min-width: 150px;
+  max-width: 280px;
+}
+
+.billing-source-name span,
+.billing-sync-state span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billing-row-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 32px);
+  gap: 4px;
+}
+
+.billing-observability-grid {
+  align-items: start;
+}
+
+.billing-observability-grid > .section + .section {
+  margin-top: 0;
+}
+
+.billing-connector-modal {
+  width: min(720px, calc(100vw - 32px));
+  overflow: hidden;
+}
+
+.modal-body.billing-connector-form {
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 20px;
+  padding: 22px 24px 24px;
+  scrollbar-gutter: stable;
+}
+
+.billing-wide-field {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .billing-connector-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .billing-connector-toolbar .button {
+    width: 100%;
+  }
+
+  .modal-body.billing-connector-form {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .billing-wide-field {
+    grid-column: auto;
+  }
+}

@@ -138,12 +138,25 @@ func contentPartsText(parts []chatContentPart) string {
 	return strings.Join(segments, "")
 }
 
+// unsupportedContentError is raised while converting the caller's request, before
+// the provider is contacted. It is the caller's payload that cannot be expressed,
+// so the resource is not at fault and no other candidate would fare better —
+// without the disposition it counted as a provider failure, and one client
+// looping on an unconvertible payload could trip a healthy resource's breaker.
 func unsupportedContentError(detail string) error {
-	return NewHTTPError(http.StatusBadRequest, "unsupported_content_block", detail)
+	return &ProviderInvocationError{
+		Err:         NewHTTPError(http.StatusBadRequest, "unsupported_content_block", detail),
+		Disposition: ProviderErrorClient,
+	}
 }
 
+// unsupportedCapabilityError says this adapter cannot serve the request at all.
+// Another candidate may still be able to, but the resource itself is healthy.
 func unsupportedCapabilityError(detail string) error {
-	return NewHTTPError(http.StatusNotImplemented, "provider_capability_not_supported", detail)
+	return &ProviderInvocationError{
+		Err:         NewHTTPError(http.StatusNotImplemented, "provider_capability_not_supported", detail),
+		Disposition: ProviderErrorModelUnsupported,
+	}
 }
 
 func invalidProviderResponseError(detail string) error {

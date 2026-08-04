@@ -356,7 +356,7 @@ func TestAnthropicAdapterTranslatesReasoningEffort(t *testing.T) {
 	_, _, err = adapter.Responses(context.Background(), provider, "claude-sonnet-5", ResponsesRequest{
 		Model: "reasoning-model",
 		Input: "reason",
-		Reasoning: &ReasoningOptions{
+		Reasoning: &ResponsesReasoning{
 			Effort: &effort,
 		},
 	})
@@ -458,7 +458,7 @@ func TestGeminiAdapterTranslatesReasoningEffort(t *testing.T) {
 				_, _, err := adapter.Responses(context.Background(), provider, test.providerModel, ResponsesRequest{
 					Model: "reasoning-model",
 					Input: "reason",
-					Reasoning: &ReasoningOptions{
+					Reasoning: &ResponsesReasoning{
 						Effort: &test.effort,
 					},
 				})
@@ -849,7 +849,7 @@ func TestReasoningEffortRejectionMatcher(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := newProviderHTTPError(test.upstreamStatus, []byte(test.body))
+			err := newProviderHTTPError(test.upstreamStatus, nil, []byte(test.body))
 			if got := isReasoningEffortRejection(err); got != test.want {
 				t.Fatalf("isReasoningEffortRejection() = %v, want %v", got, test.want)
 			}
@@ -1057,7 +1057,7 @@ func TestStreamingEffortFallbackSurfacesPreStreamErrors(t *testing.T) {
 			rateLimitRPM:     10,
 			secondStatus:     http.StatusInternalServerError,
 			wantStatus:       http.StatusBadGateway,
-			wantCode:         "provider_error",
+			wantCode:         "provider_upstream_error",
 			wantUpstreamCall: 2,
 			wantRequests:     2,
 		},
@@ -1147,7 +1147,6 @@ func TestStreamingEffortFallbackSurfacesPreStreamErrors(t *testing.T) {
 func TestStreamingEffortFallbackDoesNotRetryAfterWriting(t *testing.T) {
 	server, _, secret := newReasoningEffortGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
 	adapter := &partialStreamEffortRejectAdapter{}
-	server.adapters[ProviderOpenAICompatible] = adapter
 	server.adapterRegistry.Register(
 		ProviderOpenAICompatible,
 		adapter,
@@ -1482,7 +1481,7 @@ func (a *partialStreamEffortRejectAdapter) Chat(context.Context, Provider, strin
 func (a *partialStreamEffortRejectAdapter) ChatStream(_ context.Context, _ Provider, _ string, _ ChatCompletionRequest, w io.Writer) (Usage, error) {
 	a.calls++
 	_, _ = io.WriteString(w, "data: partial\n\n")
-	return Usage{}, newProviderHTTPError(http.StatusBadRequest, []byte(`{"error":{"message":"reasoning_effort is unsupported"}}`))
+	return Usage{}, newProviderHTTPError(http.StatusBadRequest, nil, []byte(`{"error":{"message":"reasoning_effort is unsupported"}}`))
 }
 
 func (a *partialStreamEffortRejectAdapter) Responses(context.Context, Provider, string, ResponsesRequest) (any, Usage, error) {

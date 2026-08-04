@@ -9,6 +9,7 @@ import { adminUserConfig, alertDeliveryConfig, alertEventConfig, alertRuleConfig
 import { adminDelete, adminFetch, adminMutate, identityProviderPayload, notificationChannelPayload } from "./payloads";
 import { apiKeyConfig, projectConfig, projectMemberConfig } from "./project-key-config";
 import { modelConfig, providerConfig, routeConfig } from "./provider-model-config";
+import { routingPolicyConfig } from "./routing-policy-config";
 import { StatusPill } from "../shared/ui";
 import { identityProviderIconOptions, identityProviderInitialFormValues, identityProviderTemplateOptions } from "../shell/auth";
 
@@ -24,6 +25,7 @@ function createResourceConfigs(): Partial<Record<ViewKey, ResourceConfig<any>>> 
   providers: providerConfig(),
   models: modelConfig(),
   routes: routeConfig(),
+  "routing-policies": routingPolicyConfig(),
   projects: projectConfig(),
   "project-members": projectMemberConfig(),
   "api-keys": apiKeyConfig(),
@@ -32,6 +34,8 @@ function createResourceConfigs(): Partial<Record<ViewKey, ResourceConfig<any>>> 
   "quota-policies": genericResourceConfig("quota-policies", "项目额度", "项目、Key、用户维度的请求、Token、成本与并发上限", [
     { key: "scope", label: "作用域", type: "select", options: ["global", "project", "api_key", "team"], required: true },
     { key: "scope_id", label: "作用域 ID" },
+    { key: "rate_limit_rpm", label: "每分钟请求数（RPM）", type: "number" },
+    { key: "token_limit_tpm", label: "每分钟 Token 数（TPM）", type: "number" },
     { key: "daily_requests", label: "日请求", type: "number" },
     { key: "monthly_requests", label: "月请求", type: "number" },
     { key: "daily_tokens", label: "日 Token", type: "number" },

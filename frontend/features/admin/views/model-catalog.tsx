@@ -1,15 +1,16 @@
-import { AlertCircle, Boxes, ChevronDown, CircleHelp, Gauge, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+// 该文件保留模型分类/通知渠道页签、路由策略视图与模型品牌图标；
+// 模型目录本身已由 model-directory.tsx 的 ModelDirectoryView 渲染。
+import { Boxes, Gauge, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type ResourceAction, type ResourceConfig, type ViewKey } from "../core/types";
-import { filterModelCatalog, hasThirdPartyRoute, modelCapabilityLabel, modelCatalogCapabilityTabs, modelCatalogCategories, modelCatalogFilterLabel, modelCategory, modelCategoryInitial, modelCategoryLabel, modelCategoryTabs, notificationChannelTabs, priceMetric } from "../domain/catalog";
-import { filterRouteModels, isCodexSubscriptionImageModel, modelIsInDirectory, modelRoutesFor, reorderRoutes, routeModelCategories } from "../domain/entities";
-import { activeRouteCount, formatNumber, modelAvailabilitySummary, modelCatalogEmptyText, modelCategoryRank } from "../domain/formatting";
+import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type ResourceConfig, type ViewKey } from "../core/types";
+import { modelCatalogFilterLabel, modelCategory, modelCategoryInitial, modelCategoryLabel, modelCategoryTabs, notificationChannelTabs } from "../domain/catalog";
+import { filterRouteModels, modelIsInDirectory, modelRoutesFor, reorderRoutes, routeModelCategories } from "../domain/entities";
 import { tx } from "../i18n/runtime";
-import { DataSection, ModelRouteProviders, StatusPill } from "../shared/ui";
-import { clampNumber } from "./crud-projects";
-import { modelBrandIconSource, modelCatalogMoney, modelCatalogPriceBaseline, modelCatalogPriceRow, modelCatalogPriceValue, modelDisplayTitle, modelEstimatedMonthlyCost } from "./database-model-pricing";
+import { DataSection, StatusPill } from "../shared/ui";
+import { modelBrandIconSource } from "./database-model-pricing";
 import { ModelRoutingPolicyEditor, modelRoutePolicySignature } from "./model-routing-policy";
-import { PaginationControls, RouteStrategyHint, usePagination } from "./settings-table";
+import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
+import { RouteStrategyHint } from "./settings-table";
 
 export function ModelCategoryTabs({
   data,
@@ -70,379 +71,14 @@ export function NotificationChannelTabs({
   );
 }
 
-export function ModelCatalogView({
-  config,
-  data,
-  readOnly = false,
-  onCreate,
-  onEdit,
-  onDelete,
-  onBulkDelete,
-  onRestoreDefaults,
-  onAction,
-}: {
-  config: ResourceConfig<Model>;
-  data: AppData;
-  readOnly?: boolean;
-  onCreate: () => void;
-  onEdit: (item: Model) => void;
-  onDelete: (item: Model) => void;
-  onBulkDelete: (items: Model[]) => void;
-  onRestoreDefaults: () => void;
-  onAction: (action: ResourceAction<Model>, item: Model) => void;
-}) {
-  const [category, setCategory] = useState("all");
-  const [capability, setCapability] = useState("all");
-  const [query, setQuery] = useState("");
-  const categories = modelCatalogCategories(data);
-  const capabilities = modelCatalogCapabilityTabs(data);
-  const filtered = useMemo(
-    () => filterModelCatalog(data.models, data, category, capability, query),
-    [data, category, capability, query],
-  );
-
-  return (
-    <DataSection title={config.eyebrow}>
-      <div className="model-catalog model-catalog-table-mode">
-        <section className="model-catalog-main">
-          <div className="model-category-strip">
-            <div className="model-category-strip-head">
-              <strong>{tx("模型大类")}</strong>
-              <span>{data.models.length} {tx("个模型")}</span>
-            </div>
-            <div className="model-category-tabs" role="tablist" aria-label={tx("模型大类")}>
-              {categories.map((item) => (
-                <button
-                  aria-selected={category === item.key}
-                  className={category === item.key ? "model-category-tab active" : "model-category-tab"}
-                  key={item.key}
-                  onClick={() => setCategory(item.key)}
-                  role="tab"
-                  type="button"
-                >
-                  <ModelBrandIcon compact category={item.key} label={tx(item.label)} />
-                  <strong>{tx(item.label)}</strong>
-                  <em>{item.count}</em>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="model-filterbar">
-            <div className="model-capability-tabs" role="tablist" aria-label={tx("模型能力筛选")}>
-              {capabilities.map((item) => (
-                <button
-                  aria-selected={capability === item.key}
-                  className={capability === item.key ? "model-capability-tab active" : "model-capability-tab"}
-                  key={item.key}
-                  onClick={() => setCapability(item.key)}
-                  role="tab"
-                type="button"
-              >
-                <item.icon size={14} />
-                <span>{tx(item.label)}</span>
-                <em>{item.count}</em>
-              </button>
-              ))}
-            </div>
-            <div className="model-catalog-actions">
-              <div className="search-box model-search">
-                <Search size={16} />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={tx("搜索模型名称或 ID")}
-                />
-              </div>
-              {!readOnly ? (
-                <button className="button" onClick={onCreate} type="button">
-                  <Plus size={17} />
-                  {tx(config.createLabel ?? "新增模型")}
-                </button>
-              ) : null}
-              {!readOnly ? (
-                <button className="secondary-button" onClick={onRestoreDefaults} type="button">
-                  <RefreshCw size={16} />
-                  {tx("恢复出厂目录")}
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="model-catalog-summary">
-            <span>{tx(modelCatalogFilterLabel(categories, category))}</span>
-            <strong>{filtered.length}</strong>
-            <em>{tx("个匹配模型")}</em>
-          </div>
-          <div className="model-availability-note">
-            <AlertCircle size={15} />
-            <span>{tx(readOnly ? "普通用户看到的是当前账号可见的模型；实际调用还会受项目 Key 白名单和项目权限限制。" : "可用模型需要同时满足：模型目录启用、至少一条路由启用、Provider 或账号资源健康。")}</span>
-          </div>
-
-          {filtered.length === 0 ? (
-            <div className="empty model-catalog-empty">
-              {modelCatalogEmptyText(data, readOnly, query)}
-            </div>
-          ) : (
-            <ModelCatalogPriceTable
-              models={filtered}
-              data={data}
-              readOnly={readOnly}
-              actions={readOnly ? [] : config.actions ?? []}
-              onAction={onAction}
-              onEdit={readOnly ? undefined : onEdit}
-              onDelete={readOnly ? undefined : onDelete}
-              onBulkDelete={readOnly ? undefined : onBulkDelete}
-            />
-          )}
-        </section>
-      </div>
-    </DataSection>
-  );
-}
-
-export type ModelCatalogPriceSortKey = "default" | "name" | "input" | "output" | "cache" | "context" | "monthly" | "index";
-
-export type ModelCatalogPriceSortDirection = "asc" | "desc";
-
-export type ModelCatalogPriceSort = {
-  key: ModelCatalogPriceSortKey;
-  direction: ModelCatalogPriceSortDirection;
-};
-
-export type ModelCatalogPriceRowData = ReturnType<typeof modelCatalogPriceRow>;
-
-export function ModelCatalogPriceTable({
-  models,
-  data,
-  readOnly,
-  actions,
-  onAction,
-  onEdit,
-  onDelete,
-  onBulkDelete,
-}: {
-  models: Model[];
-  data: AppData;
-  readOnly: boolean;
-  actions: ResourceAction<Model>[];
-  onAction: (action: ResourceAction<Model>, item: Model) => void;
-  onEdit?: (item: Model) => void;
-  onDelete?: (item: Model) => void;
-  onBulkDelete?: (items: Model[]) => void;
-}) {
-  const [sort, setSort] = useState<ModelCatalogPriceSort>({ key: "default", direction: "asc" });
-  const [selectedModelNames, setSelectedModelNames] = useState<Set<string>>(() => new Set());
-  const defaultSorted = modelCatalogPriceSortedModels(models);
-  const baseline = modelCatalogPriceBaseline(defaultSorted);
-  const rows = modelCatalogSortRows(defaultSorted.map((model) => modelCatalogPriceRow(model, data, readOnly, baseline)), sort);
-  const paginationResetKey = `model-catalog:${sort.key}:${sort.direction}:${models.map((model) => model.name).join("|")}`;
-  const pagination = usePagination(rows.length, paginationResetKey);
-  const pagedRows = rows.slice(pagination.startIndex, pagination.endIndex);
-  const maxIndex = Math.max(1, ...rows.map((row) => row.priceIndex || 0));
-  const pageModelNames = pagedRows.map((row) => row.model.name);
-  const pageSelectableCount = pageModelNames.length;
-  const allPageSelected = pageSelectableCount > 0 && pageModelNames.every((name) => selectedModelNames.has(name));
-  const somePageSelected = pageModelNames.some((name) => selectedModelNames.has(name));
-  const selectedModels = rows.map((row) => row.model).filter((model) => selectedModelNames.has(model.name));
-
-  useEffect(() => {
-    const visibleNames = new Set(models.map((model) => model.name));
-    setSelectedModelNames((current) => {
-      const next = new Set<string>();
-      current.forEach((name) => {
-        if (visibleNames.has(name)) next.add(name);
-      });
-      return next.size === current.size ? current : next;
-    });
-  }, [models]);
-
-  function toggleModelSelection(name: string, checked: boolean) {
-    setSelectedModelNames((current) => {
-      const next = new Set(current);
-      if (checked) {
-        next.add(name);
-      } else {
-        next.delete(name);
-      }
-      return next;
-    });
-  }
-
-  function togglePageSelection(checked: boolean) {
-    setSelectedModelNames((current) => {
-      const next = new Set(current);
-      for (const name of pageModelNames) {
-        if (checked) {
-          next.add(name);
-        } else {
-          next.delete(name);
-        }
-      }
-      return next;
-    });
-  }
-
-  return (
-    <>
-      {!readOnly ? (
-        <div className="model-bulk-toolbar">
-          <span>{selectedModels.length > 0 ? `${selectedModels.length} ${tx("个已选")}` : tx("未选择模型")}</span>
-          <div>
-            <button className="secondary-button" disabled={selectedModels.length === 0} onClick={() => setSelectedModelNames(new Set())} type="button">
-              {tx("清除选择")}
-            </button>
-            <button className="danger-button model-bulk-delete" disabled={selectedModels.length === 0 || !onBulkDelete} onClick={() => onBulkDelete?.(selectedModels)} type="button">
-              <Trash2 size={15} />
-              {tx("批量删除")}
-            </button>
-          </div>
-        </div>
-      ) : null}
-      <div className="model-price-table-wrap">
-        <table className={readOnly ? "model-price-table" : "model-price-table admin selectable"}>
-          <thead>
-            <tr>
-              {!readOnly ? (
-                <th className="model-price-select">
-                  <input
-                    aria-label={tx("全选")}
-                    checked={allPageSelected}
-                    ref={(input) => {
-                      if (input) input.indeterminate = somePageSelected && !allPageSelected;
-                    }}
-                    onChange={(event) => togglePageSelection(event.currentTarget.checked)}
-                    type="checkbox"
-                  />
-                </th>
-              ) : null}
-              <th aria-sort={modelCatalogSortAria(sort, "name")}>
-                <ModelCatalogSortHeader label="模型" sortKey="name" sort={sort} onSort={setSort} />
-              </th>
-              <th>{tx("类型")}</th>
-              <th aria-sort={modelCatalogSortAria(sort, "input")}>
-                <ModelCatalogSortHeader label="输入价" sortKey="input" sort={sort} onSort={setSort} />
-              </th>
-              <th aria-sort={modelCatalogSortAria(sort, "output")}>
-                <ModelCatalogSortHeader label="输出价" sortKey="output" sort={sort} onSort={setSort} />
-              </th>
-              <th aria-sort={modelCatalogSortAria(sort, "cache")}>
-                <ModelCatalogSortHeader label="缓存读" sortKey="cache" sort={sort} onSort={setSort} />
-              </th>
-              <th aria-sort={modelCatalogSortAria(sort, "context")}>
-                <ModelCatalogSortHeader label="上下文" sortKey="context" sort={sort} onSort={setSort} />
-              </th>
-              <th aria-sort={modelCatalogSortAria(sort, "monthly")}>
-                <ModelCatalogSortHeader label="估算月成本" sortKey="monthly" sort={sort} onSort={setSort} />
-              </th>
-              <th aria-sort={modelCatalogSortAria(sort, "index")}>
-                <ModelCatalogSortHeader label="价格指数" sortKey="index" sort={sort} onSort={setSort} />
-              </th>
-              <th>{tx("来源")}</th>
-              {!readOnly ? <th>{tx("操作")}</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {pagedRows.map((row) => {
-              const visibleActions = actions.filter((action) => !action.visible || action.visible(row.model));
-              const selected = selectedModelNames.has(row.model.name);
-              const rowClassName = [
-                row.availability.tone === "blocked" && !readOnly ? "unrouted" : "",
-                selected ? "selected-model-row" : "",
-              ].filter(Boolean).join(" ") || undefined;
-              return (
-                <tr className={rowClassName} key={row.model.name}>
-                  {!readOnly ? (
-                    <td className="model-price-select">
-                      <input
-                        aria-label={row.model.name}
-                        checked={selected}
-                        onChange={(event) => toggleModelSelection(row.model.name, event.currentTarget.checked)}
-                        type="checkbox"
-                      />
-                    </td>
-                  ) : null}
-                <td>
-                  <div className="model-price-name">
-                    <ModelBrandIcon category={row.category} label={row.categoryLabel} />
-                    <div>
-                      <strong>{modelDisplayTitle(row.model)}</strong>
-                      <span>{row.categoryLabel} · {row.model.name}</span>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span className={`model-type-badge ${row.typeTone}`}>{tx(row.typeLabel)}</span>
-                </td>
-                <td><strong className="model-price-number">{modelCatalogPriceValue(row.inputPrice)}</strong></td>
-                <td><strong className="model-price-number output">{modelCatalogPriceValue(row.outputPrice)}</strong></td>
-                <td>
-                  <span
-                    aria-label={`${modelCatalogPriceValue(row.cacheReadPrice)}. ${row.cacheReadPriceHint}`}
-                    className={`model-cache-price ${row.cacheReadPriceSource}`}
-                    data-tooltip={row.cacheReadPriceHint}
-                    tabIndex={0}
-                  >
-                    <strong className={row.cacheReadPrice ? "model-price-number" : "model-price-number muted"}>
-                      {modelCatalogPriceValue(row.cacheReadPrice)}
-                    </strong>
-                    <CircleHelp aria-hidden="true" size={13} />
-                  </span>
-                </td>
-                <td>
-                  <div className="model-context-cell">
-                    <strong>{row.contextLabel}</strong>
-                    <span>{row.contextDetail}</span>
-                  </div>
-                </td>
-                <td><strong className="model-monthly-cost">{row.monthlyCost > 0 ? `$${modelCatalogMoney(row.monthlyCost)}` : "-"}</strong></td>
-                <td>
-                  <div className="model-price-index">
-                    <span>
-                      <i style={{ width: row.priceIndex > 0 ? `${clampNumber((row.priceIndex / maxIndex) * 100, 8, 100)}%` : "0%" }} />
-                    </span>
-                    <strong>{row.priceIndex > 0 ? `${row.priceIndex.toFixed(2)}x` : "-"}</strong>
-                  </div>
-                </td>
-                <td>
-                  <div className="model-source-cell">
-                    <span className={`model-source-pill ${row.sourceTone}`}>{tx(row.sourceLabel)}</span>
-                    <small>{row.availability.activeRoutes}/{row.availability.totalRoutes} {tx("启用路由")}</small>
-                  </div>
-                </td>
-                {!readOnly ? (
-                  <td>
-                    <div className="model-row-actions">
-                      {visibleActions.map((action) => (
-                        <button className="text-button" key={action.label} onClick={() => onAction(action, row.model)} type="button">
-                          {tx(action.label)}
-                        </button>
-                      ))}
-                      {onEdit ? <button className="text-button" onClick={() => onEdit(row.model)} type="button">{tx("编辑")}</button> : null}
-                      {onDelete ? (
-                        <button className="danger-button" onClick={() => onDelete(row.model)} title={tx("删除")} type="button">
-                          <Trash2 size={15} />
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                ) : null}
-              </tr>
-            );
-          })}
-          </tbody>
-        </table>
-      </div>
-      <PaginationControls pagination={pagination} totalItems={rows.length} />
-    </>
-  );
-}
-
 export function RouteStrategyView({
   config,
   data,
+  initialQuery = "",
   loading,
   onCreate,
+  onOpenModels,
+  onOpenProviders,
   onEdit,
   onDelete,
   onReorder,
@@ -450,8 +86,11 @@ export function RouteStrategyView({
 }: {
   config: ResourceConfig<ModelRoute>;
   data: AppData;
+  initialQuery?: string;
   loading: boolean;
   onCreate: (model: Model) => void;
+  onOpenModels: () => void;
+  onOpenProviders: () => void;
   onEdit: (item: ModelRoute) => void;
   onDelete: (item: ModelRoute) => void;
   onReorder: (model: Model, routes: ModelRoute[]) => void;
@@ -459,9 +98,10 @@ export function RouteStrategyView({
 }) {
   const [category, setCategory] = useState("all");
   const [scope, setScope] = useState<"configured" | "all">("all");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [draggedRouteID, setDraggedRouteID] = useState("");
   const categories = routeModelCategories(data);
+  useEffect(() => setQuery(initialQuery), [initialQuery]);
   const filtered = useMemo(
     () => filterRouteModels(data, category, scope, query),
     [data, category, scope, query],
@@ -469,6 +109,41 @@ export function RouteStrategyView({
   const configuredCount = data.models.filter((model) => modelRoutesFor(model, data).length > 0).length;
   const directoryModelCount = data.models.filter((model) => modelIsInDirectory(model, data)).length;
   const activeRouteCount = data.routes.filter((route) => route.status === "active").length;
+  const firstDirectoryModel = data.models.find((model) => modelIsInDirectory(model, data));
+  const hasImportedProviderModels = data.providers.length > 0 && data.providerModels.length > 0;
+  const emptyStage = !hasImportedProviderModels ? "providers" : directoryModelCount === 0 ? "models" : "routes";
+
+  if (!loading && (directoryModelCount === 0 || data.routes.length === 0)) {
+    const title = emptyStage === "providers"
+      ? "先引入可用的 Provider 模型"
+      : emptyStage === "models"
+        ? "先创建一个对外模型"
+        : "还没有路由策略";
+    const description = emptyStage === "providers"
+      ? "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"
+      : emptyStage === "models"
+        ? "从内置的 165 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。"
+        : "为对外模型添加 Provider 线路，并设置优先级、权重与流量策略。路由不会改变统一对外价格。";
+    const actionLabel = emptyStage === "providers" ? "前往 Provider 渠道" : emptyStage === "models" ? "前往模型目录" : "为模型添加路由";
+    const onAction: () => void = emptyStage === "providers"
+      ? onOpenProviders
+      : emptyStage === "models"
+        ? onOpenModels
+        : () => {
+            if (firstDirectoryModel) onCreate(firstDirectoryModel);
+          };
+    return (
+      <DataSection title={config.eyebrow}>
+        <ModelGovernanceEmptyState
+          stage={emptyStage}
+          title={title}
+          description={description}
+          actionLabel={actionLabel}
+          onAction={onAction}
+        />
+      </DataSection>
+    );
+  }
 
   return (
     <DataSection title={config.eyebrow}>
@@ -643,106 +318,6 @@ export function RouteModelCard({
   );
 }
 
-export function ModelCatalogCard({
-  model,
-  data,
-  readOnly = false,
-  actions,
-  onAction,
-  onEdit,
-  onDelete,
-}: {
-  model: Model;
-  data: AppData;
-  readOnly?: boolean;
-  actions: ResourceAction<Model>[];
-  onAction: (action: ResourceAction<Model>, item: Model) => void;
-  onEdit?: (item: Model) => void;
-  onDelete?: (item: Model) => void;
-}) {
-  const category = modelCategory(model);
-  const availability = modelAvailabilitySummary(model, data, readOnly);
-  const routeCount = availability.activeRoutes;
-  const hasConfiguredRoute = availability.activeRoutes > 0;
-  const codexSubscriptionImage = isCodexSubscriptionImageModel(model);
-  const cardClassName = !readOnly && availability.tone === "blocked" ? "model-card unrouted" : "model-card";
-  return (
-    <article className={cardClassName}>
-      <div className="model-card-head">
-        <div className="model-card-brand">
-          <span>{modelCategoryInitial(category, modelCategoryLabel(category))}</span>
-          <div>
-            <em>{modelCategoryLabel(category)}</em>
-            <strong>{model.modality || "chat"}</strong>
-          </div>
-        </div>
-        <StatusPill status={model.status} />
-      </div>
-
-      <h2>{model.name}</h2>
-
-      <div className="model-card-tags">
-        <span>{modelCapabilityLabel(model)}</span>
-        {readOnly ? (
-          <span className="official">{tx(availability.label)}</span>
-        ) : (
-          <>
-            <span className={hasConfiguredRoute ? undefined : "unrouted-tag"}>
-              {codexSubscriptionImage
-                ? (hasConfiguredRoute ? `${routeCount} ${tx("个生图账号")}` : tx("暂无可生图账号"))
-                : (hasConfiguredRoute ? `${routeCount} ${tx("条线路")}` : tx("未配置线路"))}
-            </span>
-            {hasThirdPartyRoute(model, data) ? <span className="third">{tx("三方资源")}</span> : <span className="official">{tx("官方资源")}</span>}
-          </>
-        )}
-      </div>
-
-      <div className={`model-availability ${availability.tone}`}>
-        <strong>{tx(availability.label)}</strong>
-        <span>{tx(availability.detail)}</span>
-      </div>
-
-      <div className="model-card-pricing">
-        <ModelMetric label="输入" value={priceMetric(model.input_price_usd_per_1m)} muted={!model.input_price_usd_per_1m} />
-        <ModelMetric label="输出" value={priceMetric(model.output_price_usd_per_1m)} muted={!model.output_price_usd_per_1m} />
-        <ModelMetric label="上下文" value={model.context_window ? formatNumber(model.context_window) : "-"} />
-        <ModelMetric label="Embedding" value={priceMetric(model.embedding_price_usd_per_1m)} muted={!model.embedding_price_usd_per_1m} />
-      </div>
-
-      {!readOnly ? (
-        <div className="model-card-routes">
-          <ModelRouteProviders model={model} data={data} />
-        </div>
-      ) : null}
-
-      {actions.length > 0 || onEdit || onDelete ? (
-        <div className="model-card-actions">
-          {actions.map((action) => (
-            <button className="text-button" key={action.label} onClick={() => onAction(action, model)} type="button">
-              {tx(action.label)}
-            </button>
-          ))}
-          {onEdit ? <button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button> : null}
-          {onDelete ? (
-            <button className="danger-button" onClick={() => onDelete(model)} title={tx("删除")} type="button">
-              <Trash2 size={15} />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-export function ModelMetric({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div className={muted ? "model-metric muted" : "model-metric"}>
-      <strong>{value}</strong>
-      <span>{tx(label)}</span>
-    </div>
-  );
-}
-
 export function ModelBrandIcon({ category, label, compact = false }: { category: string; label: string; compact?: boolean }) {
   const source = modelBrandIconSource(category);
   const className = `model-brand-icon${compact ? " compact" : ""}${source ? "" : " fallback"}`;
@@ -758,108 +333,4 @@ export function ModelBrandIcon({ category, label, compact = false }: { category:
       <Boxes size={18} />
     </span>
   );
-}
-
-export function ModelCatalogSortHeader({
-  label,
-  sortKey,
-  sort,
-  onSort,
-}: {
-  label: string;
-  sortKey: Exclude<ModelCatalogPriceSortKey, "default">;
-  sort: ModelCatalogPriceSort;
-  onSort: (sort: ModelCatalogPriceSort) => void;
-}) {
-  const active = sort.key === sortKey;
-  return (
-    <button
-      className={active ? `model-sort-button active ${sort.direction}` : "model-sort-button"}
-      onClick={() => onSort(modelCatalogNextSort(sort, sortKey))}
-      title={tx("点击排序")}
-      type="button"
-    >
-      <span>{tx(label)}</span>
-      <ChevronDown aria-hidden="true" className="model-sort-icon" size={13} />
-    </button>
-  );
-}
-
-export function modelCatalogNextSort(current: ModelCatalogPriceSort, key: Exclude<ModelCatalogPriceSortKey, "default">): ModelCatalogPriceSort {
-  if (current.key === key) {
-    return { key, direction: current.direction === "asc" ? "desc" : "asc" };
-  }
-  return { key, direction: modelCatalogDefaultSortDirection(key) };
-}
-
-export function modelCatalogDefaultSortDirection(key: ModelCatalogPriceSortKey): ModelCatalogPriceSortDirection {
-  if (key === "name" || key === "input" || key === "output" || key === "cache" || key === "monthly" || key === "index") return "asc";
-  return "desc";
-}
-
-export function modelCatalogSortAria(sort: ModelCatalogPriceSort, key: ModelCatalogPriceSortKey) {
-  if (sort.key !== key) return "none";
-  return sort.direction === "asc" ? "ascending" : "descending";
-}
-
-export function modelCatalogPriceSortedModels(models: Model[]) {
-  return models.slice().sort((left, right) => {
-    const leftCost = modelEstimatedMonthlyCost(left);
-    const rightCost = modelEstimatedMonthlyCost(right);
-    const leftMissingPrice = leftCost <= 0 ? 1 : 0;
-    const rightMissingPrice = rightCost <= 0 ? 1 : 0;
-    return leftMissingPrice - rightMissingPrice
-      || leftCost - rightCost
-      || modelCategoryRank(left) - modelCategoryRank(right)
-      || left.name.localeCompare(right.name);
-  });
-}
-
-export function modelCatalogSortRows(rows: ModelCatalogPriceRowData[], sort: ModelCatalogPriceSort) {
-  if (sort.key === "default") return rows;
-  const direction = sort.direction === "asc" ? 1 : -1;
-  return rows
-    .map((row, index) => ({ row, index }))
-    .sort((left, right) => {
-      const compared = modelCatalogCompareSortValues(
-        modelCatalogSortValue(left.row, sort.key),
-        modelCatalogSortValue(right.row, sort.key),
-        direction,
-      );
-      return compared || left.index - right.index;
-    })
-    .map((item) => item.row);
-}
-
-export function modelCatalogSortValue(row: ModelCatalogPriceRowData, key: ModelCatalogPriceSortKey) {
-  switch (key) {
-    case "name":
-      return modelDisplayTitle(row.model).toLowerCase();
-    case "input":
-      return row.inputPrice || undefined;
-    case "output":
-      return row.outputPrice || undefined;
-    case "cache":
-      return row.cacheReadPrice || undefined;
-    case "context":
-      return row.model.context_window || undefined;
-    case "monthly":
-      return row.monthlyCost || undefined;
-    case "index":
-      return row.priceIndex || undefined;
-    default:
-      return undefined;
-  }
-}
-
-export function modelCatalogCompareSortValues(left: string | number | undefined, right: string | number | undefined, direction: number) {
-  const leftMissing = left === undefined || left === "";
-  const rightMissing = right === undefined || right === "";
-  if (leftMissing && rightMissing) return 0;
-  if (leftMissing) return 1;
-  if (rightMissing) return -1;
-  if (typeof left === "string" || typeof right === "string") {
-    return String(left).localeCompare(String(right)) * direction;
-  }
-  return (left - right) * direction;
 }

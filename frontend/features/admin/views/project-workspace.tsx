@@ -22,6 +22,8 @@ export type ProjectWorkspaceDraft = {
   status: string;
   owner_user_id: string;
   cost_center: string;
+  model_access_mode: "inherit" | "restricted";
+  allowed_models: string[];
   primary_team_id: string;
   primary_role: ProjectTeam["role"];
   additional_teams: ProjectTeamDraftRow[];
@@ -45,6 +47,8 @@ export function projectWorkspaceDraft(project?: Project): ProjectWorkspaceDraft 
     status: project?.status || "active",
     owner_user_id: project?.owner_user_id ?? "",
     cost_center: project?.cost_center ?? "",
+    model_access_mode: project?.model_access_mode || ((project?.allowed_models ?? []).length > 0 ? "restricted" : "inherit"),
+    allowed_models: project?.allowed_models ?? [],
     primary_team_id: primaryTeamID,
     primary_role: primaryLink?.role ?? "team_leader",
     additional_teams: project ? additionalTeams : [teamDraftRow()],
@@ -71,6 +75,8 @@ export async function saveProjectWorkspaceDraft(
     status: draft.status || "active",
     owner_user_id: draft.owner_user_id,
     cost_center: draft.cost_center,
+    model_access_mode: draft.model_access_mode,
+    allowed_models: draft.model_access_mode === "restricted" ? draft.allowed_models : [],
     team_id: draft.primary_team_id,
   };
   const saved = await projectJSON<Project>(
@@ -326,6 +332,44 @@ export function ProjectWorkspace({
           <ProjectSection
             icon={<Gauge size={18} />}
             index="04"
+            title="模型访问"
+            description="项目允许列表先于路由执行，项目内 API Key 只能在此范围内进一步收窄。"
+          >
+            {editable ? (
+              <div className="project-basics-grid">
+                <label className="field">
+                  <span>{tx("模型访问模式")}</span>
+                  <select value={draft.model_access_mode} onChange={(event) => setDraft((current) => ({ ...current, model_access_mode: event.target.value as "inherit" | "restricted" }))}>
+                    <option value="inherit">{tx("继承全部已启用模型")}</option>
+                    <option value="restricted">{tx("指定模型允许列表")}</option>
+                  </select>
+                  <small>{tx("Key 的允许列表会与项目范围取交集，不能扩大项目权限。")}</small>
+                </label>
+                {draft.model_access_mode === "restricted" ? (
+                  <label className="field">
+                    <span>{tx("项目模型允许列表")}</span>
+                    <select
+                      multiple
+                      value={draft.allowed_models}
+                      onChange={(event) => setDraft((current) => ({ ...current, allowed_models: Array.from(event.target.selectedOptions, (option) => option.value) }))}
+                    >
+                      {data.models.filter((model) => model.status === "active").map((model) => <option key={model.name} value={model.name}>{model.name}</option>)}
+                    </select>
+                    <small>{tx("不选择任何模型表示禁止项目访问全部模型。")}</small>
+                  </label>
+                ) : null}
+              </div>
+            ) : (
+              <div className="project-readonly-grid">
+                <ProjectSummaryField label="模型访问模式" value={draft.model_access_mode === "inherit" ? tx("继承全部已启用模型") : tx("指定模型允许列表")} />
+                <ProjectSummaryField label="模型允许列表" value={draft.model_access_mode === "inherit" ? tx("继承上级范围") : draft.allowed_models.join(", ") || tx("禁止全部模型")} />
+              </div>
+            )}
+          </ProjectSection>
+
+          <ProjectSection
+            icon={<Gauge size={18} />}
+            index="05"
             title="项目额度"
             description="配置项目专属请求、Token、成本和并发额度。"
           >

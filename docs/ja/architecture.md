@@ -104,7 +104,8 @@ flowchart LR
 
 | Provider 型 | アダプターと能力 |
 | --- | --- |
-| `openai`、`openai_compatible`、`deepseek`、`qwen`、`local` | OpenAI 互換：Chat、ストリーミング Chat、Responses、Embeddings、プローブ |
+| `openai`、`openai_compatible`、`qwen`、`local` | OpenAI 互換：Chat、ストリーミング Chat、Responses、Embeddings、プローブ |
+| `deepseek` | OpenAI 互換：Chat、ストリーミング Chat、Embeddings、プローブ。Responses とストリーミング Responses はモデル単位で宣言し、現在は `deepseek-v4-flash` のみ有効 |
 | `azure_openai` | Chat、ストリーミング Chat、Embeddings、プローブ |
 | `anthropic` | Chat、ストリーミング Chat、プローブ |
 | `gemini` | Chat、ストリーミング Chat、Embeddings、プローブ |
@@ -125,8 +126,10 @@ sequenceDiagram
 
     C->>G: Bearer Project API Key とモデルリクエスト
     G->>S: Key、Project、有効期限、IP 許可リストを検証
+    G->>G: Project と API Key のモデルアクセスを積集合化
     G->>S: クォータと並行リースを確認し、呼び出しコンテキストを作成
     G->>S: 有効かつ健全な Provider / Resource / Route を取得
+    G->>G: API Key、Project、Global ポリシーを解決し候補を絞り込む
     G->>G: 戦略、重み、セッションアフィニティで試行順序を計画
     loop フェイルオーバー可能な候補ルート
         G->>A: 正規化済みリクエストとルート選択
@@ -140,6 +143,8 @@ sequenceDiagram
 
 非アクティブまたは不健全な Provider、Resource、Route は除外されます。ただし例外として、クールダウンが満了した Resource はハーフオープン候補として再び候補に加わります。最初に到達したリクエストがクールダウン期限を前方へ進めることで試行権を取得するため、同時実行のリクエストは引き続き拒否され、試行が失敗した場合は次のより長いウィンドウがすでに設定されています。その試行自身が成功した場合にのみブレーカーが閉じ、管理者の操作なしに Resource が復旧します。ブレーカー作動時にすでに実行中だったリクエストが Resource を復活させることはありません。失敗が繰り返される場合は `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` を上限として指数的にウィンドウが延長されます。管理者が無効化した Resource が再び組み入れられることはありません。非ストリーミング呼び出しは候補を順番に試行します。出力開始後のストリームは安全に上流を切り替えられません。ストリーミング Responses には `response_stream` 能力を持つアダプターが必要です。`openai_codex` のルートでは、リクエストと API Key からセッションアフィニティキーを導出し、継続性のために Resource バインドを永続化できます。
 
+Project と API Key のモデルアクセスはルート選択前の明示的な最小権限レイヤーです。制限リストは積集合化され、制限かつ空リストはすべてを拒否し、レガシーの空モードは継承のままです。スコープルーティングポリシーは、`routing-policies` kind の監査可能な `AdminResource` として保存されます。実行時は厳密な API Key → Project → Global の優先順位で最大 1 つのバインドを選び、その Provider、Resource、Model、タグ、リージョン、環境の制約をルートの Project スコープと積集合化します。無効、競合、または候補が空の上位バインドはフェイルクローズします。戦略の上書き、アフィニティ、ハーフオープン復旧、フェイルオーバーは絞り込み後の候補内でのみ動作します。有効ポリシー ID、スコープ、優先度はリクエスト監査レコードにコピーされます。
+
 ## セキュリティ、ヘルス、データ境界
 
 - Project API Key はハッシュ、状態、Project 状態、有効期限、モデル範囲、IP 許可リスト、クォータ、並行数で検証されます。
@@ -148,13 +153,14 @@ sequenceDiagram
 - `TOKENHUB_TRUSTED_PROXY_CIDRS` は `X-Forwarded-For` を提供できるプロキシを限定し、`TOKENHUB_CORS_ALLOWED_ORIGINS` は資格情報を伴うブラウザ Origin を制御します。
 - `/livez` はプロセス生存確認用です。`/readyz` と互換用の `/healthz` はデータベース可用性を確認し、利用不可時には `503` を返します。
 
-Provider 認証情報は `TOKENHUB_SECRET_KEY` から導出した AES-GCM で暗号化されます。Project API Key は SHA-256 ダイジェストと表示用のプレフィックス/サフィックスだけを保持します。すべてのレプリカは同じ安定したシークレットを使用する必要があります。
+Provider 認証情報、請求コネクター認証情報、生の請求スナップショットは `TOKENHUB_SECRET_KEY` から導出した AES-GCM で暗号化されます。Project API Key は SHA-256 ダイジェストと表示用のプレフィックス/サフィックスだけを保持します。すべてのレプリカは同じ安定したシークレットを使用する必要があります。
 
 | カテゴリー | 主なエンティティ | 用途 |
 | --- | --- | --- |
 | テナントと認証情報 | `Project`、`APIKey`、`AdminUser`、`AdminSession` | Project 所有、アプリケーションアクセス、管理セッション |
-| ルーティング | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute` | 上流チャネル、リソースプール、上流インベントリ、外部モデル、ルート |
+| ルーティング | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute`、`AdminResource (routing-policies)` | 上流チャネル、リソースプール、上流インベントリ、外部モデル、ルート、スコープポリシーバインド |
 | ガバナンスと計量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | クォータ、利用量/コスト、レプリカ間並行数 |
+| 外部請求 | `BillingConnector`、`BillingRecord`、`BillingRawSnapshot`、`BillingSyncRun` | Provider 請求の収集、正規化、チェックポイント、同期履歴 |
 | マルチインスタンス協調 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | カタログ同期、クラスタ操作、Codex セッションの Resource バインド |
 | 可観測性 | `RequestLog`、`RequestPayloadLog`、`RouteAttemptLog`、`ProviderObservation`、`AuditEvent` | リクエスト追跡、ペイロード監査、ルート試行、Provider 観測、管理監査 |
 

@@ -35,6 +35,8 @@ export type Project = {
   teams?: ProjectTeam[];
   owner_user_id?: string;
   cost_center?: string;
+  model_access_mode?: "inherit" | "restricted";
+  allowed_models?: string[];
   status: string;
   default_quota_ref?: string;
   created_at?: string;
@@ -49,9 +51,12 @@ export type APIKey = {
   key_prefix: string;
   key_suffix: string;
   allowed_models: string[];
+  model_access_mode?: "inherit" | "restricted";
   ip_allowlist?: string[];
   status: string;
   limits?: Record<string, number>;
+  rate_limit_rpm?: number;
+  token_limit_tpm?: number;
   expires_at?: string;
   rotated_from_id?: string;
   grace_until?: string;
@@ -76,6 +81,67 @@ export type Provider = {
   healthy: boolean;
   priority: number;
   options?: Record<string, string>;
+};
+
+export type BillingConnector = {
+	id: string;
+	name: string;
+	type: "aliyun" | "newapi" | "oneapi";
+	base_url: string;
+	status: string;
+	schedule_interval_minutes: number;
+	config?: Record<string, string>;
+	credentials_configured: boolean;
+	last_synced_through?: string;
+	last_sync_status?: string;
+	last_sync_message?: string;
+	last_sync_at?: string;
+	next_sync_at?: string;
+	created_at: string;
+	updated_at: string;
+};
+
+export type BillingRecord = {
+	id: string;
+	connector_id: string;
+	external_id: string;
+	source_type: string;
+	account_id?: string;
+	service?: string;
+	product?: string;
+	model?: string;
+	currency: string;
+	gross_amount: string;
+	discount_amount: string;
+	tax_amount: string;
+	refund_amount: string;
+	net_amount: string;
+	usage_quantity?: number;
+	usage_unit?: string;
+	usage_start_at: string;
+	usage_end_at: string;
+	source_timezone: string;
+	billing_period: string;
+	external_request_id?: string;
+	raw_snapshot_id: string;
+};
+
+export type BillingSyncRun = {
+	id: string;
+	connector_id: string;
+	trigger: string;
+	status: string;
+	range_start: string;
+	range_end: string;
+	pages_fetched: number;
+	attempts: number;
+	records_seen: number;
+	records_inserted: number;
+	records_updated: number;
+	error_code?: string;
+	error_message?: string;
+	started_at: string;
+	finished_at?: string;
 };
 
 export type AdapterDescriptor = {
@@ -269,6 +335,7 @@ export type ModelRoute = {
   strategy?: string;
   project_scope?: "all" | "include" | "exclude";
   project_ids?: string[];
+  tags?: string[];
   last_used_at?: string;
 };
 
@@ -316,19 +383,46 @@ export type PlaygroundRouteSummary = {
 export type PlaygroundUsage = {
   prompt_tokens?: number;
   cached_input_tokens?: number;
+  cache_write_input_tokens?: number;
   completion_tokens?: number;
+  reasoning_output_tokens?: number;
   total_tokens?: number;
   estimated_cost_usd?: number;
+  upstream_request_id?: string;
+  served_model?: string;
+  model_etag?: string;
+  transport?: string;
 };
 
 export type PlaygroundRouteAttempt = {
-  route: PlaygroundRouteSummary;
+  route?: PlaygroundRouteSummary;
   status: number;
+  upstream_status?: number;
   code?: string;
   error?: string;
+  invoked?: boolean;
+  latency_ms?: number;
+  usage?: PlaygroundUsage;
+  started_at?: string;
+  ended_at?: string;
+};
+
+export type PlaygroundTiming = {
+  mode: "stream" | "buffered";
+  started_at: string;
+  first_token_at?: string;
+  last_token_at?: string;
+  completed_at: string;
+  ttft_ms?: number;
+  generation_ms?: number;
+  total_ms: number;
+  output_tokens_per_second?: number;
+  end_to_end_tokens_per_second?: number;
 };
 
 export type PlaygroundChatPayload = {
+  type?: "completed" | "failed" | "cancelled";
+  status?: "completed" | "failed" | "cancelled";
   response?: {
     choices?: Array<{
       message?: {
@@ -343,8 +437,27 @@ export type PlaygroundChatPayload = {
   route?: PlaygroundRouteSummary;
   usage?: PlaygroundUsage;
   attempts?: PlaygroundRouteAttempt[];
+  timing?: PlaygroundTiming;
   request_id?: string;
+  code?: string;
+  error?: string;
 };
+
+export type PlaygroundStreamEvent =
+  | {
+    type: "started";
+    request_id: string;
+    model: string;
+    started_at: string;
+  }
+  | {
+    type: "delta";
+    request_id: string;
+    mode: "stream" | "buffered";
+    delta: string;
+    received_at: string;
+  }
+  | PlaygroundChatPayload;
 
 export type ApiExampleLanguage = "python" | "typescript" | "java" | "go";
 
@@ -453,6 +566,9 @@ export type RequestLog = {
   provider_id?: string;
   provider_resource_id?: string;
   provider_model?: string;
+  routing_policy_id?: string;
+  routing_policy_scope?: string;
+  routing_policy_priority?: number;
   status_code: number;
   error_code?: string;
   latency_ms: number;
@@ -470,6 +586,7 @@ export type RequestLog = {
   rejected_prediction_tokens?: number;
   total_tokens?: number;
   estimated_cost_usd?: number;
+  provider_cost_usd?: number;
   usage_record_count?: number;
 };
 
@@ -493,6 +610,7 @@ export type UsageRecord = {
   rejected_prediction_tokens?: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  provider_cost_usd?: number;
   created_at: string;
 };
 
@@ -584,6 +702,7 @@ export type ViewKey =
   | "providers"
   | "models"
   | "routes"
+  | "routing-policies"
   | "projects"
   | "project-members"
   | "api-keys"
@@ -591,11 +710,8 @@ export type ViewKey =
   | "users"
   | "quota-policies"
   | "cost-centers"
-  | "budgets"
-  | "chargebacks"
   | "approval-flows"
   | "approvals"
-  | "invoices"
   | "reports"
   | "usage"
   | "billing"
@@ -620,6 +736,7 @@ export const viewRoutes: Record<ViewKey, string> = {
   providers: "/providers",
   models: "/models",
   routes: "/routes",
+  "routing-policies": "/routing-policies",
   projects: "/projects",
   "project-members": "/project-members",
   "api-keys": "/api-keys",
@@ -627,11 +744,8 @@ export const viewRoutes: Record<ViewKey, string> = {
   users: "/users",
   "quota-policies": "/quota-policies",
   "cost-centers": "/cost-centers",
-  budgets: "/budgets",
-  chargebacks: "/chargebacks",
   "approval-flows": "/approval-flows",
   approvals: "/approvals",
-  invoices: "/invoices",
   reports: "/reports",
   usage: "/usage",
   billing: "/billing",
@@ -697,6 +811,9 @@ export type FieldConfig = {
   help?: string;
   readOnlyOnEdit?: boolean;
   multiSelectOnEdit?: boolean;
+  createOnly?: boolean;
+  emptyOptionsText?: string;
+  emptySelectionText?: string;
   visible?: (values: Record<string, string>) => boolean;
 };
 
@@ -730,6 +847,7 @@ export type ResourceAction<T> = {
   label: string;
   title?: string;
   visible?: (item: T) => boolean;
+  navigate?: (item: T) => ViewKey;
   run?: (ctx: ApiContext, item: T) => Promise<void>;
   modal?: (item: T, data: AppData) => ModalState<any>;
   doneMessage?: (item: T) => string;
@@ -771,6 +889,9 @@ export type AppData = {
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];
   providerMonitoring: ProviderMonitoringSnapshot[];
+	billingConnectors: BillingConnector[];
+	billingRecords: BillingRecord[];
+	billingSyncRuns: BillingSyncRun[];
 };
 
 export type ApiContext = {

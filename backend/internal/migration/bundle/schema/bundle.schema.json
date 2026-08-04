@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokenhub.dev/schemas/migration/bundle-1.1.json",
+  "title": "CanonicalMigrationBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "generated_at"],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "source": {"$ref": "#/$defs/source"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "providers": {"type": "array", "items": {"$ref": "#/$defs/providerRef"}},
+    "provider_resources": {"type": "array", "items": {"$ref": "#/$defs/providerResourceRef"}},
+    "models": {"type": "array", "items": {"$ref": "#/$defs/modelRef"}},
+    "routes": {"type": "array", "items": {"$ref": "#/$defs/routeRef"}},
+    "teams": {"type": "array", "items": {"$ref": "#/$defs/teamRef"}},
+    "projects": {"type": "array", "items": {"$ref": "#/$defs/projectRef"}},
+    "users": {"type": "array", "items": {"$ref": "#/$defs/userRef"}},
+    "api_keys": {"type": "array", "items": {"$ref": "#/$defs/apiKeyRef"}},
+    "quota_policies": {"type": "array", "items": {"$ref": "#/$defs/quotaPolicyRef"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}}
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "adapter_version"],
+      "properties": {
+        "adapter": {"type": "string", "minLength": 1},
+        "adapter_version": {"type": "string", "minLength": 1},
+        "tool_version": {"type": "string"},
+        "origin_url": {"type": "string"},
+        "origin_note": {"type": "string"},
+        "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "externalRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "id"],
+      "properties": {
+        "system": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "secretRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["$secretRef"],
+      "properties": {
+        "$secretRef": {"type": "string", "minLength": 1}
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": {"type": "string", "enum": ["info", "warn", "blocker"]},
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "path": {"type": "string"}
+      }
+    },
+    "providerRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "spec"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "type", "status"],
+          "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string", "minLength": 1},
+            "type": {"type": "string", "minLength": 1},
+            "base_url": {"type": "string"},
+            "status": {"type": "string", "minLength": 1},
+            "healthy": {"type": "boolean"},
+            "priority": {"type": "integer"},
+            "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+            "options": {"type": "object", "additionalProperties": {"type": "string"}},
+            "created_at": {"type": "string", "format": "date-time"}
+          }
+        },
+        "api_key_secret": {"$ref": "#/$defs/secretRef"}
+      }
+    },
+    "providerResourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "provider_ref", "spec"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "provider_ref": {"type": "string", "minLength": 1},
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "resource_type", "status"],
+          "properties": {
+            "id": {"type": "string"},
+            "provider_id": {"type": "string"},
+            "name": {"type": "string", "minLength": 1},
+            "group": {"type": "string"},
+            "resource_type": {"type": "string", "minLength": 1},
+            "base_url": {"type": "string"},
+            "api_key": {"type": "string"},
+            "region": {"type": "string"},
+            "environment": {"type": "string"},
+            "status": {"type": "string", "minLength": 1},
+            "healthy": {"type": "boolean"},
+            "priority": {"type": "integer"},
+            "weight": {"type": "integer"},
+            "failure_count": {"type": "integer"},
+            "rate_limit_rpm": {"type": "integer"},
+            "token_limit_tpm": {"type": "integer"},
+            "max_concurrency": {"type": "integer"},
+            "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+            "options": {"type": "object", "additionalProperties": {"type": "string"}},
+            "created_at": {"type": "string", "format": "date-time"},
+            "updated_at": {"type": "string", "format": "date-time"}
+          }
+        },
+        "api_key_secret": {"$ref": "#/$defs/secretRef"}
+      }
+    },
+    "modelRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "spec"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "family", "modality", "status"],
+          "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string", "minLength": 1},
+            "category": {"type": "string"},
+            "family": {"type": "string", "minLength": 1},
+            "modality": {"type": "string", "minLength": 1},
+            "context_window": {"type": "integer"},
+            "input_price_usd_per_1m": {"type": "number"},
+            "cache_read_price_usd_per_1m": {"type": "number"},
+            "output_price_usd_per_1m": {"type": "number"},
+            "embedding_price_usd_per_1m": {"type": "number"},
+            "status": {"type": "string", "minLength": 1},
+            "input_modalities": {"type": "array", "items": {"type": "string"}},
+            "output_modalities": {"type": "array", "items": {"type": "string"}},
+            "capabilities": {"type": "array", "items": {"type": "string"}},
+            "supported_parameters": {"type": "array", "items": {"type": "string"}},
+            "metadata": {"type": "object", "additionalProperties": {"type": "string"}},
+            "created_at": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
+    },
+    "routeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "spec"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "model_ref": {"type": "string"},
+        "provider_ref": {"type": "string"},
+        "provider_resource_ref": {"type": "string"},
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider_model"],
+          "properties": {
+            "id": {"type": "string"},
+            "model_name": {"type": "string"},
+            "provider_id": {"type": "string"},
+            "provider_resource_id": {"type": "string"},
+            "resource_group": {"type": "string"},
+            "sticky_session": {"type": "boolean"},
+            "provider_model": {"type": "string", "minLength": 1},
+            "strategy": {"type": "string"},
+            "tags": {"type": ["array", "null"], "items": {"type": "string"}},
+            "weight": {"type": "integer"},
+            "priority": {"type": "integer"},
+            "quality_score": {"type": "integer"},
+            "cost_score": {"type": "integer"},
+            "status": {"type": "string"},
+            "created_at": {"type": "string", "format": "date-time"},
+            "last_used_at": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
+    },
+    "teamRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "id", "name"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "id": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1}
+      }
+    },
+    "projectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "spec"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "team_ref": {"type": "string"},
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "status"],
+          "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string", "minLength": 1},
+            "team_id": {"type": "string"},
+            "owner_user_id": {"type": "string"},
+            "cost_center": {"type": "string"},
+            "model_access_mode": {"type": "string", "enum": ["", "inherit", "restricted"]},
+            "allowed_models": {"type": ["array", "null"], "items": {"type": "string"}},
+            "status": {"type": "string", "minLength": 1},
+            "created_at": {"type": "string", "format": "date-time"},
+            "updated_at": {"type": "string", "format": "date-time"},
+            "default_quota_ref": {"type": "string"}
+          }
+        }
+      }
+    },
+    "userRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "spec"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "team_ref": {"type": "string"},
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["username", "name", "email", "role", "status"],
+          "properties": {
+            "id": {"type": "string"},
+            "username": {"type": "string", "minLength": 1},
+            "name": {"type": "string", "minLength": 1},
+            "email": {"type": "string", "minLength": 3},
+            "role": {"type": "string", "minLength": 1},
+            "team_id": {"type": "string"},
+            "status": {"type": "string", "minLength": 1},
+            "created_at": {"type": "string", "format": "date-time"},
+            "updated_at": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
+    },
+    "apiKeyRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "spec"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "project_ref": {"type": "string"},
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "id": {"type": "string"},
+            "project_id": {"type": "string"},
+            "name": {"type": "string", "minLength": 1},
+            "group": {"type": "string"},
+            "key_prefix": {"type": "string"},
+            "key_suffix": {"type": "string"},
+            "allowed_models": {"type": ["array", "null"], "items": {"type": "string"}},
+            "model_access_mode": {"type": "string", "enum": ["", "inherit", "restricted"]},
+            "ip_allow_list": {"type": "array", "items": {"type": "string"}},
+            "ip_allowlist": {"type": ["array", "null"], "items": {"type": "string"}},
+            "rate_limit_rpm": {"type": ["integer", "null"], "minimum": 0, "maximum": 9223372036854775807},
+            "token_limit_tpm": {"type": ["integer", "null"], "minimum": 0, "maximum": 9223372036854775807},
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "daily_requests": {"type": "integer"},
+                "monthly_requests": {"type": "integer"},
+                "daily_tokens": {"type": "integer"},
+                "monthly_tokens": {"type": "integer"},
+                "daily_cost_usd": {"type": "number"},
+                "monthly_cost_usd": {"type": "number"},
+                "max_concurrency": {"type": "integer"}
+              }
+            },
+            "status": {"type": "string"},
+            "expires_at": {"type": "string", "format": "date-time"},
+            "rotated_from_id": {"type": "string"},
+            "grace_until": {"type": "string", "format": "date-time"},
+            "created_at": {"type": "string", "format": "date-time"},
+            "last_used_at": {"type": "string", "format": "date-time"},
+            "metadata": {"type": ["object", "null"], "additionalProperties": {"type": "string"}}
+          }
+        },
+        "key_secret": {"$ref": "#/$defs/secretRef"}
+      }
+    },
+    "quotaPolicyRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_ref", "name", "limits"],
+      "properties": {
+        "external_ref": {"$ref": "#/$defs/externalRef"},
+        "name": {"type": "string", "minLength": 1},
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rate_limit_rpm": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+            "token_limit_tpm": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+            "daily_requests": {"type": "integer"},
+            "monthly_requests": {"type": "integer"},
+            "daily_tokens": {"type": "integer"},
+            "monthly_tokens": {"type": "integer"},
+            "daily_cost_usd": {"type": "number"},
+            "monthly_cost_usd": {"type": "number"},
+            "max_concurrency": {"type": "integer"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -284,7 +284,7 @@ func (d *anthropicStreamDecoder) mergeUsage(value any) {
 }
 
 func (d *anthropicStreamDecoder) currentUsage() Usage {
-	return anthropicUsage(map[string]any{"usage": d.usage})
+	return anthropicUsageFromRawMap(d.usage)
 }
 
 func anthropicStreamError(payload map[string]any) error {

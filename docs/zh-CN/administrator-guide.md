@@ -8,9 +8,9 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 
 | 区域 | 责任 |
 | --- | --- |
-| Provider Channels | 配置上游 Base URL、凭证、资源和健康检查 |
-| 模型目录 | 发布对外 API 模型名，并管理 Provider 上游模型库存 |
-| Routing Policies | 用优先级、权重和故障转移策略把对外模型映射到 Provider 模型 |
+| Provider Channels | 配置上游连接、引入模型库存并维护 Provider 真实成本 |
+| 模型目录 | 从内置模型目录挑选模型、创建对外 API 契约、选择初始 Provider 线路并设置统一对客价格 |
+| Routing Policies | 细调 Provider 映射、优先级、权重、项目作用域和故障转移策略 |
 | Projects and Teams | 定义 Key、额度和成本归因的组织边界 |
 | Identity Sources | 配置 OAuth 或 OIDC 企业登录 |
 | Security and Audit | 审查请求日志、后台操作、Key 轮换和策略变更 |
@@ -18,12 +18,23 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 ## 生产上线顺序
 
 1. 至少配置一个身份源，并保留可控的管理员账号。
-2. 添加上游 Provider，例如 `OpenAI Production`、`Azure East US` 或 `Internal Model Gateway`。
-3. 从 Provider 中选择并引入需要的上游模型，形成 Provider 模型库存。
-4. 将选中模型按同名 1:1 方式发布，或设置自定义对外名称与映射。
-5. 创建团队、项目、成本中心和默认额度策略。
-6. 用 Model Playground 和请求日志验证链路。
-7. 在大规模发放 Key 前检查用量归因。
+2. 添加上游 Provider，例如 `OpenAI Production`、`Azure East US` 或 `Internal Model Gateway`。保存前先用「测试连接」校验 Base URL 和 API Key，并查看实测响应耗时，再引入它可提供的上游模型。
+3. 为每个已引入的 Provider 模型记录真实的输入、缓存读取和输出成本，用于审计。
+4. 创建需要向业务开放的对外模型，并设置统一对客价格。
+5. 将每个对外模型路由到一个或多个已引入的 Provider 模型。
+6. 创建团队、项目、成本中心和默认额度策略。
+7. 用 Model Playground 和请求日志验证链路。
+8. 在大规模发放 Key 前检查用量归因。
+
+## 模型演练场诊断
+
+从控制台打开「模型演练场」，可以通过与网关流量相同的路由和 Provider 适配器验证模型。每个 assistant 轮次都保留独立的紧凑诊断摘要，包括返回模式、网关实测首 Token 时间（TTFT）、输出吞吐、总耗时、完整上下文输入 Tokens、输出 Tokens、估算成本、本地完成时间和 Request ID。展开「诊断详情」可查看毫秒级时间及实际响应详情。除非用户明确导出，否则会话只保留在当前浏览器页面。
+
+TokenHub 会向演练场输出统一的 SSE 事件格式。所选上游支持流式时，TTFT 从网关接收请求计到首个内容增量，输出吞吐按首个到最后一个内容增量之间的时长计算。上游只支持非流式响应时，TokenHub 自动退化为缓冲模式，将 TTFT 标为不适用，并展示端到端输出吞吐，不伪造首 Token 指标。停止请求会保留已生成的部分文本并把候选标为已取消；只有 Provider 返回权威 Token 用量时才展示对应数值。
+
+重跑某个 assistant 轮次会为该轮创建新候选，并移除后续轮次，防止新分支悄悄复用旧上下文。切换模型默认新建会话；如需沿用上下文，必须显式选择。参数控件以所选模型声明的 `supported_parameters` 为准，避免发送模型目录已标记为不支持的参数。
+
+所有获准使用演练场的用户都能查看性能、用量、Request ID 以及自己的响应详情。Provider、资源、上游 Request ID 和逐次路由尝试仅对拥有路由读取权限的角色展示。成本会明确标为「估算」，因为它采用对外模型配置价格，而不是上游账单。
 
 ## API Key 归属与用量归因
 
@@ -31,23 +42,39 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 
 每条新用量记录都会固化当时的归属用户，因此以后转移归属或删除 Key 不会改写已记录的历史。对该字段上线前的旧记录，系统依次回退到 Key 当前归属用户、旧的发放人、项目负责人，最后显示为「未知」。个人排行会分别展示用量中实际出现过的 Key 数，以及当前归属且未吊销的 Key 数。
 
+## 单 Key RPM 与 TPM 限制
+
+每个 API Key 都可以设置可选的每分钟请求数（RPM）和每分钟 Token 数（TPM）限制。未设置或 `null` 表示继承适用的全局、项目和团队策略；`0` 表示不增加 Key 自身的限制，但不能绕过上层限制；正数表示增加 Key 级限制。当多个正数限制同时适用时，TokenHub 执行其中最严格的值。禁用 Key 后，无论限制值如何，所有请求都会被拒绝。
+
+RPM 在调用 Provider 前扣减。TPM 同时按请求的预估输入量和最大输出量进行预留；文本请求未显式指定最大输出时，会预留 4,096 个输出 Token。请求结束后，系统按 Provider 返回的总 Token 数结算；若无总数，则使用提示词与补全 Token 之和。缓存与推理 Token 已包含在这些总数中，不会重复累加。失败或中断的请求会返还未使用的预留量。
+
+超过限制时返回 HTTP 429，错误码为 `api_key_rpm_exceeded` 或 `api_key_tpm_exceeded`，并附带 `Retry-After` 以及对应的 `X-RateLimit-Limit-*`、`X-RateLimit-Remaining-*` 和 `X-RateLimit-Reset-*` 响应头。分钟桶保存在数据库中，在 SQLite 和 PostgreSQL 上都会由多个 TokenHub 实例共享。指标只暴露短哈希形式的 Key 引用，绝不会包含完整 API Key。
+
 ## Provider 目录可用性
 
 TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照，管理员也可以手动刷新同一份本地目录。若本地目录读取、解析或完整性校验失败，TokenHub 会继续使用最后一次有效快照。
 
-## 模型目录与发布
+## Codex 用量重置资格
 
-新的模型目录将过去容易混淆的三个概念分开展示：
+对于已启用的 OpenAI Codex Subscription 账号，打开「Provider 渠道」，编辑对应 Provider，再展开「高级 > 订阅额度」。账号卡片会显示 OpenAI 返回的权威剩余重置次数及最近到期时间。「重置套餐用量」会先弹出二次确认，确认后消耗 1 次不可恢复的资格，并重置当前符合条件的 Codex 用量窗口；该操作不会更改 ChatGPT 计费套餐。操作成功或幂等重试成功后，界面会重新拉取额度和重置资格明细。
 
-| 视图 | 含义 |
+重置操作的幂等状态会作为 `codex-quota-reset-operations` 类型的 `AdminResource` 记录写入现有管理资源表，因此不需要数据库结构迁移。成功和失败记录会持续保留且不会自动删除，因为它们用于阻止重放请求再次消耗重置资格；应将这些记录纳入正常的数据库保留和备份策略。升级时必须保留数据库。`pending` 或 `unknown` 记录会阻止同一账号发起不同的重置，服务重启后仍会在控制台恢复显示；在 OpenAI 返回确定结果前，只能使用相同的幂等键、预期次数和资格 ID 重试。
+
+## Provider 库存、模型目录与发布
+
+TokenHub 将模型生命周期拆成三个独立的管理区域：
+
+| 管理区域 | 含义 |
 | --- | --- |
-| **对外模型** | 提供给业务应用的 API 契约。这是默认视图，初始只展示已发布模型。 |
-| **Provider 上游模型** | 已引入到某个具体 Provider 的真实模型库存。只引入库存不会对客户端暴露模型。 |
-| **候选模板库** | 来自跟踪目录的参考元数据。模板在引入并建立映射前，既未接入也不可调用。 |
+| **Provider Channels** | 上游连接及其已引入的模型库存。基于目录创建 Provider 时必须至少选择一个模型，但只引入库存不会对客户端开放；自定义 Provider 可以先空建，待上游连接可用后再加载模型。 |
+| **模型目录** | 只管理提供给业务应用的对外模型，即 API 契约。新建时先从内置模型参考目录选择模板，也可选择空白自定义模型；然后选择一个或多个已引入 Provider 模型，同步生成初始路由。这里的价格是统一对客价格，不随实际命中的 Provider 路由变化。 |
+| **Routing Policies** | 管理对外模型的 Provider 映射，并细调优先级、权重、项目作用域、流量分配和故障转移策略。 |
 
-从 Provider 引入模型时，「引入并发布」默认创建同名 1:1 映射，管理员也可以在引入前修改对外名称。例如，对外发布 `DeepSeek`，但映射到 `OpenAI Production / gpt-4.5`。一个 Provider 上游模型也可以映射到多个对外别名。
+各区域的职责仍然分开：先添加 Provider 并引入库存；然后从内置参考目录挑选模型，创建它的对外契约、选择至少一条初始 Provider 线路并设置统一对外价格。所选模板会带出模型名、能力、上下文和建议价格，保存前均可调整。创建后，映射的新增、修改和删除只在 Routing Policies 中进行。模型目录只保留只读的上游摘要，行内入口会打开 Routing Policies 并筛选当前对外模型；Provider 渠道列表的“配置路由”会进入完整的 Routing Policies 页面，以便新增映射。例如，可以向客户端开放 `DeepSeek`，但将它路由到 `OpenAI Production / gpt-4.5`。同一个 Provider 模型可以支持多个对外别名，一个对外模型也可以路由到多个 Provider。
 
-管理员也可以手工创建对外模型，并从某个 Provider 已引入的上游模型中选择映射目标。如果所需模型尚未出现，应先把它引入 Provider 库存，再创建映射，让「引入」和「发布」保持为两个明确步骤。
+Provider 模型价格代表真实上游成本，用于内部审计；模型目录价格代表统一对外收费，用于客户计费估算、额度计算、指标和用量报表。路由只选择上游实现，不会改变对外价格。
+
+当 Provider 渠道、模型目录或路由策略还没有配置数据时，控制台会展示同一套三步引导：引入 Provider 库存、从内置的 165 个模型中创建对外模型、再配置路由。主操作按钮始终指向最早尚未完成的前置步骤，避免管理员进入当前还无法完成的表单。
 
 「发布状态」与「运行健康」相互独立。模型要出现在 `GET /v1/models` 中，必须同时满足：对外 `Model` 已启用、至少有一条已启用 `ModelRoute`，且在 API Key 配置了模型白名单时获得授权。Provider 或 Provider Resource 短时不健康不会改变该列表，只会影响当前请求能否成功，并在目录和路由诊断中单独展示。下线对外模型会将它从 `GET /v1/models` 移除，但保留映射，便于之后重新发布。
 
@@ -72,6 +99,18 @@ Provider 连接信息和项目限制仍按线路配置。编辑单条 Provider �
 
 项目作用域也会影响模型发现：除了模型启用状态和 API Key 模型白名单外，只有调用方 API Key 所属项目至少存在一条已启用且符合项目作用域的路由时，对外模型才会出现在 `GET /v1/models` 中。
 
+### 作用域路由策略
+
+可在「作用域策略」中为全局网关、项目或 API Key 绑定独立路由策略。TokenHub 按 API Key、项目、全局的顺序解析且只选择一个有效策略。一旦命中更高优先级的绑定，即使该策略已停用、存在冲突或筛选后无合格候选，也会安全拒绝而不会回退到低优先级作用域。每个作用域对象最多绑定一个策略；未绑定的策略定义可以提前准备，不影响流量。
+
+模型访问权先于路由执行。项目和 API Key 均支持 `inherit`（继承）与 `restricted`（限制）模式。限制列表会与所有上层列表取交集，因此 API Key 不能扩大项目权限；`restricted` 且列表为空表示禁止全部模型。为保持兼容，在访问模式上线前创建、且模式与列表均为空的记录仍按继承处理。`GET /v1/models` 使用同一有效访问范围，并要求至少存在一条被有效路由策略允许的路由。
+
+作用域策略可约束模型名、Provider、Provider Resource、必需路由标签、资源地域和资源环境，也可覆盖路由算法。路由标签在模型路由上配置，地域与环境在 Provider Resource 上配置。已有的路由项目作用域会与这些约束取交集。流量分配、会话/缓存亲和、半开恢复和故障转移都在筛选之后运行，不会把已排除路由重新加回候选池。因此内部模型专属策略会安全失败，而不会静默跨界到外部 Provider。
+
+策略预览/模拟面板接收项目、API Key 和模型，展示有效策略、访问判定、最终路由，以及每个候选的安全允许/排除原因。策略失败使用 `routing_policy_unavailable`、`routing_policy_conflict` 和 `routing_policy_no_candidate` 等可诊断错误码，不暴露凭据。请求日志记录 `routing_policy_id`、`routing_policy_scope` 和 `routing_policy_priority`；通用策略创建/更新/删除以及显式绑定/解绑操作也会写入管理员审计事件。
+
+管理 API 通过 `/api/admin/resources/routing-policies` 提供通用资源 CRUD，并提供 `POST /api/admin/routing-policies/{id}/bind`、`POST /api/admin/routing-policies/{id}/unbind` 和 `POST /api/admin/routing-policies/simulate`。同一执行规则适用于 OpenAI 兼容模型请求、Anthropic Messages、图像生成和管理员 Playground。
+
 ## Provider 资源自动恢复
 
 连续失败达到 `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` 次的 Provider 资源会被摘除：停止接收流量并进入冷却。恢复过程全自动，无需管理员介入。
@@ -83,13 +122,34 @@ Provider 连接信息和项目限制仍按线路配置。编辑单条 Provider �
 | 恢复 | 试探请求成功到达上游即关闭熔断、重置失败计数，并产生 `provider_resource_recovered` 告警 |
 | 重新摘除 | 试探失败会立即进入下一轮冷却，每次翻倍，上限为 `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` |
 
-只有试探请求自身成功才能关闭熔断；熔断触发时已经在途的请求无论结果如何都无法关闭它。客户端中途断连、策略拒绝、模型不支持这几种情况既不计入失败、也不清零失败计数，因此「失败、断连、失败」这样的交替模式仍然会触发熔断。
+只有试探请求自身成功才能关闭熔断；熔断触发时已经在途的请求无论结果如何都无法关闭它。计不计入失败，取决于这次上游失败说明了资源的什么问题，而不是调用方看到的状态码。客户端中途断连、策略拒绝、模型不支持、上游判定请求本身格式错误，以及其它「问题出在请求而非账号」的情况，既不计入失败、也不清零失败计数，因此「失败、断连、失败」这样的交替模式仍然会触发熔断。凭据被拒、账号无法计费、限流以及上游自身故障则会计入失败。
 
 在控制台对资源执行「测试」时，如果适配器支持主动探测，资源仍会立即恢复，因为该探测会发起一次真实的上游请求。禁用资源仍然是管理员的最高优先级操作：被禁用的资源无论上游是否正常，都不会被自动恢复。
 
+## 上游错误分类
+
+一次上游失败要分别回答三个问题，单个状态码无法同时答对：告诉调用方什么、路由要不要换下一个候选、这次尝试要不要计入 Provider Resource 的失败次数。格式错误的请求换任何 Provider 都是错的，因此直接返回给调用方、不再切换；凭据被拒只属于某一个账号，因此请求继续切换、并由该账号承担失败计数。
+
+| 上游 | 调用方看到 | 错误码 | 是否换候选 | 是否计入资源失败 |
+| --- | --- | --- | --- | --- |
+| `400`、`422` | 同一状态码 | `provider_invalid_request` | 否 | 否 |
+| `401`、`403` | `502` | `provider_auth_error` | 是 | 是 |
+| `402` | `502` | `provider_payment_required` | 是 | 是 |
+| `404` | `502` | `provider_model_not_found` | 是 | 否 |
+| `408` | `504` | `provider_upstream_timeout` | 是 | 是 |
+| `413` | `413` | `provider_invalid_request` | 否 | 否 |
+| `429` | `429`，并带 `Retry-After` | `provider_rate_limited` | 是 | 是 |
+| `502`、`503`、`504` | 同一状态码 | `provider_upstream_unavailable` | 是 | 是 |
+| 其它 `5xx` | `502` | `provider_upstream_error` | 是 | 是 |
+| 其它 `4xx` | `502` | `provider_error` | 否 | 否 |
+
+上游的 `401` / `403` 不会原样透传：它表示网关自己配置的该 Provider 凭据被拒绝，调用方看到 `401` 会误以为自己的 TokenHub API Key 失效。出于同样原因，这两种情况不会把上游响应体返回给调用方——Provider 常在其中回显被拒绝的密钥。原始状态码会记录在每次路由尝试的 `upstream_status` 上，供运维查看。
+
+每次路由尝试都会同时记录两者：`status_code` 是告诉调用方的状态，`upstream_status` 是 Provider 实际返回的状态。
+
 ## 请求用量审计
 
-「请求日志」中的每条记录会显示 Token 总量和估算成本。详情面板会在上游返回数据时保留完整计费明细，包括缓存读、缓存写和音频输入 Token，以及推理、音频、接受预测和拒绝预测输出 Token；Provider 未返回的字段显示为 0。输入和输出总量已经包含对应明细，不能再次相加，否则会重复计算。
+「请求日志」中的每条记录会显示 Token 总量和对外计费金额。拥有全局运维可见权限的管理员还可以在详情面板查看根据命中 Provider 模型计算的真实成本；其他用户不会收到该成本字段。详情面板会在上游返回数据时保留完整计费明细，包括缓存读、缓存写和音频输入 Token，以及推理、音频、接受预测和拒绝预测输出 Token；Provider 未返回的字段显示为 0。输入和输出总量已经包含对应明细，不能再次相加，否则会重复计算。
 
 ## 指标
 
@@ -101,7 +161,10 @@ TokenHub 可以在 `GET /metrics` 暴露 Prometheus 指标。该功能默认关�
 | `tokenhub_gateway_request_duration_seconds` | histogram | 端到端耗时，包含失败转移。分桶上限为 300 秒。 |
 | `tokenhub_gateway_requests_in_flight` | gauge | 正在处理的模型 API 请求数，不含管理后台流量和抓取请求。 |
 | `tokenhub_gateway_tokens_total` | counter | 按类型统计的 Token：`prompt`、`completion`、`cached`、`cache_write`、`reasoning`。 |
-| `tokenhub_gateway_cost_usd_total` | counter | 估算成本，与用量记录采用同一套价格。 |
+| `tokenhub_gateway_cost_usd_total` | counter | 使用模型目录价格计算的统一对外计费估算；Provider 真实成本只保留在有权限的请求审计中，不进入该指标。 |
+| `tokenhub_gateway_rate_limit_hits_total` | counter | 按实际生效的策略作用域和限制类型统计被拒请求；仅 `api_key` 限制使用短哈希 `key_ref`，继承自全局、项目和团队的限制统一使用 `none`，以控制时间序列基数。 |
+| `tokenhub_gateway_trace_completions_total` | counter | 已完成调用在链路导出中的去向：`converted` 或 `dropped`。仅在开启追踪时存在。 |
+| `tokenhub_gateway_trace_spans_total` | counter | span 在 OTLP 导出中的结果：`exported` 或 `failed`。仅在开启追踪时存在。 |
 
 同时暴露 Go 运行时和进程指标。
 
@@ -109,17 +172,55 @@ TokenHub 可以在 `GET /metrics` 暴露 Prometheus 指标。该功能默认关�
 
 在路由之前就被拒绝的请求（API Key 无效、额度耗尽、模型不存在）只增加请求计数。它们没有到达任何 Provider，因此不产生 Token、成本和耗时。目录中不存在的模型名会被记为 `unknown` 而不是原样上报，避免客户端用随机模型名刷高时间序列数量。
 
-标签为 `model`、`provider_type`、`provider_id`、`resource_id`、`status_code`、`error_code` 和 `stream`。设置 `TOKENHUB_METRICS_PROJECT_LABEL=true` 会追加 `project_id`，使每个网关指标的时间序列数量按活跃项目数成倍增长；除非确实需要按项目看板，否则建议保持关闭，按 Key 的归因请改用用量报表。
+标签为 `model`、`provider_type`、`provider_id`、`resource_id`、`status_code`、`error_code` 和 `stream`。上游失败不再统一上报为 `status_code="502"` 加 `provider_error`，而是使用「上游错误分类」一节列出的状态码与错误码，按旧取值匹配的看板和告警需要相应更新。设置 `TOKENHUB_METRICS_PROJECT_LABEL=true` 会追加 `project_id`，使每个网关指标的时间序列数量按活跃项目数成倍增长；除非确实需要按项目看板，否则建议保持关闭，按 Key 的归因请改用用量报表。
 
-如果需要 push 而不是抓取，可以让 OpenTelemetry Collector 的 `prometheus` receiver 抓取该端点再转发；网关自身只提供 Prometheus exposition 格式。
+如果指标需要 push 而不是被抓取，可以让 OpenTelemetry Collector 的 `prometheus` receiver 抓取该端点再转发。链路追踪是另一路信号，由网关直接推送，见下节。
+
+## 链路追踪导出
+
+TokenHub 可以通过 OTLP/HTTP 为每次网关调用导出一条 OpenTelemetry 链路。每条链路包含一个代表该请求的根 span，以及每个进入调用流程的候选各一个 generation span，因此一次故障转移会同时呈现两个候选，以及各自消耗的 Token 与成本。因容量不足而被跳过的候选从未触达 Provider，改为记录成根 span 上的一个 event。指标只能告诉你延迟升高了，链路能告诉你是哪个账号服务了这次请求、花了多少钱。该功能默认关闭：它会把运行数据发送到另一个系统。
+
+`TOKENHUB_TRACING_ENDPOINT` 需填写 OTLP traces 的完整信号级 URL（含完整路径），网关按原样使用、不追加任何路径——因为猜测出来的路径后缀只会表现为静默的 404，而不是启动报错。不带路径，或带有 query、fragment、userinfo 的 URL 会在启动时被拒绝，而不是被悄悄导出到别处。任何 OTLP/HTTP 后端都可以接入；**不需要 OpenTelemetry Collector**，因为网关直接使用 OTLP over HTTP，而不是 gRPC。
+
+接入 Langfuse：
+
+```bash
+TOKENHUB_TRACING_ENABLED=true
+TOKENHUB_TRACING_ENDPOINT=https://cloud.langfuse.com/api/public/otel/v1/traces
+TOKENHUB_TRACING_HEADERS="Authorization=Basic $(printf '%s' 'pk-lf-...:sk-lf-...' | base64),x-langfuse-ingestion-version=4"
+```
+
+属性映射面向 Langfuse v4 的摄入模型；该版本对自建部署已 GA，并且是 2026-04-14 之后创建的 Langfuse Cloud 组织的默认版本。自建 Langfuse v4 除 PostgreSQL、Redis 和对象存储外，还要求 ClickHouse 25.12 或更高版本。TokenHub 不会把 Langfuse 打包进自己的 Compose 文件：那是另一套有独立升级周期的有状态服务，把两者耦合会让一次 Langfuse 迁移变成网关停机。
+
+是否导出提示词和响应，与是否开启追踪是两个独立决策，`TOKENHUB_TRACING_CAPTURE_PAYLOADS` 默认关闭。关闭时链路依然携带状态码、耗时、每次尝试所用的 Provider 与资源、Token、成本、传输方式和上游请求 ID。开启后，请求与响应体会经过与本地 payload 日志相同的脱敏与截断；上游错误文本同样按 payload 对待，因为上游错误里可能夹带响应体、URL 或账号标识。
+
+Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。Langfuse v4 按 observation 聚合，若在根上重复携带，项目总量中的每个 Token 和每一分钱都会被算两遍。Token 计数在导出时还会被改写为互斥的分桶。TokenHub 的输入与输出总数本身已包含各自的明细类别——输入侧的缓存命中、缓存写入、音频，输出侧的推理、音频、预测——而 Langfuse 会把收到的分桶直接相加，因此每项明细都要从所属总数中扣除，并以剩余额度封顶。导出的成本只有对外计费金额；Provider 自身成本不导出，它被 TokenHub 有意限制在特权请求审计中。
+
+![Langfuse 中的一次故障转移链路：根请求 span、两次失败的不可达账号尝试，以及最终提供服务、带有自身 Token 数与成本的 generation](../assets/screenshots/tracing-langfuse-trace-en.png)
+
+链路 ID 与 span ID 都由请求 ID 推导而来，因此返回给客户端的 `x-request-id` 无需任何对照表即可直接定位到对应链路。但这只是查找便利，**不是**去重保证：Langfuse 对已见过的 span ID 仍可能生成重复 observation。因此导出重试被关闭，投递语义是 at-most-once——因瞬时故障丢失的批次不会重发。对携带 Token 数与花费的链路来说，成本被算多了才是更糟的失败；何况这条管道在饱和时本来就是丢弃而非等待。Playground 流量会带上 `playground` 标签导出，便于从成本分析中排除；在路由之前就被拒绝的请求同样会导出，因为额度或准入失败往往正是你要排查的对象。
+
+![Langfuse 链路列表中并列展示的网关流量、Playground 流量与被拒绝请求，可按标签过滤](../assets/screenshots/tracing-langfuse-list-en.png)
+
+导出永远不会拖慢请求。完成事件先入队，由独立的 goroutine 转换成 span；队列满时直接丢弃该事件，而不是让它排队等待。丢弃数计入 `tokenhub_gateway_trace_completions_total` 的 `outcome="dropped"`，并且每分钟最多记录一条日志，这样 Langfuse 里的空档就能与「网关本来就没有流量」区分开。是否真正送达则单独计入 `tokenhub_gateway_trace_spans_total`——队列打满和后端拒收是两类不同的问题，处理方式也不同。图片生成任务目前尚未纳入追踪：它们在 worker 上异步完成，需要先单独设计幂等方案。
 
 ## Prompt Cache 计价
 
 模型目录支持按每百万 Token 配置可选的缓存读取价格。配置后，命中缓存的输入 Token 按该价格估算成本；留空时，DeepSeek V4 Pro 按标准输入价的约 0.83% 估算，其他 DeepSeek 模型按 2% 估算，其余非 Embedding 模型按 10% 估算。模型定价表会标记估算值，并在悬停时说明采用的比例。
 
-## 候选模板恢复
+## 目录元数据恢复
 
-删除对外模型会移除其数据库记录及路由，但不会修改 `data/model-catalog.yaml` 或 `TOKENHUB_MODEL_CATALOG_FILE` 指向的文件。后端启动时会再次同步其中的候选元数据。管理员也可以在「模型目录」的「候选模板库」页签使用「恢复候选模板」刷新这些元数据，同时保留自定义对外模型。恢复模板不会把模型引入 Provider、创建映射，也不会将其发布到 `GET /v1/models`。
+删除对外模型会移除其数据库记录及路由，但不会修改 `data/model-catalog.yaml` 或 `TOKENHUB_MODEL_CATALOG_FILE` 指向的文件。后端启动时会再次同步其中的跟踪目录元数据；管理员也可以在「系统设置 → 基础设置 → 同步模型参考目录」中免重启触发同一操作。该同步不会把模型引入 Provider、创建路由或将其发布到 `GET /v1/models`；这些操作仍需在各自的管理区域中显式完成。
+
+## 外部账单连接器
+
+平台管理员可在「成本账单」中管理外部账单源。TokenHub 支持阿里云 `QueryInstanceBill`、NewAPI 额度数据和 OneAPI 兼容日志源。连接器可以测试连接、立即同步、按分钟设置定时同步、停用并保留历史记录，也可以随后重新启用。
+
+阿里云连接器需要账单 RPC Base URL、AccessKey ID、AccessKey Secret、源时区，可选填写 Product Code。TokenHub 使用 HMAC-SHA1 为每个 RPC 请求签名，并按账期逐月推进。NewAPI 连接器需要 Base URL、访问令牌、`New-Api-User` 用户 ID、币种，以及一个币种单位对应的 Quota 数量；TokenHub 会按照官方文档携带鉴权请求头调用 `GET /api/data/self`，并自动把同步范围切分为最长 30 天的窗口。OneAPI 兼容连接器需要 Base URL、API Token、日志路径、币种和 Quota 换算值。所有连接器都可以设置每秒请求上限；临时网络错误、`429` 和 `5xx` 会使用有上限的指数退避重试。
+
+手动同步可以传入 RFC 3339 格式的 `from` 和 `to`。未指定时间范围时，从上一次成功同步的结束时间继续。每页保存一次上游 Cursor，因此失败重试会从断点继续当前区间，而不是重新开始。规范化账单以 `(connector_id, external_id)` 作为幂等键，并保留币种、源时区、税费、折扣、退款、账期和用量起止时间。最近同步会展示页数、请求尝试数、新增/更新记录数和经过清理的失败代码。
+
+连接器凭证和原始账单快照都使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密，不会由管理 API 返回，也不会写入审计 Payload。重启和多副本部署时必须保持该密钥稳定。相关端点包括 `GET/POST /api/admin/billing/connectors`、`PATCH /api/admin/billing/connectors/{id}`、`POST /api/admin/billing/connectors/{id}/test`、`POST /api/admin/billing/connectors/{id}/sync`、`GET /api/admin/billing/records` 和 `GET /api/admin/billing/sync-runs`。
 
 ## 安全检查清单
 

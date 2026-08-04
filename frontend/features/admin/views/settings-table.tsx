@@ -1,6 +1,6 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit3, Info, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { type AdminResource, type AdminUser, type APIKey, type AppData, type ModalState, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
+import { type AdminResource, type AdminUser, type APIKey, type AppData, type ModalState, type Model, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
 import { filterRows } from "../domain/catalog";
 import { readPath, rowID, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
@@ -13,6 +13,7 @@ import { IdentityProviderEditModal } from "../shared/modals";
 import { FieldInput, StatusPill } from "../shared/ui";
 import { identityProviderInitialFormValues } from "../shell/auth";
 import { CrudView } from "./crud-projects";
+import { ModelCreateModal } from "./model-create-modal";
 
 export function SettingsView({
   data,
@@ -20,6 +21,7 @@ export function SettingsView({
   language,
   onTabChange,
   onLanguageChange,
+  onRestoreModelCatalog,
   onCreate,
   onEdit,
   onDelete,
@@ -31,6 +33,7 @@ export function SettingsView({
   language: AppLanguage;
   onTabChange: (tab: SettingsTabKey) => void;
   onLanguageChange: (language: AppLanguage) => void;
+  onRestoreModelCatalog: () => void;
   onCreate: (config: ResourceConfig<AdminResource>) => void;
   onEdit: (config: ResourceConfig<AdminResource>, item: AdminResource) => void;
   onDelete: (config: ResourceConfig<AdminResource>, item: AdminResource) => void;
@@ -71,6 +74,7 @@ export function SettingsView({
           items={filteredItems as AdminResource[]}
           language={language}
           onLanguageChange={onLanguageChange}
+          onRestoreModelCatalog={onRestoreModelCatalog}
           onEdit={(item) => onEdit(activeConfig, item)}
         />
       ) : (
@@ -155,12 +159,14 @@ export function SystemSettingsPanel({
   items,
   language,
   onLanguageChange,
+  onRestoreModelCatalog,
   onEdit,
 }: {
   config: ResourceConfig<AdminResource>;
   items: AdminResource[];
   language: AppLanguage;
   onLanguageChange: (language: AppLanguage) => void;
+  onRestoreModelCatalog: () => void;
   onEdit: (item: AdminResource) => void;
 }) {
   const current = items.find((item) => item.id === "cfg_gateway") ?? items[0];
@@ -172,6 +178,17 @@ export function SystemSettingsPanel({
       </div>
       <div className="section-body">
         <LanguagePreferenceRow language={language} onChange={onLanguageChange} />
+        <div className="system-settings-preference">
+          <div>
+            <p className="eyebrow">{tx("目录维护")}</p>
+            <strong>{tx("模型参考目录")}</strong>
+            <span>{tx("从配置文件重新同步跟踪模型元数据；不会引入 Provider 模型、创建路由或发布模型。")}</span>
+          </div>
+          <button className="secondary-button" onClick={onRestoreModelCatalog} type="button">
+            <RefreshCw size={16} />
+            {tx("同步模型参考目录")}
+          </button>
+        </div>
         <div className="system-settings-intro">
           <div>
             <p className="eyebrow">{tx("全局平台范围")}</p>
@@ -249,12 +266,12 @@ export function RouteStrategyHint({ data }: { data: AppData }) {
   return (
     <div className="workflow-hint">
       <div>
-        <strong>{tx("模型路由器")}</strong>
-        <span>{tx("每个统一模型只选择一次整体策略；在策略 Tab 下配置各 Provider 的比例或评分。项目作用域仍在线路上控制内部与外部流量边界。")}</span>
+        <strong>{tx("对外模型 → Provider 上游模型")}</strong>
+        <span>{tx("添加线路时只能选择 Provider 已引入的模型。渠道成本来自 Provider 模型，对外统一价格来自模型目录；这里仅决定映射和流量策略。")}</span>
       </div>
       <div className="workflow-hint-stats">
         <span>{activeRoutes} {tx("条启用线路")}</span>
-        <span>{data.providers.filter((provider) => provider.status === "active").length} Provider</span>
+        <span>{data.providerModels.length} {tx("个可选上游模型")}</span>
       </div>
     </div>
   );
@@ -623,6 +640,21 @@ export function EditModal<T>({
     );
   }
 
+  if (state.config.view === "models" && !state.item) {
+    return (
+      <ModelCreateModal
+        config={state.config as unknown as ResourceConfig<Model>}
+        data={data}
+        currentUser={currentUser}
+        values={values}
+        setValues={setValues}
+        loading={loading}
+        onClose={onClose}
+        onSave={onSave}
+      />
+    );
+  }
+
   return (
     <div className="modal-backdrop" role="presentation">
       <form className="modal" onSubmit={submit}>
@@ -634,7 +666,7 @@ export function EditModal<T>({
           <button className="icon-button" onClick={onClose} type="button" title={tx("关闭")}>×</button>
         </div>
         <div className="modal-body">
-          {state.config.fields.filter((field) => field.visible?.(values) ?? true).map((field) => (
+          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values) ?? true)).map((field) => (
             <FieldInput
               key={field.key}
               field={field}

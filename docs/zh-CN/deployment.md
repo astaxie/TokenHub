@@ -191,6 +191,8 @@ cp deploy/.env.example deploy/.env
 
 脚本会先校验 Compose 环境变量，再拉取已发布镜像并启动托管应用容器，不在部署服务器构建镜像；只有在最多等待 180 秒且 Compose 健康检查通过后才报告成功。从旧的双容器结构升级时，脚本会移除已废弃的独立前端容器，但保留 `tokenhub-data` 数据卷。首次发布 GHCR 镜像期间，如果镜像无法拉取，脚本会自动改为从当前代码构建。校验失败时会列出不安全的变量，但不会输出敏感值。新后端启动失败或未能进入健康状态时，脚本会打印本次启动产生的最多 100 行日志。
 
+安装脚本优先使用当前的 `docker compose` CLI 插件；只有系统仅提供旧式命令时才回退到 `docker-compose`。对于支持 `config --format`、但不支持 `config --environment` 的 Compose 版本，脚本也可兼容；该回退路径需要 `python3`。
+
 只校验配置，不拉取镜像或启动容器：
 
 ```bash
@@ -378,18 +380,28 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_METRICS_ENABLED` | `false` | 采集 Prometheus 指标并提供 `GET /metrics` |
 | `TOKENHUB_METRICS_TOKEN` | 空 | `/metrics` 的 Bearer 令牌；留空时回落到管理员令牌 |
 | `TOKENHUB_METRICS_PROJECT_LABEL` | `false` | 为网关指标添加 `project_id` 标签，会按项目数放大时间序列数量 |
+| `TOKENHUB_TRACING_ENABLED` | `false` | 通过 OTLP/HTTP 为每次网关调用导出一条 OpenTelemetry 链路 |
+| `TOKENHUB_TRACING_ENDPOINT` | 空 | OTLP traces 的信号级 URL，按原样使用；Langfuse 为 `<host>/api/public/otel/v1/traces` |
+| `TOKENHUB_TRACING_HEADERS` | 空 | 逗号分隔的 `name=value` 导出请求头，包含凭据 |
+| `TOKENHUB_TRACING_CAPTURE_PAYLOADS` | `false` | 在导出的 span 中包含提示词、响应和上游错误文本 |
+| `TOKENHUB_TRACING_SAMPLE_RATIO` | `1` | 导出比例，取值 0 到 1 |
+| `TOKENHUB_TRACING_TIMEOUT_SECONDS` | `10` | 单次导出尝试的时间上限 |
+| `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | 等待转换成 span 的完成事件数；队列满时丢弃链路而不是拖慢请求 |
+| `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 单个非流式上游请求的整体超时 |
+| `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | 流式请求没有整体超时；该值限制等待响应头的时长，以及流开始后允许的静默时长。每收到一个字节即重新计时 |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | 集群并发租约的过期时间及续租周期基准 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | 集群协调锁的过期时间及续租周期基准 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停机时等待在途请求完成的最长秒数 |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Docker 强制停止后端前的 Compose 宽限时间 |
-| `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | 将同一会话固定到同一个上游账号，使上游 prompt cache 持续命中。默认关闭，因为它会改变路由行为 |
+| `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | 对 Chat Completions、Anthropic Messages 和 Responses，将同一会话固定到同一个上游账号，使上游 prompt cache 持续命中。默认关闭，因为它会改变路由行为 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 逗号分隔的模型灰度名单；留空表示对全部模型生效 |
-| `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | 是否接受用户级标识作为亲和键。默认关闭，因为同一用户的并发会话会共享取值、全部落到同一个账号 |
+| `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | 是否接受 Chat/Responses 的 `user` 和 Anthropic 的 `metadata.user_id` 作为亲和键。默认关闭，因为同一用户的并发会话会共享取值、全部落到同一个账号 |
 | `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | 生成图片资产的存放目录 |
 | `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | 消费图片生成队列的工作协程数量 |
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | 队列中允许排队的图片任务上限 |
 | `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | 单个图片生成任务的超时时间，超时判定为失败 |
 | `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | 被标记为不支持图片生成的供应商资源，隔多久重新探测一次 |
+| `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI 的目标 Admin API 地址。仅由该 CLI 读取，后端服务不会读取；可被 `--to` 覆盖 |
 
 ## 前端环境变量
 
@@ -425,11 +437,11 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 ./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml
 ```
 
-自定义文件会覆盖镜像内的候选模板目录，其版本需要与 `TOKENHUB_IMAGE_TAG` 分别管理。更新文件后，重启后端容器，并在管理后台「模型目录」的「候选模板库」页签确认结果。
+自定义文件会覆盖镜像内的跟踪模型目录，其版本需要与 `TOKENHUB_IMAGE_TAG` 分别管理。更新文件后，重启后端容器或执行系统设置中的目录同步操作，并确认没有模型目录错误。
 
-更新当前配置的目录文件后，可以重启后端，也可以在管理后台「模型目录」的「候选模板库」页签点击「恢复候选模板」。该操作会刷新参考元数据、保留自定义对外模型，但不会发布任何模板。
+更新当前配置的目录文件后，可以重启后端，也可以在「系统设置 → 基础设置」中点击「同步模型参考目录」。两种方式都会同步参考元数据、保留自定义对外模型，但不会发布任何模型。
 
-`data/model-catalog.yaml` 提供候选模板的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的候选上游模型。引入选中项只会创建持久化的 Provider 模型库存；选择发布时，还会创建或复用对外模型并添加启用映射。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
 
 ## 反向代理
 

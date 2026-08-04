@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -8,6 +9,15 @@ import (
 	"strings"
 	"testing"
 )
+
+func responsesRequestFromJSON(t *testing.T, payload string) ResponsesRequest {
+	t.Helper()
+	var request ResponsesRequest
+	if err := json.Unmarshal([]byte(payload), &request); err != nil {
+		t.Fatal(err)
+	}
+	return request
+}
 
 func newCacheLocalityStore(t *testing.T, providerModels []string) (*GormStore, []RouteSelection) {
 	t.Helper()
@@ -208,6 +218,75 @@ func TestCacheAffinityDisabledByDefault(t *testing.T) {
 	}
 	if affinity != nil {
 		t.Fatal("cache affinity must be off unless explicitly enabled")
+	}
+}
+
+func TestResponsesCacheAffinityUsesCodexSessionHints(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{
+		SecretKey:            "secret",
+		CacheAffinityEnabled: true,
+		CacheAffinityModels:  []string{"deepseek-v4-flash"},
+	})
+	request := responsesRequestFromJSON(t, `{
+		"model":"deepseek-v4-flash",
+		"input":"hello",
+		"prompt_cache_key":"prompt-session",
+		"client_metadata":{"session_id":"metadata-session"},
+		"user":"user-session"
+	}`)
+	headers := make(http.Header)
+	headers.Set("session-id", "header-session")
+
+	affinity, err := server.responsesCacheLocalityAffinity("key_alpha", headers, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil || affinity.Kind != AffinityKindCacheLocality {
+		t.Fatalf("expected stateless Responses cache affinity, got %#v", affinity)
+	}
+	want, err := resolveCacheLocalityAffinity("secret", "key_alpha", "header-session", sessionScopeSession, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity.KeyHash != want.KeyHash {
+		t.Fatalf("session-id must take precedence: got %q want %q", affinity.KeyHash, want.KeyHash)
+	}
+
+	headers.Del("session-id")
+	affinity, err = server.responsesCacheLocalityAffinity("key_alpha", headers, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err = resolveCacheLocalityAffinity("secret", "key_alpha", "metadata-session", sessionScopeSession, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil || affinity.KeyHash != want.KeyHash {
+		t.Fatalf("client_metadata.session_id must precede prompt_cache_key: got %#v want %#v", affinity, want)
+	}
+}
+
+func TestResponsesCacheAffinityUserScopeRequiresOptIn(t *testing.T) {
+	request := responsesRequestFromJSON(t, `{"model":"deepseek-v4-flash","input":"hello","user":"tenant-user"}`)
+	server := NewWithConfig(NewMemoryStore(), Config{
+		SecretKey:            "secret",
+		CacheAffinityEnabled: true,
+	})
+	affinity, err := server.responsesCacheLocalityAffinity("key_alpha", nil, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity != nil {
+		t.Fatal("Responses user scope must remain opt-in")
+	}
+
+	server.config.CacheAffinityAllowUserScope = true
+	affinity, err = server.responsesCacheLocalityAffinity("key_alpha", nil, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil {
+		t.Fatal("expected Responses user scope affinity after opt-in")
 	}
 }
 

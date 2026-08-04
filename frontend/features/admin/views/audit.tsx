@@ -227,6 +227,7 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
                 detail={detail?.log.request_id === selectedRequestID ? detail : null}
                 loading={detailLoading}
                 error={detailError}
+                showProviderCost={showAdminAudit}
               />
             </div>
           </div>
@@ -258,12 +259,14 @@ export function RequestDetailPanel({
   detail,
   loading,
   error,
+  showProviderCost,
 }: {
   data: AppData;
   requestID: string;
   detail: RequestDetail | null;
   loading: boolean;
   error: string;
+  showProviderCost: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -313,6 +316,7 @@ export function RequestDetailPanel({
       rejected_prediction_tokens: sum.rejected_prediction_tokens + (item.rejected_prediction_tokens || 0),
       total_tokens: sum.total_tokens + (item.total_tokens || 0),
       estimated_cost_usd: sum.estimated_cost_usd + (item.estimated_cost_usd || 0),
+      provider_cost_usd: sum.provider_cost_usd + (item.provider_cost_usd || 0),
     }),
     {
       input_tokens: 0,
@@ -326,6 +330,7 @@ export function RequestDetailPanel({
       rejected_prediction_tokens: 0,
       total_tokens: 0,
       estimated_cost_usd: 0,
+      provider_cost_usd: 0,
     },
   );
   const regularInputTokens = Math.max(
@@ -370,6 +375,8 @@ export function RequestDetailPanel({
         <DetailField label="最终 Provider" value={providerAuditLabel(data, log)} />
         <DetailField label="Provider 资源" value={providerResourceAuditLabel(data, log.provider_resource_id)} />
         <DetailField label="上游模型" value={log.provider_model || "-"} />
+        <DetailField label="作用域策略" value={log.routing_policy_id || tx("无绑定策略")} />
+        <DetailField label="策略作用域 / 优先级" value={log.routing_policy_id ? `${tx(log.routing_policy_scope || "-")} / P${log.routing_policy_priority || 0}` : "-"} />
         <DetailField label="客户端 IP" value={log.client_ip || "-"} />
       </div>
 
@@ -411,7 +418,8 @@ export function RequestDetailPanel({
         </div>
         <div className="request-usage-total">
           <UsageStat label="总量" value={formatNumber(usageTotals.total_tokens)} />
-          <UsageStat label="估算成本" value={`$${formatMoney(usageTotals.estimated_cost_usd)}`} />
+          <UsageStat label="对外计费" value={`$${formatMoney(usageTotals.estimated_cost_usd)}`} />
+          {showProviderCost ? <UsageStat label="渠道真实成本" value={`$${formatMoney(usageTotals.provider_cost_usd)}`} /> : null}
         </div>
       </div>
 

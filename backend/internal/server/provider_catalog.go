@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -378,28 +376,12 @@ func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []st
 	return catalogUniqueStrings(parameters)
 }
 
-func ProviderCatalogModelRoute(providerID string, model ProviderCatalogModel) ModelRoute {
-	modelName := firstNonEmpty(model.CanonicalName, canonicalModelName(model.ID, model.DisplayName), model.ID)
-	return ModelRoute{
-		ID:            stableCatalogRouteID(providerID, model.ID),
-		ModelName:     modelName,
-		ProviderID:    providerID,
-		ProviderModel: model.ID,
-		Priority:      1,
-		Weight:        100,
-		Status:        StatusActive,
-		QualityScore:  60,
-		CostScore:     60,
-		Strategy:      RouteStrategyBalanced,
-	}
-}
-
 func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
 	entries := []ProviderCatalogEntry{
 		builtinCatalogEntry("openai", "OpenAI", ProviderOpenAI, "https://api.openai.com/v1", "https://platform.openai.com/docs/models", []string{"gpt-5", "gpt-5-mini", "gpt-4.1-mini", "text-embedding-3-small"}),
 		builtinCatalogEntry("anthropic", "Anthropic", ProviderAnthropic, "https://api.anthropic.com", "https://docs.anthropic.com", []string{"claude-sonnet-4.5", "claude-haiku-4.5"}),
 		builtinCatalogEntry("google", "Google Gemini", ProviderGemini, "https://generativelanguage.googleapis.com/v1beta", "https://ai.google.dev/gemini-api/docs", []string{"gemini-2.5-pro", "gemini-2.5-flash"}),
-		builtinCatalogEntry("deepseek", "DeepSeek", "deepseek", "https://api.deepseek.com", "https://platform.deepseek.com/api-docs", []string{"deepseek-chat", "deepseek-reasoner"}),
+		deepSeekBuiltinCatalogEntry(),
 		builtinCatalogEntry("qwen", "Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://help.aliyun.com/zh/model-studio", []string{"qwen-max", "qwen-plus"}),
 		{ID: "siliconflow", Name: "SiliconFlow", DisplayName: "SiliconFlow", Type: ProviderOpenAICompatible, BaseURL: "https://api.siliconflow.cn/v1", DocURL: "https://cloud.siliconflow.com/models", Source: "builtin"},
 		{ID: "ollama", Name: "Ollama", DisplayName: "Ollama", Type: "local", BaseURL: "http://127.0.0.1:11434/v1", DocURL: "https://ollama.com", Source: "builtin"},
@@ -409,6 +391,61 @@ func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
 		return entries
 	}
 	return cloneCatalogEntries(entries, false)
+}
+
+func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
+	entry := builtinCatalogEntry(
+		"deepseek",
+		"DeepSeek",
+		"deepseek",
+		"https://api.deepseek.com",
+		"https://api-docs.deepseek.com",
+		[]string{"deepseek-v4-flash", "deepseek-v4-pro"},
+	)
+	for index := range entry.Models {
+		model := &entry.Models[index]
+		switch model.ID {
+		case "deepseek-v4-flash":
+			model.DisplayName = "DeepSeek V4 Flash"
+			model.ContextWindow = 1048576
+			model.MaxOutputTokens = 393216
+			model.InputPriceUSDPer1M = 0.14
+			model.CacheReadPriceUSDPer1M = 0.0028
+			model.OutputPriceUSDPer1M = 0.28
+			model.Metadata = map[string]string{
+				"source":                   "builtin",
+				"upstream_source":          "deepseek-api",
+				"endpoints":                "responses,chat/completions,anthropic",
+				"reasoning_effort_options": "low,high,max",
+				"reasoning_default":        "true",
+				"tool_call":                "true",
+				"vision":                   "false",
+			}
+		case "deepseek-v4-pro":
+			model.DisplayName = "DeepSeek V4 Pro"
+			model.ContextWindow = 1048576
+			model.MaxOutputTokens = 393216
+			model.InputPriceUSDPer1M = 0.435
+			model.CacheReadPriceUSDPer1M = 0.003625
+			model.OutputPriceUSDPer1M = 0.87
+			model.Metadata = map[string]string{
+				"source":                   "builtin",
+				"upstream_source":          "deepseek-api",
+				"endpoints":                "chat/completions,anthropic",
+				"reasoning_effort_options": "low,high,max",
+				"reasoning_default":        "true",
+				"tool_call":                "true",
+				"vision":                   "false",
+			}
+		default:
+			continue
+		}
+		model.InputModalities = []string{"text"}
+		model.OutputModalities = []string{"text"}
+		model.Capabilities = []string{"chat", "reasoning", "tools", "structured_outputs"}
+		model.SupportedParameters = []string{"temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"}
+	}
+	return entry
 }
 
 func builtinCatalogEntry(id string, name string, providerType string, baseURL string, docURL string, modelIDs []string) ProviderCatalogEntry {
@@ -817,20 +854,6 @@ func catalogCategorySummary(models []ProviderCatalogModel) ([]string, map[string
 	}
 	sort.Strings(categories)
 	return categories, counts
-}
-
-func stableCatalogRouteID(providerID string, modelID string) string {
-	sum := sha256.Sum256([]byte(providerID + ":" + modelID))
-	return "route_catalog_" + hex.EncodeToString(sum[:])[:16]
-}
-
-func stableProviderModelRouteID(providerID string, modelID string, externalName string) string {
-	defaultName := canonicalModelName(modelID, modelID)
-	if strings.TrimSpace(externalName) == strings.TrimSpace(defaultName) {
-		return stableCatalogRouteID(providerID, modelID)
-	}
-	sum := sha256.Sum256([]byte(providerID + ":" + modelID + ":" + externalName))
-	return "route_import_" + hex.EncodeToString(sum[:])[:16]
 }
 
 func sanitizeIdentifier(value string) string {

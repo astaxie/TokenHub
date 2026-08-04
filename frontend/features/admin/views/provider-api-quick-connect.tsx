@@ -1,9 +1,17 @@
-import { Check, Eye, EyeOff, KeyRound, Plus, RefreshCw, Search } from "lucide-react";
-import { useState } from "react";
-import { type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
+import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
+import { useRef, useState } from "react";
+import { type ApiContext, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
+import { formatModelPrice } from "../domain/formatting";
 import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
+import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerTypeOptions } from "../shared/ui";
+
+type ProviderConnectionTestState = {
+  status: "idle" | "testing" | "success" | "error";
+  latencyMS?: number;
+  message?: string;
+};
 
 export function ProviderAPIQuickCatalog({
   entries,
@@ -60,6 +68,7 @@ export function ProviderAPIQuickCatalog({
 }
 
 export function ProviderAPIQuickConnect({
+  api,
   catalogID,
   entry,
   modelCount,
@@ -77,6 +86,7 @@ export function ProviderAPIQuickConnect({
   onTabChange,
   onUpdate,
 }: {
+  api: ApiContext;
   catalogID: string;
   entry?: ProviderCatalogEntry;
   modelCount: number;
@@ -95,8 +105,57 @@ export function ProviderAPIQuickConnect({
   onUpdate: (key: string, value: string) => void;
 }) {
   const [showKey, setShowKey] = useState(false);
+  const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
+  const connectionTestRun = useRef(0);
   const custom = catalogID === "custom";
   const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
+  const connectionReady = Boolean(values.base_url?.trim() && values.api_key?.trim());
+
+  function updateConnectionValue(key: string, value: string) {
+    if (key === "base_url" || key === "api_key") {
+      connectionTestRun.current += 1;
+      setConnectionTest({ status: "idle" });
+    }
+    onUpdate(key, value);
+  }
+
+  async function testConnection() {
+    if (!connectionReady) {
+      setConnectionTest({ status: "error", message: tx("请填写 Base URL 和 API Key 后测试。") });
+      return;
+    }
+    const run = connectionTestRun.current + 1;
+    connectionTestRun.current = run;
+    const startedAt = performance.now();
+    setConnectionTest({ status: "testing" });
+    try {
+      const resp = await adminFetch(api, "/api/admin/providers/test-connection", {
+        method: "POST",
+        body: JSON.stringify({
+          catalog_id: catalogID,
+          name: values.name,
+          type: values.type,
+          base_url: values.base_url,
+          api_key: values.api_key,
+        }),
+      });
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));
+      const result = (await resp.json()) as { healthy: boolean; latency_ms: number };
+      if (connectionTestRun.current !== run) return;
+      setConnectionTest({
+        status: "success",
+        latencyMS: Math.max(0, result.latency_ms),
+        message: tx("API Key 配置有效"),
+      });
+    } catch (err) {
+      if (connectionTestRun.current !== run || isAuthExpiredError(err)) return;
+      setConnectionTest({
+        status: "error",
+        latencyMS: Math.max(0, Math.round(performance.now() - startedAt)),
+        message: err instanceof Error ? err.message : tx("Provider 连接测试失败"),
+      });
+    }
+  }
 
   return (
     <section className="provider-api-quick-connect">
@@ -106,7 +165,7 @@ export function ProviderAPIQuickConnect({
           <h3>{name}</h3>
           <p>{values.base_url || tx("填写 Base URL 后连接上游")}</p>
         </div>
-        <strong>{countWithUnit(selectedModelCount, "个已启用模型", "enabled model", "件の有効モデル")}</strong>
+        <strong>{countWithUnit(selectedModelCount, "个待引入模型", "model to import", "件の取り込み予定モデル")}</strong>
       </div>
 
       <div className="provider-editor-tabs provider-quick-tabs" role="tablist" aria-label={tx("Provider 编辑区")}>
@@ -133,13 +192,13 @@ export function ProviderAPIQuickConnect({
               </label>
               <label className="field">
                 <span>Base URL</span>
-                <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} required />
+                <input value={values.base_url ?? ""} onChange={(event) => updateConnectionValue("base_url", event.target.value)} required />
               </label>
             </div>
           ) : (
             <label className="field">
               <span>Base URL</span>
-              <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
+              <input value={values.base_url ?? ""} onChange={(event) => updateConnectionValue("base_url", event.target.value)} />
             </label>
           )}
 
@@ -153,7 +212,7 @@ export function ProviderAPIQuickConnect({
                 type={showKey ? "text" : "password"}
                 onChange={(event) => {
                   clearCustomValidity(event);
-                  onUpdate("api_key", event.target.value);
+                  updateConnectionValue("api_key", event.target.value);
                 }}
                 onInvalid={handleRequiredFieldInvalid}
                 required
@@ -164,18 +223,36 @@ export function ProviderAPIQuickConnect({
             </div>
             {entry?.doc_url ? <a href={entry.doc_url} rel="noreferrer" target="_blank">{tx("获取 API Key")}</a> : null}
           </label>
+          <div className="provider-quick-test-row">
+            <button
+              className={connectionTest.status === "testing" ? "secondary-button provider-quick-test-button testing" : "secondary-button provider-quick-test-button"}
+              disabled={!connectionReady || connectionTest.status === "testing"}
+              onClick={() => void testConnection()}
+              type="button"
+            >
+              {connectionTest.status === "testing" ? <LoaderCircle size={14} /> : <RefreshCw size={14} />}
+              {tx(connectionTest.status === "testing" ? "正在测试" : "测试连接")}
+            </button>
+            {connectionTest.status !== "idle" && connectionTest.status !== "testing" ? (
+              <div className={`provider-quick-test-status ${connectionTest.status}`} aria-live="polite" role="status">
+                {connectionTest.status === "success" ? <CircleCheck size={15} /> : <CircleAlert size={15} />}
+                <span>{connectionTest.message}</span>
+                {connectionTest.latencyMS !== undefined ? <strong>{connectionTest.latencyMS} ms</strong> : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
       {activeTab === "models" ? (
         <div className="provider-quick-tab-panel">
-          {custom ? (
-            <p className="provider-quick-custom-note">{tx("自定义渠道创建后，可在模型映射中加载上游模型并配置路由。")}</p>
+          {custom && !values.base_url?.trim() ? (
+            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL 和 API Key，这里会加载自定义渠道的上游模型。")}</p>
           ) : (
             <>
               <div className="provider-quick-model-summary">
                 <strong>{tx("模型列表")}</strong>
-                <span>{selectedModelCount}/{modelCount} {tx("启用")}</span>
+                <span>{selectedModelCount}/{modelCount} {tx("待引入")}</span>
               </div>
               <div className="provider-quick-model-tools">
                 <div className="provider-template-search provider-quick-model-search">
@@ -197,11 +274,11 @@ export function ProviderAPIQuickConnect({
                     <article className={enabled ? "provider-quick-model-item active" : "provider-quick-model-item"} key={model.id}>
                       <div>
                         <strong>{model.display_name || model.name}</strong>
-                        <span>{model.canonical_name || model.id} ← {model.id} · {model.family || model.category || model.type || "model"}</span>
+                        <span>{model.canonical_name || model.id} ← {model.id} · {model.family || model.category || model.type || "model"} · {tx("渠道成本")} {formatModelPrice(model)}</span>
                       </div>
                       <button
                         aria-checked={enabled}
-                        aria-label={`${tx(enabled ? "停用" : "启用")} ${model.display_name || model.name}`}
+                        aria-label={`${tx(enabled ? "移除" : "引入")} ${model.display_name || model.name}`}
                         className={enabled ? "provider-quick-model-switch active" : "provider-quick-model-switch"}
                         onClick={() => onModelToggle(model.id, !enabled)}
                         role="switch"

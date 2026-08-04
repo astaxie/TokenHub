@@ -10,8 +10,8 @@
     "test:security-policy": "node ./test-security-policy.mjs"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "latest",
-    "ai": "latest"
+    "@ai-sdk/openai-compatible": "2.0.50",
+    "ai": "6.0.206"
   },
   "engines": {
     "node": ">=20"

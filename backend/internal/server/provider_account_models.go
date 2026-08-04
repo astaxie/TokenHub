@@ -288,7 +288,6 @@ func (s *Server) queryOpenAICodexModels(ctx context.Context, resourceID string) 
 	catalog, status, err := s.codexSubscription.ModelsWithETag(ctx, resourceID, etag)
 	if err == nil && status == http.StatusNotModified {
 		if cached, ok := codexResourceCachedCatalog(&resource); ok {
-			s.syncOpenAICodexCatalog(resource.ProviderID, cached)
 			return cached, nil
 		}
 		catalog, err = s.codexSubscription.Models(ctx, resourceID)
@@ -297,29 +296,8 @@ func (s *Server) queryOpenAICodexModels(ctx context.Context, resourceID string) 
 		if persistErr := s.persistCodexResourceModels(resourceID, catalog.Models, time.Now().UTC()); persistErr != nil {
 			return ProviderCatalogEntry{}, persistErr
 		}
-		s.syncOpenAICodexCatalog(resource.ProviderID, catalog)
 	}
 	return catalog, err
-}
-
-func (s *Server) syncOpenAICodexCatalog(providerID string, catalog ProviderCatalogEntry) {
-	s.syncOpenAICodexModels(catalog.Models)
-	existing := map[string]bool{}
-	for _, route := range s.store.ListRoutes() {
-		if route.ProviderID != providerID {
-			continue
-		}
-		existing[normalizeModelLookupName(firstNonEmpty(route.ProviderModel, route.ModelName))] = true
-	}
-	selectedModels := make([]string, 0, len(catalog.Models))
-	for _, model := range catalog.Models {
-		if !existing[normalizeModelLookupName(model.ID)] {
-			selectedModels = append(selectedModels, model.ID)
-		}
-	}
-	if len(selectedModels) > 0 {
-		s.createProviderCatalogRoutes(providerID, catalog, ProviderCreateRequest{SelectedModels: selectedModels})
-	}
 }
 
 func (s *Server) persistCodexResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {
@@ -490,48 +468,6 @@ func (s *Server) removeCodexResourceModel(resourceID string, modelName string) {
 	_ = s.persistCodexResourceModels(resourceID, catalogModels, time.Now().UTC())
 }
 
-func (s *Server) syncOpenAICodexModels(models []ProviderCatalogModel) {
-	existing := map[string]Model{}
-	for _, model := range s.store.ListModels() {
-		existing[normalizeModelLookupName(model.Name)] = model
-	}
-	for _, model := range models {
-		lookupName := normalizeModelLookupName(model.ID)
-		if current, ok := existing[lookupName]; ok {
-			current.Category = "codex"
-			current.Family = "codex"
-			current.ContextWindow = model.ContextWindow
-			current.InputModalities = append([]string(nil), model.InputModalities...)
-			current.OutputModalities = append([]string(nil), model.OutputModalities...)
-			current.Capabilities = append([]string(nil), model.Capabilities...)
-			current.SupportedParameters = append([]string(nil), model.SupportedParameters...)
-			if current.Metadata == nil {
-				current.Metadata = map[string]string{}
-			}
-			for key, value := range model.Metadata {
-				current.Metadata[key] = value
-			}
-			s.store.AddModel(current)
-			continue
-		}
-		s.store.AddModel(Model{
-			ID:                  model.ID,
-			Name:                model.ID,
-			Category:            "codex",
-			Family:              "codex",
-			Modality:            "chat",
-			ContextWindow:       model.ContextWindow,
-			InputModalities:     append([]string(nil), model.InputModalities...),
-			OutputModalities:    append([]string(nil), model.OutputModalities...),
-			Capabilities:        append([]string(nil), model.Capabilities...),
-			SupportedParameters: append([]string(nil), model.SupportedParameters...),
-			Metadata:            cloneStringMap(model.Metadata),
-			Status:              StatusActive,
-		})
-		existing[lookupName] = Model{ID: model.ID, Name: model.ID}
-	}
-}
-
 func (s *Server) codexProviderCatalogFromStandardModels(selected []string) ProviderCatalogEntry {
 	modelsByName := map[string]Model{}
 	for _, model := range s.store.ListModels() {
@@ -573,6 +509,22 @@ func (s *Server) codexProviderCatalogFromStandardModels(selected []string) Provi
 		Source:         "openai-codex-live",
 		Models:         models,
 	}
+}
+
+func codexProviderCatalogFromModels(models []ProviderCatalogModel) ProviderCatalogEntry {
+	candidates := append([]ProviderCatalogModel(nil), models...)
+	for index := range candidates {
+		candidates[index].Category = "codex"
+	}
+	entry := customProviderCatalogFromModels(candidates, "codex")
+	entry.ID = codexProviderCatalogID
+	entry.Name = "OpenAI Codex"
+	entry.DisplayName = "OpenAI Codex"
+	entry.Type = ProviderOpenAICodex
+	entry.BaseURL = openAICodexBaseURL
+	entry.DocURL = "https://developers.openai.com/codex"
+	entry.Source = "openai-codex-live"
+	return entry
 }
 
 func cloneStringMap(values map[string]string) map[string]string {

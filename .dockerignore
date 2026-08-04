@@ -4,6 +4,7 @@
 .vscode
 docs
 sdk
+papers
 tmp
 output
 *.log

@@ -16,6 +16,13 @@ design/
 doc/
 docs/superpowers/
 scripts/
+# Staged planning notes some contributors keep at the repository root while working.
+# They describe how a change was built, which the pull request and the code comments
+# already carry, so they are working files rather than deliverables.
+IMPLEMENTATION_PLAN.md
+
+# Local research materials
+/papers/
 
 # Go
 bin/
@@ -51,3 +58,5 @@ yarn-error.log*
 .claude/
 .spec-workflow/
 CLAUDE.md
+backend/tokenhub-migrate
+sdk/migration-e2e/report.json

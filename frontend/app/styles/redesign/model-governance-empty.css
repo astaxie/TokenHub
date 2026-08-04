@@ -1,0 +1,137 @@
+.model-governance-empty-state {
+  min-height: 500px;
+  padding: 42px 24px 30px;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 46px;
+  background: var(--surface);
+}
+
+.model-governance-empty-heading {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.model-governance-empty-emblem {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  margin-bottom: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.model-governance-empty-emblem::after {
+  content: "";
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 21px;
+  height: 21px;
+  border: 4px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.model-governance-empty-emblem.models::after {
+  background: color-mix(in srgb, var(--accent) 72%, #6d28d9);
+}
+
+.model-governance-empty-emblem.routes::after {
+  background: color-mix(in srgb, var(--accent) 65%, #0891b2);
+}
+
+.model-governance-empty-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 740;
+  line-height: 1.4;
+}
+
+.model-governance-empty-heading p {
+  max-width: 620px;
+  margin: 12px 0 20px;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.model-governance-empty-action {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 7px;
+}
+
+.model-governance-empty-state .model-governance-flow {
+  width: min(100%, 1100px);
+  min-height: 88px;
+  border-color: var(--border-2);
+  background: var(--surface);
+  box-shadow: 0 12px 34px rgb(15 23 42 / 5%);
+}
+
+.model-governance-empty-state .model-governance-flow-step {
+  min-height: 86px;
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+.model-governance-empty-state .model-governance-flow-step > span {
+  width: 30px;
+  height: 30px;
+  color: var(--accent);
+  background: var(--accent-weak);
+  font-size: 12px;
+}
+
+.model-governance-empty-state .model-governance-flow-step strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.model-governance-empty-state .model-governance-flow-step small {
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.model-governance-empty-state .model-governance-flow-step.is-current {
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.model-governance-empty-state .model-governance-flow-step.is-current > span {
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.model-governance-empty-state .model-governance-flow-step.is-upcoming > span {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.model-governance-empty-state .model-governance-flow-step > svg {
+  color: var(--border-strong);
+}
+
+@media (max-width: 720px) {
+  .model-governance-empty-state {
+    min-height: 0;
+    padding: 30px 16px 20px;
+    gap: 32px;
+  }
+
+  .model-governance-empty-state .model-governance-flow-step {
+    min-height: 98px;
+    padding: 16px 18px;
+  }
+}

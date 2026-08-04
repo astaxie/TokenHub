@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -189,19 +188,7 @@ func fetchOpenAIAccountQuotaWithClient(ctx context.Context, client *http.Client,
 	if err != nil {
 		return OpenAIAccountQuota{}, 0, NewHTTPError(http.StatusBadGateway, "openai_quota_request_failed", "Failed to create OpenAI quota request")
 	}
-	if parsed, parseErr := url.Parse(endpoint); parseErr == nil {
-		req.Host = parsed.Host
-	}
-	req.Header.Set("authorization", "Bearer "+accessToken)
-	req.Header.Set("chatgpt-account-id", accountID)
-	req.Header.Set("openai-beta", openAIAccountQuotaBeta)
-	req.Header.Set("oai-language", "zh-CN")
-	req.Header.Set("originator", "Codex Desktop")
-	req.Header.Set("accept", "application/json")
-	req.Header.Set("sec-fetch-site", "none")
-	req.Header.Set("sec-fetch-mode", "no-cors")
-	req.Header.Set("sec-fetch-dest", "empty")
-	req.Header.Set("priority", "u=4, i")
+	setOpenAIAccountQuotaHeaders(req, accessToken, accountID)
 
 	if client == nil {
 		client = &http.Client{Timeout: openAIAccountQuotaTimeout}
@@ -224,16 +211,24 @@ func fetchOpenAIAccountQuotaWithClient(ctx context.Context, client *http.Client,
 	return quota, resp.StatusCode, nil
 }
 
+func setOpenAIAccountQuotaHeaders(req *http.Request, accessToken string, accountID string) {
+	req.Host = req.URL.Host
+	req.Header.Set("authorization", "Bearer "+accessToken)
+	req.Header.Set("chatgpt-account-id", accountID)
+	req.Header.Set("openai-beta", openAIAccountQuotaBeta)
+	req.Header.Set("oai-language", "zh-CN")
+	req.Header.Set("originator", "Codex Desktop")
+	req.Header.Set("accept", "application/json")
+	req.Header.Set("sec-fetch-site", "none")
+	req.Header.Set("sec-fetch-mode", "no-cors")
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("priority", "u=4, i")
+}
+
 func openAIQuotaUpstreamError(status int, body io.Reader) error {
 	message := "OpenAI quota endpoint rejected the request"
-	var payload map[string]any
-	if err := json.NewDecoder(io.LimitReader(body, 64<<10)).Decode(&payload); err == nil {
-		for _, key := range []string{"detail", "message", "error"} {
-			if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
-				message = strings.TrimSpace(value)
-				break
-			}
-		}
+	if _, _, upstreamMessage := openAIQuotaUpstreamErrorDetails(body); upstreamMessage != "" {
+		message = upstreamMessage
 	}
 	switch status {
 	case http.StatusUnauthorized:

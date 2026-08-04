@@ -172,6 +172,9 @@ jobs:
       - name: Check documentation translations
         run: node tools/check-doc-translations.mjs
 
+      - name: Check UI translations
+        run: node tools/check-ui-translations.mjs
+
       - name: Check environment variable contract
         run: node tools/check-env-contract.mjs
 

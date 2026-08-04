@@ -487,7 +487,7 @@ func TestGatewayRecoversAfterCooldownExpires(t *testing.T) {
 	failing := true
 	upstreamCalls := 0
 	server := New(store)
-	server.adapters["flaky_resource"] = flakyAdapter{failing: &failing, calls: &upstreamCalls}
+	registerTestAdapter(server, "flaky_resource", flakyAdapter{failing: &failing, calls: &upstreamCalls})
 	app := server.Handler()
 
 	chat := func() int {
@@ -544,7 +544,7 @@ func TestGatewayReparksResourceWhenHalfOpenTrialFails(t *testing.T) {
 	store.failureThreshold = 2
 	failing := true
 	server := New(store)
-	server.adapters["flaky_resource"] = flakyAdapter{failing: &failing}
+	registerTestAdapter(server, "flaky_resource", flakyAdapter{failing: &failing})
 	app := server.Handler()
 
 	chat := func() int {

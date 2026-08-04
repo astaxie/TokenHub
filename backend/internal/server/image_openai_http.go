@@ -37,7 +37,7 @@ func (s *Server) executeOpenAIImage(ctx context.Context, route RouteSelection, j
 	if err != nil {
 		return nil, "", Usage{}, err
 	}
-	adapter, ok := s.adapters[ProviderOpenAI].(OpenAICompatibleAdapter)
+	adapter, ok := resolveTypedAdapter[OpenAICompatibleAdapter](s.adapterRegistry, ProviderOpenAI)
 	if !ok {
 		return nil, "", Usage{}, NewHTTPError(http.StatusServiceUnavailable, "image_provider_unavailable", "OpenAI image adapter is unavailable")
 	}
@@ -84,7 +84,7 @@ func executeOpenAIImageGeneration(
 		Size:         normalizedImageOption(job.Size, "auto"),
 		OutputFormat: "png",
 	}
-	resp, err := adapter.doRaw(ctx, route.Provider, http.MethodPost, "/images/generations", payload)
+	resp, err := adapter.doRaw(ctx, route.Provider, http.MethodPost, "/images/generations", payload, false)
 	if err != nil {
 		return openAIImageResponse{}, nil, err
 	}
@@ -206,10 +206,8 @@ func (a OpenAICompatibleAdapter) doMultipartRaw(
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }

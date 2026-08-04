@@ -545,6 +545,8 @@ export function APIKeyWizardModal({
               </div>
               <div className="wizard-form-grid">
                 {renderField("ip_allowlist")}
+                {renderField("rate_limit_rpm")}
+                {renderField("token_limit_tpm")}
                 {renderField("max_concurrency")}
                 {renderField("daily_requests")}
                 {renderField("monthly_requests")}
@@ -569,6 +571,8 @@ export function APIKeyWizardModal({
                 <ReviewItem label="Key 名称" value={values.name || "-"} />
                 <ReviewItem label="模型范围" value={modelScope === "all" ? tx("全部可路由模型") : selectedModels.join(", ") || "-"} />
                 <ReviewItem label="IP 白名单" value={splitList(values.ip_allowlist).join(", ") || tx("不限")} />
+                <ReviewItem label="RPM" value={values.rate_limit_rpm || tx("继承上级")} />
+                <ReviewItem label="TPM" value={values.token_limit_tpm || tx("继承上级")} />
                 <ReviewItem label="最大并发" value={values.max_concurrency || "-"} />
                 <ReviewItem label="日请求" value={values.daily_requests || "-"} />
                 <ReviewItem label="月成本 USD" value={values.monthly_cost_usd || "-"} />

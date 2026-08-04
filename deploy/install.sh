@@ -82,7 +82,18 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-compose=("$DOCKER_BIN" compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+if "$DOCKER_BIN" compose version >/dev/null 2>&1; then
+  compose_command=("$DOCKER_BIN" compose)
+elif command -v docker-compose >/dev/null 2>&1 &&
+  docker-compose version >/dev/null 2>&1; then
+  compose_command=(docker-compose)
+else
+  error "Docker Compose is not installed or is not available on PATH"
+  error "install the Docker Compose plugin (preferred) or the legacy docker-compose command"
+  exit 1
+fi
+
+compose=("${compose_command[@]}" --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 if [ -n "$MODEL_CATALOG_PATH" ]; then
   if [ ! -f "$MODEL_CATALOG_PATH" ]; then
     error "model catalog file not found: $MODEL_CATALOG_PATH"
@@ -103,10 +114,37 @@ if ! "${compose[@]}" config --quiet; then
   exit 1
 fi
 
-compose_environment="$("${compose[@]}" config --environment)" || {
-  error "Docker Compose could not resolve deployment environment variables"
+if compose_environment="$("${compose[@]}" config --environment 2>/dev/null)"; then
+  :
+elif command -v python3 >/dev/null 2>&1; then
+  compose_environment="$("${compose[@]}" config --format json | python3 -c '
+import json
+import sys
+
+config = json.load(sys.stdin)
+backend = config.get("services", {}).get("tokenhub-backend", {})
+environment = backend.get("environment", {})
+image = backend.get("image", "")
+image_tag = image.rsplit(":", 1)[1] if ":" in image else ""
+
+for name, default in (
+    ("TOKENHUB_ENV", "prod"),
+    ("TOKENHUB_ADMIN_TOKEN", "change-me-tokenhub-admin-token"),
+    ("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "change-me-tokenhub-admin-password"),
+    ("TOKENHUB_SECRET_KEY", "change-me-tokenhub-secret-key"),
+):
+    value = environment.get(name, default)
+    print(f"{name}={default if value is None else value}")
+print(f"TOKENHUB_IMAGE_TAG={image_tag or '\''latest'\''}")
+')" || {
+    error "Docker Compose could not resolve deployment environment variables"
+    exit 1
+  }
+else
+  error "Docker Compose cannot expose its resolved interpolation environment"
+  error "upgrade Docker Compose or install python3 to validate the deployment configuration"
   exit 1
-}
+fi
 
 tokenhub_environment=""
 admin_token=""

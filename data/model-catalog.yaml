@@ -353,6 +353,62 @@ models:
       tool_call: "true"
       vision: "true"
       reasoning_supported: "true"
+  - name: "deepseek-v4-flash"
+    title: "DeepSeek V4 Flash"
+    description: "Official DeepSeek V4 Flash API model with native Responses API and Codex support."
+    category: "deepseek"
+    family: "deepseek"
+    modality: "chat"
+    context_window: 1048576
+    input_price_usd_per_1m: 0.14
+    cache_read_price_usd_per_1m: 0.0028
+    output_price_usd_per_1m: 0.28
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "deepseek-api"
+      provider_catalog_id: "deepseek"
+      provider_model_id: "deepseek-v4-flash"
+      provider_model_name: "DeepSeek V4 Flash"
+      endpoints: "responses,chat/completions,anthropic"
+      features: "function-calling,structured-outputs,reasoning,apply-patch"
+      max_output_tokens: "393216"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "low,high,max"
+  - name: "deepseek-v4-pro"
+    title: "DeepSeek V4 Pro"
+    description: "Official DeepSeek V4 Pro API model. Responses API is intentionally not advertised until DeepSeek enables it upstream."
+    category: "deepseek"
+    family: "deepseek"
+    modality: "chat"
+    context_window: 1048576
+    input_price_usd_per_1m: 0.435
+    cache_read_price_usd_per_1m: 0.003625
+    output_price_usd_per_1m: 0.87
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "deepseek-api"
+      provider_catalog_id: "deepseek"
+      provider_model_id: "deepseek-v4-pro"
+      provider_model_name: "DeepSeek V4 Pro"
+      endpoints: "chat/completions,anthropic"
+      features: "function-calling,structured-outputs,reasoning"
+      max_output_tokens: "393216"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "low,high,max"
   - name: "deepseek/deepseek-v4-flash"
     title: "Deepseek V4 Flash"
     description: "DeepSeek-V4-Flash is a lightweight model meticulously designed by DeepSeek to deliver the ultimate combination of lightning-fast response times and unmatched cost-effectiveness. Engineered with fewer parameters and significantly lower activation overhead, V4-Flash provides an exceptionally fast and economical API service. At its core, V4-Flash demonstrates outstanding reasoning capabilities that closely rival the V4-Pro model. While featuring a slightly streamlined repository of world knowledge, it remains highly capable of satisfying the demands of most application scenarios. In Agentic applications, V4-Flash performs on par with the Pro version when handling standard and fundamental tasks. As the premier choice for developers prioritizing high concurrency, low latency, and cost efficiency, DeepSeek-V4-Flash serves as the optimal solution for deploying large-scale, high-frequency, and lightweight AI workloads."

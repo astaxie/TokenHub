@@ -1,0 +1,12 @@
+{
+  "name": "tokenhub-migration-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:litellm": "node litellm-e2e.mjs"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}

@@ -5,6 +5,7 @@ import { inferModelCategoryText, normalizeNotificationChannelType, notificationC
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
+import { initialModelRoutes } from "../domain/provider-model-selection";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
 import { projectQuotaFields, type ProjectQuotaValues } from "../views/crud-projects";
@@ -19,10 +20,9 @@ export function providerPayload(values: Record<string, string>) {
     status: values.status || "active",
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 10),
-    catalog_id: values.catalog_id,
-    model_category: values.model_category,
-    create_routes: values.create_routes === "true",
-    selected_models: splitList(values.selected_models),
+		catalog_id: values.catalog_id,
+		model_category: values.model_category,
+		selected_models: splitList(values.selected_models),
     custom_models: parseProviderCatalogModels(values.custom_models),
   };
 }
@@ -69,6 +69,8 @@ export function providerResourcePayload(values: Record<string, string>) {
     base_url: values.base_url,
     api_key: isOpenAIAccount ? values.access_token : values.api_key,
     group: values.group || "default",
+    region: values.region,
+    environment: values.environment,
     status: values.status || "active",
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 1),
@@ -131,6 +133,8 @@ export function providerResourceToForm(item: ProviderResource) {
     rate_limit_rpm: String(item.rate_limit_rpm ?? ""),
     token_limit_tpm: String(item.token_limit_tpm ?? ""),
     max_concurrency: String(item.max_concurrency ?? ""),
+    region: item.region ?? "",
+    environment: item.environment ?? "",
     status: item.status,
     healthy: String(item.healthy),
   };
@@ -159,6 +163,8 @@ export function modelPayload(values: Record<string, string>) {
   payload.supported_parameters = splitList(values.supported_parameters);
   payload.input_modalities = splitList(values.input_modalities);
   payload.output_modalities = splitList(values.output_modalities);
+  const routes = initialModelRoutes(values.initial_provider_models);
+  if (routes.length > 0) payload.routes = routes;
   return payload;
 }
 
@@ -173,6 +179,7 @@ export function routePayload(values: Record<string, string>) {
     strategy: values.strategy,
     project_scope: values.project_scope || "all",
     project_ids: splitList(values.project_ids),
+    tags: splitList(values.tags),
     sticky_session: values.sticky_session === "true",
     priority: numberOr(values.priority, 0),
     weight: numberOr(values.weight, 0),
@@ -223,6 +230,8 @@ export function projectQuotaPolicy(data: AppData, project: Project) {
 export function projectQuotaValues(quota?: AdminResource): ProjectQuotaValues {
   return {
     status: quota?.status || "active",
+    rate_limit_rpm: quotaFieldValue(quota, "rate_limit_rpm"),
+    token_limit_tpm: quotaFieldValue(quota, "token_limit_tpm"),
     daily_requests: quotaFieldValue(quota, "daily_requests"),
     monthly_requests: quotaFieldValue(quota, "monthly_requests"),
     daily_tokens: quotaFieldValue(quota, "daily_tokens"),
@@ -247,6 +256,8 @@ export function projectQuotaPayload(project: Project, values: ProjectQuotaValues
     fields: {
       scope: "project",
       scope_id: project.id,
+      rate_limit_rpm: numberOr(values.rate_limit_rpm, 0),
+      token_limit_tpm: numberOr(values.token_limit_tpm, 0),
       daily_requests: numberOr(values.daily_requests, 0),
       monthly_requests: numberOr(values.monthly_requests, 0),
       daily_tokens: numberOr(values.daily_tokens, 0),
@@ -317,6 +328,8 @@ export function projectQuotaSummary(data: AppData, project: Project) {
   if (!quota) return "未配置";
   if (quota.status !== "active") return enumValueLabel(quota.status);
   const parts = [
+    quotaSummaryPart(quota, "rate_limit_rpm", "RPM"),
+    quotaSummaryPart(quota, "token_limit_tpm", "TPM"),
     quotaSummaryPart(quota, "daily_requests", "日请求"),
     quotaSummaryPart(quota, "monthly_requests", "月请求"),
     quotaSummaryPart(quota, "daily_tokens", "日 Token"),
@@ -384,7 +397,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "weight") values[field.key] = "100";
     if (field.key === "quality_score") values[field.key] = "50";
     if (field.key === "cost_score") values[field.key] = "50";
-    if (field.key === "strategy") values[field.key] = config.view === "routes" ? "priority_weighted" : "balanced";
+    if (field.key === "strategy") values[field.key] = config.view === "routes" ? "priority_weighted" : config.view === "routing-policies" ? "inherit" : "balanced";
     if (field.key === "project_scope") values[field.key] = "all";
     if (field.key === "provider_id") values[field.key] = firstActiveProvider(data)?.id ?? "";
     if (field.key === "model_name") values[field.key] = firstActiveModel(data)?.name ?? "";
@@ -395,6 +408,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "owner_user_id" && config.view === "api-keys") values[field.key] = currentUser && appRole(currentUser.role) !== "admin" ? currentUser.id : "";
     if (field.key === "team_id") values[field.key] = firstActiveTeam(data)?.id ?? "";
     if (field.key === "allowed_models") values[field.key] = "";
+    if (field.key === "model_access_mode") values[field.key] = "inherit";
     if (field.key === "daily_requests") values[field.key] = "1000";
     if (field.key === "monthly_requests") values[field.key] = "30000";
     if (field.key === "daily_tokens") values[field.key] = config.view === "api-keys" ? "100000000" : "1000000";
@@ -454,8 +468,11 @@ export function keyCreatePayload(values: Record<string, string>) {
     name: values.name,
     group: values.group || "default",
     owner_user_id: values.owner_user_id,
+    model_access_mode: values.model_access_mode || "inherit",
     allowed_models: splitList(values.allowed_models),
     ip_allowlist: splitList(values.ip_allowlist),
+    rate_limit_rpm: minuteLimitValue(values.rate_limit_rpm, false),
+    token_limit_tpm: minuteLimitValue(values.token_limit_tpm, false),
     limits: keyLimits(values),
   };
 }
@@ -465,11 +482,19 @@ export function keyPatchPayload(values: Record<string, string>) {
     name: values.name,
     group: values.group || "default",
     owner_user_id: values.owner_user_id,
+    model_access_mode: values.model_access_mode || "inherit",
     status: values.status || "active",
     allowed_models: splitList(values.allowed_models),
     ip_allowlist: splitList(values.ip_allowlist),
+    rate_limit_rpm: minuteLimitValue(values.rate_limit_rpm, true),
+    token_limit_tpm: minuteLimitValue(values.token_limit_tpm, true),
     limits: keyLimits(values),
   };
+}
+
+function minuteLimitValue(value: string | undefined, clearWhenBlank: boolean) {
+  if (!value?.trim()) return clearWhenBlank ? null : undefined;
+  return numberOr(value, 0);
 }
 
 export function notificationChannelPayload(values: Record<string, string>, existing?: AdminResource) {

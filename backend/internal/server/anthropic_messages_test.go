@@ -208,6 +208,62 @@ func TestAnthropicMessagesConvertsToolsAndToolResultsForOpenAI(t *testing.T) {
 	}
 }
 
+func TestAnthropicMessagesOmitsEmptyToolCallsForOpenAI(t *testing.T) {
+	var mu sync.Mutex
+	var upstreamRequests []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		decoder := json.NewDecoder(r.Body)
+		decoder.UseNumber()
+		if err := decoder.Decode(&payload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+			return
+		}
+		mu.Lock()
+		upstreamRequests = append(upstreamRequests, payload)
+		mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"chatcmpl_nocalls",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"Understood."},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}
+		}`)
+	}))
+	defer upstream.Close()
+
+	handler, _, secret := newAnthropicGateway(t, upstream.URL, ProviderOpenAICompatible)
+	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 1024,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Summarize the plan."},
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "thinking", "thinking": "No tool call needed."},
+					map[string]any{"type": "text", "text": "Let me check."},
+				},
+			},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(upstreamRequests) != 1 {
+		t.Fatalf("expected one upstream request, got %d", len(upstreamRequests))
+	}
+	messages, _ := upstreamRequests[0]["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("expected two upstream messages, got %#v", messages)
+	}
+	assistant, _ := messages[1].(map[string]any)
+	if _, present := assistant["tool_calls"]; present {
+		t.Fatalf("assistant message without tool_use must not carry tool_calls, got %#v", assistant)
+	}
+}
+
 func TestAnthropicMessagesConvertsOpenAIStreamingTextAndToolCall(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]any

@@ -1,8 +1,9 @@
 import { type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteDefaults, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
+import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
+import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { tx } from "../i18n/runtime";
 import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptions, StatusPill } from "../shared/ui";
@@ -12,12 +13,13 @@ export function providerConfig(): ResourceConfig<Provider> {
     view: "providers",
     title: "Provider 渠道",
     eyebrow: "Provider 列表",
-    description: "Provider 是一个可调用的上游渠道实例，包含服务商类型、Base URL、API Key、健康状态和标准模型路由。",
+    description: "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。",
     createLabel: "新增 Provider",
     columns: [
       { key: "name", label: "名称", render: (item, ctx) => providerDisplayName(item, ctx.providerResources) },
       { key: "type", label: "类型", render: (item, ctx) => providerTypeLabel(providerDisplayType(item, ctx.providerResources)) },
       { key: "base_url", label: "Base URL", render: (item, ctx) => providerDisplayBaseURL(item, ctx.providerResources) },
+      { key: "models", label: "已引入模型", render: (item, ctx) => ctx.providerModels.filter((model) => model.provider_id === item.id).length },
       { key: "routes", label: "路由线路", render: (item, ctx) => providerRouteSummary(item, ctx) },
       { key: "account_resources", label: "账号资源", render: (item, ctx) => providerAccountResourceSummary(item, ctx) },
       { key: "priority", label: "优先级" },
@@ -40,11 +42,8 @@ export function providerConfig(): ResourceConfig<Provider> {
     actions: [
       {
         label: "配置路由",
-        title: "为该 Provider 新增模型路由",
-        modal: (item, ctx) => ({
-          config: routeConfig(),
-          initialValues: providerRouteDefaults(item, ctx),
-        }),
+        title: "路由策略",
+        navigate: () => "routes",
       },
       {
         label: "测试",
@@ -80,6 +79,8 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "plan_type", label: "计划类型", visible: openAIAccountFieldVisible },
     { key: "base_url", label: "Base URL", placeholder: "https://api.openai.com/v1" },
     { key: "group", label: "分组" },
+    { key: "region", label: "地域", placeholder: "cn-east" },
+    { key: "environment", label: "环境", placeholder: "prod" },
     { key: "priority", label: "优先级", type: "number" },
     { key: "weight", label: "权重", type: "number" },
     { key: "rate_limit_rpm", label: "RPM 限制", type: "number" },
@@ -103,6 +104,8 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
       { key: "resource_type", label: "账号类型", render: (item) => resourceTypeLabel(item.resource_type) },
       { key: "credential_summary", label: "账号邮箱", render: (item) => item.credential_summary?.account_email || item.credential_summary?.account_id || "-" },
       { key: "weight", label: "权重" },
+      { key: "region", label: "地域" },
+      { key: "environment", label: "环境" },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
     fields: providerResourceFieldConfigs(provider),
@@ -204,7 +207,7 @@ export function modelConfig(): ResourceConfig<Model> {
     view: "models",
     title: "模型目录",
     eyebrow: "对外模型列表",
-    description: "维护内部应用调用的对外模型名，并查看每个模型可用的 Provider 线路。",
+    description: "维护客户端调用的统一模型名、能力和对外价格；不同 Provider 线路共享同一套对外定价。",
     createLabel: "新增模型",
     columns: [
       { key: "name", label: "对外模型", render: (item) => <ModelNameCell model={item} /> },
@@ -212,26 +215,38 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "capabilities", label: "能力", render: (item) => modelCapabilitySummary(item) },
       { key: "routes", label: "可用供应商", render: (item, ctx) => <ModelRouteProviders model={item} data={ctx} /> },
       { key: "route_count", label: "路由数", render: (item, ctx) => isCodexSubscriptionImageModel(item) ? codexImageCapableResources(ctx).length : modelRoutesFor(item, ctx).length },
-      { key: "price", label: "目录计价", render: (item) => modelPriceSummary(item) },
+      { key: "price", label: "对外统一价", render: (item) => modelPriceSummary(item) },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
     fields: [
       { key: "name", label: "模型名", required: true },
+      {
+        key: "initial_provider_models",
+        label: "可用 Provider 模型",
+        type: "multi-select",
+        optionsFromData: availableProviderModelSelectOptions,
+        placeholder: "搜索 Provider 或上游模型",
+        required: true,
+        createOnly: true,
+        emptyOptionsText: "暂无可用 Provider 模型，请先到 Provider 渠道引入。",
+        emptySelectionText: "请选择至少一个已引入的 Provider 模型。",
+        help: "选中的已引入模型会在保存时同步生成初始路由；优先级、权重和流量策略可稍后在路由策略中调整。",
+      },
       { key: "category", label: "模型类型", type: "select", options: modelCategoryFormOptions(), required: true },
       { key: "family", label: "系列", required: true },
       { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank"], required: true },
       { key: "context_window", label: "上下文窗口", type: "number" },
-      { key: "input_price_usd_per_1m", label: "输入价 USD/1M", type: "number" },
+      { key: "input_price_usd_per_1m", label: "对外输入价 USD/1M", type: "number", help: "用于客户端用量计费和额度；实际 Provider 成本在 Provider 模型库存中单独维护。" },
       {
         key: "cache_read_price_usd_per_1m",
-        label: "缓存读价 USD/1M",
+        label: "对外缓存读价 USD/1M",
         type: "number",
         placeholder: "可选，留空时按同类模型常见比例估算",
-        help: "配置值优先用于成本计算；留空时 DeepSeek V4 Pro 按约 0.83%、其他 DeepSeek 按 2%、其余模型按 10% 估算。",
+        help: "配置后用于统一对外计费；留空时 DeepSeek V4 Pro 按约 0.83%、其他 DeepSeek 按 2%、其余模型按 10% 估算。",
         visible: (values) => values.modality !== "embedding",
       },
-      { key: "output_price_usd_per_1m", label: "输出价 USD/1M", type: "number" },
-      { key: "embedding_price_usd_per_1m", label: "Embedding 价 USD/1M", type: "number" },
+      { key: "output_price_usd_per_1m", label: "对外输出价 USD/1M", type: "number" },
+      { key: "embedding_price_usd_per_1m", label: "对外 Embedding 价 USD/1M", type: "number" },
       { key: "capabilities", label: "能力标签，逗号分隔" },
       { key: "supported_parameters", label: "支持参数，逗号分隔" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
@@ -259,7 +274,7 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
     view: "routes",
     title: "路由策略",
     eyebrow: "模型路由规则",
-    description: "按固定比例、自适应延迟、质量或成本策略选择 Provider，并可按项目限制线路；调用失败时自动回退。",
+    description: "把模型目录中的对外模型映射到 Provider 已引入的上游模型，再配置流量比例、项目范围和故障转移。",
     createLabel: "新增路由",
     columns: [
       { key: "model_name", label: "统一模型" },
@@ -288,6 +303,7 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
       { key: "weight", label: "流量权重", type: "number", required: true, help: "固定比例下决定目标占比；自适应策略下作为基础权重。" },
       { key: "project_scope", label: "项目作用域", type: "select", options: ["all", "include", "exclude"], required: true, help: "可让私有项目只命中内部 Provider，并让其他项目继续使用外部 Provider。" },
       { key: "project_ids", label: "指定项目", type: "multi-select", optionsFromData: projectMemberProjectSelectOptions, multiSelectOnEdit: true, visible: (values) => values.project_scope !== "all", help: "“仅指定项目”表示白名单；“排除指定项目”表示这些项目不能使用该线路。" },
+      { key: "tags", label: "路由标签，逗号分隔", placeholder: "internal, compliant", help: "作用域策略可要求候选路由同时具备这些标签。" },
       { key: "sticky_session", label: "粘性会话", type: "boolean" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     ],

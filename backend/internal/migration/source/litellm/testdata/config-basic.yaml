@@ -1,0 +1,45 @@
+litellm_settings:
+  version: 1.58.2
+general_settings:
+  master_key: sk-master
+router_settings:
+  routing_strategy: simple-shuffle
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_base: https://api.openai.com/v1
+      api_key: os.environ/OPENAI_API_KEY
+      rpm: 120
+      tpm: 60000
+      weight: 80
+    model_info:
+      mode: chat
+  - model_name: text-embedding-3-small
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_base: https://azure.openai.example/v1
+      api_key: os.environ/OPENAI_API_KEY
+      rpm: 60
+      tpm: 30000
+key_management_settings:
+  teams:
+    - team_id: team-red
+      team_alias: Red Team
+  users:
+    - user_id: user-alice
+      user_email: alice@example.com
+      user_alias: Alice
+      team_id: team-red
+  virtual_keys:
+    - key_alias: red-team-key
+      token: sk-red-team
+      models:
+        - gpt-4o-mini
+      team_id: team-red
+      user_id: user-alice
+      max_budget: 50
+      rpm_limit: 20
+      tpm_limit: 10000
+      budget_duration: monthly
+      expires: 2026-12-31T00:00:00Z

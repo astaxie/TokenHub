@@ -21,6 +21,7 @@ export function projectConfig(): ResourceConfig<Project> {
       { key: "owner_user_id", label: "负责人", render: (item, ctx) => ownerUserLabel(ctx, item.owner_user_id ?? "") },
       { key: "cost_center", label: "成本中心", render: (item, ctx) => costCenterLabel(ctx, item.cost_center ?? "") },
       { key: "quota", label: "额度", render: (item, ctx) => projectQuotaSummary(ctx, item) },
+      { key: "allowed_models", label: "模型访问", render: (item) => modelAccessSummary(item.model_access_mode, item.allowed_models) },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
     fields: [
@@ -28,6 +29,8 @@ export function projectConfig(): ResourceConfig<Project> {
       { key: "team_id", label: "默认团队", type: "select", optionsFromData: teamSelectOptions, help: "默认团队继续承担成本、审批和责任归属；协作团队在同一个项目工作台中配置。" },
       { key: "owner_user_id", label: "项目负责人", type: "select", optionsFromData: userSelectOptions, help: "负责人默认拥有该项目的 Key 管理权限。" },
       { key: "cost_center", label: "成本中心", type: "select", optionsFromData: costCenterSelectOptions },
+      { key: "model_access_mode", label: "模型访问模式", type: "select", options: ["inherit", "restricted"], required: true },
+      { key: "allowed_models", label: "项目模型允许列表，逗号分隔", visible: (values) => values.model_access_mode === "restricted", help: "restricted 且留空时禁止项目访问任何模型；所有项目 Key 只能进一步收窄。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     ],
     list: (ctx) => ctx.projects,
@@ -155,7 +158,7 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     view: "api-keys",
     title: "Key 管理",
     eyebrow: "内部 Key 列表",
-    description: "按项目发放内部 API Key，限制模型白名单、额度、并发和有效期。",
+    description: "按项目发放内部 API Key，限制模型白名单、分钟速率、额度、并发和有效期。",
     createLabel: "发放 Key",
     columns: [
       { key: "name", label: "名称" },
@@ -164,8 +167,10 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       { key: "project_owner", label: "项目负责人", render: (item, ctx) => projectOwnerLabel(ctx, item.project_id) },
       { key: "project_team", label: "团队", render: (item, ctx) => projectTeamLabel(ctx, item.project_id) },
       { key: "key_prefix", label: "Key", render: (item) => `${item.key_prefix}...${item.key_suffix}` },
-      { key: "allowed_models", label: "模型", render: (item) => (item.allowed_models ?? []).join(", ") || tx("全部") },
+      { key: "allowed_models", label: "模型", render: (item) => modelAccessSummary(item.model_access_mode, item.allowed_models) },
       { key: "ip_allowlist", label: "IP 白名单", render: (item) => (item.ip_allowlist ?? []).join(", ") || tx("不限") },
+      { key: "rate_limit_rpm", label: "RPM" },
+      { key: "token_limit_tpm", label: "TPM" },
       { key: "limits.max_concurrency", label: "并发" },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
@@ -189,8 +194,11 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       },
       { key: "name", label: "Key 名称", required: true },
       { key: "group", label: "用途/环境", placeholder: "prod、dev、backend-service" },
-      { key: "allowed_models", label: "模型白名单，逗号分隔", help: "留空表示不限制 Key 级模型白名单；实际可调用模型仍受模型目录和路由策略约束。" },
+      { key: "model_access_mode", label: "模型访问模式", type: "select", options: ["inherit", "restricted"], required: true, help: "inherit 表示继承项目范围；restricted 表示与项目允许列表取交集。" },
+      { key: "allowed_models", label: "模型允许列表，逗号分隔", visible: (values) => values.model_access_mode === "restricted", help: "restricted 且留空表示禁止此 Key 访问任何模型。" },
       { key: "ip_allowlist", label: "IP 白名单，逗号分隔", help: "留空表示不限来源 IP。" },
+      { key: "rate_limit_rpm", label: "每分钟请求数（RPM）", type: "number", help: "留空表示继承项目或全局策略；填 0 表示 Key 层不额外限速，上级限制仍然生效。若要停止调用，请将 Key 状态设为 disabled。" },
+      { key: "token_limit_tpm", label: "每分钟 Token 数（TPM）", type: "number", help: "留空表示继承项目或全局策略；填 0 表示 Key 层不额外限速。流式请求会先预留预算，再按实际用量结算。" },
       { key: "daily_requests", label: "日请求", type: "number" },
       { key: "monthly_requests", label: "月请求", type: "number" },
       { key: "daily_tokens", label: "日 Token", type: "number" },
@@ -225,8 +233,11 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       owner_user_id: item.owner_user_id || item.metadata?.created_by || "",
       name: item.name,
       group: item.group ?? "default",
+      model_access_mode: item.model_access_mode || ((item.allowed_models ?? []).length > 0 ? "restricted" : "inherit"),
       allowed_models: (item.allowed_models ?? []).join(", "),
       ip_allowlist: (item.ip_allowlist ?? []).join(", "),
+      rate_limit_rpm: item.rate_limit_rpm === undefined ? "" : String(item.rate_limit_rpm),
+      token_limit_tpm: item.token_limit_tpm === undefined ? "" : String(item.token_limit_tpm),
       daily_requests: String(item.limits?.daily_requests ?? ""),
       monthly_requests: String(item.limits?.monthly_requests ?? ""),
       daily_tokens: String(item.limits?.daily_tokens ?? ""),
@@ -237,6 +248,12 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       status: item.status,
     }),
   };
+}
+
+function modelAccessSummary(mode: string | undefined, allowed: string[] | undefined) {
+  const normalized = mode || ((allowed ?? []).length > 0 ? "restricted" : "inherit");
+  if (normalized === "inherit") return tx("继承上级范围");
+  return (allowed ?? []).join(", ") || tx("禁止全部模型");
 }
 
 export function APIKeyStatusSwitch({

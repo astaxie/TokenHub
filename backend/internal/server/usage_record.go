@@ -23,6 +23,7 @@ func newUsageRecord(call CallContext, route RouteSelection, usage Usage, created
 		RejectedPredictionTokens: usage.RejectedPredictionTokens,
 		TotalTokens:              usage.TotalTokens,
 		CostUSD:                  usage.CostUSD,
+		ProviderCostUSD:          usage.ProviderCostUSD,
 		CreatedAt:                createdAt,
 	}
 }

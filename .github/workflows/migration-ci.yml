@@ -1,0 +1,91 @@
+name: Migration CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/internal/migration/**"
+      - "backend/cmd/tokenhub-migrate/**"
+      - "deploy/**"
+      - "sdk/migration-e2e/**"
+      - "docs/migration/**"
+      - "docs/zh-CN/migration/**"
+      - "docs/ja/migration/**"
+      - ".github/workflows/migration-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/internal/migration/**"
+      - "backend/cmd/tokenhub-migrate/**"
+      - "deploy/**"
+      - "sdk/migration-e2e/**"
+      - "docs/migration/**"
+      - "docs/zh-CN/migration/**"
+      - "docs/ja/migration/**"
+      - ".github/workflows/migration-ci.yml"
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+
+jobs:
+  unit:
+    name: Migration Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Run migration tests
+        working-directory: backend
+        run: |
+          go test ./internal/migration/... -count=1 -race -coverprofile=coverage.out
+      - name: Run vet
+        working-directory: backend
+        run: go vet ./internal/migration/...
+      - name: Check formatting
+        working-directory: backend
+        run: |
+          gofmt -d internal/migration/ cmd/tokenhub-migrate/ | tee format.diff
+          test ! -s format.diff
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-coverage
+          path: backend/coverage.out
+
+  e2e:
+    name: LiteLLM Migration E2E
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'migration:e2e')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build CLI
+        working-directory: backend
+        run: go build -o tokenhub-migrate ./cmd/tokenhub-migrate/
+      - name: Validate Docker Compose
+        run: docker compose -f deploy/docker-compose.migration-e2e.yml config
+      - name: Start services
+        run: docker compose -f deploy/docker-compose.migration-e2e.yml up -d --wait
+      - name: Run E2E tests
+        working-directory: sdk/migration-e2e
+        run: |
+          npm ci
+          TOKENHUB_MIGRATE_BIN=../../backend/tokenhub-migrate npm run test:litellm
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-e2e-report
+          path: sdk/migration-e2e/report.json
+      - name: Stop services
+        if: always()
+        run: docker compose -f deploy/docker-compose.migration-e2e.yml down -v

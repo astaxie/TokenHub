@@ -1,6 +1,20 @@
-import { AlertCircle, Check, KeyRound, Send } from "lucide-react";
+import { AlertCircle, Check, Copy, KeyRound, Send } from "lucide-react";
+import { useState } from "react";
 import type { ProviderResource } from "../core/types";
 import { tx } from "../i18n/runtime";
+
+export type ProviderAccountOAuthAction = "copy" | "open";
+
+export async function launchProviderAccountAuthorization(action: ProviderAccountOAuthAction, authURL: string) {
+  if (action === "open") {
+    window.open(authURL, "_blank", "noopener,noreferrer");
+    return;
+  }
+  if (!navigator.clipboard) throw new Error(tx("复制授权链接失败，请允许浏览器访问剪贴板后重试。"));
+  await navigator.clipboard.writeText(authURL).catch(() => {
+    throw new Error(tx("复制授权链接失败，请允许浏览器访问剪贴板后重试。"));
+  });
+}
 
 export type OpenAIQuotaWindow = {
   used_percent: number;
@@ -108,13 +122,25 @@ export function ProviderOAuthNoticeModal({
   error,
   onClose,
   onConfirm,
+  onCopy,
 }: {
   open: boolean;
   busy: boolean;
   error: string;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void>;
+  onCopy: () => Promise<void>;
 }) {
+  const [busyAction, setBusyAction] = useState<ProviderAccountOAuthAction | null>(null);
+  const actionBusy = busy || busyAction !== null;
+  async function runAction(action: ProviderAccountOAuthAction) {
+    setBusyAction(action);
+    try {
+      await (action === "copy" ? onCopy() : onConfirm());
+    } finally {
+      setBusyAction(null);
+    }
+  }
   if (!open) return null;
   return (
     <div className="modal-backdrop provider-oauth-notice-backdrop" role="presentation">
@@ -137,10 +163,14 @@ export function ProviderOAuthNoticeModal({
         </ol>
         {error ? <p className="provider-oauth-notice-error" role="alert">{error}</p> : null}
         <div className="modal-actions">
-          <button className="secondary-button" disabled={busy} onClick={onClose} type="button">{tx("取消")}</button>
-          <button className="button" disabled={busy} onClick={onConfirm} type="button">
+          <button className="secondary-button" disabled={actionBusy} onClick={onClose} type="button">{tx("取消")}</button>
+          <button className="secondary-button" disabled={actionBusy} onClick={() => void runAction("copy")} type="button">
+            <Copy size={15} />
+            {tx(busyAction === "copy" ? "正在复制授权链接" : "我知道了，复制授权链接")}
+          </button>
+          <button className="button" disabled={actionBusy} onClick={() => void runAction("open")} type="button">
             <Send size={15} />
-            {tx(busy ? "正在打开授权页" : "我知道了，打开授权页")}
+            {tx(busyAction === "open" ? "正在打开授权页" : "我知道了，打开授权页")}
           </button>
         </div>
       </div>

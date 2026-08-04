@@ -5,11 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { uniqueUIID, viewFromPath } from "../domain/formatting";
 import { reportDatasetLabel } from "../domain/labels";
+import { resourceCreateTarget } from "../domain/resource-create-target";
 import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
 import { createKeyWithCapture } from "../resources/generic-config";
 import { downloadReport } from "../resources/governance-config";
@@ -32,6 +33,7 @@ import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
 import { ProviderUpsertModal } from "../views/provider-editor";
 import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
+import { RoutingPolicySimulator } from "../views/routing-policy-simulator";
 import { EditModal, SettingsView, usePagination } from "../views/settings-table";
 import { BillingView, UsageView } from "../views/usage-billing";
 
@@ -58,6 +60,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [modelCategoryFilter, setModelCategoryFilter] = useState("all");
+  const [routeModelQuery, setRouteModelQuery] = useState("");
   const [settingsTab, setSettingsTab] = useState<SettingsTabKey>("settings");
   const [modal, setModal] = useState<ModalState<any> | null>(null);
   const [projectWorkspace, setProjectWorkspace] = useState<{ mode: ProjectWorkspaceMode; projectID?: string } | null>(null);
@@ -85,13 +88,14 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setTheme((value) => (value === "light" ? "dark" : "light"));
   }
 
-  function selectView(view: ViewKey, options: { replace?: boolean } = {}) {
+  function selectView(view: ViewKey, options: { replace?: boolean; routeModelQuery?: string } = {}) {
     if (view !== activeView) {
       setNotice("");
       setError("");
       setIssuedKey("");
       setModelCategoryFilter(view === "notification-channels" ? "webhook" : "all");
     }
+    if (view === "routes") setRouteModelQuery(options.routeModelQuery ?? "");
     if (view !== "projects") setProjectWorkspace(null);
     setActiveView(view);
     const nextPath = viewRoutes[view];
@@ -103,6 +107,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     } else {
       router.push(nextURL);
     }
+  }
+
+  function openRoutes(model?: Model) {
+    selectView("routes", { routeModelQuery: model?.name ?? "" });
   }
 
   useEffect(() => {
@@ -316,6 +324,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.users, "users", "/api/admin/users");
       queue(plan.providerCatalog, "provider-catalog", "/api/admin/provider-catalog");
       queue(plan.providerMonitoring, "provider-monitoring", "/api/admin/providers/monitoring");
+			queue(plan.billingConnectors, "billing-connectors", "/api/admin/billing/connectors");
+			queue(plan.billingRecords, "billing-records", "/api/admin/billing/records");
+			queue(plan.billingSyncRuns, "billing-sync-runs", "/api/admin/billing/sync-runs");
       for (const kind of plan.resources) {
         requests.push({ name: `resource:${kind}`, request: adminFetch(api, `/api/admin/resources/${kind}`), optional: true });
       }
@@ -393,6 +404,15 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         } else if (name === "provider-monitoring") {
           const payload = (await resp.json()) as { data: ProviderMonitoringSnapshot[] };
           loaded.providerMonitoring = payload.data ?? [];
+				} else if (name === "billing-connectors") {
+					const payload = (await resp.json()) as { data: BillingConnector[] };
+					loaded.billingConnectors = payload.data ?? [];
+				} else if (name === "billing-records") {
+					const payload = (await resp.json()) as { data: BillingRecord[] };
+					loaded.billingRecords = payload.data ?? [];
+				} else if (name === "billing-sync-runs") {
+					const payload = (await resp.json()) as { data: BillingSyncRun[] };
+					loaded.billingSyncRuns = payload.data ?? [];
         } else if (name.startsWith("resource:")) {
           const kind = name.slice("resource:".length);
           const payload = (await resp.json()) as { data: AdminResource[] };
@@ -563,7 +583,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     try {
       await restoreDefaultModelCatalog(api);
       setConfirmRestoreModels(false);
-      setNotice(tx("模型目录已恢复"));
+      setNotice(tx("模型参考目录已同步"));
       await load();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
@@ -648,23 +668,22 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setError(tx("数据加载中，请稍后再操作。"));
       return;
     }
-    if (activeConfig.view === "providers") {
-      setProviderCreateOpen(true);
-      return;
+    switch (resourceCreateTarget(activeConfig.view)) {
+      case "provider-modal":
+        setProviderCreateOpen(true);
+        return;
+      case "project-workspace":
+        setProjectWorkspace({ mode: "create" });
+        return;
+      case "notification-channel-modal":
+        setModal({ config: activeConfig, initialValues: notificationChannelDefaults(modelCategoryFilter) });
+        return;
+      case "api-key-wizard":
+        openCreateAPIKey();
+        return;
+      default:
+        setModal({ config: activeConfig });
     }
-    if (activeConfig.view === "projects") {
-      setProjectWorkspace({ mode: "create" });
-      return;
-    }
-    if (activeConfig.view === "notification-channels") {
-      setModal({ config: activeConfig, initialValues: notificationChannelDefaults(modelCategoryFilter) });
-      return;
-    }
-    if (activeConfig.view === "api-keys") {
-      openCreateAPIKey();
-      return;
-    }
-    setModal({ config: activeConfig });
   }
 
   async function saveModelRoutingPolicy(model: Model, policy: ModelRoutePolicy, successMessage = `已应用 ${model.name} 的模型路由策略`) {
@@ -793,7 +812,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           ) : activeView === "usage" ? (
             <UsageView data={data} user={currentUser} />
           ) : activeView === "billing" ? (
-            <BillingView data={data} user={currentUser} />
+            <BillingView api={api} data={data} user={currentUser} loading={loading} onReload={() => load("billing")} />
           ) : activeView === "audit" ? (
             <AuditView api={api} data={data} user={currentUser} />
           ) : activeView === "database-status" ? (
@@ -805,6 +824,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               language={language}
               onTabChange={setSettingsTab}
               onLanguageChange={changeLanguage}
+              onRestoreModelCatalog={() => setConfirmRestoreModels(true)}
               onCreate={(config) => setModal({ config })}
               onEdit={(config, item) => setModal({ config, item })}
               onDelete={(config, item) => setConfirmDelete({ config, item })}
@@ -815,8 +835,11 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             <RouteStrategyView
               config={activeConfig as ResourceConfig<ModelRoute>}
               data={data}
+              initialQuery={routeModelQuery}
               loading={loading}
               onCreate={openCreateRoute}
+              onOpenModels={() => selectView("models")}
+              onOpenProviders={() => selectView("providers")}
               onEdit={(route) => setModal({ config: activeConfig, item: route })}
               onDelete={(route) => setConfirmDelete({ config: activeConfig, item: route })}
               onReorder={(model, routes) => void reorderModelRoutes(model, routes)}
@@ -830,11 +853,11 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               loading={loading}
               readOnly={!canAccessView(currentUser, "routes")}
               onReload={() => load("models")}
+              onCreateModel={() => setModal({ config: activeConfig })}
+              onOpenProviders={() => selectView("providers")}
+              onOpenRoutes={openRoutes}
               onEditModel={(item) => setModal({ config: activeConfig, item })}
               onDeleteModel={(item) => setConfirmDelete({ config: activeConfig, item })}
-              onEditRoute={(route) => setModal({ config: resourceConfigFor("routes") as ResourceConfig<ModelRoute>, item: route })}
-              onDeleteRoute={(route) => setConfirmDelete({ config: resourceConfigFor("routes") as ResourceConfig<ModelRoute>, item: route })}
-              onRestoreDefaults={() => setConfirmRestoreModels(true)}
             />
           ) : activeView === "reports" && activeConfig ? (
             <ReportsView
@@ -849,7 +872,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onExport={(dataset) => void exportReportDataset(dataset)}
             />
           ) : activeConfig ? (
-            <CrudView
+            <>
+              {activeView === "routing-policies" ? <RoutingPolicySimulator api={api} data={data} /> : null}
+              <CrudView
               config={activeConfig}
               data={data}
               api={api}
@@ -880,7 +905,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onAction={(action, item) => void runResourceAction(action, item, data)}
               onProjectOpen={(project) => setProjectWorkspace({ mode: "view", projectID: project.id })}
               onToolbarAction={(action) => void runToolbarAction(action, filteredItems)}
-            />
+              />
+            </>
           ) : null}
         </div>
       </section>
@@ -936,6 +962,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           api={api}
           catalog={data.providerCatalog}
           standardModels={data.models}
+          providerModels={data.providerModels}
           resources={data.providerResources}
           loading={loading}
           onClose={() => setProviderCreateOpen(false)}
@@ -956,6 +983,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           api={api}
           catalog={data.providerCatalog}
           standardModels={data.models}
+          providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}
           loading={loading}
@@ -1021,9 +1049,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 
       {confirmRestoreModels ? (
         <ConfirmDialog
-          title={tx("恢复出厂目录")}
-          message={tx("将从配置文件重新导入标准模型，并覆盖同名模型的目录字段；手动新增的其他模型会保留。")}
-          confirmLabel="恢复"
+          title={tx("同步模型参考目录")}
+          message={tx("将从配置文件重新同步跟踪模型元数据；Provider 模型库存、路由和手工新增的其他对外模型会保留。")}
+          confirmLabel="同步"
           confirmClassName="button"
           loading={loading}
           onCancel={() => setConfirmRestoreModels(false)}
@@ -1042,6 +1070,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   );
 
   async function runResourceAction<T>(action: ResourceAction<T>, item: T, appData: AppData) {
+    if (action.navigate) {
+      selectView(action.navigate(item));
+      return;
+    }
     if (action.modal) {
       const nextModal = action.modal(item, appData);
       if (nextModal.config.view === "api-keys" && !nextModal.item) {

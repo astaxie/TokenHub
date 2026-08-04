@@ -175,7 +175,9 @@ Invoke-WebRequest `
   -Body $tokenHubRequestBody
 ```
 
-如果返回 `responses_stream_unsupported`，应由管理员检查模型路由和 Provider 资源类型。修改本机 Codex 配置无法绕过该限制。
+如果返回 `provider_capability_not_supported`，应由管理员检查模型路由和 Provider 资源类型。修改本机 Codex 配置无法绕过该限制。
+
+对于 DeepSeek 官方 Provider，Responses 与 Codex 能力按模型开放：当前应使用 `deepseek-v4-flash`；在 DeepSeek 上游正式开放前，TokenHub 不会把 `deepseek-v4-pro` 标记为支持 Responses。DeepSeek 会自动管理上下文缓存。启用 `TOKENHUB_CACHE_AFFINITY_ENABLED=true` 后，TokenHub 会使用 `session-id`、`client_metadata.session_id` 或 `prompt_cache_key` 等稳定的 Codex 会话提示，将连续 Responses 请求固定到同一个上游账号；该标识仅控制网关路由，不会在 TokenHub 内创建另一份响应缓存。
 
 ---
 
@@ -585,7 +587,7 @@ Codex 云端任务的默认模型不受本机 `config.toml` 控制。本文配�
 | HTTP 404 | Base URL 或模型 ID 不正确 | 确认 Base URL 以 `/v1` 结尾，并重新查询 `GET /v1/models` |
 | HTTP 429 / `quota_exceeded` | 请求、Token、成本、并发额度或 Provider 限制已触发 | 等待额度窗口恢复，或由管理员调整策略 |
 | HTTP 503 / `provider_unavailable` | 当前模型没有可用 Provider | 检查模型路由、Provider 和账号资源健康状态 |
-| HTTP 400 / `responses_stream_unsupported` | 路由无法提供流式 Responses API | 调整模型路由或 Provider 资源；Chat Completions 路由不能替代该协议 |
+| HTTP 501 / `provider_capability_not_supported` | 路由无法提供 Responses 或流式 Responses API | 调整模型路由或 Provider 资源；Chat Completions 路由不能替代该协议 |
 
 仅检查环境变量是否存在，不得输出 Key：
 

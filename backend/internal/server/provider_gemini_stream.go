@@ -93,7 +93,7 @@ func (d *geminiStreamDecoder) consume(event serverSentEvent) error {
 	candidates, _ := payload["candidates"].([]any)
 	if len(candidates) == 0 {
 		if reason := geminiPromptBlockReason(payload); reason != "" {
-			return NewHTTPError(400, "content_filter", fmt.Sprintf("Gemini blocked the prompt: %s", reason))
+			return newProviderPolicyRefusal(fmt.Sprintf("Gemini blocked the prompt: %s", reason))
 		}
 		return nil
 	}

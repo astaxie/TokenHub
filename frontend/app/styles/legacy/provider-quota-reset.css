@@ -1,0 +1,68 @@
+.provider-reset-credit-picker {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.provider-reset-credit-picker legend {
+  padding: 0 6px;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.provider-reset-credit-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.provider-reset-credit-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+
+.provider-reset-credit-option.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+.provider-reset-credit-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.provider-reset-credit-option small {
+  color: var(--muted);
+}
+
+.provider-account-reset-progress-modal {
+  width: min(560px, calc(100vw - 32px));
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 24px;
+  text-align: center;
+}
+
+.provider-account-reset-progress-modal h2 {
+  margin: 8px 0 0;
+  font-size: clamp(26px, 4vw, 38px);
+}
+
+.provider-account-reset-spinner {
+  color: var(--accent);
+  animation: provider-account-reset-spin 1.1s linear infinite;
+}
+
+@keyframes provider-account-reset-spin {
+  to { transform: rotate(360deg); }
+}

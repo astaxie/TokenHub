@@ -1,0 +1,89 @@
+package server
+
+import (
+	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+func (s *GormStore) AddModel(model Model) Model {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	model, _ = createModelRecord(s.db, model)
+	return model
+}
+
+func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute) (Model, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var created Model
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		created, err = createModelRecord(tx, model)
+		if err != nil {
+			return err
+		}
+		for _, route := range routes {
+			if _, err := createRouteRecord(tx, route); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return created, err
+}
+
+func createModelRecord(db *gorm.DB, model Model) (Model, error) {
+	var existing Model
+	if err := db.First(&existing, "name = ?", model.Name).Error; err == nil &&
+		existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal &&
+		model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal {
+		model = withExternalModelRole(model)
+		model.Status = existing.Status
+		model.CreatedAt = existing.CreatedAt
+	}
+
+	if model.Modality == "embedding" {
+		model.CacheReadPriceUSDPer1M = 0
+	}
+	if model.ID == "" {
+		model.ID = model.Name
+	}
+	if model.Status == "" {
+		model.Status = StatusActive
+	}
+	if model.CreatedAt.IsZero() {
+		model.CreatedAt = time.Now().UTC()
+	}
+	return model, db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
+}
+
+func (s *GormStore) AddRoute(route ModelRoute) ModelRoute {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	route, _ = createRouteRecord(s.db, route)
+	return route
+}
+
+func createRouteRecord(db *gorm.DB, route ModelRoute) (ModelRoute, error) {
+	if route.ID == "" {
+		route.ID = NewID("route")
+	}
+	if route.Status == "" {
+		route.Status = StatusActive
+	}
+	if route.Weight <= 0 {
+		route.Weight = 1
+	}
+	if route.Strategy == "" {
+		route.Strategy = RouteStrategyBalanced
+	}
+	route.ProjectScope, route.ProjectIDs = normalizeRouteProjectScope(route.ProjectScope, route.ProjectIDs)
+	route.Tags = uniqueStrings(route.Tags)
+	if route.CreatedAt.IsZero() {
+		route.CreatedAt = time.Now().UTC()
+	}
+	return route, db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&route).Error
+}

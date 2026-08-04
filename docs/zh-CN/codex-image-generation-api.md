@@ -6,7 +6,7 @@
 
 `codex-gpt-image-2` 是 TokenHub 对外暴露的 Codex 订阅虚拟模型。它不会请求普通 OpenAI API Provider，而是由服务器选择已确认支持生图的 Codex 订阅账号，直接调用 Codex 订阅 Images 接口。服务器不需要安装或启动 Codex CLI。
 
-`gpt-image-2` 是独立的 OpenAI API 模型，必须配置 `openai` 类型 Provider、API Key 和模型路由。它调用 Provider 的标准 `/v1/images/generations` 与 `/v1/images/edits`，不会选择 Codex 订阅账号或消耗 Codex 额度。
+`gpt-image-2` 通常是独立的 OpenAI API 模型，必须配置 `openai` 类型 Provider、API Key 和模型路由。它调用 Provider 的标准 `/v1/images/generations` 与 `/v1/images/edits`，不会选择 Codex 订阅账号或消耗 Codex 额度。唯一例外是带 Codex `originator` 或 `x-codex-image-turn-id` 请求头的 `/v1/images/generations` 请求：TokenHub 会将其映射为 `codex-gpt-image-2` 并返回 `b64_json`，API Key 必须允许 `codex-gpt-image-2`。
 
 ## 1. 协议概览
 

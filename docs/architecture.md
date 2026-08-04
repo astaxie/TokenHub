@@ -104,7 +104,8 @@ The default image uses the model catalog bundled at build time so the executable
 
 | Provider type | Adapter and capabilities |
 | --- | --- |
-| `openai`, `openai_compatible`, `deepseek`, `qwen`, `local` | OpenAI compatible: Chat, streaming Chat, Responses, Embeddings, and probes |
+| `openai`, `openai_compatible`, `qwen`, `local` | OpenAI compatible: Chat, streaming Chat, Responses, Embeddings, and probes |
+| `deepseek` | OpenAI compatible; Chat, streaming Chat, Embeddings, and probes. Responses and streaming Responses are model-scoped and currently enabled only for `deepseek-v4-flash` |
 | `azure_openai` | Chat, streaming Chat, Embeddings, and probes |
 | `anthropic` | Chat, streaming Chat, and probes |
 | `gemini` | Chat, streaming Chat, Embeddings, and probes |
@@ -125,8 +126,10 @@ sequenceDiagram
 
     C->>G: Bearer project API key and model request
     G->>S: Validate key, project, expiration, and IP allowlist
+    G->>G: Intersect project and API-key model access
     G->>S: Check quotas and concurrency lease; create call context
     G->>S: Query active and healthy Provider / Resource / Route
+    G->>G: Resolve API Key, Project, or Global policy; filter candidates
     G->>G: Plan attempts from strategy, weights, and session affinity
     loop Failover-capable candidate routes
         G->>A: Normalized request and route selection
@@ -140,6 +143,8 @@ sequenceDiagram
 
 Inactive or unhealthy providers, resources, and routes are skipped, with one exception: a resource whose cooldown has lapsed is readmitted as a half-open candidate. The first request that reaches it claims the trial by pushing its cooldown deadline forward, so concurrent requests are still rejected and a failed trial has already armed the next, longer window. Only that trial's own success closes the breaker and restores the resource without admin action — a request that was already in flight when the breaker tripped cannot resurrect it. Repeated failures widen the window exponentially up to `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`. A resource an administrator disabled is never readmitted. Non-streaming calls try candidates in order. A stream cannot safely switch upstream after output has started; streaming Responses require an adapter with the `response_stream` capability. `openai_codex` routes can derive a session affinity key from the request and API key, then persist a resource binding for continuity.
 
+Project and API-key model access is an explicit least-privilege layer before route selection: restricted lists are intersected and restricted-empty denies all, while legacy blank modes remain inherited. Scoped routing policies are stored as audited `AdminResource` records of kind `routing-policies`. The runtime selects at most one binding with strict API Key → Project → Global precedence, then intersects its Provider, resource, model, tag, region, and environment constraints with route project scope. A higher-priority binding that is disabled, conflicting, or empty fails closed. Strategy overrides, affinity, half-open recovery, and failover operate only on the filtered candidates. The effective policy ID, scope, and priority are copied into request audit records.
+
 ## Security, Health, and Data Boundaries
 
 - Project API keys are validated for hash, status, project state, expiration, model scope, IP allowlist, quota, and concurrency.
@@ -148,13 +153,14 @@ Inactive or unhealthy providers, resources, and routes are skipped, with one exc
 - `TOKENHUB_TRUSTED_PROXY_CIDRS` defines which proxies may supply `X-Forwarded-For`; `TOKENHUB_CORS_ALLOWED_ORIGINS` controls credentialed browser origins.
 - `/livez` is a process liveness probe. `/readyz` and compatibility `/healthz` check database availability and return `503` when it is unavailable.
 
-Provider credentials are AES-GCM encrypted from `TOKENHUB_SECRET_KEY`; project API keys retain only a SHA-256 digest plus display prefix and suffix. Every replica must use the same stable secret.
+Provider credentials, billing connector credentials, and raw billing snapshots are AES-GCM encrypted from `TOKENHUB_SECRET_KEY`; project API keys retain only a SHA-256 digest plus display prefix and suffix. Every replica must use the same stable secret.
 
 | Category | Key entities | Purpose |
 | --- | --- | --- |
 | Tenancy and credentials | `Project`, `APIKey`, `AdminUser`, `AdminSession` | Project ownership, application access, and admin sessions |
-| Routing | `Provider`, `ProviderResource`, `ProviderModel`, `Model`, `ModelRoute` | Upstream channels, resource pools, upstream inventory, external models, and routes |
+| Routing | `Provider`, `ProviderResource`, `ProviderModel`, `Model`, `ModelRoute`, `AdminResource (routing-policies)` | Upstream channels, resource pools, upstream inventory, external models, routes, and scoped policy bindings |
 | Governance and metering | `QuotaBucket`, `UsageRecord`, `ProviderResourceBucket`, `InFlightLease` | Quotas, usage/cost, and cross-replica concurrency |
+| External billing | `BillingConnector`, `BillingRecord`, `BillingRawSnapshot`, `BillingSyncRun` | Provider billing collection, normalization, checkpoints, and sync history |
 | Multi-instance coordination | `ClusterLease`, `ClusterTaskState`, `AdapterSessionBinding` | Catalog sync, cluster operations, and Codex session resource bindings |
 | Observability | `RequestLog`, `RequestPayloadLog`, `RouteAttemptLog`, `ProviderObservation`, `AuditEvent` | Request traceability, payload audit, route attempts, provider observations, and admin audit |
 

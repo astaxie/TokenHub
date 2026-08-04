@@ -26,6 +26,9 @@ func (a CodexSubscriptionAdapter) CompactWithHeaders(ctx context.Context, provid
 	}
 	encodedModel, _ := json.Marshal(strings.TrimSpace(providerModel))
 	body["model"] = encodedModel
+	// client_metadata is a TokenHub affinity hint. The Codex compact endpoint
+	// rejects it as an unknown upstream parameter, so consume it locally only.
+	delete(body, "client_metadata")
 	applyCodexCompactEnvelope(body, incoming)
 	payload, err := json.Marshal(body)
 	if err != nil {

@@ -1,4 +1,4 @@
-import { type AppData, type Model, type ModelRoute, type ProviderModel } from "../core/types";
+import { type AppData, type Model, type ModelRoute } from "../core/types";
 import { modelCategory } from "./catalog";
 import { findProvider, modelIsInDirectory, modelRoutesFor } from "./entities";
 
@@ -29,13 +29,6 @@ export function externalModels(data: AppData, readOnly = false) {
   return data.models.filter((model) => modelIsInDirectory(model, data));
 }
 
-export function candidateModels(data: AppData) {
-  return data.models.filter((model) => {
-    const source = model.metadata?.source ?? "";
-    return source === "tokenhub-standard-catalog" || source === "public-provider-conf";
-  });
-}
-
 export function filterExternalModels(
   models: Model[],
   data: AppData,
@@ -55,27 +48,6 @@ export function filterExternalModels(
       const stateRank = (model: Model) => ({ unavailable: 0, degraded: 1, healthy: 2, unmapped: 3 }[modelRuntimeState(model, data)]);
       return stateRank(left) - stateRank(right) || left.name.localeCompare(right.name);
     });
-}
-
-export function filterProviderModels(models: ProviderModel[], data: AppData, query: string, providerID: string) {
-  const normalized = query.trim().toLowerCase();
-  return models
-    .filter((model) => !providerID || model.provider_id === providerID)
-    .filter((model) => {
-      if (!normalized) return true;
-      const provider = findProvider(data, model.provider_id);
-      const mappedNames = providerModelRoutes(model, data).map((route) => route.model_name);
-      return [model.upstream_model, model.display_name, model.family, model.modality, provider?.name, ...mappedNames]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(normalized);
-    })
-    .sort((left, right) => left.provider_id.localeCompare(right.provider_id) || left.upstream_model.localeCompare(right.upstream_model));
-}
-
-export function providerModelRoutes(model: ProviderModel, data: AppData) {
-  return data.routes.filter((route) => route.provider_id === model.provider_id && route.provider_model === model.upstream_model);
 }
 
 export function modelDirectorySearchText(model: Model, routes: ModelRoute[], data: AppData) {

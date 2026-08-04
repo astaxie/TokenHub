@@ -43,6 +43,7 @@ func main() {
 	}
 
 	app := server.NewWithConfig(store, config)
+	app.StartBillingScheduler()
 	catalogInitCtx, cancelCatalogInit := context.WithTimeout(context.Background(), 30*time.Second)
 	if initialized, initErr := app.InitializeProviderCatalog(catalogInitCtx); initErr != nil {
 		log.Printf("[tokenhub] provider catalog initialization failed; using database snapshot: %v", initErr)

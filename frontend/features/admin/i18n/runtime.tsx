@@ -1,5 +1,4 @@
 import { languageStorageKey } from "../core/types";
-import { formatNumber } from "../domain/formatting";
 import { translations } from "./translations";
 
 export type AppLanguage = "zh-CN" | "en" | "ja";
@@ -118,42 +117,46 @@ export function languageLocale() {
   return "zh-CN";
 }
 
+function localeNumber(value: number) {
+  return new Intl.NumberFormat(languageLocale()).format(value);
+}
+
 export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaUnit: string, enPluralUnit = `${enUnit}s`) {
-  const formatted = formatNumber(count);
+  const formatted = localeNumber(count);
   if (activeLanguage === "en") return `${formatted} ${count === 1 ? enUnit : enPluralUnit}`;
   if (activeLanguage === "ja") return `${formatted} ${jaUnit}`;
   return `${formatted} ${zhUnit}`;
 }
 
-export function providerSaveMessage(updated: boolean, accountResourceCreated: boolean, routed: number, categoryLabel: string) {
-  const routeCount = routed > 0
-    ? countWithUnit(routed, `条${categoryLabel}路由`, `${categoryLabel} route`, `${categoryLabel} ルート`)
+export function providerSaveMessage(updated: boolean, accountResourceCreated: boolean, imported: number, categoryLabel: string) {
+  const modelCount = imported > 0
+    ? countWithUnit(imported, `个${categoryLabel}上游模型`, `${categoryLabel} upstream model`, `${categoryLabel} 上流モデル`)
     : "";
   if (activeLanguage === "en") {
     return [
       `Provider ${updated ? "updated" : "created"}`,
       accountResourceCreated ? "account resource created" : "",
-      routeCount ? `${routeCount} created` : "",
+      modelCount ? `${modelCount} imported` : "",
     ].filter(Boolean).join(", ");
   }
   if (activeLanguage === "ja") {
     return [
       `Provider を${updated ? "更新" : "作成"}しました`,
       accountResourceCreated ? "アカウントリソースを作成しました" : "",
-      routeCount ? `${routeCount}を作成しました` : "",
+      modelCount ? `${modelCount}を取り込みました` : "",
     ].filter(Boolean).join("、");
   }
   return [
     `Provider 已${updated ? "更新" : "新增"}`,
     accountResourceCreated ? "已创建账号资源" : "",
-    routeCount ? `创建 ${routeCount}` : "",
+    modelCount ? `引入 ${modelCount}` : "",
   ].filter(Boolean).join("，");
 }
 
 export function countWithLabel(count: number, label: string) {
-  if (activeLanguage === "en") return `${formatNumber(count)} ${tx(label)}`;
-  if (activeLanguage === "ja") return `${formatNumber(count)} ${tx(label)}`;
-  return `${formatNumber(count)} ${label}`;
+  if (activeLanguage === "en") return `${localeNumber(count)} ${tx(label)}`;
+  if (activeLanguage === "ja") return `${localeNumber(count)} ${tx(label)}`;
+  return `${localeNumber(count)} ${label}`;
 }
 
 export function selectedModelsText(count: number) {
@@ -203,16 +206,16 @@ export function deleteConfirmMessage(name: string) {
 }
 
 export function bulkDeleteConfirmMessage(count: number) {
-  if (activeLanguage === "en") return `After deleting ${formatNumber(count)} selected records, the current in-memory data will be removed immediately.`;
-  if (activeLanguage === "ja") return `選択した ${formatNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
-  return `删除选中的 ${formatNumber(count)} 条记录后，当前内存数据会立即移除。`;
+  if (activeLanguage === "en") return `After deleting ${localeNumber(count)} selected records, the current in-memory data will be removed immediately.`;
+  if (activeLanguage === "ja") return `選択した ${localeNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
+  return `删除选中的 ${localeNumber(count)} 条记录后，当前内存数据会立即移除。`;
 }
 
 export function routeAttemptCountText(count: number) {
   if (count > 1) {
-    if (activeLanguage === "en") return `${formatNumber(count)} attempts, with fallback`;
-    if (activeLanguage === "ja") return `${formatNumber(count)} 回、fallback 含む`;
-    return `${formatNumber(count)} 次，含 fallback`;
+    if (activeLanguage === "en") return `${localeNumber(count)} attempts, with fallback`;
+    if (activeLanguage === "ja") return `${localeNumber(count)} 回、fallback 含む`;
+    return `${localeNumber(count)} 次，含 fallback`;
   }
   return countWithUnit(count, "次", "attempt", "回");
 }

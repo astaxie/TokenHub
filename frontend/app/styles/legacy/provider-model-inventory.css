@@ -1,0 +1,58 @@
+.provider-model-inventory {
+  margin: 12px 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.provider-model-inventory-head {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--surface-soft);
+}
+
+.provider-model-inventory-head > div { display: grid; gap: 4px; }
+.provider-model-inventory-head strong,
+.provider-model-inventory-table strong { color: var(--text); font-size: 12px; }
+.provider-model-inventory-head span,
+.provider-model-inventory-table td > span,
+.provider-inventory-empty span { color: var(--muted); font-size: 10px; }
+
+.provider-model-inventory-head em {
+  min-width: 28px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+  text-align: center;
+}
+
+.provider-model-inventory-table-wrap { overflow-x: auto; }
+.provider-model-inventory-table { width: 100%; border-collapse: collapse; }
+.provider-model-inventory-table th,
+.provider-model-inventory-table td { border-top: 1px solid var(--border); padding: 9px 10px; text-align: left; }
+.provider-model-inventory-table th { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.provider-model-inventory-table td:first-child { min-width: 180px; display: grid; gap: 3px; }
+.provider-model-inventory-table input {
+  width: 108px;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.provider-cost-save { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.provider-inventory-notice { margin: 0; padding: 8px 14px; font-size: 11px; }
+.provider-inventory-notice.success { color: var(--pos); background: var(--pos-weak); }
+.provider-inventory-notice.error { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
+.provider-inventory-empty { margin: 12px 0; border: 1px dashed var(--border); border-radius: 9px; padding: 14px; display: grid; gap: 4px; }

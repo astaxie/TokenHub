@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   DEFAULT_MAX_LINES,
+  FROZEN,
   allowedFor,
   countLines,
   findTightenable,
@@ -32,6 +33,23 @@ describe("limits", () => {
 
   it("uses the frozen baseline for a listed file", () => {
     assert.equal(allowedFor("backend/big.go", new Map([["backend/big.go", 4000]])), 4000);
+  });
+
+  it("never lets a frozen baseline tighten the default limit", () => {
+    // A baseline below the default is stale bookkeeping — it used to be recorded when a
+    // split file was re-measured — and it must not turn the exemption table into a
+    // stricter rule for that one file than an unlisted file gets.
+    const stale = new Map([["backend/split.go", 319]]);
+    assert.equal(allowedFor("backend/split.go", stale), DEFAULT_MAX_LINES);
+    assert.deepEqual(findViolations(new Map([["backend/split.go", DEFAULT_MAX_LINES]]), stale), []);
+  });
+
+  it("keeps every shipped baseline above the default limit", () => {
+    // The invariant the graduation rule maintains: an entry that fits under the default
+    // has no reason to be listed, so it should have been removed instead.
+    for (const [path, baseline] of FROZEN) {
+      assert.ok(baseline > DEFAULT_MAX_LINES, `${path} is frozen at ${baseline}`);
+    }
   });
 });
 
@@ -64,6 +82,24 @@ describe("ratchet", () => {
   it("reports a baseline that can be lowered", () => {
     const tightenable = findTightenable(new Map([["big.go", 3900]]), new Map([["big.go", 4000]]));
     assert.deepEqual(tightenable, [{ path: "big.go", lines: 3900, baseline: 4000, reason: "shrank" }]);
+  });
+
+  it("graduates a baseline once the file fits under the default limit", () => {
+    // Landing exactly on the default counts: the default already allows that size, so
+    // the exemption has nothing left to grant and --update drops the entry.
+    const frozen = new Map([["big.go", 4000]]);
+    assert.deepEqual(findTightenable(new Map([["big.go", DEFAULT_MAX_LINES]]), frozen), [
+      { path: "big.go", lines: DEFAULT_MAX_LINES, baseline: 4000, reason: "graduated" },
+    ]);
+  });
+
+  it("still only lowers a baseline while the file stays over the default limit", () => {
+    const tightenable = findTightenable(
+      new Map([["big.go", DEFAULT_MAX_LINES + 1]]),
+      new Map([["big.go", 4000]]),
+    );
+    assert.equal(tightenable[0].reason, "shrank");
+    assert.equal(tightenable[0].lines, DEFAULT_MAX_LINES + 1);
   });
 
   it("reports a baseline whose file is gone", () => {

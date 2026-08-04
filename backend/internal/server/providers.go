@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -160,33 +159,158 @@ func (a MockAdapter) Embeddings(ctx context.Context, provider Provider, provider
 	}, usage, nil
 }
 
-type OpenAICompatibleAdapter struct {
-	Client *http.Client
+// preservesReasoningContent reports whether an OpenAI-compatible upstream
+// understands the reasoning_content it produced being handed back on the next
+// turn. DeepSeek does and needs it for multi-turn reasoning; for everyone else
+// the field is a TokenHub-local extension and is stripped.
+func preservesReasoningContent(provider Provider) bool {
+	return provider.Type == "deepseek"
 }
 
-func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	req = withoutGatewayExtensions(req, provider.Type == "deepseek")
+// dropsReasoningContent is the Azure policy: reasoning_content never reaches a
+// deployment. It is stated as the adapter's own rule rather than inferred from
+// the provider type, because nothing enforces which types an adapter is
+// registered under and Azure's answer does not depend on that.
+func dropsReasoningContent(Provider) bool {
+	return false
+}
+
+// providerRequestBuilder builds the upstream request for one OpenAI-shaped call.
+// The URL and the auth headers are the whole wire-format difference between the
+// OpenAI-compatible and Azure OpenAI adapters; everything around it — sending,
+// failure checking, decoding, streaming — is shared by openAICompatibleCore.
+type providerRequestBuilder func(ctx context.Context, provider Provider, method string, model string, endpoint string, body []byte) (*http.Request, error)
+
+// openAICompatibleCore is the request machinery the OpenAI-compatible and Azure
+// OpenAI adapters share. The adapters hold it through a core() method rather
+// than embedding it, and it stays unexported, because embedding would also hand
+// AzureOpenAIAdapter the OpenAI adapter's Responses and OpenResponses methods:
+// /v1/responses dispatches on those interfaces without consulting the
+// capability registry, so Azure would stop answering 501 and start calling an
+// endpoint Azure deployments do not serve.
+type openAICompatibleCore struct {
+	client *http.Client
+	// streamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to client when it is unset.
+	streamClient      *http.Client
+	streamIdleTimeout time.Duration
+	// baseURLRequired is the misconfiguration reported when the provider has no
+	// base URL. Both adapters require one; only the wording differs.
+	baseURLRequired string
+	// preserveReasoningContent is the adapter's rule for whether TokenHub's
+	// reasoning_content extension may be forwarded to this provider.
+	preserveReasoningContent func(provider Provider) bool
+	build                    providerRequestBuilder
+}
+
+func (c openAICompatibleCore) chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	req = withoutGatewayExtensions(req, c.preserveReasoningContent(provider))
 	req.Model = providerModel
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	var body map[string]any
-	if err := a.doJSON(ctx, provider, http.MethodPost, "/chat/completions", req, &body); err != nil {
+	if err := c.doJSON(ctx, provider, http.MethodPost, providerModel, "/chat/completions", req, &body); err != nil {
 		return nil, Usage{}, err
 	}
 	return body, usageFromMap(body), nil
 }
 
-func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	req = withoutGatewayExtensions(req, provider.Type == "deepseek")
+func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
+	req = withoutGatewayExtensions(req, c.preserveReasoningContent(provider))
 	req.Model = providerModel
 	req.Stream = true
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
 	req = includeOpenAIStreamUsage(req)
-	resp, err := a.doRaw(ctx, provider, http.MethodPost, "/chat/completions", req)
+	resp, err := c.doRaw(ctx, provider, http.MethodPost, providerModel, "/chat/completions", req, true)
 	if err != nil {
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
 	return copyOpenAIStreamAndUsage(w, resp.Body)
+}
+
+func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
+	req.Model = providerModel
+	var body map[string]any
+	if err := c.doJSON(ctx, provider, http.MethodPost, providerModel, "/embeddings", req, &body); err != nil {
+		return nil, Usage{}, err
+	}
+	return body, usageFromMap(body), nil
+}
+
+func (c openAICompatibleCore) doJSON(ctx context.Context, provider Provider, method string, model string, endpoint string, payload any, target any) error {
+	resp, err := c.doRaw(ctx, provider, method, model, endpoint, payload, false)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (c openAICompatibleCore) doRaw(ctx context.Context, provider Provider, method string, model string, endpoint string, payload any, stream bool) (*http.Response, error) {
+	if provider.BaseURL == "" {
+		return nil, newProviderMisconfigured(c.baseURLRequired)
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.build(ctx, provider, method, model, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := sendUpstream(c.client, c.streamClient, c.streamIdleTimeout, req, stream)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// openAICompatibleRequest addresses an OpenAI-compatible base URL directly: the
+// model travels in the body, so the model argument is unused here.
+func openAICompatibleRequest(ctx context.Context, provider Provider, method string, _ string, endpoint string, body []byte) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, joinURL(provider.BaseURL, endpoint), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("content-type", "application/json")
+	if provider.APIKey != "" {
+		req.Header.Set("authorization", "Bearer "+provider.APIKey)
+	}
+	applyOpenAICompatibleAccountHeaders(req, provider)
+	for key, value := range provider.Headers {
+		req.Header.Set(key, value)
+	}
+	return req, nil
+}
+
+type OpenAICompatibleAdapter struct {
+	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
+}
+
+func (a OpenAICompatibleAdapter) core() openAICompatibleCore {
+	return openAICompatibleCore{
+		client:                   a.Client,
+		streamClient:             a.StreamClient,
+		streamIdleTimeout:        a.StreamIdleTimeout,
+		baseURLRequired:          "Provider base_url is required",
+		preserveReasoningContent: preservesReasoningContent,
+		build:                    openAICompatibleRequest,
+	}
+}
+
+func (a OpenAICompatibleAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	return a.core().chat(ctx, provider, providerModel, req)
+}
+
+func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
+	return a.core().chatStream(ctx, provider, providerModel, req, w)
 }
 
 func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -203,61 +327,19 @@ func (a OpenAICompatibleAdapter) OpenResponses(ctx context.Context, provider Pro
 	req.Model = providerModel
 	req.Stream = true
 	req = normalizedResponsesReasoning(req)
-	return a.doRaw(ctx, provider, http.MethodPost, "/responses", req)
+	return a.doRaw(ctx, provider, http.MethodPost, "/responses", req, true)
 }
 
 func (a OpenAICompatibleAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
-	req.Model = providerModel
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, http.MethodPost, "/embeddings", req, &body); err != nil {
-		return nil, Usage{}, err
-	}
-	return body, usageFromMap(body), nil
+	return a.core().embeddings(ctx, provider, providerModel, req)
 }
 
 func (a OpenAICompatibleAdapter) doJSON(ctx context.Context, provider Provider, method, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, method, endpoint, payload)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
+	return a.core().doJSON(ctx, provider, method, "", endpoint, payload, target)
 }
 
-func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any) (*http.Response, error) {
-	if provider.BaseURL == "" {
-		return nil, NewHTTPError(503, "provider_not_configured", "Provider base_url is required")
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, method, joinURL(provider.BaseURL, endpoint), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("content-type", "application/json")
-	if provider.APIKey != "" {
-		req.Header.Set("authorization", "Bearer "+provider.APIKey)
-	}
-	applyOpenAICompatibleAccountHeaders(req, provider)
-	for key, value := range provider.Headers {
-		req.Header.Set(key, value)
-	}
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
-	}
-	return resp, nil
+func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any, stream bool) (*http.Response, error) {
+	return a.core().doRaw(ctx, provider, method, "", endpoint, payload, stream)
 }
 
 func applyOpenAICompatibleAccountHeaders(req *http.Request, provider Provider) {
@@ -275,33 +357,59 @@ func applyOpenAICompatibleAccountHeaders(req *http.Request, provider Provider) {
 	}
 }
 
+// azureOpenAIDefaultAPIVersion is used when the provider does not pin one.
+const azureOpenAIDefaultAPIVersion = "2024-02-15-preview"
+
+// azureOpenAIRequest addresses one Azure OpenAI deployment: the model names a
+// deployment in the path, the API version is a query parameter, and the key is
+// an api-key header rather than a bearer token. Provider.Headers are not applied
+// here — Azure has never forwarded them, and adding that now would change which
+// headers reach every existing deployment.
+func azureOpenAIRequest(ctx context.Context, provider Provider, method string, deployment string, endpoint string, body []byte) (*http.Request, error) {
+	apiVersion := provider.Options["api_version"]
+	if apiVersion == "" {
+		apiVersion = azureOpenAIDefaultAPIVersion
+	}
+	u := fmt.Sprintf("%s/openai/deployments/%s%s?api-version=%s", strings.TrimRight(provider.BaseURL, "/"), url.PathEscape(deployment), endpoint, url.QueryEscape(apiVersion))
+	req, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("api-key", provider.APIKey)
+	return req, nil
+}
+
+// AzureOpenAIAdapter speaks the OpenAI wire format against Azure deployments. It
+// shares openAICompatibleCore with OpenAICompatibleAdapter but stays a separate
+// type on purpose: it must not acquire that adapter's Responses or
+// OpenResponses, which the /v1/responses paths dispatch on directly. See
+// openAICompatibleCore.
 type AzureOpenAIAdapter struct {
 	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
+}
+
+func (a AzureOpenAIAdapter) core() openAICompatibleCore {
+	return openAICompatibleCore{
+		client:                   a.Client,
+		streamClient:             a.StreamClient,
+		streamIdleTimeout:        a.StreamIdleTimeout,
+		baseURLRequired:          "Azure OpenAI base_url is required",
+		preserveReasoningContent: dropsReasoningContent,
+		build:                    azureOpenAIRequest,
+	}
 }
 
 func (a AzureOpenAIAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	req = withoutGatewayExtensions(req, false)
-	req.Model = providerModel
-	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, providerModel, "/chat/completions", req, &body); err != nil {
-		return nil, Usage{}, err
-	}
-	return body, usageFromMap(body), nil
+	return a.core().chat(ctx, provider, providerModel, req)
 }
 
 func (a AzureOpenAIAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
-	req = withoutGatewayExtensions(req, false)
-	req.Model = providerModel
-	req.Stream = true
-	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
-	req = includeOpenAIStreamUsage(req)
-	resp, err := a.doRaw(ctx, provider, providerModel, "/chat/completions", req)
-	if err != nil {
-		return Usage{}, err
-	}
-	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsage(w, resp.Body)
+	return a.core().chatStream(ctx, provider, providerModel, req, w)
 }
 
 func (a AzureOpenAIAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -309,60 +417,15 @@ func (a AzureOpenAIAdapter) Responses(ctx context.Context, provider Provider, pr
 }
 
 func (a AzureOpenAIAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
-	req.Model = providerModel
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, providerModel, "/embeddings", req, &body); err != nil {
-		return nil, Usage{}, err
-	}
-	return body, usageFromMap(body), nil
-}
-
-func (a AzureOpenAIAdapter) doJSON(ctx context.Context, provider Provider, deployment string, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, deployment, endpoint, payload)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
-}
-
-func (a AzureOpenAIAdapter) doRaw(ctx context.Context, provider Provider, deployment string, endpoint string, payload any) (*http.Response, error) {
-	apiVersion := provider.Options["api_version"]
-	if apiVersion == "" {
-		apiVersion = "2024-02-15-preview"
-	}
-	if provider.BaseURL == "" {
-		return nil, NewHTTPError(503, "provider_not_configured", "Azure OpenAI base_url is required")
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("%s/openai/deployments/%s%s?api-version=%s", strings.TrimRight(provider.BaseURL, "/"), url.PathEscape(deployment), endpoint, url.QueryEscape(apiVersion))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("content-type", "application/json")
-	req.Header.Set("api-key", provider.APIKey)
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
-	}
-	return resp, nil
+	return a.core().embeddings(ctx, provider, providerModel, req)
 }
 
 type AnthropicAdapter struct {
 	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
 }
 
 func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
@@ -396,7 +459,7 @@ func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, pro
 		return Usage{}, err
 	}
 	payload["stream"] = true
-	resp, err := a.doRaw(ctx, provider, "/v1/messages", payload)
+	resp, err := a.doRaw(ctx, provider, "/v1/messages", payload, true)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -428,7 +491,7 @@ func (a AnthropicAdapter) Embeddings(ctx context.Context, provider Provider, pro
 }
 
 func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, endpoint, payload)
+	resp, err := a.doRaw(ctx, provider, endpoint, payload, false)
 	if err != nil {
 		return err
 	}
@@ -436,7 +499,7 @@ func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoin
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint string, payload any) (*http.Response, error) {
+func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint string, payload any, stream bool) (*http.Response, error) {
 	if provider.BaseURL == "" {
 		provider.BaseURL = "https://api.anthropic.com"
 	}
@@ -455,24 +518,22 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("x-api-key", provider.APIKey)
 	req.Header.Set("anthropic-version", version)
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
 
 type GeminiAdapter struct {
 	Client *http.Client
+	// StreamClient carries no total deadline; see provider_stream_timeout.go.
+	// Streaming calls fall back to Client when it is unset.
+	StreamClient      *http.Client
+	StreamIdleTimeout time.Duration
 }
 
 func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -497,7 +558,7 @@ func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, provid
 	if err != nil {
 		return Usage{}, err
 	}
-	resp, err := a.doRaw(ctx, provider, providerModel, ":streamGenerateContent?alt=sse", payload)
+	resp, err := a.doRaw(ctx, provider, providerModel, ":streamGenerateContent?alt=sse", payload, true)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -553,7 +614,7 @@ func (a GeminiAdapter) Embeddings(ctx context.Context, provider Provider, provid
 }
 
 func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model string, action string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, model, action, payload)
+	resp, err := a.doRaw(ctx, provider, model, action, payload, false)
 	if err != nil {
 		return err
 	}
@@ -564,7 +625,7 @@ func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model stri
 // doRaw issues a Gemini request. The action may already carry a query string
 // (streaming uses ":streamGenerateContent?alt=sse"), so the API key separator is
 // chosen accordingly.
-func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model string, action string, payload any) (*http.Response, error) {
+func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model string, action string, payload any, stream bool) (*http.Response, error) {
 	if provider.BaseURL == "" {
 		provider.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
 	}
@@ -588,18 +649,12 @@ func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model strin
 		return nil, err
 	}
 	req.Header.Set("content-type", "application/json")
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -644,8 +699,10 @@ func withoutResponsesReasoningEffort(req ResponsesRequest) ResponsesRequest {
 
 func isReasoningEffortRejection(err error) bool {
 	httpErr := AsHTTPError(err)
+	// Both codes: an upstream 400 or 422 is classified as provider_invalid_request,
+	// while anything unrecognised still arrives as provider_error.
 	if httpErr == nil ||
-		httpErr.Code != "provider_error" ||
+		(httpErr.Code != "provider_error" && httpErr.Code != "provider_invalid_request") ||
 		(httpErr.UpstreamStatus != http.StatusBadRequest && httpErr.UpstreamStatus != http.StatusUnprocessableEntity) {
 		return false
 	}
@@ -815,25 +872,6 @@ func geminiVariantIs(variant string, family string) bool {
 	return variant == family || strings.HasPrefix(variant, family+"-")
 }
 
-func anthropicUsage(body map[string]any) Usage {
-	usageMap, _ := body["usage"].(map[string]any)
-	uncachedInputTokens := int64FromAny(usageMap["input_tokens"])
-	cacheCreationInputTokens := int64FromAny(usageMap["cache_creation_input_tokens"])
-	cachedInputTokens := int64FromAny(usageMap["cache_read_input_tokens"])
-	usage := Usage{
-		// Anthropic reports the three input classes disjointly, so prompt tokens are
-		// their sum. Cache-creation tokens are also surfaced on their own field: they
-		// bill at a premium over base input, and without this they were folded into
-		// the total and lost, leaving CacheWriteInputTokens dead on this path.
-		PromptTokens:          uncachedInputTokens + cacheCreationInputTokens + cachedInputTokens,
-		CachedInputTokens:     cachedInputTokens,
-		CacheWriteInputTokens: cacheCreationInputTokens,
-		CompletionTokens:      int64FromAny(usageMap["output_tokens"]),
-	}
-	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-	return usage
-}
-
 func geminiUsage(body map[string]any) Usage {
 	usageMap, _ := body["usageMetadata"].(map[string]any)
 	reasoningTokens := int64FromAny(usageMap["thoughtsTokenCount"])
@@ -896,34 +934,68 @@ func includeOpenAIStreamUsage(req ChatCompletionRequest) ChatCompletionRequest {
 	return req
 }
 
+// copyOpenAIStreamAndUsage forwards an upstream OpenAI-compatible event stream
+// to the client verbatim while reading usage out of it. Framing is delegated to
+// sseDecoder, which bounds a single event; the frame's raw bytes are what reach
+// the client, so the provider's framing survives the round trip untouched.
 func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
-	reader := bufio.NewReader(body)
+	events := newSSEDecoder(body)
 	var usage Usage
 	for {
-		line, readErr := reader.ReadString('\n')
-		if line != "" {
-			if _, err := io.WriteString(w, line); err != nil {
-				return usage, err
-			}
-			if parsed, ok := usageFromServerSentEvent(line); ok {
-				usage = parsed
-			}
+		event, err := events.Next()
+		if err == io.EOF {
+			return usage, nil
 		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				return usage, nil
+		if err != nil {
+			// A stream that fails mid-frame has already put those bytes on the
+			// wire; the client is owed them before the failure surfaces.
+			if pending := events.Pending(); len(pending) > 0 {
+				if _, writeErr := w.Write(pending); writeErr != nil {
+					return usage, writeErr
+				}
 			}
-			return usage, readErr
+			return usage, err
+		}
+		if _, err := w.Write(event.Raw); err != nil {
+			return usage, err
+		}
+		if flusher, ok := w.(streamFlusher); ok {
+			flusher.Flush()
+		}
+		if parsed, ok := usageFromServerSentEvent(event); ok {
+			usage = parsed
 		}
 	}
 }
 
-func usageFromServerSentEvent(line string) (Usage, bool) {
-	payload := strings.TrimSpace(line)
-	if !strings.HasPrefix(payload, "data:") {
+// usageFromServerSentEvent reads usage out of one frame. A frame it cannot parse
+// is reported as carrying no usage rather than as an error: this is a
+// pass-through, and the client is owed the frame either way.
+func usageFromServerSentEvent(frame serverSentEvent) (Usage, bool) {
+	if usage, ok := usageFromSSEPayload(frame.Data); ok {
+		return usage, true
+	}
+	// Some OpenAI-compatible servers separate chunks with a single newline
+	// rather than the blank line SSE requires, which leaves every payload joined
+	// into one frame. Scanning the joined segments keeps usage — and so billing —
+	// working for those upstreams instead of silently recording zero.
+	if !strings.Contains(frame.Data, "\n") {
 		return Usage{}, false
 	}
-	payload = strings.TrimSpace(strings.TrimPrefix(payload, "data:"))
+	var (
+		usage Usage
+		found bool
+	)
+	for _, segment := range strings.Split(frame.Data, "\n") {
+		if parsed, ok := usageFromSSEPayload(segment); ok {
+			usage, found = parsed, true
+		}
+	}
+	return usage, found
+}
+
+func usageFromSSEPayload(data string) (Usage, bool) {
+	payload := strings.TrimSpace(data)
 	if payload == "" || payload == "[DONE]" {
 		return Usage{}, false
 	}
@@ -1030,22 +1102,12 @@ func joinURL(base string, endpoint string) string {
 	return base + endpoint
 }
 
-func newProviderHTTPError(upstreamStatus int, data []byte) *HTTPError {
-	err := NewHTTPError(
-		statusForProvider(upstreamStatus),
-		"provider_error",
-		strings.TrimSpace(string(data)),
-	)
-	err.UpstreamStatus = upstreamStatus
-	return err
-}
-
+// statusForProvider is the flat mapping the routed paths no longer use; see
+// provider_error_classification.go. It remains for the catalog probe, which
+// reports on a provider the operator is configuring rather than routing to.
 func statusForProvider(status int) int {
 	if status == http.StatusTooManyRequests {
 		return http.StatusTooManyRequests
-	}
-	if status >= 500 {
-		return http.StatusBadGateway
 	}
 	return http.StatusBadGateway
 }

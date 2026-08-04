@@ -23,6 +23,12 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, or `POST /v1/embeddings`.
 5. Review **Usage Analytics** and **Request Logs** for requests, tokens, cost, and errors.
 
+## Test a Model in the Playground
+
+Open **Model Playground** in the console to test an available chat model without creating an API script. Each response shows streaming or buffered delivery, TTFT when it can be measured, output throughput, total duration, full-context input tokens, output tokens, estimated cost, local completion time, and a request ID. Expand the response for the actual response details. Provider and route internals appear only when your role has routing-read permission.
+
+The session is temporary and remains only on the current page unless you choose **Export Playground**. **Stop** keeps partial output. **Rerun** creates another candidate from that turn and removes later turns. Changing models starts a new session unless you explicitly choose to keep the existing context. For an upstream that does not support streaming, the page uses buffered mode and marks TTFT as not applicable.
+
 ## List Models
 
 ```bash
@@ -113,7 +119,7 @@ Responses accepts the nested OpenAI-compatible form:
 }
 ```
 
-TokenHub treats reasoning effort as a best-effort hint and does not change route ordering. OpenAI-compatible providers receive the value unchanged. Native Anthropic routes convert supported values to `output_config.effort`. Native Gemini routes convert supported values according to the model-specific `thinkingLevel` matrix for Gemini 3 and later models or the documented `thinkingBudget` for Gemini 2.5 models. Unsupported or blank values are omitted so the upstream model default remains in effect. If an upstream provider returns a `400` or `422` parameter error that explicitly identifies the effort field, TokenHub retries the same route once without that field before applying the existing failover behavior. Each physical retry counts toward Provider Resource RPM and appears as a route attempt.
+TokenHub treats reasoning effort as a best-effort hint and does not change route ordering. OpenAI-compatible providers receive the value unchanged. Native Anthropic routes convert supported values to `output_config.effort`. Native Gemini routes convert supported values according to the model-specific `thinkingLevel` matrix for Gemini 3 and later models or the documented `thinkingBudget` for Gemini 2.5 models. Unsupported or blank values are omitted so the upstream model default remains in effect. If an upstream provider returns a `400` or `422` parameter error that explicitly identifies the effort field, TokenHub retries the same route once without that field. A `400` or `422` that is not an effort rejection is reported to you rather than retried elsewhere: a request the upstream considers malformed is malformed at every provider. Each physical retry counts toward Provider Resource RPM and appears as a route attempt.
 
 Responses reasoning effort is supported on OpenAI-compatible, Anthropic, and Gemini routes. Azure OpenAI Responses and streaming Responses are not implemented; those requests return `501 provider_capability_not_supported`.
 
@@ -131,14 +137,18 @@ Chat Completions requests routed to a native Anthropic or Gemini provider transl
 
 Streaming forwards upstream events as they arrive, so time to first token reflects the provider rather than the full response. Content types these routes cannot represent, such as audio parts, return `400 unsupported_content_block` instead of being dropped from the request.
 
+Chat Completions routed to a Codex Subscription account use the Responses protocol internally and provide the same text, image, function-tool, parallel-tool, reasoning-continuation, and streaming behavior.
+
+The Codex subscription upstream does not accept client sampling, output-token-limit, or stop-sequence fields. TokenHub accepts those fields at the compatibility endpoint but omits them from the subscription request, so `max_tokens`, `max_completion_tokens`, `temperature`, `top_p`, and stop conditions are not enforced on Codex-backed routes. Use a standard API Provider when those controls are contractual.
+
 ### Reasoning continuation
 
 Anthropic and Gemini require the opaque signature attached to a reasoning step to be echoed back verbatim on the next turn of a multi-step tool exchange. The OpenAI Chat Completions schema has no field for it, so TokenHub returns the data in extension fields:
 
 | Field | Provider data |
 | --- | --- |
-| `message.reasoning_content` | Anthropic `thinking` text, Gemini thought parts |
-| `message.reasoning_signature` | Anthropic `thinking.signature` |
+| `message.reasoning_content` | Anthropic `thinking` text, Gemini thought parts, Codex reasoning summaries |
+| `message.reasoning_signature` | Anthropic `thinking.signature`, Codex encrypted reasoning |
 | `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
 | `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
 
@@ -165,6 +175,10 @@ curl --request POST \
 
 Native Anthropic routes preserve Anthropic content blocks and beta headers. OpenAI-compatible routes translate text, images, client tools, tool results, parallel tool calls, and streaming events. Anthropic server tools that cannot be represented by an OpenAI-compatible provider return `400 unsupported_tool`.
 
+Models routed to an OpenAI Codex Subscription account work through the same Messages endpoint: TokenHub translates Messages directly to the Responses protocol and converts the result back to Anthropic events. Claude Code therefore connects to TokenHub directly; CC-Switch or another local protocol proxy is not required. Codex-issued reasoning signatures are carried across tool turns, and a Claude Code session remains affined to one healthy subscription account.
+
+On Codex-backed Messages routes, `max_tokens`, `temperature`, `top_p`, `stop_sequences`, and Anthropic structured-output formatting cannot be enforced because the subscription upstream does not support their equivalent request fields.
+
 Claude Code requests that enable `mid-conversation-system-2026-04-07` may include `system` entries inside `messages`. TokenHub preserves those entries on native Anthropic routes and translates them into ordered system messages on OpenAI-compatible routes. Without that beta, `messages` continues to accept only `user` and `assistant` roles.
 
 Configure local Claude Code with the TokenHub host URL, without the `/v1` suffix:
@@ -179,9 +193,13 @@ claude
 
 `ANTHROPIC_AUTH_TOKEN` sends the TokenHub key in `Authorization: Bearer`. `ANTHROPIC_API_KEY` also works through `x-api-key` when no Authorization header is present. Token counting verifies key and model access but does not create a billed inference record.
 
+## Gemini CLI with Codex subscription GPT
+
+Gemini CLI can connect directly to TokenHub's native Gemini `v1beta` surface and use a GPT model routed to an OpenAI Codex Subscription account. Set `GEMINI_API_KEY` to a TokenHub project key, `GOOGLE_GEMINI_BASE_URL` to the TokenHub host without `/v1beta`, and select the routed GPT model. CCswitch is not required. See [Use Codex Subscription GPT from Gemini CLI](gemini-cli-codex-subscription.md) for isolated and project-local configuration, supported endpoints, verification, and limitations.
+
 ## Codex subscription image generation
 
-`POST /v1/images/generations` accepts the OpenAI-compatible `model`, `prompt`, `quality`, `size`, `n`, and `response_format` fields. Use the public virtual model `model: "codex-gpt-image-2"` and `n: 1`. `gpt-image-2` is a separate standard API model and is never routed through Codex subscriptions. Add `Prefer: respond-async` to receive an image job, then poll `GET /v1/image-jobs/{id}`.
+`POST /v1/images/generations` accepts the OpenAI-compatible `model`, `prompt`, `quality`, `size`, `n`, and `response_format` fields. Use the public virtual model `model: "codex-gpt-image-2"` and `n: 1`. `gpt-image-2` normally remains a separate standard API model. As a narrow compatibility exception, TokenHub maps a generation request marked by a Codex `originator` or `x-codex-image-turn-id` header to `codex-gpt-image-2` and returns `b64_json`; the API key must allow `codex-gpt-image-2`. Add `Prefer: respond-async` to receive an image job, then poll `GET /v1/image-jobs/{id}`.
 
 `POST /v1/images/edits` accepts multipart reference images in `image` or `image[]`. `gpt-image-2` forwards one `mask` to the OpenAI API; mask edits are not available through Codex subscription accounts. TokenHub sends image requests directly to the Codex subscription Images endpoint without installing or starting Codex CLI, keeps prompts encrypted in the database, retains input and output images on the server, and returns signed download URLs valid for 24 hours. The files remain stored after a URL expires; polling the job creates a new URL. The selected Codex account must have image-generation entitlement.
 
@@ -189,7 +207,7 @@ Image jobs have a five-minute default execution timeout controlled by `TOKENHUB_
 
 TokenHub records image-generation capability from real account results. Accounts confirmed as supported are preferred, accounts returning `403` are temporarily skipped, and accounts that have not been checked remain eligible for first-use detection. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), an unsupported account becomes discoverable and routable again so the next real request can retry it. TokenHub does not generate a background image merely to probe recovery.
 
-`codex-gpt-image-2` appears in `GET /v1/models` when a healthy connected Codex account is confirmed as supported or has reached its low-frequency retry window. It is a subscription-backed virtual model and does not require a conventional Provider model route. The separate `gpt-image-2` catalog model uses an OpenAI API provider and never consumes Codex subscription quota.
+`codex-gpt-image-2` appears in `GET /v1/models` when a healthy connected Codex account is confirmed as supported or has reached its low-frequency retry window. It is a subscription-backed virtual model and does not require a conventional Provider model route. Except for the Codex-client compatibility mapping above, the separate `gpt-image-2` catalog model uses an OpenAI API provider and does not consume Codex subscription quota.
 
 ## SDK Setup
 

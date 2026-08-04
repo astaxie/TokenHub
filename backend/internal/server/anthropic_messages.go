@@ -1,15 +1,14 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
+	"time"
 )
 
 type anthropicMessagesRequest struct {
@@ -37,7 +36,6 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
-
 	routed, ok := s.startAnthropicRoutedCall(w, r, project, key, req)
 	if !ok {
 		return
@@ -46,19 +44,15 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		s.handleAnthropicMessagesStream(w, r, routed, req)
 		return
 	}
-
 	resp, route, usage, attempts, err := s.executeRoutedAnthropicMessages(r, routed, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, err)
-		s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditErrorPayload(err, routed.Call.RequestID))
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req.Raw)
 		writeAnthropicError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, usage, http.StatusOK, "", s.clientIP(r), r.UserAgent())
-	s.recordRequestPayload(routed.Call.RequestID, req.Raw, resp)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req.Raw, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
@@ -148,47 +142,63 @@ func keyCanAccessModel(store Store, key APIKey, model string) bool {
 	return false
 }
 
-func (s *Server) startAnthropicRoutedCall(
-	w http.ResponseWriter,
-	r *http.Request,
-	project Project,
-	key APIKey,
-	req anthropicMessagesRequest,
-) (RoutedCall, bool) {
-	call, err := s.store.StartCall(r.Context(), project, key, req.Model)
+func (s *Server) startAnthropicRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, req anthropicMessagesRequest) (RoutedCall, bool) {
+	admittedAt := time.Now().UTC()
+	call, err := s.store.StartCall(r.Context(), project, key, req.Model, anthropicTokenReservation(req))
 	call.Stream = req.Stream
 	if err != nil {
-		httpErr := AsHTTPError(err)
-		requestID := s.store.RecordRejectedRequest(project, key, req.Model, req.Stream, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, req.Raw)
 		w.Header().Set("x-request-id", requestID)
-		s.recordRequestPayload(requestID, req.Raw, auditErrorPayload(err, requestID))
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	w.Header().Set("x-request-id", call.RequestID)
+	writeRateLimitHeaders(w.Header(), call.RateLimitHeaders)
 	if call.requestContext != nil {
 		*r = *r.WithContext(call.requestContext)
 	}
 	routes, err := s.store.SelectRouteCandidates(req.Model)
 	if err != nil {
+		err = s.annotateRoutingPolicyForCandidateError(&call, err)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		writeAnthropicError(w, r, err)
+		return RoutedCall{}, false
+	}
+	routes, err = s.resolveScopedRoutingPolicyForCall(&call, routes)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		writeAnthropicError(w, r, err)
+		return RoutedCall{}, false
+	}
+	routes, err = s.filterCodexRoutesByModel(r.Context(), req.Model, routes)
+	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
-	affinity, err := s.anthropicCacheLocalityAffinity(key.ID, req.Model, r.Header, req.Raw)
+	compatible, err := compatibleAnthropicRoutes(RoutedCall{
+		Call:   call,
+		Routes: s.planRouteOrder(call, routes),
+	}, req)
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		writeAnthropicError(w, r, err)
+		return RoutedCall{}, false
+	}
+	routes = compatible.Routes
+	affinity, err := s.anthropicGatewayAffinity(key.ID, req.Model, r.Header, req.Raw, routes)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	call.Affinity = affinity
 	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes), Affinity: affinity}, true
 }
-
 func (s *Server) executeRoutedAnthropicMessages(
 	r *http.Request,
 	routed RoutedCall,
@@ -205,112 +215,6 @@ func (s *Server) executeRoutedAnthropicMessages(
 		}
 		return s.executeAnthropicMessagesRoute(ctx, route, req, r.Header)
 	})
-}
-
-func (s *Server) executeAnthropicMessagesRoute(
-	ctx context.Context,
-	route RouteSelection,
-	req anthropicMessagesRequest,
-	headers http.Header,
-) (map[string]any, Usage, error) {
-	if route.Provider.Type == ProviderAnthropic {
-		return s.executeNativeAnthropicMessages(ctx, route, req, headers)
-	}
-	if !openAIMessageProvider(route.Provider.Type) {
-		return nil, Usage{}, NewHTTPError(
-			http.StatusNotImplemented,
-			"provider_capability_not_supported",
-			"Provider does not support the Anthropic Messages gateway",
-		)
-	}
-	chatReq, err := anthropicToOpenAIChatRequest(req)
-	if err != nil {
-		return nil, Usage{}, err
-	}
-	adapter, err := s.adapterForRoute(route)
-	if err != nil {
-		return nil, Usage{}, err
-	}
-	resp, usage, err := adapter.Chat(ctx, route.Provider, route.ProviderModel, chatReq)
-	if err != nil {
-		return nil, usage, err
-	}
-	body, ok := resp.(map[string]any)
-	if !ok {
-		return nil, usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider returned an invalid chat response")
-	}
-	converted, err := openAIResponseToAnthropic(body, req.Model, usage)
-	if err != nil {
-		return nil, usage, err
-	}
-	return converted, usage, nil
-}
-
-func openAIMessageProvider(providerType string) bool {
-	switch providerType {
-	case ProviderMock, ProviderOpenAI, ProviderOpenAICompatible, ProviderAzureOpenAI, "deepseek", "qwen", "local":
-		return true
-	default:
-		return false
-	}
-}
-
-func compatibleAnthropicRoutes(
-	routed RoutedCall,
-	req anthropicMessagesRequest,
-) (RoutedCall, error) {
-	compatible := routed
-	compatible.Routes = make([]RouteSelection, 0, len(routed.Routes))
-	var firstErr error
-	for _, route := range routed.Routes {
-		err := validateAnthropicRouteCompatibility(route, req)
-		if err == nil {
-			compatible.Routes = append(compatible.Routes, route)
-			continue
-		}
-		if !isAnthropicRouteIncompatibility(err) {
-			return compatible, err
-		}
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
-	if len(compatible.Routes) == 0 {
-		if firstErr == nil {
-			firstErr = ErrProviderMissing
-		}
-		return compatible, firstErr
-	}
-	return compatible, nil
-}
-
-func validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMessagesRequest) error {
-	if route.Provider.Type == ProviderAnthropic {
-		return nil
-	}
-	if !openAIMessageProvider(route.Provider.Type) {
-		return NewHTTPError(
-			http.StatusNotImplemented,
-			"provider_capability_not_supported",
-			"Provider does not support the Anthropic Messages gateway",
-		)
-	}
-	_, err := anthropicToOpenAIChatRequest(req)
-	return err
-}
-
-func isAnthropicRouteIncompatibility(err error) bool {
-	switch AsHTTPError(err).Code {
-	case "provider_capability_not_supported",
-		"unsupported_content_block",
-		"unsupported_image_source",
-		"unsupported_tool",
-		"unsupported_tool_choice",
-		"unsupported_tool_result":
-		return true
-	default:
-		return false
-	}
 }
 
 func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionRequest, error) {
@@ -512,11 +416,11 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 	if len(toolCalls) > 0 && content == nil {
 		content = ""
 	}
-	return []ChatMessage{{
-		Role:      "assistant",
-		Content:   content,
-		ToolCalls: toolCalls,
-	}}, nil
+	message := ChatMessage{Role: "assistant", Content: content}
+	if len(toolCalls) > 0 {
+		message.ToolCalls = toolCalls
+	}
+	return []ChatMessage{message}, nil
 }
 
 func anthropicUserMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, error) {
@@ -846,22 +750,6 @@ func anySlice(value any) ([]any, bool) {
 	}
 }
 
-func openAIFinishReasonToAnthropic(reason string, hasTools bool) string {
-	if hasTools || reason == "tool_calls" || reason == "function_call" {
-		return "tool_use"
-	}
-	switch reason {
-	case "length":
-		return "max_tokens"
-	case "stop", "":
-		return "end_turn"
-	case "content_filter":
-		return "refusal"
-	default:
-		return "end_turn"
-	}
-}
-
 func anthropicUsageObject(usage Usage) map[string]any {
 	cachedInputTokens := minInt64(maxInt64(usage.CachedInputTokens, 0), maxInt64(usage.PromptTokens, 0))
 	return map[string]any{
@@ -878,10 +766,10 @@ func (s *Server) executeNativeAnthropicMessages(
 	req anthropicMessagesRequest,
 	headers http.Header,
 ) (map[string]any, Usage, error) {
-	payload := cloneAnyMap(req.Raw)
+	payload := nativeAnthropicPayload(req.Raw)
 	payload["model"] = route.ProviderModel
 	payload["stream"] = false
-	resp, err := s.doNativeAnthropicRequest(ctx, route.Provider, "/v1/messages", payload, headers)
+	resp, err := s.doNativeAnthropicRequest(ctx, route.Provider, "/v1/messages", payload, headers, false)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -902,6 +790,7 @@ func (s *Server) doNativeAnthropicRequest(
 	endpoint string,
 	payload map[string]any,
 	downstreamHeaders http.Header,
+	stream bool,
 ) (*http.Response, error) {
 	baseURL := strings.TrimRight(provider.BaseURL, "/")
 	if baseURL == "" {
@@ -931,18 +820,15 @@ func (s *Server) doNativeAnthropicRequest(
 	for key, value := range provider.Headers {
 		req.Header.Set(key, value)
 	}
-	client := http.DefaultClient
-	if adapter, ok := s.adapters[ProviderAnthropic].(AnthropicAdapter); ok && adapter.Client != nil {
-		client = adapter.Client
-	}
-	resp, err := client.Do(req)
+	// The native path builds its own request but must follow the same streaming
+	// policy as the adapter: a total deadline would truncate a live stream.
+	adapter, _ := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)
+	resp, err := sendUpstream(adapter.Client, adapter.StreamClient, adapter.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newProviderHTTPError(resp.StatusCode, data)
+	if err := checkProviderResponse(resp); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -963,8 +849,7 @@ func (s *Server) handleAnthropicMessagesStream(
 ) {
 	compatible, compatibilityErr := compatibleAnthropicRoutes(routed, req)
 	if compatibilityErr != nil {
-		s.finishFailedRoutedCall(r, routed, nil, compatibilityErr)
-		s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditErrorPayload(compatibilityErr, routed.Call.RequestID))
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, compatibilityErr, req.Raw)
 		writeAnthropicError(w, r, compatibilityErr)
 		return
 	}
@@ -991,6 +876,8 @@ func (s *Server) handleAnthropicMessagesStream(
 			switch {
 			case prepared.Provider.Type == ProviderAnthropic:
 				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, req, r.Header, tracker)
+			case prepared.Provider.Type == ProviderOpenAICodex:
+				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, req, r.Header, tracker)
 			case openAIMessageProvider(prepared.Provider.Type):
 				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, req, tracker)
 			default:
@@ -1012,9 +899,18 @@ func (s *Server) handleAnthropicMessagesStream(
 		s.store.MarkRouteUsed(route.Route.ID)
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
-	s.store.RecordRouteAttempts(routed.Call.RequestID, attempts)
-	s.store.FinishCall(routed.Call, route, usage, status, code, s.clientIP(r), r.UserAgent())
-	s.recordRequestPayload(routed.Call.RequestID, req.Raw, auditStreamPayload(status, code, err))
+	routed.Call.StreamOutputCommitted = tracker.WroteData()
+	s.finishRoutedCall(r, GatewayCallCompletion{
+		Call:            routed.Call,
+		Route:           route,
+		Usage:           usage,
+		Attempts:        attempts,
+		StatusCode:      status,
+		ErrorCode:       code,
+		ErrorMessage:    errorMessageOrEmpty(err),
+		RequestPayload:  req.Raw,
+		ResponsePayload: auditStreamPayload(status, code, err),
+	})
 	if err != nil {
 		if tracker.Wrote() {
 			_ = writeAnthropicStreamError(tracker, err)
@@ -1026,403 +922,6 @@ func (s *Server) handleAnthropicMessagesStream(
 			writeAnthropicError(w, r, err)
 		}
 	}
-}
-
-func (s *Server) streamNativeAnthropicMessages(
-	ctx context.Context,
-	route RouteSelection,
-	req anthropicMessagesRequest,
-	headers http.Header,
-	writer io.Writer,
-) (Usage, error) {
-	payload := cloneAnyMap(req.Raw)
-	payload["model"] = route.ProviderModel
-	payload["stream"] = true
-	resp, err := s.doNativeAnthropicRequest(ctx, route.Provider, "/v1/messages", payload, headers)
-	if err != nil {
-		return Usage{}, err
-	}
-	defer resp.Body.Close()
-	return copyNativeAnthropicStream(writer, resp.Body, req.Model)
-}
-
-func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (Usage, error) {
-	reader := bufio.NewReader(body)
-	var usage Usage
-	for {
-		line, readErr := reader.ReadString('\n')
-		if line != "" {
-			output := line
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "data:") {
-				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-				if payload != "" && payload != "[DONE]" {
-					var event map[string]any
-					decoder := json.NewDecoder(strings.NewReader(payload))
-					decoder.UseNumber()
-					if err := decoder.Decode(&event); err != nil {
-						return usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Anthropic provider returned invalid stream JSON")
-					}
-					if message, ok := event["message"].(map[string]any); ok {
-						message["model"] = model
-						if eventUsage, ok := message["usage"].(map[string]any); ok {
-							usage = mergeAnthropicStreamUsage(usage, eventUsage)
-						}
-					}
-					if eventUsage, ok := event["usage"].(map[string]any); ok {
-						usage = mergeAnthropicStreamUsage(usage, eventUsage)
-					}
-					encoded, _ := json.Marshal(event)
-					output = "data: " + string(encoded) + "\n"
-				}
-			}
-			if _, err := io.WriteString(writer, output); err != nil {
-				return usage, err
-			}
-			if flusher, ok := writer.(http.Flusher); ok {
-				flusher.Flush()
-			}
-		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				return usage, nil
-			}
-			return usage, readErr
-		}
-	}
-}
-
-func mergeAnthropicStreamUsage(current Usage, raw map[string]any) Usage {
-	inputTokens := int64FromAny(raw["input_tokens"])
-	cacheCreationInputTokens := int64FromAny(raw["cache_creation_input_tokens"])
-	cacheReadInputTokens := int64FromAny(raw["cache_read_input_tokens"])
-	if inputTokens > 0 || cacheCreationInputTokens > 0 || cacheReadInputTokens > 0 {
-		current.PromptTokens = inputTokens + cacheCreationInputTokens + cacheReadInputTokens
-		current.CachedInputTokens = cacheReadInputTokens
-	}
-	if value := int64FromAny(raw["output_tokens"]); value > 0 {
-		current.CompletionTokens = value
-	}
-	current.TotalTokens = current.PromptTokens + current.CompletionTokens
-	return current
-}
-
-func (s *Server) streamOpenAIAsAnthropic(
-	ctx context.Context,
-	route RouteSelection,
-	req anthropicMessagesRequest,
-	writer io.Writer,
-) (Usage, error) {
-	chatReq, err := anthropicToOpenAIChatRequest(req)
-	if err != nil {
-		return Usage{}, err
-	}
-	adapter, err := s.adapterForRoute(route)
-	if err != nil {
-		return Usage{}, err
-	}
-	converter := newOpenAIAnthropicStreamConverter(writer, req.Model, estimateAnthropicInputTokens(req.Raw))
-	usage, err := adapter.ChatStream(ctx, route.Provider, route.ProviderModel, chatReq, converter)
-	if err != nil {
-		return usage, err
-	}
-	if usage.TotalTokens == 0 {
-		usage = converter.usage
-	}
-	if usage.PromptTokens == 0 {
-		usage.PromptTokens = estimateAnthropicInputTokens(req.Raw)
-	}
-	if usage.CompletionTokens == 0 {
-		usage.CompletionTokens = EstimateTextTokens(converter.outputText.String() + converter.toolArgumentText())
-	}
-	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-	if err := converter.Finalize(usage); err != nil {
-		return usage, err
-	}
-	return usage, nil
-}
-
-type openAIStreamToolCall struct {
-	Index     int
-	ID        string
-	Name      string
-	Arguments strings.Builder
-}
-
-type openAIAnthropicStreamConverter struct {
-	writer      io.Writer
-	model       string
-	messageID   string
-	inputTokens int64
-	buffer      string
-	started     bool
-	textStarted bool
-	textIndex   int
-	nextIndex   int
-	finish      string
-	finalized   bool
-	tools       map[int]*openAIStreamToolCall
-	usage       Usage
-	outputText  strings.Builder
-}
-
-func newOpenAIAnthropicStreamConverter(writer io.Writer, model string, inputTokens int64) *openAIAnthropicStreamConverter {
-	return &openAIAnthropicStreamConverter{
-		writer:      writer,
-		model:       model,
-		messageID:   NewID("msg"),
-		inputTokens: inputTokens,
-		tools:       map[int]*openAIStreamToolCall{},
-	}
-}
-
-func (c *openAIAnthropicStreamConverter) Write(data []byte) (int, error) {
-	c.buffer += string(data)
-	for {
-		index := strings.IndexByte(c.buffer, '\n')
-		if index < 0 {
-			break
-		}
-		line := c.buffer[:index]
-		c.buffer = c.buffer[index+1:]
-		if err := c.consumeLine(line); err != nil {
-			return 0, err
-		}
-	}
-	return len(data), nil
-}
-
-func (c *openAIAnthropicStreamConverter) consumeLine(line string) error {
-	payload := strings.TrimSpace(line)
-	if payload == "" || strings.HasPrefix(payload, ":") || strings.HasPrefix(payload, "event:") {
-		return nil
-	}
-	if !strings.HasPrefix(payload, "data:") {
-		return nil
-	}
-	payload = strings.TrimSpace(strings.TrimPrefix(payload, "data:"))
-	if payload == "" || payload == "[DONE]" {
-		return nil
-	}
-	var event map[string]any
-	decoder := json.NewDecoder(strings.NewReader(payload))
-	decoder.UseNumber()
-	if err := decoder.Decode(&event); err != nil {
-		return NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "OpenAI provider returned invalid stream JSON")
-	}
-	if id, ok := event["id"].(string); ok && id != "" {
-		c.messageID = id
-	}
-	if parsed := usageFromMap(event); parsed.TotalTokens > 0 {
-		c.usage = parsed
-	}
-	choices, ok := anySlice(event["choices"])
-	if !ok || len(choices) == 0 {
-		return nil
-	}
-	choice, ok := choices[0].(map[string]any)
-	if !ok {
-		return NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "OpenAI stream choice is invalid")
-	}
-	if finish, ok := choice["finish_reason"].(string); ok && finish != "" {
-		c.finish = finish
-	}
-	delta, _ := choice["delta"].(map[string]any)
-	if text, ok := delta["content"].(string); ok && text != "" {
-		if err := c.startMessage(); err != nil {
-			return err
-		}
-		if !c.textStarted {
-			c.textIndex = c.nextIndex
-			c.nextIndex++
-			c.textStarted = true
-			if err := c.emit("content_block_start", map[string]any{
-				"type":  "content_block_start",
-				"index": c.textIndex,
-				"content_block": map[string]any{
-					"type": "text",
-					"text": "",
-				},
-			}); err != nil {
-				return err
-			}
-		}
-		c.outputText.WriteString(text)
-		if err := c.emit("content_block_delta", map[string]any{
-			"type":  "content_block_delta",
-			"index": c.textIndex,
-			"delta": map[string]any{
-				"type": "text_delta",
-				"text": text,
-			},
-		}); err != nil {
-			return err
-		}
-	}
-	rawToolCalls, _ := anySlice(delta["tool_calls"])
-	for _, item := range rawToolCalls {
-		call, ok := item.(map[string]any)
-		if !ok {
-			return NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "OpenAI stream tool call is invalid")
-		}
-		index := int(int64FromAny(call["index"]))
-		current := c.tools[index]
-		if current == nil {
-			current = &openAIStreamToolCall{Index: index}
-			c.tools[index] = current
-		}
-		if id, ok := call["id"].(string); ok {
-			current.ID += id
-		}
-		if function, ok := call["function"].(map[string]any); ok {
-			if name, ok := function["name"].(string); ok {
-				current.Name += name
-			}
-			if arguments, ok := function["arguments"].(string); ok {
-				current.Arguments.WriteString(arguments)
-			}
-		}
-	}
-	return nil
-}
-
-func (c *openAIAnthropicStreamConverter) startMessage() error {
-	if c.started {
-		return nil
-	}
-	c.started = true
-	return c.emit("message_start", map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id":            c.messageID,
-			"type":          "message",
-			"role":          "assistant",
-			"content":       []any{},
-			"model":         c.model,
-			"stop_reason":   nil,
-			"stop_sequence": nil,
-			"usage": map[string]any{
-				"input_tokens":  c.inputTokens,
-				"output_tokens": int64(0),
-			},
-		},
-	})
-}
-
-func (c *openAIAnthropicStreamConverter) Finalize(usage Usage) error {
-	if c.finalized {
-		return nil
-	}
-	c.finalized = true
-	if c.buffer != "" {
-		if err := c.consumeLine(c.buffer); err != nil {
-			return err
-		}
-		c.buffer = ""
-	}
-	if err := c.startMessage(); err != nil {
-		return err
-	}
-	if c.textStarted {
-		if err := c.emit("content_block_stop", map[string]any{
-			"type":  "content_block_stop",
-			"index": c.textIndex,
-		}); err != nil {
-			return err
-		}
-	}
-	toolIndexes := make([]int, 0, len(c.tools))
-	for index := range c.tools {
-		toolIndexes = append(toolIndexes, index)
-	}
-	sort.Ints(toolIndexes)
-	for _, toolIndex := range toolIndexes {
-		call := c.tools[toolIndex]
-		if call.ID == "" || call.Name == "" {
-			return NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "OpenAI stream tool call requires id and function name")
-		}
-		arguments := call.Arguments.String()
-		if strings.TrimSpace(arguments) == "" {
-			arguments = "{}"
-		}
-		var input any
-		decoder := json.NewDecoder(strings.NewReader(arguments))
-		decoder.UseNumber()
-		if err := decoder.Decode(&input); err != nil {
-			return NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "OpenAI stream tool call arguments are not valid JSON")
-		}
-		index := c.nextIndex
-		c.nextIndex++
-		if err := c.emit("content_block_start", map[string]any{
-			"type":  "content_block_start",
-			"index": index,
-			"content_block": map[string]any{
-				"type":  "tool_use",
-				"id":    call.ID,
-				"name":  call.Name,
-				"input": map[string]any{},
-			},
-		}); err != nil {
-			return err
-		}
-		if err := c.emit("content_block_delta", map[string]any{
-			"type":  "content_block_delta",
-			"index": index,
-			"delta": map[string]any{
-				"type":         "input_json_delta",
-				"partial_json": arguments,
-			},
-		}); err != nil {
-			return err
-		}
-		if err := c.emit("content_block_stop", map[string]any{
-			"type":  "content_block_stop",
-			"index": index,
-		}); err != nil {
-			return err
-		}
-	}
-	stopReason := openAIFinishReasonToAnthropic(c.finish, len(c.tools) > 0)
-	if err := c.emit("message_delta", map[string]any{
-		"type": "message_delta",
-		"delta": map[string]any{
-			"stop_reason":   stopReason,
-			"stop_sequence": nil,
-		},
-		"usage": map[string]any{
-			"output_tokens": usage.CompletionTokens,
-		},
-	}); err != nil {
-		return err
-	}
-	return c.emit("message_stop", map[string]any{"type": "message_stop"})
-}
-
-func (c *openAIAnthropicStreamConverter) emit(event string, payload map[string]any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(c.writer, "event: %s\ndata: %s\n\n", event, data); err != nil {
-		return err
-	}
-	if flusher, ok := c.writer.(http.Flusher); ok {
-		flusher.Flush()
-	}
-	return nil
-}
-
-func (c *openAIAnthropicStreamConverter) toolArgumentText() string {
-	var output strings.Builder
-	indexes := make([]int, 0, len(c.tools))
-	for index := range c.tools {
-		indexes = append(indexes, index)
-	}
-	sort.Ints(indexes)
-	for _, index := range indexes {
-		output.WriteString(c.tools[index].Arguments.String())
-	}
-	return output.String()
 }
 
 func estimateAnthropicInputTokens(payload map[string]any) int64 {
@@ -1471,11 +970,7 @@ func estimateAnthropicValueTokens(value any) int64 {
 
 func writeAnthropicError(w http.ResponseWriter, r *http.Request, err error) {
 	httpErr := AsHTTPError(err)
-	requestID := strings.TrimSpace(w.Header().Get("x-request-id"))
-	if requestID == "" {
-		requestID = NewID("req")
-	}
-	w.Header().Set("x-request-id", requestID)
+	requestID := errorResponseHeaders(w, err)
 	writeJSON(w, httpErr.Status, map[string]any{
 		"type": "error",
 		"error": map[string]any{

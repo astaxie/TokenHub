@@ -1,6 +1,7 @@
 import { Activity, AlertTriangle, BarChart3, CircleDollarSign, CircleHelp, Gauge, GripVertical, ListOrdered, Save, Scale, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type ModelRoutePolicyRoute, type ModelRouteStrategy } from "../core/types";
+import { priceMetric } from "../domain/catalog";
 import { findProvider, routeProjectScopeSummary } from "../domain/entities";
 import { providerTypeLabel } from "../domain/labels";
 import { tx } from "../i18n/runtime";
@@ -318,6 +319,7 @@ function ModelRoutePolicyRow({
   onDelete: () => void;
 }) {
   const provider = findProvider(data, route.provider_id);
+  const providerModel = data.providerModels.find((model) => model.provider_id === route.provider_id && model.upstream_model === route.provider_model);
   return (
     <div
       className={dragging ? "route-provider-row route-policy-row dragging" : "route-provider-row route-policy-row"}
@@ -349,6 +351,7 @@ function ModelRoutePolicyRow({
       </div>
       <div className="route-upstream-model">
         <strong>{route.provider_model}</strong>
+        <span>{tx("渠道成本")} {priceMetric(providerModel?.input_price_usd_per_1m)} {tx("输入")} / {priceMetric(providerModel?.output_price_usd_per_1m)} {tx("输出")}</span>
         <span>{routeProjectScopeSummary(route, data)}</span>
       </div>
       <RouteParameterControl strategy={strategy} draft={draft} share={share} disabled={loading} onChange={onChange} />

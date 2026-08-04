@@ -3,7 +3,13 @@ package server
 func (s *Server) requestLogsWithUsageForUser(user AdminUser) []RequestLog {
 	logs := s.filterRequestLogsForUser(user, s.store.ListRequestLogs())
 	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
-	return enrichRequestLogsWithUsage(logs, records)
+	result := enrichRequestLogsWithUsage(logs, records)
+	if !s.canViewGlobalOperations(user) {
+		for index := range result {
+			result[index].ProviderCostUSD = 0
+		}
+	}
+	return result
 }
 
 func enrichRequestLogsWithUsage(logs []RequestLog, records []UsageRecord) []RequestLog {
@@ -29,7 +35,20 @@ func enrichRequestLogsWithUsage(logs []RequestLog, records []UsageRecord) []Requ
 		log.RejectedPredictionTokens += record.RejectedPredictionTokens
 		log.TotalTokens += record.TotalTokens
 		log.EstimatedCostUSD += record.CostUSD
+		log.ProviderCostUSD += record.ProviderCostUSD
 		log.UsageRecordCount++
 	}
 	return result
+}
+
+func (s *Server) redactProviderCostsForUser(user AdminUser, detail map[string]any) {
+	if s.canViewGlobalOperations(user) {
+		return
+	}
+	if usage, ok := detail["usage"].([]UsageRecord); ok {
+		for index := range usage {
+			usage[index].ProviderCostUSD = 0
+		}
+		detail["usage"] = usage
+	}
 }

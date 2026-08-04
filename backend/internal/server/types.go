@@ -26,6 +26,8 @@ const (
 	RouteStrategyQuality          = "quality"
 	RouteStrategyPriorityWeighted = "priority_weighted"
 	RouteStrategyPriorityOnly     = "priority_only"
+	ModelAccessModeInherit        = "inherit"
+	ModelAccessModeRestricted     = "restricted"
 
 	RouteProjectScopeAll     = "all"
 	RouteProjectScopeInclude = "include"
@@ -65,7 +67,8 @@ type HTTPError struct {
 	Status         int
 	Code           string
 	Message        string
-	UpstreamStatus int `json:"-"`
+	UpstreamStatus int               `json:"-"`
+	Headers        map[string]string `json:"-"`
 }
 
 func (e *HTTPError) Error() string {
@@ -74,6 +77,15 @@ func (e *HTTPError) Error() string {
 
 func NewHTTPError(status int, code, message string) *HTTPError {
 	return &HTTPError{Status: status, Code: code, Message: message}
+}
+
+// upstreamStatusOrZero is nil-safe: the attempt records call it on the result of
+// AsHTTPError, which is nil when there was no error to describe.
+func (e *HTTPError) upstreamStatusOrZero() int {
+	if e == nil {
+		return 0
+	}
+	return e.UpstreamStatus
 }
 
 func AsHTTPError(err error) *HTTPError {
@@ -94,6 +106,8 @@ type Project struct {
 	Teams           []ProjectTeam `json:"teams,omitempty" gorm:"foreignKey:ProjectID;references:ID"`
 	OwnerUserID     string        `json:"owner_user_id,omitempty"`
 	CostCenter      string        `json:"cost_center,omitempty" gorm:"index"`
+	ModelAccessMode string        `json:"model_access_mode"`
+	AllowedModels   []string      `json:"allowed_models" gorm:"serializer:json"`
 	Status          string        `json:"status"`
 	CreatedAt       time.Time     `json:"created_at"`
 	UpdatedAt       time.Time     `json:"updated_at"`
@@ -129,8 +143,14 @@ type APIKey struct {
 	KeySuffix            string            `json:"key_suffix"`
 	AllowedModels        map[string]bool   `json:"-" gorm:"-"`
 	Allowed              []string          `json:"allowed_models" gorm:"serializer:json"`
+	ModelAccessMode      string            `json:"model_access_mode"`
 	IPAllowlist          []string          `json:"ip_allowlist,omitempty" gorm:"serializer:json"`
 	Limits               QuotaLimits       `json:"limits" gorm:"embedded;embeddedPrefix:limit_"`
+	LimitsSet            bool              `json:"-" gorm:"-"`
+	RateLimitRPM         *int64            `json:"rate_limit_rpm,omitempty"`
+	RateLimitSet         bool              `json:"-" gorm:"-"`
+	TokenLimitTPM        *int64            `json:"token_limit_tpm,omitempty"`
+	TokenLimitSet        bool              `json:"-" gorm:"-"`
 	Status               string            `json:"status"`
 	ExpiresAt            *time.Time        `json:"expires_at,omitempty"`
 	RotatedFromID        string            `json:"rotated_from_id,omitempty" gorm:"index"`
@@ -141,6 +161,8 @@ type APIKey struct {
 }
 
 type QuotaLimits struct {
+	RateLimitRPM    int64   `json:"rate_limit_rpm,omitempty"`
+	TokenLimitTPM   int64   `json:"token_limit_tpm,omitempty"`
 	DailyRequests   int64   `json:"daily_requests"`
 	MonthlyRequests int64   `json:"monthly_requests"`
 	DailyTokens     int64   `json:"daily_tokens"`
@@ -228,19 +250,14 @@ type ProviderModel struct {
 }
 
 type ProviderModelImportRequest struct {
-	ProviderID    string                 `json:"provider_id"`
-	Models        []ProviderCatalogModel `json:"models"`
-	Publish       bool                   `json:"publish"`
-	ExternalNames map[string]string      `json:"external_names,omitempty"`
+	ProviderID string                 `json:"provider_id"`
+	Models     []ProviderCatalogModel `json:"models"`
+	Publish    bool                   `json:"publish"`
 }
 
 type ProviderModelImportResult struct {
 	ImportedModels int             `json:"imported_models"`
-	CreatedModels  int             `json:"created_models"`
-	CreatedRoutes  int             `json:"created_routes"`
 	ProviderModels []ProviderModel `json:"provider_models"`
-	ModelNames     []string        `json:"model_names,omitempty"`
-	RouteIDs       []string        `json:"route_ids,omitempty"`
 }
 
 type ProviderCatalogEntry struct {
@@ -259,19 +276,20 @@ type ProviderCatalogEntry struct {
 }
 
 type ProviderCreateRequest struct {
-	ID             string                 `json:"id"`
-	ProviderID     string                 `json:"provider_id"`
-	Name           string                 `json:"name"`
-	Type           string                 `json:"type"`
-	BaseURL        string                 `json:"base_url"`
-	APIKey         string                 `json:"api_key"`
-	Status         string                 `json:"status"`
-	Healthy        *bool                  `json:"healthy"`
-	Priority       int                    `json:"priority"`
-	Headers        map[string]string      `json:"headers"`
-	Options        map[string]string      `json:"options"`
-	CatalogID      string                 `json:"catalog_id"`
-	ModelCategory  string                 `json:"model_category"`
+	ID            string            `json:"id"`
+	ProviderID    string            `json:"provider_id"`
+	Name          string            `json:"name"`
+	Type          string            `json:"type"`
+	BaseURL       string            `json:"base_url"`
+	APIKey        string            `json:"api_key"`
+	Status        string            `json:"status"`
+	Healthy       *bool             `json:"healthy"`
+	Priority      int               `json:"priority"`
+	Headers       map[string]string `json:"headers"`
+	Options       map[string]string `json:"options"`
+	CatalogID     string            `json:"catalog_id"`
+	ModelCategory string            `json:"model_category"`
+	// CreateRoutes is accepted only to reject the retired automatic-route workflow.
 	CreateRoutes   *bool                  `json:"create_routes"`
 	SelectedModels []string               `json:"selected_models"`
 	CustomModels   []ProviderCatalogModel `json:"custom_models"`
@@ -280,9 +298,6 @@ type ProviderCreateRequest struct {
 type ProviderCreateResult struct {
 	Provider       Provider `json:"provider"`
 	ImportedModels int      `json:"imported_models"`
-	CreatedRoutes  int      `json:"created_routes"`
-	ModelNames     []string `json:"model_names,omitempty"`
-	RouteIDs       []string `json:"route_ids,omitempty"`
 	CatalogSource  string   `json:"catalog_source,omitempty"`
 }
 
@@ -378,6 +393,7 @@ type ModelRoute struct {
 	Strategy           string     `json:"strategy,omitempty"`
 	ProjectScope       string     `json:"project_scope,omitempty"`
 	ProjectIDs         []string   `json:"project_ids,omitempty" gorm:"serializer:json"`
+	Tags               []string   `json:"tags,omitempty" gorm:"serializer:json"`
 	LastUsedAt         *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt          time.Time  `json:"created_at"`
 }
@@ -406,11 +422,16 @@ type Usage struct {
 	RejectedPredictionTokens int64       `json:"rejected_prediction_tokens,omitempty"`
 	TotalTokens              int64       `json:"total_tokens"`
 	CostUSD                  float64     `json:"estimated_cost_usd,omitempty"`
+	ProviderCostUSD          float64     `json:"-"`
 	UpstreamRequestID        string      `json:"upstream_request_id,omitempty"`
 	ServedModel              string      `json:"served_model,omitempty"`
 	ModelETag                string      `json:"model_etag,omitempty"`
 	Transport                string      `json:"transport,omitempty"`
 	ResponseHeaders          http.Header `json:"-"`
+	// RateLimitTokens is the total metered across every invoked failover attempt.
+	// It is internal quota state: billing, request logs and provider attribution
+	// continue to use the usage reported by the final route only.
+	RateLimitTokens int64 `json:"-" gorm:"-"`
 }
 
 type UsageRecord struct {
@@ -433,6 +454,7 @@ type UsageRecord struct {
 	RejectedPredictionTokens int64     `json:"rejected_prediction_tokens,omitempty"`
 	TotalTokens              int64     `json:"total_tokens"`
 	CostUSD                  float64   `json:"estimated_cost_usd"`
+	ProviderCostUSD          float64   `json:"provider_cost_usd,omitempty"`
 	CreatedAt                time.Time `json:"created_at"`
 }
 
@@ -445,6 +467,9 @@ type RequestLog struct {
 	ProviderID               string    `json:"provider_id,omitempty" gorm:"index"`
 	ProviderResourceID       string    `json:"provider_resource_id,omitempty" gorm:"index"`
 	ProviderModel            string    `json:"provider_model,omitempty"`
+	RoutingPolicyID          string    `json:"routing_policy_id,omitempty" gorm:"index"`
+	RoutingPolicyScope       string    `json:"routing_policy_scope,omitempty" gorm:"index"`
+	RoutingPolicyPriority    int       `json:"routing_policy_priority,omitempty"`
 	UpstreamRequestID        string    `json:"upstream_request_id,omitempty"`
 	ServedModel              string    `json:"served_model,omitempty"`
 	ModelETag                string    `json:"model_etag,omitempty"`
@@ -466,6 +491,7 @@ type RequestLog struct {
 	RejectedPredictionTokens int64     `json:"rejected_prediction_tokens,omitempty" gorm:"-"`
 	TotalTokens              int64     `json:"total_tokens,omitempty" gorm:"-"`
 	EstimatedCostUSD         float64   `json:"estimated_cost_usd,omitempty" gorm:"-"`
+	ProviderCostUSD          float64   `json:"provider_cost_usd,omitempty" gorm:"-"`
 	UsageRecordCount         int64     `json:"usage_record_count,omitempty" gorm:"-"`
 }
 
@@ -521,19 +547,39 @@ type ImageAsset struct {
 }
 
 type RouteAttemptLog struct {
-	ID                 string    `json:"id" gorm:"primaryKey"`
-	RequestID          string    `json:"request_id" gorm:"index"`
-	AttemptIndex       int       `json:"attempt_index"`
-	RouteID            string    `json:"route_id,omitempty" gorm:"index;index:idx_route_attempt_adaptive,priority:1"`
-	ProviderID         string    `json:"provider_id,omitempty" gorm:"index"`
-	ProviderResourceID string    `json:"provider_resource_id,omitempty" gorm:"index"`
-	ProviderModel      string    `json:"provider_model,omitempty"`
-	StatusCode         int       `json:"status_code"`
-	ErrorCode          string    `json:"error_code,omitempty"`
-	ErrorMessage       string    `json:"error_message,omitempty"`
-	Invoked            bool      `json:"invoked" gorm:"index;index:idx_route_attempt_adaptive,priority:2"`
-	LatencyMS          int64     `json:"latency_ms,omitempty"`
-	CreatedAt          time.Time `json:"created_at" gorm:"index:idx_route_attempt_adaptive,priority:3"`
+	ID                       string  `json:"id" gorm:"primaryKey"`
+	RequestID                string  `json:"request_id" gorm:"index"`
+	AttemptIndex             int     `json:"attempt_index"`
+	RouteID                  string  `json:"route_id,omitempty" gorm:"index;index:idx_route_attempt_adaptive,priority:1"`
+	ProviderID               string  `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID       string  `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel            string  `json:"provider_model,omitempty"`
+	StatusCode               int     `json:"status_code"`
+	UpstreamStatus           int     `json:"upstream_status,omitempty"`
+	ErrorCode                string  `json:"error_code,omitempty"`
+	ErrorMessage             string  `json:"error_message,omitempty"`
+	Invoked                  bool    `json:"invoked" gorm:"index;index:idx_route_attempt_adaptive,priority:2"`
+	LatencyMS                int64   `json:"latency_ms,omitempty"`
+	ServedModel              string  `json:"served_model,omitempty"`
+	UpstreamRequestID        string  `json:"upstream_request_id,omitempty"`
+	Transport                string  `json:"transport,omitempty"`
+	InputTokens              int64   `json:"input_tokens,omitempty"`
+	CachedInputTokens        int64   `json:"cached_input_tokens,omitempty"`
+	CacheWriteTokens         int64   `json:"cache_write_input_tokens,omitempty"`
+	InputAudioTokens         int64   `json:"input_audio_tokens,omitempty"`
+	OutputTokens             int64   `json:"output_tokens,omitempty"`
+	ReasoningTokens          int64   `json:"reasoning_output_tokens,omitempty"`
+	OutputAudioTokens        int64   `json:"output_audio_tokens,omitempty"`
+	AcceptedPredictionTokens int64   `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int64   `json:"rejected_prediction_tokens,omitempty"`
+	TotalTokens              int64   `json:"total_tokens,omitempty"`
+	CostUSD                  float64 `json:"estimated_cost_usd,omitempty"`
+	// StartedAt and EndedAt record when this candidate was actually invoked. CreatedAt
+	// cannot substitute: every attempt of a request is written in one batch and so
+	// shares a single CreatedAt.
+	StartedAt time.Time `json:"started_at,omitzero"`
+	EndedAt   time.Time `json:"ended_at,omitzero"`
+	CreatedAt time.Time `json:"created_at" gorm:"index:idx_route_attempt_adaptive,priority:3"`
 }
 
 type AlertEvent struct {
@@ -586,14 +632,15 @@ type AuditEvent struct {
 }
 
 type AdminResource struct {
-	ID          string         `json:"id" gorm:"primaryKey"`
-	Kind        string         `json:"kind" gorm:"primaryKey;index"`
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	Status      string         `json:"status"`
-	Fields      map[string]any `json:"fields,omitempty" gorm:"serializer:json"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID                      string         `json:"id" gorm:"primaryKey"`
+	Kind                    string         `json:"kind" gorm:"primaryKey;index"`
+	Name                    string         `json:"name"`
+	Description             string         `json:"description,omitempty"`
+	Status                  string         `json:"status"`
+	Fields                  map[string]any `json:"fields,omitempty" gorm:"serializer:json"`
+	RoutingPolicyBindingKey *string        `json:"-" gorm:"uniqueIndex:idx_admin_resource_routing_policy_binding"`
+	CreatedAt               time.Time      `json:"created_at"`
+	UpdatedAt               time.Time      `json:"updated_at"`
 }
 
 type MonitorRunResult struct {
@@ -737,8 +784,6 @@ type ChatMessage struct {
 	raw                      map[string]json.RawMessage
 }
 
-type ReasoningOptions = ResponsesReasoning
-
 type ChatCompletionRequest struct {
 	Model             string         `json:"model"`
 	Messages          []ChatMessage  `json:"messages"`
@@ -747,6 +792,10 @@ type ChatCompletionRequest struct {
 	MaxTokens         int            `json:"max_tokens,omitempty"`
 	Temperature       *float64       `json:"temperature,omitempty"`
 	TopP              *float64       `json:"top_p,omitempty"`
+	PresencePenalty   *float64       `json:"presence_penalty,omitempty"`
+	FrequencyPenalty  *float64       `json:"frequency_penalty,omitempty"`
+	MinP              *float64       `json:"min_p,omitempty"`
+	TopK              *int           `json:"top_k,omitempty"`
 	Stop              any            `json:"stop,omitempty"`
 	Tools             any            `json:"tools,omitempty"`
 	ToolChoice        any            `json:"tool_choice,omitempty"`
@@ -832,6 +881,10 @@ func (r ChatCompletionRequest) MarshalJSON() ([]byte, error) {
 	setOrDeleteRawJSONField(raw, "max_tokens", r.MaxTokens, r.MaxTokens != 0)
 	setOrDeleteRawJSONField(raw, "temperature", r.Temperature, r.Temperature != nil)
 	setOrDeleteRawJSONField(raw, "top_p", r.TopP, r.TopP != nil)
+	setOrDeleteRawJSONField(raw, "presence_penalty", r.PresencePenalty, r.PresencePenalty != nil)
+	setOrDeleteRawJSONField(raw, "frequency_penalty", r.FrequencyPenalty, r.FrequencyPenalty != nil)
+	setOrDeleteRawJSONField(raw, "min_p", r.MinP, r.MinP != nil)
+	setOrDeleteRawJSONField(raw, "top_k", r.TopK, r.TopK != nil)
 	setOrDeleteRawJSONField(raw, "stop", r.Stop, r.Stop != nil)
 	setOrDeleteRawJSONField(raw, "tools", r.Tools, r.Tools != nil)
 	setOrDeleteRawJSONField(raw, "tool_choice", r.ToolChoice, r.ToolChoice != nil)
@@ -853,29 +906,39 @@ type PlaygroundChatResponse struct {
 }
 
 type PlaygroundRouteSummary struct {
-	RouteID          string  `json:"route_id,omitempty"`
-	ProviderID       string  `json:"provider_id,omitempty"`
-	ProviderName     string  `json:"provider_name,omitempty"`
-	ResourceID       string  `json:"resource_id,omitempty"`
-	ResourceName     string  `json:"resource_name,omitempty"`
-	ProviderModel    string  `json:"provider_model,omitempty"`
-	Priority         int     `json:"priority,omitempty"`
-	ResourcePriority int     `json:"resource_priority,omitempty"`
-	Weight           int     `json:"weight,omitempty"`
-	QualityScore     int     `json:"quality_score,omitempty"`
-	CostScore        int     `json:"cost_score,omitempty"`
-	Strategy         string  `json:"strategy,omitempty"`
-	EffectiveWeight  int     `json:"effective_weight,omitempty"`
-	Samples          int64   `json:"samples,omitempty"`
-	SuccessRate      float64 `json:"success_rate,omitempty"`
-	LatencyMS        int64   `json:"latency_ms,omitempty"`
+	RouteID           string  `json:"route_id,omitempty"`
+	ProviderID        string  `json:"provider_id,omitempty"`
+	ProviderName      string  `json:"provider_name,omitempty"`
+	ResourceID        string  `json:"resource_id,omitempty"`
+	ResourceName      string  `json:"resource_name,omitempty"`
+	ProviderModel     string  `json:"provider_model,omitempty"`
+	UpstreamRequestID string  `json:"upstream_request_id,omitempty"`
+	ServedModel       string  `json:"served_model,omitempty"`
+	ModelETag         string  `json:"model_etag,omitempty"`
+	Transport         string  `json:"transport,omitempty"`
+	Priority          int     `json:"priority,omitempty"`
+	ResourcePriority  int     `json:"resource_priority,omitempty"`
+	Weight            int     `json:"weight,omitempty"`
+	QualityScore      int     `json:"quality_score,omitempty"`
+	CostScore         int     `json:"cost_score,omitempty"`
+	Strategy          string  `json:"strategy,omitempty"`
+	EffectiveWeight   int     `json:"effective_weight,omitempty"`
+	Samples           int64   `json:"samples,omitempty"`
+	SuccessRate       float64 `json:"success_rate,omitempty"`
+	LatencyMS         int64   `json:"latency_ms,omitempty"`
 }
 
 type PlaygroundRouteAttempt struct {
-	Route  PlaygroundRouteSummary `json:"route"`
-	Status int                    `json:"status"`
-	Code   string                 `json:"code,omitempty"`
-	Error  string                 `json:"error,omitempty"`
+	Route          PlaygroundRouteSummary `json:"route,omitzero"`
+	Status         int                    `json:"status"`
+	UpstreamStatus int                    `json:"upstream_status,omitempty"`
+	Code           string                 `json:"code,omitempty"`
+	Error          string                 `json:"error,omitempty"`
+	Invoked        bool                   `json:"invoked"`
+	LatencyMS      int64                  `json:"latency_ms,omitempty"`
+	Usage          Usage                  `json:"usage,omitzero"`
+	StartedAt      time.Time              `json:"started_at,omitzero"`
+	EndedAt        time.Time              `json:"ended_at,omitzero"`
 }
 
 type ResponsesRequest struct {
@@ -1029,11 +1092,31 @@ type RouteExplainStep struct {
 
 type RouteAttempt struct {
 	Selection RouteSelection `json:"selection"`
-	Status    int            `json:"status"`
-	ErrorCode string         `json:"error_code,omitempty"`
-	Error     string         `json:"error,omitempty"`
-	Invoked   bool           `json:"invoked"`
-	LatencyMS int64          `json:"latency_ms,omitempty"`
+	// Status is what the caller was told. UpstreamStatus is what the provider
+	// actually answered, which the mapping to Status deliberately does not
+	// preserve — an upstream 401 is reported as 502 so a caller does not read it
+	// as their own key being rejected. Diagnosing a route needs both.
+	Status         int    `json:"status"`
+	UpstreamStatus int    `json:"upstream_status,omitempty"`
+	ErrorCode      string `json:"error_code,omitempty"`
+	Error          string `json:"error,omitempty"`
+	// Invoked reports that this candidate entered the invocation path, not that a
+	// request necessarily reached the upstream: acquiring credentials or resolving an
+	// adapter can still fail first. It is the boundary that distinguishes a candidate
+	// that was tried from one skipped for lack of capacity.
+	Invoked   bool  `json:"invoked"`
+	LatencyMS int64 `json:"latency_ms,omitempty"`
+	// Usage is what this candidate alone consumed, priced with the requested model.
+	// A failed attempt keeps whatever the upstream reported before failing: those
+	// tokens were billed regardless of the request failing over afterwards.
+	//
+	// Only invoked attempts have usage. A candidate skipped because capacity could
+	// not be acquired never reached a provider.
+	Usage Usage `json:"usage,omitzero"`
+	// StartedAt and EndedAt bound the upstream invocation. They are zero for a
+	// candidate that was never invoked.
+	StartedAt time.Time `json:"started_at,omitzero"`
+	EndedAt   time.Time `json:"ended_at,omitzero"`
 }
 
 type RoutedCall struct {
@@ -1043,16 +1126,78 @@ type RoutedCall struct {
 }
 
 type CallContext struct {
-	RequestID string
-	Project   Project
-	Key       APIKey
-	Model     Model
+	RequestID             string
+	Project               Project
+	Key                   APIKey
+	Model                 Model
+	RoutingPolicyID       string
+	RoutingPolicyScope    string
+	RoutingPolicyPriority int
+	// StartedAt is the database clock reading taken when the call was admitted:
+	// StartCall derives the quota buckets and the lease expiry from that reading
+	// so every replica agrees on them, and reports it here for callers that want
+	// the admission timestamp. It is *not* a valid reference for measuring how
+	// long the call ran — no production path reads it for that any more.
 	StartedAt time.Time
+	// measuredAt is the local reference used to measure how long the call ran.
+	// It is deliberately separate from StartedAt: on PostgreSQL deployments the
+	// database and the application usually run on different hosts, and any clock
+	// skew between them would otherwise land directly in request_logs.latency_ms
+	// (a database host running four minutes ahead produced latencies near
+	// -240000ms). time.Now keeps its monotonic reading here, so the measurement
+	// also survives wall-clock adjustments on this host.
+	measuredAt time.Time
+	// RateLimitHeaders is calculated atomically with minute-bucket admission so
+	// every compatible HTTP surface reports the same effective limits.
+	RateLimitHeaders map[string]string
+	TokenLimitBucket string
+	ReservedTokens   int64
+	// StreamOutputCommitted keeps the reservation when a stream delivered data but
+	// ended before an authoritative usage event was received.
+	StreamOutputCommitted bool
 	// Stream records whether the client asked for a streamed response. It only
 	// labels observability output and never influences routing.
 	Stream         bool
 	Affinity       *RequestAffinity
 	requestContext context.Context
+}
+
+// measuredStart reports when the call began, on the clock its duration is
+// measured against. Anything paired with a timestamp this process stamps — an
+// elapsed time, a trace span end — has to start here rather than at StartedAt,
+// which the database clock produced.
+func (c CallContext) measuredStart() time.Time {
+	if !c.measuredAt.IsZero() {
+		return c.measuredAt
+	}
+	// Contexts assembled by hand rather than by StartCall carry only StartedAt.
+	// Falling back to it keeps their reporting working; callers clamp the result.
+	return c.StartedAt
+}
+
+// elapsed reports how long the call has been running. It never returns a
+// negative duration: callers persist the result as latency_ms, and a negative
+// latency is always a clock artefact rather than a real measurement.
+func (c CallContext) elapsed() time.Duration {
+	reference := c.measuredStart()
+	if reference.IsZero() {
+		return 0
+	}
+	if elapsed := time.Since(reference); elapsed > 0 {
+		return elapsed
+	}
+	return 0
+}
+
+// latencyMillis converts an interval into the non-negative value stored in a
+// latency_ms column. Intervals derived from a persisted timestamp can come out
+// negative when the replica that wrote it ran ahead of the replica reading it,
+// and a negative latency is never a real measurement.
+func latencyMillis(interval time.Duration) int64 {
+	if interval <= 0 {
+		return 0
+	}
+	return interval.Milliseconds()
 }
 
 func NewID(prefix string) string {
@@ -1061,10 +1206,6 @@ func NewID(prefix string) string {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
 	return prefix + "_" + base64.RawURLEncoding.EncodeToString(buf[:])
-}
-
-func GenerateAPIKey() string {
-	return GenerateAPIKeyWithOptions(DefaultAPIKeyPrefix, DefaultAPIKeyRandomLength)
 }
 
 func GenerateAPIKeyWithOptions(prefix string, randomLength int) string {

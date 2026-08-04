@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.60.2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://litellm:litellm@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${MIGRATION_E2E_LITELLM_KEY:-sk-test-key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-placeholder}
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os, socket, urllib.request;
+          host=socket.gethostbyname(socket.gethostname());
+          req=urllib.request.Request('http://'+host+':4000/health',
+          headers={'Authorization':'Bearer '+os.environ['LITELLM_MASTER_KEY']});
+          urllib.request.urlopen(req, timeout=5)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  tokenhub:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    environment:
+      TOKENHUB_ADMIN_TOKEN: admin-token
+      TOKENHUB_DATABASE_URL: sqlite://data/tokenhub.db
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  mock-upstream:
+    image: nginx:alpine
+    volumes:
+      - ./mock-upstream.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8081:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.30.5
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

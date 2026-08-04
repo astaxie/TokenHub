@@ -191,6 +191,8 @@ Start the stack from the repository root:
 
 The script validates the Compose environment, pulls the published image, and starts the managed application container without building locally. It waits up to 180 seconds for the Compose health check before reporting success. It also removes the obsolete standalone frontend container when upgrading from the former two-container layout; the `tokenhub-data` volume is preserved. If the image cannot be pulled during the initial GHCR rollout, it falls back to building from the local checkout. Validation errors name every unsafe variable without printing their values. If the new backend fails or does not become healthy, the script prints up to 100 log lines from that attempt.
 
+The installer prefers the current `docker compose` CLI plugin and falls back to the legacy `docker-compose` command when only that command is available. It also supports Compose releases that provide `config --format` but not `config --environment`; this compatibility path requires `python3`.
+
 Validate without pulling or starting containers:
 
 ```bash
@@ -378,13 +380,22 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_METRICS_ENABLED` | `false` | Collect Prometheus metrics and serve `GET /metrics` |
 | `TOKENHUB_METRICS_TOKEN` | empty | Bearer token for `/metrics`; falls back to the admin token when empty |
 | `TOKENHUB_METRICS_PROJECT_LABEL` | `false` | Add `project_id` to gateway metrics; raises series count by the project count |
+| `TOKENHUB_TRACING_ENABLED` | `false` | Export one OpenTelemetry trace per gateway call over OTLP/HTTP |
+| `TOKENHUB_TRACING_ENDPOINT` | empty | Signal-specific OTLP traces URL, used verbatim; for Langfuse `<host>/api/public/otel/v1/traces` |
+| `TOKENHUB_TRACING_HEADERS` | empty | Comma-separated `name=value` export headers; holds a credential |
+| `TOKENHUB_TRACING_CAPTURE_PAYLOADS` | `false` | Include prompts, responses and upstream error text in exported spans |
+| `TOKENHUB_TRACING_SAMPLE_RATIO` | `1` | Fraction of calls exported, from 0 to 1 |
+| `TOKENHUB_TRACING_TIMEOUT_SECONDS` | `10` | Time limit for one export attempt |
+| `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | Completions waiting to become spans; a full queue drops traces instead of slowing requests |
+| `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | Total time limit for one non-streaming upstream request |
+| `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | Streaming calls have no total limit; this bounds waiting for response headers and how long the stream may then stay silent. The budget restarts on every byte received |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | Expiry and renewal basis for cluster-wide concurrency leases |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | Expiry and renewal basis for cluster coordination locks |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | Maximum time to drain in-flight requests during shutdown |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Compose grace period before Docker force-stops the backend |
-| `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Pin a session to one upstream account so the provider's prompt cache keeps hitting. Off by default because it changes routing behaviour |
+| `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | For Chat Completions, Anthropic Messages, and Responses, pin a session to one upstream account so the provider's prompt cache keeps hitting. Off by default because it changes routing behaviour |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | empty | Comma-separated model allowlist for staged rollout; empty means every model |
-| `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Also accept user-scoped identifiers as affinity keys; off by default because one user's concurrent sessions would share a single account |
+| `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Also accept Chat/Responses `user` and Anthropic `metadata.user_id` as affinity keys; off by default because one user's concurrent sessions would share a single account |
 | `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | Directory holding generated image assets |
 | `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | Number of workers draining the image generation queue |
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | Maximum image jobs that may wait in the queue |
@@ -393,6 +404,7 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_DB_MAX_OPEN_CONNS` | `25` | Maximum open database connections (PostgreSQL only) |
 | `TOKENHUB_DB_MAX_IDLE_CONNS` | `5` | Maximum idle database connections (PostgreSQL only) |
 | `TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES` | `30` | Maximum connection lifetime in minutes (PostgreSQL only) |
+| `TOKENHUB_API` | empty | Target Admin API for the `tokenhub-migrate` CLI. Read only by that CLI, never by the running server; overridden by `--to` |
 
 ## Frontend Environment Variables
 
@@ -428,11 +440,11 @@ To mount a custom catalog explicitly:
 ./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml
 ```
 
-After editing the configured catalog file, restart the backend or use **Restore Candidate Templates** on the Model Directory's **Candidate Templates** tab. This refreshes reference metadata without removing custom external models and does not publish any template.
+After editing the configured catalog file, restart the backend or choose **Settings → Base Settings → Sync Model Reference Catalog**. Either path synchronizes the reference metadata without removing custom external models and does not publish any model.
 
-The custom mount intentionally overrides the image catalog and is therefore managed separately from `TOKENHUB_IMAGE_TAG`. After updating that file, restart the backend container and confirm the entries on the **Candidate Templates** tab.
+The custom mount intentionally overrides the image catalog and is therefore managed separately from `TOKENHUB_IMAGE_TAG`. After updating that file, restart the backend container or run the settings synchronization action, and confirm that the operation completes without a model-catalog error.
 
-`data/model-catalog.yaml` provides reference metadata for candidate templates; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the candidate upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory. Publishing additionally creates or reuses an external model and adds an enabled mapping. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
+`data/model-catalog.yaml` provides tracked reference metadata; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory only. External models and their unified client-facing prices are created separately in Model Directory, then mapped to imported Provider models under Routing Policies. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
 
 ## Reverse Proxy
 
