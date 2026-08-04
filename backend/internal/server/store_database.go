@@ -256,9 +256,14 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 		sqlDB.SetMaxOpenConns(postgresMaxOpenConns)
 	}
 
+	muLocker := sync.Locker(&sync.Mutex{})
+	if driver == "postgres" {
+		muLocker = nopLocker{}
+	}
+
 	return &GormStore{
 		db:                   db,
-		mu:                   &sync.Mutex{},
+		mu:                   muLocker,
 		leaseHeartbeats:      &sync.Map{},
 		secretKey:            config.SecretKey,
 		failureThreshold:     defaultInt(config.ResourceFailureThreshold, 3),
