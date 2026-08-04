@@ -234,9 +234,18 @@ type Store interface {
 
 var _ Store = (*GormStore)(nil)
 
+// nopLocker is a sync.Locker that does nothing. It is used as the store mutex
+// for PostgreSQL-backed stores where the database itself provides row-level
+// locking and transaction isolation, making a Go-level global mutex unnecessary
+// overhead that would serialise all writes across the process.
+type nopLocker struct{}
+
+func (nopLocker) Lock()   {}
+func (nopLocker) Unlock() {}
+
 type GormStore struct {
 	db                   *gorm.DB
-	mu                   *sync.Mutex
+	mu                   sync.Locker
 	leaseHeartbeats      *sync.Map
 	secretKey            string
 	metrics              *GatewayMetrics
