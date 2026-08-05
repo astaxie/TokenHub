@@ -27,6 +27,10 @@ func TestBillingConnectorLifecycleProtectsCredentials(t *testing.T) {
 		"base_url":                  "https://billing.example.test",
 		"status":                    StatusActive,
 		"schedule_interval_minutes": 60,
+		"config": map[string]string{
+			"provider_id":          "provider-finance",
+			"provider_resource_id": "resource-finance",
+		},
 		"credentials": map[string]string{
 			"api_token": "oneapi-super-secret",
 		},
@@ -41,7 +45,7 @@ func TestBillingConnectorLifecycleProtectsCredentials(t *testing.T) {
 	if err := json.Unmarshal([]byte(created.Body), &connector); err != nil {
 		t.Fatal(err)
 	}
-	if connector.ID == "" || !connector.CredentialsConfigured {
+	if connector.ID == "" || !connector.CredentialsConfigured || connector.Config["provider_id"] != "provider-finance" || connector.Config["provider_resource_id"] != "resource-finance" {
 		t.Fatalf("expected created connector and credential summary: %#v", connector)
 	}
 

@@ -1,20 +1,15 @@
 import { languageStorageKey } from "../core/types";
+import { type AppLanguage, languageFromLocales, languageOptions, preferredLanguage } from "./language-preference";
 import { translations } from "./translations";
 
-export type AppLanguage = "zh-CN" | "en" | "ja";
-
-export const languageOptions: Array<{ value: AppLanguage; label: string; nativeLabel: string }> = [
-  { value: "zh-CN", label: "Chinese", nativeLabel: "简体中文" },
-  { value: "en", label: "English", nativeLabel: "English" },
-  { value: "ja", label: "Japanese", nativeLabel: "日本語" },
-];
+export { type AppLanguage, languageFromLocales, languageOptions, preferredLanguage };
 
 export let activeLanguage: AppLanguage = "en";
 
 export function readSavedLanguage(): AppLanguage {
   if (typeof window === "undefined") return "en";
   const saved = window.localStorage.getItem(languageStorageKey);
-  return saved === "en" || saved === "ja" || saved === "zh-CN" ? saved : "en";
+  return preferredLanguage(saved, navigator.languages?.length ? navigator.languages : [navigator.language]);
 }
 
 export function setActiveLanguage(language: AppLanguage) {

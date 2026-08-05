@@ -28,6 +28,11 @@ const (
 // 10s and would put almost every LLM request in +Inf.
 var gatewayDurationBuckets = []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 60, 120, 300}
 
+// gatewayOverheadBuckets is sized for gateway-only work: auth, routing, DB and
+// serialization. Values below a millisecond are rounded away by the attempt
+// latency clamp, and multi-second overhead is already a clear outlier.
+var gatewayOverheadBuckets = []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+
 // GatewayMetrics holds the Prometheus collectors for the model API.
 //
 // It owns its registry rather than using the default one, so tests get an isolated
@@ -52,6 +57,25 @@ type GatewayMetrics struct {
 	// like a gateway that received no traffic.
 	traceCompletions *prometheus.CounterVec
 	traceSpans       *prometheus.CounterVec
+
+	// routeAttempts counts every candidate the router considered, including
+	// capacity-skipped attempts. It is the physical attempt count behind the
+	// logical request count in routed_requests_total.
+	routeAttempts *prometheus.CounterVec
+	// attemptDuration records only invoked attempts, split by outcome. It measures
+	// the whole routed attempt — upstream transport, stream translation and
+	// writing to the client — so streaming calls include slow-client backpressure;
+	// the upstream boundary itself is not separately timed here.
+	attemptDuration *prometheus.HistogramVec
+	// routedRequests counts logical requests that made at least one candidate
+	// attempt. It is the denominator for the failover-depth ratio: requests_total
+	// also counts refusals that never reached a provider.
+	routedRequests *prometheus.CounterVec
+	// overhead is the gateway's own cost: max(0, elapsed - sum(invoked attempt
+	// duration)). A request admitted for routing that fails before any attempt
+	// contributes its full elapsed time. It is an approximation because attempt
+	// durations are rounded to whole milliseconds and clamped to a positive floor.
+	overhead *prometheus.HistogramVec
 }
 
 const (
@@ -61,6 +85,19 @@ const (
 	traceSpanOutcomeExported = "exported"
 	traceSpanOutcomeFailed   = "failed"
 )
+
+// GatewayAttemptSample is one candidate attempt, reduced to the fields the
+// metrics layer needs. Keeping it separate from RouteAttempt avoids pulling the
+// full routing structure into the metrics package.
+type GatewayAttemptSample struct {
+	ProviderType string
+	ProviderID   string
+	ResourceID   string
+	StatusCode   int
+	ErrorCode    string
+	Invoked      bool
+	Duration     time.Duration
+}
 
 // GatewayCallSample is one finished gateway request, successful or not.
 type GatewayCallSample struct {
@@ -74,6 +111,10 @@ type GatewayCallSample struct {
 	Stream       bool
 	Duration     time.Duration
 	Usage        Usage
+	// Attempts is the per-candidate outcome slice. Empty means no candidate was
+	// tried — the request was refused before routing or failed during route
+	// selection — and both still count in requests_total.
+	Attempts []GatewayAttemptSample
 }
 
 // NewGatewayMetrics builds the collectors. When projectLabel is true every metric
@@ -141,7 +182,34 @@ func NewGatewayMetrics(projectLabel bool) *GatewayMetrics {
 		Help:      "Spans by what the OTLP exporter did with them. \"failed\" means the trace backend rejected them or could not be reached.",
 	}, []string{"outcome"})
 
-	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans)
+	m.routeAttempts = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "route_attempts_total",
+		Help:      "Candidate attempts by outcome. Counts physical attempts, so a request that failed over across several candidates counts each candidate. The ratio rate(route_attempts_total) / rate(routed_requests_total) is the average failover depth; routed_requests_total counts only requests that made an attempt, so refusals that never reached a provider cannot dilute it. status_code is the gateway-mapped status (an upstream 401 is reported as 502); the raw upstream status is in the RouteAttemptLog.",
+	}, withProject("model", "provider_type", "provider_id", "resource_id", "status_code", "error_code", "invoked"))
+	m.attemptDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "attempt_duration_seconds",
+		Help:      "Duration of one invoked routed attempt, measured around the whole attempt: upstream transport, stream translation, and writing to the client. Streaming calls therefore include slow-client backpressure; gateway overhead is reported separately in overhead_seconds. Excludes candidates skipped for capacity.",
+		Buckets:   gatewayDurationBuckets,
+	}, withProject("model", "provider_type", "outcome"))
+	m.routedRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "routed_requests_total",
+		Help:      "Logical model API requests that made at least one candidate attempt. It is the attempt-bearing denominator for the failover-depth ratio; requests_total also counts refusals that never reached a provider. Its provider_type label is the last candidate attempted, so aggregate the depth ratio by model rather than by provider_type when requests fail over across providers.",
+	}, withProject("model", "provider_type", "stream"))
+	m.overhead = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "overhead_seconds",
+		Help:      "Approximate gateway overhead per request: elapsed end-to-end time minus the sum of invoked attempt durations. Clamped at zero. A request admitted for routing that fails before any attempt contributes its full elapsed time. For image jobs the elapsed time includes queue wait, so overhead there is an upper bound.",
+		Buckets:   gatewayOverheadBuckets,
+	}, withProject("stream"))
+
+	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans, m.routeAttempts, m.attemptDuration, m.routedRequests, m.overhead)
 	// Process and Go runtime metrics are what an operator reaches for first when the
 	// gateway itself is the suspect, and they cost nothing to collect.
 	m.registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -274,6 +342,56 @@ func (m *GatewayMetrics) ObserveGatewayCall(sample GatewayCallSample) {
 
 	if sample.Usage.CostUSD > 0 {
 		m.cost.WithLabelValues(m.labels(sample.ProjectID, model, providerType, providerID)...).Add(sample.Usage.CostUSD)
+	}
+
+	// Per-candidate attempt counts and attempt duration. A rejected request has no
+	// attempts, so this block naturally does nothing for that path.
+	var attemptSum time.Duration
+	for _, attempt := range sample.Attempts {
+		attemptProviderType := metricsLabel(attempt.ProviderType)
+		attemptProviderID := metricsLabel(attempt.ProviderID)
+		attemptResourceID := metricsLabel(attempt.ResourceID)
+		attemptStatusCode := strconv.Itoa(attempt.StatusCode)
+		attemptErrorCode := metricsLabel(attempt.ErrorCode)
+		invoked := strconv.FormatBool(attempt.Invoked)
+		m.routeAttempts.WithLabelValues(m.labels(
+			sample.ProjectID,
+			model,
+			attemptProviderType,
+			attemptProviderID,
+			attemptResourceID,
+			attemptStatusCode,
+			attemptErrorCode,
+			invoked,
+		)...).Inc()
+
+		if attempt.Invoked && attempt.Duration > 0 {
+			attemptSum += attempt.Duration
+			m.attemptDuration.WithLabelValues(m.labels(
+				sample.ProjectID,
+				model,
+				attemptProviderType,
+				metricsOutcome(attempt.StatusCode),
+			)...).Observe(attempt.Duration.Seconds())
+		}
+	}
+
+	// routed_requests_total is the attempt-bearing denominator for the
+	// failover-depth ratio: only requests that actually tried a candidate count.
+	if len(sample.Attempts) > 0 {
+		m.routedRequests.WithLabelValues(m.labels(sample.ProjectID, model, providerType, stream)...).Inc()
+	}
+
+	// Overhead is reported for every admitted request: with no attempts the sum is
+	// zero, so a request that failed during route selection contributes its full
+	// elapsed time. Rejected requests never reach this gate — their duration is
+	// zero by convention (see RecordRejectedRequest), and zeroes create no series.
+	if sample.Duration > 0 {
+		overhead := sample.Duration - attemptSum
+		if overhead < 0 {
+			overhead = 0
+		}
+		m.overhead.WithLabelValues(m.labels(sample.ProjectID, stream)...).Observe(overhead.Seconds())
 	}
 }
 

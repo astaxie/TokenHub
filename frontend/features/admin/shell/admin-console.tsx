@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { uniqueUIID, viewFromPath } from "../domain/formatting";
@@ -327,6 +327,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 			queue(plan.billingConnectors, "billing-connectors", "/api/admin/billing/connectors");
 			queue(plan.billingRecords, "billing-records", "/api/admin/billing/records");
 			queue(plan.billingSyncRuns, "billing-sync-runs", "/api/admin/billing/sync-runs");
+			queue(plan.reconciliationRules, "reconciliation-rules", "/api/admin/billing/reconciliation-rules");
+			queue(plan.reconciliationRuns, "reconciliation-runs", "/api/admin/billing/reconciliations");
       for (const kind of plan.resources) {
         requests.push({ name: `resource:${kind}`, request: adminFetch(api, `/api/admin/resources/${kind}`), optional: true });
       }
@@ -413,6 +415,12 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 				} else if (name === "billing-sync-runs") {
 					const payload = (await resp.json()) as { data: BillingSyncRun[] };
 					loaded.billingSyncRuns = payload.data ?? [];
+				} else if (name === "reconciliation-rules") {
+					const payload = (await resp.json()) as { data: ReconciliationRule[] };
+					loaded.reconciliationRules = payload.data ?? [];
+				} else if (name === "reconciliation-runs") {
+					const payload = (await resp.json()) as { data: ReconciliationRun[] };
+					loaded.reconciliationRuns = payload.data ?? [];
         } else if (name.startsWith("resource:")) {
           const kind = name.slice("resource:".length);
           const payload = (await resp.json()) as { data: AdminResource[] };
@@ -731,7 +739,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       <ResetPasswordView
         loading={loading}
         error={error}
+        language={language}
         theme={theme}
+        onLanguageChange={changeLanguage}
         onThemeToggle={toggleTheme}
         token={resetToken}
         onReset={(token, password) => void resetPassword(token, password)}
@@ -747,7 +757,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         baseURL={baseURL}
         identityProviders={loginIdentityProviders}
         oauthReturnURL={oauthReturnURL}
+        language={language}
         theme={theme}
+        onLanguageChange={changeLanguage}
         onThemeToggle={toggleTheme}
         onLogin={(identity, password) => void login(identity, password)}
       />
@@ -775,7 +787,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           activeView={activeView}
           data={data}
           user={currentUser}
+          language={language}
           theme={theme}
+          onLanguageChange={changeLanguage}
           onSelectView={selectView}
           onThemeToggle={toggleTheme}
         />

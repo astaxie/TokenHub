@@ -1157,7 +1157,11 @@ type CallContext struct {
 	StreamOutputCommitted bool
 	// Stream records whether the client asked for a streamed response. It only
 	// labels observability output and never influences routing.
-	Stream         bool
+	Stream bool
+	// RouteAttempts carries the per-candidate outcomes for observability output.
+	// It is filled from the completion's Attempts just before FinishCall and never
+	// influences routing.
+	RouteAttempts  []RouteAttempt
 	Affinity       *RequestAffinity
 	requestContext context.Context
 }

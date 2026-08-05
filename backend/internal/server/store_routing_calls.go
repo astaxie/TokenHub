@@ -941,8 +941,37 @@ func (s *GormStore) observeGatewayCall(call CallContext, route RouteSelection, u
 		Stream:       call.Stream,
 		Usage:        usage,
 		Duration:     elapsed,
+		Attempts:     gatewayAttemptSamples(call.RouteAttempts),
 	}
 	s.metrics.ObserveGatewayCall(sample)
+}
+
+// gatewayAttemptSamples maps the per-candidate routing outcomes into the slim
+// sample shape the metrics layer accepts. LatencyMS is the authoritative local
+// measurement covering the whole routed attempt — upstream transport, stream
+// translation and writing to the client — so streaming calls include slow-client
+// backpressure; StartedAt/EndedAt are UTC wall-clock readings and are not used
+// for duration here.
+func gatewayAttemptSamples(attempts []RouteAttempt) []GatewayAttemptSample {
+	if len(attempts) == 0 {
+		return nil
+	}
+	out := make([]GatewayAttemptSample, 0, len(attempts))
+	for _, attempt := range attempts {
+		sample := GatewayAttemptSample{
+			ProviderType: attempt.Selection.Provider.Type,
+			ProviderID:   attempt.Selection.Provider.ID,
+			ResourceID:   routeResourceID(attempt.Selection),
+			StatusCode:   attempt.Status,
+			ErrorCode:    attempt.ErrorCode,
+			Invoked:      attempt.Invoked,
+		}
+		if attempt.Invoked {
+			sample.Duration = time.Duration(attempt.LatencyMS) * time.Millisecond
+		}
+		out = append(out, sample)
+	}
+	return out
 }
 
 // knownModelLabel keeps a model name as a label only when the catalog knows it,

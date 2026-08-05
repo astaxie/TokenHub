@@ -4,7 +4,8 @@ import { savePendingOAuthBaseURL } from "../core/session";
 import { type LoginIdentityProvider, viewRoutes } from "../core/types";
 import { stringifyValue } from "../domain/entities";
 import { identityProviderIconLabel } from "../domain/labels";
-import { activeLanguage, tx } from "../i18n/runtime";
+import { LanguageSelect } from "../i18n/language-switcher";
+import { activeLanguage, type AppLanguage, tx } from "../i18n/runtime";
 
 export const identityProviderIconOptions = [
   "auto",
@@ -522,13 +523,36 @@ export function loginIdentityProviderIconConfig(key: string): { key: string; ico
   }
 }
 
+function LoginUtilityActions({
+  language,
+  theme,
+  onLanguageChange,
+  onThemeToggle,
+}: {
+  language: AppLanguage;
+  theme: "light" | "dark";
+  onLanguageChange: (language: AppLanguage) => void;
+  onThemeToggle: () => void;
+}) {
+  return (
+    <div className="login-utility-actions">
+      <LanguageSelect className="login-language-select" language={language} onChange={onLanguageChange} />
+      <button className="login-theme-toggle" onClick={onThemeToggle} title={tx("切换主题")} type="button">
+        {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+      </button>
+    </div>
+  );
+}
+
 export function LoginView({
   loading,
   error,
   baseURL,
   identityProviders,
   oauthReturnURL,
+  language,
   theme,
+  onLanguageChange,
   onThemeToggle,
   onLogin,
 }: {
@@ -537,7 +561,9 @@ export function LoginView({
   baseURL: string;
   identityProviders: LoginIdentityProvider[];
   oauthReturnURL: string;
+  language: AppLanguage;
   theme: "light" | "dark";
+  onLanguageChange: (language: AppLanguage) => void;
   onThemeToggle: () => void;
   onLogin: (identity: string, password: string) => void;
 }) {
@@ -559,9 +585,12 @@ export function LoginView({
 
   return (
     <main className="login-shell" data-theme={theme}>
-      <button className="login-theme-toggle" onClick={onThemeToggle} title={tx("切换主题")} type="button">
-        {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-      </button>
+      <LoginUtilityActions
+        language={language}
+        theme={theme}
+        onLanguageChange={onLanguageChange}
+        onThemeToggle={onThemeToggle}
+      />
       <section className="login-stage">
         <aside className={`login-hero-panel${heroPaused ? " is-paused" : ""}`} aria-label="TokenHub">
           <div className="login-brand-lockup">
@@ -709,14 +738,18 @@ export function LoginView({
 export function ResetPasswordView({
   loading,
   error,
+  language,
   theme,
+  onLanguageChange,
   onThemeToggle,
   token,
   onReset,
 }: {
   loading: boolean;
   error: string;
+  language: AppLanguage;
   theme: "light" | "dark";
+  onLanguageChange: (language: AppLanguage) => void;
   onThemeToggle: () => void;
   token: string;
   onReset: (token: string, password: string) => void;
@@ -734,9 +767,12 @@ export function ResetPasswordView({
 
   return (
     <main className="login-shell" data-theme={theme}>
-      <button className="login-theme-toggle" onClick={onThemeToggle} title={tx("切换主题")} type="button">
-        {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-      </button>
+      <LoginUtilityActions
+        language={language}
+        theme={theme}
+        onLanguageChange={onLanguageChange}
+        onThemeToggle={onThemeToggle}
+      />
       <section className="login-stage">
         <form className="login-card" onSubmit={submit}>
           <div className="login-card-head">

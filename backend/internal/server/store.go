@@ -105,6 +105,7 @@ type ProviderObservation struct {
 
 type Store interface {
 	BillingStore
+	ReconciliationStore
 	ApplyGatewayIntegrationEvent(event GatewayIntegrationEvent) (GatewayIntegrationApplyResult, error)
 	GetGatewayIntegrationReconciliation(tenantExternalID string) (GatewayIntegrationReconciliationSummary, error)
 	CreateGatewayModelAccessKey(input GatewayModelAccessKeyCreateInput) (GatewayModelAccessKeyCreateResult, error)

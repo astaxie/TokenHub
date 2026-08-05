@@ -159,6 +159,10 @@ TokenHub は `GET /metrics` で Prometheus メトリクスを公開できます�
 | --- | --- | --- |
 | `tokenhub_gateway_requests_total` | counter | 論理的なモデル API リクエスト数。複数候補へのフェイルオーバーが発生しても 1 回として数えます。 |
 | `tokenhub_gateway_request_duration_seconds` | histogram | フェイルオーバーを含むエンドツーエンドのレイテンシ。バケットは 300 秒まで。 |
+| `tokenhub_gateway_route_attempts_total` | counter | 物理的な候補試行数。`rate(route_attempts_total) / rate(routed_requests_total)` が平均フェイルオーバー深度です。`routed_requests_total` は試行を 1 回以上行ったリクエストのみを数えるため、Provider に到達しなかった拒否トラフィックで比率が希釈されることはありません。`invoked` ラベルで容量不足によりスキップされた候補を区別できます。`status_code` はゲートウェイがマッピングしたステータスです（上流の 401 は 502 として報告されます）。元の上流ステータスは `RouteAttemptLog` にあります。 |
+| `tokenhub_gateway_attempt_duration_seconds` | histogram | 呼び出された（invoked）1 試行の全所要時間。試行全体を囲む測定で、上流トランスポート・ストリーム変換・クライアントへの書き込みを含みます。ストリーミング呼び出しでは遅いクライアントの背圧を含むため、ゲートウェイのオーバーヘッドは `overhead_seconds` に別途報告されます。容量スキップ候補は含みません。 |
+| `tokenhub_gateway_routed_requests_total` | counter | 候補を 1 回以上試行した論理リクエスト数。フェイルオーバー深度比率の試行分母です。`provider_type` ラベルは最後に試行した候補です。Provider をまたぐフェイルオーバーでは、深度比率は `provider_type` ではなく `model` で集約してください。 |
+| `tokenhub_gateway_overhead_seconds` | histogram | ゲートウェイ自身のオーバーヘッドの近似値：エンドツーエンド所要時間から invoked な試行の所要時間合計を差し引き、負値は 0 にクリップします。ルーティングに受理されたものの試行前に失敗したリクエストは、その全所要時間をオーバーヘッドとして計上します。画像ジョブの所要時間にはキューの待機が含まれるため、画像のオーバーヘッドは上限値です。 |
 | `tokenhub_gateway_requests_in_flight` | gauge | 処理中のモデル API リクエスト数。管理トラフィックとスクレイプは含みません。 |
 | `tokenhub_gateway_tokens_total` | counter | 種別ごとの Token：`prompt`、`completion`、`cached`、`cache_write`、`reasoning`。 |
 | `tokenhub_gateway_cost_usd_total` | counter | Model Directory 価格による統一外部請求見積もり。Provider 実コストは権限付きリクエスト監査にのみ保持され、このメトリクスには含まれません。 |
@@ -170,9 +174,27 @@ TokenHub は `GET /metrics` で Prometheus メトリクスを公開できます�
 
 **Token の種別は排他的な分割ではないため、合計してはいけません。** `prompt` はすでに `cached` と `cache_write` を含み、`reasoning` は `completion` の一部です。合計すると二重計上になります。
 
-ルーティング前に拒否されたリクエスト（無効な API Key、クォータ超過、未知のモデル）はリクエスト数のみを増やします。Provider に到達していないため、Token・コスト・所要時間は記録しません。カタログに存在しないモデル名はそのまま記録せず `unknown` として扱うため、任意のモデル名を大量に送っても系列数を増やすことはできません。
+ルーティング前に拒否されたリクエスト（無効な API Key、クォータ超過、未知のモデル）はリクエスト数のみを増やします。Provider に到達していないため、Token・コスト・所要時間は記録しません。試行分母の `routed_requests_total` は候補に 1 回以上到達したリクエストのみを数えるため、拒否トラフィックの急増でフェイルオーバー深度の比率が希釈されることはありません。カタログに存在しないモデル名はそのまま記録せず `unknown` として扱うため、任意のモデル名を大量に送っても系列数を増やすことはできません。
 
 ラベルは `model`、`provider_type`、`provider_id`、`resource_id`、`status_code`、`error_code`、`stream` です。上流の失敗は `status_code="502"` と `provider_error` の 1 組にまとめて報告されなくなり、「上流エラーの分類」に記載のステータスとエラーコードを持ちます。旧来の値で一致させているダッシュボードやアラートは更新が必要です。`TOKENHUB_METRICS_PROJECT_LABEL=true` を設定すると `project_id` が追加され、各ゲートウェイメトリクスの系列数がアクティブなプロジェクト数だけ増加します。プロジェクト単位のダッシュボードが必要な場合を除き無効のままにし、Key 単位の集計には使用量レポートを利用してください。
+
+よく使う PromQL 例：
+
+```promql
+# モデルごとの平均フェイルオーバー深度。
+sum by (model) (rate(tokenhub_gateway_route_attempts_total[5m]))
+/
+sum by (model) (rate(tokenhub_gateway_routed_requests_total[5m]))
+
+# ゲートウェイオーバーヘッドの P99。histogram_quantile を呼ぶ前に bucket で
+# 集約する必要があります。集約後のパーセンタイル同士を引くのは数学的に無効です。
+histogram_quantile(
+  0.99,
+  sum by (le, stream) (rate(tokenhub_gateway_overhead_seconds_bucket[5m]))
+)
+```
+
+複数インスタンス構成では、各 bucket がカウンタなので全インスタンスの `sum(rate(..._bucket)) by (le)` からヒストグラムのパーセンタイルを計算できます。`tokenhub_gateway_requests_in_flight` は gauge なので、インスタンスごとの同時実行数が必要な場合は `instance` ラベルを保持して集約してください。インスタンスをまたいで合計すると総同時リクエスト数になります。
 
 メトリクスをスクレイプではなく push したい場合は、OpenTelemetry Collector の `prometheus` receiver でこのエンドポイントを収集して転送してください。トレースは別のシグナルで、ゲートウェイが直接送信します。次節を参照してください。
 
@@ -214,13 +236,23 @@ TOKENHUB_TRACING_HEADERS="Authorization=Basic $(printf '%s' 'pk-lf-...:sk-lf-...
 
 ## 外部請求コネクター
 
-プラットフォーム管理者は「コスト請求」で外部請求ソースを管理できます。TokenHub は Aliyun `QueryInstanceBill`、NewAPI の Quota データ、OneAPI 互換ログソースをサポートします。コネクターは接続テスト、即時同期、分単位の定期同期、履歴を保持したままの無効化、再有効化が可能です。
+プラットフォーム管理者は「コスト請求」で外部請求ソースを管理できます。TokenHub は Aliyun `QueryInstanceBill`、NewAPI の Quota データ、OneAPI 互換ログソースをサポートします。コネクターは接続テスト、即時同期、分単位の定期同期、履歴を保持したままの無効化、再有効化が可能です。対応する TokenHub Provider ID を設定し、請求が 1 つのアカウントに対応する場合は TokenHub リソースアカウント ID も任意で設定します。照合ではこの永続化されたスコープを使用し、別の Provider やアカウントの使用量が混入するのを防ぎます。
 
 Aliyun では請求 RPC Base URL、AccessKey ID、AccessKey Secret、ソースタイムゾーン、任意の Product Code を設定します。TokenHub は各 RPC リクエストを HMAC-SHA1 で署名し、請求期間を月単位で進めます。NewAPI では Base URL、アクセストークン、`New-Api-User` ユーザー ID、通貨、1 通貨単位に相当する Quota を設定します。TokenHub は公式仕様の認証ヘッダーで `GET /api/data/self` を呼び出し、同期範囲を最大 30 日のウィンドウに自動分割します。OneAPI 互換ソースでは Base URL、API Token、ログパス、通貨、Quota 換算値を設定します。すべてのコネクターで 1 秒あたりのリクエスト上限を設定でき、一時的なネットワークエラー、`429`、`5xx` は上限付き指数バックオフで再試行します。
 
 手動同期では RFC 3339 の `from` と `to` を指定できます。範囲を省略すると、最後に成功した終了時刻から続行します。各ページの Cursor を保存するため、再試行は同じ範囲のチェックポイントから再開します。正規化レコードは `(connector_id, external_id)` を冪等キーとし、通貨、ソースタイムゾーン、税、割引、返金、請求期間、利用開始・終了時刻を保持します。最近の同期にはページ数、リクエスト試行数、追加・更新件数、サニタイズ済みの失敗コードが表示されます。
 
 コネクター認証情報と生の請求スナップショットは `TOKENHUB_SECRET_KEY` から派生した AES-GCM で暗号化され、管理 API や監査 Payload には出力されません。再起動や複数レプリカ間でこのキーを安定して保持してください。関連エンドポイントは `GET/POST /api/admin/billing/connectors`、`PATCH /api/admin/billing/connectors/{id}`、`POST /api/admin/billing/connectors/{id}/test`、`POST /api/admin/billing/connectors/{id}/sync`、`GET /api/admin/billing/records`、`GET /api/admin/billing/sync-runs` です。
+
+## コスト照合
+
+プラットフォーム管理者は「コスト請求 → コスト照合ルール」で、同期済みの Provider 請求と TokenHub の使用量を比較できます。ルールでは、1 つの請求コネクター、明細/時間/日/月の粒度、照合ディメンション、IANA タイムゾーン、1 つの ISO 通貨、金額と比率の許容差、明細時間ウィンドウ、請求遅延ウィンドウ、任意のスケジュールを指定します。通貨は常に照合ディメンションであるため、通貨ごとに別のルールが必要です。TokenHub の使用量コストは USD で保存されるため、各ルールに固定の「1 USD = 対象通貨」レートを記録し、USD ルールでは `1` が必須です。任意の Provider 側マッピングで、外部の Provider、リソースアカウント、モデル、プロジェクト値を TokenHub 識別子に正規化できます。明細ルールには `request_id` が必須で、集計ルールは Provider、リソースアカウント、モデル、プロジェクト、通貨でグループ化できます。NewAPI の請求データにはリクエスト単位の識別子がないため、NewAPI コネクターは時間、日、月のルールのみをサポートし、明細ルールはサポートしません。手動入力した請求期間の時刻は、API に送信する前にルールの IANA タイムゾーンとして解釈されます。
+
+選択した請求期間でルールを実行すると、一致、Provider のみ、TokenHub のみ、金額不一致の 4 種類の件数、両側の合計、差異、考えられる原因、ドリルダウン可能なソースレコード ID が生成されます。金額はサブマイクロ精度で累積し、結果を保存または表示するときだけ最大 6 桁の小数に丸めます。明細照合では、設定ウィンドウ内の 1 対 1 の組み合わせ数を最初に最大化し、その後に合計時間距離を最小化します。期間境界の外側にある TokenHub レコードも、期間内の Provider 請求と一致する場合は結果に含まれます。Provider レコードは取り込み時刻ではなく利用時刻で期間に配賦されるため、遅れて到着した請求も元の期間に含まれます。定期実行では、設定した請求遅延を待ってから直近の完了済み時間、日、または月を照合します。
+
+各結果には、完全なルールスナップショット、ルールのバージョンとハッシュ、入力ハッシュ、実行者、時刻、監査イベントが保存されます。再計算では保存済みのルールスナップショットを使用します。再計算に失敗した場合は直前の成功結果と明細を保持し、失敗した試行を監査に記録します。ソース行が変わらなければ入力ハッシュと分類金額を再現できます。成功した結果をロックすると、以後の再計算を禁止できます。明細 API はサーバー側の `limit`/`offset` ページングを使用します。CSV はデフォルトで全差異行とソース参照を有界バッチでストリーミングし、暗黙の行数制限はありません。Provider 認証情報や生スナップショットは含まれず、リソースアカウント識別子は管理 API と CSV の両方でマスクされ、リソースアカウントのマッピングも監査スナップショットから除外されます。
+
+関連エンドポイントは `GET/POST /api/admin/billing/reconciliation-rules`、`GET/PATCH /api/admin/billing/reconciliation-rules/{id}`、`POST /api/admin/billing/reconciliation-rules/{id}/run`、`GET /api/admin/billing/reconciliations`、`GET /api/admin/billing/reconciliations/{id}`、および `{id}/lock`、`{id}/recalculate`、`{id}/export` アクションです。これらはプラットフォーム管理者だけが利用できます。
 
 ## セキュリティチェックリスト
 

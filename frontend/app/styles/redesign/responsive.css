@@ -34,10 +34,17 @@
     overflow-y: auto;
   }
 
-  .login-theme-toggle {
+  .login-utility-actions {
     top: 24px;
     right: 24px;
+  }
+
+  .login-theme-toggle {
     width: 40px;
+    height: 40px;
+  }
+
+  .login-utility-actions .login-language-select .language-select-trigger {
     height: 40px;
   }
 
@@ -360,6 +367,22 @@
     gap: 6px;
   }
 
+  .topbar-language-select {
+    width: 36px;
+    flex: 0 0 36px;
+  }
+
+  .topbar-language-select .language-select-trigger {
+    width: 100%;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .topbar-language-select .language-select-label,
+  .topbar-language-select .language-select-chevron {
+    display: none;
+  }
+
   .top-version-status .version {
     max-width: 78px;
     padding: 0 8px;
@@ -378,9 +401,25 @@
     overflow: auto;
   }
 
-  .login-theme-toggle {
+  .login-utility-actions {
     top: 18px;
     right: 18px;
+  }
+
+  .login-utility-actions .login-language-select {
+    width: 40px;
+    flex: 0 0 40px;
+  }
+
+  .login-utility-actions .login-language-select .language-select-trigger {
+    width: 100%;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .login-utility-actions .login-language-select .language-select-label,
+  .login-utility-actions .login-language-select .language-select-chevron {
+    display: none;
   }
 
   .login-stage {

@@ -14,10 +14,12 @@ func (s *Server) registerBillingRoutes() {
 	s.mux.HandleFunc("/api/admin/billing/connectors/", s.handleAdminBillingConnectorItem)
 	s.mux.HandleFunc("/api/admin/billing/records", s.handleAdminBillingRecords)
 	s.mux.HandleFunc("/api/admin/billing/sync-runs", s.handleAdminBillingSyncRuns)
+	s.registerReconciliationRoutes()
 }
 
 func (s *Server) StartBillingScheduler() {
 	s.billing.StartScheduler(30 * time.Second)
+	s.reconciliation.StartScheduler(30 * time.Second)
 }
 
 func (s *Server) handleAdminBillingConnectors(w http.ResponseWriter, r *http.Request) {
@@ -272,6 +274,8 @@ func billingConnectorAllowedConfig(connectorType string) map[string]struct{} {
 		"currency":              {},
 		"max_retries":           {},
 		"page_size":             {},
+		"provider_id":           {},
+		"provider_resource_id":  {},
 		"rate_limit_per_second": {},
 		"retry_base_ms":         {},
 	}

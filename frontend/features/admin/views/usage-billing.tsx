@@ -7,6 +7,7 @@ import { compactNumber, formatMoney, formatNumber } from "../domain/formatting";
 import { countWithUnit, displayText, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
+import { ReconciliationManager } from "./billing-reconciliation";
 
 export function UsageView({ data, user }: { data: AppData; user: AdminUser }) {
   const modelBreakdown = data.breakdown.models ?? [];
@@ -463,6 +464,7 @@ export function BillingView({
   return (
     <>
       {appRole(user.role) === "admin" ? <BillingConnectorManager api={api} data={data} loading={loading} onReload={onReload} /> : null}
+      {appRole(user.role) === "admin" ? <ReconciliationManager api={api} data={data} loading={loading} onReload={onReload} /> : null}
       {showMemberBreakdown ? (
         <div className="two-column">
           {costCenterSection}
@@ -671,6 +673,8 @@ function BillingConnectorEditor({ api, connector, onClose, onSaved }: { api: Api
           <label className="field"><span>{tx("同步间隔（分钟）")}</span><input min="0" type="number" value={values.schedule_interval_minutes} onChange={(event) => update("schedule_interval_minutes", event.target.value)} /></label>
           <label className="field"><span>{tx("每秒请求上限")}</span><input min="0" type="number" value={values.rate_limit_per_second} onChange={(event) => update("rate_limit_per_second", event.target.value)} /></label>
           <label className="field"><span>{tx("币种")}</span><input maxLength={3} value={values.currency} onChange={(event) => update("currency", event.target.value.toUpperCase())} /></label>
+          <label className="field"><span>{tx("TokenHub Provider ID")} *</span><input value={values.provider_id} onChange={(event) => update("provider_id", event.target.value)} required /></label>
+          <label className="field"><span>{tx("TokenHub 资源账号 ID（可选）")}</span><input value={values.provider_resource_id} onChange={(event) => update("provider_resource_id", event.target.value)} /></label>
           {isAliyun ? (
             <>
               <label className="field"><span>AccessKey ID *</span><input autoComplete="off" value={values.access_key_id} onChange={(event) => update("access_key_id", event.target.value)} required={!connector?.credentials_configured} /></label>
@@ -712,11 +716,18 @@ function billingConnectorFormValues(connector?: BillingConnector) {
     access_key_secret: "",
     source_timezone: config.source_timezone ?? "Asia/Shanghai",
     product_code: config.product_code ?? "",
+    provider_id: config.provider_id ?? "",
+    provider_resource_id: config.provider_resource_id ?? "",
   };
 }
 
 function billingConnectorPayload(values: ReturnType<typeof billingConnectorFormValues>, editing: boolean) {
-  const commonConfig = { currency: values.currency, rate_limit_per_second: values.rate_limit_per_second };
+  const commonConfig = {
+    currency: values.currency,
+    rate_limit_per_second: values.rate_limit_per_second,
+    provider_id: values.provider_id.trim(),
+    provider_resource_id: values.provider_resource_id.trim(),
+  };
   const config = values.type === "aliyun"
     ? { ...commonConfig, source_timezone: values.source_timezone, product_code: values.product_code }
     : values.type === "newapi"

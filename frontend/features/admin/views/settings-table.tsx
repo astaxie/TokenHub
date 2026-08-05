@@ -5,6 +5,7 @@ import { filterRows } from "../domain/catalog";
 import { readPath, rowID, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
 import { settingsTabLabel } from "../domain/labels";
+import { LanguageSwitcher, languageOptionLabel } from "../i18n/language-switcher";
 import { activeLanguage, type AppLanguage, countWithLabel, displayText, languageOptions, translatedCell, tx } from "../i18n/runtime";
 import { defaultFormValues } from "../resources/payloads";
 import { apiKeyStatusAction, APIKeyDownloadMenu, APIKeyStatusSwitch } from "../resources/project-key-config";
@@ -121,37 +122,6 @@ export function LanguagePreferenceRow({
       </div>
     </div>
   );
-}
-
-export function LanguageSwitcher({
-  language,
-  onChange,
-  className,
-}: {
-  language: AppLanguage;
-  onChange: (language: AppLanguage) => void;
-  className?: string;
-}) {
-  return (
-    <div className={className ? `language-switcher ${className}` : "language-switcher"} role="radiogroup" aria-label={tx("界面语言")}>
-      {languageOptions.map((option) => (
-        <button
-          aria-checked={language === option.value}
-          className={language === option.value ? "active" : ""}
-          key={option.value}
-          onClick={() => onChange(option.value)}
-          role="radio"
-          type="button"
-        >
-          <span>{languageOptionLabel(option, language)}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function languageOptionLabel(option: { label: string; nativeLabel: string }, language: AppLanguage) {
-  return language === "en" ? option.label : option.nativeLabel;
 }
 
 export function SystemSettingsPanel({

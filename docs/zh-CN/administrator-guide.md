@@ -159,6 +159,10 @@ TokenHub 可以在 `GET /metrics` 暴露 Prometheus 指标。该功能默认关�
 | --- | --- | --- |
 | `tokenhub_gateway_requests_total` | counter | 逻辑模型 API 请求数。一次请求即使经过多个候选失败转移也只计一次。 |
 | `tokenhub_gateway_request_duration_seconds` | histogram | 端到端耗时，包含失败转移。分桶上限为 300 秒。 |
+| `tokenhub_gateway_route_attempts_total` | counter | 物理候选尝试数。`rate(route_attempts_total) / rate(routed_requests_total)` 即为平均失败转移深度；`routed_requests_total` 只统计真正发起过尝试的请求，因此从未到达任何 Provider 的拒绝流量不会稀释该比率。`invoked` 标签可单独区分因容量不足被跳过的候选。`status_code` 为网关映射后的状态（上游 401 会报告为 502）；原始上游状态见 `RouteAttemptLog`。 |
+| `tokenhub_gateway_attempt_duration_seconds` | histogram | 单个被调用（invoked）尝试的完整耗时，围绕整个尝试测量：上游传输、流式翻译与写入客户端。流式调用因此包含慢客户端背压时间；网关自身开销单独见 `overhead_seconds`。不包含因容量被跳过的候选。 |
+| `tokenhub_gateway_routed_requests_total` | counter | 至少发起过一次候选尝试的逻辑请求数——失败转移深度比率的尝试承载分母。其 `provider_type` 标签为最后一个尝试的候选；跨 Provider 失败转移时，请按 `model` 而非 `provider_type` 聚合深度比率。 |
+| `tokenhub_gateway_overhead_seconds` | histogram | 网关自身开销的近似值：端到端耗时减去被调用尝试耗时之和，负值截断为 0。已在路由阶段被接纳、但在任何尝试前失败的请求，其开销计为完整端到端耗时。图像作业的端到端耗时包含队列等待，因此其开销为上限估计。 |
 | `tokenhub_gateway_requests_in_flight` | gauge | 正在处理的模型 API 请求数，不含管理后台流量和抓取请求。 |
 | `tokenhub_gateway_tokens_total` | counter | 按类型统计的 Token：`prompt`、`completion`、`cached`、`cache_write`、`reasoning`。 |
 | `tokenhub_gateway_cost_usd_total` | counter | 使用模型目录价格计算的统一对外计费估算；Provider 真实成本只保留在有权限的请求审计中，不进入该指标。 |
@@ -170,9 +174,27 @@ TokenHub 可以在 `GET /metrics` 暴露 Prometheus 指标。该功能默认关�
 
 **Token 各类型之间不是互斥划分，不能相加。** `prompt` 已经包含 `cached` 和 `cache_write`，`reasoning` 是 `completion` 的子集，相加会重复计算。
 
-在路由之前就被拒绝的请求（API Key 无效、额度耗尽、模型不存在）只增加请求计数。它们没有到达任何 Provider，因此不产生 Token、成本和耗时。目录中不存在的模型名会被记为 `unknown` 而不是原样上报，避免客户端用随机模型名刷高时间序列数量。
+在路由之前就被拒绝的请求（API Key 无效、额度耗尽、模型不存在）只增加请求计数。它们没有到达任何 Provider，因此不产生 Token、成本和耗时。对应的尝试承载计数 `routed_requests_total` 只统计到达过至少一个候选的请求，因此拒绝流量突发不会稀释失败转移深度比率。目录中不存在的模型名会被记为 `unknown` 而不是原样上报，避免客户端用随机模型名刷高时间序列数量。
 
 标签为 `model`、`provider_type`、`provider_id`、`resource_id`、`status_code`、`error_code` 和 `stream`。上游失败不再统一上报为 `status_code="502"` 加 `provider_error`，而是使用「上游错误分类」一节列出的状态码与错误码，按旧取值匹配的看板和告警需要相应更新。设置 `TOKENHUB_METRICS_PROJECT_LABEL=true` 会追加 `project_id`，使每个网关指标的时间序列数量按活跃项目数成倍增长；除非确实需要按项目看板，否则建议保持关闭，按 Key 的归因请改用用量报表。
+
+常用 PromQL 示例：
+
+```promql
+# 每个模型的平均失败转移深度。
+sum by (model) (rate(tokenhub_gateway_route_attempts_total[5m]))
+/
+sum by (model) (rate(tokenhub_gateway_routed_requests_total[5m]))
+
+# 网关开销的 P99。必须先按 bucket 聚合再调用 histogram_quantile；
+# 两个聚合后的分位数相减在数学上是无效的。
+histogram_quantile(
+  0.99,
+  sum by (le, stream) (rate(tokenhub_gateway_overhead_seconds_bucket[5m]))
+)
+```
+
+多实例部署时，直方图分位数可基于所有实例的 `sum(rate(..._bucket)) by (le)` 计算，因为每个 bucket 都是计数器。`tokenhub_gateway_requests_in_flight` 是 gauge，若需要按实例并发则聚合时需保留 `instance` 标签；跨实例求和得到的是总并发请求数。
 
 如果指标需要 push 而不是被抓取，可以让 OpenTelemetry Collector 的 `prometheus` receiver 抓取该端点再转发。链路追踪是另一路信号，由网关直接推送，见下节。
 
@@ -214,13 +236,23 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 ## 外部账单连接器
 
-平台管理员可在「成本账单」中管理外部账单源。TokenHub 支持阿里云 `QueryInstanceBill`、NewAPI 额度数据和 OneAPI 兼容日志源。连接器可以测试连接、立即同步、按分钟设置定时同步、停用并保留历史记录，也可以随后重新启用。
+平台管理员可在「成本账单」中管理外部账单源。TokenHub 支持阿里云 `QueryInstanceBill`、NewAPI 额度数据和 OneAPI 兼容日志源。连接器可以测试连接、立即同步、按分钟设置定时同步、停用并保留历史记录，也可以随后重新启用。连接器需配置对应的 TokenHub Provider ID；若账单只对应一个账号，还可配置 TokenHub 资源账号 ID。对账会使用这一持久化范围，避免其他 Provider 或账号的用量混入结果。
 
 阿里云连接器需要账单 RPC Base URL、AccessKey ID、AccessKey Secret、源时区，可选填写 Product Code。TokenHub 使用 HMAC-SHA1 为每个 RPC 请求签名，并按账期逐月推进。NewAPI 连接器需要 Base URL、访问令牌、`New-Api-User` 用户 ID、币种，以及一个币种单位对应的 Quota 数量；TokenHub 会按照官方文档携带鉴权请求头调用 `GET /api/data/self`，并自动把同步范围切分为最长 30 天的窗口。OneAPI 兼容连接器需要 Base URL、API Token、日志路径、币种和 Quota 换算值。所有连接器都可以设置每秒请求上限；临时网络错误、`429` 和 `5xx` 会使用有上限的指数退避重试。
 
 手动同步可以传入 RFC 3339 格式的 `from` 和 `to`。未指定时间范围时，从上一次成功同步的结束时间继续。每页保存一次上游 Cursor，因此失败重试会从断点继续当前区间，而不是重新开始。规范化账单以 `(connector_id, external_id)` 作为幂等键，并保留币种、源时区、税费、折扣、退款、账期和用量起止时间。最近同步会展示页数、请求尝试数、新增/更新记录数和经过清理的失败代码。
 
 连接器凭证和原始账单快照都使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密，不会由管理 API 返回，也不会写入审计 Payload。重启和多副本部署时必须保持该密钥稳定。相关端点包括 `GET/POST /api/admin/billing/connectors`、`PATCH /api/admin/billing/connectors/{id}`、`POST /api/admin/billing/connectors/{id}/test`、`POST /api/admin/billing/connectors/{id}/sync`、`GET /api/admin/billing/records` 和 `GET /api/admin/billing/sync-runs`。
+
+## 成本对账
+
+平台管理员可以在「成本账单 → 成本对账规则」中，将已同步的 Provider 账单与 TokenHub 用量进行比较。规则可选择一个账单连接器、明细/小时/天/月粒度、匹配维度、IANA 时区、一个 ISO 币种、金额与比例容差、明细时间窗口、账单延迟窗口和可选定时周期。币种始终是匹配维度，因此不同币种需要分别建立规则。TokenHub 用量成本以 USD 保存，每条规则记录固定的“1 USD = 目标币种”汇率；USD 规则的汇率必须为 `1`。可选的 Provider 侧映射可将外部 Provider、资源账号、模型和项目值规范化为 TokenHub 标识。明细规则必须包含 `request_id`；聚合规则可按 Provider、资源账号、模型、项目和币种分组。NewAPI 账单没有请求级标识，因此 NewAPI 连接器只支持小时、天和月粒度，不支持明细粒度。手工输入的账期时间会先按规则的 IANA 时区解释，再发送给 API。
+
+选择账期执行规则后，结果会给出已匹配、仅 Provider 存在、仅 TokenHub 存在和金额不一致四类数量，以及两侧总额、差异、可能原因和可下钻的源记录 ID。金额先按亚微美元精度累加，只在保存或展示结果时舍入到最多六位小数。明细匹配会先在时间窗口内最大化一对一匹配数量，再最小化总时间距离；账期边界外的 TokenHub 记录若与账期内 Provider 账单匹配，也会纳入结果。Provider 记录按实际用量时间而非入库时间归属账期，因此迟到的账单仍会归入原始账期。定时任务会在配置的账单延迟后，对最近一个完整的小时、天或月执行对账。
+
+每次结果都保存完整规则快照、规则版本与哈希、输入哈希、执行人、时间和审计事件。重新计算使用该次执行保存的规则快照；若重新计算失败，上一次成功结果及其明细仍会保留，失败尝试会写入审计。源记录不变时，输入哈希和分类金额可复现。成功结果可锁定，锁定后不能再重新计算。明细接口使用服务端 `limit`/`offset` 分页；CSV 默认按有界批次流式导出全部差异行和源记录引用，不做静默行数截断。其中不包含 Provider 凭证或原始快照，资源账号在管理 API 和 CSV 中都会脱敏，资源账号映射也不会写入审计快照。
+
+相关端点包括 `GET/POST /api/admin/billing/reconciliation-rules`、`GET/PATCH /api/admin/billing/reconciliation-rules/{id}`、`POST /api/admin/billing/reconciliation-rules/{id}/run`、`GET /api/admin/billing/reconciliations`、`GET /api/admin/billing/reconciliations/{id}`，以及 `{id}/lock`、`{id}/recalculate` 和 `{id}/export` 操作。这些端点仅允许平台管理员访问。
 
 ## 安全检查清单
 

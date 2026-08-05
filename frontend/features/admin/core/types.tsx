@@ -144,6 +144,101 @@ export type BillingSyncRun = {
 	finished_at?: string;
 };
 
+export type ReconciliationRule = {
+	id: string;
+	name: string;
+	connector_id: string;
+	connector_type: string;
+	provider_id: string;
+	status: string;
+	granularity: "detail" | "hour" | "day" | "month";
+	match_dimensions: string[];
+	dimension_mappings?: Record<string, Record<string, string>>;
+	amount_tolerance: string;
+	ratio_tolerance: string;
+	usd_exchange_rate: string;
+	time_window_minutes: number;
+	billing_delay_minutes: number;
+	schedule_interval_minutes: number;
+	timezone: string;
+	currency?: string;
+	version: number;
+	rule_hash: string;
+	last_run_at?: string;
+	next_run_at?: string;
+	created_at: string;
+	updated_at: string;
+};
+
+export type ReconciliationRun = {
+	id: string;
+	rule_id: string;
+	connector_id: string;
+	connector_type: string;
+	provider_id: string;
+	trigger: string;
+	status: string;
+	period_start: string;
+	period_end: string;
+	granularity: string;
+	match_dimensions: string[];
+	dimension_mappings?: Record<string, Record<string, string>>;
+	amount_tolerance: string;
+	ratio_tolerance: string;
+	usd_exchange_rate: string;
+	time_window_minutes: number;
+	billing_delay_minutes: number;
+	timezone: string;
+	currency?: string;
+	rule_version: number;
+	rule_hash: string;
+	input_hash: string;
+	provider_record_count: number;
+	tokenhub_record_count: number;
+	matched_count: number;
+	provider_only_count: number;
+	tokenhub_only_count: number;
+	amount_mismatch_count: number;
+	provider_amount: string;
+	tokenhub_amount: string;
+	difference_amount: string;
+	created_by: string;
+	started_at: string;
+	finished_at?: string;
+	locked_at?: string;
+	locked_by?: string;
+};
+
+export type ReconciliationItem = {
+	id: string;
+	run_id: string;
+	match_key: string;
+	status: "matched" | "provider_only" | "tokenhub_only" | "amount_mismatch";
+	bucket_start: string;
+	bucket_end: string;
+	request_id?: string;
+	provider?: string;
+	resource_account?: string;
+	model?: string;
+	project?: string;
+	currency: string;
+	provider_amount: string;
+	tokenhub_amount: string;
+	difference_amount: string;
+	difference_ratio: string;
+	possible_reason: string;
+	provider_record_ids: string[];
+	tokenhub_record_ids: string[];
+};
+
+export type ReconciliationDetail = {
+	run: ReconciliationRun;
+	items: ReconciliationItem[];
+	total: number;
+	limit: number;
+	offset: number;
+};
+
 export type AdapterDescriptor = {
   type: string;
   capabilities: string[];
@@ -892,6 +987,8 @@ export type AppData = {
 	billingConnectors: BillingConnector[];
 	billingRecords: BillingRecord[];
 	billingSyncRuns: BillingSyncRun[];
+	reconciliationRules: ReconciliationRule[];
+	reconciliationRuns: ReconciliationRun[];
 };
 
 export type ApiContext = {

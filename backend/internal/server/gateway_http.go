@@ -664,6 +664,10 @@ func executeRoutedWithStore[T any](
 		}
 		omitReasoningEffort := false
 		for {
+			// The attempt window covers the whole routed callback, including stream
+			// translation and writing to the client: a slow reader blocks the
+			// gateway here, and that backpressure is part of the attempt duration,
+			// not of the gateway overhead reported in overhead_seconds.
 			attemptStartedAt := time.Now()
 			resp, usage, err := call(leaseCtx, route, omitReasoningEffort, len(attempts)+1)
 			cumulativeTokens = saturatingAddNonNegative(cumulativeTokens, meteredTokens(usage))

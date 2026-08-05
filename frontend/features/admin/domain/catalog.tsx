@@ -30,6 +30,8 @@ export function emptyData(): AppData {
 		billingConnectors: [],
 		billingRecords: [],
 		billingSyncRuns: [],
+		reconciliationRules: [],
+		reconciliationRuns: [],
   };
 }
 

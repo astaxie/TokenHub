@@ -58,11 +58,17 @@ textarea:focus-visible {
   color: var(--ink);
 }
 
-.login-theme-toggle {
+.login-utility-actions {
   position: absolute;
   top: clamp(22px, 3.2vw, 42px);
   right: clamp(22px, 3.2vw, 42px);
   z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-theme-toggle {
   width: 42px;
   height: 42px;
   border: 1px solid rgba(162, 176, 198, 0.38);
@@ -73,6 +79,15 @@ textarea:focus-visible {
   background: rgba(255, 255, 255, 0.82);
   color: #536174;
   cursor: pointer;
+  box-shadow: 0 10px 24px rgba(29, 66, 122, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.login-utility-actions .login-language-select .language-select-trigger {
+  height: 42px;
+  border-color: rgba(127, 148, 182, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.76);
   box-shadow: 0 10px 24px rgba(29, 66, 122, 0.08);
   backdrop-filter: blur(14px);
 }
@@ -948,6 +963,13 @@ textarea:focus-visible {
 }
 
 [data-theme="dark"] .login-theme-toggle {
+  border-color: rgba(104, 121, 149, 0.34);
+  background: rgba(20, 26, 38, 0.82);
+  color: #a8b4c6;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+[data-theme="dark"] .login-language-select .language-select-trigger {
   border-color: rgba(104, 121, 149, 0.34);
   background: rgba(20, 26, 38, 0.82);
   color: #a8b4c6;

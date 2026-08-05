@@ -20,6 +20,7 @@ type Server struct {
 	codexSubscription *CodexSubscriptionAdapter
 	providerCatalog   *providerCatalogService
 	billing           *BillingService
+	reconciliation    *ReconciliationService
 	mux               *http.ServeMux
 	config            Config
 	metrics           *GatewayMetrics
@@ -93,6 +94,7 @@ func NewWithConfig(store Store, config Config) *Server {
 		codexSubscription: codexSubscription,
 		providerCatalog:   newProviderCatalogService(store, config.ProviderCatalogFile),
 		billing:           newBillingService(store),
+		reconciliation:    newReconciliationService(store),
 		mux:               http.NewServeMux(),
 		config:            config,
 		imageStorageDir:   config.ImageStorageDir,

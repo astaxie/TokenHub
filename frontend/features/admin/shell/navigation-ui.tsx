@@ -4,7 +4,8 @@ import { appRole, filterNavItemByAccess, isNavItemActive, isNavParentItem, navGr
 import { type AdminUser, type AppData, type NavItem, type ViewKey } from "../core/types";
 import { formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
 import { roleLabel, userInitial } from "../domain/labels";
-import { displayText, tx } from "../i18n/runtime";
+import { LanguageSelect } from "../i18n/language-switcher";
+import { type AppLanguage, displayText, tx } from "../i18n/runtime";
 import { resourceConfigFor } from "../resources/settings-config";
 
 export function Sidebar({
@@ -327,14 +328,18 @@ export function TopNav({
   activeView,
   data,
   user,
+  language,
   theme,
+  onLanguageChange,
   onSelectView,
   onThemeToggle,
 }: {
   activeView: ViewKey;
   data: AppData;
   user: AdminUser;
+  language: AppLanguage;
   theme: "light" | "dark";
+  onLanguageChange: (language: AppLanguage) => void;
   onSelectView: (view: ViewKey) => void;
   onThemeToggle: () => void;
 }) {
@@ -459,6 +464,7 @@ export function TopNav({
           <span>{userInitial(user)}</span>
           <strong>{roleLabel(user.role)}</strong>
         </div>
+        <LanguageSelect className="topbar-language-select" language={language} onChange={onLanguageChange} />
         <button className="top-icon-button" onClick={onThemeToggle} title={tx("切换主题")} type="button">
           {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
         </button>

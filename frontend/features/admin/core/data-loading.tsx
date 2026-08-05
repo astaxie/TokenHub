@@ -22,6 +22,8 @@ export type LoadPlan = {
 	billingConnectors: boolean;
 	billingRecords: boolean;
 	billingSyncRuns: boolean;
+	reconciliationRules: boolean;
+	reconciliationRuns: boolean;
   resources: string[];
 };
 
@@ -51,6 +53,8 @@ export function emptyLoadPlan(): LoadPlan {
 		billingConnectors: false,
 		billingRecords: false,
 		billingSyncRuns: false,
+		reconciliationRules: false,
+		reconciliationRuns: false,
     resources: [],
   };
 }
@@ -107,6 +111,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
 			plan.billingConnectors = true;
 			plan.billingRecords = true;
 			plan.billingSyncRuns = true;
+			plan.reconciliationRules = true;
+			plan.reconciliationRuns = true;
 		}
       break;
     case "audit":
@@ -242,6 +248,8 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
 		billingConnectors: loaded.billingConnectors ?? current.billingConnectors,
 		billingRecords: loaded.billingRecords ?? current.billingRecords,
 		billingSyncRuns: loaded.billingSyncRuns ?? current.billingSyncRuns,
+		reconciliationRules: loaded.reconciliationRules ?? current.reconciliationRules,
+		reconciliationRuns: loaded.reconciliationRuns ?? current.reconciliationRuns,
     resources: loaded.resources ? { ...current.resources, ...loaded.resources } : current.resources,
   };
 }
