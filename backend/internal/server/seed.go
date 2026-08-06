@@ -242,11 +242,12 @@ func seedDefaultOrgResources(store Store) {
 		Description: "Public model API address, request timeout, and audit retention period.",
 		Status:      StatusActive,
 		Fields: map[string]any{
-			"public_base_url":       "http://localhost:8080",
-			"default_timeout":       "120s",
-			"audit_retention":       "180d",
-			"api_key_prefix":        DefaultAPIKeyPrefix,
-			"api_key_random_length": DefaultAPIKeyRandomLength,
+			"public_base_url":        "http://localhost:8080",
+			"default_timeout":        "120s",
+			"audit_retention":        "180d",
+			"api_key_prefix":         DefaultAPIKeyPrefix,
+			"api_key_random_length":  DefaultAPIKeyRandomLength,
+			"max_request_body_bytes": defaultMaxRequestBodyBytes,
 		},
 	})
 	seedResourceIfMissing(store, "identity-providers", AdminResource{
@@ -367,11 +368,12 @@ func seedAdminResources(store Store) {
 		Description: "Default OpenAI-compatible gateway configuration.",
 		Status:      StatusActive,
 		Fields: map[string]any{
-			"public_base_url":       "http://localhost:8080",
-			"default_timeout":       "120s",
-			"audit_retention":       "180d",
-			"api_key_prefix":        DefaultAPIKeyPrefix,
-			"api_key_random_length": DefaultAPIKeyRandomLength,
+			"public_base_url":        "http://localhost:8080",
+			"default_timeout":        "120s",
+			"audit_retention":        "180d",
+			"api_key_prefix":         DefaultAPIKeyPrefix,
+			"api_key_random_length":  DefaultAPIKeyRandomLength,
+			"max_request_body_bytes": defaultMaxRequestBodyBytes,
 		},
 	})
 	store.CreateResource("security-policies", AdminResource{

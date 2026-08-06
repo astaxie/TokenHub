@@ -36,6 +36,7 @@ type Server struct {
 	imageAccountMu    sync.Mutex
 	imageAccountSlots map[string]chan struct{}
 	versions          *versionService
+	requestBodyLimit  requestBodyLimitCache
 }
 
 func New(store Store) *Server {
@@ -127,7 +128,7 @@ func NewWithConfig(store Store, config Config) *Server {
 	return s
 }
 func (s *Server) Handler() http.Handler {
-	return s.cors(s.mux)
+	return s.cors(s.withRequestBodyLimit(s.mux))
 }
 func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
