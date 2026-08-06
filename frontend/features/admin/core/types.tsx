@@ -685,6 +685,26 @@ export type RequestLog = {
   usage_record_count?: number;
 };
 
+export type RequestLogPagination = {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+};
+
+export type RequestLogSummary = {
+  all: number;
+  ok: number;
+  error: number;
+  average_latency_ms: number;
+};
+
+export type RequestLogPage = {
+  data: RequestLog[];
+  pagination: RequestLogPagination;
+  summary: RequestLogSummary;
+};
+
 export type UsageRecord = {
   id: string;
   request_id: string;

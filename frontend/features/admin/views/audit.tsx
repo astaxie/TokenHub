@@ -1,19 +1,27 @@
 import { Activity, AlertCircle, Check, Copy, Gauge, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { canViewAdminAudit } from "../core/navigation";
-import { type AdminUser, type ApiContext, type AppData, type RequestDetail, type RequestPayloadLog } from "../core/types";
+import { type AdminUser, type ApiContext, type AppData, type RequestDetail, type RequestLogPage, type RequestLogPagination, type RequestLogSummary, type RequestPayloadLog } from "../core/types";
+import { auditRequestPagePath, type AuditRequestStatus } from "../domain/audit-request-page";
 import { apiKeyAuditLabel, projectName, providerAttemptLabel, providerAuditLabel, providerResourceAuditLabel } from "../domain/entities";
 import { compactNumber, formatMoney, formatNumber, formatTime } from "../domain/formatting";
 import { actionLabel, enumValueLabel, resourceTypeLabel } from "../domain/labels";
 import { countWithUnit, routeAttemptCountText, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError } from "../resources/payloads";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
-import { PaginationControls, usePagination } from "./settings-table";
+import { PaginationControls, type PaginationState } from "./settings-table";
 
 export function AuditView({ api, data, user }: { api: ApiContext; data: AppData; user: AdminUser }) {
   const [activeAuditTab, setActiveAuditTab] = useState<"requests" | "admin">("requests");
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "error">("all");
+  const [statusFilter, setStatusFilter] = useState<AuditRequestStatus>("all");
+  const [requestLogs, setRequestLogs] = useState<RequestLogPage["data"]>([]);
+  const [requestPage, setRequestPage] = useState(1);
+  const [requestPageSize, setRequestPageSize] = useState(20);
+  const [requestPagination, setRequestPagination] = useState<RequestLogPagination>(() => emptyRequestLogPagination(1, 20));
+  const [requestSummary, setRequestSummary] = useState<RequestLogSummary>(() => emptyRequestLogSummary());
+  const [requestListLoading, setRequestListLoading] = useState(false);
+  const [requestListError, setRequestListError] = useState("");
   const [selectedRequestID, setSelectedRequestID] = useState("");
   const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -26,48 +34,77 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
     }
   }, [activeAuditTab, showAdminAudit]);
 
-  const filteredLogs = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    return data.logs.filter((log) => {
-      if (statusFilter === "ok" && log.status_code >= 400) return false;
-      if (statusFilter === "error" && log.status_code < 400) return false;
-      if (!keyword) return true;
-      return [
-        log.request_id,
-        log.project_id,
-        projectName(data, log.project_id),
-        log.api_key_id,
-        log.model,
-        log.provider_id,
-        providerAuditLabel(data, log),
-        log.provider_resource_id,
-        log.provider_model,
-        log.error_code,
-        String(log.status_code),
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword));
-    });
-  }, [data, query, statusFilter]);
+  useEffect(() => {
+    if (activeAuditTab !== "requests") return;
+    const controller = new AbortController();
+    const delay = query.trim() ? 250 : 0;
+    setRequestListLoading(true);
+    setRequestListError("");
+    setRequestLogs([]);
+    setRequestPagination(emptyRequestLogPagination(requestPage, requestPageSize));
+    setRequestSummary(emptyRequestLogSummary());
+    const timeout = window.setTimeout(() => {
+      adminFetch(api, auditRequestPagePath({
+        page: requestPage,
+        pageSize: requestPageSize,
+        status: statusFilter,
+        query,
+      }), { signal: controller.signal })
+        .then(async (resp) => {
+          if (!resp.ok) throw new Error(`request logs ${resp.status}`);
+          return (await resp.json()) as RequestLogPage;
+        })
+        .then((payload) => {
+          setRequestLogs(payload.data ?? []);
+          setRequestPagination(payload.pagination);
+          setRequestSummary(payload.summary);
+          const lastPage = Math.max(1, payload.pagination.total_pages);
+          if (requestPage > lastPage) setRequestPage(lastPage);
+        })
+        .catch((err) => {
+          if (controller.signal.aborted || isAuthExpiredError(err)) return;
+          setRequestListError(tx("连接失败"));
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setRequestListLoading(false);
+        });
+    }, delay);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [activeAuditTab, api, query, requestPage, requestPageSize, statusFilter]);
 
-  const requestLogPagination = usePagination(filteredLogs.length, `request-logs:${statusFilter}:${query.trim()}`);
-  const visibleLogs = useMemo(
-    () => filteredLogs.slice(requestLogPagination.startIndex, requestLogPagination.endIndex),
-    [filteredLogs, requestLogPagination.startIndex, requestLogPagination.endIndex],
-  );
+  const requestLogPagination = useMemo<PaginationState>(() => {
+    const pageCount = Math.max(1, requestPagination.total_pages);
+    const page = Math.min(requestPage, pageCount);
+    const startIndex = requestPagination.total === 0 ? 0 : (page - 1) * requestPageSize;
+    return {
+      page,
+      pageSize: requestPageSize,
+      pageCount,
+      startIndex,
+      endIndex: Math.min(startIndex + requestLogs.length, requestPagination.total),
+      setPage: (nextPage) => setRequestPage(Math.min(Math.max(nextPage, 1), pageCount)),
+      setPageSize: (nextPageSize) => {
+        setRequestPageSize(nextPageSize);
+        setRequestPage(1);
+      },
+    };
+  }, [requestLogs.length, requestPage, requestPageSize, requestPagination.total, requestPagination.total_pages]);
 
   useEffect(() => {
     if (activeAuditTab !== "requests") return;
-    if (filteredLogs.length === 0) {
+    if (requestLogs.length === 0) {
       setSelectedRequestID("");
       setDetail(null);
       return;
     }
-    const selectedVisible = visibleLogs.some((log) => log.request_id === selectedRequestID);
+    const selectedVisible = requestLogs.some((log) => log.request_id === selectedRequestID);
     if (!selectedRequestID || !selectedVisible) {
-      setSelectedRequestID((visibleLogs[0] ?? filteredLogs[0]).request_id);
+      setSelectedRequestID(requestLogs[0].request_id);
     }
-  }, [activeAuditTab, filteredLogs, selectedRequestID, visibleLogs]);
+  }, [activeAuditTab, requestLogs, selectedRequestID]);
 
   useEffect(() => {
     if (activeAuditTab !== "requests") return;
@@ -106,19 +143,19 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
   }, [activeAuditTab, api, selectedRequestID]);
 
   const requestStats = useMemo(() => {
-    const total = data.logs.length;
-    const failures = data.logs.filter((log) => log.status_code >= 400).length;
-    const averageLatency = total
-      ? Math.round(data.logs.reduce((sum, log) => sum + (log.latency_ms || 0), 0) / total)
-      : 0;
-    const successRate = total ? Math.round(((total - failures) / total) * 100) : 0;
-    return { total, failures, averageLatency, successRate };
-  }, [data.logs]);
+    const successRate = requestSummary.all ? Math.round((requestSummary.ok / requestSummary.all) * 100) : 0;
+    return {
+      total: requestSummary.all,
+      failures: requestSummary.error,
+      averageLatency: requestSummary.average_latency_ms,
+      successRate,
+    };
+  }, [requestSummary]);
 
   const filters = [
-    { key: "all", label: `${tx("全部")} ${data.logs.length}` },
-    { key: "ok", label: `${tx("成功")} ${data.logs.length - requestStats.failures}` },
-    { key: "error", label: `${tx("失败")} ${requestStats.failures}` },
+    { key: "all", label: `${tx("全部")} ${requestSummary.all}` },
+    { key: "ok", label: `${tx("成功")} ${requestSummary.ok}` },
+    { key: "error", label: `${tx("失败")} ${requestSummary.error}` },
   ] as const;
 
   return (
@@ -133,7 +170,7 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
         >
           <Activity size={15} />
           <span>{tx("大模型请求历史")}</span>
-          <strong>{formatNumber(data.logs.length)}</strong>
+          <strong>{formatNumber(requestSummary.all)}</strong>
         </button>
         {showAdminAudit ? (
           <button
@@ -158,7 +195,10 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
                 <Search size={15} />
                 <input
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setRequestPage(1);
+                  }}
                   placeholder={tx("搜索请求 ID、模型、Provider、状态码")}
                 />
               </label>
@@ -168,7 +208,10 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
                     key={filter.key}
                     type="button"
                     className={statusFilter === filter.key ? "active" : ""}
-                    onClick={() => setStatusFilter(filter.key)}
+                    onClick={() => {
+                      setStatusFilter(filter.key);
+                      setRequestPage(1);
+                    }}
                   >
                     {filter.label}
                   </button>
@@ -184,16 +227,20 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
             </div>
 
             <div className="request-history-layout">
-              <div className="request-list-panel">
+              <div className="request-list-panel" aria-busy={requestListLoading}>
                 <div className="request-list-head">
                   <span>{tx("请求列表")}</span>
-                  <strong>{countWithUnit(filteredLogs.length, "条", "record", "件")}</strong>
+                  <strong>{countWithUnit(requestPagination.total, "条", "record", "件")}</strong>
                 </div>
-                {filteredLogs.length === 0 ? (
+                {requestListError ? (
+                  <div className="compact-empty">{requestListError}</div>
+                ) : requestListLoading && requestLogs.length === 0 ? (
+                  <div className="compact-empty">{tx("加载中")}...</div>
+                ) : requestLogs.length === 0 ? (
                   <div className="compact-empty">{tx("没有匹配的请求记录")}</div>
                 ) : (
                   <div className="request-list" role="list">
-                    {visibleLogs.map((log) => (
+                    {requestLogs.map((log) => (
                       <button
                         key={log.request_id}
                         type="button"
@@ -218,7 +265,7 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
                     ))}
                   </div>
                 )}
-                <PaginationControls pagination={requestLogPagination} totalItems={filteredLogs.length} />
+                <PaginationControls pagination={requestLogPagination} totalItems={requestPagination.total} />
               </div>
 
               <RequestDetailPanel
@@ -251,6 +298,24 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
       )}
     </div>
   );
+}
+
+function emptyRequestLogPagination(page: number, pageSize: number): RequestLogPagination {
+  return {
+    page,
+    page_size: pageSize,
+    total: 0,
+    total_pages: 0,
+  };
+}
+
+function emptyRequestLogSummary(): RequestLogSummary {
+  return {
+    all: 0,
+    ok: 0,
+    error: 0,
+    average_latency_ms: 0,
+  };
 }
 
 export function RequestDetailPanel({

@@ -42,6 +42,10 @@ When issuing an API Key, select the actual user in **Owner User**. The issuer re
 
 Each new usage record snapshots the attributed user, so later ownership changes or Key deletion do not rewrite that recorded history. Records created before this field existed fall back to the Key's current owner, then its legacy issuer, then the project owner, and finally `unknown`. The individual ranking shows distinct used Keys and currently owned non-revoked Keys separately.
 
+## Read-only Cost Access for Local Agents
+
+Do not give an automation agent an administrator session or a model-invocation API Key merely to collect usage. Create a dedicated `tha_` analytics credential, restrict it to one Project whenever possible, and revoke it independently. The [Agent Token Cost API guide](agent-token-cost-api.md) documents credential lifecycle, filters, aggregation, JSON/CSV schemas, snapshot pagination, incremental watermarks, audit behavior, and query limits.
+
 ## Per-Key RPM and TPM Limits
 
 Each API Key can have optional requests-per-minute (RPM) and tokens-per-minute (TPM) limits. An unset or `null` value inherits the applicable global, project, and team policies. A value of `0` adds no Key-specific cap but cannot bypass an upper-level limit, while a positive value adds a Key-specific cap. When several positive limits apply, TokenHub enforces the strictest one. Disabling a Key rejects every request regardless of its limit values.

@@ -95,14 +95,15 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	job, err := s.store.CreateImageJob(ImageJob{
-		ProjectID: project.ID,
-		APIKeyID:  key.ID,
-		RequestID: call.RequestID,
-		Status:    imageJobStatusQueued,
-		Model:     request.Model,
-		Action:    "generate",
-		Quality:   request.Quality,
-		Size:      request.Size,
+		ProjectID:        project.ID,
+		APIKeyID:         key.ID,
+		AttributedUserID: usageAttributionUserID(key, project),
+		RequestID:        call.RequestID,
+		Status:           imageJobStatusQueued,
+		Model:            request.Model,
+		Action:           "generate",
+		Quality:          request.Quality,
+		Size:             request.Size,
 	}, request.Prompt)
 	if err != nil {
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
@@ -244,14 +245,15 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, err := s.store.CreateImageJob(ImageJob{
-		ProjectID: project.ID,
-		APIKeyID:  key.ID,
-		RequestID: call.RequestID,
-		Status:    imageJobStatusQueued,
-		Model:     request.Model,
-		Action:    "edit",
-		Quality:   request.Quality,
-		Size:      request.Size,
+		ProjectID:        project.ID,
+		APIKeyID:         key.ID,
+		AttributedUserID: usageAttributionUserID(key, project),
+		RequestID:        call.RequestID,
+		Status:           imageJobStatusQueued,
+		Model:            request.Model,
+		Action:           "edit",
+		Quality:          request.Quality,
+		Size:             request.Size,
 	}, request.Prompt)
 	if err != nil {
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())

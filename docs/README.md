@@ -17,6 +17,7 @@ TokenHub documentation is now organized around the three roles used in an enterp
 | [User Guide](user-guide.md) | Employees and application developers | Find available models, create project keys, call the model API, and review personal usage |
 | [Team Leader Guide](team-leader-guide.md) | Team owners and project maintainers | Manage project spaces, members, API keys, team reports, and project cost attribution |
 | [Administrator Guide](administrator-guide.md) | Platform administrators and security operators | Configure providers, model catalog, routing, identity sources, RBAC, audit, and cost controls |
+| [Agent Token Cost API](agent-token-cost-api.md) | Local reporting agents and platform administrators | Create least-privilege analytics credentials and pull filtered, aggregated, incremental token costs as JSON or CSV |
 | [Image Generation Guide](user-guide.md#codex-subscription-image-generation) | Application developers using image models | Generate and edit images, run asynchronous jobs, and distinguish Codex subscription capacity from OpenAI API usage |
 | [Connect Codex to TokenHub: Profile Quick Setup](codex-tokenhub-profile-quick-start.md) | Codex users who only need an isolated profile | Create the profile, set the key, validate the connection, and recover |
 | [Connect Codex to TokenHub: Four Configuration Methods and Recovery](codex-tokenhub-configuration.md) | Codex users and developers comparing integration methods | Configure TokenHub through a profile, process-local override, global CLI settings, or the desktop app |

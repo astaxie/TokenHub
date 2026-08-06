@@ -24,6 +24,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/image-jobs/", s.handleImageJob)
 	s.mux.HandleFunc("/v1/image-assets/", s.handleImageAsset)
 	s.registerGatewayRoutes()
+	s.mux.HandleFunc("/api/v1/analytics/token-costs", s.handleTokenCostAnalytics)
 
 	s.mux.HandleFunc("/api/admin/auth/login", s.handleAdminLogin)
 	s.mux.HandleFunc("/api/admin/auth/logout", s.handleAdminLogout)
@@ -48,6 +49,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/provider-account-oauth/openai/oauth/callback", s.handleOpenAIAccountOAuthCallback)
 	s.mux.HandleFunc("/api/admin/api-keys", s.handleAdminAPIKeys)
 	s.mux.HandleFunc("/api/admin/api-keys/", s.handleAdminAPIKeyItem)
+	s.mux.HandleFunc("/api/admin/analytics/credentials", s.handleAdminAnalyticsCredentials)
+	s.mux.HandleFunc("/api/admin/analytics/credentials/", s.handleAdminAnalyticsCredentialItem)
 	s.mux.HandleFunc("/api/admin/providers", s.handleAdminProviders)
 	s.mux.HandleFunc("/api/admin/providers/monitoring", s.handleAdminProviderMonitoring)
 	s.mux.HandleFunc("/api/admin/providers/", s.handleAdminProviderNested)

@@ -696,18 +696,6 @@ func (s *Server) handleAdminGenerateBilling(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) handleAdminRequestLogs(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, "audit", r.Method)
-	if !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.requestLogsWithUsageForUser(user)})
-}
-
 func (s *Server) handleAdminRequestDetail(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "audit", r.Method)
 	if !ok {

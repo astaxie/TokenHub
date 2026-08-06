@@ -64,6 +64,44 @@ jobs:
       - name: Test
         run: go test ./...
 
+  backend-postgres:
+    name: Backend PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: tokenhub_e2e
+          POSTGRES_USER: tokenhub
+          POSTGRES_PASSWORD: tokenhub-e2e-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tokenhub -d tokenhub_e2e"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Test PostgreSQL migrations and multi-instance behavior
+        env:
+          TEST_POSTGRES_URL: postgresql://tokenhub:tokenhub-e2e-password@localhost:5432/tokenhub_e2e?sslmode=disable
+        run: go test -tags=integration ./internal/server -run '^TestMultiInstancePostgresE2E$' -count=1 -v
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -199,9 +237,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # A single stable check for branch protection to require. Without it, protecting
-    # four separately named jobs means editing the rule every time a job is added.
+    # separately named jobs means editing the rule every time a job is added.
     needs:
       - backend
+      - backend-postgres
       - frontend
       - deployment
       - repo-gates
@@ -209,7 +248,7 @@ jobs:
     steps:
       - name: Verify every job succeeded
         env:
-          EXPECTED_JOBS: 4
+          EXPECTED_JOBS: 5
         run: |
           set -euo pipefail
           results='${{ join(needs.*.result, ' ') }}'

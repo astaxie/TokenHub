@@ -182,8 +182,14 @@ type Store interface {
 	ListImageAssets(jobID string) []ImageAsset
 	GetImageAsset(id string) (ImageAsset, bool)
 	ListUsageRecords() []UsageRecord
+	CreateAnalyticsCredential(credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error)
+	ListAnalyticsCredentials() []AnalyticsCredential
+	RevokeAnalyticsCredential(id string) (AnalyticsCredential, error)
+	ValidateAnalyticsCredential(rawSecret string) (AnalyticsCredential, error)
+	QueryTokenCostPage(ctx context.Context, query TokenCostQuery) (TokenCostPage, error)
 	GenerateBillingPeriod(period string) (map[string]any, error)
 	ListRequestLogs() []RequestLog
+	QueryRequestLogs(query RequestLogQuery) (RequestLogPage, error)
 	ListProviderObservations(since time.Time) []ProviderObservation
 	RecordProviderObservation(observation ProviderObservation)
 	GetProviderResourceObservation(resourceID string) (ProviderResourceObservation, bool)
@@ -244,6 +250,7 @@ var _ Store = (*GormStore)(nil)
 
 type GormStore struct {
 	db                   *gorm.DB
+	analyticsDB          *gorm.DB
 	mu                   *sync.Mutex
 	leaseHeartbeats      *sync.Map
 	secretKey            string
