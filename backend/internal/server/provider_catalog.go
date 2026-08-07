@@ -525,7 +525,15 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to create upstream models request")
 	}
 	if apiKey := strings.TrimSpace(req.APIKey); apiKey != "" {
-		httpReq.Header.Set("authorization", "Bearer "+apiKey)
+		if req.Type == ProviderAnthropic {
+			provider := Provider{Type: req.Type, APIKey: apiKey, Options: req.Options}
+			if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
+				return ProviderCatalogEntry{}, err
+			}
+			applyAnthropicProviderAuth(httpReq, provider)
+		} else {
+			httpReq.Header.Set("authorization", "Bearer "+apiKey)
+		}
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {

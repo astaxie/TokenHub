@@ -26,6 +26,8 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 7. 用 Model Playground 和请求日志验证链路。
 8. 在大规模发放 Key 前检查用量归因。
 
+Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上游要求 `Authorization: Bearer`，请打开 Provider 的「高级」页签，保持「渠道商类型」为「Claude / Anthropic」，并在「Anthropic 认证方式」中选择「Authorization Bearer」。TokenHub 会从加密保存的 Provider API Key 生成对应 Header，并且只发送所选的认证 Header；不要在自定义 Headers 中重复填写凭据。
+
 ## 模型演练场诊断
 
 从控制台打开「模型演练场」，可以通过与网关流量相同的路由和 Provider 适配器验证模型。每个 assistant 轮次都保留独立的紧凑诊断摘要，包括返回模式、网关实测首 Token 时间（TTFT）、输出吞吐、总耗时、完整上下文输入 Tokens、输出 Tokens、估算成本、本地完成时间和 Request ID。展开「诊断详情」可查看毫秒级时间及实际响应详情。除非用户明确导出，否则会话只保留在当前浏览器页面。

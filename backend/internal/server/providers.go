@@ -428,6 +428,51 @@ type AnthropicAdapter struct {
 	StreamIdleTimeout time.Duration
 }
 
+const (
+	anthropicAuthTypeOption = "anthropic_auth_type"
+	anthropicAuthTypeAPIKey = "x-api-key"
+	anthropicAuthTypeBearer = "bearer"
+)
+
+func configureAnthropicProviderAuth(provider *Provider, requested string) error {
+	if provider == nil || provider.Type != ProviderAnthropic {
+		return nil
+	}
+	if provider.Options == nil {
+		provider.Options = map[string]string{}
+	}
+	authType := strings.ToLower(strings.TrimSpace(requested))
+	if authType == "" {
+		authType = strings.ToLower(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]))
+	}
+	if authType == "" {
+		return nil
+	}
+	if authType != anthropicAuthTypeAPIKey && authType != anthropicAuthTypeBearer {
+		return NewHTTPError(
+			http.StatusBadRequest,
+			"provider_anthropic_auth_type_invalid",
+			"Anthropic authentication type must be x-api-key or bearer",
+		)
+	}
+	provider.Options[anthropicAuthTypeOption] = authType
+	return nil
+}
+
+func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
+	if req == nil {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]), anthropicAuthTypeBearer) {
+		req.Header.Del("x-api-key")
+		req.Header.Set("authorization", "Bearer "+provider.APIKey)
+		return
+	}
+	// Preserve the existing Anthropic behavior when no option is configured.
+	req.Header.Del("authorization")
+	req.Header.Set("x-api-key", provider.APIKey)
+}
+
 func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
 	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
 	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
@@ -516,7 +561,7 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 		version = "2023-06-01"
 	}
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", provider.APIKey)
+	applyAnthropicProviderAuth(req, provider)
 	req.Header.Set("anthropic-version", version)
 	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {

@@ -812,7 +812,6 @@ func (s *Server) doNativeAnthropicRequest(
 		version = "2023-06-01"
 	}
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", provider.APIKey)
 	req.Header.Set("anthropic-version", version)
 	if betas := strings.TrimSpace(downstreamHeaders.Get("anthropic-beta")); betas != "" {
 		req.Header.Set("anthropic-beta", betas)
@@ -820,6 +819,7 @@ func (s *Server) doNativeAnthropicRequest(
 	for key, value := range provider.Headers {
 		req.Header.Set(key, value)
 	}
+	applyAnthropicProviderAuth(req, provider)
 	// The native path builds its own request but must follow the same streaming
 	// policy as the adapter: a total deadline would truncate a live stream.
 	adapter, _ := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)

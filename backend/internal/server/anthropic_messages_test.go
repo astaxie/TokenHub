@@ -386,6 +386,40 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	}
 }
 
+func TestAnthropicMessagesUsesBearerAuthForNativeProvider(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("authorization"); got != "Bearer upstream-secret" {
+			t.Errorf("unexpected upstream authorization %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "" {
+			t.Errorf("x-api-key must be omitted in bearer mode, got %q", got)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_bearer",
+			"type":"message",
+			"role":"assistant",
+			"model":"upstream-model",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":1,"output_tokens":1}
+		}`)
+	}))
+	defer upstream.Close()
+
+	handler, _, secret := newAnthropicGatewayWithOptions(t, upstream.URL, ProviderAnthropic, map[string]string{
+		anthropicAuthTypeOption: anthropicAuthTypeBearer,
+	})
+	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 64,
+		"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+}
+
 func TestAnthropicMessagesConvertsMidConversationSystemForOpenAI(t *testing.T) {
 	var upstreamPayload map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -836,6 +870,10 @@ func TestGatewayModelsIncludeAnthropicDiscoveryFields(t *testing.T) {
 }
 
 func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) (http.Handler, *GormStore, string) {
+	return newAnthropicGatewayWithOptions(t, upstreamURL, providerType, nil)
+}
+
+func newAnthropicGatewayWithOptions(t *testing.T, upstreamURL string, providerType string, options map[string]string) (http.Handler, *GormStore, string) {
 	t.Helper()
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Claude Code Project", Status: StatusActive})
@@ -864,6 +902,7 @@ func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) 
 		APIKey:  "upstream-secret",
 		Status:  StatusActive,
 		Healthy: true,
+		Options: options,
 	})
 	store.AddRoute(ModelRoute{
 		ID:            "route_claude_code",

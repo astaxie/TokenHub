@@ -26,6 +26,8 @@ Language: [English](../administrator-guide.md) | [简体中文](../zh-CN/adminis
 7. Model Playground と Request Logs でフローを検証します。
 8. Key を広く発行する前に利用量配賦を確認します。
 
+Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic 互換の上流サービスが `Authorization: Bearer` を要求する場合は、Provider の **詳細** タブを開き、**Provider タイプ**を **Claude / Anthropic** にしたまま、**Anthropic 認証方式**で **Authorization Bearer** を選択します。TokenHub は暗号化して保存された Provider API Key から選択した Header を生成し、認証 Header は 1 種類だけ送信します。カスタム Header に同じ認証情報を重複して設定しないでください。
+
 ## Model Playground の診断
 
 コンソールの **Model Playground** では、通常のゲートウェイトラフィックと同じルーティングおよび Provider adapter を使ってモデルを検証できます。各 assistant ターンには、配信モード、ゲートウェイ計測の Time to First Token（TTFT）、出力スループット、総所要時間、コンテキスト全体の input tokens、output tokens、推定コスト、ローカル完了時刻、Request ID の要約が残ります。**診断詳細**を開くと、ミリ秒単位の時刻と実レスポンスの詳細を確認できます。明示的にエクスポートしない限り、セッションは現在のブラウザページだけに保持されます。

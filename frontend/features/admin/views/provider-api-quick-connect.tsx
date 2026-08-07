@@ -3,9 +3,11 @@ import { useRef, useState } from "react";
 import { type ApiContext, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
 import { formatModelPrice } from "../domain/formatting";
+import { providerAnthropicAuthType } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerTypeOptions } from "../shared/ui";
+import { AnthropicAuthTypeField } from "./provider-editor-sections";
 
 type ProviderConnectionTestState = {
   status: "idle" | "testing" | "success" | "error";
@@ -137,6 +139,7 @@ export function ProviderAPIQuickConnect({
           type: values.type,
           base_url: values.base_url,
           api_key: values.api_key,
+          anthropic_auth_type: providerAnthropicAuthType(values),
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));
@@ -312,6 +315,7 @@ export function ProviderAPIQuickConnect({
                 {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
               </select>
             </label>
+            <AnthropicAuthTypeField values={values} onUpdate={onUpdate} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />

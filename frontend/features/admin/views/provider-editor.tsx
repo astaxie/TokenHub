@@ -6,6 +6,7 @@ import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelC
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
+import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerResourceDraftDefaults } from "../resources/provider-model-config";
@@ -14,7 +15,7 @@ import { providerTypeOptions } from "../shared/ui";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
-import { ProviderInlineField, customUpstreamConnectionKey, customUpstreamModelsAreCurrent, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
+import { ProviderInlineField, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields } from "./provider-editor-sections";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
@@ -162,6 +163,7 @@ export function ProviderUpsertModal({
     type: mode === "edit" ? editingCodexSubscription ? "openai_codex" : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
     base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
+    anthropic_auth_type: provider?.options?.anthropic_auth_type ?? "x-api-key",
     priority: String(provider?.priority ?? 10),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
@@ -279,14 +281,11 @@ export function ProviderUpsertModal({
       setModelLoading(true);
       adminFetch(api, "/api/admin/provider-catalog/custom", {
         method: "POST",
-        body: JSON.stringify({
-          provider_id: mode === "edit" ? provider?.id : "",
-          name: values.name,
-          type: values.type || "openai_compatible",
-          base_url: values.base_url,
-          api_key: values.api_key,
-          model_category: modelCategory,
-        }),
+        body: JSON.stringify(customUpstreamDiscoveryPayload(
+          values,
+          mode === "edit" ? provider?.id ?? "" : "",
+          modelCategory,
+        )),
       })
         .then(async (resp) => {
           if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载自定义上游模型")));
@@ -454,15 +453,15 @@ export function ProviderUpsertModal({
   }, [createStep, mode]);
 
   useEffect(() => {
-    if (mode !== "create" || catalogID !== "custom" || !values.base_url?.trim()) return;
-    // Load custom upstream models once model selection is on screen: behind a
-    // tab in the quick connect UI, at its model step in the stepped wizard.
-    if (quickAPIConnect ? quickAPITab !== "models" : createStep !== 3) return;
+    if (catalogID !== "custom" || !values.base_url?.trim()) return;
+    // Load custom upstream models once model selection is on screen. This also
+    // covers edit mode, where changing the Anthropic auth selector on the
+    // Advanced tab must refresh discovery when the operator returns to Models.
+    if (!customUpstreamModelsVisible(mode, editTab, quickAPIConnect, quickAPITab, createStep)) return;
     if (loadedCustomConnection.current === customConnectionKey) return;
     loadedCustomConnection.current = customConnectionKey;
     setCatalogReloadKey((current) => current + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogID, createStep, mode, quickAPIConnect, quickAPITab]);
+  }, [catalogID, createStep, customConnectionKey, editTab, mode, quickAPIConnect, quickAPITab, values.base_url]);
 
   useEffect(() => {
     if (mode !== "edit" || editTab !== "advanced") return;

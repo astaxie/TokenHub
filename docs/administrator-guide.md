@@ -26,6 +26,8 @@ This guide is for platform administrators, security operators, and infrastructur
 7. Validate the flow with Model Playground and request logs.
 8. Review usage attribution before issuing keys broadly.
 
+Anthropic Providers use `x-api-key` authentication by default. If an Anthropic-compatible upstream requires `Authorization: Bearer`, open the Provider's **Advanced** tab, keep **Provider Type** set to **Claude / Anthropic**, and select **Authorization Bearer** under **Anthropic Authentication**. TokenHub derives either header from the encrypted Provider API Key and sends only the selected authentication header; do not duplicate the credential in custom headers.
+
 ## Model Playground Diagnostics
 
 Open **Model Playground** from the console to validate a model through the same routing and Provider adapters used by gateway traffic. Every assistant turn keeps its own compact diagnostic summary: delivery mode, gateway-measured time to first token (TTFT), output throughput, total duration, full-context input tokens, output tokens, estimated cost, local completion time, and request ID. Expand **Diagnostics** to inspect millisecond timestamps plus the actual response details. Sessions remain in the current browser page unless explicitly exported.

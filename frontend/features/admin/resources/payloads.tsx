@@ -5,6 +5,7 @@ import { inferModelCategoryText, normalizeNotificationChannelType, notificationC
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
+import { providerAnthropicAuthType } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
@@ -20,6 +21,7 @@ export function providerPayload(values: Record<string, string>) {
     status: values.status || "active",
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 10),
+		anthropic_auth_type: providerAnthropicAuthType(values),
 		catalog_id: values.catalog_id,
 		model_category: values.model_category,
 		selected_models: splitList(values.selected_models),

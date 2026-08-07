@@ -233,6 +233,9 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	if provider.Options == nil {
 		provider.Options = map[string]string{}
 	}
+	if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
+	}
 	if catalog.ID != "" {
 		provider.Options["catalog_id"] = catalog.ID
 		provider.Options["catalog_source"] = catalogSource
