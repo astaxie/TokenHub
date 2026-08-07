@@ -457,6 +457,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "default_project_role") values[field.key] = "developer";
     if (field.key === "api_key_prefix") values[field.key] = "sk_";
     if (field.key === "api_key_random_length") values[field.key] = "48";
+    if (field.key === "max_request_body_bytes") values[field.key] = "4194304";
     if (field.key === "password") values[field.key] = "changeme123456";
     if (field.key === "expire_days") values[field.key] = "14";
   }

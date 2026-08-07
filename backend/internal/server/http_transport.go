@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 func (s *Server) recordAdminAudit(r *http.Request, user AdminUser, action string, resourceType string, resourceID string, before any, after any) {
@@ -73,8 +76,8 @@ func bearerToken(r *http.Request) string {
 
 func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
-	const maxRequestBodyBytes = 4 << 20
-	data, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
+	maxRequestBodyBytes := maxRequestBodyBytesFromContext(r.Context())
+	data, err := io.ReadAll(io.LimitReader(r.Body, int64(maxRequestBodyBytes)+1))
 	if err != nil {
 		return err
 	}
@@ -94,6 +97,137 @@ func decodeJSON(r *http.Request, target any) error {
 		return err
 	}
 	return nil
+}
+
+const (
+	// defaultMaxRequestBodyBytes caps JSON request bodies when no admin setting
+	// is configured. It matches the historical hard-coded limit so the gateway
+	// keeps its default posture unless an operator raises it.
+	defaultMaxRequestBodyBytes = 4 << 20
+	// minMaxRequestBodyBytes is the floor for an admin-configured limit. Below
+	// this a deployment would reject ordinary requests, so the value clamps up.
+	minMaxRequestBodyBytes = 1 << 20
+	// maxMaxRequestBodyBytes is the ceiling for an admin-configured limit. It
+	// matches the image generation response cap, bounding how much a single
+	// request may buffer in memory.
+	maxMaxRequestBodyBytes = 64 << 20
+	// requestBodyLimitTTL bounds how long the cached limit stays fresh. Admin
+	// edits to cfg_gateway take effect for new requests within this window; it
+	// trades up-to-TTL staleness for not querying the store on every request.
+	requestBodyLimitTTL = 10 * time.Second
+)
+
+type requestBodyLimitKey struct{}
+
+// maxRequestBodyBytesFromContext returns the effective JSON request body limit
+// injected by withRequestBodyLimit. Requests that bypass the middleware fall
+// back to the default, so direct handler tests and non-HTTP callers keep
+// working without a configured limit.
+func maxRequestBodyBytesFromContext(ctx context.Context) int {
+	if value, ok := ctx.Value(requestBodyLimitKey{}).(int); ok && value > 0 {
+		return value
+	}
+	return defaultMaxRequestBodyBytes
+}
+
+// clampRequestBodyBytes keeps an admin-configured limit inside the safe range.
+func clampRequestBodyBytes(value int) int {
+	if value <= 0 {
+		return defaultMaxRequestBodyBytes
+	}
+	if value < minMaxRequestBodyBytes {
+		return minMaxRequestBodyBytes
+	}
+	if value > maxMaxRequestBodyBytes {
+		return maxMaxRequestBodyBytes
+	}
+	return value
+}
+
+type requestBodyLimitSnapshot struct {
+	value       int
+	refreshedAt time.Time
+}
+
+// requestBodyLimitCache holds the effective limit with an atomic snapshot so
+// the hot path reads without a lock; refreshes are occasional idempotent
+// stores.
+type requestBodyLimitCache struct {
+	snapshot atomic.Pointer[requestBodyLimitSnapshot]
+}
+
+// withRequestBodyLimit injects the effective request body limit into each
+// request context so decodeJSON can enforce a runtime-configurable cap without
+// changing its call sites.
+func (s *Server) withRequestBodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), requestBodyLimitKey{}, s.currentMaxRequestBodyBytes())
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (s *Server) currentMaxRequestBodyBytes() int {
+	if snap := s.requestBodyLimit.snapshot.Load(); snap != nil && time.Since(snap.refreshedAt) < requestBodyLimitTTL {
+		return snap.value
+	}
+	value := s.readMaxRequestBodyBytesSetting()
+	s.requestBodyLimit.snapshot.Store(&requestBodyLimitSnapshot{value: value, refreshedAt: time.Now()})
+	return value
+}
+
+// readMaxRequestBodyBytesSetting reads max_request_body_bytes from the
+// cfg_gateway system setting and clamps it. It mirrors apiKeyGenerationConfig:
+// cfg_gateway is preferred, the first active settings record is a fallback,
+// and a missing or malformed value falls back to the default rather than
+// rejecting every request.
+func (s *Server) readMaxRequestBodyBytesSetting() int {
+	var fields map[string]any
+	for _, item := range s.store.ListResources("settings") {
+		if item.Status != StatusActive {
+			continue
+		}
+		if item.ID == "cfg_gateway" {
+			fields = item.Fields
+			break
+		}
+		if fields == nil {
+			fields = item.Fields
+		}
+	}
+	parsed, ok := intField(fields, "max_request_body_bytes")
+	if !ok || parsed <= 0 {
+		return defaultMaxRequestBodyBytes
+	}
+	return clampRequestBodyBytes(parsed)
+}
+
+// intField reads an integer from a settings Fields map regardless of how the
+// value was stored. The GORM JSON serializer round-trips numbers through
+// encoding/json, which turns every numeric literal into a float64; for large
+// values (such as a multi-miB byte count) fmt.Sprint renders that float in
+// scientific notation and strconv.Atoi then fails. Handling int, int64,
+// float64, and string directly avoids that latent trap.
+func intField(fields map[string]any, key string) (int, bool) {
+	if fields == nil {
+		return 0, false
+	}
+	value, ok := fields[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case float64:
+		return int(math.Round(typed)), true
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
