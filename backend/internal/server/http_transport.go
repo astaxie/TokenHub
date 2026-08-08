@@ -71,15 +71,35 @@ func bearerToken(r *http.Request) string {
 	return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 }
 
+const (
+	defaultMaxJSONRequestBytes      = 4 << 20
+	defaultMaxImageJSONRequestBytes = 32 << 20
+	maximumJSONRequestBytes         = 128 << 20
+)
+
+type requestBodyTooLargeError struct {
+	limit int
+}
+
+func (e *requestBodyTooLargeError) Error() string {
+	return fmt.Sprintf("request body exceeds %d bytes", e.limit)
+}
+
 func decodeJSON(r *http.Request, target any) error {
+	return decodeJSONWithLimit(r, target, defaultMaxJSONRequestBytes)
+}
+
+func decodeJSONWithLimit(r *http.Request, target any, limit int) error {
 	defer r.Body.Close()
-	const maxRequestBodyBytes = 4 << 20
-	data, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
+	if limit <= 0 {
+		limit = defaultMaxJSONRequestBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, int64(limit)+1))
 	if err != nil {
 		return err
 	}
-	if len(data) > maxRequestBodyBytes {
-		return fmt.Errorf("request body exceeds %d bytes", maxRequestBodyBytes)
+	if len(data) > limit {
+		return &requestBodyTooLargeError{limit: limit}
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
@@ -94,6 +114,22 @@ func decodeJSON(r *http.Request, target any) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Server) decodeGatewayJSON(r *http.Request, target any) error {
+	return decodeJSONWithLimit(r, target, s.config.MaxJSONRequestBytes)
+}
+
+func (s *Server) decodeImageJSON(r *http.Request, target any) error {
+	return decodeJSONWithLimit(r, target, s.config.MaxImageJSONRequestBytes)
+}
+
+func gatewayJSONDecodeError(err error) error {
+	var tooLarge *requestBodyTooLargeError
+	if errors.As(err, &tooLarge) {
+		return NewHTTPError(http.StatusRequestEntityTooLarge, "request_too_large", tooLarge.Error())
+	}
+	return NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error())
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
