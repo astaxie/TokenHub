@@ -116,7 +116,7 @@ func (s *Server) streamOpenAIAsAnthropic(
 	req anthropicMessagesRequest,
 	writer io.Writer,
 ) (Usage, error) {
-	chatReq, err := anthropicToOpenAIChatRequest(req)
+	chatReq, err := anthropicToOpenAIChatRequest(req, route.Provider)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -124,7 +124,7 @@ func (s *Server) streamOpenAIAsAnthropic(
 	if err != nil {
 		return Usage{}, err
 	}
-	converter := newOpenAIAnthropicStreamConverter(writer, req.Model, estimateAnthropicInputTokens(req.Raw))
+	converter := newOpenAIAnthropicStreamConverter(writer, req.Model, estimateAnthropicInputTokens(req.Raw), route.Provider)
 	usage, err := adapter.ChatStream(ctx, route.Provider, route.ProviderModel, chatReq, converter)
 	if err != nil {
 		return usage, err
@@ -141,7 +141,7 @@ func (s *Server) streamOpenAIAsAnthropic(
 		usage.PromptTokens = estimateAnthropicInputTokens(req.Raw)
 	}
 	if usage.CompletionTokens == 0 {
-		usage.CompletionTokens = EstimateTextTokens(converter.outputText.String() + converter.toolArgumentText())
+		usage.CompletionTokens = EstimateTextTokens(converter.reasoning.String() + converter.outputText.String() + converter.toolArgumentText())
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	if err := converter.Finalize(usage); err != nil {
@@ -158,28 +158,33 @@ type openAIStreamToolCall struct {
 }
 
 type openAIAnthropicStreamConverter struct {
-	writer      io.Writer
-	model       string
-	messageID   string
-	inputTokens int64
-	events      *sseStreamWriter
-	started     bool
-	textStarted bool
-	textIndex   int
-	nextIndex   int
-	finish      string
-	finalized   bool
-	tools       map[int]*openAIStreamToolCall
-	usage       Usage
-	outputText  strings.Builder
+	writer           io.Writer
+	model            string
+	provider         Provider
+	messageID        string
+	inputTokens      int64
+	events           *sseStreamWriter
+	started          bool
+	textStarted      bool
+	textIndex        int
+	reasoningStarted bool
+	reasoningIndex   int
+	nextIndex        int
+	finish           string
+	finalized        bool
+	tools            map[int]*openAIStreamToolCall
+	usage            Usage
+	outputText       strings.Builder
+	reasoning        strings.Builder
 }
 
-func newOpenAIAnthropicStreamConverter(writer io.Writer, model string, inputTokens int64) *openAIAnthropicStreamConverter {
+func newOpenAIAnthropicStreamConverter(writer io.Writer, model string, inputTokens int64, provider Provider) *openAIAnthropicStreamConverter {
 	converter := &openAIAnthropicStreamConverter{
 		writer:      writer,
 		model:       model,
 		messageID:   NewID("msg"),
 		inputTokens: inputTokens,
+		provider:    provider,
 		tools:       map[int]*openAIStreamToolCall{},
 	}
 	converter.events = newSSEStreamWriter(converter.consumeEvent)
@@ -224,7 +229,38 @@ func (c *openAIAnthropicStreamConverter) consumeEvent(frame serverSentEvent) err
 		c.finish = finish
 	}
 	delta, _ := choice["delta"].(map[string]any)
+	if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
+		if c.textStarted {
+			return NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "OpenAI provider emitted reasoning after text content")
+		}
+		if err := c.startMessage(); err != nil {
+			return err
+		}
+		if !c.reasoningStarted {
+			c.reasoningIndex = c.nextIndex
+			c.nextIndex++
+			c.reasoningStarted = true
+			if err := c.emit("content_block_start", map[string]any{
+				"type":          "content_block_start",
+				"index":         c.reasoningIndex,
+				"content_block": map[string]any{"type": "thinking", "thinking": "", "signature": ""},
+			}); err != nil {
+				return err
+			}
+		}
+		c.reasoning.WriteString(reasoning)
+		if err := c.emit("content_block_delta", map[string]any{
+			"type":  "content_block_delta",
+			"index": c.reasoningIndex,
+			"delta": map[string]any{"type": "thinking_delta", "thinking": reasoning},
+		}); err != nil {
+			return err
+		}
+	}
 	if text, ok := delta["content"].(string); ok && text != "" {
+		if err := c.closeReasoning(); err != nil {
+			return err
+		}
 		if err := c.startMessage(); err != nil {
 			return err
 		}
@@ -316,6 +352,9 @@ func (c *openAIAnthropicStreamConverter) Finalize(usage Usage) error {
 	if err := c.startMessage(); err != nil {
 		return err
 	}
+	if err := c.closeReasoning(); err != nil {
+		return err
+	}
 	if c.textStarted {
 		if err := c.emit("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
@@ -389,6 +428,30 @@ func (c *openAIAnthropicStreamConverter) Finalize(usage Usage) error {
 		return err
 	}
 	return c.emit("message_stop", map[string]any{"type": "message_stop"})
+}
+
+func (c *openAIAnthropicStreamConverter) closeReasoning() error {
+	if !c.reasoningStarted {
+		return nil
+	}
+	signature := gatewayReasoningSignature(c.provider, c.reasoning.String())
+	if signature != "" {
+		if err := c.emit("content_block_delta", map[string]any{
+			"type":  "content_block_delta",
+			"index": c.reasoningIndex,
+			"delta": map[string]any{"type": "signature_delta", "signature": signature},
+		}); err != nil {
+			return err
+		}
+	}
+	if err := c.emit("content_block_stop", map[string]any{
+		"type":  "content_block_stop",
+		"index": c.reasoningIndex,
+	}); err != nil {
+		return err
+	}
+	c.reasoningStarted = false
+	return nil
 }
 
 func (c *openAIAnthropicStreamConverter) emit(event string, payload map[string]any) error {

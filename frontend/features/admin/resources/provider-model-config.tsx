@@ -3,6 +3,7 @@ import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../
 import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
+import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { tx } from "../i18n/runtime";
 import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
@@ -34,6 +35,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       { key: "priority", label: "优先级", type: "number", placeholder: "留空自动追加", help: "数字越小越先调用；新增时留空会自动排在该统一模型已有 Provider 后面。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
       { key: "healthy", label: "健康", type: "boolean" },
+      ...providerReasoningFieldConfigs((values) => providerSupportsAnthropicReasoning(values.type)),
     ],
     list: (ctx) => ctx.providers,
     create: (ctx, values) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values)),
@@ -59,6 +61,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       priority: String(item.priority ?? 10),
       status: item.status,
       healthy: String(item.healthy),
+      ...providerReasoningFormValues(item.options),
     }),
   };
 }
@@ -122,7 +125,7 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
         doneMessage: (item) => `${item.name} ${tx("Token 已刷新")}`,
       },
     ],
-    toForm: providerResourceToForm,
+    toForm: (item) => providerResourceToForm(item, provider?.options),
   };
 }
 
@@ -181,6 +184,7 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     scopes: "",
     status: "active",
     healthy: "true",
+    ...providerReasoningFormValues(),
   };
 }
 

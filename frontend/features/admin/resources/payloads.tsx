@@ -6,6 +6,7 @@ import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveT
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
 import { initialModelRoutes } from "../domain/provider-model-selection";
+import { providerReasoningFormValues, providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
 import { projectQuotaFields, type ProjectQuotaValues } from "../views/crud-projects";
@@ -22,6 +23,7 @@ export function providerPayload(values: Record<string, string>) {
     priority: numberOr(values.priority, 10),
 		catalog_id: values.catalog_id,
 		model_category: values.model_category,
+    options: providerReasoningOptions(values),
 		selected_models: splitList(values.selected_models),
     custom_models: parseProviderCatalogModels(values.custom_models),
   };
@@ -95,8 +97,7 @@ export function providerResourceUpdatePayload(values: Record<string, string>) {
 }
 
 export function providerResourceOptions(values: Record<string, string>) {
-  if (values.resource_type !== "openai_subscription") return {};
-  return {
+  const accountOptions: Record<string, string> = values.resource_type === "openai_subscription" ? {
     credential_source: "openai_subscription",
     auth_type: values.auth_type || "oauth",
     account_email: values.account_email,
@@ -105,10 +106,11 @@ export function providerResourceOptions(values: Record<string, string>) {
     plan_type: values.plan_type,
     token_expires_at: values.expires_at,
     scopes: values.scopes,
-  };
+  } : {};
+  return providerReasoningOptions(values, accountOptions);
 }
 
-export function providerResourceToForm(item: ProviderResource) {
+export function providerResourceToForm(item: ProviderResource, providerOptions?: Record<string, string>) {
   const summary = item.credential_summary ?? {};
   return {
     provider_id: item.provider_id,
@@ -137,6 +139,7 @@ export function providerResourceToForm(item: ProviderResource) {
     environment: item.environment ?? "",
     status: item.status,
     healthy: String(item.healthy),
+    ...providerReasoningOverrideFormValues(item.options, providerOptions),
   };
 }
 

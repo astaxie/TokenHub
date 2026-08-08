@@ -217,7 +217,7 @@ func (s *Server) executeRoutedAnthropicMessages(
 	})
 }
 
-func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionRequest, error) {
+func anthropicToOpenAIChatRequest(req anthropicMessagesRequest, provider Provider) (ChatCompletionRequest, error) {
 	messages := make([]ChatMessage, 0, len(req.Messages)+1)
 	if system, exists := req.Raw["system"]; exists {
 		text, err := anthropicSystemText(system)
@@ -230,7 +230,7 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 	}
 	for _, rawMessage := range req.Messages {
 		message := rawMessage.(map[string]any)
-		converted, err := anthropicMessageToOpenAI(message)
+		converted, err := anthropicMessageToOpenAI(message, provider)
 		if err != nil {
 			return ChatCompletionRequest{}, err
 		}
@@ -252,17 +252,6 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 	if err != nil {
 		return ChatCompletionRequest{}, err
 	}
-	var reasoningEffort *string
-	if value, ok := req.Raw["effort"].(string); ok && strings.TrimSpace(value) != "" {
-		effort := strings.TrimSpace(value)
-		reasoningEffort = &effort
-	}
-	if outputConfig, ok := req.Raw["output_config"].(map[string]any); ok {
-		if value, ok := outputConfig["effort"].(string); ok && strings.TrimSpace(value) != "" {
-			effort := strings.TrimSpace(value)
-			reasoningEffort = &effort
-		}
-	}
 	chatReq := ChatCompletionRequest{
 		Model:             req.Model,
 		Messages:          messages,
@@ -273,7 +262,9 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 		Tools:             tools,
 		ToolChoice:        toolChoice,
 		ParallelToolCalls: parallelToolCalls,
-		ReasoningEffort:   reasoningEffort,
+	}
+	if err := applyAnthropicReasoningOptions(req, provider, &chatReq); err != nil {
+		return ChatCompletionRequest{}, err
 	}
 	if stop, ok := req.Raw["stop_sequences"].([]any); ok {
 		values := make([]string, 0, len(stop))
@@ -330,7 +321,7 @@ func anthropicSystemText(value any) (string, error) {
 	}
 }
 
-func anthropicMessageToOpenAI(message map[string]any) ([]ChatMessage, error) {
+func anthropicMessageToOpenAI(message map[string]any, provider Provider) ([]ChatMessage, error) {
 	role, _ := message["role"].(string)
 	if role == "system" {
 		content, err := anthropicSystemText(message["content"])
@@ -344,7 +335,7 @@ func anthropicMessageToOpenAI(message map[string]any) ([]ChatMessage, error) {
 		return nil, err
 	}
 	if role == "assistant" {
-		return anthropicAssistantMessageToOpenAI(blocks)
+		return anthropicAssistantMessageToOpenAI(blocks, provider)
 	}
 	return anthropicUserMessageToOpenAI(blocks)
 }
@@ -368,9 +359,10 @@ func anthropicContentBlocks(content any) ([]map[string]any, error) {
 	}
 }
 
-func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, error) {
+func anthropicAssistantMessageToOpenAI(blocks []map[string]any, provider Provider) ([]ChatMessage, error) {
 	contentBlocks := make([]map[string]any, 0, len(blocks))
 	toolCalls := make([]map[string]any, 0)
+	reasoning := ""
 	for _, block := range blocks {
 		blockType, _ := block["type"].(string)
 		switch blockType {
@@ -402,8 +394,14 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 					"arguments": string(arguments),
 				},
 			})
-		case "thinking", "redacted_thinking":
-			// OpenAI-compatible providers do not accept Anthropic thinking blocks.
+		case "thinking":
+			thinking, _ := block["thinking"].(string)
+			signature, _ := block["signature"].(string)
+			if providerPreservesReasoningContent(provider) && validGatewayReasoningSignature(provider, thinking, signature) {
+				reasoning += thinking
+			}
+		case "redacted_thinking":
+			// Redacted provider state cannot be reconstructed safely.
 		default:
 			return nil, NewHTTPError(
 				http.StatusBadRequest,
@@ -417,6 +415,7 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 		content = ""
 	}
 	message := ChatMessage{Role: "assistant", Content: content}
+	message.ReasoningContent = reasoning
 	if len(toolCalls) > 0 {
 		message.ToolCalls = toolCalls
 	}
@@ -632,7 +631,7 @@ func anthropicToolChoiceToOpenAI(value any) (any, *bool, error) {
 	return converted, parallel, nil
 }
 
-func openAIResponseToAnthropic(body map[string]any, model string, usage Usage) (map[string]any, error) {
+func openAIResponseToAnthropic(body map[string]any, model string, usage Usage, provider Provider) (map[string]any, error) {
 	choices, ok := anySlice(body["choices"])
 	if !ok || len(choices) == 0 {
 		return nil, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider response is missing choices")
@@ -646,6 +645,13 @@ func openAIResponseToAnthropic(body map[string]any, model string, usage Usage) (
 		return nil, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider choice is missing message")
 	}
 	content := make([]any, 0)
+	if reasoning, _ := message["reasoning_content"].(string); reasoning != "" {
+		content = append(content, map[string]any{
+			"type":      "thinking",
+			"thinking":  reasoning,
+			"signature": gatewayReasoningSignature(provider, reasoning),
+		})
+	}
 	if text := openAIMessageText(message["content"]); text != "" {
 		content = append(content, map[string]any{"type": "text", "text": text})
 	}

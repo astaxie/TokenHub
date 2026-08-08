@@ -795,6 +795,43 @@ func TestCompatibleAnthropicRoutesUsesHighestPriorityError(t *testing.T) {
 	}
 }
 
+func TestCompatibleAnthropicRoutesSkipsProviderRejectingReasoningEffort(t *testing.T) {
+	req := anthropicMessagesRequest{
+		Raw: map[string]any{
+			"model":         "claude-route-reasoning",
+			"max_tokens":    256,
+			"output_config": map[string]any{"effort": "xhigh"},
+			"messages":      []any{map[string]any{"role": "user", "content": "Plan the change."}},
+		},
+		Model:     "claude-route-reasoning",
+		Messages:  []any{map[string]any{"role": "user", "content": "Plan the change."}},
+		MaxTokens: 256,
+	}
+	routed := RoutedCall{Routes: []RouteSelection{
+		{
+			Route: ModelRoute{ID: "route_rejecting", Priority: 1},
+			Provider: Provider{ID: "prv_rejecting", Type: ProviderOpenAICompatible, Options: map[string]string{
+				reasoningEffortValuesOption:      "none,low,medium,high,max",
+				reasoningEffortUnsupportedOption: "reject",
+			}},
+		},
+		{
+			Route: ModelRoute{ID: "route_compatible", Priority: 2},
+			Provider: Provider{ID: "prv_compatible", Type: ProviderOpenAICompatible, Options: map[string]string{
+				reasoningEffortValuesOption: "none,low,medium,high,max,xhigh",
+			}},
+		},
+	}}
+
+	compatible, err := compatibleAnthropicRoutes(routed, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compatible.Routes) != 1 || compatible.Routes[0].Route.ID != "route_compatible" {
+		t.Fatalf("expected only the compatible route, got %#v", compatible.Routes)
+	}
+}
+
 func TestAnthropicMessagesRejectsUnsupportedServerToolOnOpenAIRoute(t *testing.T) {
 	handler, _, secret := newAnthropicGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
 	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{

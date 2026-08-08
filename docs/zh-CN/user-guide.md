@@ -175,6 +175,8 @@ curl --request POST \
 
 原生 Anthropic 路由保留 Anthropic 内容块与 beta Header。OpenAI 兼容路由转换文本、图片、客户端工具、工具结果、并行工具调用和流式事件。Anthropic 服务端工具无法转换到 OpenAI 兼容 Provider 时，接口返回 `400 unsupported_tool`。
 
+OpenAI 兼容路由可通过 Provider 和 Provider Resource 的 `options` 适配 Claude 推理参数。`reasoning_effort_map` 是类似 `{"minimal":"low","xhigh":"max"}` 的 JSON 对象；`reasoning_effort_values` 是逗号分隔的允许值；`reasoning_effort_unsupported` 可设为 `omit`（默认）、`reject`，或显式启用的 `passthrough`；`reasoning_budget_map` 按最大 Token 数及可选的 `*` 兜底值映射推理等级，例如 `{"2048":"low","8192":"medium","*":"max"}`。Provider Resource 配置覆盖 Provider 配置。TokenHub 将 `thinking.type=disabled` 转为 `none`；`adaptive` 在没有显式 effort 时使用上游默认值；`enabled` 根据 `budget_tokens` 映射。显式 `output_config.effort` 的优先级高于顶层 `effort` 和预算推导值。仅当上游支持在后续 assistant 消息中接收自身的 `reasoning_content` 时，才设置 `preserve_reasoning_content=true`。OpenAI 兼容上游返回的 `reasoning_content` 会按合法顺序转换为 Claude 的 `thinking` / `thinking_delta` 块，并附带 TokenHub 回放签名。
+
 路由到 OpenAI Codex Subscription 账号的模型也使用同一个 Messages 接口：TokenHub 将 Messages 直接转换为 Responses 协议，再把结果转换回 Anthropic 事件。因此 Claude Code 可以直接连接 TokenHub，不需要 CC-Switch 或其他本地协议代理。Codex 签发的推理签名会跨工具调用轮次传递，同一个 Claude Code 会话会保持绑定到同一个健康订阅账号。
 
 在 Codex 路由的 Messages 请求中，由于订阅上游不支持对应请求字段，`max_tokens`、`temperature`、`top_p`、`stop_sequences` 和 Anthropic 结构化输出格式无法被强制执行。

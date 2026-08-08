@@ -175,6 +175,8 @@ curl --request POST \
 
 Anthropic ネイティブルートでは Anthropic content block と beta header を保持します。OpenAI 互換ルートではテキスト、画像、クライアントツール、ツール結果、並列ツール呼び出し、ストリーミング event を変換します。OpenAI 互換 Provider で表現できない Anthropic サーバーツールには `400 unsupported_tool` を返します。
 
+OpenAI 互換ルートでは、Provider と Provider Resource の `options` で Claude の reasoning パラメーターを上流の語彙へ変換できます。`reasoning_effort_map` は `{"minimal":"low","xhigh":"max"}` のような JSON object、`reasoning_effort_values` はカンマ区切りの許可値、`reasoning_effort_unsupported` は `omit`（既定）、`reject`、または明示的に選択した `passthrough` のいずれかです。`reasoning_budget_map` は最大 token 数と任意の `*` fallback を effort 値へ割り当てます（例：`{"2048":"low","8192":"medium","*":"max"}`）。Provider Resource の設定が Provider の設定を上書きします。TokenHub は `thinking.type=disabled` を `none` に変換し、明示的な effort がない `adaptive` では上流の既定値を使い、`enabled` は `budget_tokens` から変換します。明示的な `output_config.effort` は top-level `effort` と budget 由来の値より優先されます。後続の assistant message で上流自身の `reasoning_content` を受け付ける場合に限り、`preserve_reasoning_content=true` を設定してください。OpenAI 互換上流の `reasoning_content` は、正しい順序の Claude `thinking` / `thinking_delta` block と TokenHub の replay signature に変換されます。
+
 OpenAI Codex Subscription アカウントへルーティングされるモデルも、同じ Messages エンドポイントを利用できます。TokenHub が Messages を Responses プロトコルへ直接変換し、結果を Anthropic event に戻すため、Claude Code は CC-Switch などのローカルプロトコルプロキシなしで TokenHub に直接接続できます。Codex が発行した reasoning signature はツール実行ターン間で引き継がれ、同じ Claude Code セッションは同一の正常なサブスクリプションアカウントに固定されます。
 
 Codex ルートの Messages リクエストでは、サブスクリプション上流に対応するフィールドがないため、`max_tokens`、`temperature`、`top_p`、`stop_sequences`、Anthropic の構造化出力フォーマットを強制できません。
