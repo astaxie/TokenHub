@@ -34,9 +34,17 @@ func (s *Server) streamNativeAnthropicMessages(
 func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (Usage, error) {
 	events := newSSEDecoder(body)
 	var usage Usage
+	sawEvent := false
+	sawMessageStop := false
 	for {
 		event, err := events.Next()
 		if err == io.EOF {
+			// A stream that delivered events but never reached message_stop was
+			// truncated: the client saw bytes, then the stream died. An empty
+			// body stays a confirmed empty success, which the handler commits.
+			if sawEvent && !sawMessageStop {
+				return usage, NewHTTPError(http.StatusBadGateway, "provider_stream_error", "Anthropic provider stream ended before message_stop")
+			}
 			return usage, nil
 		}
 		if err != nil {
@@ -78,12 +86,74 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 				output = rewriteSSEEventData(event.Raw, string(encoded))
 			}
 		}
+		if event.Event != "" || len(event.Data) > 0 {
+			sawEvent = true
+		}
+		if event.Event == "error" || (ok && payload["type"] == "error") {
+			// The upstream's terminal error frame is forwarded as-is — the client
+			// must see it — then the stream is reported failed. The marker tells
+			// the handler the terminal event already reached the client, so it
+			// must not append a second one.
+			if _, err := writer.Write(output); err != nil {
+				return usage, err
+			}
+			if flusher, ok := writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			errorType, message := "api_error", "Anthropic provider stream error"
+			if errorObj, ok := payload["error"].(map[string]any); ok {
+				if value, ok := errorObj["type"].(string); ok {
+					errorType = value
+				}
+				if value, ok := errorObj["message"].(string); ok {
+					message = value
+				}
+			}
+			return usage, &anthropicErrorFrameForwarded{err: NewHTTPError(anthropicErrorStatus(errorType), "provider_stream_error", message)}
+		}
+		if event.Event == "message_stop" || (ok && payload["type"] == "message_stop") {
+			sawMessageStop = true
+		}
 		if _, err := writer.Write(output); err != nil {
 			return usage, err
 		}
 		if flusher, ok := writer.(http.Flusher); ok {
 			flusher.Flush()
 		}
+	}
+}
+
+// anthropicErrorFrameForwarded marks a native Anthropic stream whose upstream
+// event: error frame was already forwarded to the client. The handler must
+// classify the stream as failed without appending a second terminal error
+// event.
+type anthropicErrorFrameForwarded struct {
+	err error
+}
+
+func (e *anthropicErrorFrameForwarded) Error() string { return e.err.Error() }
+
+func (e *anthropicErrorFrameForwarded) Unwrap() error { return e.err }
+
+// anthropicErrorStatus maps a native Anthropic error type to the HTTP status
+// the gateway reports for it. Unrecognized types are upstream failures, so
+// they surface as gateway errors rather than client errors.
+func anthropicErrorStatus(errorType string) int {
+	switch errorType {
+	case "rate_limit_error":
+		return http.StatusTooManyRequests
+	case "overloaded_error":
+		return http.StatusServiceUnavailable
+	case "authentication_error":
+		return http.StatusUnauthorized
+	case "permission_error":
+		return http.StatusForbidden
+	case "invalid_request_error", "request_too_large":
+		return http.StatusBadRequest
+	case "not_found_error":
+		return http.StatusNotFound
+	default:
+		return http.StatusBadGateway
 	}
 }
 
@@ -211,6 +281,28 @@ func (c *openAIAnthropicStreamConverter) consumeEvent(frame serverSentEvent) err
 	}
 	if parsed := usageFromMap(event); parsed.TotalTokens > 0 {
 		c.usage = parsed
+	}
+	if raw, ok := event["error"]; ok {
+		// The upstream signaled a terminal error inside the 200 stream. Emit an
+		// Anthropic error event so the client sees the failure, then fail the
+		// stream through the forwarded marker so the handler does not append a
+		// second terminal event.
+		errorType, message := "api_error", "OpenAI provider stream error"
+		if errorObj, ok := raw.(map[string]any); ok {
+			if value, ok := errorObj["type"].(string); ok && value != "" {
+				errorType = value
+			}
+			if value, ok := errorObj["message"].(string); ok && value != "" {
+				message = value
+			}
+		}
+		if err := c.emit("error", map[string]any{
+			"type":  "error",
+			"error": map[string]any{"type": errorType, "message": message},
+		}); err != nil {
+			return err
+		}
+		return &anthropicErrorFrameForwarded{err: NewHTTPError(openAIErrorStatus(errorType), "provider_stream_error", message)}
 	}
 	choices, ok := anySlice(event["choices"])
 	if !ok || len(choices) == 0 {
