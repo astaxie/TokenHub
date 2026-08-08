@@ -98,6 +98,39 @@ func TestConfigParsesImageExecutionSettings(t *testing.T) {
 	}
 }
 
+func TestConfigParsesRequestPayloadRetentionDays(t *testing.T) {
+	t.Setenv("TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS", "")
+	if got := ConfigFromEnv().RequestPayloadRetentionDays; got != 0 {
+		t.Fatalf("default retention days = %d, want 0", got)
+	}
+
+	t.Setenv("TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS", "0")
+	if got := ConfigFromEnv().RequestPayloadRetentionDays; got != 0 {
+		t.Fatalf("disabled retention days = %d, want 0", got)
+	}
+
+	t.Setenv("TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS", "7")
+	config := ConfigFromEnv()
+	if config.RequestPayloadRetentionDays != 7 {
+		t.Fatalf("retention days = %d, want 7", config.RequestPayloadRetentionDays)
+	}
+	if err := config.ValidateForStartup(); err != nil {
+		t.Fatalf("valid retention configuration rejected: %v", err)
+	}
+}
+
+func TestConfigRejectsInvalidRequestPayloadRetentionDays(t *testing.T) {
+	for _, value := range []string{"-1", "seven"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS", value)
+			err := ConfigFromEnv().ValidateForStartup()
+			if err == nil || !strings.Contains(err.Error(), "TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS") {
+				t.Fatalf("invalid retention value %q returned %v", value, err)
+			}
+		})
+	}
+}
+
 func TestProductionConfigRejectsPlaceholderCredentials(t *testing.T) {
 	config := Config{
 		Environment:            "prod",

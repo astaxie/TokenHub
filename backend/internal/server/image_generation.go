@@ -470,6 +470,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// drain the image queue is bad, failing to drain it and silently discarding
 	// every buffered trace is worse.
 	defer s.shutdownTracing()
+	if s.payloadCleanup != nil {
+		if err := s.payloadCleanup.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
 	if s.billing != nil {
 		if err := s.billing.Shutdown(ctx); err != nil {
 			return err

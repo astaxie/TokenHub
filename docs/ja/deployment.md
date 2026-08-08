@@ -374,6 +374,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停止時に処理中リクエストを待機する最大秒数 |
+| `TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS` | `0` | リクエストとレスポンス本文の保持日数。`0` で自動削除を無効化 |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Docker がバックエンドを強制停止するまでの Compose 猶予時間 |
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Chat Completions、Anthropic Messages、Responses で同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 段階的ロールアウト用のモデル許可リスト（カンマ区切り）。空の場合は全モデルが対象 |
@@ -395,6 +396,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 ## データとバックアップ
 
 SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、リクエストログ、利用量、アラート、承認、セッション、バックアップ記録の永続化元です。
+
+`TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS` が正の整数の場合、TokenHub は起動時に期限切れのリクエストとレスポンス本文を削除し、その後 24 時間ごとに削除します。リクエストメタデータ、利用量、ルート試行、請求データは保持されます。SQLite は解放されたページを再利用しますが、データベースファイルを縮小するにはメンテナンス時間中に運用者が `VACUUM` を実行する必要があります。
 
 ワンコマンド compose デプロイでは次を使用します。
 

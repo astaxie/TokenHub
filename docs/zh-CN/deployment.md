@@ -374,6 +374,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | 集群并发租约的过期时间及续租周期基准 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | 集群协调锁的过期时间及续租周期基准 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停机时等待在途请求完成的最长秒数 |
+| `TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS` | `0` | 请求与响应正文的保留天数；`0` 表示关闭自动清理 |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Docker 强制停止后端前的 Compose 宽限时间 |
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | 对 Chat Completions、Anthropic Messages 和 Responses，将同一会话固定到同一个上游账号，使上游 prompt cache 持续命中。默认关闭，因为它会改变路由行为 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 逗号分隔的模型灰度名单；留空表示对全部模型生效 |
@@ -395,6 +396,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 ## 数据和备份
 
 SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、告警、审批、会话和备份记录的持久化来源。
+
+当 `TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS` 为正整数时，TokenHub 会在启动时清理一次过期的请求与响应正文，之后每 24 小时清理一次。请求元数据、用量、路由尝试和计费数据不会被删除。SQLite 会复用释放的页，但数据库文件只有在运维窗口执行 `VACUUM` 后才会缩小。
 
 在一键 compose 部署中：
 

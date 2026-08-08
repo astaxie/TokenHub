@@ -163,6 +163,7 @@ type Store interface {
 	RecordRouteAttempts(requestID string, attempts []RouteAttempt)
 	RecordRejectedRequest(project Project, key APIKey, modelName string, stream bool, statusCode int, errorCode string, clientIP string, userAgent string) string
 	RecordRequestPayload(requestID string, requestBody string, requestTruncated bool, responseBody string, responseTruncated bool)
+	DeleteRequestPayloadLogsBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
 	CreateImageJob(job ImageJob, prompt string) (ImageJob, error)
 	ClaimImageJob(id string) (ImageJob, bool, error)
 	GetImageJob(id string) (ImageJob, bool)
@@ -229,6 +230,7 @@ type Store interface {
 	GetAdapterSessionBinding(ctx context.Context, adapterType string, providerID string, affinityKeyHash string) (AdapterSessionBinding, bool, error)
 	CommitAdapterSessionBinding(ctx context.Context, binding AdapterSessionBinding, expectedGeneration int64) (AdapterSessionBinding, bool, error)
 	RunClusterOperation(ctx context.Context, name string, fn func(context.Context) error) error
+	RunClusterTask(ctx context.Context, name string, revision int64, fn func(context.Context) error) error
 	SaveProviderAccountOAuthSession(session providerAccountOAuthSession) error
 	GetProviderAccountOAuthSessionByState(state string) (providerAccountOAuthSession, bool, error)
 	ConsumeProviderAccountOAuthSession(id string, state string) (providerAccountOAuthSession, bool, error)
