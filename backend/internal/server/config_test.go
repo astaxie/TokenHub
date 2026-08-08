@@ -98,6 +98,22 @@ func TestConfigParsesImageExecutionSettings(t *testing.T) {
 	}
 }
 
+func TestConfigParsesJSONRequestBodyLimit(t *testing.T) {
+	t.Setenv("TOKENHUB_MAX_JSON_REQUEST_BYTES", "33554432")
+	t.Setenv("TOKENHUB_MAX_IMAGE_JSON_REQUEST_BYTES", "67108864")
+	config := ConfigFromEnv()
+	if config.MaxJSONRequestBytes != 33554432 || config.MaxImageJSONRequestBytes != 67108864 {
+		t.Fatalf("expected configured JSON request limits, got %+v", config)
+	}
+}
+
+func TestConfigRejectsInvalidJSONRequestBodyLimit(t *testing.T) {
+	config := Config{Environment: "dev", MaxImageJSONRequestBytes: maximumJSONRequestBytes + 1}
+	if err := config.ValidateForStartup(); err == nil || !strings.Contains(err.Error(), "TOKENHUB_MAX_IMAGE_JSON_REQUEST_BYTES") {
+		t.Fatalf("expected JSON request limit validation error, got %v", err)
+	}
+}
+
 func TestProductionConfigRejectsPlaceholderCredentials(t *testing.T) {
 	config := Config{
 		Environment:            "prod",

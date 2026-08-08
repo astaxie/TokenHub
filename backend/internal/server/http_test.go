@@ -125,6 +125,44 @@ func TestGatewayRejectsTrailingJSONValue(t *testing.T) {
 	}
 }
 
+func TestGatewayUsesConfiguredJSONRequestLimit(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := NewWithConfig(store, Config{AdminToken: "dev_admin_token", MaxJSONRequestBytes: 96}).Handler()
+	body := `{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"` + strings.Repeat("x", 128) + `"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer thk_demo_local")
+	resp := httptest.NewRecorder()
+	app.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413 for oversized gateway request, got %d: %s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode gateway error: %v", err)
+	}
+	errorBody, _ := payload["error"].(map[string]any)
+	if errorBody["code"] != "request_too_large" {
+		t.Fatalf("expected request_too_large, got %#v", payload)
+	}
+}
+
+func TestImageJSONRequestLimitIsSeparateFromGatewayLimit(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{MaxJSONRequestBytes: 96, MaxImageJSONRequestBytes: 512})
+	body := `{"prompt":"` + strings.Repeat("x", 128) + `"}`
+	var payload map[string]any
+	if err := server.decodeGatewayJSON(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)), &payload); err == nil {
+		t.Fatal("expected gateway request to exceed its configured limit")
+	}
+	if err := server.decodeImageJSON(httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body)), &payload); err != nil {
+		t.Fatalf("expected image request to use its separate limit: %v", err)
+	}
+}
+
 func TestGatewayModelsExposeJieKouCompatibleFields(t *testing.T) {
 	app := newTestServer()
 

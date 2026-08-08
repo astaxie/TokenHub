@@ -27,8 +27,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ChatCompletionRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeGatewayJSON(r, &req); err != nil {
+		writeError(w, r, gatewayJSONDecodeError(err))
 		return
 	}
 	if req.Model == "" {
@@ -141,8 +141,8 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ResponsesRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeGatewayJSON(r, &req); err != nil {
+		writeError(w, r, gatewayJSONDecodeError(err))
 		return
 	}
 	if req.Model == "" {
@@ -232,8 +232,8 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var request map[string]json.RawMessage
-	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeGatewayJSON(r, &request); err != nil {
+		writeError(w, r, gatewayJSONDecodeError(err))
 		return
 	}
 	var model string
@@ -287,8 +287,8 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req EmbeddingsRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeGatewayJSON(r, &req); err != nil {
+		writeError(w, r, gatewayJSONDecodeError(err))
 		return
 	}
 	if req.Model == "" {

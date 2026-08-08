@@ -103,6 +103,8 @@ type Config struct {
 	ImageQueueCapacity          int
 	ImageJobTimeoutSeconds      int
 	ImageCapabilityRetrySecs    int
+	MaxJSONRequestBytes         int
+	MaxImageJSONRequestBytes    int
 }
 
 func ConfigFromEnv() Config {
@@ -155,6 +157,8 @@ func ConfigFromEnv() Config {
 		ImageQueueCapacity:          getenvInt("TOKENHUB_IMAGE_QUEUE_CAPACITY", 64),
 		ImageJobTimeoutSeconds:      getenvInt("TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS", 300),
 		ImageCapabilityRetrySecs:    getenvInt("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", 86400),
+		MaxJSONRequestBytes:         getenvSetInt("TOKENHUB_MAX_JSON_REQUEST_BYTES", defaultMaxJSONRequestBytes),
+		MaxImageJSONRequestBytes:    getenvSetInt("TOKENHUB_MAX_IMAGE_JSON_REQUEST_BYTES", defaultMaxImageJSONRequestBytes),
 	}
 }
 
@@ -166,6 +170,17 @@ func (c Config) ValidateForStartup() error {
 	// wrong fails as silence, which is the one failure mode an operator cannot see.
 	if err := c.validateTracing(); err != nil {
 		return err
+	}
+	for _, limit := range []struct {
+		name  string
+		value int
+	}{
+		{"TOKENHUB_MAX_JSON_REQUEST_BYTES", c.MaxJSONRequestBytes},
+		{"TOKENHUB_MAX_IMAGE_JSON_REQUEST_BYTES", c.MaxImageJSONRequestBytes},
+	} {
+		if limit.value != 0 && (limit.value < 1 || limit.value > maximumJSONRequestBytes) {
+			return fmt.Errorf("invalid %s: must be between 1 and %d bytes", limit.name, maximumJSONRequestBytes)
+		}
 	}
 	deploymentType := normalizeDeploymentType(c.DeploymentType, c.BuildType)
 	if deploymentType == nativeDeploymentType ||

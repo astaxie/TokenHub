@@ -42,6 +42,12 @@ func New(store Store) *Server {
 	return NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
 }
 func NewWithConfig(store Store, config Config) *Server {
+	if config.MaxJSONRequestBytes <= 0 {
+		config.MaxJSONRequestBytes = defaultMaxJSONRequestBytes
+	}
+	if config.MaxImageJSONRequestBytes <= 0 {
+		config.MaxImageJSONRequestBytes = defaultMaxImageJSONRequestBytes
+	}
 	if strings.TrimSpace(config.ImageStorageDir) == "" {
 		config.ImageStorageDir = defaultImageStorageDir()
 	}

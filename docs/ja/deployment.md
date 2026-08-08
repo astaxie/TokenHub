@@ -371,6 +371,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | span 化を待つ完了イベント数。満杯時はリクエストを遅らせずトレースを破棄 |
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 非ストリーミングの上流リクエスト 1 件あたりの全体タイムアウト |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | ストリーミング呼び出しに全体タイムアウトはありません。この値はレスポンスヘッダーの待機時間と、その後ストリームが無音でいられる時間を制限します。1 バイト受信するたびに計測し直します |
+| `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `4194304` | クライアントゲートウェイエンドポイントで受け付ける JSON 本文の上限。インライン画像やマルチモーダル入力向けに引き上げられます。有効範囲は 1 バイトから 128 MiB で、超過時は `413 request_too_large` を返します |
+| `TOKENHUB_MAX_IMAGE_JSON_REQUEST_BYTES` | `33554432` | `/v1/images/generations` の JSON 本文上限。一般ゲートウェイ上限とは独立しており、インラインのソース画像に使用します。有効範囲は 1 バイトから 128 MiB で、超過時は `413 request_too_large` を返します |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停止時に処理中リクエストを待機する最大秒数 |
