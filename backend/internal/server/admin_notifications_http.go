@@ -50,8 +50,8 @@ func (s *Server) handleAdminAlertItem(w http.ResponseWriter, r *http.Request) {
 		ChannelID string `json:"channel_id"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 	}
@@ -105,8 +105,8 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		Reason string `json:"reason"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 	}

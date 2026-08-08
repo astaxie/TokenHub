@@ -196,8 +196,8 @@ func (s *Server) handleAdminOpenAIAccountOAuthGenerateAuthURL(w http.ResponseWri
 		return
 	}
 	var req providerAccountOAuthGenerateRequest
-	if err := decodeJSON(r, &req); err != nil && err != io.EOF {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSONOptional(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	redirectURI := strings.TrimSpace(req.RedirectURI)
@@ -301,8 +301,8 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 		return
 	}
 	var req providerAccountOAuthExchangeRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if strings.TrimSpace(req.State) == "" {

@@ -371,6 +371,9 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | 等待转换成 span 的完成事件数；队列满时丢弃链路而不是拖慢请求 |
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 单个非流式上游请求的整体超时 |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | 流式请求没有整体超时；该值限制等待响应头的时长，以及流开始后允许的静默时长。每收到一个字节即重新计时 |
+| `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608`（8 MiB） | `/v1` 接口的 JSON 请求体上限。可填原始字节数或二进制单位（`8m`、`8mib`、`512k`）。超过 512 MiB 会被截断到上限 |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | 多模态对话接口（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）的更高请求体上限。请将反向代理的 `client_max_body_size` 至少设置为该值 |
+| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 仅内置的多实例 nginx 负载均衡器读取该值。它使用 nginx 尺寸语法（`32m`、`512k`），不是后端的字节格式，且应不小于 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | 集群并发租约的过期时间及续租周期基准 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | 集群协调锁的过期时间及续租周期基准 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停机时等待在途请求完成的最长秒数 |

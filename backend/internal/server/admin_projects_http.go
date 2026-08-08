@@ -83,8 +83,8 @@ func (s *Server) handleAdminProjects(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"data": s.filterProjectsForUser(user, s.store.ListProjects())})
 	case http.MethodPost:
 		var req Project
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if normalizeAdminRole(user.Role) == "team_leader" {
@@ -147,8 +147,8 @@ func (s *Server) handleAdminProjectNested(w http.ResponseWriter, r *http.Request
 		case http.MethodPatch:
 			beforeProject, _ := s.store.GetProject(projectID)
 			var req Project
-			if err := decodeJSON(r, &req); err != nil {
-				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			if err := s.decodeJSON(w, r, &req); err != nil {
+				writeError(w, r, err)
 				return
 			}
 			if normalizeAdminRole(user.Role) == "team_leader" {
@@ -261,8 +261,8 @@ func (s *Server) handleAdminProjectTeams(w http.ResponseWriter, r *http.Request,
 			TeamID string `json:"team_id"`
 			Role   string `json:"role"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		req.TeamID = strings.TrimSpace(req.TeamID)
@@ -292,8 +292,8 @@ func (s *Server) handleAdminProjectTeams(w http.ResponseWriter, r *http.Request,
 		var req struct {
 			Role string `json:"role"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		req.Role = normalizeProjectAccessRole(req.Role)
@@ -374,8 +374,8 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			Status   string   `json:"status"`
 			Password string   `json:"password"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if normalizeAdminRole(actor.Role) == "team_leader" {
@@ -434,8 +434,8 @@ func (s *Server) handleAdminUsersImport(w http.ResponseWriter, r *http.Request) 
 		Content string                `json:"content"`
 		Users   []adminUserImportItem `json:"users"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	users := req.Users
@@ -722,8 +722,8 @@ func (s *Server) handleAdminUserItem(w http.ResponseWriter, r *http.Request) {
 			Status   string   `json:"status"`
 			Password string   `json:"password"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if normalizeAdminRole(actor.Role) == "team_leader" {
@@ -857,8 +857,8 @@ func (s *Server) handleAdminAPIKeyCreate(w http.ResponseWriter, r *http.Request,
 		TokenLimitTPM   *int64      `json:"token_limit_tpm"`
 		ExpiresAt       *time.Time  `json:"expires_at"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	ownerUserID, err := s.resolveAPIKeyOwner(user, req.OwnerUserID)
@@ -953,8 +953,8 @@ func (s *Server) handleAdminAPIKeyItem(w http.ResponseWriter, r *http.Request) {
 			GraceUntil *time.Time `json:"grace_until"`
 		}
 		if r.Body != nil && r.ContentLength != 0 {
-			if err := decodeJSON(r, &req); err != nil {
-				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			if err := s.decodeJSON(w, r, &req); err != nil {
+				writeError(w, r, err)
 				return
 			}
 		}
@@ -1000,8 +1000,8 @@ func (s *Server) handleAdminAPIKeyItem(w http.ResponseWriter, r *http.Request) {
 			Status          string             `json:"status"`
 			ExpiresAt       *time.Time         `json:"expires_at"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		patch := APIKey{

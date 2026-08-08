@@ -67,12 +67,12 @@ func (s *Server) handleAdminProviderModelImport(w http.ResponseWriter, r *http.R
 		return
 	}
 	var req ProviderModelImportRequest
-	if err := decodeJSON(r, &req); err != nil {
+	if err := s.decodeJSON(w, r, &req); err != nil {
 		if costErr := providerModelCostDecodeError(err); costErr != nil {
 			writeError(w, r, costErr)
 			return
 		}
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		writeError(w, r, err)
 		return
 	}
 	result, err := s.importProviderModels(req)
@@ -97,12 +97,12 @@ func (s *Server) handleAdminProviderModelItem(w http.ResponseWriter, r *http.Req
 	switch r.Method {
 	case http.MethodPatch:
 		var patch providerModelPatchRequest
-		if err := decodeJSON(r, &patch); err != nil {
+		if err := s.decodeJSON(w, r, &patch); err != nil {
 			if costErr := providerModelCostDecodeError(err); costErr != nil {
 				writeError(w, r, costErr)
 				return
 			}
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+			writeError(w, r, err)
 			return
 		}
 		var current ProviderModel

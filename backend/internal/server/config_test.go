@@ -185,6 +185,76 @@ func TestBlankEnvironmentIsRejected(t *testing.T) {
 	}
 }
 
+func TestGetenvBytes(t *testing.T) {
+	const fallback int64 = 8 << 20
+	cases := []struct {
+		name string
+		set  bool
+		val  string
+		want int64
+	}{
+		{"unset", false, "", fallback},
+		{"empty", true, "", fallback},
+		{"raw", true, "1048576", 1 << 20},
+		{"kib", true, "16k", 16 << 10},
+		{"mb", true, "32mb", 32 << 20},
+		{"mib_caps", true, "8MiB", 8 << 20},
+		{"gib_clamped", true, "1g", maxConfigurableRequestBytes},
+		{"bytes_suffix", true, "2048b", 2048},
+		{"garbage", true, "abc", fallback},
+		{"zero", true, "0", fallback},
+		{"negative", true, "-5", fallback},
+		{"above_ceiling", true, "9999g", maxConfigurableRequestBytes},
+		// Representable in int64 (~5.4e18 < math.MaxInt64) but above the ceiling:
+		// must clamp to the ceiling, not fall back. Regression for the old
+		// (1<<62)/multiplier overflow guard that wrongly rejected it.
+		{"representable_above_ceiling", true, "5000000000g", maxConfigurableRequestBytes},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.set {
+				t.Setenv("TOKENHUB_TEST_BYTES", tc.val)
+			} else {
+				t.Setenv("TOKENHUB_TEST_BYTES", "")
+			}
+			if got := getenvBytes("TOKENHUB_TEST_BYTES", fallback); got != tc.want {
+				t.Fatalf("getenvBytes(%q)=%d, want %d", tc.val, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int64
+		ok   bool
+	}{
+		{"1048576", 1 << 20, true},
+		{"16k", 16 << 10, true},
+		{"512m", 512 << 20, true},
+		{"1g", 1 << 30, true},
+		{"2048b", 2048, true},
+		{"8MiB", 8 << 20, true},
+		{"", 0, false},
+		{"abc", 0, false},
+		{"99999999999g", 0, false},              // overflow beyond int64
+		{"5000000000g", 5000000000 << 30, true}, // representable above ceiling; clamp happens in getenvBytes
+		{"8kk", 0, false},                       // malformed suffix
+		{"8ib", 0, false},                       // malformed suffix
+		{"8big", 0, false},                      // malformed suffix
+		{"8mbb", 0, false},                      // malformed suffix
+		{"k", 0, false},                         // suffix without digits
+		{"-5", 0, false},                        // negative
+	}
+	for _, tc := range cases {
+		got, ok := parseByteSize(tc.in)
+		if ok != tc.ok || (ok && got != tc.want) {
+			t.Fatalf("parseByteSize(%q)=(%d,%v), want (%d,%v)", tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
 func withWorkingDir(t *testing.T, dir string) {
 	t.Helper()
 	previous, err := os.Getwd()

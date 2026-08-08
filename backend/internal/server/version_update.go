@@ -701,8 +701,11 @@ func (s *Server) handleAdminSystemRollback(w http.ResponseWriter, r *http.Reques
 	var request struct {
 		Version string `json:"version"`
 	}
-	if err := decodeJSON(r, &request); err != nil {
+	if err := s.decodeJSON(w, r, &request); err != nil {
 		requestErr := NewHTTPError(http.StatusBadRequest, "invalid_request", "A rollback version is required")
+		if isPayloadTooLarge(err) {
+			requestErr = AsHTTPError(err)
+		}
 		s.recordSystemVersionAudit(r, actor, "rollback", "", "failed", requestErr.Message)
 		writeError(w, r, requestErr)
 		return

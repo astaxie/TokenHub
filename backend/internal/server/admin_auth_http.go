@@ -25,8 +25,8 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		Identity string `json:"identity"`
 		Password string `json:"password"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if strings.TrimSpace(req.Identity) == "" || req.Password == "" {
@@ -54,8 +54,8 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 		Token    string `json:"token"`
 		Password string `json:"password"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if strings.TrimSpace(req.Token) == "" || strings.TrimSpace(req.Password) == "" {

@@ -31,7 +31,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
-	req, err := decodeAnthropicMessagesRequest(r, true)
+	req, err := s.decodeAnthropicMessagesRequest(w, r, true)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
@@ -68,7 +68,7 @@ func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Reque
 		writeAnthropicError(w, r, err)
 		return
 	}
-	req, err := decodeAnthropicMessagesRequest(r, false)
+	req, err := s.decodeAnthropicMessagesRequest(w, r, false)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
@@ -82,10 +82,10 @@ func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func decodeAnthropicMessagesRequest(r *http.Request, requireMaxTokens bool) (anthropicMessagesRequest, error) {
+func (s *Server) decodeAnthropicMessagesRequest(w http.ResponseWriter, r *http.Request, requireMaxTokens bool) (anthropicMessagesRequest, error) {
 	var raw map[string]any
-	if err := decodeJSON(r, &raw); err != nil {
-		return anthropicMessagesRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error())
+	if err := s.decodeJSONLimit(w, r, &raw, s.config.MaxMultimodalRequestBytes); err != nil {
+		return anthropicMessagesRequest{}, err
 	}
 	model, _ := raw["model"].(string)
 	model = strings.TrimSpace(model)
@@ -990,6 +990,8 @@ func anthropicErrorType(status int) string {
 		return "authentication_error"
 	case http.StatusForbidden:
 		return "permission_error"
+	case http.StatusRequestEntityTooLarge:
+		return "request_too_large"
 	case http.StatusTooManyRequests:
 		return "rate_limit_error"
 	case http.StatusServiceUnavailable:

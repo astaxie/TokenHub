@@ -57,6 +57,12 @@ func NewWithConfig(store Store, config Config) *Server {
 	if config.ImageCapabilityRetrySecs <= 0 {
 		config.ImageCapabilityRetrySecs = 86400
 	}
+	if config.MaxJSONRequestBytes <= 0 {
+		config.MaxJSONRequestBytes = defaultMaxJSONRequestBytes
+	}
+	if config.MaxMultimodalRequestBytes <= 0 {
+		config.MaxMultimodalRequestBytes = defaultMaxMultimodalRequestBytes
+	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
 	client, streamClient, streamIdleTimeout := newUpstreamClients(config)
 	openai := OpenAICompatibleAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout}

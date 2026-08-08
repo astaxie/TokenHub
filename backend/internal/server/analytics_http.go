@@ -65,8 +65,8 @@ func (s *Server) handleAdminAnalyticsCredentials(w http.ResponseWriter, r *http.
 			ProjectID string     `json:"project_id"`
 			ExpiresAt *time.Time `json:"expires_at"`
 		}
-		if err := decodeJSON(r, &request); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &request); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		credential, token, err := s.store.CreateAnalyticsCredential(AnalyticsCredential{

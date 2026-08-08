@@ -491,7 +491,7 @@ func TestAnthropicMessagesRejectsSystemRoleWithoutBeta(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", body)
 	req.Header.Set("content-type", "application/json")
 
-	_, err := decodeAnthropicMessagesRequest(req, true)
+	_, err := New(NewMemoryStore()).decodeAnthropicMessagesRequest(httptest.NewRecorder(), req, true)
 	if err == nil {
 		t.Fatal("expected system role without beta to be rejected")
 	}

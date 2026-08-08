@@ -27,8 +27,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ChatCompletionRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if req.Model == "" {
@@ -141,8 +141,8 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ResponsesRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if req.Model == "" {
@@ -232,8 +232,8 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var request map[string]json.RawMessage
-	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &request, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	var model string
@@ -287,8 +287,8 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req EmbeddingsRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if req.Model == "" {
@@ -497,8 +497,8 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req ChatCompletionRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	req.Model = strings.TrimSpace(req.Model)

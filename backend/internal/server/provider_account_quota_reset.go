@@ -106,9 +106,9 @@ func (s *Server) handleAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *ht
 		return
 	}
 	var req openAIAccountQuotaResetRequest
-	if err := decodeJSON(r, &req); err != nil {
-		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, "invalid_request")
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, AsHTTPError(err).Code)
+		writeError(w, r, err)
 		return
 	}
 	if err := validateOpenAIAccountQuotaResetRequest(req, r.Header.Get("Idempotency-Key")); err != nil {

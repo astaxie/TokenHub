@@ -76,8 +76,8 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var request imageGenerationRequest
-	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	originator := strings.ToLower(strings.TrimSpace(r.Header.Get("originator")))

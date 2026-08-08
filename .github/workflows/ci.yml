@@ -177,10 +177,31 @@ jobs:
           deploy/container/tokenhub-entrypoint_test.sh
 
       - name: Render Compose configurations
+        env:
+          TOKENHUB_MAX_JSON_REQUEST_BYTES: "1234567"
+          TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES: "4567890"
         run: |
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config >/dev/null
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.postgres.yml config >/dev/null
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config >/dev/null
+          set -euo pipefail
+
+          render_and_assert_limits() {
+            local compose_file="$1"
+            local rendered
+            rendered="$(docker compose --env-file deploy/.env.example -f "$compose_file" config)"
+            grep -Fq 'TOKENHUB_MAX_JSON_REQUEST_BYTES: "1234567"' <<<"$rendered"
+            grep -Fq 'TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES: "4567890"' <<<"$rendered"
+          }
+
+          render_and_assert_limits deploy/docker-compose.yml
+          render_and_assert_limits deploy/docker-compose.postgres.yml
+          render_and_assert_limits deploy/docker-compose.remote-postgres.yml
+
+          remote_rendered="$(docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config)"
+          grep -Fq 'target: /etc/nginx/templates/default.conf.template' <<<"$remote_rendered"
+          # The load balancer's client_max_body_size uses an nginx-format variable
+          # (default 32m), kept separate from the backend's byte-format limits so a
+          # value like 32mb never renders as invalid nginx syntax.
+          grep -Fq 'TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE: 32m' <<<"$remote_rendered"
+
           docker compose --env-file deploy/.env.example \
             -f deploy/docker-compose.yml \
             -f deploy/docker-compose.model-catalog.yml \

@@ -225,8 +225,8 @@ func (s *Server) handleAdminPlaygroundChatStream(w http.ResponseWriter, r *http.
 		return
 	}
 	var req ChatCompletionRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if err := validatePlaygroundRequest(&req); err != nil {
