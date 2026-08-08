@@ -23,6 +23,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/v1/images/edits", s.handleImageEdits)
 	s.mux.HandleFunc("/v1/image-jobs/", s.handleImageJob)
 	s.mux.HandleFunc("/v1/image-assets/", s.handleImageAsset)
+	s.registerGatewayRoutes()
 	s.mux.HandleFunc("/api/v1/analytics/token-costs", s.handleTokenCostAnalytics)
 
 	s.mux.HandleFunc("/api/admin/auth/login", s.handleAdminLogin)

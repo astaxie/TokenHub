@@ -39,7 +39,7 @@ type Server struct {
 }
 
 func New(store Store) *Server {
-	return NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+	return NewWithConfig(store, Config{AdminToken: "dev_admin_token", IntegrationToken: "dev_integration_token"})
 }
 func NewWithConfig(store Store, config Config) *Server {
 	if strings.TrimSpace(config.ImageStorageDir) == "" {

@@ -18,6 +18,7 @@ type Config struct {
 	ReleaseRepository        string
 	InstallRoot              string
 	AdminToken               string
+	IntegrationToken         string
 	BootstrapAdminPassword   string
 	PublicBaseURL            string
 	DatabaseURL              string
@@ -115,6 +116,7 @@ func ConfigFromEnv() Config {
 		ReleaseRepository:                getenv("TOKENHUB_RELEASE_REPOSITORY", defaultReleaseRepository),
 		InstallRoot:                      getenv("TOKENHUB_INSTALL_ROOT", defaultNativeInstallRoot),
 		AdminToken:                       getenv("TOKENHUB_ADMIN_TOKEN", "dev_admin_token"),
+		IntegrationToken:                 getenv("TOKENHUB_INTEGRATION_TOKEN", "dev_integration_token"),
 		BootstrapAdminPassword:           getenv("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "admin123456"),
 		PublicBaseURL:                    getenv("TOKENHUB_PUBLIC_BASE_URL", ""),
 		DatabaseURL:                      resolveDatabaseURL(),
@@ -183,9 +185,12 @@ func (c Config) ValidateForStartup() error {
 	case "dev", "development", "local", "test":
 		return nil
 	}
-	invalid := make([]string, 0, 3)
+	invalid := make([]string, 0, 4)
 	if reason := weakProductionSecretReason(c.AdminToken, 32, "dev_admin_token", "change-me-tokenhub-admin-token"); reason != "" {
 		invalid = append(invalid, "TOKENHUB_ADMIN_TOKEN "+reason)
+	}
+	if reason := weakProductionSecretReason(c.IntegrationToken, 32, "dev_integration_token", "change-me-tokenhub-integration-token"); reason != "" {
+		invalid = append(invalid, "TOKENHUB_INTEGRATION_TOKEN "+reason)
 	}
 	if reason := weakProductionSecretReason(c.SecretKey, 32, "dev_tokenhub_secret_key", "change-me-tokenhub-secret-key"); reason != "" {
 		invalid = append(invalid, "TOKENHUB_SECRET_KEY "+reason)

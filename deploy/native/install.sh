@@ -561,6 +561,7 @@ write_initial_config() {
   local public_url_host
   local database_url
   local admin_token
+  local integration_token
   local secret_key
   resolve_public_host
   public_host="$RESOLVED_PUBLIC_HOST"
@@ -575,6 +576,7 @@ write_initial_config() {
   allowed_origins="${TOKENHUB_CORS_ALLOWED_ORIGINS:-$frontend_url}"
   database_url="$(initial_database_url)"
   admin_token="$(random_hex 32)"
+  integration_token="$(random_hex 32)"
   secret_key="$(random_hex 32)"
   GENERATED_ADMIN_PASSWORD="$(random_hex 12)"
 
@@ -587,6 +589,7 @@ TOKENHUB_PUBLIC_BASE_URL=${public_base_url}
 TOKENHUB_RELEASE_REPOSITORY=${GITHUB_REPOSITORY}
 TOKENHUB_CORS_ALLOWED_ORIGINS=${allowed_origins}
 TOKENHUB_ADMIN_TOKEN=${admin_token}
+TOKENHUB_INTEGRATION_TOKEN=${integration_token}
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=${GENERATED_ADMIN_PASSWORD}
 TOKENHUB_SECRET_KEY=${secret_key}
 TOKENHUB_DATABASE_URL=${database_url}
@@ -605,6 +608,17 @@ EOF
   install -m 0600 -o "$config_owner" -g "$SERVICE_GROUP" /dev/null \
     "$CONFIG_DIR/.initial-admin-password-pending"
   info "Created configuration at $env_file"
+}
+
+ensure_integration_token_config() {
+  local env_file="$CONFIG_DIR/tokenhub.env"
+  local configured
+  configured="$(read_config_value "$env_file" TOKENHUB_INTEGRATION_TOKEN)"
+  if [ -n "$configured" ]; then
+    return
+  fi
+  printf '\nTOKENHUB_INTEGRATION_TOKEN=%s\n' "$(random_hex 32)" >>"$env_file"
+  info "Added a dedicated integration token to $env_file"
 }
 
 ensure_public_host_config() {
@@ -1006,6 +1020,7 @@ install_or_upgrade() {
   ensure_service_user
   prepare_directories
   write_initial_config
+  ensure_integration_token_config
   ensure_public_host_config
   ensure_persistent_image_storage_config
   record_created_service_user

@@ -172,6 +172,7 @@ cp deploy/.env.example deploy/.env
 起動前に `deploy/.env` を編集してください。
 
 - `TOKENHUB_ADMIN_TOKEN`: Admin API の初期 Token。32 バイト以上のランダム値を使用してください。
+- `TOKENHUB_INTEGRATION_TOKEN`: 外部プラットフォーム連携イベントおよびモデルアクセスキー制御 API 専用の認証情報。Admin Token とは異なる 32 バイト以上のランダム値を使用してください。
 - `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: 初期 `admin` ユーザーの作成時にのみ使用するパスワード。12 バイト以上にしてください。
 - `TOKENHUB_SECRET_KEY`: バックエンド秘密鍵。32 バイト以上のランダム値を使用し、安定して保持してください。
 - `TOKENHUB_IMAGE_TAG`: 管理対象 TokenHub イメージのタグ。デフォルトは `latest`。
@@ -305,6 +306,22 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 `down -v` は、ローカルデータを削除したい場合にのみ使用してください。
 
+### 外部プラットフォーム連携 API
+
+以下の内部 API は専用 Integration Token で認証します。Admin Token やモデルアクセスキーで代用してはいけません。
+
+- `POST /api/internal/integration/events`: テナント、組織、プリンシパル、プロジェクト、ワークロードの投影を適用します。
+- `GET /api/internal/integration/reconciliation?tenant_id=...`: 上流プラットフォームの照合用に、指定テナントの Inbox イベントウォーターマーク、集約種別ごとのイベント件数、`projection_summaries` を返します。各投影サマリーには `count`、`max_version`、SHA-256 `digest` が含まれます。ダイジェストは外部 ID 順に計算され、関係、名前、ライフサイクル状態、バージョン、削除マーカーなどの安定したトポロジーフィールドを対象としますが、イベント payload や投影レコードは返しません。
+- `GET /api/internal/model-access-keys?tenant_id=...`: 1 テナント内の連携管理モデルアクセスキーを一覧します。任意の `project_id`、`principal_id`、有効な `status` フィルターは TokenHub 側で処理されます。`page` と `page_size`（最大 100）をサポートし、ページング情報を返します。
+- `POST /api/internal/model-access-keys`: 有効な投影済みプロジェクトとプリンシパル/ワークロードにモデルアクセスキーを発行します。`request_id` は必須かつ冪等で、`api_key` は最初の成功レスポンスだけに含まれます。
+- `POST /api/internal/model-access-keys/{id}/reveal`: `tenant_id`、`principal_type`、`principal_id` の所有権を厳密に検証した後、active なキーを表示します。成功した表示はすべて監査され、キー値は監査データに含まれません。
+- `POST /api/internal/model-access-keys/{id}/revoke`: 指定した `tenant_id` 内で連携管理キーを失効します。任意の `principal_type` と `principal_id` でセルフサービスの所有権を強制できます。ローテーションや猶予期間はありません。
+- `GET /api/internal/providers`: Provider を一覧し、サーバー側の `name`、`type`、`status`、`health` フィルターとページングを提供します。レスポンスに API キー、Headers、Options、リソース Secret は含まれません。
+- `GET /api/internal/routes`: モデルルートを一覧し、サーバー側の `model_name`、`provider_id`、`strategy`、`status` フィルターとページングを提供します。レスポンスには安全な Provider/リソース名とルーティングメタデータだけが含まれます。
+
+連携管理プロジェクトの投影は、投影適用と同じトランザクションで TokenHub のサービス用プロジェクトへ反映されます。テナント、プロジェクト、プリンシパル/ワークロード投影が有効になるまではキー作成を拒否します。プロジェクトが組織に所属する場合、その組織も認可ライフサイクルの境界になります。ユーザーキーには有効な組織と有効な組織メンバーシップが必要で、ワークロードキーはプロジェクトを通じて組織の状態を継承します。テナント、組織、ユーザー、組織メンバーシップ、またはワークロードを一時的に無効化すると、キー自体の永続化ステータスを変更せずに対象キーを使用不可にし、投影を再び有効化すると、元々有効で期限切れでも失効済みでもないキーだけが自動的に復帰します。テナント、組織、またはワークロードの削除、あるいはユーザーのテナントからの除外では、対象キーを恒久的に失効します。ユーザー状態と組織メンバーシップが制御するのは個人キーだけで、そのユーザーが所有するワークロードのキーを暗黙に無効化しません。明示的に失効したキーや期限切れキーは、投影を再び有効化しても復帰しません。
+
+連携管理のモデルアクセスキーは、一方向の認証 Hash と、`TOKENHUB_SECRET_KEY` で AES-GCM 暗号化した ciphertext の両方を保存します。暗号化値を生成できない場合、平文を保存せず作成を失敗させます。再起動やレプリカ間で `TOKENHUB_SECRET_KEY` を安定して維持してください。変更すると既存キーを再表示できなくなりますが、Hash ベースのゲートウェイ認証は継続できます。
 ## ローカルで本番ビルドを実行する（Docker なし）
 
 `deploy/local/run-local.sh` は、Docker も root も systemd も使わずに、自分のマシンで本番ビルドからバックエンドとコンソールを実行します。これは開発用の補助手段であり、デプロイ手段ではありません。サーバーに TokenHub をインストールする場合は[ネイティブ Release + systemd](#ネイティブ-release--systemd) または [Docker Compose](#docker-compose) を使用してください。
@@ -343,6 +360,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For` を提供できるプロキシ IP または CIDR（カンマ区切り） |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せるブラウザー Origin（カンマ区切り） |
 | `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Admin API 用の初期 Token |
+| `TOKENHUB_INTEGRATION_TOKEN` | `change-me-tokenhub-integration-token` | 外部プラットフォーム連携イベントおよびモデルアクセスキー制御 API 専用 Token |
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初期 `admin` ユーザーのパスワード。本番起動前に変更が必要 |
 | `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | バックエンド秘密鍵 |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | コンテナ内 SQLite データベースパス |
