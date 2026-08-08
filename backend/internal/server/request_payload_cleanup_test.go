@@ -215,7 +215,9 @@ func TestRequestPayloadCleanupRetriesFailedDailyTask(t *testing.T) {
 		if tx.Statement.Table == "request_payload_logs" {
 			deleteAttempts++
 			if deleteAttempts == 2 {
-				tx.AddError(failure)
+				if err := tx.AddError(failure); !errors.Is(err, failure) {
+					t.Errorf("inject cleanup failure: %v", err)
+				}
 			}
 		}
 	}); err != nil {
