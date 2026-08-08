@@ -75,10 +75,12 @@ func secretsResolver(cmd *cobra.Command) (bundle.SecretResolver, error) {
 func resolveTarget(cmd *cobra.Command) (string, string) {
 	baseURL, _ := cmd.Flags().GetString("to")
 	token, _ := cmd.Flags().GetString("token")
-	if strings.TrimSpace(baseURL) == "" {
+	baseURL = strings.TrimSpace(baseURL)
+	token = strings.TrimSpace(token)
+	if baseURL == "" {
 		baseURL = strings.TrimSpace(os.Getenv("TOKENHUB_API"))
 	}
-	if strings.TrimSpace(token) == "" {
+	if token == "" {
 		token = strings.TrimSpace(os.Getenv("TOKENHUB_ADMIN_TOKEN"))
 	}
 	return baseURL, token

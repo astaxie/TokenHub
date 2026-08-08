@@ -822,7 +822,10 @@ func (s *Server) doNativeAnthropicRequest(
 	}
 	// The native path builds its own request but must follow the same streaming
 	// policy as the adapter: a total deadline would truncate a live stream.
-	adapter, _ := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)
+	adapter, ok := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)
+	if !ok {
+		return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Anthropic adapter is not available")
+	}
 	resp, err := sendUpstream(adapter.Client, adapter.StreamClient, adapter.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err

@@ -647,6 +647,32 @@ func TestBillingConnectorTestAndScheduledSync(t *testing.T) {
 	}
 }
 
+func TestBillingRecordStartsInRangeIncludesToBoundary(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	record := BillingRecord{UsageStartAt: base}
+	if !billingRecordStartsInRange(record, base, base.Add(time.Hour)) {
+		t.Fatal("record inside range should be included")
+	}
+	if !billingRecordStartsInRange(record, base, base) {
+		t.Fatal("record exactly at the upper boundary should be included")
+	}
+	if billingRecordStartsInRange(record, base.Add(time.Minute), base.Add(time.Hour)) {
+		t.Fatal("record before from should be excluded")
+	}
+}
+
+func TestBillingDecimalValueRejectsInvalid(t *testing.T) {
+	if _, err := billingDecimalValue("not-a-number"); err == nil {
+		t.Fatal("expected error for invalid decimal")
+	}
+	if v, err := billingDecimalValue(""); err != nil || v != "0" {
+		t.Fatalf("empty value should return 0, got %q, err=%v", v, err)
+	}
+	if v, err := billingDecimalValue("12.34"); err != nil || v == "" {
+		t.Fatalf("valid decimal should parse, got %q, err=%v", v, err)
+	}
+}
+
 func testAliyunRPCSignature(values map[string][]string, secret string) string {
 	canonical := aliyunCanonicalQuery(values)
 	stringToSign := "POST&%2F&" + aliyunPercentEncode(canonical)

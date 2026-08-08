@@ -67,6 +67,28 @@ func TestFileResolver(t *testing.T) {
 	}
 }
 
+func TestFileResolverTrimsWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "secrets.env")
+	content := []byte("  OPENAI_API_KEY  =  secret-value  \n")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write secrets file: %v", err)
+	}
+
+	resolver, err := NewFileResolver(path)
+	if err != nil {
+		t.Fatalf("new file resolver: %v", err)
+	}
+
+	value, err := resolver.Resolve(SecretRef{Ref: "OPENAI_API_KEY"})
+	if err != nil {
+		t.Fatalf("resolve file secret: %v", err)
+	}
+	if value != "secret-value" {
+		t.Fatalf("expected whitespace trimmed, got %q", value)
+	}
+}
+
 func TestStaticResolver(t *testing.T) {
 	resolver := StaticResolver{"OPENAI_API_KEY": "secret-value"}
 	value, err := resolver.Resolve(SecretRef{Ref: "OPENAI_API_KEY"})

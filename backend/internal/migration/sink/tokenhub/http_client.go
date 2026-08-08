@@ -14,6 +14,8 @@ import (
 	"tokenhub/backend/internal/server"
 )
 
+const maxAdminAPIResponseBytes = 8 << 20 // 8 MiB
+
 type AdminAPIClient struct {
 	baseURL    string
 	token      string
@@ -34,7 +36,7 @@ func (e *ApprovalRequiredError) Error() string {
 
 func NewAdminAPIClient(baseURL string, token string, httpClient *http.Client) *AdminAPIClient {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	return &AdminAPIClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -44,7 +46,10 @@ func NewAdminAPIClient(baseURL string, token string, httpClient *http.Client) *A
 }
 
 func (c *AdminAPIClient) endpoint(parts ...string) string {
-	base, _ := url.Parse(c.baseURL)
+	base, err := url.Parse(c.baseURL)
+	if err != nil || base == nil {
+		panic(fmt.Sprintf("invalid admin api base url %q: %v", c.baseURL, err))
+	}
 	encoded := make([]string, 0, len(parts)+8)
 	for _, segment := range strings.Split(strings.Trim(base.Path, "/"), "/") {
 		if strings.TrimSpace(segment) != "" {
@@ -95,9 +100,12 @@ func (c *AdminAPIClient) doJSON(ctx context.Context, method string, endpoint str
 		return err
 	}
 	defer response.Body.Close()
-	responseBody, err := io.ReadAll(response.Body)
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxAdminAPIResponseBytes+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(responseBody)) > maxAdminAPIResponseBytes {
+		return fmt.Errorf("admin api %s %s response body exceeds %d bytes", method, endpoint, maxAdminAPIResponseBytes)
 	}
 	if response.StatusCode >= 400 {
 		return fmt.Errorf("admin api %s %s failed: status=%d body=%s", method, endpoint, response.StatusCode, strings.TrimSpace(string(responseBody)))

@@ -42,3 +42,12 @@ func TestRejectIfIncompatibleEmpty(t *testing.T) {
 		t.Fatal("expected error for empty version")
 	}
 }
+
+func TestParseSchemaVersionRejectsNegative(t *testing.T) {
+	cases := []string{"1.-1.0", "-1.0.0", "0.0.-1"}
+	for _, c := range cases {
+		if _, err := ParseSchemaVersion(c); err == nil {
+			t.Errorf("expected error for negative version %q", c)
+		}
+	}
+}

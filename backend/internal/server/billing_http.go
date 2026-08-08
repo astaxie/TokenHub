@@ -58,7 +58,7 @@ func (s *Server) handleAdminBillingConnectorItem(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/billing/connectors/"), "/"), "/")
+	parts := splitEscapedAdminPath(r.URL.EscapedPath(), "/api/admin/billing/connectors/")
 	id := parts[0]
 	if id == "" || len(parts) > 2 {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "billing_connector_not_found", "Billing connector not found"))

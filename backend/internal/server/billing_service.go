@@ -17,7 +17,7 @@ type BillingService struct {
 	adapters      map[string]BillingAdapter
 	mu            sync.Mutex
 	active        map[string]bool
-	schedulerOnce sync.Once
+	schedulerMu   sync.Mutex
 	schedulerStop context.CancelFunc
 	schedulerDone chan struct{}
 }
@@ -49,33 +49,43 @@ func (s *BillingService) StartScheduler(interval time.Duration) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
-	s.schedulerOnce.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		s.schedulerStop = cancel
-		s.schedulerDone = make(chan struct{})
-		go func() {
-			defer close(s.schedulerDone)
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case now := <-ticker.C:
-					s.RunDue(ctx, now.UTC())
-				}
+	s.schedulerMu.Lock()
+	defer s.schedulerMu.Unlock()
+	if s.schedulerStop != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.schedulerStop = cancel
+	s.schedulerDone = make(chan struct{})
+	go func() {
+		defer close(s.schedulerDone)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				s.RunDue(ctx, now.UTC())
 			}
-		}()
-	})
+		}
+	}()
 }
 
 func (s *BillingService) Shutdown(ctx context.Context) error {
-	if s.schedulerStop == nil {
+	s.schedulerMu.Lock()
+	stop := s.schedulerStop
+	s.schedulerMu.Unlock()
+	if stop == nil {
 		return nil
 	}
-	s.schedulerStop()
+	stop()
 	select {
 	case <-s.schedulerDone:
+		s.schedulerMu.Lock()
+		s.schedulerStop = nil
+		s.schedulerDone = nil
+		s.schedulerMu.Unlock()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

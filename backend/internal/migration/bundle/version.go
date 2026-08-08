@@ -35,6 +35,9 @@ func ParseSchemaVersion(v string) (SemVer, error) {
 	if sv.Patch, err = strconv.Atoi(parts[2]); err != nil {
 		return SemVer{}, fmt.Errorf("bundle: invalid patch in %q: %w", v, err)
 	}
+	if sv.Major < 0 || sv.Minor < 0 || sv.Patch < 0 {
+		return SemVer{}, fmt.Errorf("bundle: invalid schema_version %q, version components must be non-negative", v)
+	}
 	return sv, nil
 }
 
