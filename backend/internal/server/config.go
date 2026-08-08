@@ -86,6 +86,7 @@ type Config struct {
 	DBMaxOpenConns                   int
 	DBMaxIdleConns                   int
 	DBConnMaxLifetimeMinutes         int
+	RequestPayloadRetentionDays      int
 	// CacheAffinityEnabled turns on stateless cache locality routing. Off by
 	// default because it changes routing behaviour; roll back by turning it off
 	// rather than by rolling back the binary.
@@ -146,6 +147,7 @@ func ConfigFromEnv() Config {
 		DBMaxOpenConns:                   getenvInt("TOKENHUB_DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns:                   getenvInt("TOKENHUB_DB_MAX_IDLE_CONNS", 5),
 		DBConnMaxLifetimeMinutes:         getenvInt("TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES", 30),
+		RequestPayloadRetentionDays:      getenvNonNegativeInt("TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS", 0),
 
 		CacheAffinityEnabled:        getenvBool("TOKENHUB_CACHE_AFFINITY_ENABLED", false),
 		CacheAffinityModels:         getenvList("TOKENHUB_CACHE_AFFINITY_MODELS"),
@@ -159,6 +161,9 @@ func ConfigFromEnv() Config {
 }
 
 func (c Config) ValidateForStartup() error {
+	if c.RequestPayloadRetentionDays < 0 {
+		return fmt.Errorf("invalid TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS: expected zero or a positive integer")
+	}
 	if repository := strings.TrimSpace(c.ReleaseRepository); repository != "" && !validReleaseRepository(repository) {
 		return fmt.Errorf("invalid TOKENHUB_RELEASE_REPOSITORY: expected owner/repository")
 	}
@@ -381,6 +386,18 @@ func getenvSetInt(key string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed <= 0 {
+		return -1
+	}
+	return parsed
+}
+
+func getenvNonNegativeInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
 		return -1
 	}
 	return parsed

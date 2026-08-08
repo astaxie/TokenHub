@@ -44,6 +44,7 @@ func main() {
 
 	app := server.NewWithConfig(store, config)
 	app.StartBillingScheduler()
+	app.StartRequestPayloadCleanupScheduler()
 	catalogInitCtx, cancelCatalogInit := context.WithTimeout(context.Background(), 30*time.Second)
 	if initialized, initErr := app.InitializeProviderCatalog(catalogInitCtx); initErr != nil {
 		log.Printf("[tokenhub] provider catalog initialization failed; using database snapshot: %v", initErr)
@@ -85,7 +86,7 @@ func main() {
 		_ = srv.Close()
 	}
 	if err := app.Shutdown(shutdownCtx); err != nil {
-		log.Printf("tokenhub image worker shutdown failed: %v", err)
+		log.Printf("tokenhub background service shutdown failed: %v", err)
 	}
 	if err := <-serveErr; err != nil && err != http.ErrServerClosed {
 		log.Printf("tokenhub server stopped with error: %v", err)

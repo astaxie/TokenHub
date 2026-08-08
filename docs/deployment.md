@@ -374,6 +374,7 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | Expiry and renewal basis for cluster-wide concurrency leases |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | Expiry and renewal basis for cluster coordination locks |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | Maximum time to drain in-flight requests during shutdown |
+| `TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS` | `0` | Days to retain stored request and response payloads; `0` disables automatic cleanup |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Compose grace period before Docker force-stops the backend |
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | For Chat Completions, Anthropic Messages, and Responses, pin a session to one upstream account so the provider's prompt cache keeps hitting. Off by default because it changes routing behaviour |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | empty | Comma-separated model allowlist for staged rollout; empty means every model |
@@ -398,6 +399,8 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 ## Data and Backups
 
 SQLite is the persistent source for projects, keys, Providers, routes, users, request logs, usage, alerts, approvals, sessions, and backup records.
+
+When `TOKENHUB_REQUEST_PAYLOAD_RETENTION_DAYS` is positive, TokenHub deletes expired request and response payloads at startup and then once every 24 hours. Request metadata, usage, route attempts, and billing data are preserved. SQLite reuses the freed pages, but the database file does not shrink until an operator runs `VACUUM` during a maintenance window.
 
 In the one-command compose deployment:
 
