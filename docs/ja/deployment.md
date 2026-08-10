@@ -401,6 +401,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_RESPONSE_MAX_QUEUED_JOBS` | `1000` | 1 つのデプロイが受け付ける待機中および実行中のバックグラウンド Responses ジョブ上限 |
 | `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI が対象とする Admin API の URL。この CLI のみが読み取り、バックエンドサーバーは読み取りません。`--to` で上書きされます |
 
+> **ランタイムオーバーライド:** 管理者はシステム設定ページから実行時にいずれかのボディ上限を引き上げられます（`cfg_gateway` 設定リソースの `max_json_request_bytes` / `max_multimodal_request_bytes`）。再起動不要。このオーバーライドは env デフォルトより優先され、両方とも 512 MiB の上限にクランプされます。変更は新しいリクエストに対して約 10 秒以内（キャッシュ TTL）で反映されます。オーバーライド後はリバースプロキシのボディサイズ上限（例: nginx `client_max_body_size`）を有効な上限に合わせてください。
+
 ## フロントエンド環境変数
 
 | 変数 | デフォルト | 説明 |

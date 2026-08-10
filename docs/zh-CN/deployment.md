@@ -401,6 +401,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_RESPONSE_MAX_QUEUED_JOBS` | `1000` | 单个部署接受的排队中与运行中后台 Responses 任务总上限 |
 | `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI 的目标 Admin API 地址。仅由该 CLI 读取，后端服务不会读取；可被 `--to` 覆盖 |
 
+> **运行时覆盖：** 管理员可在系统设置页运行时调高任一限额（`cfg_gateway` 设置资源的 `max_json_request_bytes` / `max_multimodal_request_bytes`），无需重启。该覆盖优先于 env 默认值；两者均钳制到 512 MiB 天花板。更改对新请求在约 10 秒内（缓存 TTL）生效。覆盖后请保持反向代理的请求体限额（如 nginx `client_max_body_size`）与生效限额对齐。
+
 ## 前端环境变量
 
 | 变量 | 默认值 | 说明 |

@@ -404,6 +404,8 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES` | `30` | Maximum connection lifetime in minutes (PostgreSQL only) |
 | `TOKENHUB_API` | empty | Target Admin API for the `tokenhub-migrate` CLI. Read only by that CLI, never by the running server; overridden by `--to` |
 
+> **Runtime override:** An administrator can raise either body limit at runtime from the System Settings page (`max_json_request_bytes` / `max_multimodal_request_bytes` in the `cfg_gateway` settings resource) without a restart. The override takes precedence over the env default; both are clamped to the 512 MiB ceiling. Changes take effect for new requests within approximately 10 seconds (cache TTL). Keep your reverse proxy's body size limit (e.g. nginx `client_max_body_size`) aligned with the effective limit after an override.
+
 ## Frontend Environment Variables
 
 | Variable | Default | Description |

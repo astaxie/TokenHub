@@ -80,6 +80,8 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     { key: "audit_retention", label: "审计保留", help: "请求审计日志的默认保留周期，例如 180d。" },
     { key: "api_key_prefix", label: "API Key 前缀", placeholder: "sk_", help: "新建和轮换 Key 时使用；建议以 _ 结尾，例如 sk_。" },
     { key: "api_key_random_length", label: "API Key 随机长度", type: "number", placeholder: "48", help: "前缀后面的随机字符数，系统会限制在 24-128 之间。" },
+    { key: "max_json_request_bytes", label: "JSON 请求体上限", type: "number", placeholder: "8388608", help: "常规 JSON 请求体最大字节数；留空回退 env 配置的 TOKENHUB_MAX_JSON_REQUEST_BYTES（默认 8 MiB）；上限 512 MiB。" },
+    { key: "max_multimodal_request_bytes", label: "多模态请求体上限", type: "number", placeholder: "33554432", help: "含图像等多模态内容的请求体最大字节数；留空回退 env 配置的 TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES（默认 32 MiB）；上限 512 MiB。" },
   ]);
   return {
     ...base,
