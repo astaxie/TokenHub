@@ -830,7 +830,7 @@ func sameProvider(existing server.Provider, desired server.Provider) bool {
 		return false
 	}
 	return reflect.DeepEqual(normalizeStringMap(existing.Headers), normalizeStringMap(desired.Headers)) &&
-		reflect.DeepEqual(normalizeStringMap(existing.Options), normalizeStringMap(desired.Options))
+		reflect.DeepEqual(migrationProviderOptions(existing.Options), migrationProviderOptions(desired.Options))
 }
 
 // sameProviderResource follows sameProvider: only the fields the bundle owns

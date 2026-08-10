@@ -54,6 +54,14 @@ RPM は Provider 呼び出し前に消費されます。TPM も同じ時点で�
 
 TokenHub は、最後に正常に読み込んだ Provider カタログをデータベースに保存します。バックエンドの起動時には毎回、設定済みのローカル `provider-catalog.json` を検証して読み込み、データベースのスナップショットをアトミックに置き換えます。通常の **Provider Channels** リクエストはデータベースのスナップショットだけを読み取り、管理者は同じローカルカタログを手動で更新することもできます。ローカルカタログの読み込み、解析、または完全性検証に失敗した場合、TokenHub は最後に有効だったスナップショットを引き続き使用します。
 
+## Claude Code 帰属ブロックの処理
+
+Claude Code は、Anthropic Messages リクエストの `system` 配列の先頭に帰属テキストブロックを挿入する場合があります。このブロックにはリクエストごとに変化し得るクライアントメタデータが含まれ、サードパーティー上流で本来安定しているプロンプト接頭辞を再利用できなくなることがあります。
+
+各 Provider には `claude_code_attribution_policy` を設定できます。新規の Anthropic 公式 Provider は `preserve`、明確な非公式 Provider はサードパーティー上流のプロンプト接頭辞キャッシュを再利用しやすくするため `strip` がデフォルトです。提供元が不明なカスタム Anthropic エンドポイントは `preserve` がデフォルトです。既存 Provider でこの設定がない場合も、引き続き帰属ブロックを保持します。`strip` は、最初のトップレベル `system` 要素の `type` が `"text"` で、テキストが `x-anthropic-billing-header:` から厳密に始まる場合に限り、その要素を削除します。文字列形式の `system` プロンプト、後続要素、先頭に空白があるテキスト、その他の要素型は削除しません。
+
+Provider Resource は既定で Provider ポリシーを継承し、`options.claude_code_attribution_policy` を `preserve` または `strip` に設定して上書きできます。この Resource オプションを省略すると継承に戻ります。TokenHub はルート試行ごとに有効なポリシーを適用するため、フェイルオーバー先の Resource は元のリクエストを受け取り、独自の設定を適用します。監査ペイロードにも元のリクエストを保持します。`POST /v1/messages/count_tokens` は具体的な Provider Resource を選択しないため、引き続き元のリクエストをカウントします。
+
 ## Codex 使用量リセットクレジット
 
 有効な OpenAI Codex Subscription アカウントでは、**Provider Channels** から Provider を編集し、**Advanced > Subscription quota** を開きます。アカウントカードには OpenAI が返した権威ある残りリセット回数と最も近い有効期限が表示されます。**使用量ウィンドウをリセット** は、復元できないクレジットを 1 回消費する前に再確認を表示し、対象となる Codex 使用量ウィンドウをリセットしますが、ChatGPT の課金プランは変更しません。完了時または冪等な再実行が成功した場合、クォータとリセットクレジットの詳細を再取得します。

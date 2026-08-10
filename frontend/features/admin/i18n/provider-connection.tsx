@@ -1,17 +1,36 @@
-const en: Record<string, string> = {
-  "正在测试": "Testing",
-  "测试 Provider 连接": "Test Provider connection",
-  "请填写 Base URL 和 API Key 后测试。": "Enter the Base URL and API key before testing.",
-  "API Key 配置有效": "API key is valid",
-  "Provider 连接测试失败": "Provider connection test failed",
+export const providerConnectionTranslations = {
+  en: {
+    "正在测试": "Testing",
+    "测试 Provider 连接": "Test Provider connection",
+    "请填写 Base URL 和 API Key 后测试。": "Enter the Base URL and API key before testing.",
+    "API Key 配置有效": "API key is valid",
+    "Provider 连接测试失败": "Provider connection test failed",
+    "Claude Code 归因块": "Claude Code attribution block",
+    "保留归因块": "Preserve attribution block",
+    "移除归因块": "Strip attribution block",
+    "继承 Provider 策略": "Inherit Provider policy",
+    "Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。": "Anthropic's official Provider preserves it by default; known non-official Providers strip it by default. Unknown custom Anthropic endpoints preserve it by default.",
+    "继承 Provider 策略，或只为当前 Resource 覆盖保留或移除行为。": "Inherit the Provider policy or override preservation or removal for this Resource only.",
+    "Provider Resource 归因策略": "Provider Resource attribution policies",
+    "每个 Resource 默认继承 Provider 策略，也可以独立覆盖。故障切换时会按实际尝试的 Resource 处理请求。": "Each Resource inherits the Provider policy by default and can override it independently. During failover, the request is processed for the Resource actually attempted.",
+    "更新 Claude Code 归因策略": "Update Claude Code attribution policy",
+    "更新 Claude Code 归因策略失败": "Failed to update Claude Code attribution policy",
+  },
+  ja: {
+    "正在测试": "テスト中",
+    "测试 Provider 连接": "Provider 接続をテスト",
+    "请填写 Base URL 和 API Key 后测试。": "テストする前に Base URL と API Key を入力してください。",
+    "API Key 配置有效": "API Key は有効です",
+    "Provider 连接测试失败": "Provider 接続テストに失敗しました",
+    "Claude Code 归因块": "Claude Code 帰属ブロック",
+    "保留归因块": "帰属ブロックを保持",
+    "移除归因块": "帰属ブロックを削除",
+    "继承 Provider 策略": "Provider ポリシーを継承",
+    "Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。": "Anthropic 公式 Provider はデフォルトで保持し、明確な非公式 Provider はデフォルトで削除します。提供元が不明なカスタム Anthropic エンドポイントはデフォルトで保持します。",
+    "继承 Provider 策略，或只为当前 Resource 覆盖保留或移除行为。": "Provider ポリシーを継承するか、この Resource の保持または削除動作だけを上書きします。",
+    "Provider Resource 归因策略": "Provider Resource 帰属ポリシー",
+    "每个 Resource 默认继承 Provider 策略，也可以独立覆盖。故障切换时会按实际尝试的 Resource 处理请求。": "各 Resource はデフォルトで Provider ポリシーを継承し、個別に上書きできます。フェイルオーバー時は、実際に試行した Resource に応じてリクエストを処理します。",
+    "更新 Claude Code 归因策略": "Claude Code 帰属ポリシーを更新",
+    "更新 Claude Code 归因策略失败": "Claude Code 帰属ポリシーの更新に失敗しました",
+  },
 };
-
-const ja: Record<string, string> = {
-  "正在测试": "テスト中",
-  "测试 Provider 连接": "Provider 接続をテスト",
-  "请填写 Base URL 和 API Key 后测试。": "テストする前に Base URL と API Key を入力してください。",
-  "API Key 配置有效": "API Key は有効です",
-  "Provider 连接测试失败": "Provider 接続テストに失敗しました",
-};
-
-export const providerConnectionTranslations = { en, ja };

@@ -243,6 +243,14 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	if strings.TrimSpace(req.ModelCategory) != "" {
 		provider.Options["model_category"] = strings.TrimSpace(req.ModelCategory)
 	}
+	options, err := applyClaudeCodeAttributionPolicy(provider.Options, req.ClaudeCodeAttributionPolicy)
+	if err != nil {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
+	}
+	if err := validateClaudeCodeAttributionOptions(options); err != nil {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
+	}
+	provider.Options = options
 	return provider, catalog, catalogSource, nil
 }
 

@@ -546,4 +546,15 @@ func TestSameProviderIgnoresTargetDefaults(t *testing.T) {
 	if sameProvider(existing, drifted) {
 		t.Fatal("expected a drifted base URL to be reported")
 	}
+
+	preserved := existing
+	preserved.Options = map[string]string{"claude_code_attribution_policy": "preserve"}
+	if !sameProvider(preserved, desired) {
+		t.Fatal("expected an explicit preserve policy to equal the legacy missing option")
+	}
+	stripped := existing
+	stripped.Options = map[string]string{"claude_code_attribution_policy": "strip"}
+	if sameProvider(stripped, desired) {
+		t.Fatal("expected an explicit strip policy to differ from the legacy missing option")
+	}
 }

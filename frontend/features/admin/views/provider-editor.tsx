@@ -5,6 +5,7 @@ import { type ApiContext, type Model, type ModelRoute, type Provider, type Provi
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategory, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
+import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
 import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerResourceDraftDefaults } from "../resources/provider-model-config";
@@ -14,7 +15,7 @@ import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api
 import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, customUpstreamConnectionKey, customUpstreamModelsAreCurrent, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
-import { ProviderAdvancedFields, ProviderConnectionFields } from "./provider-editor-sections";
+import { ProviderAdvancedFields, ProviderConnectionFields, ProviderResourceAttributionFields } from "./provider-editor-sections";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
 
@@ -162,6 +163,9 @@ export function ProviderUpsertModal({
     base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     priority: String(provider?.priority ?? 10),
+    claude_code_attribution_policy: mode === "edit"
+      ? provider?.options?.claude_code_attribution_policy ?? "preserve"
+      : defaultProviderClaudeCodeAttributionPolicy(initialEntry?.type ?? "openai_compatible", initialEntry?.id ?? "custom"),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
   }));
@@ -592,7 +596,13 @@ export function ProviderUpsertModal({
   function update(key: string, value: string) {
     const previousProviderName = values.name;
     const previousBaseURL = values.base_url;
-    setValues((current) => ({ ...current, [key]: value }));
+    setValues((current) => ({
+      ...current,
+      [key]: value,
+      ...(mode === "create" && key === "type"
+        ? { claude_code_attribution_policy: defaultProviderClaudeCodeAttributionPolicy(value, catalogID) }
+        : {}),
+    }));
     if (mode !== "create") return;
     if (key === "name") {
       setAccountValues((current) => {
@@ -943,6 +953,9 @@ export function ProviderUpsertModal({
       type: entry.type || current.type || "openai_compatible",
       base_url: mode === "create" ? entry.base_url ?? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
+      claude_code_attribution_policy: mode === "create"
+        ? defaultProviderClaudeCodeAttributionPolicy(entry.type, entry.id)
+        : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(nextName, entry.base_url);
   }
@@ -964,6 +977,9 @@ export function ProviderUpsertModal({
       type: current.type || "openai_compatible",
       base_url: mode === "create" ? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
+      claude_code_attribution_policy: mode === "create"
+        ? defaultProviderClaudeCodeAttributionPolicy(current.type, "custom")
+        : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(values.name || "Provider", "");
   }
@@ -1516,11 +1532,8 @@ export function ProviderUpsertModal({
               <ProviderConnectionFields values={values} onUpdate={update} />
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
-              <ProviderAdvancedFields
-                accountIntegration={credentialMode === "account_integration"}
-                values={values}
-                onUpdate={update}
-              />
+              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} />
+                <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
               <section className="provider-quota-panel">
@@ -1750,30 +1763,13 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "create" && createStep === 1 && !quickAPIConnect ? (
-              <div className="provider-form-grid">
-              <label className="field">
-                <span>Provider ID</span>
-                <input value={values.id ?? ""} onChange={(event) => update("id", event.target.value)} placeholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} />
-              </label>
-              <label className="field">
-                <span>{tx(credentialMode === "account_integration" ? "通道名称" : "渠道名称")}</span>
-                <input value={values.name ?? ""} onChange={(event) => update("name", event.target.value)} required />
-              </label>
-              <label className="field">
-                <span>{tx(credentialMode === "account_integration" ? "兼容协议" : "渠道商类型")}</span>
-                <select value={values.type ?? ""} onChange={(event) => update("type", event.target.value)} required>
-                  {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
-                </select>
-              </label>
-              <label className="field">
-                <span>Base URL</span>
-                <input value={values.base_url ?? ""} onChange={(event) => update("base_url", event.target.value)} />
-              </label>
-              <label className="field">
-                <span>{tx("优先级")}</span>
-                <input value={values.priority ?? "10"} type="number" onChange={(event) => update("priority", event.target.value)} />
-              </label>
-            </div>
+              <ProviderAdvancedFields
+                accountIntegration={credentialMode === "account_integration"}
+                creating
+                idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")}
+                values={values}
+                onUpdate={update}
+              />
             ) : null}
 
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (

@@ -316,6 +316,14 @@ export function ProviderAPIQuickConnect({
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
             </label>
+            <label className="field">
+              <span>{tx("Claude Code 归因块")}</span>
+              <select value={values.claude_code_attribution_policy ?? "preserve"} onChange={(event) => onUpdate("claude_code_attribution_policy", event.target.value)}>
+                <option value="preserve">{tx("保留归因块")}</option>
+                <option value="strip">{tx("移除归因块")}</option>
+              </select>
+              <small>{tx("Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。")}</small>
+            </label>
           </div>
         </div>
       ) : null}

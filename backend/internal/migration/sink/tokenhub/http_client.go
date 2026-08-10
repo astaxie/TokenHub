@@ -150,6 +150,7 @@ type providerWriteRequest struct {
 
 func providerWriteRequestFrom(p server.Provider) providerWriteRequest {
 	healthy := p.Healthy
+	options := migrationProviderOptions(p.Options)
 	// Routes are migrated as first-class bundle items, so the server must
 	// not auto-create catalog routes as a side effect of provider writes.
 	createRoutes := false
@@ -163,9 +164,24 @@ func providerWriteRequestFrom(p server.Provider) providerWriteRequest {
 		Healthy:      &healthy,
 		Priority:     p.Priority,
 		Headers:      p.Headers,
-		Options:      p.Options,
+		Options:      options,
 		CreateRoutes: &createRoutes,
 	}
+}
+
+// migrationProviderOptions preserves the behavior of Providers that predate
+// the attribution setting. The regular create API may choose a cache-friendly
+// default for a new third-party Provider, while a migration must retain the
+// source Provider's legacy preserve behavior when the option is absent.
+func migrationProviderOptions(options map[string]string) map[string]string {
+	next := make(map[string]string, len(options)+1)
+	for key, value := range options {
+		next[key] = value
+	}
+	if _, configured := next["claude_code_attribution_policy"]; !configured {
+		next["claude_code_attribution_policy"] = "preserve"
+	}
+	return next
 }
 
 type apiKeyCreateResult struct {

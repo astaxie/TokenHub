@@ -221,6 +221,9 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := validateClaudeCodeAttributionOptions(resource.Options); err != nil {
+		return ProviderResource{}, err
+	}
 	var provider Provider
 	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
@@ -284,6 +287,9 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := validateClaudeCodeAttributionOptions(patch.Options); err != nil {
+		return ProviderResource{}, err
+	}
 	var resource ProviderResource
 	if err := s.db.First(&resource, "id = ?", id).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")

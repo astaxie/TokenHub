@@ -54,6 +54,14 @@ An exceeded limit returns HTTP 429 with `api_key_rpm_exceeded` or `api_key_tpm_e
 
 TokenHub stores the last known-good provider catalog in the database. On every backend startup, it validates and loads the configured local `provider-catalog.json`, then atomically replaces the database snapshot. Ordinary **Provider Channels** requests only read the database snapshot, and administrators can manually refresh the same local catalog. If local catalog reading, parsing, or completeness validation fails, TokenHub keeps using the last known-good snapshot.
 
+## Claude Code Attribution Handling
+
+Claude Code can place an attribution text block at the start of an Anthropic Messages `system` array. The block contains client metadata that can vary between requests and prevent a third-party upstream from reusing an otherwise stable prompt prefix.
+
+Each Provider has a `claude_code_attribution_policy` setting. New official Anthropic Providers default to `preserve`, while Providers that are known to be non-official default to `strip` for better third-party prefix-cache reuse. Custom Anthropic endpoints whose origin is unknown default to `preserve`. Existing Providers without this setting also continue to preserve the block. `strip` removes a block only when the first top-level `system` item has `type: "text"` and its text begins exactly with `x-anthropic-billing-header:`. String-valued `system` prompts, later blocks, leading whitespace, and other block types are never removed.
+
+Provider Resources inherit the Provider policy by default and can override it with `options.claude_code_attribution_policy` set to `preserve` or `strip`. Omitting that Resource option restores inheritance. TokenHub applies the effective policy separately for every route attempt, so a failover Resource receives the original request and applies its own setting. Audit payloads also retain the original request. `POST /v1/messages/count_tokens` continues to count the original request because it does not select a concrete Provider Resource.
+
 ## Codex Usage Reset Credits
 
 For an active OpenAI Codex Subscription account, open **Provider Channels**, edit the Provider, and expand **Advanced > Subscription quota**. The account card shows the authoritative number of available reset credits and the nearest expiry reported by OpenAI. **Reset usage window** opens a second confirmation before it consumes one non-recoverable credit; it resets eligible Codex usage windows but does not change the ChatGPT billing plan. A completed or idempotently repeated operation refreshes both quota and reset-credit details.

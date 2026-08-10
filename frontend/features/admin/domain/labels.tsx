@@ -169,6 +169,9 @@ export function enumValueLabel(value: string | undefined) {
     cost: "成本优先",
     priority_weighted: "优先级 + 权重",
     priority_only: "仅优先级",
+    inherit: "继承 Provider 策略",
+    preserve: "保留归因块",
+    strip: "移除归因块",
     chat: "文本对话",
     embedding: "向量嵌入",
     image: "图像",
@@ -193,6 +196,7 @@ export function fieldValueLabel(fieldKey: string, value: unknown): string {
   if (normalizedKey === "icon_key") return identityProviderIconLabel(text);
   if (normalizedKey === "status" || normalizedKey.includes("status")) return enumValueLabel(text);
   if (normalizedKey === "strategy") return routeStrategyLabel(text);
+  if (normalizedKey === "claude_code_attribution_policy") return enumValueLabel(text);
   if (normalizedKey === "trigger") return approvalTriggerLabel(text);
   if (normalizedKey === "dataset") return reportDatasetLabel(text);
   if (normalizedKey === "schedule" || normalizedKey === "period") return enumValueLabel(text);
