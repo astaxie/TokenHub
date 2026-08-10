@@ -247,7 +247,7 @@ func (s *Server) handleAdminPlaygroundChatStream(w http.ResponseWriter, r *http.
 		return
 	}
 	var playgroundReq playgroundChatRequest
-	if err := s.decodeJSONLimit(w, r, &playgroundReq, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &playgroundReq, s.effectiveMultimodalRequestLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}

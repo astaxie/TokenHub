@@ -117,7 +117,7 @@ func (s *Server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var payload map[string]any
-	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &payload, s.effectiveMultimodalRequestLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -135,7 +135,7 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 		return
 	}
 	var payload map[string]any
-	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &payload, s.effectiveMultimodalRequestLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}

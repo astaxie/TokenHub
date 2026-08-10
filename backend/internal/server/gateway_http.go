@@ -23,7 +23,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ChatCompletionRequest
-	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &req, s.effectiveMultimodalRequestLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -148,7 +148,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ResponsesRequest
-	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &req, s.effectiveMultimodalRequestLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -254,7 +254,7 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var request map[string]json.RawMessage
-	if err := s.decodeJSONLimit(w, r, &request, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &request, s.effectiveMultimodalRequestLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -500,7 +500,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var playgroundReq playgroundChatRequest
-	if err := s.decodeJSONLimit(w, r, &playgroundReq, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &playgroundReq, s.effectiveMultimodalRequestLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}

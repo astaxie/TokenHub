@@ -91,7 +91,7 @@ func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) decodeAnthropicMessagesRequest(w http.ResponseWriter, r *http.Request, requireMaxTokens bool) (anthropicMessagesRequest, error) {
 	var raw map[string]any
-	if err := s.decodeJSONLimit(w, r, &raw, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &raw, s.effectiveMultimodalRequestLimit()); err != nil {
 		return anthropicMessagesRequest{}, err
 	}
 	model, _ := raw["model"].(string)
