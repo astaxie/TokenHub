@@ -56,6 +56,11 @@ func (s *GormStore) createProject(project Project, requireActiveTeam bool) (Proj
 				return NewHTTPError(http.StatusBadRequest, "team_inactive", "Only an active team can be assigned to a project")
 			}
 		}
+		if requireActiveTeam {
+			if err := rejectGatewayManagedProjectMutation(tx, project.ID); err != nil {
+				return err
+			}
+		}
 		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&project).Error; err != nil {
 			return err
 		}
@@ -104,6 +109,9 @@ func (s *GormStore) UpdateProject(id string, patch Project) (Project, error) {
 		}
 		if err := tx.First(&project, "id = ?", id).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
+		}
+		if err := rejectGatewayManagedProjectMutation(tx, id); err != nil {
+			return err
 		}
 		if nextTeamID != strings.TrimSpace(project.TeamID) && nextTeam.Status != "" && nextTeam.Status != StatusActive {
 			return NewHTTPError(http.StatusBadRequest, "team_inactive", "Only an active team can be assigned to a project")
@@ -159,6 +167,9 @@ func (s *GormStore) DeleteProject(id string) error {
 		var project Project
 		if err := tx.First(&project, "id = ?", id).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
+		}
+		if err := rejectGatewayManagedProjectMutation(tx, id); err != nil {
+			return err
 		}
 		var keys []APIKey
 		if err := tx.Where("project_id = ?", id).Find(&keys).Error; err != nil {
@@ -276,6 +287,9 @@ func (s *GormStore) AddProjectTeam(link ProjectTeam) (ProjectTeam, error) {
 		if err := tx.First(&project, "id = ?", link.ProjectID).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
 		}
+		if err := rejectGatewayManagedProjectMutation(tx, link.ProjectID); err != nil {
+			return err
+		}
 		if err := tx.Create(&link).Error; err != nil {
 			return writeConflict(err, "project_team_conflict", "Team is already linked to this project")
 		}
@@ -292,6 +306,9 @@ func (s *GormStore) UpdateProjectTeam(projectID string, teamID string, role stri
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := rejectGatewayManagedProjectMutation(s.db, projectID); err != nil {
+		return ProjectTeam{}, err
+	}
 	var link ProjectTeam
 	if err := s.db.First(&link, "project_id = ? AND team_id = ?", projectID, teamID).Error; err != nil {
 		return ProjectTeam{}, notFound(err, "project_team_not_found", "Project team link not found")
@@ -314,6 +331,9 @@ func (s *GormStore) RemoveProjectTeam(projectID string, teamID string) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		project, err := lockProjectForTeamMutation(tx, projectID)
 		if err != nil {
+			return err
+		}
+		if err := rejectGatewayManagedProjectMutation(tx, projectID); err != nil {
 			return err
 		}
 		if strings.TrimSpace(project.TeamID) == strings.TrimSpace(teamID) {
@@ -411,6 +431,9 @@ func (s *GormStore) CreateAPIKey(projectID string, key APIKey, rawSecret string)
 	if err := s.db.First(&Project{}, "id = ?", projectID).Error; err != nil {
 		return APIKey{}, "", notFound(err, "project_not_found", "Project not found")
 	}
+	if err := rejectGatewayManagedProjectMutation(s.db, projectID); err != nil {
+		return APIKey{}, "", err
+	}
 	if err := validateAPIKeyMinuteLimits(key.RateLimitRPM, key.TokenLimitTPM); err != nil {
 		return APIKey{}, "", err
 	}
@@ -500,6 +523,9 @@ func (s *GormStore) UpdateAPIKey(id string, patch APIKey) (APIKey, error) {
 	if err := s.db.First(&key, "id = ?", id).Error; err != nil {
 		return APIKey{}, notFound(err, "api_key_not_found", "API key not found")
 	}
+	if err := rejectGatewayManagedAPIKeyMutation(key); err != nil {
+		return APIKey{}, err
+	}
 	hydrateAPIKey(&key)
 	if err := validateAPIKeyMinuteLimits(patch.RateLimitRPM, patch.TokenLimitTPM); err != nil {
 		return APIKey{}, err
@@ -585,6 +611,9 @@ func (s *GormStore) RotateAPIKey(id string, graceUntil *time.Time) (APIKey, stri
 	if err := s.db.First(&oldKey, "id = ?", id).Error; err != nil {
 		return APIKey{}, "", notFound(err, "api_key_not_found", "API key not found")
 	}
+	if err := rejectGatewayManagedAPIKeyMutation(oldKey); err != nil {
+		return APIKey{}, "", err
+	}
 	hydrateAPIKey(&oldKey)
 	now := time.Now().UTC()
 	newSecret := s.generateAPIKeySecret()
@@ -654,6 +683,9 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 		if err := tx.First(&key, "id = ?", id).Error; err != nil {
 			return notFound(err, "api_key_not_found", "API key not found")
 		}
+		if err := rejectGatewayManagedAPIKeyMutation(key); err != nil {
+			return err
+		}
 		if err := tx.Where("key_id = ?", id).Delete(&QuotaBucket{}).Error; err != nil {
 			return err
 		}
@@ -675,6 +707,15 @@ func (s *GormStore) ValidateAPIKey(rawSecret string, clientIP string) (Project, 
 	hydrateAPIKey(&key)
 	if key.Status == StatusDisabled || key.Status == StatusRevoked {
 		if !(key.Status == StatusRevoked && key.GraceUntil != nil && time.Now().UTC().Before(*key.GraceUntil)) {
+			return Project{}, APIKey{}, ErrAPIKeyDisabled
+		}
+	}
+	if key.ManagedBy == gatewayModelAccessKeyManagedBy {
+		switch gatewayModelAccessKeyEffectiveStatus(s.db, key) {
+		case gatewayModelAccessKeyStatusExpired:
+			return Project{}, APIKey{}, ErrAPIKeyExpired
+		case StatusActive:
+		default:
 			return Project{}, APIKey{}, ErrAPIKeyDisabled
 		}
 	}

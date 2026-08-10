@@ -102,6 +102,7 @@ func TestProductionConfigRejectsPlaceholderCredentials(t *testing.T) {
 	config := Config{
 		Environment:            "prod",
 		AdminToken:             "change-me-tokenhub-admin-token",
+		IntegrationToken:       "change-me-tokenhub-integration-token",
 		SecretKey:              "change-me-tokenhub-secret-key",
 		BootstrapAdminPassword: "admin123456",
 	}
@@ -109,7 +110,7 @@ func TestProductionConfigRejectsPlaceholderCredentials(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected production credential validation to fail")
 	}
-	for _, name := range []string{"TOKENHUB_ADMIN_TOKEN", "TOKENHUB_SECRET_KEY", "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD"} {
+	for _, name := range []string{"TOKENHUB_ADMIN_TOKEN", "TOKENHUB_INTEGRATION_TOKEN", "TOKENHUB_SECRET_KEY", "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD"} {
 		if !strings.Contains(err.Error(), name) {
 			t.Fatalf("expected validation error to mention %s: %v", name, err)
 		}
@@ -123,6 +124,7 @@ func TestProductionConfigReportsMinimumCredentialLengths(t *testing.T) {
 	config := Config{
 		Environment:            "prod",
 		AdminToken:             "short-token",
+		IntegrationToken:       "short-integration-token",
 		SecretKey:              "short-secret",
 		BootstrapAdminPassword: "short",
 	}
@@ -132,6 +134,7 @@ func TestProductionConfigReportsMinimumCredentialLengths(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"TOKENHUB_ADMIN_TOKEN must be at least 32 bytes",
+		"TOKENHUB_INTEGRATION_TOKEN must be at least 32 bytes",
 		"TOKENHUB_SECRET_KEY must be at least 32 bytes",
 		"TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD must be at least 12 bytes",
 	} {
@@ -139,7 +142,7 @@ func TestProductionConfigReportsMinimumCredentialLengths(t *testing.T) {
 			t.Fatalf("expected validation error to contain %q: %v", expected, err)
 		}
 	}
-	for _, secret := range []string{config.AdminToken, config.SecretKey, config.BootstrapAdminPassword} {
+	for _, secret := range []string{config.AdminToken, config.IntegrationToken, config.SecretKey, config.BootstrapAdminPassword} {
 		if strings.Contains(err.Error(), secret) {
 			t.Fatalf("validation error must not expose credential value %q: %v", secret, err)
 		}
@@ -150,6 +153,7 @@ func TestProductionConfigAcceptsStrongCredentials(t *testing.T) {
 	config := Config{
 		Environment:            "production",
 		AdminToken:             strings.Repeat("a", 32),
+		IntegrationToken:       strings.Repeat("i", 32),
 		SecretKey:              strings.Repeat("s", 32),
 		BootstrapAdminPassword: "strong-admin-password",
 	}
@@ -162,6 +166,7 @@ func TestDevelopmentConfigKeepsLocalDefaults(t *testing.T) {
 	config := Config{
 		Environment:            "dev",
 		AdminToken:             "dev_admin_token",
+		IntegrationToken:       "dev_integration_token",
 		SecretKey:              "dev_tokenhub_secret_key",
 		BootstrapAdminPassword: "admin123456",
 	}

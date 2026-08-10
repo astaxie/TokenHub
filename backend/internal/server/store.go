@@ -106,6 +106,14 @@ type ProviderObservation struct {
 type Store interface {
 	BillingStore
 	ReconciliationStore
+	ApplyGatewayIntegrationEvent(event GatewayIntegrationEvent) (GatewayIntegrationApplyResult, error)
+	GetGatewayIntegrationReconciliation(tenantExternalID string) (GatewayIntegrationReconciliationSummary, error)
+	CreateGatewayModelAccessKey(input GatewayModelAccessKeyCreateInput) (GatewayModelAccessKeyCreateResult, error)
+	ListGatewayModelAccessKeys(filter GatewayModelAccessKeyFilter) (GatewayModelAccessKeyPage, error)
+	RevealGatewayModelAccessKey(id string, tenantExternalID string, principalType string, principalID string, requestedBy string) (string, error)
+	RevokeGatewayModelAccessKey(id string, tenantExternalID string, principalType string, principalID string, reason string, requestedBy string) (APIKey, error)
+	ListGatewayRequestLogs(filter GatewayRequestLogFilter) (GatewayRequestLogPage, error)
+	GetGatewayUsage(filter GatewayUsageFilter) (GatewayUsageReport, error)
 	CreateProject(project Project) Project
 	CreateProjectChecked(project Project) (Project, error)
 	ListProjects() []Project

@@ -81,6 +81,7 @@ func modelAllowedByScopes(project Project, key APIKey, modelName string) bool {
 
 func publicKey(key APIKey) APIKey {
 	key.KeyHash = ""
+	key.KeyCiphertext = ""
 	if key.Allowed == nil && key.AllowedModels != nil {
 		key.Allowed = make([]string, 0, len(key.AllowedModels))
 		for model := range key.AllowedModels {

@@ -213,6 +213,13 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 		if err := db.AutoMigrate(
 			&BillingConnector{}, &BillingRecord{}, &BillingRawSnapshot{}, &BillingSyncRun{},
 			&ReconciliationRule{}, &ReconciliationRun{}, &ReconciliationItem{},
+			&GatewayTenant{},
+			&GatewayOrganization{},
+			&GatewayPrincipal{},
+			&GatewayPrincipalOrganizationBinding{},
+			&GatewayProject{},
+			&GatewayWorkload{},
+			&IntegrationInbox{},
 			&Project{},
 			&ProjectTeam{},
 			&APIKey{},
