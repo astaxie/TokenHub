@@ -132,6 +132,12 @@ func TestAdminRequestLogsFiltersStatusBeforePagination(t *testing.T) {
 func TestAdminRequestLogsSearchesExistingAuditFields(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{ID: "project_search", Name: "Alpha Finance"})
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{
+		ID:   "key-needle-id",
+		Name: "Batch Processing",
+	}, "thk_search_key"); err != nil {
+		t.Fatal(err)
+	}
 	provider := store.AddProvider(Provider{ID: "provider_search", Name: "Jade Channel", Type: "openai_compatible"})
 	createdAt := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
 	if err := store.db.Create(&RequestLog{
@@ -166,6 +172,8 @@ func TestAdminRequestLogsSearchesExistingAuditFields(t *testing.T) {
 		"Alpha Finance",
 		"jade channel",
 		"key-needle-id",
+		"BATCH PROCESSING",
+		"batch",
 		"gpt-needle-model",
 		"provider_search",
 		"resource-needle-id",
@@ -194,6 +202,17 @@ func TestAdminRequestLogsSearchesExistingAuditFields(t *testing.T) {
 				t.Fatalf("keyword %q returned unexpected metadata: pagination=%+v summary=%+v", keyword, payload.Pagination, payload.Summary)
 			}
 		})
+	}
+	rawKeySearch := doJSON(t, app, http.MethodGet, "/api/admin/audit/requests?q=thk_search_key", nil, "")
+	if rawKeySearch.Code != http.StatusOK {
+		t.Fatalf("expected raw key search 200, got %d: %s", rawKeySearch.Code, rawKeySearch.Body)
+	}
+	var rawKeyPayload RequestLogPage
+	if err := json.Unmarshal([]byte(rawKeySearch.Body), &rawKeyPayload); err != nil {
+		t.Fatal(err)
+	}
+	if len(rawKeyPayload.Data) != 0 {
+		t.Fatalf("raw API key search must not return request logs: %+v", rawKeyPayload.Data)
 	}
 	for _, literal := range []string{"%", "!"} {
 		wildcard := doJSON(t, app, http.MethodGet, "/api/admin/audit/requests?q="+url.QueryEscape(literal), nil, "")

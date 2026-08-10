@@ -537,7 +537,7 @@ export const enTranslations: Record<string, string> = {
     "日志类型": "Log Type",
     "请求状态筛选": "Request Status Filter",
     "搜索请求历史": "Search request history",
-    "搜索请求 ID、模型、Provider、状态码": "Search request ID, model, Provider, or status code",
+    "搜索请求 ID、API Key、模型、Provider、状态码": "Search request ID, API key, model, Provider, or status code",
     "全部": "All",
     "图像": "Image",
     "视频": "Video",
