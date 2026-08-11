@@ -1,0 +1,5 @@
+{
+  "maximum_ns_regression_percent": 25,
+  "maximum_bytes_regression_percent": 15,
+  "maximum_allocs_regression_percent": 10
+}

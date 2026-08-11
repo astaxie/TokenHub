@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+func TestAnthropicEndpointURLNormalizesVersionPrefix(t *testing.T) {
+	tests := []struct{ baseURL, endpoint, want string }{
+		{"https://api.anthropic.com", "/v1/messages", "https://api.anthropic.com/v1/messages"},
+		{"https://api.anthropic.com/v1", "/v1/messages", "https://api.anthropic.com/v1/messages"},
+		{"https://api.minimaxi.com/anthropic", "/v1/models", "https://api.minimaxi.com/anthropic/v1/models"},
+		{"https://api.minimaxi.com/anthropic/v1/", "/v1/models", "https://api.minimaxi.com/anthropic/v1/models"},
+	}
+
+	for _, tt := range tests {
+		if got := anthropicEndpointURL(tt.baseURL, tt.endpoint); got != tt.want {
+			t.Errorf("anthropicEndpointURL(%q, %q) = %q, want %q", tt.baseURL, tt.endpoint, got, tt.want)
+		}
+	}
+}
+
 func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 	tests := []struct {
 		name string

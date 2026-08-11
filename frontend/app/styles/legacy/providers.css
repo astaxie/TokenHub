@@ -1076,6 +1076,30 @@
   font-size: 11px;
 }
 
+.provider-reasoning-scope {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(88px, auto) 1fr;
+  align-items: center;
+  gap: 7px 12px;
+}
+
+.provider-reasoning-scope > span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.provider-reasoning-scope > small {
+  grid-column: 2;
+  color: var(--muted-strong);
+  font-size: 11px;
+}
+
+.provider-reasoning-scope .boolean-toggle button {
+  min-width: 92px;
+}
+
 .provider-account-name-field.conflict > span {
   color: var(--red);
   font-weight: 760;

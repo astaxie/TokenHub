@@ -1,5 +1,6 @@
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { copyText } from "../domain/clipboard";
 import { type AppLanguage, tx } from "../i18n/runtime";
 
 export function gatewayLanguageLabel(language: AppLanguage) {
@@ -17,13 +18,9 @@ export function apiMethodClass(method?: string) {
 export function GatewayCopyCard({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   async function copyValue() {
-    try {
-      await navigator.clipboard?.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      setCopied(false);
-    }
+    const success = await copyText(value);
+    setCopied(success);
+    if (success) window.setTimeout(() => setCopied(false), 1400);
   }
   return (
     <article className="gateway-copy-card">
@@ -39,13 +36,9 @@ export function GatewayCopyCard({ label, value }: { label: string; value: string
 export function GatewayCodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   async function copyCode() {
-    try {
-      await navigator.clipboard?.writeText(code);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      setCopied(false);
-    }
+    const success = await copyText(code);
+    setCopied(success);
+    if (success) window.setTimeout(() => setCopied(false), 1400);
   }
   return (
     <div className="gateway-code-block">

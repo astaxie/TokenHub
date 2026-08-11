@@ -182,7 +182,7 @@ const openAIChunkStream = ": keep-alive\n" +
 func runAnthropicConverter(t *testing.T, stream string, chunk int) string {
 	t.Helper()
 	writer := &recordingWriter{}
-	converter := newOpenAIAnthropicStreamConverter(writer, "gateway-model", 9)
+	converter := newOpenAIAnthropicStreamConverter(writer, "gateway-model", 9, Provider{})
 	for offset := 0; offset < len(stream); offset += chunk {
 		end := offset + chunk
 		if end > len(stream) {
@@ -227,7 +227,7 @@ func TestAnthropicConverterConsumesFrameWithoutTrailingBlankLine(t *testing.T) {
 	// client that frame's content.
 	stream := "data: {\"choices\":[{\"delta\":{\"content\":\"tail\"}}]}\n"
 	writer := &recordingWriter{}
-	converter := newOpenAIAnthropicStreamConverter(writer, "gateway-model", 1)
+	converter := newOpenAIAnthropicStreamConverter(writer, "gateway-model", 1, Provider{})
 	if _, err := converter.Write([]byte(stream)); err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestCopyNativeAnthropicStreamRejectsOversizedEvent(t *testing.T) {
 func TestAnthropicConverterRejectsOversizedEvent(t *testing.T) {
 	// /v1/messages is the public inbound path: a faulty or hostile upstream used
 	// to be able to grow the converter's buffer without any ceiling.
-	converter := newOpenAIAnthropicStreamConverter(&recordingWriter{}, "gateway-model", 1)
+	converter := newOpenAIAnthropicStreamConverter(&recordingWriter{}, "gateway-model", 1, Provider{})
 	chunk := []byte(strings.Repeat("x", 1<<20))
 
 	var err error
@@ -308,7 +308,7 @@ func TestAnthropicConverterRejectsOversizedEvent(t *testing.T) {
 }
 
 func TestAnthropicConverterRejectsOversizedMultiLineEvent(t *testing.T) {
-	converter := newOpenAIAnthropicStreamConverter(&recordingWriter{}, "gateway-model", 1)
+	converter := newOpenAIAnthropicStreamConverter(&recordingWriter{}, "gateway-model", 1, Provider{})
 
 	if _, err := converter.Write([]byte(oversizedDataLines())); err == nil {
 		t.Fatal("a frame whose data lines exceed the size limit must be rejected")
@@ -676,7 +676,7 @@ func TestAnthropicConverterIgnoresCommentHeartbeats(t *testing.T) {
 	// The converter emits a translated stream, so an upstream comment is not
 	// something it forwards; it must simply produce nothing.
 	writer := &recordingWriter{}
-	converter := newOpenAIAnthropicStreamConverter(writer, "gateway-model", 1)
+	converter := newOpenAIAnthropicStreamConverter(writer, "gateway-model", 1, Provider{})
 
 	if _, err := converter.Write([]byte(heartbeatOnlyStream(4))); err != nil {
 		t.Fatal(err)

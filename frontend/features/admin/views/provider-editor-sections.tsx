@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { type ApiContext, type ProviderResource } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
+import { providerReasoningFieldConfigs, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
 import { providerTypeOptions } from "../shared/ui";
+import { ProviderInlineField } from "./provider-editor-fields";
+
+export { providerReasoningFormValues } from "../domain/provider-reasoning";
 
 type ProviderEditSectionProps = {
   values: Record<string, string>;
@@ -40,6 +44,7 @@ export function ProviderAdvancedFields({
   creating = false,
   idPlaceholder,
 }: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string }) {
+  const showReasoningCompatibility = providerSupportsAnthropicReasoning(values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid">
@@ -81,6 +86,23 @@ export function ProviderAdvancedFields({
           <small>{tx("Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。")}</small>
         </label>
       </div>
+      {showReasoningCompatibility ? <details className="provider-account-runtime">
+        <summary>
+          <strong>{tx("Anthropic 推理参数兼容")}</strong>
+          <span>{tx("Provider 默认规则，适用于 Claude Code 等 Anthropic Messages 客户端。")}</span>
+        </summary>
+        <div className="provider-account-fields">
+          {providerReasoningFieldConfigs().map((field) => (
+            <ProviderInlineField
+              key={field.key}
+              field={field}
+              value={values[field.key] ?? ""}
+              values={values}
+              onChange={(value) => onUpdate(field.key, value)}
+            />
+          ))}
+        </div>
+      </details> : null}
     </section>
   );
 }

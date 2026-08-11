@@ -500,6 +500,8 @@
 .topbar {
   height: 60px;
   flex: 0 0 60px;
+  position: relative;
+  z-index: 10;
   padding: 0 22px;
   border-bottom: 1px solid var(--border);
   justify-content: flex-start;

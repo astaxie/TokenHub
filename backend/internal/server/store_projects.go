@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"tokenhub/backend/internal/guardrails"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -102,7 +104,7 @@ func (s *GormStore) UpdateProject(id string, patch Project) (Project, error) {
 				return err
 			}
 		}
-		if err := tx.First(&project, "id = ?", id).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, "id = ?", id).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
 		}
 		if nextTeamID != strings.TrimSpace(project.TeamID) && nextTeam.Status != "" && nextTeam.Status != StatusActive {
@@ -157,8 +159,15 @@ func (s *GormStore) DeleteProject(id string) error {
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		var project Project
-		if err := tx.First(&project, "id = ?", id).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, "id = ?", id).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
+		}
+		var guardrailBindingCount int64
+		if err := tx.Model(&guardrails.Binding{}).Where("scope_type = ? AND scope_id = ?", guardrails.ScopeProject, id).Count(&guardrailBindingCount).Error; err != nil {
+			return err
+		}
+		if guardrailBindingCount > 0 {
+			return NewHTTPError(http.StatusConflict, "project_guardrail_binding_conflict", "Remove the project from content security policies before deleting it")
 		}
 		var keys []APIKey
 		if err := tx.Where("project_id = ?", id).Find(&keys).Error; err != nil {

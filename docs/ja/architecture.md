@@ -127,6 +127,8 @@ sequenceDiagram
     C->>G: Bearer Project API Key とモデルリクエスト
     G->>S: Key、Project、有効期限、IP 許可リストを検証
     G->>G: Project と API Key のモデルアクセスを積集合化
+    G->>S: 適用されるコンテンツセキュリティポリシーを一貫したスナップショットで取得
+    G->>G: ユーザー表示リクエストテキストを検査、監査、マスク、またはブロック
     G->>S: クォータと並行リースを確認し、呼び出しコンテキストを作成
     G->>S: 有効かつ健全な Provider / Resource / Route を取得
     G->>G: API Key、Project、Global ポリシーを解決し候補を絞り込む
@@ -159,6 +161,7 @@ Provider 認証情報、請求コネクター認証情報、生の請求スナ�
 | --- | --- | --- |
 | テナントと認証情報 | `Project`、`APIKey`、`AdminUser`、`AdminSession` | Project 所有、アプリケーションアクセス、管理セッション |
 | ルーティング | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute`、`AdminResource (routing-policies)` | 上流チャネル、リソースプール、上流インベントリ、外部モデル、ルート、スコープポリシーバインド |
+| コンテンツセキュリティ | `guardrails.Policy`、`guardrails.DetectionItem`、`guardrails.Binding` | Project 単位のリクエスト検査、検出器設定、アクション、ポリシーバインド |
 | ガバナンスと計量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | クォータ、利用量/コスト、レプリカ間並行数 |
 | 外部請求 | `BillingConnector`、`BillingRecord`、`BillingRawSnapshot`、`BillingSyncRun` | Provider 請求の収集、正規化、チェックポイント、同期履歴 |
 | マルチインスタンス協調 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | カタログ同期、クラスタ操作、Codex セッションの Resource バインド |

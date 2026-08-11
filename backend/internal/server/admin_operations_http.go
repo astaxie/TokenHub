@@ -41,8 +41,8 @@ func (s *Server) handleAdminResources(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var req AdminResource
-			if err := decodeJSON(r, &req); err != nil {
-				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			if err := s.decodeJSON(w, r, &req); err != nil {
+				writeError(w, r, err)
 				return
 			}
 			if req.Name == "" {
@@ -95,8 +95,8 @@ func (s *Server) handleAdminResources(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var req AdminResource
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if err := s.validateScopedResourceMutation(user, kind, parts[1], req); err != nil {
@@ -155,8 +155,8 @@ func (s *Server) handleAdminProjectQuotaIncrease(w http.ResponseWriter, r *http.
 		return
 	}
 	var req AdminResource
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if req.Name == "" {
@@ -492,8 +492,8 @@ func (s *Server) handleAdminSQLiteBackups(w http.ResponseWriter, r *http.Request
 			ExpireDays int `json:"expire_days"`
 		}
 		if r.Body != nil && r.ContentLength != 0 {
-			if err := decodeJSON(r, &req); err != nil {
-				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			if err := s.decodeJSON(w, r, &req); err != nil {
+				writeError(w, r, err)
 				return
 			}
 		}
@@ -573,8 +573,8 @@ func (s *Server) handleAdminSQLiteBackupItem(w http.ResponseWriter, r *http.Requ
 		var req struct {
 			Confirmation string `json:"confirmation"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if strings.TrimSpace(req.Confirmation) != "RESTORE "+backupID {
@@ -608,8 +608,8 @@ func (s *Server) handleAdminInvoiceAction(w http.ResponseWriter, r *http.Request
 		RejectReason string `json:"reject_reason"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 	}
@@ -682,8 +682,8 @@ func (s *Server) handleAdminGenerateBilling(w http.ResponseWriter, r *http.Reque
 		Period string `json:"period"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 	}
@@ -694,18 +694,6 @@ func (s *Server) handleAdminGenerateBilling(w http.ResponseWriter, r *http.Reque
 	}
 	s.recordAdminAudit(r, user, "generate", "billing", stringifyCSV(result["period"]), "", result)
 	writeJSON(w, http.StatusOK, result)
-}
-
-func (s *Server) handleAdminRequestLogs(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, "audit", r.Method)
-	if !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.requestLogsWithUsageForUser(user)})
 }
 
 func (s *Server) handleAdminRequestDetail(w http.ResponseWriter, r *http.Request) {

@@ -28,7 +28,7 @@ FROM golang:1.26-alpine AS backend-builder
 
 WORKDIR /src
 ARG GOPROXY=https://proxy.golang.org,direct
-ARG TOKENHUB_VERSION=0.4.0
+ARG TOKENHUB_VERSION=0.5.0
 ARG TOKENHUB_BUILD_TYPE=source
 ENV GOPROXY=$GOPROXY
 RUN apk add --no-cache gcc musl-dev
@@ -46,7 +46,7 @@ RUN cd backend && \
 
 FROM ${NODE_IMAGE}
 
-ARG TOKENHUB_VERSION=0.4.0
+ARG TOKENHUB_VERSION=0.5.0
 LABEL org.opencontainers.image.version="${TOKENHUB_VERSION}"
 
 COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

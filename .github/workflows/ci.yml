@@ -64,6 +64,44 @@ jobs:
       - name: Test
         run: go test ./...
 
+  backend-postgres:
+    name: Backend PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: tokenhub_e2e
+          POSTGRES_USER: tokenhub
+          POSTGRES_PASSWORD: tokenhub-e2e-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tokenhub -d tokenhub_e2e"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Test PostgreSQL migrations and multi-instance behavior
+        env:
+          TEST_POSTGRES_URL: postgresql://tokenhub:tokenhub-e2e-password@localhost:5432/tokenhub_e2e?sslmode=disable
+        run: go test -tags=integration ./internal/server -run '^TestMultiInstancePostgresE2E$' -count=1 -v
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -139,10 +177,31 @@ jobs:
           deploy/container/tokenhub-entrypoint_test.sh
 
       - name: Render Compose configurations
+        env:
+          TOKENHUB_MAX_JSON_REQUEST_BYTES: "1234567"
+          TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES: "4567890"
         run: |
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config >/dev/null
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.postgres.yml config >/dev/null
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config >/dev/null
+          set -euo pipefail
+
+          render_and_assert_limits() {
+            local compose_file="$1"
+            local rendered
+            rendered="$(docker compose --env-file deploy/.env.example -f "$compose_file" config)"
+            grep -Fq 'TOKENHUB_MAX_JSON_REQUEST_BYTES: "1234567"' <<<"$rendered"
+            grep -Fq 'TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES: "4567890"' <<<"$rendered"
+          }
+
+          render_and_assert_limits deploy/docker-compose.yml
+          render_and_assert_limits deploy/docker-compose.postgres.yml
+          render_and_assert_limits deploy/docker-compose.remote-postgres.yml
+
+          remote_rendered="$(docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config)"
+          grep -Fq 'target: /etc/nginx/templates/default.conf.template' <<<"$remote_rendered"
+          # The load balancer's client_max_body_size uses an nginx-format variable
+          # (default 32m), kept separate from the backend's byte-format limits so a
+          # value like 32mb never renders as invalid nginx syntax.
+          grep -Fq 'TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE: 32m' <<<"$remote_rendered"
+
           docker compose --env-file deploy/.env.example \
             -f deploy/docker-compose.yml \
             -f deploy/docker-compose.model-catalog.yml \
@@ -199,9 +258,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # A single stable check for branch protection to require. Without it, protecting
-    # four separately named jobs means editing the rule every time a job is added.
+    # separately named jobs means editing the rule every time a job is added.
     needs:
       - backend
+      - backend-postgres
       - frontend
       - deployment
       - repo-gates
@@ -209,7 +269,7 @@ jobs:
     steps:
       - name: Verify every job succeeded
         env:
-          EXPECTED_JOBS: 4
+          EXPECTED_JOBS: 5
         run: |
           set -euo pipefail
           results='${{ join(needs.*.result, ' ') }}'

@@ -424,6 +424,142 @@ func TestCodexUnsupportedModelFailsOverAndUpdatesAccountModels(t *testing.T) {
 	}
 }
 
+func TestResponsesRawGenerationControlsAreFilteredOnlyForCodex(t *testing.T) {
+	var normalPayload map[string]any
+	normalUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost || req.URL.Path != "/responses" {
+			t.Errorf("unexpected normal provider request: %s %s", req.Method, req.URL.Path)
+			return
+		}
+		if err := json.NewDecoder(req.Body).Decode(&normalPayload); err != nil {
+			t.Errorf("decode normal provider request: %v", err)
+			return
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"resp_normal","object":"response","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
+	}))
+	t.Cleanup(normalUpstream.Close)
+
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Codex raw controls"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "Codex raw controls key",
+		Allowed: []string{"gpt-raw-controls"},
+		Status:  StatusActive,
+	}, "thk_codex_raw_controls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codex := store.AddProvider(Provider{
+		ID:      "prv_codex_raw_controls",
+		Name:    "Codex raw controls",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_codex_raw_controls",
+		ProviderID:   codex.ID,
+		Name:         "Codex raw controls account",
+		ResourceType: ProviderResourceOpenAISubscription,
+		Status:       StatusActive,
+		Healthy:      true,
+		Priority:     1,
+		Weight:       100,
+		Options:      codexCapabilityOptionsForTest("gpt-raw-controls"),
+		Credentials: &ProviderResourceCredentials{
+			AccessToken: "access_raw_controls",
+			AccountID:   "account_raw_controls",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	normal := store.AddProvider(Provider{
+		ID:      "prv_normal_raw_controls",
+		Name:    "Normal raw controls fallback",
+		Type:    ProviderOpenAI,
+		BaseURL: normalUpstream.URL,
+		APIKey:  "normal_raw_controls_key",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	store.AddModel(Model{Name: "gpt-raw-controls", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID:                 "route_codex_raw_controls",
+		ModelName:          "gpt-raw-controls",
+		ProviderID:         codex.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      "gpt-raw-controls",
+		Priority:           1,
+		Weight:             100,
+		Status:             StatusActive,
+		Strategy:           "priority_only",
+	})
+	store.AddRoute(ModelRoute{
+		ID:            "route_normal_raw_controls",
+		ModelName:     "gpt-raw-controls",
+		ProviderID:    normal.ID,
+		ProviderModel: "gpt-raw-controls",
+		Priority:      2,
+		Weight:        100,
+		Status:        StatusActive,
+		Strategy:      "priority_only",
+	})
+
+	server := New(store)
+	var codexPayloads []map[string]any
+	server.codexSubscription.MaxRequestRetries = 1
+	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		var payload map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode Codex request: %v", err)
+		}
+		codexPayloads = append(codexPayloads, payload)
+		return &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"error":"retry normal provider"}`)),
+			Request:    req,
+		}, nil
+	})}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
+		"model":             "gpt-raw-controls",
+		"input":             "preserve the raw request for failover",
+		"max_output_tokens": 321,
+		"temperature":       0.25,
+		"x_test_passthrough": map[string]any{
+			"mode": "retain",
+		},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected normal provider failover, got %d: %s", response.Code, response.Body)
+	}
+	if len(codexPayloads) != 2 {
+		t.Fatalf("expected two Codex attempts before failover, got %d", len(codexPayloads))
+	}
+	for _, payload := range codexPayloads {
+		if _, ok := payload["max_output_tokens"]; ok {
+			t.Fatalf("Codex request must not send max_output_tokens: %#v", payload)
+		}
+		if _, ok := payload["temperature"]; ok {
+			t.Fatalf("Codex request must not send temperature: %#v", payload)
+		}
+		passthrough := mapFromAny(payload["x_test_passthrough"])
+		if passthrough["mode"] != "retain" {
+			t.Fatalf("Codex request lost unknown raw field: %#v", payload)
+		}
+	}
+	if normalPayload["max_output_tokens"] != float64(321) || normalPayload["temperature"] != 0.25 {
+		t.Fatalf("normal provider failover lost generation controls: %#v", normalPayload)
+	}
+	passthrough := mapFromAny(normalPayload["x_test_passthrough"])
+	if passthrough["mode"] != "retain" {
+		t.Fatalf("normal provider failover lost unknown raw field: %#v", normalPayload)
+	}
+}
+
 func TestCodexSessionAffinityPersistsRebindsAndPreservesProtocol(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Codex Session Project", Status: StatusActive})

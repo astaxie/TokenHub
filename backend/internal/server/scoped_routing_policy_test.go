@@ -386,6 +386,7 @@ func TestRoutingPolicySimulationExplainsMissingBaseCandidates(t *testing.T) {
 
 func TestPlaygroundGlobalRoutingPolicyAnnotatesMissingBaseCandidates(t *testing.T) {
 	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Playground Project"})
 	model := store.AddModel(Model{Name: "playground-policy-no-base", Modality: "chat", Status: StatusActive})
 	policy, err := store.CreateRoutingPolicy(AdminResource{
 		ID: "pol_playground_no_base", Name: "Playground No Base", Status: StatusActive,
@@ -396,7 +397,7 @@ func TestPlaygroundGlobalRoutingPolicyAnnotatesMissingBaseCandidates(t *testing.
 	}
 	for _, path := range []string{"/api/admin/playground/chat", "/api/admin/playground/chat/stream"} {
 		resp := doJSON(t, New(store).Handler(), http.MethodPost, path, map[string]any{
-			"model": model.Name, "messages": []map[string]any{{"role": "user", "content": "no route"}},
+			"project_id": project.ID, "model": model.Name, "messages": []map[string]any{{"role": "user", "content": "no route"}},
 		}, "")
 		if resp.Code != http.StatusServiceUnavailable {
 			t.Fatalf("%s missing base routes: status=%d body=%s", path, resp.Code, resp.Body)

@@ -20,12 +20,12 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListProviders()})
 	case http.MethodPost:
 		var req ProviderCreateRequest
-		if err := decodeJSON(r, &req); err != nil {
+		if err := s.decodeJSON(w, r, &req); err != nil {
 			if costErr := providerModelCostDecodeError(err); costErr != nil {
 				writeError(w, r, costErr)
 				return
 			}
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			writeError(w, r, err)
 			return
 		}
 		provider, catalog, catalogSource, err := s.providerForCreate(r.Context(), req)
@@ -52,10 +52,6 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminProviderMonitoring(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.providerMonitoringSnapshots(r.Context(), "")})
@@ -110,8 +106,8 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 			entry, err = s.queryOpenAICodexModels(r.Context(), resourceID)
 		case http.MethodPost:
 			var credentials ProviderResourceCredentials
-			if decodeErr := decodeJSON(r, &credentials); decodeErr != nil {
-				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", decodeErr.Error()))
+			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {
+				writeError(w, r, decodeErr)
 				return
 			}
 			entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
@@ -128,8 +124,8 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 	}
 	if id == "custom" && r.Method == http.MethodPost {
 		var req ProviderCreateRequest
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if providerID := firstNonEmpty(strings.TrimSpace(req.ProviderID), strings.TrimSpace(req.ID)); providerID != "" {
@@ -400,8 +396,8 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		var req ProviderCreateRequest
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if strings.TrimSpace(req.BaseURL) == "" {
@@ -431,12 +427,12 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 		switch r.Method {
 		case http.MethodPatch:
 			var req ProviderCreateRequest
-			if err := decodeJSON(r, &req); err != nil {
+			if err := s.decodeJSON(w, r, &req); err != nil {
 				if costErr := providerModelCostDecodeError(err); costErr != nil {
 					writeError(w, r, costErr)
 					return
 				}
-				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+				writeError(w, r, err)
 				return
 			}
 			if err := validateProviderRouteCreation(req); err != nil {
@@ -504,8 +500,8 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 	var req struct {
 		Healthy bool `json:"healthy"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	provider, err := s.store.SetProviderHealth(parts[0], req.Healthy)
@@ -527,8 +523,8 @@ func (s *Server) handleAdminProviderResources(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListProviderResources()})
 	case http.MethodPost:
 		var req ProviderResource
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if req.ProviderID == "" || req.Name == "" {
@@ -593,8 +589,8 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		switch r.Method {
 		case http.MethodPatch:
 			var req ProviderResource
-			if err := decodeJSON(r, &req); err != nil {
-				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			if err := s.decodeJSON(w, r, &req); err != nil {
+				writeError(w, r, err)
 				return
 			}
 			resource, err := s.store.UpdateProviderResource(parts[0], req)
@@ -654,8 +650,8 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		_, usesStructuredProbe := adapter.(ProviderResourceProber)
 		if resourceOK && providerOK && adapterErr == nil && usesStructuredProbe {
 			var req codexSubscriptionTestRequest
-			if err := decodeJSON(r, &req); err != nil {
-				writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+			if err := s.decodeJSON(w, r, &req); err != nil {
+				writeError(w, r, err)
 				return
 			}
 			startedAt := time.Now()
@@ -711,8 +707,8 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 	var req struct {
 		Healthy bool `json:"healthy"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	resource, err := s.store.SetProviderResourceHealth(parts[0], req.Healthy)
@@ -733,8 +729,8 @@ func (s *Server) handleAdminProviderResourceBulk(w http.ResponseWriter, r *http.
 		Action string   `json:"action"`
 		IDs    []string `json:"ids"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	result, err := s.store.BulkOperateProviderResources(req.Action, req.IDs)
@@ -754,8 +750,8 @@ func (s *Server) handleAdminProviderResourceImport(w http.ResponseWriter, r *htt
 	var req struct {
 		Resources []ProviderResource `json:"resources"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	result, err := s.store.ImportProviderResources(req.Resources)
@@ -788,8 +784,8 @@ func (s *Server) handleAdminModels(w http.ResponseWriter, r *http.Request) {
 			Model
 			Routes []ModelRoute `json:"routes"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		req.Model.Name = strings.TrimSpace(req.Model.Name)
@@ -845,10 +841,6 @@ func (s *Server) handleAdminModelsRestoreDefaults(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	catalogFile := strings.TrimSpace(s.config.ModelCatalogFile)
 	if catalogFile == "" {
 		catalogFile = defaultModelCatalogFile()
@@ -884,8 +876,8 @@ func (s *Server) handleAdminModelItem(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPatch:
 		var req Model
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		model, err := s.store.UpdateModel(modelName, req)
@@ -940,8 +932,8 @@ func (s *Server) handleAdminModelRoutingPolicy(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var policy ModelRoutePolicy
-	if err := decodeJSON(r, &policy); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &policy); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	policy.Strategy = strings.TrimSpace(policy.Strategy)
@@ -989,8 +981,8 @@ func (s *Server) handleAdminRoutes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListRoutes()})
 	case http.MethodPost:
 		var req ModelRoute
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		if req.ModelName == "" || req.ProviderID == "" || req.ProviderModel == "" {
@@ -1081,8 +1073,8 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPatch:
 		var req ModelRoute
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		current, found := modelRouteByID(s.store.ListRoutes(), routeID)

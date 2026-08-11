@@ -196,7 +196,17 @@ func seedDefaultModelCatalog(store Store, catalogFile string) error {
 	if err != nil {
 		return err
 	}
+	existingByName := make(map[string]Model)
+	for _, model := range store.ListModels() {
+		existingByName[model.Name] = model
+	}
 	for _, model := range models {
+		if existing, ok := existingByName[model.Name]; ok {
+			model.InputPriceUSDPer1M = existing.InputPriceUSDPer1M
+			model.CacheReadPriceUSDPer1M = existing.CacheReadPriceUSDPer1M
+			model.OutputPriceUSDPer1M = existing.OutputPriceUSDPer1M
+			model.EmbeddingPriceUSDPer1M = existing.EmbeddingPriceUSDPer1M
+		}
 		store.AddModel(model)
 	}
 	return nil

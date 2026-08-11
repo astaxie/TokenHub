@@ -67,6 +67,7 @@ type HTTPError struct {
 	Status         int
 	Code           string
 	Message        string
+	Details        any               `json:"-"`
 	UpstreamStatus int               `json:"-"`
 	Headers        map[string]string `json:"-"`
 }
@@ -429,7 +430,7 @@ type Usage struct {
 type UsageRecord struct {
 	ID                       string    `json:"id" gorm:"primaryKey"`
 	RequestID                string    `json:"request_id" gorm:"index"`
-	ProjectID                string    `json:"project_id" gorm:"index"`
+	ProjectID                string    `json:"project_id" gorm:"index;index:idx_usage_records_project_created,priority:1"`
 	APIKeyID                 string    `json:"api_key_id" gorm:"index"`
 	AttributedUserID         string    `json:"attributed_user_id,omitempty" gorm:"index"`
 	ModelName                string    `json:"model" gorm:"index"`
@@ -447,14 +448,16 @@ type UsageRecord struct {
 	TotalTokens              int64     `json:"total_tokens"`
 	CostUSD                  float64   `json:"estimated_cost_usd"`
 	ProviderCostUSD          float64   `json:"provider_cost_usd,omitempty"`
-	CreatedAt                time.Time `json:"created_at"`
+	CreatedAt                time.Time `json:"created_at" gorm:"index;index:idx_usage_records_project_created,priority:2"`
 }
 
 type RequestLog struct {
 	ID                       string    `json:"id" gorm:"primaryKey"`
 	RequestID                string    `json:"request_id" gorm:"index"`
-	ProjectID                string    `json:"project_id" gorm:"index"`
-	APIKeyID                 string    `json:"api_key_id" gorm:"index"`
+	CommitSequence           int64     `json:"-" gorm:"not null;default:0"`
+	ProjectID                string    `json:"project_id" gorm:"index;index:idx_request_logs_project_created,priority:1"`
+	APIKeyID                 string    `json:"api_key_id" gorm:"index;index:idx_request_logs_api_key_created,priority:1"`
+	AttributedUserID         string    `json:"attributed_user_id,omitempty" gorm:"index"`
 	ModelName                string    `json:"model" gorm:"index"`
 	ProviderID               string    `json:"provider_id,omitempty" gorm:"index"`
 	ProviderResourceID       string    `json:"provider_resource_id,omitempty" gorm:"index"`
@@ -471,7 +474,7 @@ type RequestLog struct {
 	LatencyMS                int64     `json:"latency_ms"`
 	ClientIP                 string    `json:"client_ip,omitempty"`
 	UserAgent                string    `json:"user_agent,omitempty"`
-	CreatedAt                time.Time `json:"created_at"`
+	CreatedAt                time.Time `json:"created_at" gorm:"index:idx_request_logs_created_at;index:idx_request_logs_project_created,priority:2;index:idx_request_logs_api_key_created,priority:2"`
 	InputTokens              int64     `json:"input_tokens,omitempty" gorm:"-"`
 	CachedInputTokens        int64     `json:"cached_input_tokens,omitempty" gorm:"-"`
 	CacheWriteTokens         int64     `json:"cache_write_input_tokens,omitempty" gorm:"-"`
@@ -501,6 +504,7 @@ type ImageJob struct {
 	ID                      string     `json:"id" gorm:"primaryKey"`
 	ProjectID               string     `json:"project_id" gorm:"index"`
 	APIKeyID                string     `json:"api_key_id" gorm:"index"`
+	AttributedUserID        string     `json:"attributed_user_id,omitempty" gorm:"index"`
 	RequestID               string     `json:"request_id,omitempty" gorm:"index"`
 	Status                  string     `json:"status" gorm:"index"`
 	Model                   string     `json:"model"`

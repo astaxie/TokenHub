@@ -101,8 +101,9 @@ func TestGatewayCallEmitsExactlyOneCompletion(t *testing.T) {
 			path:  "/api/admin/playground/chat",
 			token: "",
 			payload: map[string]any{
-				"model":    "gpt-4.1-mini",
-				"messages": []map[string]any{{"role": "user", "content": "hello"}},
+				"project_id": "prj_demo",
+				"model":      "gpt-4.1-mini",
+				"messages":   []map[string]any{{"role": "user", "content": "hello"}},
 			},
 			expectStatus: http.StatusOK,
 			expectKind:   CompletionKindPlayground,

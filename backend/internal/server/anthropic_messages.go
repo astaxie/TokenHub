@@ -31,28 +31,43 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
-	req, err := decodeAnthropicMessagesRequest(r, true)
+	req, err := s.decodeAnthropicMessagesRequest(w, r, true)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
 	}
-	routed, ok := s.startAnthropicRoutedCall(w, r, project, key, req)
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, req.Model, req.Stream, anthropicTokenReservation(req))
+	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, guardrailAuditSummary{Model: req.Model})
+		w.Header().Set("x-request-id", requestID)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, anthropicGuardrailTargets(&req))
+	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req.Raw)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	routed, ok := s.prepareAnthropicRoutedCall(w, r, call, key, req, auditPayload)
 	if !ok {
 		return
 	}
 	if req.Stream {
-		s.handleAnthropicMessagesStream(w, r, routed, req)
+		s.handleAnthropicMessagesStream(w, r, routed, req, auditPayload)
 		return
 	}
 	resp, route, usage, attempts, err := s.executeRoutedAnthropicMessages(r, routed, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req.Raw)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req.Raw, resp)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
@@ -68,7 +83,7 @@ func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Reque
 		writeAnthropicError(w, r, err)
 		return
 	}
-	req, err := decodeAnthropicMessagesRequest(r, false)
+	req, err := s.decodeAnthropicMessagesRequest(w, r, false)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
@@ -82,10 +97,10 @@ func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func decodeAnthropicMessagesRequest(r *http.Request, requireMaxTokens bool) (anthropicMessagesRequest, error) {
+func (s *Server) decodeAnthropicMessagesRequest(w http.ResponseWriter, r *http.Request, requireMaxTokens bool) (anthropicMessagesRequest, error) {
 	var raw map[string]any
-	if err := decodeJSON(r, &raw); err != nil {
-		return anthropicMessagesRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error())
+	if err := s.decodeJSONLimit(w, r, &raw, s.config.MaxMultimodalRequestBytes); err != nil {
+		return anthropicMessagesRequest{}, err
 	}
 	model, _ := raw["model"].(string)
 	model = strings.TrimSpace(model)
@@ -142,31 +157,17 @@ func keyCanAccessModel(store Store, key APIKey, model string) bool {
 	return false
 }
 
-func (s *Server) startAnthropicRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, req anthropicMessagesRequest) (RoutedCall, bool) {
-	admittedAt := time.Now().UTC()
-	call, err := s.store.StartCall(r.Context(), project, key, req.Model, anthropicTokenReservation(req))
-	call.Stream = req.Stream
-	if err != nil {
-		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, req.Raw)
-		w.Header().Set("x-request-id", requestID)
-		writeAnthropicError(w, r, err)
-		return RoutedCall{}, false
-	}
-	w.Header().Set("x-request-id", call.RequestID)
-	writeRateLimitHeaders(w.Header(), call.RateLimitHeaders)
-	if call.requestContext != nil {
-		*r = *r.WithContext(call.requestContext)
-	}
+func (s *Server) prepareAnthropicRoutedCall(w http.ResponseWriter, r *http.Request, call CallContext, key APIKey, req anthropicMessagesRequest, auditPayload any) (RoutedCall, bool) {
 	routes, err := s.store.SelectRouteCandidates(req.Model)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&call, err)
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	routes, err = s.resolveScopedRoutingPolicyForCall(&call, routes)
 	if err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
@@ -174,7 +175,7 @@ func (s *Server) startAnthropicRoutedCall(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		s.recordRequestPayload(call.RequestID, auditPayload, auditErrorPayload(err, call.RequestID))
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
@@ -185,14 +186,14 @@ func (s *Server) startAnthropicRoutedCall(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		s.recordRequestPayload(call.RequestID, auditPayload, auditErrorPayload(err, call.RequestID))
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	routes = compatible.Routes
 	affinity, err := s.anthropicGatewayAffinity(key.ID, req.Model, r.Header, req.Raw, routes)
 	if err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
@@ -217,7 +218,7 @@ func (s *Server) executeRoutedAnthropicMessages(
 	})
 }
 
-func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionRequest, error) {
+func anthropicToOpenAIChatRequest(req anthropicMessagesRequest, provider Provider) (ChatCompletionRequest, error) {
 	messages := make([]ChatMessage, 0, len(req.Messages)+1)
 	if system, exists := req.Raw["system"]; exists {
 		text, err := anthropicSystemText(system)
@@ -230,7 +231,7 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 	}
 	for _, rawMessage := range req.Messages {
 		message := rawMessage.(map[string]any)
-		converted, err := anthropicMessageToOpenAI(message)
+		converted, err := anthropicMessageToOpenAI(message, provider)
 		if err != nil {
 			return ChatCompletionRequest{}, err
 		}
@@ -252,17 +253,6 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 	if err != nil {
 		return ChatCompletionRequest{}, err
 	}
-	var reasoningEffort *string
-	if value, ok := req.Raw["effort"].(string); ok && strings.TrimSpace(value) != "" {
-		effort := strings.TrimSpace(value)
-		reasoningEffort = &effort
-	}
-	if outputConfig, ok := req.Raw["output_config"].(map[string]any); ok {
-		if value, ok := outputConfig["effort"].(string); ok && strings.TrimSpace(value) != "" {
-			effort := strings.TrimSpace(value)
-			reasoningEffort = &effort
-		}
-	}
 	chatReq := ChatCompletionRequest{
 		Model:             req.Model,
 		Messages:          messages,
@@ -273,7 +263,9 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 		Tools:             tools,
 		ToolChoice:        toolChoice,
 		ParallelToolCalls: parallelToolCalls,
-		ReasoningEffort:   reasoningEffort,
+	}
+	if err := applyAnthropicReasoningOptions(req, provider, &chatReq); err != nil {
+		return ChatCompletionRequest{}, err
 	}
 	if stop, ok := req.Raw["stop_sequences"].([]any); ok {
 		values := make([]string, 0, len(stop))
@@ -330,7 +322,7 @@ func anthropicSystemText(value any) (string, error) {
 	}
 }
 
-func anthropicMessageToOpenAI(message map[string]any) ([]ChatMessage, error) {
+func anthropicMessageToOpenAI(message map[string]any, provider Provider) ([]ChatMessage, error) {
 	role, _ := message["role"].(string)
 	if role == "system" {
 		content, err := anthropicSystemText(message["content"])
@@ -344,7 +336,7 @@ func anthropicMessageToOpenAI(message map[string]any) ([]ChatMessage, error) {
 		return nil, err
 	}
 	if role == "assistant" {
-		return anthropicAssistantMessageToOpenAI(blocks)
+		return anthropicAssistantMessageToOpenAI(blocks, provider)
 	}
 	return anthropicUserMessageToOpenAI(blocks)
 }
@@ -368,9 +360,10 @@ func anthropicContentBlocks(content any) ([]map[string]any, error) {
 	}
 }
 
-func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, error) {
+func anthropicAssistantMessageToOpenAI(blocks []map[string]any, provider Provider) ([]ChatMessage, error) {
 	contentBlocks := make([]map[string]any, 0, len(blocks))
 	toolCalls := make([]map[string]any, 0)
+	reasoning := ""
 	for _, block := range blocks {
 		blockType, _ := block["type"].(string)
 		switch blockType {
@@ -402,8 +395,14 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 					"arguments": string(arguments),
 				},
 			})
-		case "thinking", "redacted_thinking":
-			// OpenAI-compatible providers do not accept Anthropic thinking blocks.
+		case "thinking":
+			thinking, _ := block["thinking"].(string)
+			signature, _ := block["signature"].(string)
+			if providerPreservesReasoningContent(provider) && validGatewayReasoningSignature(provider, thinking, signature) {
+				reasoning += thinking
+			}
+		case "redacted_thinking":
+			// Redacted provider state cannot be reconstructed safely.
 		default:
 			return nil, NewHTTPError(
 				http.StatusBadRequest,
@@ -417,6 +416,7 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 		content = ""
 	}
 	message := ChatMessage{Role: "assistant", Content: content}
+	message.ReasoningContent = reasoning
 	if len(toolCalls) > 0 {
 		message.ToolCalls = toolCalls
 	}
@@ -632,7 +632,7 @@ func anthropicToolChoiceToOpenAI(value any) (any, *bool, error) {
 	return converted, parallel, nil
 }
 
-func openAIResponseToAnthropic(body map[string]any, model string, usage Usage) (map[string]any, error) {
+func openAIResponseToAnthropic(body map[string]any, model string, usage Usage, provider Provider) (map[string]any, error) {
 	choices, ok := anySlice(body["choices"])
 	if !ok || len(choices) == 0 {
 		return nil, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider response is missing choices")
@@ -646,6 +646,13 @@ func openAIResponseToAnthropic(body map[string]any, model string, usage Usage) (
 		return nil, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider choice is missing message")
 	}
 	content := make([]any, 0)
+	if reasoning, _ := message["reasoning_content"].(string); reasoning != "" {
+		content = append(content, map[string]any{
+			"type":      "thinking",
+			"thinking":  reasoning,
+			"signature": gatewayReasoningSignature(provider, reasoning),
+		})
+	}
 	if text := openAIMessageText(message["content"]); text != "" {
 		content = append(content, map[string]any{"type": "text", "text": text})
 	}
@@ -800,7 +807,7 @@ func (s *Server) doNativeAnthropicRequest(
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicEndpointURL(baseURL, endpoint), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -846,10 +853,11 @@ func (s *Server) handleAnthropicMessagesStream(
 	r *http.Request,
 	routed RoutedCall,
 	req anthropicMessagesRequest,
+	auditPayload any,
 ) {
 	compatible, compatibilityErr := compatibleAnthropicRoutes(routed, req)
 	if compatibilityErr != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, compatibilityErr, req.Raw)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, compatibilityErr, auditPayload)
 		writeAnthropicError(w, r, compatibilityErr)
 		return
 	}
@@ -909,7 +917,7 @@ func (s *Server) handleAnthropicMessagesStream(
 		StatusCode:      status,
 		ErrorCode:       code,
 		ErrorMessage:    errorMessageOrEmpty(err),
-		RequestPayload:  req.Raw,
+		RequestPayload:  auditPayload,
 		ResponsePayload: auditStreamPayload(status, code, err),
 	})
 	if err != nil {
@@ -972,13 +980,17 @@ func estimateAnthropicValueTokens(value any) int64 {
 func writeAnthropicError(w http.ResponseWriter, r *http.Request, err error) {
 	httpErr := AsHTTPError(err)
 	requestID := errorResponseHeaders(w, err)
+	errorPayload := map[string]any{
+		"type":    anthropicErrorType(httpErr.Status),
+		"message": httpErr.Message,
+		"code":    httpErr.Code,
+	}
+	if httpErr.Details != nil {
+		errorPayload["details"] = httpErr.Details
+	}
 	writeJSON(w, httpErr.Status, map[string]any{
-		"type": "error",
-		"error": map[string]any{
-			"type":    anthropicErrorType(httpErr.Status),
-			"message": httpErr.Message,
-			"code":    httpErr.Code,
-		},
+		"type":       "error",
+		"error":      errorPayload,
 		"request_id": requestID,
 	})
 }
@@ -991,6 +1003,8 @@ func anthropicErrorType(status int) string {
 		return "authentication_error"
 	case http.StatusForbidden:
 		return "permission_error"
+	case http.StatusRequestEntityTooLarge:
+		return "request_too_large"
 	case http.StatusTooManyRequests:
 		return "rate_limit_error"
 	case http.StatusServiceUnavailable:

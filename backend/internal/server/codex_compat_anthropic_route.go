@@ -24,7 +24,7 @@ func (s *Server) executeAnthropicMessagesRoute(
 			"Provider does not support the Anthropic Messages gateway",
 		)
 	}
-	chatReq, err := anthropicToOpenAIChatRequest(req)
+	chatReq, err := anthropicToOpenAIChatRequest(req, route.Provider)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -40,7 +40,7 @@ func (s *Server) executeAnthropicMessagesRoute(
 	if !ok {
 		return nil, usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider returned an invalid chat response")
 	}
-	converted, err := openAIResponseToAnthropic(body, req.Model, usage)
+	converted, err := openAIResponseToAnthropic(body, req.Model, usage, route.Provider)
 	if err != nil {
 		return nil, usage, err
 	}
@@ -97,13 +97,14 @@ func validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMess
 			"Provider does not support the Anthropic Messages gateway",
 		)
 	}
-	_, err := anthropicToOpenAIChatRequest(req)
+	_, err := anthropicToOpenAIChatRequest(req, route.Provider)
 	return err
 }
 
 func isAnthropicRouteIncompatibility(err error) bool {
 	switch AsHTTPError(err).Code {
 	case "provider_capability_not_supported",
+		"unsupported_reasoning_effort",
 		"unsupported_content_block",
 		"unsupported_image_source",
 		"unsupported_tool",

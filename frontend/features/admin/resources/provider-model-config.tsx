@@ -3,6 +3,7 @@ import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../
 import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
+import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { tx } from "../i18n/runtime";
 import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
@@ -35,6 +36,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["preserve", "strip"], help: "Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
       { key: "healthy", label: "健康", type: "boolean" },
+      ...providerReasoningFieldConfigs((values) => providerSupportsAnthropicReasoning(values.type)),
     ],
     list: (ctx) => ctx.providers,
     create: (ctx, values) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values)),
@@ -61,6 +63,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       claude_code_attribution_policy: item.options?.claude_code_attribution_policy ?? "preserve",
       status: item.status,
       healthy: String(item.healthy),
+      ...providerReasoningFormValues(item.options),
     }),
   };
 }
@@ -125,7 +128,7 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
         doneMessage: (item) => `${item.name} ${tx("Token 已刷新")}`,
       },
     ],
-    toForm: providerResourceToForm,
+    toForm: (item) => providerResourceToForm(item, provider?.options),
   };
 }
 
@@ -185,6 +188,7 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     scopes: "",
     status: "active",
     healthy: "true",
+    ...providerReasoningFormValues(),
   };
 }
 

@@ -130,6 +130,8 @@ sequenceDiagram
     C->>G: Bearer 项目 API Key + 模型请求
     G->>S: 校验 Key、项目、到期时间、IP 白名单
     G->>G: 对项目与 API Key 模型权限取交集
+    G->>S: 以一致性快照读取适用的内容安全策略
+    G->>G: 检测、审计、脱敏或阻断用户可见请求文本
     G->>S: 检查配额与并发租约，创建调用上下文
     G->>S: 查询活跃且健康的 Provider / Resource / Route
     G->>G: 解析 API Key、项目或全局策略，筛选候选路由
@@ -164,6 +166,7 @@ Provider API Key、Provider Resource 凭证、账单连接器凭证和原始账�
 | --- | --- | --- |
 | 租户与凭证 | `Project`、`APIKey`、`AdminUser`、`AdminSession` | 项目归属、调用权限与管理会话 |
 | 路由配置 | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute`、`AdminResource (routing-policies)` | 上游渠道、资源池、上游模型库存、对外模型、路由规则和作用域策略绑定 |
+| 内容安全 | `guardrails.Policy`、`guardrails.DetectionItem`、`guardrails.Binding` | 按项目执行请求检测，保存检测器配置、动作和策略绑定 |
 | 治理与计量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | 配额、Token 与成本计量、跨副本并发控制 |
 | 外部账单 | `BillingConnector`、`BillingRecord`、`BillingRawSnapshot`、`BillingSyncRun` | 云厂商账单采集、规范化、同步断点和运行历史 |
 | 多实例协调 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | 配置同步、集群操作与 Codex 会话资源绑定 |

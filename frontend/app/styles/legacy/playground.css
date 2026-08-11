@@ -272,10 +272,6 @@
   font-size: 11px;
 }
 
-.playground-error {
-  margin: 8px 18px 0;
-}
-
 .playground-chat {
   grid-row: 6;
   min-height: 0;
@@ -625,12 +621,6 @@
   border-color: #efb8b3;
   background: #fff1f0;
   color: #a72d24;
-}
-
-.playground-candidate-error {
-  color: #a72d24;
-  font-size: 11px;
-  line-height: 1.5;
 }
 
 .playground-diagnostics {

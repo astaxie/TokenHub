@@ -164,7 +164,7 @@ func (a MockAdapter) Embeddings(ctx context.Context, provider Provider, provider
 // turn. DeepSeek does and needs it for multi-turn reasoning; for everyone else
 // the field is a TokenHub-local extension and is stripped.
 func preservesReasoningContent(provider Provider) bool {
-	return provider.Type == "deepseek"
+	return providerPreservesReasoningContent(provider)
 }
 
 // dropsReasoningContent is the Azure policy: reasoning_content never reaches a
@@ -507,7 +507,7 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.BaseURL, "/")+endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicEndpointURL(provider.BaseURL, endpoint), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

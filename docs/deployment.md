@@ -371,6 +371,9 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | Completions waiting to become spans; a full queue drops traces instead of slowing requests |
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | Total time limit for one non-streaming upstream request |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | Streaming calls have no total limit; this bounds waiting for response headers and how long the stream may then stay silent. The budget restarts on every byte received |
+| `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608` (8 MiB) | Maximum JSON request body for `/v1` endpoints. Accepts a raw byte count or a binary suffix (`8m`, `8mib`, `512k`). Values above 512 MiB are clamped |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432` (32 MiB) | Higher body limit for multimodal chat endpoints (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`, playground). Set your reverse proxy's `client_max_body_size` at least this large |
+| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | Only the bundled multi-instance nginx load balancer reads this. It is nginx size syntax (`32m`, `512k`), not the backend byte format, and must be at least as large as `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | Expiry and renewal basis for cluster-wide concurrency leases |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | Expiry and renewal basis for cluster coordination locks |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | Maximum time to drain in-flight requests during shutdown |
@@ -378,6 +381,10 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | For Chat Completions, Anthropic Messages, and Responses, pin a session to one upstream account so the provider's prompt cache keeps hitting. Off by default because it changes routing behaviour |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | empty | Comma-separated model allowlist for staged rollout; empty means every model |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Also accept Chat/Responses `user` and Anthropic `metadata.user_id` as affinity keys; off by default because one user's concurrent sessions would share a single account |
+| `TOKENHUB_GUARDRAIL_MODEL_URL` | empty | Complete OpenAI-compatible chat-completions URL for a dedicated Qwen3Guard service. Enabling it sends inspected user-visible request text to that service; empty disables model calls and applies each policy's unavailable behavior |
+| `TOKENHUB_GUARDRAIL_MODEL_API_KEY` | empty | Optional bearer credential for the dedicated guardrail model service |
+| `TOKENHUB_GUARDRAIL_MODEL_NAME` | `Qwen/Qwen3Guard-Gen-0.6B` | Model identifier sent to the guardrail service |
+| `TOKENHUB_GUARDRAIL_MODEL_TIMEOUT_SECONDS` | `10` | Time limit for one guardrail model classification |
 | `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | Directory holding generated image assets |
 | `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | Number of workers draining the image generation queue |
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | Maximum image jobs that may wait in the queue |

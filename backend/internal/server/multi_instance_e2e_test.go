@@ -55,6 +55,12 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("HTTP quotas and concurrency are cluster wide", func(t *testing.T) {
 		testClusterWideHTTPEnforcement(t, storeA, storeB, config)
 	})
+	t.Run("analytics checkpoints do not serialize replica writes", func(t *testing.T) {
+		testAnalyticsCommitSequence(t, storeA, storeB)
+	})
+	t.Run("analytics migration preserves legacy time windows", func(t *testing.T) {
+		testPostgresAnalyticsLegacySequenceMigration(t, storeA, config)
+	})
 	t.Run("OAuth state and refresh coordination survive replica changes", func(t *testing.T) {
 		testSharedOAuthAndRefresh(t, storeA, storeB, config)
 	})
@@ -67,6 +73,80 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("lost cluster leases cancel guarded work", func(t *testing.T) {
 		testClusterLeaseLossCancelsWork(t, storeA, storeB)
 	})
+}
+
+func testAnalyticsCommitSequence(t *testing.T, storeA *GormStore, storeB *GormStore) {
+	t.Helper()
+	suffix := NewID("sequence")
+	firstID := "log_first_" + suffix
+	secondID := "log_second_" + suffix
+	t.Cleanup(func() {
+		_ = storeA.db.Delete(&RequestLog{}, "id IN ?", []string{firstID, secondID}).Error
+	})
+	firstTransaction := storeA.db.Begin()
+	if firstTransaction.Error != nil {
+		t.Fatal(firstTransaction.Error)
+	}
+	if err := firstTransaction.Create(&RequestLog{
+		ID: firstID, RequestID: "req_first_" + suffix, ProjectID: "project_sequence",
+		ModelName: "gpt-sequence", StatusCode: http.StatusOK, CreatedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	var firstLog RequestLog
+	if err := firstTransaction.First(&firstLog, "id = ?", firstID).Error; err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- storeB.db.Create(&RequestLog{
+			ID: secondID, RequestID: "req_second_" + suffix, ProjectID: "project_sequence",
+			ModelName: "gpt-sequence", StatusCode: http.StatusOK, CreatedAt: time.Now().UTC().Add(-48 * time.Hour),
+		}).Error
+	}()
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			_ = firstTransaction.Rollback().Error
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		_ = firstTransaction.Rollback().Error
+		t.Fatal("second replica was blocked by the first request-log transaction")
+	}
+	var secondLog RequestLog
+	if err := storeB.db.First(&secondLog, "id = ?", secondID).Error; err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	checkpointBefore, err := storeB.TokenCostCheckpoint(t.Context(), TokenCostQuery{
+		From: now.Add(-72 * time.Hour), To: now.Add(time.Hour), ProjectID: "project_sequence",
+	})
+	if err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	if firstLog.CommitSequence <= 0 || secondLog.CommitSequence <= firstLog.CommitSequence || checkpointBefore >= firstLog.CommitSequence {
+		_ = firstTransaction.Rollback().Error
+		t.Fatalf("unsafe active-transaction checkpoint: first=%d second=%d checkpoint=%d",
+			firstLog.CommitSequence, secondLog.CommitSequence, checkpointBefore)
+	}
+	if err := firstTransaction.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+	checkpointAfter, err := storeB.TokenCostCheckpoint(t.Context(), TokenCostQuery{
+		From: now.Add(-72 * time.Hour), To: now.Add(time.Hour), ProjectID: "project_sequence",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checkpointAfter < secondLog.CommitSequence {
+		t.Fatalf("checkpoint did not advance after the older transaction committed: got %d, want >= %d",
+			checkpointAfter, secondLog.CommitSequence)
+	}
 }
 
 func testConcurrentMigrations(t *testing.T, adminStore *GormStore, config Config) {

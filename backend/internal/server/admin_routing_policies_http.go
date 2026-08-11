@@ -10,17 +10,13 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 	if _, ok := s.requireAdmin(w, r, "routing", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	var req struct {
 		ProjectID string `json:"project_id"`
 		APIKeyID  string `json:"api_key_id"`
 		Model     string `json:"model"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	project, ok := s.store.GetProject(strings.TrimSpace(req.ProjectID))
@@ -130,8 +126,8 @@ func (s *Server) handleAdminRoutingPolicyAction(w http.ResponseWriter, r *http.R
 			Scope   string `json:"scope"`
 			ScopeID string `json:"scope_id"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		fields["scope"] = req.Scope

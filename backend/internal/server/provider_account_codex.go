@@ -183,6 +183,7 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 	if strings.EqualFold(strings.TrimSpace(request.ServiceTier), "fast") {
 		request.ServiceTier = "priority"
 	}
+	request = withoutUnsupportedCodexGenerationControls(request)
 	applyCodexRequestEnvelope(&request, incoming)
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -218,6 +219,17 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 	}
 	resp.Body = newIdleTimeoutReadCloser(resp.Body, a.streamIdleTimeout(), errCodexStreamIdle)
 	return resp, nil
+}
+
+func withoutUnsupportedCodexGenerationControls(request ResponsesRequest) ResponsesRequest {
+	request.MaxTokens = 0
+	request.Temperature = nil
+	if request.raw != nil {
+		request.raw = cloneRawJSON(request.raw, 0)
+		delete(request.raw, "max_output_tokens")
+		delete(request.raw, "temperature")
+	}
+	return request
 }
 
 func codexResponsesEndpoint(provider Provider) (string, error) {
@@ -338,7 +350,7 @@ func consumeCodexResponsesStream(body io.Reader, destination io.Writer) (map[str
 	}
 }
 
-func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest) {
+func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest, auditPayload any) {
 	tracker := &streamWriteTracker{writer: w}
 	attemptNumber := 0
 	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(request)) != nil
@@ -401,11 +413,11 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 				StatusCode:      httpErr.Status,
 				ErrorCode:       httpErr.Code,
 				ErrorMessage:    httpErr.Message,
-				RequestPayload:  request,
+				RequestPayload:  auditPayload,
 				ResponsePayload: auditErrorPayload(err, routed.Call.RequestID),
 			})
 		} else {
-			s.finishFailedRoutedCall(r, routed, attempts, usage, err, request)
+			s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		}
 		if !streamStarted {
 			writeError(w, r, err)
@@ -417,7 +429,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, request, response)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 }
 
 func codexStreamEventError(event map[string]any) error {

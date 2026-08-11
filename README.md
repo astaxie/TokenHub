@@ -26,54 +26,9 @@
 
 TokenHub includes native adapters for Codex subscriptions, OpenAI, Azure OpenAI, Anthropic, Gemini, DeepSeek, Qwen, and local models, plus a catalog of 150+ provider templates and custom OpenAI-compatible upstreams. Popular integrations include:
 
-<table>
-  <tr>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="docs/codex-tokenhub-profile-quick-start.md"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/openai.svg" alt="Codex Subscription" width="32" height="32"></a><br><sub><strong><a href="docs/codex-tokenhub-profile-quick-start.md">Codex Subscription</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://platform.openai.com/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/openai.svg" alt="OpenAI" width="32" height="32"></a><br><sub><strong><a href="https://platform.openai.com/docs/models">OpenAI</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://docs.anthropic.com/en/docs/about-claude/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/anthropic.svg" alt="Anthropic" width="32" height="32"></a><br><sub><strong><a href="https://docs.anthropic.com/en/docs/about-claude/models">Anthropic</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://ai.google.dev/gemini-api/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/gemini-color.svg" alt="Google Gemini" width="32" height="32"></a><br><sub><strong><a href="https://ai.google.dev/gemini-api/docs/models">Google Gemini</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://learn.microsoft.com/azure/ai-foundry/openai/concepts/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/azure-color.svg" alt="Azure OpenAI" width="32" height="32"></a><br><sub><strong><a href="https://learn.microsoft.com/azure/ai-foundry/openai/concepts/models">Azure OpenAI</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/bedrock-color.svg" alt="Amazon Bedrock" width="32" height="32"></a><br><sub><strong><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html">Amazon Bedrock</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://cloud.google.com/vertex-ai/generative-ai/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/vertexai-color.svg" alt="Google Vertex AI" width="32" height="32"></a><br><sub><strong><a href="https://cloud.google.com/vertex-ai/generative-ai/docs/models">Google Vertex AI</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.x.ai/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/grok.svg" alt="xAI Grok" width="32" height="32"></a><br><sub><strong><a href="https://docs.x.ai/docs/models">xAI / Grok</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://api-docs.deepseek.com"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/deepseek-color.svg" alt="DeepSeek" width="32" height="32"></a><br><sub><strong><a href="https://api-docs.deepseek.com">DeepSeek</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://www.alibabacloud.com/help/en/model-studio/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/qwen-color.svg" alt="Qwen DashScope" width="32" height="32"></a><br><sub><strong><a href="https://www.alibabacloud.com/help/en/model-studio/models">Qwen / DashScope</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://platform.moonshot.cn/docs/api/chat"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/moonshot.svg" alt="Moonshot AI Kimi" width="32" height="32"></a><br><sub><strong><a href="https://platform.moonshot.cn/docs/api/chat">Moonshot AI / Kimi</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.z.ai"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/zhipu-color.svg" alt="Z.AI GLM" width="32" height="32"></a><br><sub><strong><a href="https://docs.z.ai">Z.AI / GLM</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://platform.minimax.io/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/minimax-color.svg" alt="MiniMax" width="32" height="32"></a><br><sub><strong><a href="https://platform.minimax.io/docs">MiniMax</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://www.volcengine.com/docs/82379/1330310"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/doubao-color.svg" alt="Doubao" width="32" height="32"></a><br><sub><strong><a href="https://www.volcengine.com/docs/82379/1330310">Doubao</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://cloud.siliconflow.com/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/siliconcloud-color.svg" alt="SiliconFlow" width="32" height="32"></a><br><sub><strong><a href="https://cloud.siliconflow.com/models">SiliconFlow</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://modelscope.cn/docs/model-service/API-Inference/intro"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/modelscope-color.svg" alt="ModelScope" width="32" height="32"></a><br><sub><strong><a href="https://modelscope.cn/docs/model-service/API-Inference/intro">ModelScope</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://openrouter.ai/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/openrouter-color.svg" alt="OpenRouter" width="32" height="32"></a><br><sub><strong><a href="https://openrouter.ai/docs">OpenRouter</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://console.groq.com/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/groq.svg" alt="Groq" width="32" height="32"></a><br><sub><strong><a href="https://console.groq.com/docs/models">Groq</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.together.ai/docs/serverless-models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/together-color.svg" alt="Together AI" width="32" height="32"></a><br><sub><strong><a href="https://docs.together.ai/docs/serverless-models">Together AI</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://fireworks.ai/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/fireworks-color.svg" alt="Fireworks AI" width="32" height="32"></a><br><sub><strong><a href="https://fireworks.ai/docs">Fireworks AI</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.mistral.ai/getting-started/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/mistral-color.svg" alt="Mistral AI" width="32" height="32"></a><br><sub><strong><a href="https://docs.mistral.ai/getting-started/models">Mistral AI</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.cohere.com/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/cohere-color.svg" alt="Cohere" width="32" height="32"></a><br><sub><strong><a href="https://docs.cohere.com/docs/models">Cohere</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.perplexity.ai"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/perplexity-color.svg" alt="Perplexity" width="32" height="32"></a><br><sub><strong><a href="https://docs.perplexity.ai">Perplexity</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://huggingface.co/docs/inference-providers"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/huggingface-color.svg" alt="Hugging Face" width="32" height="32"></a><br><sub><strong><a href="https://huggingface.co/docs/inference-providers">Hugging Face</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.api.nvidia.com/nim"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/nvidia-color.svg" alt="NVIDIA NIM" width="32" height="32"></a><br><sub><strong><a href="https://docs.api.nvidia.com/nim">NVIDIA NIM</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.github.com/en/github-models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/github.svg" alt="GitHub Models" width="32" height="32"></a><br><sub><strong><a href="https://docs.github.com/en/github-models">GitHub Models</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.github.com/en/copilot"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/githubcopilot.svg" alt="GitHub Copilot" width="32" height="32"></a><br><sub><strong><a href="https://docs.github.com/en/copilot">GitHub Copilot</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://vercel.com/docs/ai-gateway"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/vercel.svg" alt="Vercel AI Gateway" width="32" height="32"></a><br><sub><strong><a href="https://vercel.com/docs/ai-gateway">Vercel AI Gateway</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://developers.cloudflare.com/ai-gateway"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/cloudflare-color.svg" alt="Cloudflare AI Gateway" width="32" height="32"></a><br><sub><strong><a href="https://developers.cloudflare.com/ai-gateway">Cloudflare AI Gateway</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.ollama.com"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/ollama.svg" alt="Ollama" width="32" height="32"></a><br><sub><strong><a href="https://docs.ollama.com">Ollama</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://lmstudio.ai/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/lmstudio.svg" alt="LM Studio" width="32" height="32"></a><br><sub><strong><a href="https://lmstudio.ai/docs">LM Studio</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/vllm-color.svg" alt="vLLM and custom providers" width="32" height="32"></a><br><sub><strong><a href="https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html">vLLM / Custom</a></strong></sub></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/assets/provider-showcase.svg" alt="Popular TokenHub provider integrations, including Codex Subscription, OpenAI, Anthropic, Google Gemini, DeepSeek, Qwen, Llama, and custom upstreams." width="100%">
+</p>
 
 Provider templates use the matching native adapter when available; otherwise they connect through an OpenAI-compatible endpoint. Models and capabilities vary by upstream service and account.
 
@@ -154,11 +109,106 @@ The native installer verifies Release checksums, installs a systemd service, and
 
 TokenHub grows through product feedback, gateway integrations, documentation, tests, and the steady care of people who run it in real enterprise environments.
 
-<p align="center">
-  <a href="https://github.com/astaxie/TokenHub/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=astaxie/TokenHub" alt="TokenHub contributors" />
-  </a>
-</p>
+<!-- readme: contributors -start -->
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/astaxie">
+        <img src="https://avatars.githubusercontent.com/u/233907?v=4" width="80px" alt="astaxie" />
+        <br /><sub><b>astaxie</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/legendtkl">
+        <img src="https://avatars.githubusercontent.com/u/2370761?v=4" width="80px" alt="legendtkl" />
+        <br /><sub><b>legendtkl</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/cngump">
+        <img src="https://avatars.githubusercontent.com/u/108251?v=4" width="80px" alt="cngump" />
+        <br /><sub><b>cngump</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/deepjerry-ai">
+        <img src="https://avatars.githubusercontent.com/u/262369278?v=4" width="80px" alt="deepjerry-ai" />
+        <br /><sub><b>deepjerry-ai</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/Mr0bean">
+        <img src="https://avatars.githubusercontent.com/u/19573968?v=4" width="80px" alt="Mr0bean" />
+        <br /><sub><b>Mr0bean</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/coldbrewtea">
+        <img src="https://avatars.githubusercontent.com/u/6879314?v=4" width="80px" alt="coldbrewtea" />
+        <br /><sub><b>coldbrewtea</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/wangle201210">
+        <img src="https://avatars.githubusercontent.com/u/19949348?v=4" width="80px" alt="wangle201210" />
+        <br /><sub><b>wangle201210</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/samz406">
+        <img src="https://avatars.githubusercontent.com/u/3055810?v=4" width="80px" alt="samz406" />
+        <br /><sub><b>samz406</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/bailu-ZZ">
+        <img src="https://avatars.githubusercontent.com/u/311096537?v=4" width="80px" alt="bailu-ZZ" />
+        <br /><sub><b>bailu-ZZ</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/exgliuzhi">
+        <img src="https://avatars.githubusercontent.com/u/6261701?v=4" width="80px" alt="exgliuzhi" />
+        <br /><sub><b>exgliuzhi</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/CLukeLi">
+        <img src="https://avatars.githubusercontent.com/u/252523101?v=4" width="80px" alt="CLukeLi" />
+        <br /><sub><b>CLukeLi</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/ocass-chen">
+        <img src="https://avatars.githubusercontent.com/u/172055494?v=4" width="80px" alt="ocass-chen" />
+        <br /><sub><b>ocass-chen</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/AnxForever">
+        <img src="https://avatars.githubusercontent.com/u/130662349?v=4" width="80px" alt="AnxForever" />
+        <br /><sub><b>AnxForever</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/yujiewanwan">
+        <img src="https://avatars.githubusercontent.com/u/268286250?v=4" width="80px" alt="yujiewanwan" />
+        <br /><sub><b>yujiewanwan</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/lxm">
+        <img src="https://avatars.githubusercontent.com/u/1918195?v=4" width="80px" alt="lxm" />
+        <br /><sub><b>lxm</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
+
+<!-- readme: contributors -end -->
 
 <p align="center">
   <a href="https://github.com/astaxie/TokenHub/graphs/contributors">View all contributors</a>

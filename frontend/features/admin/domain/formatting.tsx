@@ -1,7 +1,7 @@
 import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type ProviderCatalogModel, routeViews, type ViewKey } from "../core/types";
 import { modelCategory } from "./catalog";
 import { codexImageCapableResources, findProvider, findProviderResource, isCodexSubscriptionImageModel, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
-import { tx } from "../i18n/runtime";
+import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
 import { preferredModelCategories } from "../shared/ui";
 
 export function initialView(): ViewKey {
@@ -283,7 +283,32 @@ export async function readAPIError(resp: Response) {
   if (code === "provider_not_configured") return "命中的 Provider 尚未配置 Base URL 或凭证。";
   if (code === "provider_resource_concurrency_exceeded") return "Provider 资源并发已满，请稍后再试。";
   if (code === "provider_resource_cooling_down") return "Provider 资源处于冷却中，请检查资源健康状态。";
+  if (code === "guardrail_blocked") {
+    const categories: string[] = Array.isArray(payload?.error?.details?.categories) ? payload.error.details.categories.filter((category: unknown): category is string => typeof category === "string") : [];
+    const labels: string[] = Array.from(new Set<string>(categories.map(guardrailCategoryLabel)));
+    const rawMatches: unknown[] = Array.isArray(payload?.error?.details?.policy_matches) ? payload.error.details.policy_matches : [];
+    const policyLabels = Array.from(new Set(rawMatches.map(guardrailPolicyMatchLabel).filter((label): label is string => Boolean(label)))).slice(0, 3);
+    const requestID = typeof payload?.request_id === "string" ? payload.request_id.trim() : "";
+    return guardrailBlockedDiagnostic(labels.map((label) => tx(label)), policyLabels, requestID);
+  }
   return `${message} (${code})`;
+}
+
+function guardrailPolicyMatchLabel(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+  const match = value as Record<string, unknown>;
+  const policyName = typeof match.policy_name === "string" ? match.policy_name.trim() : "";
+  const itemName = typeof match.detection_item_name === "string" ? match.detection_item_name.trim() : "";
+  return [policyName, itemName].filter(Boolean).join(" / ");
+}
+
+function guardrailCategoryLabel(category: string) {
+  const labels: Record<string, string> = {
+    credential: "云凭据与访问密钥", email: "邮箱地址", phone: "手机号码", cn_id_card: "中国身份证号",
+    bank_card: "银行卡号", person_name: "姓名", address: "地址", birth_date: "出生日期",
+    pattern: "关键词或正则匹配", unsafe: "模型判定为不安全", controversial: "模型判定为争议内容",
+  };
+  return labels[category] ?? category;
 }
 
 export function extractAssistantText(payload: PlaygroundChatPayload) {
@@ -389,5 +414,7 @@ export function routeStrategyLabel(value?: string) {
 
 export function formatTime(value: string) {
   if (!value) return "-";
-  return new Date(value).toLocaleString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "medium" }).format(date);
 }

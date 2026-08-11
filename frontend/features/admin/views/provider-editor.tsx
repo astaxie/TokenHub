@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategory, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
+import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
@@ -15,10 +16,10 @@ import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api
 import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, customUpstreamConnectionKey, customUpstreamModelsAreCurrent, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
-import { ProviderAdvancedFields, ProviderConnectionFields, ProviderResourceAttributionFields } from "./provider-editor-sections";
+import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
+import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
-
 type OpenAIAccountQuota = {
   account_id?: string;
   email?: string;
@@ -64,7 +65,6 @@ type ProviderAccountConfirmation = {
   action: "enable" | "disable" | "delete";
   resource: ProviderResource;
 };
-
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
 
 const codexProviderCatalogSummary: ProviderCatalogEntry = {
@@ -168,6 +168,7 @@ export function ProviderUpsertModal({
       : defaultProviderClaudeCodeAttributionPolicy(initialEntry?.type ?? "openai_compatible", initialEntry?.id ?? "custom"),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
+    ...providerReasoningFormValues(provider?.options),
   }));
   const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingCodexSubscription ? "account_integration" : "provider_api_key");
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() =>
@@ -772,10 +773,9 @@ export function ProviderUpsertModal({
   }
 
   async function copyProviderAccountCallbackURL() {
-    try {
-      await navigator.clipboard.writeText(openAIAccountOAuthRedirectURI);
+    if (await copyText(openAIAccountOAuthRedirectURI)) {
       setAccountOAuthStatus(tx("已复制 OpenAI 固定回调地址。"));
-    } catch {
+    } else {
       setAccountOAuthCallback(openAIAccountOAuthRedirectURI);
       setAccountOAuthStatus(openAIAccountOAuthRedirectURI);
     }
@@ -1535,6 +1535,7 @@ export function ProviderUpsertModal({
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} />
                 <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
+            {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} resources={resources} /> : null}
             {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">

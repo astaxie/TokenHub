@@ -464,6 +464,41 @@ func TestAdminCustomProviderCatalogLoadsUpstreamModels(t *testing.T) {
 	}
 }
 
+func TestAdminAnthropicProviderCatalogLoadsVersionedUpstreamModels(t *testing.T) {
+	app := newTestServer()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/anthropic/v1/models" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if got := r.Header.Get("x-api-key"); got != "upstream-secret" {
+			t.Fatalf("unexpected upstream API key %q", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("unexpected Anthropic version %q", got)
+		}
+		if got := r.Header.Get("authorization"); got != "" {
+			t.Fatalf("unexpected OpenAI authorization header %q", got)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{{"id": "MiniMax-M2.7", "type": "model"}},
+		})
+	}))
+	defer upstream.Close()
+
+	resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/custom", map[string]any{
+		"name":     "MiniMax",
+		"type":     ProviderAnthropic,
+		"base_url": upstream.URL + "/anthropic/v1",
+		"api_key":  "upstream-secret",
+	}, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected Anthropic provider catalog, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, `"MiniMax-M2.7"`) {
+		t.Fatalf("expected upstream Anthropic model, got %s", resp.Body)
+	}
+}
+
 func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	entries := []ProviderCatalogEntry{
 		{

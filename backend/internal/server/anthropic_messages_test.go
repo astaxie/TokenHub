@@ -358,7 +358,7 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	handler, _, secret := newAnthropicGateway(t, upstream.URL, ProviderAnthropic)
+	handler, _, secret := newAnthropicGateway(t, upstream.URL+"/v1", ProviderAnthropic)
 	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
 		"model":      "claude-tokenhub-test",
 		"max_tokens": 1024,
@@ -491,7 +491,7 @@ func TestAnthropicMessagesRejectsSystemRoleWithoutBeta(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", body)
 	req.Header.Set("content-type", "application/json")
 
-	_, err := decodeAnthropicMessagesRequest(req, true)
+	_, err := New(NewMemoryStore()).decodeAnthropicMessagesRequest(httptest.NewRecorder(), req, true)
 	if err == nil {
 		t.Fatal("expected system role without beta to be rejected")
 	}
@@ -792,6 +792,43 @@ func TestCompatibleAnthropicRoutesUsesHighestPriorityError(t *testing.T) {
 	}
 	if AsHTTPError(err).Code != "unsupported_tool" {
 		t.Fatalf("expected highest-priority route error, got %v", err)
+	}
+}
+
+func TestCompatibleAnthropicRoutesSkipsProviderRejectingReasoningEffort(t *testing.T) {
+	req := anthropicMessagesRequest{
+		Raw: map[string]any{
+			"model":         "claude-route-reasoning",
+			"max_tokens":    256,
+			"output_config": map[string]any{"effort": "xhigh"},
+			"messages":      []any{map[string]any{"role": "user", "content": "Plan the change."}},
+		},
+		Model:     "claude-route-reasoning",
+		Messages:  []any{map[string]any{"role": "user", "content": "Plan the change."}},
+		MaxTokens: 256,
+	}
+	routed := RoutedCall{Routes: []RouteSelection{
+		{
+			Route: ModelRoute{ID: "route_rejecting", Priority: 1},
+			Provider: Provider{ID: "prv_rejecting", Type: ProviderOpenAICompatible, Options: map[string]string{
+				reasoningEffortValuesOption:      "none,low,medium,high,max",
+				reasoningEffortUnsupportedOption: "reject",
+			}},
+		},
+		{
+			Route: ModelRoute{ID: "route_compatible", Priority: 2},
+			Provider: Provider{ID: "prv_compatible", Type: ProviderOpenAICompatible, Options: map[string]string{
+				reasoningEffortValuesOption: "none,low,medium,high,max,xhigh",
+			}},
+		},
+	}}
+
+	compatible, err := compatibleAnthropicRoutes(routed, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compatible.Routes) != 1 || compatible.Routes[0].Route.ID != "route_compatible" {
+		t.Fatalf("expected only the compatible route, got %#v", compatible.Routes)
 	}
 }
 

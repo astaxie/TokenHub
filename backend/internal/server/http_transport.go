@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,29 +70,76 @@ func bearerToken(r *http.Request) string {
 	return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 }
 
-func decodeJSON(r *http.Request, target any) error {
-	defer r.Body.Close()
-	const maxRequestBodyBytes = 4 << 20
-	data, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
-	if err != nil {
+// errEmptyRequestBody marks a request that carried no JSON value at all. It renders
+// as a 400 so strict endpoints reject it, but decodeJSONOptional recognizes it and
+// treats an absent body as acceptable.
+var errEmptyRequestBody = NewHTTPError(http.StatusBadRequest, "invalid_request", "request body is required")
+
+// decodeJSON decodes the request body into target using the global JSON body limit.
+func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
+	return s.decodeJSONLimit(w, r, target, s.config.MaxJSONRequestBytes)
+}
+
+// decodeJSONOptional behaves like decodeJSON but treats a completely empty body as
+// success, leaving target at its zero value. Used by endpoints whose JSON body is
+// optional.
+func (s *Server) decodeJSONOptional(w http.ResponseWriter, r *http.Request, target any) error {
+	if err := s.decodeJSONLimit(w, r, target, s.config.MaxJSONRequestBytes); err != nil && !errors.Is(err, errEmptyRequestBody) {
 		return err
 	}
-	if len(data) > maxRequestBodyBytes {
-		return fmt.Errorf("request body exceeds %d bytes", maxRequestBodyBytes)
+	return nil
+}
+
+// decodeJSONLimit decodes the request body into target, rejecting bodies larger
+// than limit with a 413 instead of silently truncating. http.MaxBytesReader caps the
+// total bytes read at limit and aborts the read early once it is exceeded, so an
+// over-limit request is rejected without reading the rest of the body. Note that
+// encoding/json buffers the full top-level value before unmarshalling, so worst-case
+// memory per in-flight request is still on the order of limit; the ceiling
+// (maxConfigurableRequestBytes) and conservative defaults bound that. A non-positive
+// limit falls back to the default so a zero-value Config (e.g. in tests) still
+// enforces a sane ceiling.
+func (s *Server) decodeJSONLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) error {
+	defer r.Body.Close()
+	if limit <= 0 {
+		limit = defaultMaxJSONRequestBytes
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	decoder := json.NewDecoder(r.Body)
 	decoder.UseNumber()
 	if err := decoder.Decode(target); err != nil {
-		return err
+		return decodeJSONError(err, limit)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
-			return errors.New("request body must contain a single JSON value")
+			return NewHTTPError(http.StatusBadRequest, "invalid_request", "request body must contain a single JSON value")
 		}
-		return err
+		return decodeJSONError(err, limit)
 	}
 	return nil
+}
+
+func decodeJSONError(err error, limit int64) error {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		return NewHTTPError(http.StatusRequestEntityTooLarge, "payload_too_large", fmt.Sprintf("request body exceeds %d bytes", limit))
+	}
+	if errors.Is(err, io.EOF) {
+		return errEmptyRequestBody
+	}
+	return NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error())
+}
+
+// isPayloadTooLarge reports whether a decode error is the typed 413 returned when a
+// request body exceeds its configured limit. Handlers that otherwise replace decode
+// failures with a bespoke 400 use this to let the 413 payload-too-large contract
+// through unchanged, keeping the 400 only for malformed or invalid payloads.
+func isPayloadTooLarge(err error) bool {
+	if err == nil {
+		return false
+	}
+	return AsHTTPError(err).Status == http.StatusRequestEntityTooLarge
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -105,12 +151,16 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	httpErr := AsHTTPError(err)
 	requestID := errorResponseHeaders(w, err)
+	errorPayload := map[string]any{
+		"message": httpErr.Message,
+		"type":    httpErr.Code,
+		"code":    httpErr.Code,
+	}
+	if httpErr.Details != nil {
+		errorPayload["details"] = httpErr.Details
+	}
 	writeJSON(w, httpErr.Status, map[string]any{
-		"error": map[string]any{
-			"message": httpErr.Message,
-			"type":    httpErr.Code,
-			"code":    httpErr.Code,
-		},
+		"error":      errorPayload,
 		"request_id": requestID,
 	})
 }
@@ -349,7 +399,7 @@ func (s *Server) cors(next http.Handler) http.Handler {
 			}
 		}
 
-		w.Header().Set("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS")
+		w.Header().Set("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		allowHeaders := "authorization,content-type"
 		if reqHeaders := r.Header.Get("access-control-request-headers"); reqHeaders != "" {
 			seen := map[string]bool{"authorization": true, "content-type": true}

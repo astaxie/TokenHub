@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -98,11 +99,20 @@ type Config struct {
 	// concurrent sessions share the value, pinning all their traffic to a single
 	// account and creating a hotspot.
 	CacheAffinityAllowUserScope bool
-	ImageStorageDir             string
-	ImageWorkerConcurrency      int
-	ImageQueueCapacity          int
-	ImageJobTimeoutSeconds      int
-	ImageCapabilityRetrySecs    int
+	// GuardrailModelURL is the complete OpenAI-compatible chat completions URL
+	// for the dedicated Qwen3Guard service. Empty keeps model detection offline;
+	// each policy decides whether that condition audits or blocks.
+	GuardrailModelURL            string
+	GuardrailModelAPIKey         string
+	GuardrailModelName           string
+	GuardrailModelTimeoutSeconds int
+	ImageStorageDir              string
+	ImageWorkerConcurrency       int
+	ImageQueueCapacity           int
+	ImageJobTimeoutSeconds       int
+	ImageCapabilityRetrySecs     int
+	MaxJSONRequestBytes          int64
+	MaxMultimodalRequestBytes    int64
 }
 
 func ConfigFromEnv() Config {
@@ -147,14 +157,20 @@ func ConfigFromEnv() Config {
 		DBMaxIdleConns:                   getenvInt("TOKENHUB_DB_MAX_IDLE_CONNS", 5),
 		DBConnMaxLifetimeMinutes:         getenvInt("TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES", 30),
 
-		CacheAffinityEnabled:        getenvBool("TOKENHUB_CACHE_AFFINITY_ENABLED", false),
-		CacheAffinityModels:         getenvList("TOKENHUB_CACHE_AFFINITY_MODELS"),
-		CacheAffinityAllowUserScope: getenvBool("TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE", false),
-		ImageStorageDir:             getenv("TOKENHUB_IMAGE_STORAGE_DIR", defaultImageStorageDir()),
-		ImageWorkerConcurrency:      getenvInt("TOKENHUB_IMAGE_WORKER_CONCURRENCY", 2),
-		ImageQueueCapacity:          getenvInt("TOKENHUB_IMAGE_QUEUE_CAPACITY", 64),
-		ImageJobTimeoutSeconds:      getenvInt("TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS", 300),
-		ImageCapabilityRetrySecs:    getenvInt("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", 86400),
+		CacheAffinityEnabled:         getenvBool("TOKENHUB_CACHE_AFFINITY_ENABLED", false),
+		CacheAffinityModels:          getenvList("TOKENHUB_CACHE_AFFINITY_MODELS"),
+		CacheAffinityAllowUserScope:  getenvBool("TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE", false),
+		GuardrailModelURL:            getenv("TOKENHUB_GUARDRAIL_MODEL_URL", ""),
+		GuardrailModelAPIKey:         getenv("TOKENHUB_GUARDRAIL_MODEL_API_KEY", ""),
+		GuardrailModelName:           getenv("TOKENHUB_GUARDRAIL_MODEL_NAME", "Qwen/Qwen3Guard-Gen-0.6B"),
+		GuardrailModelTimeoutSeconds: getenvInt("TOKENHUB_GUARDRAIL_MODEL_TIMEOUT_SECONDS", 10),
+		ImageStorageDir:              getenv("TOKENHUB_IMAGE_STORAGE_DIR", defaultImageStorageDir()),
+		ImageWorkerConcurrency:       getenvInt("TOKENHUB_IMAGE_WORKER_CONCURRENCY", 2),
+		ImageQueueCapacity:           getenvInt("TOKENHUB_IMAGE_QUEUE_CAPACITY", 64),
+		ImageJobTimeoutSeconds:       getenvInt("TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS", 300),
+		ImageCapabilityRetrySecs:     getenvInt("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", 86400),
+		MaxJSONRequestBytes:          getenvBytes("TOKENHUB_MAX_JSON_REQUEST_BYTES", defaultMaxJSONRequestBytes),
+		MaxMultimodalRequestBytes:    getenvBytes("TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES", defaultMaxMultimodalRequestBytes),
 	}
 }
 
@@ -399,4 +415,82 @@ func getenvBool(key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+const maxConfigurableRequestBytes int64 = 512 << 20
+
+// Default request-body ceilings. The multimodal default is higher because Codex
+// and vision requests inline base64-encoded images (~33% overhead), which routinely
+// exceed a text-sized limit. Both are also used as the safety fallback when a
+// zero-value Config reaches the decode path (e.g. in tests).
+const (
+	defaultMaxJSONRequestBytes       int64 = 8 << 20
+	defaultMaxMultimodalRequestBytes int64 = 32 << 20
+)
+
+// getenvBytes reads a byte-size env var. It accepts a raw integer ("1048576")
+// or a binary size suffix ("16k", "32mb", "8MiB", "1g"). Empty, unparseable,
+// or non-positive values fall back. Values above maxConfigurableRequestBytes
+// are clamped to the ceiling to guard against typos that would risk OOM.
+func getenvBytes(key string, fallback int64) int64 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, ok := parseByteSize(raw)
+	if !ok || value <= 0 {
+		return fallback
+	}
+	if value > maxConfigurableRequestBytes {
+		log.Printf("%s=%s exceeds the %d byte ceiling; clamping to ceiling", key, raw, maxConfigurableRequestBytes)
+		return maxConfigurableRequestBytes
+	}
+	return value
+}
+
+// parseByteSize parses a byte-size string into a count of bytes. It accepts a
+// bare integer ("1048576") or an integer followed by exactly one of the
+// documented, case-insensitive binary suffixes: k/kb/kib, m/mb/mib, g/gb/gib
+// (and a plain "b" for bytes). All multipliers are binary (1k = 1024). Any
+// other trailing text — including doubled or mixed suffixes like "8kk" or
+// "8big" — is rejected.
+func parseByteSize(raw string) (int64, bool) {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	if lower == "" {
+		return 0, false
+	}
+	// Split leading decimal digits from the trailing unit suffix.
+	split := len(lower)
+	for i, ch := range lower {
+		if ch < '0' || ch > '9' {
+			split = i
+			break
+		}
+	}
+	digits := lower[:split]
+	suffix := lower[split:]
+	if digits == "" {
+		return 0, false
+	}
+	var multiplier int64
+	switch suffix {
+	case "", "b":
+		multiplier = 1
+	case "k", "kb", "kib":
+		multiplier = 1 << 10
+	case "m", "mb", "mib":
+		multiplier = 1 << 20
+	case "g", "gb", "gib":
+		multiplier = 1 << 30
+	default:
+		return 0, false
+	}
+	n, err := strconv.ParseInt(digits, 10, 64)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	if multiplier > 1 && n > math.MaxInt64/multiplier {
+		return 0, false // overflow
+	}
+	return n * multiplier, true
 }

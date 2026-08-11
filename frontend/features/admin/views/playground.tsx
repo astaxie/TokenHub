@@ -20,6 +20,7 @@ import {
   type PlaygroundStreamEvent,
 } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
+import { copyText } from "../domain/clipboard";
 import {
   activeRouteCount,
   apiExampleLanguages,
@@ -54,6 +55,7 @@ type PlaygroundCandidate = {
   liveTTFTMS?: number;
   result?: PlaygroundChatPayload;
   error?: string;
+  blocked?: boolean;
 };
 
 type PlaygroundTurn = {
@@ -208,7 +210,9 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     const candidates = playgroundModels(data, canViewRoutes);
     return canViewRoutes ? candidates.filter((model) => activeRouteCount(model.name, data) > 0) : candidates;
   }, [data, canViewRoutes]);
+  const projects = useMemo(() => data.projects.filter((project) => !project.status || project.status === "active"), [data.projects]);
   const [modelName, setModelName] = useState(models[0]?.name ?? "");
+  const [projectID, setProjectID] = useState(projects[0]?.id ?? "");
   const [pendingModelName, setPendingModelName] = useState("");
   const [turns, setTurns] = useState<PlaygroundTurn[]>([]);
   const [draft, setDraft] = useState("");
@@ -225,7 +229,6 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   const [showCode, setShowCode] = useState(false);
   const [showModelDetails, setShowModelDetails] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [nowMS, setNowMS] = useState(Date.now());
   const [showNewContent, setShowNewContent] = useState(false);
   const activeRequestRef = useRef<AbortController | null>(null);
@@ -250,6 +253,11 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     if (!modelName && models[0]?.name) setModelName(models[0].name);
     if (modelName && !models.some((model) => model.name === modelName)) setModelName(models[0]?.name ?? "");
   }, [modelName, models]);
+
+  useEffect(() => {
+    if (!projectID && projects[0]?.id) setProjectID(projects[0].id);
+    if (projectID && !projects.some((project) => project.id === projectID)) setProjectID(projects[0]?.id ?? "");
+  }, [projectID, projects]);
 
   const languageVersion = activeLanguage;
   useEffect(() => {
@@ -291,6 +299,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
 
   function buildPayload(messages: PlaygroundRequestMessage[], requestModel: string) {
     const payload: Record<string, unknown> = {
+      project_id: projectID,
       model: requestModel,
       messages,
       max_tokens: clampPlaygroundMaxTokens(numericParameter(maxTokens), maxTokenLimit),
@@ -310,7 +319,6 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     const controller = new AbortController();
     activeRequestRef.current = controller;
     setLoading(true);
-    setError("");
     let terminalEventSeen = false;
     try {
       await streamPlaygroundChat(api, buildPayload(messages, requestModel), controller.signal, (_name, event: PlaygroundStreamEvent) => {
@@ -361,8 +369,8 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
         ...candidate,
         status: cancelled ? "cancelled" : "failed",
         error: message,
+        blocked: !cancelled && message.startsWith(tx("请求已被内容安全策略阻断。")),
       }));
-      if (!cancelled) setError(message);
     } finally {
       if (activeRequestRef.current === controller) activeRequestRef.current = null;
       setLoading(false);
@@ -383,7 +391,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   function sendMessage(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     const content = draft.trim();
-    if (!content || !modelName || loading) return;
+    if (!content || !modelName || !projectID || loading) return;
     const candidate = createCandidate(modelName);
     const turn: PlaygroundTurn = {
       id: uniqueUIID("turn"),
@@ -400,7 +408,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   }
 
   function rerunTurn(turnID: string) {
-    if (loading) return;
+    if (loading || !projectID) return;
     const turnIndex = turns.findIndex((turn) => turn.id === turnID);
     if (turnIndex < 0) return;
     const candidate = createCandidate(modelName);
@@ -436,13 +444,11 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     setModelName(pendingModelName);
     setPendingModelName("");
     if (!keepContext) setTurns([]);
-    setError("");
   }
 
   function clearHistory() {
     activeRequestRef.current?.abort();
     setTurns([]);
-    setError("");
   }
 
   function exportSession() {
@@ -497,6 +503,13 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
         <div className="playground-config-body">
           <h2>{tx("模型配置")}</h2>
           <label className="playground-field">
+            <span>{tx("选择项目")}</span>
+            <select value={projectID} onChange={(event) => setProjectID(event.target.value)} disabled={projects.length === 0 || loading}>
+              {projects.length === 0 ? <option value="">{tx("暂无可选项目")}</option> : null}
+              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            </select>
+          </label>
+          <label className="playground-field">
             <span>{tx("系统提示")}</span>
             <textarea value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} disabled={loading} />
           </label>
@@ -542,7 +555,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
       <section className="playground-main" aria-label={tx("模型演练对话")}>
         <div className="playground-model-bar">
           <div className="playground-model-title">
-            <button type="button" className="playground-copy-model" title={tx("复制模型名")} onClick={() => navigator.clipboard?.writeText(modelName).catch(() => undefined)}>
+            <button type="button" className="playground-copy-model" title={tx("复制模型名")} onClick={() => void copyText(modelName)}>
               <strong>{modelName || tx("选择模型")}</strong>
               <Copy size={13} />
             </button>
@@ -587,8 +600,6 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
         ) : null}
 
         {showCode ? <div className="playground-code-drawer"><PlaygroundAPIExamples baseURL={api.baseURL} modelName={modelName || "gpt-4.1-mini"} /></div> : null}
-        {error ? <div className="status-line error playground-error">{error}</div> : null}
-
         <div className="playground-chat" ref={chatRef} onScroll={handleChatScroll}>
           {turns.length === 0 ? (
             <div className="playground-empty">
@@ -613,7 +624,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
                         {formatPlaygroundInteger(index + 1)}
                       </button>
                     )) : null}
-                    <button type="button" onClick={() => rerunTurn(turn.id)} disabled={loading} title={tx("从这一轮重新生成，并移除后续分支")}>
+                    <button type="button" onClick={() => rerunTurn(turn.id)} disabled={loading || !projectID} title={tx("从这一轮重新生成，并移除后续分支")}>
                       <RotateCcw size={13} />{tx("重跑")}
                     </button>
                   </div>
@@ -631,7 +642,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
         ) : null}
 
         <form className="playground-composer" onSubmit={sendMessage}>
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={tx("输入用于诊断模型的消息...")} disabled={loading || models.length === 0} />
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={tx("输入用于诊断模型的消息...")} disabled={loading || models.length === 0 || projects.length === 0} />
           <div className="playground-composer-actions">
             <span className="playground-ephemeral">{tx("会话仅保存在当前页面，按需导出")}</span>
             <div className="playground-foot">
@@ -641,7 +652,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
             {loading ? (
               <button className="playground-stop-button" type="button" onClick={() => activeRequestRef.current?.abort()} title={tx("停止生成")}><Square size={16} /></button>
             ) : (
-              <button className="playground-send-button" disabled={!draft.trim() || models.length === 0} type="submit" title={tx("发送")}><Send size={18} /></button>
+              <button className="playground-send-button" disabled={!draft.trim() || models.length === 0 || projects.length === 0} type="submit" title={tx("发送")}><Send size={18} /></button>
             )}
           </div>
         </form>
@@ -659,10 +670,10 @@ function PlaygroundCandidateCard({ candidate, nowMS, canViewRoutes, turnIndex }:
   const rate = timing?.output_tokens_per_second ?? timing?.end_to_end_tokens_per_second;
   const usageKnown = hasPlaygroundUsage(usage);
   const modeLabel = (timing?.mode ?? candidate.mode) === "buffered" ? tx("非流式 · 缓冲返回") : tx("流式");
-  const statusLabel = candidate.status === "cancelled" ? tx("已取消") : candidate.status === "failed" ? tx("失败") : tx("已完成");
+  const statusLabel = candidate.blocked ? tx("已阻断") : candidate.status === "cancelled" ? tx("已取消") : candidate.status === "failed" ? tx("失败") : tx("已完成");
   return (
     <div className={`playground-message assistant ${candidate.status}`}>
-      <p>{candidate.content || (isStreaming ? tx("等待模型返回...") : tx("没有可展示内容"))}</p>
+      <p>{candidate.content || candidate.error || (isStreaming ? tx("等待模型返回...") : tx("没有可展示内容"))}</p>
       {isStreaming ? (
         <div className="playground-live-metrics">
           <span className="playground-live-dot" />
@@ -690,7 +701,6 @@ function PlaygroundCandidateCard({ candidate, nowMS, canViewRoutes, turnIndex }:
               {timing?.completed_at ? <span>{formatClock(timing.completed_at)}</span> : null}
             </div>
           ) : null}
-          {candidate.error ? <div className="playground-candidate-error">{candidate.error}</div> : null}
           {payload ? <PlaygroundDiagnostics payload={payload} canViewRoutes={canViewRoutes} turnIndex={turnIndex} /> : null}
         </>
       )}
@@ -785,13 +795,9 @@ export function PlaygroundAPIExamples({ baseURL, modelName }: { baseURL: string;
   const examples = useMemo(() => apiExampleScripts(baseURL, modelName), [baseURL, modelName]);
   const current = examples[language];
   async function copyCurrent() {
-    try {
-      await navigator.clipboard?.writeText(current);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      setCopied(false);
-    }
+    const success = await copyText(current);
+    setCopied(success);
+    if (success) window.setTimeout(() => setCopied(false), 1400);
   }
   return (
     <section className="api-example-panel">

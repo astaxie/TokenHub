@@ -152,6 +152,10 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 	if records[0].AttributedUserID != "user_cached_usage" {
 		t.Fatalf("persisted attributed user = %q, want user_cached_usage", records[0].AttributedUserID)
 	}
+	requestLogs := store.ListRequestLogs()
+	if len(requestLogs) != 1 || requestLogs[0].AttributedUserID != "user_cached_usage" {
+		t.Fatalf("request log attributed user = %#v, want user_cached_usage", requestLogs)
+	}
 	if math.Abs(records[0].CostUSD-0.0022) > 1e-12 {
 		t.Fatalf("persisted cost = %.12f, want 0.0022", records[0].CostUSD)
 	}

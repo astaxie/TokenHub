@@ -127,6 +127,8 @@ sequenceDiagram
     C->>G: Bearer project API key and model request
     G->>S: Validate key, project, expiration, and IP allowlist
     G->>G: Intersect project and API-key model access
+    G->>S: Load applicable content security policies as one snapshot
+    G->>G: Inspect, audit, mask, or block user-visible request text
     G->>S: Check quotas and concurrency lease; create call context
     G->>S: Query active and healthy Provider / Resource / Route
     G->>G: Resolve API Key, Project, or Global policy; filter candidates
@@ -159,6 +161,7 @@ Provider credentials, billing connector credentials, and raw billing snapshots a
 | --- | --- | --- |
 | Tenancy and credentials | `Project`, `APIKey`, `AdminUser`, `AdminSession` | Project ownership, application access, and admin sessions |
 | Routing | `Provider`, `ProviderResource`, `ProviderModel`, `Model`, `ModelRoute`, `AdminResource (routing-policies)` | Upstream channels, resource pools, upstream inventory, external models, routes, and scoped policy bindings |
+| Content security | `guardrails.Policy`, `guardrails.DetectionItem`, `guardrails.Binding` | Project-scoped request inspection, detector configuration, actions, and policy bindings |
 | Governance and metering | `QuotaBucket`, `UsageRecord`, `ProviderResourceBucket`, `InFlightLease` | Quotas, usage/cost, and cross-replica concurrency |
 | External billing | `BillingConnector`, `BillingRecord`, `BillingRawSnapshot`, `BillingSyncRun` | Provider billing collection, normalization, checkpoints, and sync history |
 | Multi-instance coordination | `ClusterLease`, `ClusterTaskState`, `AdapterSessionBinding` | Catalog sync, cluster operations, and Codex session resource bindings |

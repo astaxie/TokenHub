@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"tokenhub/backend/internal/guardrails"
+
 	"gorm.io/gorm"
 )
 
@@ -112,6 +114,11 @@ type Store interface {
 	UpdateProject(id string, patch Project) (Project, error)
 	DeleteProject(id string) error
 	GetProject(id string) (Project, bool)
+	CreateGuardrailPolicy(policy guardrails.Policy) (guardrails.Policy, error)
+	ListGuardrailPolicies() ([]guardrails.Policy, error)
+	GetGuardrailPolicy(id string) (guardrails.Policy, error)
+	UpdateGuardrailPolicy(id string, policy guardrails.Policy) (guardrails.Policy, guardrails.Policy, error)
+	DeleteGuardrailPolicy(id string) (guardrails.Policy, error)
 	ListProjectTeams(projectID string, offset int, limit int) ([]ProjectTeam, int64, error)
 	AddProjectTeam(link ProjectTeam) (ProjectTeam, error)
 	UpdateProjectTeam(projectID string, teamID string, role string) (ProjectTeam, error)
@@ -174,8 +181,14 @@ type Store interface {
 	ListImageAssets(jobID string) []ImageAsset
 	GetImageAsset(id string) (ImageAsset, bool)
 	ListUsageRecords() []UsageRecord
+	CreateAnalyticsCredential(credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error)
+	ListAnalyticsCredentials() []AnalyticsCredential
+	RevokeAnalyticsCredential(id string) (AnalyticsCredential, error)
+	ValidateAnalyticsCredential(rawSecret string) (AnalyticsCredential, error)
+	QueryTokenCostPage(ctx context.Context, query TokenCostQuery) (TokenCostPage, error)
 	GenerateBillingPeriod(period string) (map[string]any, error)
 	ListRequestLogs() []RequestLog
+	QueryRequestLogs(query RequestLogQuery) (RequestLogPage, error)
 	ListProviderObservations(since time.Time) []ProviderObservation
 	RecordProviderObservation(observation ProviderObservation)
 	GetProviderResourceObservation(resourceID string) (ProviderResourceObservation, bool)
@@ -236,6 +249,7 @@ var _ Store = (*GormStore)(nil)
 
 type GormStore struct {
 	db                   *gorm.DB
+	analyticsDB          *gorm.DB
 	mu                   *sync.Mutex
 	leaseHeartbeats      *sync.Map
 	secretKey            string

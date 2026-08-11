@@ -31,6 +31,16 @@ func TestNormalizeProviderCatalogModelUsesExplicitCanonicalName(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderCatalogEntryInfersAnthropicProtocolFromBaseURL(t *testing.T) {
+	entry := normalizeProviderCatalogEntry("minimax-cn", map[string]any{
+		"name": "MiniMax China",
+		"api":  "https://api.minimaxi.com/anthropic/v1",
+	})
+	if entry.Type != ProviderAnthropic {
+		t.Fatalf("expected Anthropic provider type, got %q", entry.Type)
+	}
+}
+
 func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 	var deepSeek ProviderCatalogEntry
 	for _, entry := range builtinProviderCatalog(true) {

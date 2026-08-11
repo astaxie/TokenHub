@@ -1,6 +1,7 @@
 import { AlertCircle, Check, Copy, KeyRound, Send } from "lucide-react";
 import { useState } from "react";
 import type { ProviderResource } from "../core/types";
+import { copyText } from "../domain/clipboard";
 import { tx } from "../i18n/runtime";
 
 export type ProviderAccountOAuthAction = "copy" | "open";
@@ -10,10 +11,7 @@ export async function launchProviderAccountAuthorization(action: ProviderAccount
     window.open(authURL, "_blank", "noopener,noreferrer");
     return;
   }
-  if (!navigator.clipboard) throw new Error(tx("复制授权链接失败，请允许浏览器访问剪贴板后重试。"));
-  await navigator.clipboard.writeText(authURL).catch(() => {
-    throw new Error(tx("复制授权链接失败，请允许浏览器访问剪贴板后重试。"));
-  });
+  if (!await copyText(authURL)) throw new Error(tx("复制授权链接失败，请允许浏览器访问剪贴板后重试。"));
 }
 
 export type OpenAIQuotaWindow = {

@@ -371,6 +371,9 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | span 化を待つ完了イベント数。満杯時はリクエストを遅らせずトレースを破棄 |
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 非ストリーミングの上流リクエスト 1 件あたりの全体タイムアウト |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | ストリーミング呼び出しに全体タイムアウトはありません。この値はレスポンスヘッダーの待機時間と、その後ストリームが無音でいられる時間を制限します。1 バイト受信するたびに計測し直します |
+| `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608`（8 MiB） | `/v1` エンドポイントの JSON リクエストボディ上限。生のバイト数または二進接尾辞（`8m`、`8mib`、`512k`）を指定できます。512 MiB を超える値は上限に丸められます |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | マルチモーダルのチャットエンドポイント（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）向けの上限。リバースプロキシの `client_max_body_size` をこの値以上に設定してください |
+| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 同梱のマルチインスタンス nginx ロードバランサーのみが読み取ります。バックエンドのバイト形式ではなく nginx のサイズ構文（`32m`、`512k`）を使用し、`TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 以上に設定してください |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停止時に処理中リクエストを待機する最大秒数 |
@@ -378,6 +381,10 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Chat Completions、Anthropic Messages、Responses で同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 段階的ロールアウト用のモデル許可リスト（カンマ区切り）。空の場合は全モデルが対象 |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Chat/Responses の `user` と Anthropic の `metadata.user_id` もアフィニティキーとして受け入れるか。同一ユーザーの並行セッションが同じ値を共有し単一アカウントに集中するため既定では無効 |
+| `TOKENHUB_GUARDRAIL_MODEL_URL` | 空 | 専用 Qwen3Guard サービスの完全な OpenAI-compatible chat-completions URL。有効化すると検査対象のユーザー表示リクエストテキストをそのサービスへ送信する。空の場合はモデルを呼び出さず、各ポリシーの利用不可時設定を適用 |
+| `TOKENHUB_GUARDRAIL_MODEL_API_KEY` | 空 | 専用ガードレールモデルサービス用の任意 Bearer 資格情報 |
+| `TOKENHUB_GUARDRAIL_MODEL_NAME` | `Qwen/Qwen3Guard-Gen-0.6B` | ガードレールサービスへ送信するモデル識別子 |
+| `TOKENHUB_GUARDRAIL_MODEL_TIMEOUT_SECONDS` | `10` | 1 回のガードレールモデル分類の制限時間 |
 | `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | 生成された画像アセットを保存するディレクトリ |
 | `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | 画像生成キューを処理するワーカー数 |
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | キューで待機できる画像ジョブの上限 |

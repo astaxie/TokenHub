@@ -147,6 +147,9 @@
 
   .page-breadcrumb {
     max-width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
+    overflow: visible;
   }
 
   .page-context-side {

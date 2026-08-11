@@ -1,7 +1,6 @@
 package server
 
 import (
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,7 +31,11 @@ func (s *Server) handleAdminBillingConnectors(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListBillingConnectors()})
 	case http.MethodPost:
 		var request BillingConnectorRequest
-		if err := decodeJSON(r, &request); err != nil {
+		if err := s.decodeJSON(w, r, &request); err != nil {
+			if isPayloadTooLarge(err) {
+				writeError(w, r, err)
+				return
+			}
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
 			return
 		}
@@ -83,7 +86,11 @@ func (s *Server) handleAdminBillingConnectorItem(w http.ResponseWriter, r *http.
 			return
 		}
 		var request BillingConnectorPatchRequest
-		if err := decodeJSON(r, &request); err != nil {
+		if err := s.decodeJSON(w, r, &request); err != nil {
+			if isPayloadTooLarge(err) {
+				writeError(w, r, err)
+				return
+			}
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
 			return
 		}
@@ -134,7 +141,11 @@ func (s *Server) handleAdminBillingConnectorAction(w http.ResponseWriter, r *htt
 		writeJSON(w, http.StatusOK, result)
 	case "sync":
 		var request BillingSyncRequest
-		if err := decodeJSON(r, &request); err != nil && err != io.EOF {
+		if err := s.decodeJSONOptional(w, r, &request); err != nil {
+			if isPayloadTooLarge(err) {
+				writeError(w, r, err)
+				return
+			}
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_sync", "Invalid billing sync payload"))
 			return
 		}

@@ -118,7 +118,6 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "audit":
       plan.overview = true;
       plan.keys = can("api-keys");
-      plan.logs = true;
       plan.auditEvents = canViewAdminAudit(user);
       break;
     case "providers":
@@ -191,6 +190,10 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "role-configs");
       addResourceDependency(plan, "identity-providers");
       break;
+    case "security-policies":
+      plan.overview = true;
+      addResourceDependency(plan, "security-policies");
+      break;
     case "quota-policies":
     case "cost-centers":
     case "approval-flows":
@@ -199,7 +202,6 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "monitors":
     case "proxies":
     case "announcements":
-    case "security-policies":
     case "identity-providers":
       addResourceDependency(plan, view);
       break;

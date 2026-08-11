@@ -2,6 +2,7 @@ import { Check, Copy, KeyRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { type AdminUser, type AppData, type FieldConfig, type Model } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
+import { copyText } from "../domain/clipboard";
 import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelRoutesFor } from "../domain/entities";
 import { compactNumber, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
@@ -50,12 +51,7 @@ export function IssuedKeyModal({ value, onClose }: { value: string; onClose: () 
   }, [closeCountdown]);
 
   async function copyKey() {
-    try {
-      await navigator.clipboard?.writeText(value);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
+    setCopied(await copyText(value));
   }
 
   return (

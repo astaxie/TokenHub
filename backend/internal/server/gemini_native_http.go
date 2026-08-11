@@ -82,8 +82,8 @@ func (s *Server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var payload map[string]any
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	tokens := estimateAnthropicValueTokens(payload["contents"]) + estimateAnthropicValueTokens(payload["systemInstruction"]) + estimateAnthropicValueTokens(payload["tools"])
@@ -106,8 +106,8 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload map[string]any
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	request, reverseNames, err := geminiToResponsesRequest(model, payload, stream)

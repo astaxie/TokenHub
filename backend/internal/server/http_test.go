@@ -301,7 +301,8 @@ func TestAdminPlaygroundChatUsesRoutesWithoutProjectBilling(t *testing.T) {
 	}
 
 	resp := doJSON(t, app, http.MethodPost, "/api/admin/playground/chat", map[string]any{
-		"model": "gpt-4.1-mini",
+		"project_id": "prj_demo",
+		"model":      "gpt-4.1-mini",
 		"messages": []map[string]any{
 			{"role": "user", "content": "playground smoke"},
 		},
@@ -360,6 +361,7 @@ func TestAdminPlaygroundChatUsesRoutesWithoutProjectBilling(t *testing.T) {
 
 func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
 	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Playground Codex Project"})
 	provider := store.AddProvider(Provider{
 		ID:      "prv_playground_codex",
 		Name:    "Playground Codex",
@@ -452,7 +454,8 @@ func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
 	})}
 
 	resp := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat", map[string]any{
-		"model": "gpt-playground-codex",
+		"project_id": project.ID,
+		"model":      "gpt-playground-codex",
 		"messages": []map[string]any{
 			{"role": "system", "content": "Be concise."},
 			{"role": "user", "content": "First question"},
@@ -633,6 +636,7 @@ models:
 
 	store := NewMemoryStore()
 	store.AddModel(Model{Name: "factory-chat", Family: "customized", Modality: "chat", ContextWindow: 1000, Status: StatusDisabled})
+	store.AddModel(Model{Name: "factory-embedding", Family: "customized", Modality: "embedding", EmbeddingPriceUSDPer1M: 9, Status: StatusDisabled})
 	store.AddModel(Model{Name: "custom-only", Family: "custom", Modality: "chat", Status: StatusActive})
 	app := NewWithConfig(store, Config{AdminToken: "dev_admin_token", ModelCatalogFile: catalogPath}).Handler()
 

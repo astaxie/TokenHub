@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"tokenhub/backend/internal/guardrails"
 )
 
 type Server struct {
@@ -36,6 +38,7 @@ type Server struct {
 	imageAccountMu    sync.Mutex
 	imageAccountSlots map[string]chan struct{}
 	versions          *versionService
+	guardrailEngine   *guardrails.Engine
 }
 
 func New(store Store) *Server {
@@ -56,6 +59,12 @@ func NewWithConfig(store Store, config Config) *Server {
 	}
 	if config.ImageCapabilityRetrySecs <= 0 {
 		config.ImageCapabilityRetrySecs = 86400
+	}
+	if config.MaxJSONRequestBytes <= 0 {
+		config.MaxJSONRequestBytes = defaultMaxJSONRequestBytes
+	}
+	if config.MaxMultimodalRequestBytes <= 0 {
+		config.MaxMultimodalRequestBytes = defaultMaxMultimodalRequestBytes
 	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
 	client, streamClient, streamIdleTimeout := newUpstreamClients(config)
@@ -103,6 +112,12 @@ func NewWithConfig(store Store, config Config) *Server {
 		imageQueue:        make(chan imageJobWork, config.ImageQueueCapacity),
 		imageAccountSlots: make(map[string]chan struct{}),
 		versions:          newVersionService(config),
+		guardrailEngine: guardrails.NewEngine(guardrails.NewQwenDetector(guardrails.QwenDetectorConfig{
+			URL:     config.GuardrailModelURL,
+			APIKey:  config.GuardrailModelAPIKey,
+			Model:   config.GuardrailModelName,
+			Timeout: time.Duration(config.GuardrailModelTimeoutSeconds) * time.Second,
+		})),
 	}
 	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
 		log.Printf("[tokenhub] failed to mark unfinished image jobs after startup: %v", err)
@@ -133,26 +148,14 @@ func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Requ
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.adapterRegistry.List()})
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "tokenhub-backend"})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 	if err := s.store.Ping(ctx); err != nil {

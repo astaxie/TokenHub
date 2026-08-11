@@ -53,7 +53,7 @@ function createResourceConfigs(): Partial<Record<ViewKey, ResourceConfig<any>>> 
   "alert-events": alertEventConfig(),
   "alert-deliveries": alertDeliveryConfig(),
   approvals: approvalConfig(),
-  "security-policies": genericResourceConfig("security-policies", "安全策略", "敏感数据、错误透传、IP 访问和审计策略", [
+  "security-policies": genericResourceConfig("security-policies", "安全策略", "Prompt 日志保护、错误透传和 IP 访问控制", [
     { key: "mask_prompts", label: "脱敏 Prompt", type: "boolean", help: "开启后策略要求请求与响应审计避免直接展示完整 Prompt。" },
     { key: "ip_allowlist", label: "IP 白名单", type: "textarea", placeholder: "127.0.0.1/32\n10.0.0.0/8", help: "每行一个 CIDR 或 IP，留空表示不配置白名单。" },
     { key: "error_passthrough", label: "错误透传", type: "select", options: ["sanitized", "passthrough", "hidden"], required: true },

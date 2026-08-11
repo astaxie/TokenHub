@@ -467,7 +467,7 @@ export function OverviewRoleWorkbench({
   const activeRoutes = data.summary.active_route_count || data.routes.filter((route) => route.status === "active").length;
   const apiKeys = data.summary.api_key_count || data.keys.length;
   const callableModels = playgroundModels(data).length || data.models.filter((model) => model.status === "active").length;
-  const requestCount = data.summary.request_count || data.logs.length;
+  const requestCount = data.summary.request_count;
   const setupScore = overviewSetupScore(role, {
     projects: projects.length,
     activeProviders: activeProviders.length,
@@ -1142,8 +1142,8 @@ export type UsageDashboardRankRow = UsageBreakdownRow & {
 };
 
 export function roleUsageMonitorStats(data: AppData) {
-  const requests = data.summary.request_count || data.logs.length;
-  const failedRequests = data.summary.errors || data.logs.filter(requestLogFailed).length;
+  const requests = data.summary.request_count;
+  const failedRequests = data.summary.errors;
   const successRequests = Math.max(0, requests - failedRequests);
   const latencyLogs = data.logs.filter((log) => log.latency_ms > 0);
   const avgLatencyMS = latencyLogs.length

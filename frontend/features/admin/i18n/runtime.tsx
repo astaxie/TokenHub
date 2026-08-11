@@ -123,6 +123,46 @@ export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaU
   return `${formatted} ${zhUnit}`;
 }
 
+export function guardrailDetectionItemName(index: number) {
+  const formatted = localeNumber(index);
+  if (activeLanguage === "en") return `Detection item ${formatted}`;
+  if (activeLanguage === "ja") return `検出項目 ${formatted}`;
+  return `检测项 ${formatted}`;
+}
+
+export function millisecondsText(value: number) {
+  const formatted = localeNumber(value);
+  if (activeLanguage === "en") return `${formatted} ms`;
+  if (activeLanguage === "ja") return `${formatted} ミリ秒`;
+  return `${formatted} 毫秒`;
+}
+
+export function guardrailBlockedDiagnostic(reasonLabels: string[], policyLabels: string[], requestID: string) {
+  const joinLabels = (labels: string[]) => labels.join(activeLanguage === "en" ? ", " : "、");
+  if (activeLanguage === "en") {
+    const details = [
+      reasonLabels.length > 0 ? `Reasons: ${joinLabels(reasonLabels)}` : "",
+      policyLabels.length > 0 ? `Matched policies: ${joinLabels(policyLabels)}` : "",
+      requestID ? `Request ID: ${requestID}` : "",
+    ].filter(Boolean);
+    return ["The request was blocked by a content security policy.", details.join("; ")].filter(Boolean).join(" ");
+  }
+  if (activeLanguage === "ja") {
+    const details = [
+      reasonLabels.length > 0 ? `理由：${joinLabels(reasonLabels)}` : "",
+      policyLabels.length > 0 ? `一致したポリシー：${joinLabels(policyLabels)}` : "",
+      requestID ? `リクエスト ID：${requestID}` : "",
+    ].filter(Boolean);
+    return ["コンテンツセキュリティポリシーによりリクエストがブロックされました。", details.join("；")].filter(Boolean).join(" ");
+  }
+  const details = [
+    reasonLabels.length > 0 ? `原因：${joinLabels(reasonLabels)}` : "",
+    policyLabels.length > 0 ? `命中策略：${joinLabels(policyLabels)}` : "",
+    requestID ? `请求 ID：${requestID}` : "",
+  ].filter(Boolean);
+  return ["请求已被内容安全策略阻断。", details.join("；")].filter(Boolean).join(" ");
+}
+
 export function providerSaveMessage(updated: boolean, accountResourceCreated: boolean, imported: number, categoryLabel: string) {
   const modelCount = imported > 0
     ? countWithUnit(imported, `个${categoryLabel}上游模型`, `${categoryLabel} upstream model`, `${categoryLabel} 上流モデル`)

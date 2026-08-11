@@ -513,7 +513,12 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	if baseURL == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to load upstream models")
 	}
-	endpoint, err := url.Parse(strings.TrimRight(baseURL, "/") + "/models")
+	providerType := strings.ToLower(strings.TrimSpace(req.Type))
+	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
+	if providerType == ProviderAnthropic {
+		modelsURL = anthropicEndpointURL(baseURL, "/v1/models")
+	}
+	endpoint, err := url.Parse(modelsURL)
 	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
 	}
@@ -524,7 +529,17 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	if err != nil {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to create upstream models request")
 	}
-	if apiKey := strings.TrimSpace(req.APIKey); apiKey != "" {
+	apiKey := strings.TrimSpace(req.APIKey)
+	if providerType == ProviderAnthropic {
+		if apiKey != "" {
+			httpReq.Header.Set("x-api-key", apiKey)
+		}
+		version := strings.TrimSpace(req.Options["anthropic_version"])
+		if version == "" {
+			version = "2023-06-01"
+		}
+		httpReq.Header.Set("anthropic-version", version)
+	} else if apiKey != "" {
 		httpReq.Header.Set("authorization", "Bearer "+apiKey)
 	}
 	resp, err := client.Do(httpReq)
@@ -654,12 +669,13 @@ func sortCatalogEntries(entries []ProviderCatalogEntry) {
 
 func inferProviderType(id string, baseURL string) string {
 	normalized := strings.ToLower(id)
+	normalizedBaseURL := strings.ToLower(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
 	switch {
 	case normalized == "openai":
 		return ProviderOpenAI
 	case strings.Contains(normalized, "azure"):
 		return ProviderAzureOpenAI
-	case strings.Contains(normalized, "anthropic"):
+	case strings.Contains(normalized, "anthropic") || strings.Contains(normalizedBaseURL, "/anthropic/") || strings.HasSuffix(normalizedBaseURL, "/anthropic"):
 		return ProviderAnthropic
 	case normalized == "google" || strings.Contains(normalized, "gemini"):
 		return ProviderGemini
