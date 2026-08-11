@@ -818,6 +818,7 @@ export type ViewKey =
   | "models"
   | "routes"
   | "routing-policies"
+	| "agents"
   | "projects"
   | "project-members"
   | "api-keys"
@@ -852,6 +853,7 @@ export const viewRoutes: Record<ViewKey, string> = {
   models: "/models",
   routes: "/routes",
   "routing-policies": "/routing-policies",
+	agents: "/agents",
   projects: "/projects",
   "project-members": "/project-members",
   "api-keys": "/api-keys",

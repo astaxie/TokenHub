@@ -355,6 +355,16 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | 备份目录 |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 托管部署中的标准模型目录文件 |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 托管部署中的 Provider 模板与候选模型目录文件 |
+| `TOKENHUB_AGENT_CATALOG_FILE` | `/opt/tokenhub/current/catalog/agent-catalog.yaml` | 启动时在集群租约下同步的 A2A 1.0 Agent 审核配置 |
+| `TOKENHUB_A2A_ENABLED` | `false` | 开放 A2A 1.0 JSON-RPC/SSE 网关、Agent Card、MCP 准入 API 和 Responses 桥；关闭即可立即回退 |
+| `TOKENHUB_A2A_ALLOW_PRIVATE_UPSTREAMS` | `false` | 在受控开发环境中允许 HTTP、私网或回环 Agent 上游；生产环境应保持关闭 |
+| `TOKENHUB_A2A_MAX_AGENT_HOPS` | `8` | 单次执行允许的 Agent 间跳数上限 |
+| `TOKENHUB_A2A_MAX_MODEL_CALLS` | `32` | 单次 Agent 执行允许的委托模型调用上限 |
+| `TOKENHUB_A2A_MAX_MCP_CALLS` | `64` | 单次 Agent 执行允许的已准入 MCP 调用上限 |
+| `TOKENHUB_A2A_MAX_RUNTIME_SECONDS` | `900` | 单次 Agent 执行及其上游调用的墙钟时间上限 |
+| `TOKENHUB_A2A_MAX_TOKENS` | `200000` | 单次 Agent 执行中模型和已接入 MCP 上报的 Token 上限 |
+| `TOKENHUB_A2A_MAX_COST_USD` | `10` | 单次执行中模型、MCP 和 Agent 固定成本的上限 |
+| `TOKENHUB_A2A_MAX_CONCURRENCY` | `8` | 单次执行中同时运行的 Agent 步骤上限 |
 | `TOKENHUB_SEED_DEMO` | `false` | 是否写入演示数据 |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider 资源进入冷却前的失败阈值 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Provider 资源进入冷却后获得半开重试前的基础等待秒数 |
@@ -418,7 +428,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 ## 目录文件
 
-发布的托管镜像和原生安装包都包含对应版本的 `data/model-catalog.yaml` 与 `data/provider-catalog.json`。它们会随其余 Release 一起激活到 `/opt/tokenhub/current/catalog/`，确保后端程序和两类目录来自同一版本。Provider 目录由 PublicProviderConf 数据迁入并随仓库维护，TokenHub 运行时不会拉取远端目录数据。
+发布的托管镜像和原生安装包都包含对应版本的 `data/model-catalog.yaml`、`data/provider-catalog.json` 与 `data/agent-catalog.yaml`。它们会随其余 Release 一起激活到 `/opt/tokenhub/current/catalog/`，确保后端程序和三类目录来自同一版本。Provider 目录由 PublicProviderConf 数据迁入并随仓库维护，TokenHub 运行时不会拉取远端目录数据。
 
 需要使用自定义模型目录时，显式指定挂载文件：
 

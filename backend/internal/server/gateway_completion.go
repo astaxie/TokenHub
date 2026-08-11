@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -144,6 +145,7 @@ func (s *Server) finishRoutedCall(r *http.Request, completion GatewayCallComplet
 // with a response. It is the shape almost every handler needs, so it exists to keep
 // those handlers reading as one statement each.
 func (s *Server) finishSuccessfulRoutedCall(r *http.Request, routed RoutedCall, route RouteSelection, usage Usage, attempts []RouteAttempt, requestPayload any, responsePayload any) {
+	s.recordDelegatedModelUsage(r, routed.Call.RequestID, usage)
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,
@@ -152,6 +154,22 @@ func (s *Server) finishSuccessfulRoutedCall(r *http.Request, routed RoutedCall, 
 		StatusCode:      http.StatusOK,
 		RequestPayload:  requestPayload,
 		ResponsePayload: responsePayload,
+	})
+}
+
+func (s *Server) recordDelegatedModelUsage(r *http.Request, stepID string, usage Usage) {
+	token := bearerToken(r)
+	if !strings.HasPrefix(token, "thd_") || !s.config.A2AEnabled {
+		return
+	}
+	claims, err := s.parseAgentDelegation(token)
+	if err != nil || claims.ExecutionID == "" {
+		return
+	}
+	_ = s.store.CompleteAgentModel(AgentUsageRecord{
+		ExecutionID: claims.ExecutionID, StepID: stepID, AgentID: claims.CallerAgent,
+		ProjectID: claims.ProjectID, APIKeyID: claims.APIKeyID,
+		Tokens: usage.TotalTokens, CostUSD: usage.CostUSD,
 	})
 }
 

@@ -7,8 +7,9 @@ import { routingTranslations } from "./routing";
 import { scopedRoutingPolicyTranslations } from "./scoped-routing-policy";
 import { securityTranslations } from "./security";
 import { usageTranslations } from "./usage";
+import { agentTranslations } from "./agents";
 
 export const translations: Record<"en" | "ja", Record<string, string>> = {
-  en: { ...enTranslations, ...routingTranslations.en, ...scopedRoutingPolicyTranslations.en, ...modelGovernanceTranslations.en, ...providerConnectionTranslations.en, ...usageTranslations.en, ...playgroundTranslations.en, ...securityTranslations.en },
-  ja: { ...jaTranslations, ...routingTranslations.ja, ...scopedRoutingPolicyTranslations.ja, ...modelGovernanceTranslations.ja, ...providerConnectionTranslations.ja, ...usageTranslations.ja, ...playgroundTranslations.ja, ...securityTranslations.ja },
+	en: { ...enTranslations, ...routingTranslations.en, ...scopedRoutingPolicyTranslations.en, ...modelGovernanceTranslations.en, ...providerConnectionTranslations.en, ...usageTranslations.en, ...playgroundTranslations.en, ...securityTranslations.en, ...agentTranslations.en },
+	ja: { ...jaTranslations, ...routingTranslations.ja, ...scopedRoutingPolicyTranslations.ja, ...modelGovernanceTranslations.ja, ...providerConnectionTranslations.ja, ...usageTranslations.ja, ...playgroundTranslations.ja, ...securityTranslations.ja, ...agentTranslations.ja },
 };

@@ -12,6 +12,7 @@ TokenHub includes a Go backend, a Next.js admin console, Node.js SDK smoke tests
 | `frontend/` | Next.js and React admin console |
 | `sdk/` | Node.js smoke tests for the OpenAI-compatible API and security policy endpoints |
 | `data/model-catalog.yaml` | Tracked model catalog source |
+| `data/agent-catalog.yaml` | Tracked reviewed A2A 1.0 Agent registry source |
 | `deploy/` | Docker Compose deployment and environment templates |
 | `docs/` | English, Simplified Chinese, and Japanese documentation |
 
@@ -55,7 +56,7 @@ npm run test:security-policy
 - Never commit credentials, local `.env` files, databases, generated backups, or runtime logs.
 - Keep environment variable changes synchronized across relevant examples, Compose files, `start.sh`, and deployment documentation.
 - Keep shared user-facing documentation synchronized across English, Simplified Chinese, and Japanese.
-- Keep `data/model-catalog.yaml` tracked. Do not commit other runtime data files.
+- Keep `data/model-catalog.yaml` and `data/agent-catalog.yaml` tracked. Do not commit other runtime data files.
 
 ## Validation
 

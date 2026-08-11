@@ -12,6 +12,7 @@ TokenHub 包含 Go 后端、Next.js 管理后台、Node.js SDK 冒烟测试、YA
 | `frontend/` | Next.js 和 React 管理后台 |
 | `sdk/` | OpenAI-Compatible API 和安全策略接口的 Node.js 冒烟测试 |
 | `data/model-catalog.yaml` | 纳入版本控制的模型目录源文件 |
+| `data/agent-catalog.yaml` | 纳入版本控制的 A2A 1.0 Agent 审核配置源文件 |
 | `deploy/` | Docker Compose 部署和环境变量模板 |
 | `docs/` | 英文、简体中文和日文文档 |
 
@@ -55,7 +56,7 @@ npm run test:security-policy
 - 不要提交凭证、本地 `.env` 文件、数据库、生成的备份或运行日志。
 - 环境变量发生变化时，同步更新相关示例、Compose 文件、`start.sh` 和部署文档。
 - 面向使用者的共享文档需要同步维护英文、简体中文和日文版本。
-- 保持 `data/model-catalog.yaml` 纳入版本控制，不要提交其他运行时数据文件。
+- 保持 `data/model-catalog.yaml` 与 `data/agent-catalog.yaml` 纳入版本控制，不要提交其他运行时数据文件。
 
 ## 验证
 

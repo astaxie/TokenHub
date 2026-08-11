@@ -7,7 +7,8 @@
   "scripts": {
     "test:anthropic-messages": "node ./test-anthropic-messages.mjs",
     "test:deepseek": "node ./test-deepseek.mjs",
-    "test:security-policy": "node ./test-security-policy.mjs"
+    "test:security-policy": "node ./test-security-policy.mjs",
+    "test:a2a": "node ./test-a2a.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "2.0.50",

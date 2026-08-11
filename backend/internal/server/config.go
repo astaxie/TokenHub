@@ -25,6 +25,7 @@ type Config struct {
 	SQLiteBackupDir          string
 	ModelCatalogFile         string
 	ProviderCatalogFile      string
+	AgentCatalogFile         string
 	SecretKey                string
 	TrustedProxyCIDRs        []string
 	CORSAllowedOrigins       []string
@@ -113,6 +114,20 @@ type Config struct {
 	ImageCapabilityRetrySecs     int
 	MaxJSONRequestBytes          int64
 	MaxMultimodalRequestBytes    int64
+	// A2AEnabled exposes the A2A 1.0 JSON-RPC/SSE gateway. It is intentionally
+	// disabled by default so rollout and rollback do not require a binary change.
+	A2AEnabled bool
+	// A2AAllowPrivateUpstreams permits loopback and private network upstreams.
+	// Production deployments should leave it disabled; tests and development may
+	// opt in for locally hosted Agents.
+	A2AAllowPrivateUpstreams bool
+	A2AMaxAgentHops          int64
+	A2AMaxModelCalls         int64
+	A2AMaxMCPCalls           int64
+	A2AMaxRuntimeSeconds     int
+	A2AMaxTokens             int64
+	A2AMaxCostUSD            float64
+	A2AMaxConcurrency        int64
 }
 
 func ConfigFromEnv() Config {
@@ -131,6 +146,7 @@ func ConfigFromEnv() Config {
 		SQLiteBackupDir:                  getenv("TOKENHUB_SQLITE_BACKUP_DIR", defaultSQLiteBackupDir()),
 		ModelCatalogFile:                 getenv("TOKENHUB_MODEL_CATALOG_FILE", defaultModelCatalogFile()),
 		ProviderCatalogFile:              getenv("TOKENHUB_PROVIDER_CATALOG_FILE", defaultProviderCatalogFile()),
+		AgentCatalogFile:                 getenv("TOKENHUB_AGENT_CATALOG_FILE", defaultAgentCatalogFile()),
 		SecretKey:                        getenv("TOKENHUB_SECRET_KEY", "dev_tokenhub_secret_key"),
 		TrustedProxyCIDRs:                getenvList("TOKENHUB_TRUSTED_PROXY_CIDRS"),
 		CORSAllowedOrigins:               getenvList("TOKENHUB_CORS_ALLOWED_ORIGINS"),
@@ -171,6 +187,15 @@ func ConfigFromEnv() Config {
 		ImageCapabilityRetrySecs:     getenvInt("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", 86400),
 		MaxJSONRequestBytes:          getenvBytes("TOKENHUB_MAX_JSON_REQUEST_BYTES", defaultMaxJSONRequestBytes),
 		MaxMultimodalRequestBytes:    getenvBytes("TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES", defaultMaxMultimodalRequestBytes),
+		A2AEnabled:                   getenvBool("TOKENHUB_A2A_ENABLED", false),
+		A2AAllowPrivateUpstreams:     getenvBool("TOKENHUB_A2A_ALLOW_PRIVATE_UPSTREAMS", false),
+		A2AMaxAgentHops:              int64(getenvInt("TOKENHUB_A2A_MAX_AGENT_HOPS", 8)),
+		A2AMaxModelCalls:             int64(getenvInt("TOKENHUB_A2A_MAX_MODEL_CALLS", 32)),
+		A2AMaxMCPCalls:               int64(getenvInt("TOKENHUB_A2A_MAX_MCP_CALLS", 64)),
+		A2AMaxRuntimeSeconds:         getenvInt("TOKENHUB_A2A_MAX_RUNTIME_SECONDS", 900),
+		A2AMaxTokens:                 int64(getenvInt("TOKENHUB_A2A_MAX_TOKENS", 200000)),
+		A2AMaxCostUSD:                getenvFloat("TOKENHUB_A2A_MAX_COST_USD", 10),
+		A2AMaxConcurrency:            int64(getenvInt("TOKENHUB_A2A_MAX_CONCURRENCY", 8)),
 	}
 }
 
@@ -340,6 +365,23 @@ func defaultProviderCatalogFile() string {
 		}
 	}
 	return "data/provider-catalog.json"
+}
+
+func defaultAgentCatalogFile() string {
+	for _, candidate := range []string{
+		"data/agent-catalog.yaml",
+		"../data/agent-catalog.yaml",
+		"../../data/agent-catalog.yaml",
+		"../../../data/agent-catalog.yaml",
+		"/app/catalog/agent-catalog.yaml",
+		"/app/data/agent-catalog.yaml",
+		"/opt/tokenhub/current/catalog/agent-catalog.yaml",
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return "data/agent-catalog.yaml"
 }
 
 func pathExists(path string) bool {

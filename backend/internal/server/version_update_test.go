@@ -413,8 +413,9 @@ func nativeTestArchive(t *testing.T, version string, extra map[string]nativeTest
 			content: `{"providers":[]}`,
 			mode:    0644,
 		},
-		"deploy/tokenhub.service": {content: "[Service]", mode: 0644},
-		"VERSION":                 {content: version + "\n", mode: 0644},
+		"catalog/agent-catalog.yaml": {content: "agents: []", mode: 0644},
+		"deploy/tokenhub.service":    {content: "[Service]", mode: 0644},
+		"VERSION":                    {content: version + "\n", mode: 0644},
 	}
 	for name, entry := range extra {
 		entries[name] = entry
@@ -476,8 +477,9 @@ func createNativeTestBundle(t *testing.T, root string, version string) {
 			content: `{"providers":[]}`,
 			mode:    0644,
 		},
-		"deploy/tokenhub.service": {content: "[Service]", mode: 0644},
-		"VERSION":                 {content: version + "\n", mode: 0644},
+		"catalog/agent-catalog.yaml": {content: "agents: []", mode: 0644},
+		"deploy/tokenhub.service":    {content: "[Service]", mode: 0644},
+		"VERSION":                    {content: version + "\n", mode: 0644},
 	}
 	for name, file := range files {
 		path := filepath.Join(root, name)

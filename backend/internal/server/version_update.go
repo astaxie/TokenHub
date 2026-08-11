@@ -476,6 +476,7 @@ func validateNativeBundle(bundleRoot string, version string) error {
 		{path: "frontend/server.js"},
 		{path: "catalog/model-catalog.yaml"},
 		{path: "catalog/provider-catalog.json"},
+		{path: "catalog/agent-catalog.yaml"},
 		{path: "deploy/tokenhub.service"},
 		{path: "VERSION"},
 	}

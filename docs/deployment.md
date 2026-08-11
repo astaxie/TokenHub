@@ -355,6 +355,16 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | Backup output directory |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | Standard model catalog file in managed deployments |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | Provider templates and candidate-model catalog file in managed deployments |
+| `TOKENHUB_AGENT_CATALOG_FILE` | `/opt/tokenhub/current/catalog/agent-catalog.yaml` | Reviewed A2A 1.0 Agent registrations synchronized at startup under a cluster lease |
+| `TOKENHUB_A2A_ENABLED` | `false` | Expose the A2A 1.0 JSON-RPC/SSE gateway, Agent Cards, MCP admission API, and Responses bridge; turn it off for immediate rollback |
+| `TOKENHUB_A2A_ALLOW_PRIVATE_UPSTREAMS` | `false` | Allow HTTP and private or loopback Agent upstreams for controlled development; keep disabled in production |
+| `TOKENHUB_A2A_MAX_AGENT_HOPS` | `8` | Maximum Agent-to-Agent hops in one execution |
+| `TOKENHUB_A2A_MAX_MODEL_CALLS` | `32` | Maximum delegated model calls in one Agent execution |
+| `TOKENHUB_A2A_MAX_MCP_CALLS` | `64` | Maximum admitted MCP calls in one Agent execution |
+| `TOKENHUB_A2A_MAX_RUNTIME_SECONDS` | `900` | Wall-clock deadline for one Agent execution and its upstream calls |
+| `TOKENHUB_A2A_MAX_TOKENS` | `200000` | Maximum reported model and instrumented MCP tokens in one Agent execution |
+| `TOKENHUB_A2A_MAX_COST_USD` | `10` | Maximum reported model, MCP, and fixed Agent cost in one execution |
+| `TOKENHUB_A2A_MAX_CONCURRENCY` | `8` | Maximum concurrently running Agent steps in one execution |
 | `TOKENHUB_SEED_DEMO` | `false` | Whether to seed demo data |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider resource failure threshold before cooldown |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Base cooldown before a parked provider resource is given a half-open retry |
@@ -421,7 +431,7 @@ Recommended production setup:
 
 ## Catalog Files
 
-Published managed images and native archives include matching copies of `data/model-catalog.yaml` and `data/provider-catalog.json`. They are activated with the rest of the release under `/opt/tokenhub/current/catalog/`, so the backend binary and both catalogs always come from the same version. The Provider catalog is vendored from PublicProviderConf and is read locally at runtime; TokenHub does not fetch remote catalog data.
+Published managed images and native archives include matching copies of `data/model-catalog.yaml`, `data/provider-catalog.json`, and `data/agent-catalog.yaml`. They are activated with the rest of the release under `/opt/tokenhub/current/catalog/`, so the backend binary and all three catalogs always come from the same version. The Provider catalog is vendored from PublicProviderConf and is read locally at runtime; TokenHub does not fetch remote catalog data.
 
 To mount a custom catalog explicitly:
 

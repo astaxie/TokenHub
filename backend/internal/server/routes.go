@@ -11,6 +11,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/healthz", s.handleHealth, jsonMethodNotAllowed(http.MethodGet))
 	s.mux.HandleFunc("/metrics", s.handleMetrics)
 	s.registerModelRoutes()
+	s.registerAgentRoutes()
 	// The in-flight gauge covers exactly the endpoints that route to an upstream, so
 	// it stays comparable with requests_total. Catalog lookups and count_tokens are
 	// local and never produce a request count, and admin traffic and scrapes are not

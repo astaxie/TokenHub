@@ -39,6 +39,7 @@ type Server struct {
 	imageAccountSlots map[string]chan struct{}
 	versions          *versionService
 	guardrailEngine   *guardrails.Engine
+	a2aJSONRPC        http.Handler
 }
 
 func New(store Store) *Server {
@@ -65,6 +66,27 @@ func NewWithConfig(store Store, config Config) *Server {
 	}
 	if config.MaxMultimodalRequestBytes <= 0 {
 		config.MaxMultimodalRequestBytes = defaultMaxMultimodalRequestBytes
+	}
+	if config.A2AMaxAgentHops <= 0 {
+		config.A2AMaxAgentHops = 8
+	}
+	if config.A2AMaxModelCalls <= 0 {
+		config.A2AMaxModelCalls = 32
+	}
+	if config.A2AMaxMCPCalls <= 0 {
+		config.A2AMaxMCPCalls = 64
+	}
+	if config.A2AMaxRuntimeSeconds <= 0 {
+		config.A2AMaxRuntimeSeconds = 900
+	}
+	if config.A2AMaxTokens <= 0 {
+		config.A2AMaxTokens = 200000
+	}
+	if config.A2AMaxCostUSD <= 0 {
+		config.A2AMaxCostUSD = 10
+	}
+	if config.A2AMaxConcurrency <= 0 {
+		config.A2AMaxConcurrency = 8
 	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
 	client, streamClient, streamIdleTimeout := newUpstreamClients(config)
@@ -138,6 +160,8 @@ func NewWithConfig(store Store, config Config) *Server {
 		}
 	}
 	s.installTraceEmitter(config)
+	s.a2aJSONRPC = initAgentGateway(s)
+	s.syncAgentCatalog()
 	s.routes()
 	return s
 }

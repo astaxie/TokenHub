@@ -29,6 +29,7 @@ create_bundle() {
   : >"$root/frontend/server.js"
   : >"$root/catalog/model-catalog.yaml"
   printf '{"providers":[]}\n' >"$root/catalog/provider-catalog.json"
+  printf 'agents: []\n' >"$root/catalog/agent-catalog.yaml"
   cp "$script_dir/tokenhub.service" "$root/deploy/tokenhub.service"
   printf '%s\n' "$version" >"$root/VERSION"
 }
