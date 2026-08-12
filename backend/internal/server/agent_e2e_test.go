@@ -372,6 +372,12 @@ func TestA2A10GatewayEndToEnd(t *testing.T) {
 	if responses.Code != http.StatusOK || !strings.Contains(responses.Body, "agent says hello") {
 		t.Fatalf("Responses bridge failed: %d %s", responses.Code, responses.Body)
 	}
+	backgroundResponses := doJSON(t, app, http.MethodPost, "/v1/responses", map[string]any{
+		"model": "agent/research", "input": "background bridge request", "background": true,
+	}, secret)
+	if backgroundResponses.Code != http.StatusBadRequest || !strings.Contains(backgroundResponses.Body, `"code":"agent_background_not_supported"`) {
+		t.Fatalf("Agent background Responses were not rejected explicitly: %d %s", backgroundResponses.Code, backgroundResponses.Body)
+	}
 
 	cardResponse := doJSON(t, app, http.MethodGet, "/a2a/research/.well-known/agent-card.json", nil, secret)
 	if cardResponse.Code != http.StatusOK || !strings.Contains(cardResponse.Body, "https://gateway.example/a2a/research") ||

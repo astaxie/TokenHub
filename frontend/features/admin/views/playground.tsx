@@ -4,11 +4,13 @@ import {
   Code2,
   Copy,
   Download,
+  ImagePlus,
   RotateCcw,
   Send,
   Sparkles,
   Square,
   Trash2,
+  X,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -26,10 +28,23 @@ import {
   apiExampleLanguages,
   apiExampleScripts,
   extractAssistantText,
+  formatBytes,
   playgroundModels,
   routeStrategyLabel,
   uniqueUIID,
 } from "../domain/formatting";
+import {
+  type PlaygroundImageAttachment,
+  type PlaygroundImageSelectionError,
+  type PlaygroundRequestContent,
+  modelSupportsPlaygroundImages,
+  playgroundAttachmentBytes,
+  playgroundImageMIMETypes,
+  playgroundImagesForExport,
+  playgroundMaxImagesPerMessage,
+  playgroundMessageContent,
+  validatePlaygroundImageSelection,
+} from "../domain/playground-images";
 import {
   clampPlaygroundMaxTokens,
   hasPlaygroundUsage,
@@ -61,12 +76,13 @@ type PlaygroundCandidate = {
 type PlaygroundTurn = {
   id: string;
   userContent: string;
+  userImages: PlaygroundImageAttachment[];
   userCreatedAt: string;
   candidates: PlaygroundCandidate[];
   selectedCandidateID: string;
 };
 
-type PlaygroundRequestMessage = { role: "system" | "user" | "assistant"; content: string };
+type PlaygroundRequestMessage = { role: "system" | "user" | "assistant"; content: PlaygroundRequestContent };
 
 const playgroundDateTimeOptions: Intl.DateTimeFormatOptions = {
   year: "numeric",
@@ -132,19 +148,28 @@ function formatPlaygroundUSD(value?: number) {
     }).format(value);
 }
 
+function playgroundImageSelectionErrorText(error: PlaygroundImageSelectionError) {
+  switch (error) {
+    case "too_many_images": return tx("每条消息最多上传 4 张图片。");
+    case "unsupported_type": return tx("仅支持 JPEG、PNG 和 WebP 图片。");
+    case "image_too_large": return tx("单张图片不能超过 5 MiB。");
+    case "conversation_too_large": return tx("当前会话图片总量不能超过 12 MiB，请删除图片或新建会话。");
+  }
+}
+
 function selectedCandidate(turn: PlaygroundTurn) {
   return turn.candidates.find((candidate) => candidate.id === turn.selectedCandidateID) ?? turn.candidates.at(-1);
 }
 
-function requestMessagesForNewTurn(turns: PlaygroundTurn[], systemPrompt: string, userContent: string) {
+function requestMessagesForNewTurn(turns: PlaygroundTurn[], systemPrompt: string, userContent: string, userImages: PlaygroundImageAttachment[]) {
   const messages: PlaygroundRequestMessage[] = [];
   if (systemPrompt.trim()) messages.push({ role: "system", content: systemPrompt.trim() });
   for (const turn of turns) {
-    messages.push({ role: "user", content: turn.userContent });
+    messages.push({ role: "user", content: playgroundMessageContent(turn.userContent, turn.userImages) });
     const candidate = selectedCandidate(turn);
     if (candidate?.content) messages.push({ role: "assistant", content: candidate.content });
   }
-  messages.push({ role: "user", content: userContent });
+  messages.push({ role: "user", content: playgroundMessageContent(userContent, userImages) });
   return messages;
 }
 
@@ -152,13 +177,22 @@ function requestMessagesForRerun(turns: PlaygroundTurn[], turnIndex: number, sys
   const messages: PlaygroundRequestMessage[] = [];
   if (systemPrompt.trim()) messages.push({ role: "system", content: systemPrompt.trim() });
   turns.slice(0, turnIndex + 1).forEach((turn, index) => {
-    messages.push({ role: "user", content: turn.userContent });
+    messages.push({ role: "user", content: playgroundMessageContent(turn.userContent, turn.userImages) });
     if (index < turnIndex) {
       const candidate = selectedCandidate(turn);
       if (candidate?.content) messages.push({ role: "assistant", content: candidate.content });
     }
   });
   return messages;
+}
+
+function readPlaygroundImage(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("invalid_image_data"));
+    reader.onerror = () => reject(reader.error ?? new Error("image_read_failed"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatDuration(milliseconds?: number) {
@@ -216,6 +250,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   const [pendingModelName, setPendingModelName] = useState("");
   const [turns, setTurns] = useState<PlaygroundTurn[]>([]);
   const [draft, setDraft] = useState("");
+  const [images, commitImages] = useState<PlaygroundImageAttachment[]>([]);
   const [systemPrompt, setSystemPrompt] = useState(defaultPlaygroundSystemPrompt);
   const [responseFormat, setResponseFormat] = useState("text");
   const [maxTokens, setMaxTokens] = useState("4096");
@@ -229,12 +264,22 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   const [showCode, setShowCode] = useState(false);
   const [showModelDetails, setShowModelDetails] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [imageUploadPending, setImageUploadPending] = useState(false);
+  const [error, setError] = useState("");
   const [nowMS, setNowMS] = useState(Date.now());
   const [showNewContent, setShowNewContent] = useState(false);
   const activeRequestRef = useRef<AbortController | null>(null);
   const chatRef = useRef<HTMLDivElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const imagesRef = useRef<PlaygroundImageAttachment[]>([]);
+  const imageUploadPendingRef = useRef(false);
+  const imageUploadGenerationRef = useRef(0);
+  const conversationImageBytesRef = useRef(0);
   const isAtBottomRef = useRef(true);
   const selectedModel = models.find((model) => model.name === modelName);
+  const supportsImages = modelSupportsPlaygroundImages(selectedModel);
+  const conversationImageBytes = turns.reduce((total, turn) => total + playgroundAttachmentBytes(turn.userImages), 0);
+  const hasConversationImages = conversationImageBytes > 0 || images.length > 0;
   const selectedModelRouteCount = canViewRoutes && selectedModel ? activeRouteCount(selectedModel.name, data) : 0;
   const contextWindow = selectedModel?.context_window ?? 0;
   const maxTokenLimit = playgroundMaxTokenLimit(selectedModel?.metadata?.max_output_tokens, contextWindow);
@@ -249,15 +294,40 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   const lastCandidate = turns.at(-1) ? selectedCandidate(turns.at(-1)!) : undefined;
   const lastResult = lastCandidate?.result;
 
+  function updateImages(next: PlaygroundImageAttachment[] | ((current: PlaygroundImageAttachment[]) => PlaygroundImageAttachment[])) {
+    const value = typeof next === "function" ? next(imagesRef.current) : next;
+    imagesRef.current = value;
+    commitImages(value);
+  }
+
+  function invalidatePendingImageUploads() {
+    imageUploadGenerationRef.current += 1;
+    imageUploadPendingRef.current = false;
+    setImageUploadPending(false);
+  }
+
+  function changeModelName(nextModelName: string) {
+    invalidatePendingImageUploads();
+    setModelName(nextModelName);
+  }
+
   useEffect(() => {
-    if (!modelName && models[0]?.name) setModelName(models[0].name);
-    if (modelName && !models.some((model) => model.name === modelName)) setModelName(models[0]?.name ?? "");
+    if (!modelName && models[0]?.name) changeModelName(models[0].name);
+    if (modelName && !models.some((model) => model.name === modelName)) changeModelName(models[0]?.name ?? "");
   }, [modelName, models]);
 
   useEffect(() => {
     if (!projectID && projects[0]?.id) setProjectID(projects[0].id);
     if (projectID && !projects.some((project) => project.id === projectID)) setProjectID(projects[0]?.id ?? "");
   }, [projectID, projects]);
+
+  useEffect(() => {
+    conversationImageBytesRef.current = conversationImageBytes;
+  }, [conversationImageBytes]);
+
+  useEffect(() => {
+    if (!supportsImages) invalidatePendingImageUploads();
+  }, [supportsImages]);
 
   const languageVersion = activeLanguage;
   useEffect(() => {
@@ -269,7 +339,11 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     if (String(clamped) !== maxTokens) setMaxTokens(String(clamped));
   }, [maxTokenLimit, maxTokens]);
 
-  useEffect(() => () => activeRequestRef.current?.abort(), []);
+  useEffect(() => () => {
+    activeRequestRef.current?.abort();
+    imageUploadGenerationRef.current += 1;
+    imageUploadPendingRef.current = false;
+  }, []);
 
   useEffect(() => {
     if (!loading) return;
@@ -391,19 +465,26 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   function sendMessage(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     const content = draft.trim();
-    if (!content || !modelName || !projectID || loading) return;
+    if ((!content && images.length === 0) || !modelName || !projectID || loading || imageUploadPendingRef.current) return;
+    if (hasConversationImages && !supportsImages) {
+      setError(tx("当前模型未声明图片输入能力。"));
+      return;
+    }
     const candidate = createCandidate(modelName);
+    const submittedImages = images.slice();
     const turn: PlaygroundTurn = {
       id: uniqueUIID("turn"),
       userContent: content,
+      userImages: submittedImages,
       userCreatedAt: new Date().toISOString(),
       candidates: [candidate],
       selectedCandidateID: candidate.id,
     };
-    const messages = requestMessagesForNewTurn(turns, systemPrompt, content);
+    const messages = requestMessagesForNewTurn(turns, systemPrompt, content, submittedImages);
     isAtBottomRef.current = true;
     setTurns((current) => [...current, turn]);
     setDraft("");
+    updateImages([]);
     void runCandidate(turn.id, candidate.id, messages, modelName);
   }
 
@@ -432,8 +513,8 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
       setPendingModelName("");
       return;
     }
-    if (turns.length === 0) {
-      setModelName(nextModelName);
+    if (turns.length === 0 && images.length === 0) {
+      changeModelName(nextModelName);
       return;
     }
     setPendingModelName(nextModelName);
@@ -441,14 +522,69 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
 
   function applyModelChange(keepContext: boolean) {
     if (!pendingModelName) return;
-    setModelName(pendingModelName);
+    const nextModel = models.find((model) => model.name === pendingModelName);
+    if (keepContext && hasConversationImages && !modelSupportsPlaygroundImages(nextModel)) {
+      setError(tx("包含图片的上下文不能切换到非视觉模型。"));
+      return;
+    }
+    changeModelName(pendingModelName);
     setPendingModelName("");
-    if (!keepContext) setTurns([]);
+    if (!keepContext) {
+      setTurns([]);
+      updateImages([]);
+    }
+    setError("");
   }
 
   function clearHistory() {
     activeRequestRef.current?.abort();
+    invalidatePendingImageUploads();
     setTurns([]);
+    updateImages([]);
+    setError("");
+  }
+
+  async function addImages(selected: File[]) {
+    if (selected.length === 0 || imageUploadPendingRef.current) return;
+    if (!supportsImages) {
+      setError(tx("当前模型未声明图片输入能力。"));
+      return;
+    }
+    const candidates = selected.map((file) => ({ mediaType: file.type, sizeBytes: file.size }));
+    const initialError = validatePlaygroundImageSelection(imagesRef.current, conversationImageBytesRef.current, candidates);
+    if (initialError) {
+      setError(playgroundImageSelectionErrorText(initialError));
+      return;
+    }
+    const generation = imageUploadGenerationRef.current;
+    imageUploadPendingRef.current = true;
+    setImageUploadPending(true);
+    try {
+      const dataURLs = await Promise.all(selected.map(readPlaygroundImage));
+      if (generation !== imageUploadGenerationRef.current) return;
+      const attachments = selected.map((file, index) => ({
+        id: uniqueUIID("image"),
+        name: file.name,
+        mediaType: file.type,
+        sizeBytes: file.size,
+        dataURL: dataURLs[index],
+      }));
+      const current = imagesRef.current;
+      const currentError = validatePlaygroundImageSelection(current, conversationImageBytesRef.current, attachments);
+      if (currentError) {
+        setError(playgroundImageSelectionErrorText(currentError));
+        return;
+      }
+      updateImages([...current, ...attachments]);
+      setError("");
+    } catch {
+      if (generation === imageUploadGenerationRef.current) setError(tx("读取图片失败，请重新选择。"));
+    } finally {
+      if (generation === imageUploadGenerationRef.current) {
+        imageUploadPendingRef.current = false;
+        setImageUploadPending(false);
+      }
+    }
   }
 
   function exportSession() {
@@ -457,7 +593,10 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
       model: modelName,
       system_prompt: systemPrompt,
       parameters: buildPayload([], modelName),
-      turns,
+      turns: turns.map((turn) => ({
+        ...turn,
+        userImages: playgroundImagesForExport(turn.userImages),
+      })),
     };
     const url = URL.createObjectURL(new Blob([prettyJSON(payload)], { type: "application/json" }));
     const anchor = document.createElement("a");
@@ -585,7 +724,13 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
           <div className="playground-model-change">
             <span>{tx("切换模型会改变后续请求的路由与参数能力。")}</span>
             <button type="button" className="primary-button compact" onClick={() => applyModelChange(false)}>{tx("新建会话并切换")}</button>
-            <button type="button" className="secondary-button compact" onClick={() => applyModelChange(true)}>{tx("保留上下文继续")}</button>
+            <button
+              type="button"
+              className="secondary-button compact"
+              onClick={() => applyModelChange(true)}
+              disabled={hasConversationImages && !modelSupportsPlaygroundImages(models.find((model) => model.name === pendingModelName))}
+              title={hasConversationImages ? tx("包含图片的上下文只能由视觉模型继续。") : undefined}
+            >{tx("保留上下文继续")}</button>
             <button type="button" className="text-button" onClick={() => setPendingModelName("")}>{tx("取消")}</button>
           </div>
         ) : null}
@@ -594,12 +739,15 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
           <div className="playground-detail-strip">
             <DetailField label={tx("类型")} value={selectedModel ? modelCategoryLabel(modelCategory(selectedModel)) : "-"} />
             <DetailField label={tx("能力")} value={selectedModel?.modality || "chat"} />
+            <DetailField label={tx("图片输入")} value={supportsImages ? tx("支持") : tx("不支持")} />
             <DetailField label={tx("上下文")} value={contextWindow ? formatPlaygroundInteger(contextWindow) : "-"} />
             <DetailField label={tx("最近路由")} value={routeHasDetails(lastResult) ? `${lastResult?.route?.provider_name || lastResult?.route?.provider_id} / ${lastResult?.route?.provider_model}` : tx("仅授权角色可见")} />
           </div>
         ) : null}
 
-        {showCode ? <div className="playground-code-drawer"><PlaygroundAPIExamples baseURL={api.baseURL} modelName={modelName || "gpt-4.1-mini"} /></div> : null}
+        {showCode ? <div className="playground-code-drawer"><PlaygroundAPIExamples baseURL={api.baseURL} modelName={modelName || "gpt-4.1-mini"} supportsImages={supportsImages} /></div> : null}
+        {error ? <div className="status-line error playground-error">{error}</div> : null}
+
         <div className="playground-chat" ref={chatRef} onScroll={handleChatScroll}>
           {turns.length === 0 ? (
             <div className="playground-empty">
@@ -614,7 +762,12 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
               <div className="playground-turn" key={turn.id}>
                 <div className="playground-message user">
                   <span>{tx("用户")} · {formatClock(turn.userCreatedAt)}</span>
-                  <p>{turn.userContent}</p>
+                  {turn.userImages.length > 0 ? (
+                    <div className="playground-message-images">
+                      {turn.userImages.map((image) => <img alt={image.name} key={image.id} src={image.dataURL} />)}
+                    </div>
+                  ) : null}
+                  {turn.userContent ? <p>{turn.userContent}</p> : <p className="playground-image-only">{tx("仅图片")}</p>}
                 </div>
                 <div className="playground-candidate-head">
                   <span>{tx("助手")} · {candidate.model} · {formatClock(candidate.startedAt)}</span>
@@ -642,9 +795,42 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
         ) : null}
 
         <form className="playground-composer" onSubmit={sendMessage}>
+          {images.length > 0 ? (
+            <div className="playground-image-previews">
+              {images.map((image) => (
+                <div className="playground-image-preview" key={image.id}>
+                  <img alt={image.name} src={image.dataURL} />
+                  <span><strong>{image.name}</strong><small>{formatBytes(image.sizeBytes)}</small></span>
+                  <button type="button" onClick={() => updateImages((current) => current.filter((item) => item.id !== image.id))} title={tx("移除图片")}><X size={13} /></button>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={tx("输入用于诊断模型的消息...")} disabled={loading || models.length === 0 || projects.length === 0} />
           <div className="playground-composer-actions">
-            <span className="playground-ephemeral">{tx("会话仅保存在当前页面，按需导出")}</span>
+            <div className="playground-composer-tools">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept={playgroundImageMIMETypes.join(",")}
+                multiple
+                hidden
+                disabled={imageUploadPending}
+                onChange={(event) => {
+                  const selected = event.currentTarget.files ? Array.from(event.currentTarget.files) : [];
+                  event.currentTarget.value = "";
+                  void addImages(selected);
+                }}
+              />
+              <button
+                type="button"
+                className="playground-image-button"
+                disabled={loading || imageUploadPending || models.length === 0 || !supportsImages || images.length >= playgroundMaxImagesPerMessage}
+                onClick={() => imageInputRef.current?.click()}
+                title={supportsImages ? tx("上传图片") : tx("当前模型未声明图片输入能力。")}
+              ><ImagePlus size={17} /></button>
+              <span className="playground-ephemeral">{supportsImages ? tx("支持图片输入，会话仅保存在当前页面") : tx("当前模型仅支持文本输入")}</span>
+            </div>
             <div className="playground-foot">
               {lastResult?.request_id ? <span>{lastResult.request_id}</span> : null}
               {hasPlaygroundUsage(lastResult?.usage) ? <span>{tx("输入")} {formatPlaygroundInteger(lastResult?.usage?.prompt_tokens ?? 0)} · {tx("输出")} {formatPlaygroundInteger(lastResult?.usage?.completion_tokens ?? 0)}</span> : null}
@@ -652,7 +838,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
             {loading ? (
               <button className="playground-stop-button" type="button" onClick={() => activeRequestRef.current?.abort()} title={tx("停止生成")}><Square size={16} /></button>
             ) : (
-              <button className="playground-send-button" disabled={!draft.trim() || models.length === 0 || projects.length === 0} type="submit" title={tx("发送")}><Send size={18} /></button>
+              <button className="playground-send-button" disabled={imageUploadPending || (!draft.trim() && images.length === 0) || models.length === 0 || projects.length === 0} type="submit" title={tx("发送")}><Send size={18} /></button>
             )}
           </div>
         </form>
@@ -789,10 +975,10 @@ export function PlaygroundConfigSlider({ label, value, onChange, min, max, step 
   );
 }
 
-export function PlaygroundAPIExamples({ baseURL, modelName }: { baseURL: string; modelName: string }) {
+export function PlaygroundAPIExamples({ baseURL, modelName, supportsImages = false }: { baseURL: string; modelName: string; supportsImages?: boolean }) {
   const [language, setLanguage] = useState<ApiExampleLanguage>("python");
   const [copied, setCopied] = useState(false);
-  const examples = useMemo(() => apiExampleScripts(baseURL, modelName), [baseURL, modelName]);
+  const examples = useMemo(() => apiExampleScripts(baseURL, modelName, supportsImages), [baseURL, modelName, supportsImages]);
   const current = examples[language];
   async function copyCurrent() {
     const success = await copyText(current);

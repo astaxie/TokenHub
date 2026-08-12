@@ -89,7 +89,7 @@ export function ModelDirectoryView({
           stage={hasImportedProviderModels ? "models" : "providers"}
           title={hasImportedProviderModels ? "还没有对外模型" : "先引入可用的 Provider 模型"}
           description={hasImportedProviderModels
-            ? "从内置的 165 个模型中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。"
+            ? "从内置的 178 个模型中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。"
             : "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"}
           actionLabel={hasImportedProviderModels ? "新建对外模型" : "前往 Provider 渠道"}
           onAction={hasImportedProviderModels ? onCreateModel : onOpenProviders}

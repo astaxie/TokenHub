@@ -421,12 +421,6 @@ func (s *Server) cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleAdminSystemDBStatus(w http.ResponseWriter, r *http.Request) {
-	// Only allow GET requests.
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Verify administrator permissions.
 	if _, ok := s.requireAdmin(w, r, "system", r.Method); !ok {
 		return

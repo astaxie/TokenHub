@@ -189,6 +189,138 @@ func TestAdminTestsUnsavedProviderConnection(t *testing.T) {
 	}
 }
 
+func TestAdminTestsUnsavedAnthropicProviderAuthentication(t *testing.T) {
+	for _, testCase := range []struct {
+		name              string
+		authType          string
+		wantAuthorization string
+		wantAPIKey        string
+	}{
+		{name: "default x-api-key", wantAPIKey: "test-secret"},
+		{name: "bearer", authType: anthropicAuthTypeBearer, wantAuthorization: "Bearer test-secret"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("authorization"); got != testCase.wantAuthorization {
+					t.Errorf("authorization = %q, want %q", got, testCase.wantAuthorization)
+				}
+				if got := r.Header.Get("x-api-key"); got != testCase.wantAPIKey {
+					t.Errorf("x-api-key = %q, want %q", got, testCase.wantAPIKey)
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"data": []map[string]any{{"id": "claude-test"}},
+				})
+			}))
+			defer upstream.Close()
+
+			app := newTestServer()
+			resp := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", map[string]any{
+				"name":                "Anthropic",
+				"type":                ProviderAnthropic,
+				"base_url":            upstream.URL + "/v1",
+				"api_key":             "test-secret",
+				"anthropic_auth_type": testCase.authType,
+			}, "")
+			if resp.Code != http.StatusOK {
+				t.Fatalf("expected connection test 200, got %d: %s", resp.Code, resp.Body)
+			}
+		})
+	}
+}
+
+func TestAdminSavedAnthropicProviderCatalogAuthentication(t *testing.T) {
+	seenHeaders := make(chan http.Header, 2)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenHeaders <- r.Header.Clone()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{{"id": "claude-test"}},
+		})
+	}))
+	defer upstream.Close()
+
+	app := newTestServer()
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_anthropic_bearer",
+		"name":                "Anthropic Bearer",
+		"type":                ProviderAnthropic,
+		"base_url":            upstream.URL + "/v1",
+		"api_key":             "saved-secret",
+		"anthropic_auth_type": anthropicAuthTypeBearer,
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", created.Code, created.Body)
+	}
+
+	for _, testCase := range []struct {
+		name              string
+		authType          string
+		wantAuthorization string
+		wantAPIKey        string
+	}{
+		{name: "inherit saved bearer", wantAuthorization: "Bearer saved-secret"},
+		{name: "explicit x-api-key override", authType: anthropicAuthTypeAPIKey, wantAPIKey: "saved-secret"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			body := map[string]any{"provider_id": "prv_anthropic_bearer"}
+			if testCase.authType != "" {
+				body["anthropic_auth_type"] = testCase.authType
+			}
+			resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/custom", body, "")
+			if resp.Code != http.StatusOK {
+				t.Fatalf("expected saved provider catalog 200, got %d: %s", resp.Code, resp.Body)
+			}
+			headers := <-seenHeaders
+			if got := headers.Get("authorization"); got != testCase.wantAuthorization {
+				t.Errorf("authorization = %q, want %q", got, testCase.wantAuthorization)
+			}
+			if got := headers.Get("x-api-key"); got != testCase.wantAPIKey {
+				t.Errorf("x-api-key = %q, want %q", got, testCase.wantAPIKey)
+			}
+		})
+	}
+}
+
+func TestAdminValidatesAnthropicProviderAuthentication(t *testing.T) {
+	app := newTestServer()
+	valid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_anthropic_bearer",
+		"name":                "Anthropic Bearer",
+		"type":                ProviderAnthropic,
+		"base_url":            "https://example.invalid",
+		"anthropic_auth_type": anthropicAuthTypeBearer,
+	}, "")
+	if valid.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", valid.Code, valid.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(valid.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Provider.Options[anthropicAuthTypeOption]; got != anthropicAuthTypeBearer {
+		t.Fatalf("stored authentication type = %q, want %q", got, anthropicAuthTypeBearer)
+	}
+
+	for _, body := range []map[string]any{
+		{
+			"name":                "Invalid Anthropic",
+			"type":                ProviderAnthropic,
+			"base_url":            "https://example.invalid",
+			"anthropic_auth_type": "basic",
+		},
+		{
+			"name":     "Invalid Anthropic Option",
+			"type":     ProviderAnthropic,
+			"base_url": "https://example.invalid",
+			"options":  map[string]string{anthropicAuthTypeOption: "basic"},
+		},
+	} {
+		resp := doJSON(t, app, http.MethodPost, "/api/admin/providers", body, "")
+		if resp.Code != http.StatusBadRequest || !strings.Contains(resp.Body, `"code":"provider_anthropic_auth_type_invalid"`) {
+			t.Fatalf("expected invalid authentication type, got %d: %s", resp.Code, resp.Body)
+		}
+	}
+}
+
 func TestAdminProviderConnectionTestRequiresCredentials(t *testing.T) {
 	app := newTestServer()
 	for _, testCase := range []struct {
@@ -995,5 +1127,84 @@ func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
 	model, ok := modelByNameForTest(store.ListModels(), external.Name)
 	if !ok || model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal || model.Status != StatusDisabled {
 		t.Fatalf("candidate refresh must preserve external role and publication state: %+v", model)
+	}
+}
+
+// TestAdminProviderCatalogItemDecodesEscapedID guards the escaped-path
+// parsing in the provider-catalog item handler: a catalog ID containing "/"
+// arrives as %2F and must be looked up under its decoded value, while
+// malformed escapes are rejected.
+func TestAdminProviderCatalogItemDecodesEscapedID(t *testing.T) {
+	store := NewMemoryStore()
+	entry := ProviderCatalogEntry{
+		ID:          "vendor/model-with-slash",
+		Name:        "Vendor Model",
+		DisplayName: "Vendor Model",
+		Type:        ProviderOpenAICompatible,
+		BaseURL:     "https://example.invalid/v1",
+		Categories:  []string{"openai"},
+		ModelsCount: 1,
+		Models:      []ProviderCatalogModel{{ID: "vendor/model-with-slash", Name: "vendor-model"}},
+	}
+	if err := store.SaveProviderCatalogSnapshot([]ProviderCatalogEntry{entry}, "test", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	resp := doJSON(t, app, http.MethodGet, "/api/admin/provider-catalog/vendor%2Fmodel-with-slash", nil, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected escaped catalog id to resolve, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, `"id":"vendor/model-with-slash"`) {
+		t.Fatalf("expected decoded catalog entry in body: %s", resp.Body)
+	}
+}
+
+// TestAdminRouteCreationDoesNotMarkExternalModelWhenRouteWriteFails guards
+// route create ordering: when the route write itself fails, the model
+// directory must not be marked external as if the route had been created.
+func TestAdminRouteCreationDoesNotMarkExternalModelWhenRouteWriteFails(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "atomic-route-model", Family: "atomic", Modality: "chat", Status: StatusActive})
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "atomic-upstream",
+		DisplayName:   "Atomic Upstream",
+		Status:        StatusActive,
+	})
+	if err := store.db.Exec(`
+		CREATE TRIGGER fail_atomic_route_insert
+		BEFORE INSERT ON model_routes
+		WHEN NEW.model_name = 'atomic-route-model'
+		BEGIN
+			SELECT RAISE(FAIL, 'forced route write failure');
+		END;
+	`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	created := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "atomic-route-model",
+		"provider_id":    "prv_mock",
+		"provider_model": "atomic-upstream",
+		"status":         StatusActive,
+	}, "")
+	if created.Code != http.StatusInternalServerError {
+		t.Fatalf("expected route write failure 500, got %d: %s", created.Code, created.Body)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ModelName == "atomic-route-model" {
+			t.Fatalf("route write failure must not persist a route: %+v", route)
+		}
+	}
+	model, ok := modelByNameForTest(store.ListModels(), "atomic-route-model")
+	if !ok {
+		t.Fatal("expected the model to exist")
+	}
+	if model.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal {
+		t.Fatal("route write failure must not mark the model external")
 	}
 }

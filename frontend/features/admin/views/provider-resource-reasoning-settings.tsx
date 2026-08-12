@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ApiContext, Provider, ProviderResource } from "../core/types";
 import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
+import { effectiveProviderHeaderEntries, parseProviderHeaderEntries, providerHeaderEntryErrors, providerHeadersFormValue } from "../domain/provider-headers";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerResourceToForm, providerResourceUpdatePayload, readAdminError } from "../resources/payloads";
 import { ProviderInlineField } from "./provider-editor-fields";
+import { ProviderCustomHeaders } from "./provider-custom-headers";
 
 export function ProviderResourceReasoningSettings({
   api,
@@ -30,7 +32,10 @@ export function ProviderResourceReasoningSettings({
   useEffect(() => {
     setDrafts((current) => Object.fromEntries(scopedResources.map((resource) => [
       resource.id,
-      current[resource.id] ?? providerReasoningOverrideFormValues(resource.options, provider.options),
+      current[resource.id] ?? {
+        ...providerReasoningOverrideFormValues(resource.options, provider.options),
+        custom_headers: providerHeadersFormValue(resource.headers, resource.sensitive_headers),
+      },
     ])));
   }, [provider.options, scopedResources]);
 
@@ -49,6 +54,8 @@ export function ProviderResourceReasoningSettings({
     setSavedID("");
     setErrors((current) => ({ ...current, [resource.id]: "" }));
     try {
+      const headerErrors = providerHeaderEntryErrors(effectiveProviderHeaderEntries(parseProviderHeaderEntries(providerHeadersFormValue(provider.headers, provider.sensitive_headers)), parseProviderHeaderEntries(draft.custom_headers)));
+      if (headerErrors.length > 0) throw new Error(tx(headerErrors[0]));
       const payload = providerResourceUpdatePayload({ ...providerResourceToForm(resource, provider.options), ...draft });
       const response = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}`, {
         method: "PATCH",
@@ -56,7 +63,13 @@ export function ProviderResourceReasoningSettings({
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("保存 Provider 资源推理兼容设置")));
       const updated = await response.json() as ProviderResource;
-      setDrafts((current) => ({ ...current, [resource.id]: providerReasoningOverrideFormValues(updated.options, provider.options) }));
+      setDrafts((current) => ({
+        ...current,
+        [resource.id]: {
+          ...providerReasoningOverrideFormValues(updated.options, provider.options),
+          custom_headers: providerHeadersFormValue(updated.headers, updated.sensitive_headers),
+        },
+      }));
       setSavedID(resource.id);
       await onSaved();
     } catch (error) {
@@ -67,16 +80,20 @@ export function ProviderResourceReasoningSettings({
     }
   }
 
-  if (!providerSupportsAnthropicReasoning(providerType) || scopedResources.length === 0) return null;
+  if (scopedResources.length === 0) return null;
+  const showReasoning = providerSupportsAnthropicReasoning(providerType);
   return (
     <section className="provider-quota-panel">
       <div className="wizard-panel-head">
-        <h3>{tx("资源级推理参数覆盖")}</h3>
-        <p>{tx("资源默认继承 Provider；仅当该上游端点规则不同时启用覆盖。")}</p>
+        <h3>{tx("Provider Resource 高级设置")}</h3>
+        <p>{tx("为每个上游端点配置自定义请求头；Resource 同名项覆盖 Provider 默认值。")}</p>
       </div>
       <div className="provider-quota-list">
         {scopedResources.map((resource) => {
-          const values = drafts[resource.id] ?? providerReasoningOverrideFormValues(resource.options, provider.options);
+          const values = drafts[resource.id] ?? {
+            ...providerReasoningOverrideFormValues(resource.options, provider.options),
+            custom_headers: providerHeadersFormValue(resource.headers, resource.sensitive_headers),
+          };
           const overridden = values._reasoning_override === "true";
           return (
             <details className="provider-account-runtime" key={resource.id} data-resource-id={resource.id}>
@@ -84,7 +101,7 @@ export function ProviderResourceReasoningSettings({
                 <strong>{resource.name}</strong>
                 <span>{resource.resource_type} · {resource.base_url || tx("继承 Provider Base URL")} · {tx(overridden ? "自定义覆盖" : "继承 Provider")}</span>
               </summary>
-              <div className="provider-reasoning-scope">
+              {showReasoning ? <div className="provider-reasoning-scope">
                 <span>{tx("配置来源")}</span>
                 <div className="boolean-toggle" role="radiogroup" aria-label={tx("配置来源")}>
                   <button aria-checked={!overridden} className={!overridden ? "active" : ""} onClick={() => update(resource.id, "_reasoning_override", "false")} role="radio" type="button">
@@ -95,8 +112,8 @@ export function ProviderResourceReasoningSettings({
                   </button>
                 </div>
                 <small>{tx(overridden ? "保存后，该资源使用下面的完整规则覆盖 Provider 默认规则。" : "当前使用 Provider 默认规则；保存后会清除已有资源级覆盖。")}</small>
-              </div>
-              {overridden ? (
+              </div> : null}
+              {showReasoning && overridden ? (
                 <div className="provider-account-fields">
                   {providerReasoningFieldConfigs().map((field) => (
                     <ProviderInlineField
@@ -109,8 +126,15 @@ export function ProviderResourceReasoningSettings({
                   ))}
                 </div>
               ) : null}
+              <ProviderCustomHeaders
+                disabled={providerType === "azure_openai" || providerType === "openai_codex"}
+                inheritedValue={providerHeadersFormValue(provider.headers, provider.sensitive_headers)}
+                onChange={(value) => update(resource.id, "custom_headers", value)}
+                validationErrors={resource.header_validation_errors}
+                value={values.custom_headers ?? "[]"}
+              />
               {errors[resource.id] ? <p className="provider-quota-error">{errors[resource.id]}</p> : null}
-              {savedID === resource.id ? <p className="provider-credential-note">{tx("Provider 资源推理兼容设置已保存。")}</p> : null}
+              {savedID === resource.id ? <p className="provider-credential-note">{tx("Provider Resource 高级设置已保存。")}</p> : null}
               <div className="provider-form-actions">
                 <button className="secondary-button" disabled={busyID === resource.id} onClick={() => void save(resource)} type="button">
                   {tx(busyID === resource.id ? "保存中" : "保存资源设置")}

@@ -112,6 +112,12 @@ type Config struct {
 	ImageQueueCapacity           int
 	ImageJobTimeoutSeconds       int
 	ImageCapabilityRetrySecs     int
+	ResponseWorkerConcurrency    int
+	ResponsePollIntervalMillis   int
+	ResponseJobTimeoutSeconds    int
+	ResponseLeaseTTLSeconds      int
+	ResponseResultTTLSeconds     int
+	ResponseMaxQueuedJobs        int
 	MaxJSONRequestBytes          int64
 	MaxMultimodalRequestBytes    int64
 	// A2AEnabled exposes the A2A 1.0 JSON-RPC/SSE gateway. It is intentionally
@@ -185,6 +191,12 @@ func ConfigFromEnv() Config {
 		ImageQueueCapacity:           getenvInt("TOKENHUB_IMAGE_QUEUE_CAPACITY", 64),
 		ImageJobTimeoutSeconds:       getenvInt("TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS", 300),
 		ImageCapabilityRetrySecs:     getenvInt("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", 86400),
+		ResponseWorkerConcurrency:    getenvInt("TOKENHUB_RESPONSE_WORKER_CONCURRENCY", 2),
+		ResponsePollIntervalMillis:   getenvInt("TOKENHUB_RESPONSE_POLL_INTERVAL_MILLIS", 250),
+		ResponseJobTimeoutSeconds:    getenvInt("TOKENHUB_RESPONSE_JOB_TIMEOUT_SECONDS", 300),
+		ResponseLeaseTTLSeconds:      getenvInt("TOKENHUB_RESPONSE_LEASE_TTL_SECONDS", 30),
+		ResponseResultTTLSeconds:     getenvInt("TOKENHUB_RESPONSE_RESULT_TTL_SECONDS", 3600),
+		ResponseMaxQueuedJobs:        getenvInt("TOKENHUB_RESPONSE_MAX_QUEUED_JOBS", 1000),
 		MaxJSONRequestBytes:          getenvBytes("TOKENHUB_MAX_JSON_REQUEST_BYTES", defaultMaxJSONRequestBytes),
 		MaxMultimodalRequestBytes:    getenvBytes("TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES", defaultMaxMultimodalRequestBytes),
 		A2AEnabled:                   getenvBool("TOKENHUB_A2A_ENABLED", false),

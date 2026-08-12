@@ -200,17 +200,32 @@ func normalizeAliyunBillingRecord(item map[string]any, connector BillingConnecto
 	if err != nil {
 		usageEnd = usageStart
 	}
-	gross := billingDecimalValue(firstValue(item, "PretaxGrossAmount", "pretax_gross_amount", "PretaxAmount"))
-	discount := billingDecimalAdd(
+	gross, err := billingDecimalValue(firstValue(item, "PretaxGrossAmount", "pretax_gross_amount", "PretaxAmount"))
+	if err != nil {
+		return BillingRecord{}, err
+	}
+	discount, err := billingDecimalAdd(
 		firstValue(item, "InvoiceDiscount", "invoice_discount"),
 		firstValue(item, "DeductedByCoupons", "deducted_by_coupons"),
 		firstValue(item, "DeductedByCashCoupons", "deducted_by_cash_coupons"),
 		firstValue(item, "DeductedByPrepaidCard", "deducted_by_prepaid_card"),
 	)
-	tax := billingDecimalValue(firstValue(item, "TaxAmount", "tax_amount", "Tax"))
-	refund := billingDecimalValue(firstValue(item, "RefundAmount", "refund_amount"))
+	if err != nil {
+		return BillingRecord{}, err
+	}
+	tax, err := billingDecimalValue(firstValue(item, "TaxAmount", "tax_amount", "Tax"))
+	if err != nil {
+		return BillingRecord{}, err
+	}
+	refund, err := billingDecimalValue(firstValue(item, "RefundAmount", "refund_amount"))
+	if err != nil {
+		return BillingRecord{}, err
+	}
 	paymentValue := firstValue(item, "PaymentAmount", "payment_amount")
-	net := billingDecimalValue(paymentValue)
+	net, err := billingDecimalValue(paymentValue)
+	if err != nil {
+		return BillingRecord{}, err
+	}
 	if paymentValue == nil || stringValue(paymentValue) == "" {
 		net = billingDecimalCalculate(gross, discount, tax, refund)
 	}
@@ -253,7 +268,7 @@ func billingRecordStartsInRange(record BillingRecord, from time.Time, to time.Ti
 	if !from.IsZero() && record.UsageStartAt.Before(from.UTC()) {
 		return false
 	}
-	return to.IsZero() || record.UsageStartAt.Before(to.UTC())
+	return to.IsZero() || !record.UsageStartAt.After(to.UTC())
 }
 
 func aliyunBillingExternalID(item map[string]any, billingPeriod string, usageStart time.Time, usageEnd time.Time) string {
@@ -279,26 +294,35 @@ func aliyunBillingExternalID(item map[string]any, billingPeriod string, usageSta
 	return fmt.Sprintf("aliyun:%x", sum[:])
 }
 
-func billingDecimalValue(value any) string {
+func billingDecimalValue(value any) (string, error) {
 	text := stringValue(value)
 	if text == "" {
-		return "0"
+		return "0", nil
 	}
 	ratio, ok := new(big.Rat).SetString(text)
 	if !ok {
-		return "0"
+		return "", NewHTTPError(http.StatusBadGateway, "billing_upstream_invalid_response", fmt.Sprintf("Invalid decimal amount from billing upstream: %q", text))
 	}
-	return billingRatText(ratio)
+	return billingRatText(ratio), nil
 }
 
-func billingDecimalAdd(values ...any) string {
+// billingDecimalAdd sums discount components. A value that is present but
+// cannot be parsed is an upstream contract violation: silently skipping it
+// would understate the discount, so it is rejected instead.
+func billingDecimalAdd(values ...any) (string, error) {
 	total := new(big.Rat)
 	for _, value := range values {
-		if parsed, ok := new(big.Rat).SetString(defaultString(stringValue(value), "0")); ok {
-			total.Add(total, parsed)
+		text := strings.TrimSpace(defaultString(stringValue(value), "0"))
+		if text == "" {
+			continue
 		}
+		parsed, ok := new(big.Rat).SetString(text)
+		if !ok {
+			return "", NewHTTPError(http.StatusBadGateway, "billing_upstream_invalid_response", fmt.Sprintf("Invalid decimal amount from billing upstream: %q", text))
+		}
+		total.Add(total, parsed)
 	}
-	return billingRatText(total)
+	return billingRatText(total), nil
 }
 
 func billingDecimalCalculate(gross string, discount string, tax string, refund string) string {

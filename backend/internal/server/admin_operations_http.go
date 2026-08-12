@@ -638,20 +638,12 @@ func (s *Server) handleAdminUsageSummary(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	writeJSON(w, http.StatusOK, s.usageSummaryForUser(user))
 }
 
 func (s *Server) handleAdminUsageBreakdown(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "usage", r.Method)
 	if !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
 	writeJSON(w, http.StatusOK, s.usageBreakdownForUser(user))
@@ -662,20 +654,12 @@ func (s *Server) handleAdminUsageTimeseries(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.usageTimeseriesForUser(user, 31)})
 }
 
 func (s *Server) handleAdminGenerateBilling(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "usage", r.Method)
 	if !ok {
-		return
-	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
 	var req struct {
@@ -730,10 +714,6 @@ func (s *Server) handleAdminRequestDetail(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleAdminAuditEvents(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "admin_audit", r.Method); !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAuditEvents()})

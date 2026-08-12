@@ -268,23 +268,27 @@ type ProviderCatalogEntry struct {
 }
 
 type ProviderCreateRequest struct {
-	ID            string            `json:"id"`
-	ProviderID    string            `json:"provider_id"`
-	Name          string            `json:"name"`
-	Type          string            `json:"type"`
-	BaseURL       string            `json:"base_url"`
-	APIKey        string            `json:"api_key"`
-	Status        string            `json:"status"`
-	Healthy       *bool             `json:"healthy"`
-	Priority      int               `json:"priority"`
-	Headers       map[string]string `json:"headers"`
-	Options       map[string]string `json:"options"`
-	CatalogID     string            `json:"catalog_id"`
-	ModelCategory string            `json:"model_category"`
+	ID                          string            `json:"id"`
+	ProviderID                  string            `json:"provider_id"`
+	Name                        string            `json:"name"`
+	Type                        string            `json:"type"`
+	BaseURL                     string            `json:"base_url"`
+	APIKey                      string            `json:"api_key"`
+	Status                      string            `json:"status"`
+	Healthy                     *bool             `json:"healthy"`
+	Priority                    int               `json:"priority"`
+	Headers                     map[string]string `json:"headers"`
+	SensitiveHeaders            []string          `json:"sensitive_headers"`
+	Options                     map[string]string `json:"options"`
+	CatalogID                   string            `json:"catalog_id"`
+	ModelCategory               string            `json:"model_category"`
+	ClaudeCodeAttributionPolicy *string           `json:"claude_code_attribution_policy,omitempty"`
 	// CreateRoutes is accepted only to reject the retired automatic-route workflow.
 	CreateRoutes   *bool                  `json:"create_routes"`
 	SelectedModels []string               `json:"selected_models"`
 	CustomModels   []ProviderCatalogModel `json:"custom_models"`
+	// AnthropicAuthType is a write-only convenience field persisted in Options.
+	AnthropicAuthType string `json:"anthropic_auth_type"`
 }
 
 type ProviderCreateResult struct {
@@ -294,48 +298,52 @@ type ProviderCreateResult struct {
 }
 
 type Provider struct {
-	ID        string            `json:"id" gorm:"primaryKey"`
-	Name      string            `json:"name"`
-	Type      string            `json:"type"`
-	BaseURL   string            `json:"base_url,omitempty"`
-	APIKey    string            `json:"-"`
-	Status    string            `json:"status"`
-	Healthy   bool              `json:"healthy"`
-	Priority  int               `json:"priority"`
-	Headers   map[string]string `json:"headers,omitempty" gorm:"serializer:json"`
-	Options   map[string]string `json:"options,omitempty" gorm:"serializer:json"`
-	CreatedAt time.Time         `json:"created_at"`
+	ID                     string            `json:"id" gorm:"primaryKey"`
+	Name                   string            `json:"name"`
+	Type                   string            `json:"type"`
+	BaseURL                string            `json:"base_url,omitempty"`
+	APIKey                 string            `json:"-"`
+	Status                 string            `json:"status"`
+	Healthy                bool              `json:"healthy"`
+	Priority               int               `json:"priority"`
+	Headers                map[string]string `json:"headers,omitempty" gorm:"serializer:json"`
+	SensitiveHeaders       []string          `json:"sensitive_headers,omitempty" gorm:"serializer:json"`
+	HeaderValidationErrors []string          `json:"header_validation_errors,omitempty" gorm:"-"`
+	Options                map[string]string `json:"options,omitempty" gorm:"serializer:json"`
+	CreatedAt              time.Time         `json:"created_at"`
 }
 
 type ProviderResource struct {
-	ID                string                       `json:"id" gorm:"primaryKey"`
-	ProviderID        string                       `json:"provider_id" gorm:"index"`
-	Name              string                       `json:"name"`
-	Group             string                       `json:"group,omitempty" gorm:"index"`
-	ResourceType      string                       `json:"resource_type"`
-	BaseURL           string                       `json:"base_url,omitempty"`
-	APIKey            string                       `json:"api_key,omitempty"`
-	Region            string                       `json:"region,omitempty"`
-	Environment       string                       `json:"environment,omitempty"`
-	Status            string                       `json:"status"`
-	Healthy           bool                         `json:"healthy"`
-	Priority          int                          `json:"priority"`
-	Weight            int                          `json:"weight"`
-	RateLimitRPM      int64                        `json:"rate_limit_rpm"`
-	TokenLimitTPM     int64                        `json:"token_limit_tpm"`
-	MaxConcurrency    int64                        `json:"max_concurrency"`
-	Headers           map[string]string            `json:"headers,omitempty" gorm:"serializer:json"`
-	Options           map[string]string            `json:"options,omitempty" gorm:"serializer:json"`
-	Credentials       *ProviderResourceCredentials `json:"credentials,omitempty" gorm:"-"`
-	CredentialBlob    string                       `json:"-" gorm:"column:credential_blob"`
-	CredentialSummary map[string]string            `json:"credential_summary,omitempty" gorm:"-"`
-	Observation       *ProviderResourceObservation `json:"observation,omitempty" gorm:"-"`
-	FailureCount      int                          `json:"failure_count"`
-	CooldownUntil     *time.Time                   `json:"cooldown_until,omitempty"`
-	LastUsedAt        *time.Time                   `json:"last_used_at,omitempty"`
-	LastCheckedAt     *time.Time                   `json:"last_checked_at,omitempty"`
-	CreatedAt         time.Time                    `json:"created_at"`
-	UpdatedAt         time.Time                    `json:"updated_at"`
+	ID                     string                       `json:"id" gorm:"primaryKey"`
+	ProviderID             string                       `json:"provider_id" gorm:"index"`
+	Name                   string                       `json:"name"`
+	Group                  string                       `json:"group,omitempty" gorm:"index"`
+	ResourceType           string                       `json:"resource_type"`
+	BaseURL                string                       `json:"base_url,omitempty"`
+	APIKey                 string                       `json:"api_key,omitempty"`
+	Region                 string                       `json:"region,omitempty"`
+	Environment            string                       `json:"environment,omitempty"`
+	Status                 string                       `json:"status"`
+	Healthy                bool                         `json:"healthy"`
+	Priority               int                          `json:"priority"`
+	Weight                 int                          `json:"weight"`
+	RateLimitRPM           int64                        `json:"rate_limit_rpm"`
+	TokenLimitTPM          int64                        `json:"token_limit_tpm"`
+	MaxConcurrency         int64                        `json:"max_concurrency"`
+	Headers                map[string]string            `json:"headers,omitempty" gorm:"serializer:json"`
+	SensitiveHeaders       []string                     `json:"sensitive_headers,omitempty" gorm:"serializer:json"`
+	HeaderValidationErrors []string                     `json:"header_validation_errors,omitempty" gorm:"-"`
+	Options                map[string]string            `json:"options,omitempty" gorm:"serializer:json"`
+	Credentials            *ProviderResourceCredentials `json:"credentials,omitempty" gorm:"-"`
+	CredentialBlob         string                       `json:"-" gorm:"column:credential_blob"`
+	CredentialSummary      map[string]string            `json:"credential_summary,omitempty" gorm:"-"`
+	Observation            *ProviderResourceObservation `json:"observation,omitempty" gorm:"-"`
+	FailureCount           int                          `json:"failure_count"`
+	CooldownUntil          *time.Time                   `json:"cooldown_until,omitempty"`
+	LastUsedAt             *time.Time                   `json:"last_used_at,omitempty"`
+	LastCheckedAt          *time.Time                   `json:"last_checked_at,omitempty"`
+	CreatedAt              time.Time                    `json:"created_at"`
+	UpdatedAt              time.Time                    `json:"updated_at"`
 }
 
 type ProviderResourceCredentials struct {
@@ -527,6 +535,74 @@ type ImageJob struct {
 	CreatedAt               time.Time  `json:"created_at"`
 	StartedAt               *time.Time `json:"started_at,omitempty"`
 	CompletedAt             *time.Time `json:"completed_at,omitempty"`
+}
+
+const (
+	responseJobStatusQueued    = "queued"
+	responseJobStatusRunning   = "running"
+	responseJobStatusSucceeded = "succeeded"
+	responseJobStatusFailed    = "failed"
+	responseJobStatusCancelled = "cancelled"
+	responseJobStatusExpired   = "expired"
+
+	responseJobPhaseQueued     = "queued"
+	responseJobPhaseClaimed    = "claimed"
+	responseJobPhaseAdmitted   = "admitted"
+	responseJobPhaseDispatched = "dispatched"
+)
+
+// ResponseJob is a durable, gateway-owned execution record for an OpenAI
+// Responses request submitted with background=true. Request and result content is
+// stored only in the encrypted columns; the plaintext fields are transient values
+// populated after authenticated reads.
+type ResponseJob struct {
+	ID                 string     `json:"id" gorm:"primaryKey"`
+	ProjectID          string     `json:"project_id" gorm:"index"`
+	APIKeyID           string     `json:"api_key_id" gorm:"index"`
+	AttributedUserID   string     `json:"attributed_user_id,omitempty" gorm:"index"`
+	RequestID          string     `json:"request_id,omitempty" gorm:"index"`
+	TokenLimitBucket   string     `json:"-"`
+	MinuteRequestHeld  bool       `json:"-"`
+	ReservedTokens     int64      `json:"-"`
+	AdmittedAt         *time.Time `json:"-"`
+	Status             string     `json:"status" gorm:"index:idx_response_job_claim,priority:1;index:idx_response_job_lease,priority:1"`
+	Phase              string     `json:"phase" gorm:"index"`
+	Model              string     `json:"model" gorm:"index"`
+	RequestCiphertext  string     `json:"-" gorm:"type:text"`
+	ResultCiphertext   string     `json:"-" gorm:"type:text"`
+	RequestJSON        []byte     `json:"-" gorm:"-"`
+	ResultJSON         []byte     `json:"-" gorm:"-"`
+	ClientIP           string     `json:"-" gorm:"-"`
+	UserAgent          string     `json:"-" gorm:"-"`
+	LeaseOwner         string     `json:"-" gorm:"index"`
+	LeaseEpoch         int64      `json:"-"`
+	LeaseExpiresAt     *time.Time `json:"-" gorm:"index:idx_response_job_lease,priority:2"`
+	CancelRequestedAt  *time.Time `json:"-" gorm:"index"`
+	ProviderID         string     `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID string     `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel      string     `json:"provider_model,omitempty"`
+	UpstreamRequestID  string     `json:"upstream_request_id,omitempty"`
+	UpstreamResponseID string     `json:"upstream_response_id,omitempty"`
+	ErrorCode          string     `json:"error_code,omitempty"`
+	ErrorMessage       string     `json:"error_message,omitempty"`
+	CreatedAt          time.Time  `json:"created_at" gorm:"index:idx_response_job_claim,priority:2"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty" gorm:"index"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+// ResponseJobEvent is the append-only audit trail for every durable state
+// transition. Details are deliberately bounded operational codes, never request or
+// response content.
+type ResponseJobEvent struct {
+	ID         string    `json:"id" gorm:"primaryKey"`
+	JobID      string    `json:"job_id" gorm:"index"`
+	FromStatus string    `json:"from_status,omitempty"`
+	ToStatus   string    `json:"to_status"`
+	ReasonCode string    `json:"reason_code,omitempty"`
+	Actor      string    `json:"actor"`
+	CreatedAt  time.Time `json:"created_at" gorm:"index"`
 }
 
 type ImageAsset struct {
@@ -940,6 +1016,7 @@ type ResponsesRequest struct {
 	Model        string              `json:"model"`
 	Input        any                 `json:"input"`
 	Stream       bool                `json:"stream,omitempty"`
+	Background   bool                `json:"background,omitempty"`
 	MaxTokens    int                 `json:"max_output_tokens,omitempty"`
 	Temperature  *float64            `json:"temperature,omitempty"`
 	Instructions string              `json:"instructions,omitempty"`
@@ -981,6 +1058,7 @@ func (r ResponsesRequest) MarshalJSON() ([]byte, error) {
 	setRawJSONField(raw, "model", r.Model, r.Model != "")
 	setRawJSONField(raw, "input", r.Input, r.Input != nil)
 	setRawJSONField(raw, "stream", r.Stream, true)
+	setRawJSONField(raw, "background", r.Background, true)
 	setRawJSONField(raw, "max_output_tokens", r.MaxTokens, r.MaxTokens != 0)
 	setRawJSONField(raw, "temperature", r.Temperature, r.Temperature != nil)
 	setRawJSONField(raw, "instructions", r.Instructions, r.Instructions != "")
@@ -1144,9 +1222,10 @@ type CallContext struct {
 	measuredAt time.Time
 	// RateLimitHeaders is calculated atomically with minute-bucket admission so
 	// every compatible HTTP surface reports the same effective limits.
-	RateLimitHeaders map[string]string
-	TokenLimitBucket string
-	ReservedTokens   int64
+	RateLimitHeaders  map[string]string
+	TokenLimitBucket  string
+	MinuteRequestHeld bool
+	ReservedTokens    int64
 	// StreamOutputCommitted keeps the reservation when a stream delivered data but
 	// ended before an authoritative usage event was received.
 	StreamOutputCommitted bool

@@ -37,13 +37,17 @@ func (s *Server) handleAdminProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(400, "invalid_provider", "name and type are required"))
 			return
 		}
+		if err := validateProviderHeaderConfig(&provider); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		created := s.store.AddProvider(provider)
 		result := ProviderCreateResult{
 			Provider:      created,
 			CatalogSource: catalogSource,
 		}
 		result.ImportedModels = s.importSelectedProviderCatalogModels(created.ID, catalog, req.SelectedModels)
-		s.recordAdminAudit(r, user, "create", "provider", created.ID, "", result)
+		s.recordAdminAudit(r, user, "create", "provider", created.ID, "", auditProviderCreateResult(result))
 		writeJSON(w, http.StatusCreated, result)
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
@@ -78,8 +82,16 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
 		return
 	}
-	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/provider-catalog/"), "/")
-	if id == "" || strings.Contains(id, "/") {
+	rawID := strings.Trim(strings.TrimPrefix(r.URL.EscapedPath(), "/api/admin/provider-catalog/"), "/")
+	if rawID == "" || strings.Contains(rawID, "/") {
+		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
+		return
+	}
+	// The escaped path preserves %2F inside a single segment; decode it so a
+	// catalog ID containing "/" is looked up under its real value. Malformed
+	// escapes are rejected rather than looked up under the raw text.
+	id, err := url.PathUnescape(rawID)
+	if err != nil || id == "" {
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 		return
 	}
@@ -128,6 +140,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 			writeError(w, r, err)
 			return
 		}
+		catalogRequests := []ProviderCreateRequest{req}
 		if providerID := firstNonEmpty(strings.TrimSpace(req.ProviderID), strings.TrimSpace(req.ID)); providerID != "" {
 			if provider, ok := s.store.GetProvider(providerID); ok {
 				if req.Name == "" {
@@ -142,9 +155,40 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				if req.APIKey == "" {
 					req.APIKey = provider.APIKey
 				}
+				if req.Headers == nil {
+					req.Headers = provider.Headers
+					req.SensitiveHeaders = provider.SensitiveHeaders
+				} else {
+					req.Headers = retainStoredSensitiveProviderHeaders(req.Headers, req.SensitiveHeaders, provider.Headers, provider.SensitiveHeaders)
+				}
+				req.Options = mergedStringMap(provider.Options, req.Options)
+				catalogRequests = nil
+				for _, listedResource := range s.store.ListProviderResources() {
+					if listedResource.ProviderID != providerID || listedResource.Status != StatusActive {
+						continue
+					}
+					resource, ok := s.store.GetProviderResource(listedResource.ID)
+					if !ok {
+						continue
+					}
+					effective := effectiveProviderResourceConfig(Provider{Type: req.Type, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}, &resource)
+					candidate := req
+					candidate.BaseURL, candidate.APIKey, candidate.Headers, candidate.SensitiveHeaders, candidate.Options = effective.BaseURL, effective.APIKey, effective.Headers, effective.SensitiveHeaders, effective.Options
+					catalogRequests = append(catalogRequests, candidate)
+				}
+				if len(catalogRequests) == 0 {
+					catalogRequests = []ProviderCreateRequest{req}
+				}
 			}
 		}
-		entry, err := CustomProviderCatalogFromUpstream(r.Context(), http.DefaultClient, req)
+		var entry ProviderCatalogEntry
+		var err error
+		for _, candidate := range catalogRequests {
+			entry, err = CustomProviderCatalogFromUpstream(r.Context(), http.DefaultClient, candidate)
+			if err == nil {
+				break
+			}
+		}
 		if err != nil {
 			writeError(w, r, err)
 			return
@@ -204,16 +248,17 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		id = "prv_" + sanitizeIdentifier(catalog.ID)
 	}
 	provider := Provider{
-		ID:       id,
-		Name:     firstNonEmpty(req.Name, catalog.DisplayName, catalog.Name),
-		Type:     firstNonEmpty(req.Type, catalog.Type, ProviderOpenAICompatible),
-		BaseURL:  firstNonEmpty(req.BaseURL, catalog.BaseURL),
-		APIKey:   req.APIKey,
-		Status:   firstNonEmpty(req.Status, StatusActive),
-		Healthy:  req.Healthy != nil && *req.Healthy,
-		Priority: req.Priority,
-		Headers:  req.Headers,
-		Options:  req.Options,
+		ID:               id,
+		Name:             firstNonEmpty(req.Name, catalog.DisplayName, catalog.Name),
+		Type:             firstNonEmpty(req.Type, catalog.Type, ProviderOpenAICompatible),
+		BaseURL:          firstNonEmpty(req.BaseURL, catalog.BaseURL),
+		APIKey:           req.APIKey,
+		Status:           firstNonEmpty(req.Status, StatusActive),
+		Healthy:          req.Healthy != nil && *req.Healthy,
+		Priority:         req.Priority,
+		Headers:          req.Headers,
+		SensitiveHeaders: req.SensitiveHeaders,
+		Options:          req.Options,
 	}
 	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, NewHTTPError(
@@ -226,8 +271,20 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		provider.Priority = 10
 	}
 	provider.BaseURL = normalizeProviderBaseURL(provider.ID, provider.BaseURL)
+	// SSRF guard at the admin persistence boundary: admin create and update both
+	// flow through here, so those untrusted entry points cannot save a base URL
+	// with a literal IP in loopback, private, link-local or curated high-risk/
+	// non-provider ranges. The operator
+	// allowlist (TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS) and the explicit
+	// loopback opt-in apply exactly as they do for upstream model discovery.
+	if err := ValidateProviderUpstreamBaseURL(provider.BaseURL); err != nil {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
+	}
 	if provider.Options == nil {
 		provider.Options = map[string]string{}
+	}
+	if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
 	if catalog.ID != "" {
 		provider.Options["catalog_id"] = catalog.ID
@@ -239,6 +296,14 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	if strings.TrimSpace(req.ModelCategory) != "" {
 		provider.Options["model_category"] = strings.TrimSpace(req.ModelCategory)
 	}
+	options, err := applyClaudeCodeAttributionPolicy(provider.Options, req.ClaudeCodeAttributionPolicy)
+	if err != nil {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
+	}
+	if err := validateClaudeCodeAttributionOptions(options); err != nil {
+		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
+	}
+	provider.Options = options
 	return provider, catalog, catalogSource, nil
 }
 
@@ -381,7 +446,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/admin/providers/"), "/")
+	parts := splitEscapedAdminPath(r.URL.EscapedPath(), "/api/admin/providers/")
 	if len(parts) == 1 && parts[0] == "test-connection" {
 		if r.Method != http.MethodPost {
 			writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
@@ -447,6 +512,10 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 				return
 			}
 			provider.ID = parts[0]
+			if err := validateProviderHeaderSupport(provider.Type, provider.Headers); err != nil {
+				writeError(w, r, err)
+				return
+			}
 			updated, err := s.store.UpdateProvider(parts[0], provider)
 			if err != nil {
 				writeError(w, r, err)
@@ -457,7 +526,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 				CatalogSource: catalogSource,
 			}
 			result.ImportedModels = s.importSelectedProviderCatalogModels(updated.ID, catalog, req.SelectedModels)
-			s.recordAdminAudit(r, user, "update", "provider", parts[0], "", result)
+			s.recordAdminAudit(r, user, "update", "provider", parts[0], "", auditProviderCreateResult(result))
 			writeJSON(w, http.StatusOK, result)
 		case http.MethodDelete:
 			if err := s.store.DeleteProvider(parts[0]); err != nil {
@@ -485,7 +554,13 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "test", "provider", parts[0], "", result)
+		auditResult := result
+		if testedProvider, ok := result.(Provider); ok {
+			auditResult = auditProvider(testedProvider)
+		} else if testedResource, ok := result.(ProviderResource); ok {
+			auditResult = auditProviderResource(testedResource)
+		}
+		s.recordAdminAudit(r, user, "test", "provider", parts[0], "", auditResult)
 		writeJSON(w, http.StatusOK, result)
 		return
 	}
@@ -501,7 +576,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "health", "provider", parts[0], "", provider)
+	s.recordAdminAudit(r, user, "health", "provider", parts[0], "", auditProvider(provider))
 	writeJSON(w, http.StatusOK, provider)
 }
 
@@ -523,12 +598,21 @@ func (s *Server) handleAdminProviderResources(w http.ResponseWriter, r *http.Req
 			writeError(w, r, NewHTTPError(400, "invalid_provider_resource", "provider_id and name are required"))
 			return
 		}
+		provider, found := s.store.GetProvider(req.ProviderID)
+		if !found {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
+			return
+		}
+		if err := validateProviderHeaderSupport(provider.Type, req.Headers); err != nil {
+			writeError(w, r, err)
+			return
+		}
 		resource, err := s.store.AddProviderResource(req)
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "create", "provider_resource", resource.ID, "", resource)
+		s.recordAdminAudit(r, user, "create", "provider_resource", resource.ID, "", auditProviderResource(resource))
 		writeJSON(w, http.StatusCreated, resource)
 	default:
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
@@ -557,6 +641,7 @@ func mergeProviderPatchRequest(req *ProviderCreateRequest, current Provider) {
 	}
 	if req.Headers == nil {
 		req.Headers = current.Headers
+		req.SensitiveHeaders = current.SensitiveHeaders
 	}
 	if req.Options == nil {
 		req.Options = current.Options
@@ -585,12 +670,31 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 				writeError(w, r, err)
 				return
 			}
+			current, found := s.store.GetProviderResource(parts[0])
+			if !found {
+				writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found"))
+				return
+			}
+			providerID := firstNonEmpty(req.ProviderID, current.ProviderID)
+			provider, found := s.store.GetProvider(providerID)
+			if !found {
+				writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
+				return
+			}
+			headers := req.Headers
+			if headers == nil {
+				headers = current.Headers
+			}
+			if err := validateProviderHeaderSupport(provider.Type, headers); err != nil {
+				writeError(w, r, err)
+				return
+			}
 			resource, err := s.store.UpdateProviderResource(parts[0], req)
 			if err != nil {
 				writeError(w, r, err)
 				return
 			}
-			s.recordAdminAudit(r, user, "update", "provider_resource", parts[0], "", resource)
+			s.recordAdminAudit(r, user, "update", "provider_resource", parts[0], "", auditProviderResource(resource))
 			writeJSON(w, http.StatusOK, resource)
 		case http.MethodDelete:
 			if err := s.store.DeleteProviderResource(parts[0]); err != nil {
@@ -682,7 +786,11 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", tested)
+		auditResult := tested
+		if testedResource, ok := tested.(ProviderResource); ok {
+			auditResult = auditProviderResource(testedResource)
+		}
+		s.recordAdminAudit(r, user, "test", "provider_resource", parts[0], "", auditResult)
 		writeJSON(w, http.StatusOK, tested)
 		return
 	}
@@ -708,7 +816,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "health", "provider_resource", parts[0], "", resource)
+	s.recordAdminAudit(r, user, "health", "provider_resource", parts[0], "", auditProviderResource(resource))
 	writeJSON(w, http.StatusOK, resource)
 }
 
@@ -730,7 +838,7 @@ func (s *Server) handleAdminProviderResourceBulk(w http.ResponseWriter, r *http.
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "bulk_"+req.Action, "provider_resource", strings.Join(req.IDs, ","), "", result)
+	s.recordAdminAudit(r, user, "bulk_"+req.Action, "provider_resource", strings.Join(req.IDs, ","), "", auditProviderResourceBulkResult(result))
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -751,7 +859,7 @@ func (s *Server) handleAdminProviderResourceImport(w http.ResponseWriter, r *htt
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "import", "provider_resource", "", "", result)
+	s.recordAdminAudit(r, user, "import", "provider_resource", "", "", auditProviderResourceImportResult(result))
 	status := http.StatusCreated
 	if result.Failed > 0 {
 		status = http.StatusMultiStatus
@@ -996,11 +1104,22 @@ func (s *Server) handleAdminRoutes(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
 			return
 		}
-		if err := s.markExternalModel(req.ModelName); err != nil {
+		route, err := s.store.CreateRoute(req)
+		if err != nil {
+			// The route was not persisted, so the catalog must not be marked
+			// as if it had been.
 			writeError(w, r, err)
 			return
 		}
-		route := s.store.AddRoute(req)
+		if err := s.markExternalModel(req.ModelName); err != nil {
+			// The route was created but the model directory could not be marked as
+			// external. The next call to backfillExternalModelRolesFromRoutes will
+			// reconcile the catalog, but surface the error so the caller knows the
+			// operation was only partially successful.
+			s.recordAdminAudit(r, user, "create", "routing_rule", route.ID, "", route)
+			writeError(w, r, err)
+			return
+		}
 		s.recordAdminAudit(r, user, "create", "routing_rule", route.ID, "", route)
 		writeJSON(w, http.StatusCreated, route)
 	default:
@@ -1087,12 +1206,17 @@ func (s *Server) handleAdminRouteItem(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(http.StatusConflict, "model_route_conflict", "This external model is already mapped to the selected provider model"))
 			return
 		}
-		if err := s.markExternalModel(candidate.ModelName); err != nil {
+		route, err := s.store.UpdateRoute(routeID, req)
+		if err != nil {
 			writeError(w, r, err)
 			return
 		}
-		route, err := s.store.UpdateRoute(routeID, req)
-		if err != nil {
+		if err := s.markExternalModel(candidate.ModelName); err != nil {
+			// The route was updated but the model directory could not be marked as
+			// external. backfillExternalModelRolesFromRoutes reconciles the catalog
+			// on startup, but surface the error so the caller knows the operation
+			// was only partially successful.
+			s.recordAdminAudit(r, user, "update", "routing_rule", routeID, "", route)
 			writeError(w, r, err)
 			return
 		}

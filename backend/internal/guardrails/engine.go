@@ -130,8 +130,15 @@ func (e *Engine) Evaluate(ctx context.Context, request EvaluationRequest) (decis
 		return decision, nil
 	}
 
+	modelFragments := request.Fragments
+	if decision.Action == ActionMask {
+		maskedTexts := maskedFragmentTexts(request.Fragments, decision.Findings)
+		decision.Replacements = mutableMaskedFragments(request.Fragments, maskedTexts)
+		modelFragments = fragmentsWithMaskedText(request.Fragments, maskedTexts)
+	}
+
 	if len(modelItems) > 0 {
-		result, err := e.detectModel(ctx, request.Fragments)
+		result, err := e.detectModel(ctx, modelFragments)
 		if err != nil {
 			decision.DetectionDegraded = true
 			for _, candidate := range modelItems {
@@ -154,9 +161,6 @@ func (e *Engine) Evaluate(ctx context.Context, request EvaluationRequest) (decis
 	}
 
 	decision.Action = strictestAction(decision.Findings)
-	if decision.Action == ActionMask {
-		decision.Replacements = maskedFragments(request.Fragments, decision.Findings)
-	}
 	decision.DurationMS = time.Since(started).Milliseconds()
 	return decision, nil
 }
@@ -562,6 +566,10 @@ func actionRank(action string) int {
 }
 
 func maskedFragments(fragments []Fragment, findings []Finding) map[string]string {
+	return mutableMaskedFragments(fragments, maskedFragmentTexts(fragments, findings))
+}
+
+func maskedFragmentTexts(fragments []Fragment, findings []Finding) map[string]string {
 	byFragment := map[string][]Finding{}
 	for _, finding := range findings {
 		if finding.Action == ActionMask && finding.End > finding.Start {
@@ -570,7 +578,7 @@ func maskedFragments(fragments []Fragment, findings []Finding) map[string]string
 	}
 	result := map[string]string{}
 	for _, fragment := range fragments {
-		if !fragment.Mutable || len(byFragment[fragment.ID]) == 0 {
+		if len(byFragment[fragment.ID]) == 0 {
 			continue
 		}
 		spans := byFragment[fragment.ID]
@@ -602,6 +610,32 @@ func maskedFragments(fragments []Fragment, findings []Finding) map[string]string
 		}
 		builder.WriteString(fragment.Text[cursor:])
 		result[fragment.ID] = builder.String()
+	}
+	return result
+}
+
+func mutableMaskedFragments(fragments []Fragment, maskedTexts map[string]string) map[string]string {
+	result := map[string]string{}
+	for _, fragment := range fragments {
+		if !fragment.Mutable {
+			continue
+		}
+		if maskedText, ok := maskedTexts[fragment.ID]; ok {
+			result[fragment.ID] = maskedText
+		}
+	}
+	return result
+}
+
+func fragmentsWithMaskedText(fragments []Fragment, maskedTexts map[string]string) []Fragment {
+	if len(maskedTexts) == 0 {
+		return fragments
+	}
+	result := append([]Fragment(nil), fragments...)
+	for index := range result {
+		if maskedText, ok := maskedTexts[result[index].ID]; ok {
+			result[index].Text = maskedText
+		}
 	}
 	return result
 }

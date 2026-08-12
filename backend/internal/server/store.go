@@ -145,6 +145,7 @@ type Store interface {
 	SetProviderHealth(providerID string, healthy bool) (Provider, error)
 	AddProviderResource(resource ProviderResource) (ProviderResource, error)
 	ListProviderResources() []ProviderResource
+	GetProviderResource(id string) (ProviderResource, bool)
 	UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error)
 	UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error)
 	DeleteProviderResource(id string) error
@@ -157,6 +158,7 @@ type Store interface {
 	UpdateModel(name string, patch Model) (Model, error)
 	DeleteModel(name string) error
 	AddRoute(route ModelRoute) ModelRoute
+	CreateRoute(route ModelRoute) (ModelRoute, error)
 	ListRoutes() []ModelRoute
 	UpdateRoute(id string, patch ModelRoute) (ModelRoute, error)
 	UpdateModelRoutePolicy(modelName string, policy ModelRoutePolicy) ([]ModelRoute, error)
@@ -178,6 +180,22 @@ type Store interface {
 	FailUnfinishedImageJobs(code string, message string) ([]ImageJob, error)
 	UpdateImageJob(job ImageJob, revisedPrompt string) error
 	CompleteImageJob(call CallContext, job ImageJob, revisedPrompt string, asset ImageAsset, route RouteSelection, usage Usage, clientIP string, userAgent string) error
+	CreateResponseJob(job ResponseJob, requestJSON []byte) (ResponseJob, error)
+	GetResponseJob(id string) (ResponseJob, bool, error)
+	LoadResponseJobPayload(id string) ([]byte, []byte, error)
+	CountQueuedResponseJobs() (int64, error)
+	CountOutstandingResponseJobs() (int64, error)
+	CountRetainedResponseJobs() (int64, error)
+	ClaimResponseJob(owner string, leaseTTL time.Duration, resultTTL time.Duration) (ResponseJob, bool, error)
+	RenewResponseJobLease(id string, owner string, epoch int64, leaseTTL time.Duration) (time.Duration, bool, error)
+	AdmitResponseJob(ctx context.Context, id string, owner string, epoch int64, key APIKey, modelName string, tokenReservation int64) (CallContext, bool, error)
+	ReleaseResponseJobAdmission(requestID string)
+	ShutdownResponseJob(id string, owner string, epoch int64, resultTTL time.Duration) (string, bool, error)
+	MarkResponseJobPhase(id string, owner string, epoch int64, phase string, requestID string) (bool, error)
+	CancelResponseJob(id string, actor string, resultTTL time.Duration) (ResponseJob, bool, error)
+	FinalizeResponseJob(call CallContext, id string, owner string, epoch int64, status string, resultJSON []byte, route RouteSelection, usage Usage, statusCode int, errorCode string, errorMessage string, clientIP string, userAgent string, resultTTL time.Duration) (ResponseJob, bool, error)
+	RecoverResponseJobs(resultTTL time.Duration) (int64, int64, int64, error)
+	ExpireResponseJobs() (int64, error)
 	CreateImageAsset(asset ImageAsset) (ImageAsset, error)
 	ListImageAssets(jobID string) []ImageAsset
 	GetImageAsset(id string) (ImageAsset, bool)

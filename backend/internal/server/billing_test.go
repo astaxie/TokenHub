@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
@@ -644,6 +645,88 @@ func TestBillingConnectorTestAndScheduledSync(t *testing.T) {
 	}
 	if !foundSystemAudit {
 		t.Fatalf("scheduled sync did not create a system audit event")
+	}
+}
+
+func TestBillingRecordStartsInRangeIncludesToBoundary(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	record := BillingRecord{UsageStartAt: base}
+	if !billingRecordStartsInRange(record, base, base.Add(time.Hour)) {
+		t.Fatal("record inside range should be included")
+	}
+	if !billingRecordStartsInRange(record, base, base) {
+		t.Fatal("record exactly at the upper boundary should be included")
+	}
+	if billingRecordStartsInRange(record, base.Add(time.Minute), base.Add(time.Hour)) {
+		t.Fatal("record before from should be excluded")
+	}
+}
+
+func TestBillingDecimalValueRejectsInvalid(t *testing.T) {
+	if _, err := billingDecimalValue("not-a-number"); err == nil {
+		t.Fatal("expected error for invalid decimal")
+	}
+	if v, err := billingDecimalValue(""); err != nil || v != "0" {
+		t.Fatalf("empty value should return 0, got %q, err=%v", v, err)
+	}
+	if v, err := billingDecimalValue("12.34"); err != nil || v == "" {
+		t.Fatalf("valid decimal should parse, got %q, err=%v", v, err)
+	}
+}
+
+// TestBillingDecimalAddRejectsInvalid guards the discount aggregation: an
+// unparseable component must reject the record instead of silently
+// understating the discount.
+func TestBillingDecimalAddRejectsInvalid(t *testing.T) {
+	if _, err := billingDecimalAdd("1.5", "not-a-number"); err == nil {
+		t.Fatal("expected error for invalid discount component")
+	}
+	if v, err := billingDecimalAdd("1.5", "", nil, "2.5"); err != nil || v != "4" {
+		t.Fatalf("expected 4, got %q err=%v", v, err)
+	}
+}
+
+// TestOneAPIBillingRecordPreservesLargeIntegerFields guards the int64 parse
+// path: 2^53+1 is not representable as a float64, so converting through
+// float64 would silently drop one token and skew the derived amount.
+func TestOneAPIBillingRecordPreservesLargeIntegerFields(t *testing.T) {
+	large := int64(1<<53 + 1)
+	record, err := normalizeOneAPIBillingRecord(map[string]any{
+		"id":                "log-large",
+		"created_at":        "2026-01-01 00:00:00",
+		"quota":             json.Number(strconv.FormatInt(large, 10)),
+		"prompt_tokens":     json.Number(strconv.FormatInt(large, 10)),
+		"completion_tokens": json.Number("0"),
+	}, BillingConnector{Config: map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.UsageQuantity != large {
+		t.Fatalf("expected exact token count %d, got %d", large, record.UsageQuantity)
+	}
+	expectedAmount := billingDecimalRatio(large, int64(500000))
+	if record.GrossAmount != expectedAmount {
+		t.Fatalf("expected exact quota amount %s, got %s", expectedAmount, record.GrossAmount)
+	}
+}
+
+// TestBillingSchedulerRestartsAfterShutdown guards the run-state tracking
+// that replaced sync.Once: StartScheduler must work again after Shutdown.
+func TestBillingSchedulerRestartsAfterShutdown(t *testing.T) {
+	service := newBillingService(NewMemoryStore())
+	service.StartScheduler(time.Hour)
+	if service.schedulerStop == nil {
+		t.Fatal("expected scheduler started")
+	}
+	if err := service.Shutdown(context.Background()); err != nil {
+		t.Fatalf("first shutdown: %v", err)
+	}
+	service.StartScheduler(time.Hour)
+	if service.schedulerStop == nil {
+		t.Fatal("expected scheduler to restart after shutdown")
+	}
+	if err := service.Shutdown(context.Background()); err != nil {
+		t.Fatalf("second shutdown: %v", err)
 	}
 }
 

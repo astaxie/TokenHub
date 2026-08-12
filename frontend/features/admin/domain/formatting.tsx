@@ -31,11 +31,24 @@ export const apiExampleLanguages: Array<{ key: ApiExampleLanguage; label: string
   { key: "go", label: "Go" },
 ];
 
-export function apiExampleScripts(baseURL: string, modelName: string): Record<ApiExampleLanguage, string> {
+export function apiExampleScripts(baseURL: string, modelName: string, supportsImages = false): Record<ApiExampleLanguage, string> {
   const normalizedBaseURL = apiGatewayBaseURL(baseURL);
   const model = modelName || "gpt-4.1-mini";
   const systemPrompt = tx("你是企业内部 AI 助手。");
   const prompt = tx("请用三句话介绍 TokenHub。");
+  const imagePrompt = tx("请描述这张图片。");
+  const pythonUserMessage = supportsImages
+    ? `{"role": "user", "content": [
+            {"type": "text", "text": "${imagePrompt}"},
+            {"type": "image_url", "image_url": {"url": "https://example.com/campus.jpg"}},
+        ]}`
+    : `{"role": "user", "content": "${prompt}"}`;
+  const typescriptUserMessage = supportsImages
+    ? `{ role: "user", content: [
+      { type: "text", text: "${imagePrompt}" },
+      { type: "image_url", image_url: { url: "https://example.com/campus.jpg" } },
+    ] }`
+    : `{ role: "user", content: "${prompt}" }`;
   return {
     python: `from openai import OpenAI
 
@@ -48,7 +61,7 @@ response = client.chat.completions.create(
     model="${model}",
     messages=[
         {"role": "system", "content": "${systemPrompt}"},
-        {"role": "user", "content": "${prompt}"},
+        ${pythonUserMessage},
     ],
     temperature=0.7,
 )
@@ -65,7 +78,7 @@ const response = await client.chat.completions.create({
   model: "${model}",
   messages: [
     { role: "system", content: "${systemPrompt}" },
-    { role: "user", content: "${prompt}" },
+    ${typescriptUserMessage},
   ],
   temperature: 0.7,
 });
@@ -388,16 +401,18 @@ export function modelToForm(item: Model) {
   };
 }
 
-export function formatBytes(value: number) {
-  if (!value) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let size = value;
+const byteUnits = ["B", "KB", "MB", "GB"] as const;
+
+export function formatBytes(value: number, locale = languageLocale()) {
+  let size = Number.isFinite(value) && value > 0 ? value : 0;
   let index = 0;
-  while (size >= 1024 && index < units.length - 1) {
+  while (size >= 1024 && index < byteUnits.length - 1) {
     size /= 1024;
     index += 1;
   }
-  return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
+  const fractionDigits = index === 0 ? 0 : 2;
+  const formatter = new Intl.NumberFormat(locale, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+  return `${formatter.format(size)} ${byteUnits[index]}`;
 }
 
 export function routeStrategyLabel(value?: string) {

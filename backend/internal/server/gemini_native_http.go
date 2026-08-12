@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) registerModelRoutes() {
-	s.mux.HandleFunc("/v1/models", s.handleModels)
+	s.registerSingleMethodRoute(http.MethodGet, "/v1/models", s.handleModels, jsonMethodNotAllowed(http.MethodGet))
 	s.mux.HandleFunc("/v1/models/", s.handleModel)
 	s.mux.HandleFunc("/v1beta/models", s.handleGeminiModels)
 	s.mux.HandleFunc("/v1beta/models/", s.handleGeminiModel)

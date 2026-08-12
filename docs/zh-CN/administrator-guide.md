@@ -26,6 +26,8 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 7. 用 Model Playground 和请求日志验证链路。
 8. 在大规模发放 Key 前检查用量归因。
 
+Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上游要求 `Authorization: Bearer`，请打开 Provider 的「高级」页签，保持「渠道商类型」为「Claude / Anthropic」，并在「Anthropic 认证方式」中选择「Authorization Bearer」。TokenHub 会从加密保存的 Provider API Key 生成对应 Header，并且只发送所选的认证 Header；不要在自定义 Headers 中重复填写凭据。
+
 ## 模型演练场诊断
 
 从控制台打开「模型演练场」，可以通过与网关流量相同的路由和 Provider 适配器验证模型。每个 assistant 轮次都保留独立的紧凑诊断摘要，包括返回模式、网关实测首 Token 时间（TTFT）、输出吞吐、总耗时、完整上下文输入 Tokens、输出 Tokens、估算成本、本地完成时间和 Request ID。展开「诊断详情」可查看毫秒级时间及实际响应详情。除非用户明确导出，否则会话只保留在当前浏览器页面。
@@ -40,7 +42,7 @@ TokenHub 会向演练场输出统一的 SSE 事件格式。所选上游支持流
 
 在「安全策略 > 内容安全」中，可以创建适用于全部项目或指定项目的策略。一条策略可以组合关键词或正则表达式匹配、敏感数据检测，以及可选的 Qwen3Guard 模型检测器。所有检测项会共同判定，并采用命中动作中最严格的一项：`block` 高于 `mask`，`mask` 高于 `audit`。保存后立即生效。
 
-确定性检测器在 TokenHub 内部运行。启用 Qwen3Guard 检测器后，TokenHub 会把待检测的用户可见请求文本发送到 `TOKENHUB_GUARDRAIL_MODEL_URL` 配置的服务。该服务应部署在获准的数据边界内，并评估其传输、日志和保留策略；远端服务保留的副本不受 TokenHub 管理。URL 留空时不会发起模型调用，并按各模型检测项配置的不可用行为处理。
+确定性检测器在 TokenHub 内部运行。调用已配置的 Qwen3Guard 检测器前，TokenHub 会在仅供检测的文本副本中，把本地 `mask` 规则已经命中的敏感值替换为 `[REDACTED]`，避免把这些原始值发送给模型服务。未被本地脱敏规则命中的文本仍会发送到 `TOKENHUB_GUARDRAIL_MODEL_URL` 配置的服务。该服务应部署在获准的数据边界内，并评估其传输、日志和保留策略；远端服务保留的副本不受 TokenHub 管理。URL 留空时不会发起模型调用，并按各模型检测项配置的不可用行为处理。
 
 敏感数据检测覆盖带标签或经过结构校验的中国大陆身份证号、手机号、电子邮箱、银行卡号、凭证与私钥、姓名、地址和出生日期等样例。日期合法性、身份证校验位和 Luhn 校验等规则用于降低常见数字误报。策略广泛启用前，应使用「测试策略」同时验证有代表性的正例和反例。
 
@@ -70,6 +72,20 @@ RPM 在调用 Provider 前扣减。TPM 同时按请求的预估输入量和最�
 
 TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照，管理员也可以手动刷新同一份本地目录。若本地目录读取、解析或完整性校验失败，TokenHub 会继续使用最后一次有效快照。
 
+## Claude Code 归因块处理
+
+Claude Code 可能在 Anthropic Messages 请求的 `system` 数组开头插入归因文本块。该块包含可能随请求变化的客户端元数据，可能导致第三方上游无法复用原本稳定的提示词前缀。
+
+每个 Provider 都可以设置 `claude_code_attribution_policy`。新建 Anthropic 官方 Provider 时默认使用 `preserve`；明确非官方的 Provider 默认使用 `strip`，以提高第三方上游的提示词前缀缓存复用率；来源不明的自定义 Anthropic 端点默认使用 `preserve`。已有 Provider 未配置该字段时也继续保留归因块。`strip` 只在第一个顶层 `system` 元素的 `type` 为 `"text"`，且文本严格以 `x-anthropic-billing-header:` 开头时移除该元素。字符串形式的 `system` 提示词、后续元素、带前导空格的文本及其他元素类型均不会被移除。
+
+Provider Resource 默认继承 Provider 策略，也可以通过 `options.claude_code_attribution_policy` 将策略覆盖为 `preserve` 或 `strip`；省略该 Resource 选项即可恢复继承。TokenHub 会为每次路由尝试单独应用实际生效的策略，因此故障切换后的 Resource 会收到原始请求，再执行自身策略。审计载荷同样保留原始请求。`POST /v1/messages/count_tokens` 不会选择具体的 Provider Resource，因此仍按原始请求计数。
+
+## Codex 指纹收敛
+
+OpenAI Codex Subscription 资源可以在 Responses 或 Compact 请求发往上游前收敛客户端设备与会话标识。在账号资源中配置「Codex 指纹收敛」。默认的 `session` 模式会派生账号级稳定的 installation ID 和 session ID，并根据客户端原始会话派生稳定的 thread ID；`device` 只改写 installation ID，`full` 还会把所有客户端收敛到同一个 thread，`off` 则原样透传客户端标识。
+
+该策略使用同一组预计算 ID 改写 Codex 协议请求头、`client_metadata` 及其内嵌的 `x-codex-turn-metadata`，确保一次请求在重试期间保持内部一致。在 `session` 和 `full` 模式下，原始 parent、fork 和 parent-turn 关系标识属于改写前的线程命名空间，因此会被移除。稳定值由 Provider Resource ID 派生，不会暴露保存的 OAuth 凭据。配置保存在 `options.codex_fingerprint_mode`；默认的 `session` 以省略该选项表示。需要回滚到透传行为时，将模式设为 `off`。
+
 ## Codex 用量重置资格
 
 对于已启用的 OpenAI Codex Subscription 账号，打开「Provider 渠道」，编辑对应 Provider，再展开「高级 > 订阅额度」。账号卡片会显示 OpenAI 返回的权威剩余重置次数及最近到期时间。「重置套餐用量」会先弹出二次确认，确认后消耗 1 次不可恢复的资格，并重置当前符合条件的 Codex 用量窗口；该操作不会更改 ChatGPT 计费套餐。操作成功或幂等重试成功后，界面会重新拉取额度和重置资格明细。
@@ -90,9 +106,19 @@ TokenHub 将模型生命周期拆成三个独立的管理区域：
 
 Provider 模型价格代表真实上游成本，用于内部审计；模型目录价格代表统一对外收费，用于客户计费估算、额度计算、指标和用量报表。路由只选择上游实现，不会改变对外价格。
 
-当 Provider 渠道、模型目录或路由策略还没有配置数据时，控制台会展示同一套三步引导：引入 Provider 库存、从内置的 165 个模型中创建对外模型、再配置路由。主操作按钮始终指向最早尚未完成的前置步骤，避免管理员进入当前还无法完成的表单。
+当 Provider 渠道、模型目录或路由策略还没有配置数据时，控制台会展示同一套三步引导：引入 Provider 库存、从内置的 178 个模型中创建对外模型、再配置路由。主操作按钮始终指向最早尚未完成的前置步骤，避免管理员进入当前还无法完成的表单。
 
 「发布状态」与「运行健康」相互独立。模型要出现在 `GET /v1/models` 中，必须同时满足：对外 `Model` 已启用、至少有一条已启用 `ModelRoute`，且在 API Key 配置了模型白名单时获得授权。Provider 或 Provider Resource 短时不健康不会改变该列表，只会影响当前请求能否成功，并在目录和路由诊断中单独展示。下线对外模型会将它从 `GET /v1/models` 移除，但保留映射，便于之后重新发布。
+
+## 自定义上游请求头
+
+在「Provider 渠道」中，可以在 Provider 连接设置或 Provider Resource 高级设置里添加固定自定义请求头。Provider 请求头是默认值；Resource 中名称相同（不区分大小写）的请求头会在该次实际路由尝试中覆盖 Provider 值。因此切换账号资源时，TokenHub 会为每个选中的 Resource 重新计算最终请求头。例如，可在 Provider 级设置 `User-Agent: TokenHub-Custom-Client/1.0`，再在各 Resource 上分别覆盖 `X-Tenant`。
+
+最终请求头会一致应用于连接测试、自定义模型发现、OpenAI 兼容的 Chat Completions、Responses、Embeddings、Images（包括流式请求和图片编辑）、原生 Anthropic Messages 以及 Gemini 请求。Azure OpenAI 与 OpenAI Codex 适配器会自行管理协议身份，因此不支持自定义请求头。
+
+凭据或租户 Token 应标记为敏感值。TokenHub 会加密保存敏感值，在管理响应和预览中遮盖，并从审计快照中排除所有请求头值。编辑已保存的敏感行时，保持遮盖值不变或留空即可保留原密钥；删除整行才会清除。非敏感值仍对管理员可见。
+
+TokenHub 禁止鉴权头、API Key 与 Cookie 凭据头、转发身份头、`Content-Type`、`Content-Length`、`Host`、`Anthropic-Version`、`Anthropic-Beta`、`OpenAI-Organization`、`OpenAI-Project` 等协议专用头，以及逐跳和传输头。请求头名称必须合法且不区分大小写唯一；值不能为空，也不能包含 HTTP transport 拒绝的控制字符。最终合并配置最多 32 个请求头，名称最长 128 字节，单值最长 4 KiB，总大小不超过 16 KiB。违反规则的旧数据会通过 `header_validation_errors` 提示，修正前不会应用到上游请求。
 
 ## 模型路由策略
 

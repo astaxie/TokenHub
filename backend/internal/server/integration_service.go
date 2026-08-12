@@ -40,6 +40,19 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	}
 	prober, supported := adapter.(ProviderResourceProber)
 	if !supported {
+		effective := effectiveProviderResourceConfig(provider, &resource)
+		if len(effective.Headers) > 0 {
+			startedAt := time.Now()
+			_, probeErr := CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, ProviderCreateRequest{
+				Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
+				Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
+			})
+			s.finishProbe(ctx, provider, resource, startedAt, probeErr, Usage{})
+			if probeErr != nil {
+				return nil, probeErr
+			}
+			return s.store.RecoverProviderResource(resourceID)
+		}
 		return s.store.TestProviderResource(resourceID)
 	}
 	probeRequest := prober.DefaultProbeRequest()
@@ -71,6 +84,51 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		return nil, err
 	}
 	if _, supported := adapter.(ProviderResourceProber); !supported {
+		effectiveProvider := effectiveProviderResourceConfig(provider, nil)
+		var firstResourceErr error
+		if len(effectiveProvider.Headers) > 0 {
+			for _, resource := range s.store.ListProviderResources() {
+				if resource.ProviderID == providerID && resource.Status == StatusActive {
+					result, probeErr := s.TestProviderResource(ctx, resource.ID, nil)
+					if probeErr != nil {
+						if firstResourceErr == nil {
+							firstResourceErr = probeErr
+						}
+						continue
+					}
+					_, _ = s.store.SetProviderHealth(providerID, true)
+					return result, nil
+				}
+			}
+			if firstResourceErr != nil {
+				return nil, firstResourceErr
+			}
+			_, probeErr := CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, ProviderCreateRequest{
+				Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
+				Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
+			})
+			if probeErr != nil {
+				_, _ = s.store.SetProviderHealth(providerID, false)
+				return nil, probeErr
+			}
+			return s.store.SetProviderHealth(providerID, true)
+		}
+		for _, resource := range s.store.ListProviderResources() {
+			if resource.ProviderID == providerID && resource.Status == StatusActive && len(resource.Headers) > 0 {
+				result, probeErr := s.TestProviderResource(ctx, resource.ID, nil)
+				if probeErr != nil {
+					if firstResourceErr == nil {
+						firstResourceErr = probeErr
+					}
+					continue
+				}
+				_, _ = s.store.SetProviderHealth(providerID, true)
+				return result, nil
+			}
+		}
+		if firstResourceErr != nil {
+			return nil, firstResourceErr
+		}
 		return s.store.TestProvider(providerID)
 	}
 	result := ProviderProbeBatchResult{ProviderID: providerID}
@@ -125,19 +183,9 @@ func (s *IntegrationService) finishProbe(ctx context.Context, provider Provider,
 }
 
 func integrationProvider(store Store, providerID string) (Provider, bool) {
-	for _, provider := range store.ListProviders() {
-		if provider.ID == providerID {
-			return provider, true
-		}
-	}
-	return Provider{}, false
+	return store.GetProvider(providerID)
 }
 
 func integrationProviderResource(store Store, resourceID string) (ProviderResource, bool) {
-	for _, resource := range store.ListProviderResources() {
-		if resource.ID == resourceID {
-			return resource, true
-		}
-	}
-	return ProviderResource{}, false
+	return store.GetProviderResource(resourceID)
 }

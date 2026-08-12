@@ -726,10 +726,6 @@ func parseNumericIdentifier(value string) (uint64, bool) {
 }
 
 func (s *Server) handleAdminSystemVersion(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	if _, ok := s.requireAdmin(w, r, "system", r.Method); !ok {
 		return
 	}
@@ -739,10 +735,6 @@ func (s *Server) handleAdminSystemVersion(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleAdminRollbackVersions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	if _, ok := s.requireAdmin(w, r, "system", r.Method); !ok {
 		return
 	}

@@ -122,7 +122,7 @@ export function RouteStrategyView({
     const description = emptyStage === "providers"
       ? "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"
       : emptyStage === "models"
-        ? "从内置的 165 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。"
+        ? "从内置的 178 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。"
         : "为对外模型添加 Provider 线路，并设置优先级、权重与流量策略。路由不会改变统一对外价格。";
     const actionLabel = emptyStage === "providers" ? "前往 Provider 渠道" : emptyStage === "models" ? "前往模型目录" : "为模型添加路由";
     const onAction: () => void = emptyStage === "providers"

@@ -37,8 +37,18 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 			provider.BaseURL = openAICodexBaseURL
 		}
 	}
+	if headers, sensitive, err := s.protectProviderHeaders(provider.Headers, provider.SensitiveHeaders, nil, nil); err == nil {
+		provider.Headers = headers
+		provider.SensitiveHeaders = sensitive
+	} else {
+		log.Printf("[tokenhub] refusing invalid headers for trusted provider create id=%s: %v", provider.ID, err)
+		provider.Headers = nil
+		provider.SensitiveHeaders = nil
+	}
 	provider.APIKey = s.encryptSecret(provider.APIKey)
 	_ = s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&provider).Error
+	provider.APIKey = ""
+	provider.Headers = maskedProviderHeaders(s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), provider.SensitiveHeaders)
 	return provider
 }
 
@@ -47,6 +57,9 @@ func (s *GormStore) ListProviders() []Provider {
 	_ = s.db.Order("priority asc").Find(&items).Error
 	for i := range items {
 		items[i].APIKey = ""
+		items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
+		items[i].HeaderValidationErrors = providerHeaderValidationErrorsForType(items[i].Type, items[i].Headers)
+		items[i].Headers = maskedProviderHeaders(items[i].Headers, items[i].SensitiveHeaders)
 	}
 	return items
 }
@@ -108,6 +121,8 @@ func (s *GormStore) GetProvider(id string) (Provider, bool) {
 		return Provider{}, false
 	}
 	provider.APIKey = s.decryptSecret(provider.APIKey)
+	provider.Headers, provider.HeaderValidationErrors = s.revealProviderHeaderConfig(provider.Headers, provider.SensitiveHeaders)
+	provider.HeaderValidationErrors = providerHeaderValidationErrorsForType(provider.Type, provider.Headers)
 	return provider, true
 }
 
@@ -143,15 +158,35 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 		provider.Priority = patch.Priority
 	}
 	if patch.Headers != nil {
-		provider.Headers = patch.Headers
+		headers, sensitive, err := s.protectProviderHeaders(patch.Headers, patch.SensitiveHeaders, provider.Headers, provider.SensitiveHeaders)
+		if err != nil {
+			return Provider{}, err
+		}
+		provider.Headers = headers
+		provider.SensitiveHeaders = sensitive
 	}
 	if patch.Options != nil {
 		provider.Options = patch.Options
+	}
+	var resources []ProviderResource
+	if err := s.db.Where("provider_id = ?", provider.ID).Find(&resources).Error; err != nil {
+		return Provider{}, err
+	}
+	providerHeaders := s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders)
+	if err := validateEffectiveProviderHeaders(provider.Type, providerHeaders, nil); err != nil {
+		return Provider{}, err
+	}
+	for _, resource := range resources {
+		resourceHeaders := s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders)
+		if err := validateEffectiveProviderHeaders(provider.Type, providerHeaders, resourceHeaders); err != nil {
+			return Provider{}, err
+		}
 	}
 	if err := s.db.Save(&provider).Error; err != nil {
 		return Provider{}, err
 	}
 	provider.APIKey = ""
+	provider.Headers = maskedProviderHeaders(s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), provider.SensitiveHeaders)
 	return provider, nil
 }
 
@@ -214,6 +249,7 @@ func (s *GormStore) SetProviderHealth(providerID string, healthy bool) (Provider
 	}
 	provider.Healthy = healthy
 	provider.APIKey = ""
+	s.maskProviderHeaderConfig(&provider)
 	return provider, nil
 }
 
@@ -221,6 +257,9 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := validateClaudeCodeAttributionOptions(resource.Options); err != nil {
+		return ProviderResource{}, err
+	}
 	var provider Provider
 	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
@@ -229,6 +268,12 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 		return ProviderResource{}, err
 	}
 	resource.Name = strings.TrimSpace(resource.Name)
+	// routeSelection lets a non-empty resource BaseURL override the provider's
+	// validated one, so resource-level URLs must pass the same SSRF guard at
+	// persistence time (operator allowlist and explicit loopback opt-in included).
+	if err := ValidateProviderUpstreamBaseURL(resource.BaseURL); err != nil {
+		return ProviderResource{}, err
+	}
 	now := time.Now().UTC()
 	if resource.ID == "" {
 		resource.ID = NewID("rsrc")
@@ -252,11 +297,24 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 		resource.CreatedAt = now
 	}
 	resource.UpdatedAt = now
+	headers, sensitive, err := s.protectProviderHeaders(resource.Headers, resource.SensitiveHeaders, nil, nil)
+	if err != nil {
+		return ProviderResource{}, err
+	}
+	resource.Headers = headers
+	resource.SensitiveHeaders = sensitive
+	if err := validateMergedProviderHeaderLimits(
+		s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders),
+		s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders),
+	); err != nil {
+		return ProviderResource{}, err
+	}
 	s.prepareProviderResourceForCreate(&resource)
 	resource.APIKey = s.encryptSecret(resource.APIKey)
 	if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
 		return ProviderResource{}, err
 	}
+	resource.Headers = maskedProviderHeaders(s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders), resource.SensitiveHeaders)
 	redactProviderResourceSecrets(&resource)
 	return resource, nil
 }
@@ -264,6 +322,12 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 func (s *GormStore) ListProviderResources() []ProviderResource {
 	var items []ProviderResource
 	_ = s.db.Order("provider_id asc, priority asc, weight desc, created_at asc").Find(&items).Error
+	var providers []Provider
+	_ = s.db.Find(&providers).Error
+	providersByID := make(map[string]Provider, len(providers))
+	for _, provider := range providers {
+		providersByID[provider.ID] = provider
+	}
 	var observations []ProviderResourceObservation
 	_ = s.db.Find(&observations).Error
 	observationByResource := make(map[string]ProviderResourceObservation, len(observations))
@@ -276,14 +340,40 @@ func (s *GormStore) ListProviderResources() []ProviderResource {
 			items[i].Observation = &copy
 		}
 		redactProviderResourceSecrets(&items[i])
+		items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
+		if provider, ok := providersByID[items[i].ProviderID]; ok {
+			if err := validateEffectiveProviderHeaders(provider.Type, s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), items[i].Headers); err != nil {
+				items[i].HeaderValidationErrors = []string{AsHTTPError(err).Code}
+			}
+		}
+		items[i].Headers = maskedProviderHeaders(items[i].Headers, items[i].SensitiveHeaders)
 	}
 	return items
+}
+
+func (s *GormStore) GetProviderResource(id string) (ProviderResource, bool) {
+	var resource ProviderResource
+	if err := s.db.First(&resource, "id = ?", id).Error; err != nil {
+		return ProviderResource{}, false
+	}
+	resource.APIKey = s.decryptSecret(resource.APIKey)
+	resource.Headers, resource.HeaderValidationErrors = s.revealProviderHeaderConfig(resource.Headers, resource.SensitiveHeaders)
+	var provider Provider
+	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err == nil {
+		if validationErr := validateEffectiveProviderHeaders(provider.Type, s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), resource.Headers); validationErr != nil {
+			resource.HeaderValidationErrors = []string{AsHTTPError(validationErr).Code}
+		}
+	}
+	return resource, true
 }
 
 func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := validateClaudeCodeAttributionOptions(patch.Options); err != nil {
+		return ProviderResource{}, err
+	}
 	var resource ProviderResource
 	if err := s.db.First(&resource, "id = ?", id).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
@@ -308,6 +398,12 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 		resource.ResourceType = patch.ResourceType
 	}
 	resource.BaseURL = patch.BaseURL
+	// Same SSRF persistence guard as AddProviderResource: an empty value
+	// clears the override (the provider URL applies again), a non-empty one
+	// must be a routable upstream.
+	if err := ValidateProviderUpstreamBaseURL(resource.BaseURL); err != nil {
+		return ProviderResource{}, err
+	}
 	shouldEncryptAPIKey := false
 	if patch.APIKey != "" {
 		resource.APIKey = patch.APIKey
@@ -329,7 +425,12 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 	resource.TokenLimitTPM = patch.TokenLimitTPM
 	resource.MaxConcurrency = patch.MaxConcurrency
 	if patch.Headers != nil {
-		resource.Headers = patch.Headers
+		headers, sensitive, err := s.protectProviderHeaders(patch.Headers, patch.SensitiveHeaders, resource.Headers, resource.SensitiveHeaders)
+		if err != nil {
+			return ProviderResource{}, err
+		}
+		resource.Headers = headers
+		resource.SensitiveHeaders = sensitive
 	}
 	if patch.Options != nil {
 		resource.Options = patch.Options
@@ -339,6 +440,13 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 	}
 	if err := ensureProviderResourceAdapterCompatibility(s.db, &provider, resource.ResourceType); err != nil {
+		return ProviderResource{}, err
+	}
+	if err := validateEffectiveProviderHeaders(
+		provider.Type,
+		s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders),
+		s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders),
+	); err != nil {
 		return ProviderResource{}, err
 	}
 	resource.UpdatedAt = time.Now().UTC()
@@ -352,6 +460,7 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 	if err := s.db.Save(&resource).Error; err != nil {
 		return ProviderResource{}, err
 	}
+	resource.Headers = maskedProviderHeaders(s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders), resource.SensitiveHeaders)
 	redactProviderResourceSecrets(&resource)
 	return resource, nil
 }
@@ -393,6 +502,7 @@ func (s *GormStore) UpdateProviderResourceOptions(id string, options map[string]
 	if err := s.db.Save(&resource).Error; err != nil {
 		return ProviderResource{}, err
 	}
+	s.maskProviderResourceHeaderConfig(&resource)
 	redactProviderResourceSecrets(&resource)
 	return resource, nil
 }
@@ -447,6 +557,7 @@ func (s *GormStore) SetProviderResourceHealth(resourceID string, healthy bool) (
 	resource.Healthy = healthy
 	resource.LastCheckedAt = &now
 	resource.UpdatedAt = now
+	s.maskProviderResourceHeaderConfig(&resource)
 	redactProviderResourceSecrets(&resource)
 	return resource, nil
 }
@@ -528,6 +639,7 @@ func (s *GormStore) BulkOperateProviderResources(action string, ids []string) (P
 			continue
 		}
 		resource.UpdatedAt = now
+		s.maskProviderResourceHeaderConfig(&resource)
 		redactProviderResourceSecrets(&resource)
 		result.Success++
 		result.Resources = append(result.Resources, resource)
@@ -555,9 +667,22 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			result.Errors = append(result.Errors, "row "+row+": provider_id and name are required")
 			continue
 		}
-		if err := s.db.First(&Provider{}, "id = ?", resource.ProviderID).Error; err != nil {
+		var provider Provider
+		if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, "row "+row+": "+notFound(err, "provider_not_found", "Provider not found").Error())
+			continue
+		}
+		if err := validateProviderHeaderSupport(provider.Type, resource.Headers); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
+			continue
+		}
+		// Same SSRF persistence guard as AddProviderResource: a rejected row
+		// fails the row, not the whole import, matching the per-row contract.
+		if err := ValidateProviderUpstreamBaseURL(resource.BaseURL); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
 			continue
 		}
 		now := time.Now().UTC()
@@ -585,6 +710,23 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			resource.CreatedAt = now
 		}
 		resource.UpdatedAt = now
+		headers, sensitive, err := s.protectProviderHeaders(resource.Headers, resource.SensitiveHeaders, nil, nil)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
+			continue
+		}
+		resource.Headers = headers
+		resource.SensitiveHeaders = sensitive
+		if err := validateEffectiveProviderHeaders(
+			provider.Type,
+			s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders),
+			s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders),
+		); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
+			continue
+		}
 		s.prepareProviderResourceForCreate(&resource)
 		resource.APIKey = s.encryptSecret(resource.APIKey)
 		if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
@@ -592,6 +734,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
 			continue
 		}
+		resource.Headers = maskedProviderHeaders(s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders), resource.SensitiveHeaders)
 		redactProviderResourceSecrets(&resource)
 		result.Success++
 		result.Resources = append(result.Resources, resource)

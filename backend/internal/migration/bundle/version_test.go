@@ -22,7 +22,7 @@ func TestParseSchemaVersionInvalid(t *testing.T) {
 }
 
 func TestRejectIfIncompatibleSameMajor(t *testing.T) {
-	for _, v := range []string{SchemaVersion, "1.99.0"} {
+	for _, v := range []string{SchemaVersion, "2.99.0"} {
 		if err := RejectIfIncompatible(v); err != nil {
 			t.Errorf("expected %q compatible: %v", v, err)
 		}
@@ -30,7 +30,7 @@ func TestRejectIfIncompatibleSameMajor(t *testing.T) {
 }
 
 func TestRejectIfIncompatibleDifferentMajor(t *testing.T) {
-	for _, v := range []string{"0.9.0", "2.0.0", "10.0.0"} {
+	for _, v := range []string{"0.9.0", "1.2.0", "3.0.0", "10.0.0"} {
 		if err := RejectIfIncompatible(v); err == nil {
 			t.Errorf("expected %q rejected", v)
 		}
@@ -40,5 +40,14 @@ func TestRejectIfIncompatibleDifferentMajor(t *testing.T) {
 func TestRejectIfIncompatibleEmpty(t *testing.T) {
 	if err := RejectIfIncompatible(""); err == nil {
 		t.Fatal("expected error for empty version")
+	}
+}
+
+func TestParseSchemaVersionRejectsNegative(t *testing.T) {
+	cases := []string{"1.-1.0", "-1.0.0", "0.0.-1"}
+	for _, c := range cases {
+		if _, err := ParseSchemaVersion(c); err == nil {
+			t.Errorf("expected error for negative version %q", c)
+		}
 	}
 }

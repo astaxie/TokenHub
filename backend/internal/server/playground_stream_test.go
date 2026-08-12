@@ -247,6 +247,33 @@ func TestAdminPlaygroundStreamFallsBackToBufferedWithoutFakeTTFT(t *testing.T) {
 	}
 }
 
+func TestAdminPlaygroundStreamForwardsMultimodalContent(t *testing.T) {
+	server, store := newPlaygroundTestServer(t)
+	project := store.CreateProject(Project{Name: "Multimodal Playground Project"})
+	adapter := &playgroundCaptureAdapter{}
+	server.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityChat)
+	dataURI := "data:image/png;base64,YWJj"
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat/stream", map[string]any{
+		"project_id": project.ID,
+		"model":      "gpt-4.1-mini",
+		"messages": []map[string]any{{"role": "user", "content": []any{
+			map[string]any{"type": "text", "text": "describe"},
+			playgroundImagePart(dataURI),
+		}}},
+	}, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
+	}
+	parts, ok := adapter.request.Messages[0].Content.([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("multimodal content was not forwarded: %#v", adapter.request.Messages[0].Content)
+	}
+	image, _ := parts[1].(map[string]any)
+	if got, _ := normalizePlaygroundImageURL(image["image_url"]); got != dataURI {
+		t.Fatalf("image URL = %q, want %q", got, dataURI)
+	}
+}
+
 func TestUserPlaygroundStreamRedactsRouteInternals(t *testing.T) {
 	server, store := newPlaygroundTestServer(t)
 	user, err := store.CreateAdminUser(AdminUser{

@@ -12,7 +12,8 @@ import (
 // functionCall part arrives as a complete JSON object. The arguments are
 // therefore emitted in a single delta rather than being reassembled.
 type geminiStreamDecoder struct {
-	encoder *openAIChatStreamEncoder
+	encoder  *openAIChatStreamEncoder
+	provider Provider
 
 	usage        map[string]any
 	finishReason string
@@ -27,7 +28,12 @@ func newGeminiStreamDecoder(encoder *openAIChatStreamEncoder) *geminiStreamDecod
 
 // streamGeminiChat consumes the upstream SSE body and writes OpenAI chunks.
 func streamGeminiChat(body io.Reader, encoder *openAIChatStreamEncoder) (Usage, error) {
+	return streamGeminiChatForProvider(body, encoder, Provider{})
+}
+
+func streamGeminiChatForProvider(body io.Reader, encoder *openAIChatStreamEncoder, provider Provider) (Usage, error) {
 	decoder := newGeminiStreamDecoder(encoder)
+	decoder.provider = provider
 	events := newSSEDecoder(body)
 	for {
 		event, err := events.Next()
@@ -79,6 +85,7 @@ func (d *geminiStreamDecoder) consume(event serverSentEvent) error {
 		if message == "" {
 			message = "provider reported a stream error"
 		}
+		message = string(redactProviderErrorSecrets([]byte(message), d.provider))
 		return NewHTTPError(502, "provider_stream_error", fmt.Sprintf("Gemini stream error: %s", message))
 	}
 	if usage, ok := payload["usageMetadata"].(map[string]any); ok {

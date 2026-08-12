@@ -580,6 +580,8 @@ func TestCodexSessionAffinityPersistsRebindsAndPreservesProtocol(t *testing.T) {
 		Healthy: true,
 	})
 	for _, account := range []string{"account_session_a", "account_session_b"} {
+		options := codexCapabilityOptionsForTest("gpt-session")
+		options[codexFingerprintModeOption] = string(codexFingerprintOff)
 		if _, err := store.AddProviderResource(ProviderResource{
 			ID:           "rsrc_" + account,
 			ProviderID:   provider.ID,
@@ -588,7 +590,7 @@ func TestCodexSessionAffinityPersistsRebindsAndPreservesProtocol(t *testing.T) {
 			Status:       StatusActive,
 			Healthy:      true,
 			Weight:       100,
-			Options:      codexCapabilityOptionsForTest("gpt-session"),
+			Options:      options,
 			Credentials: &ProviderResourceCredentials{
 				AccessToken: "access_" + account,
 				AccountID:   account,
@@ -764,6 +766,12 @@ func TestCodexSessionIdentifierPriority(t *testing.T) {
 		t.Fatalf("expected header Session priority, got %q %v", identifier, ok)
 	}
 	headers.Del("session-id")
+	headers.Set("session_id", "underscore-session")
+	identifier, ok = codexSessionIdentifier(headers, request)
+	if !ok || identifier != "underscore-session" {
+		t.Fatalf("expected underscore header Session priority, got %q %v", identifier, ok)
+	}
+	headers.Del("session_id")
 	identifier, ok = codexSessionIdentifier(headers, request)
 	if !ok || identifier != "metadata-session" {
 		t.Fatalf("expected client_metadata Session priority, got %q %v", identifier, ok)
@@ -842,7 +850,7 @@ func TestCodexSessionBindingCommitsAfterClientCancellation(t *testing.T) {
 	}
 }
 
-func TestCodexCompactPreservesSessionAndUpstreamMetadata(t *testing.T) {
+func TestCodexCompactConvergesFingerprintAcrossRetriesAndPreservesUpstreamMetadata(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Compact Project", Status: StatusActive})
 	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
@@ -885,19 +893,38 @@ func TestCodexCompactPreservesSessionAndUpstreamMetadata(t *testing.T) {
 	})
 
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "compact-secret"})
+	server.codexSubscription.MaxRequestRetries = 1
+	var fingerprintHeaders []http.Header
 	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/backend-api/codex/responses/compact" {
 			t.Fatalf("unexpected compact path: %s", req.URL.Path)
 		}
-		if req.Header.Get("session-id") != "session-compact" || req.Header.Get("Authorization") != "Bearer access_compact" {
+		if req.Header.Get("Authorization") != "Bearer access_compact" {
 			t.Fatalf("compact protocol headers missing: %#v", req.Header)
 		}
+		if req.Header.Get("session-id") == "" || req.Header.Get("session-id") == "session-compact" ||
+			req.Header.Get("session_id") != req.Header.Get("session-id") || req.Header.Get("thread-id") == "" ||
+			req.Header.Get("x-codex-installation-id") == "client-installation" || req.Header.Get("x-codex-parent-thread-id") != "" {
+			t.Fatalf("compact fingerprint was not converged: %#v", req.Header)
+		}
+		fingerprintHeaders = append(fingerprintHeaders, req.Header.Clone())
 		var payload map[string]any
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
 		if payload["model"] != "gpt-compact-upstream" || payload["instructions"] != "preserve this" {
 			t.Fatalf("compact request was rewritten incorrectly: %#v", payload)
+		}
+		if _, ok := payload["client_metadata"]; ok {
+			t.Fatalf("compact request forwarded unsupported client_metadata: %#v", payload)
+		}
+		if len(fingerprintHeaders) == 1 {
+			return &http.Response{
+				StatusCode: http.StatusBadGateway,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"error":"retry compact"}`)),
+				Request:    req,
+			}, nil
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -916,7 +943,9 @@ func TestCodexCompactPreservesSessionAndUpstreamMetadata(t *testing.T) {
 	))
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("session-id", "session-compact")
+	req.Header.Set("x-codex-installation-id", "client-installation")
+	req.Header.Set("x-codex-parent-thread-id", "client-parent-thread")
+	req.Header.Set("x-codex-turn-metadata", `{"installation_id":"client-installation","session_id":"session-compact","thread_id":"client-thread","unrelated":9007199254740993,"parent_thread_id":"compact-parent-thread","forked_from_thread_id":"compact-fork-thread","parent_turn_id":"compact-parent-turn"}`)
 	rr := httptest.NewRecorder()
 	server.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -926,6 +955,25 @@ func TestCodexCompactPreservesSessionAndUpstreamMetadata(t *testing.T) {
 		rr.Header().Get("X-Tokenhub-Upstream-Request-Id") != "upstream-compact-request" {
 		t.Fatalf("compact response metadata missing: %#v", rr.Header())
 	}
+	if len(fingerprintHeaders) != 2 {
+		t.Fatalf("expected one compact retry, got %d attempts", len(fingerprintHeaders))
+	}
+	for _, key := range []string{
+		"session-id", "session_id", "thread-id", "x-client-request-id",
+		"x-codex-installation-id", "x-codex-window-id", "x-codex-turn-metadata",
+	} {
+		if fingerprintHeaders[0].Get(key) != fingerprintHeaders[1].Get(key) {
+			t.Fatalf("compact retry changed fingerprint header %s: first=%q second=%q", key, fingerprintHeaders[0].Get(key), fingerprintHeaders[1].Get(key))
+		}
+	}
+	var compactTurnMetadata map[string]any
+	if err := decodeCodexMetadataJSON([]byte(fingerprintHeaders[0].Get("x-codex-turn-metadata")), &compactTurnMetadata); err != nil {
+		t.Fatalf("decode compact turn metadata: %v", err)
+	}
+	if number, ok := compactTurnMetadata["unrelated"].(json.Number); !ok || number.String() != "9007199254740993" {
+		t.Fatalf("compact turn metadata large integer changed: %#v", compactTurnMetadata["unrelated"])
+	}
+	assertCodexLineageFieldsAbsent(t, compactTurnMetadata, "compact turn metadata")
 	var bindings []AdapterSessionBinding
 	if err := store.db.Find(&bindings).Error; err != nil {
 		t.Fatal(err)
@@ -1207,13 +1255,15 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	}
 
 	legacy := store.AddProvider(Provider{
-		ID:       "prv_legacy_mixed",
-		Name:     "Legacy Mixed",
-		Type:     ProviderOpenAI,
-		APIKey:   "legacy-upstream-key",
-		Status:   StatusActive,
-		Healthy:  true,
-		Priority: 3,
+		ID:               "prv_legacy_mixed",
+		Name:             "Legacy Mixed",
+		Type:             ProviderOpenAI,
+		APIKey:           "legacy-upstream-key",
+		Status:           StatusActive,
+		Healthy:          true,
+		Priority:         3,
+		Headers:          map[string]string{"X-Tenant": "legacy-tenant-secret"},
+		SensitiveHeaders: []string{"X-Tenant"},
 	})
 	direct := ProviderResource{
 		ID:           "rsrc_legacy_direct",
@@ -1273,6 +1323,13 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	}
 	if splitProvider.ID == "" {
 		t.Fatal("mixed legacy Provider was not split")
+	}
+	if len(splitProvider.Headers) != 0 || len(splitProvider.SensitiveHeaders) != 0 {
+		t.Fatalf("Codex split inherited unsupported custom headers: %+v", splitProvider)
+	}
+	directProvider, ok := integrationProvider(store, legacy.ID)
+	if !ok || directProvider.Headers["X-Tenant"] != "legacy-tenant-secret" {
+		t.Fatalf("direct Provider lost its sensitive custom header: %+v", directProvider)
 	}
 	migratedSubscription, ok := integrationProviderResource(store, subscription.ID)
 	if !ok || migratedSubscription.ProviderID != splitProvider.ID {

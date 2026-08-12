@@ -64,6 +64,9 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer platform-api-key" {
 			t.Errorf("missing OpenAI API key: %#v", r.Header)
 		}
+		if r.Header.Get("User-Agent") != "TokenHub-Images/1.0" {
+			t.Errorf("missing custom image User-Agent: %#v", r.Header)
+		}
 		mu.Lock()
 		paths = append(paths, r.URL.Path)
 		mu.Unlock()
@@ -139,6 +142,7 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 			Type:    ProviderOpenAI,
 			BaseURL: upstream.URL + "/v1",
 			APIKey:  "platform-api-key",
+			Headers: map[string]string{"User-Agent": "TokenHub-Images/1.0"},
 		},
 		ProviderModel: openAIImageModelName,
 	}

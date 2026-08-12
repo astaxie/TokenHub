@@ -1,5 +1,6 @@
 import { Check, Copy, KeyRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import Select, { type MultiValue } from "react-select";
 import { type AdminUser, type AppData, type FieldConfig, type Model } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
 import { copyText } from "../domain/clipboard";
@@ -8,6 +9,10 @@ import { compactNumber, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
 import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
 import { PaginationControls, usePagination } from "../views/settings-table";
+
+function HiddenSelectIndicator() {
+  return null;
+}
 
 export function ConfirmDialog({
   title,
@@ -115,8 +120,36 @@ export function FieldInput({
   const autoComplete = field.autoComplete ?? "off";
   const inputName = `tokenhub-${field.key}`;
   let options = field.optionsFromData?.(data, currentUser, values) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
-  if (field.type !== "multi-select" && value && !options.some((option) => option.value === value)) {
+  if (field.type !== "multi-select" && field.type !== "tag-select" && value && !options.some((option) => option.value === value)) {
     options = [...options, { value, label: value }];
+  }
+  if (field.type === "tag-select") {
+    const translatedOptions = options.map((option) => ({ ...option, label: tx(option.label) }));
+    const optionsByValue = new Map(translatedOptions.map((option) => [option.value, option]));
+    const selected = splitList(value).map((item) => optionsByValue.get(item) ?? { value: item, label: item });
+    return (
+      <div className="field tag-select-field" data-field-key={field.key}>
+        <label htmlFor={inputName}>{tx(field.label)}</label>
+        <Select
+          className="tag-select"
+          classNamePrefix="tag-select"
+          components={{ ClearIndicator: HiddenSelectIndicator, DropdownIndicator: HiddenSelectIndicator, IndicatorSeparator: HiddenSelectIndicator }}
+          inputId={inputName}
+          instanceId={inputName}
+          isDisabled={readOnly}
+          isMulti
+          isSearchable
+          noOptionsMessage={() => tx("没有匹配的选项")}
+          onChange={(next: MultiValue<{ value: string; label: string }>) => onChange(next.map((option) => option.value).join(", "))}
+          openMenuOnFocus
+          options={translatedOptions}
+          placeholder={tx(field.placeholder ?? "请选择")}
+          required={field.required}
+          value={selected}
+        />
+        {field.help ? <small>{tx(field.help)}</small> : null}
+      </div>
+    );
   }
   if (field.type === "multi-select" && (!editing || field.multiSelectOnEdit)) {
     const selected = new Set(splitList(value));

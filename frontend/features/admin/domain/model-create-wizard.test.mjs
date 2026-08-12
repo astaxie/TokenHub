@@ -62,7 +62,7 @@ test("a reference template pre-fills the external model contract", () => {
     embedding_price_usd_per_1m: "",
     capabilities: "chat, tools",
     supported_parameters: "temperature",
-    input_modalities: "",
+    input_modalities: "text",
     output_modalities: "",
     initial_provider_models: "",
     status: "active",

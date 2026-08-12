@@ -145,6 +145,8 @@ sequenceDiagram
 
 Inactive or unhealthy providers, resources, and routes are skipped, with one exception: a resource whose cooldown has lapsed is readmitted as a half-open candidate. The first request that reaches it claims the trial by pushing its cooldown deadline forward, so concurrent requests are still rejected and a failed trial has already armed the next, longer window. Only that trial's own success closes the breaker and restores the resource without admin action — a request that was already in flight when the breaker tripped cannot resurrect it. Repeated failures widen the window exponentially up to `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`. A resource an administrator disabled is never readmitted. Non-streaming calls try candidates in order. A stream cannot safely switch upstream after output has started; streaming Responses require an adapter with the `response_stream` capability. `openai_codex` routes can derive a session affinity key from the request and API key, then persist a resource binding for continuity.
 
+For `POST /v1/responses` with `background: true`, the synchronous request flow stops after authentication and durable submission. Every replica polls the durable queue even when it was empty at startup. A worker claims the job, revalidates its original authorization, and commits the admitted phase, request ID, quota counters, token reservation, and concurrency lease in one database transaction before entering the same guardrail, routing, provider, metering, audit, and tracing flow. A lease epoch fences stale workers. PostgreSQL uses row locks with `SKIP LOCKED` across replicas; SQLite uses an atomic claim in the supported single-backend deployment. Pre-admission lease loss is replayable, while post-admission lease loss is terminal rather than risking a duplicate provider request; an undispatched token reservation is refunded during recovery.
+
 Project and API-key model access is an explicit least-privilege layer before route selection: restricted lists are intersected and restricted-empty denies all, while legacy blank modes remain inherited. Scoped routing policies are stored as audited `AdminResource` records of kind `routing-policies`. The runtime selects at most one binding with strict API Key → Project → Global precedence, then intersects its Provider, resource, model, tag, region, and environment constraints with route project scope. A higher-priority binding that is disabled, conflicting, or empty fails closed. Strategy overrides, affinity, half-open recovery, and failover operate only on the filtered candidates. The effective policy ID, scope, and priority are copied into request audit records.
 
 ## Security, Health, and Data Boundaries
@@ -155,7 +157,7 @@ Project and API-key model access is an explicit least-privilege layer before rou
 - `TOKENHUB_TRUSTED_PROXY_CIDRS` defines which proxies may supply `X-Forwarded-For`; `TOKENHUB_CORS_ALLOWED_ORIGINS` controls credentialed browser origins.
 - `/livez` is a process liveness probe. `/readyz` and compatibility `/healthz` check database availability and return `503` when it is unavailable.
 
-Provider credentials, billing connector credentials, and raw billing snapshots are AES-GCM encrypted from `TOKENHUB_SECRET_KEY`; project API keys retain only a SHA-256 digest plus display prefix and suffix. Every replica must use the same stable secret.
+Provider credentials, billing connector credentials, raw billing snapshots, and persistent background Responses payloads are AES-GCM encrypted from `TOKENHUB_SECRET_KEY`; project API keys retain only a SHA-256 digest plus display prefix and suffix. Every replica must use the same stable secret.
 
 | Category | Key entities | Purpose |
 | --- | --- | --- |
@@ -165,11 +167,12 @@ Provider credentials, billing connector credentials, and raw billing snapshots a
 | Governance and metering | `QuotaBucket`, `UsageRecord`, `ProviderResourceBucket`, `InFlightLease` | Quotas, usage/cost, and cross-replica concurrency |
 | External billing | `BillingConnector`, `BillingRecord`, `BillingRawSnapshot`, `BillingSyncRun` | Provider billing collection, normalization, checkpoints, and sync history |
 | Multi-instance coordination | `ClusterLease`, `ClusterTaskState`, `AdapterSessionBinding` | Catalog sync, cluster operations, and Codex session resource bindings |
+| Background Responses | `ResponseJob`, `ResponseJobEvent` | Encrypted request/result retention, fenced execution state, cancellation, expiry, and transition audit |
 | Observability | `RequestLog`, `RequestPayloadLog`, `RouteAttemptLog`, `ProviderObservation`, `AuditEvent` | Request traceability, payload audit, route attempts, provider observations, and admin audit |
 
 SQLite uses one connection with a five-second `busy_timeout` and must not be shared by backend replicas. PostgreSQL provides pooling, migration advisory locks, in-flight leases, and cluster locks. The built-in backup API is SQLite-only; PostgreSQL should use platform backup tooling such as `pg_dump` and `pg_restore`.
 
-The deployment has no Redis, message broker, or service mesh dependency. Because request and response payloads may be recorded for audit, production deployments should apply retention, least privilege, disk encryption, and backup access controls.
+The deployment has no Redis, message broker, or service mesh dependency. Synchronous request and response payloads may be recorded for audit, so production deployments should apply retention, least privilege, disk encryption, and backup access controls. Persistent background Responses are excluded from plaintext payload audit and trace export; their content remains only in the encrypted, TTL-bound job record.
 
 ## Related Documentation
 

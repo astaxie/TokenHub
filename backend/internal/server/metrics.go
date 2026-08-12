@@ -76,6 +76,12 @@ type GatewayMetrics struct {
 	// contributes its full elapsed time. It is an approximation because attempt
 	// durations are rounded to whole milliseconds and clamped to a positive floor.
 	overhead *prometheus.HistogramVec
+
+	responseQueueDepth prometheus.Gauge
+	responseQueueWait  prometheus.Histogram
+	responseExecution  *prometheus.HistogramVec
+	responseJobs       *prometheus.CounterVec
+	responseRecoveries *prometheus.CounterVec
 }
 
 const (
@@ -208,12 +214,91 @@ func NewGatewayMetrics(projectLabel bool) *GatewayMetrics {
 		Help:      "Approximate gateway overhead per request: elapsed end-to-end time minus the sum of invoked attempt durations. Clamped at zero. A request admitted for routing that fails before any attempt contributes its full elapsed time. For image jobs the elapsed time includes queue wait, so overhead there is an upper bound.",
 		Buckets:   gatewayOverheadBuckets,
 	}, withProject("stream"))
+	m.responseQueueDepth = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_jobs_queued",
+		Help:      "Durable Responses jobs waiting in the shared database, sampled by this replica.",
+	})
+	m.responseQueueWait = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_job_queue_wait_seconds",
+		Help:      "Time from durable Responses submission until a worker claims the job.",
+		Buckets:   gatewayDurationBuckets,
+	})
+	m.responseExecution = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_job_execution_seconds",
+		Help:      "Time from durable Responses worker claim until a terminal state.",
+		Buckets:   gatewayDurationBuckets,
+	}, []string{"status"})
+	m.responseJobs = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_jobs_total",
+		Help:      "Durable Responses jobs reaching a terminal state, split by status and bounded failure code.",
+	}, []string{"status", "error_code"})
+	m.responseRecoveries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_job_recoveries_total",
+		Help:      "Expired durable Responses leases by safe recovery decision.",
+	}, []string{"decision"})
 
-	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans, m.routeAttempts, m.attemptDuration, m.routedRequests, m.overhead)
+	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans, m.routeAttempts, m.attemptDuration, m.routedRequests, m.overhead, m.responseQueueDepth, m.responseQueueWait, m.responseExecution, m.responseJobs, m.responseRecoveries)
 	// Process and Go runtime metrics are what an operator reaches for first when the
 	// gateway itself is the suspect, and they cost nothing to collect.
 	m.registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	return m
+}
+
+func (m *GatewayMetrics) SetResponseQueueDepth(depth int64) {
+	if m == nil {
+		return
+	}
+	m.responseQueueDepth.Set(float64(maxInt64(depth, 0)))
+}
+
+func (m *GatewayMetrics) ObserveResponseJobClaim(createdAt time.Time, startedAt time.Time) {
+	if m == nil || createdAt.IsZero() || startedAt.IsZero() {
+		return
+	}
+	wait := startedAt.Sub(createdAt)
+	if wait < 0 {
+		wait = 0
+	}
+	m.responseQueueWait.Observe(wait.Seconds())
+}
+
+func (m *GatewayMetrics) ObserveResponseJobTerminal(status string, errorCode string, startedAt *time.Time, completedAt *time.Time) {
+	if m == nil {
+		return
+	}
+	m.ObserveResponseJobTerminalCount(status, errorCode, 1)
+	if startedAt == nil || completedAt == nil {
+		return
+	}
+	duration := completedAt.Sub(*startedAt)
+	if duration < 0 {
+		duration = 0
+	}
+	m.responseExecution.WithLabelValues(metricsLabel(status)).Observe(duration.Seconds())
+}
+
+func (m *GatewayMetrics) ObserveResponseJobTerminalCount(status string, errorCode string, count int64) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.responseJobs.WithLabelValues(metricsLabel(status), metricsLabel(errorCode)).Add(float64(count))
+}
+
+func (m *GatewayMetrics) ObserveResponseJobRecovery(decision string, count int64) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.responseRecoveries.WithLabelValues(metricsLabel(decision)).Add(float64(count))
 }
 
 func (m *GatewayMetrics) ObserveRateLimitHit(keyID string, limit string, scope string) {
@@ -445,10 +530,6 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	token := strings.TrimSpace(s.config.MetricsToken)
 	if token == "" {
 		token = strings.TrimSpace(s.config.AdminToken)
@@ -462,6 +543,17 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.metrics.Handler().ServeHTTP(w, r)
+}
+
+func (s *Server) metricsMethodNotAllowed(allowedMethod string) http.HandlerFunc {
+	reject := jsonMethodNotAllowed(allowedMethod)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.metrics == nil {
+			http.NotFound(w, r)
+			return
+		}
+		reject(w, r)
+	}
 }
 
 // metricsTokenMatches accepts the token only from an Authorization: Bearer header.

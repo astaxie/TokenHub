@@ -26,6 +26,8 @@ Language: [English](../administrator-guide.md) | [简体中文](../zh-CN/adminis
 7. Model Playground と Request Logs でフローを検証します。
 8. Key を広く発行する前に利用量配賦を確認します。
 
+Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic 互換の上流サービスが `Authorization: Bearer` を要求する場合は、Provider の **詳細** タブを開き、**Provider タイプ**を **Claude / Anthropic** にしたまま、**Anthropic 認証方式**で **Authorization Bearer** を選択します。TokenHub は暗号化して保存された Provider API Key から選択した Header を生成し、認証 Header は 1 種類だけ送信します。カスタム Header に同じ認証情報を重複して設定しないでください。
+
 ## Model Playground の診断
 
 コンソールの **Model Playground** では、通常のゲートウェイトラフィックと同じルーティングおよび Provider adapter を使ってモデルを検証できます。各 assistant ターンには、配信モード、ゲートウェイ計測の Time to First Token（TTFT）、出力スループット、総所要時間、コンテキスト全体の input tokens、output tokens、推定コスト、ローカル完了時刻、Request ID の要約が残ります。**診断詳細**を開くと、ミリ秒単位の時刻と実レスポンスの詳細を確認できます。明示的にエクスポートしない限り、セッションは現在のブラウザページだけに保持されます。
@@ -40,7 +42,7 @@ Playground の利用を許可されたすべてのユーザーは、性能、利
 
 **セキュリティポリシー > コンテンツセキュリティ**では、すべての Project または選択した Project を対象とするポリシーを作成できます。1 つのポリシーに、キーワードまたは正規表現、機密データ検出、任意の Qwen3Guard モデル検出を組み合わせられます。検出項目はまとめて評価され、最も厳しいアクションが適用されます。優先順位は `block`、`mask`、`audit` の順です。変更は保存後すぐに反映されます。
 
-決定論的な検出器は TokenHub 内で実行されます。Qwen3Guard 検出器を有効にすると、検査対象のユーザー表示リクエストテキストが `TOKENHUB_GUARDRAIL_MODEL_URL` で設定したサービスへ送信されます。そのサービスは承認済みのデータ境界内にデプロイし、転送、ログ、保持の管理を確認してください。リモートサービスが保持するコピーは TokenHub では管理できません。URL が空の場合はモデルを呼び出さず、各モデル検出項目に設定された利用不可時の動作を適用します。
+決定論的な検出器は TokenHub 内で実行されます。設定済みの Qwen3Guard 検出器を呼び出す前に、TokenHub は検出専用のテキストコピーで、ローカルの `mask` ルールがすでに検出した機密値を `[REDACTED]` に置き換えます。これらの生の値はモデルサービスへ送信されません。ローカルのマスクルールに一致しなかったテキストは、引き続き `TOKENHUB_GUARDRAIL_MODEL_URL` で設定したサービスへ送信されます。そのサービスは承認済みのデータ境界内にデプロイし、転送、ログ、保持の管理を確認してください。リモートサービスが保持するコピーは TokenHub では管理できません。URL が空の場合はモデルを呼び出さず、各モデル検出項目に設定された利用不可時の動作を適用します。
 
 機密データ検出は、ラベル付きまたは構造検証済みの中国身分証番号、中国本土の携帯電話番号、メールアドレス、銀行カード番号、Credential と秘密鍵、氏名、住所、生年月日などを対象とします。日付の妥当性、身分証のチェックサム、Luhn 検証などにより、一般的な数値の誤検知を抑えます。広く有効化する前に、**ポリシーをテスト**で代表的な陽性例と陰性例を確認してください。
 
@@ -70,6 +72,20 @@ RPM は Provider 呼び出し前に消費されます。TPM も同じ時点で�
 
 TokenHub は、最後に正常に読み込んだ Provider カタログをデータベースに保存します。バックエンドの起動時には毎回、設定済みのローカル `provider-catalog.json` を検証して読み込み、データベースのスナップショットをアトミックに置き換えます。通常の **Provider Channels** リクエストはデータベースのスナップショットだけを読み取り、管理者は同じローカルカタログを手動で更新することもできます。ローカルカタログの読み込み、解析、または完全性検証に失敗した場合、TokenHub は最後に有効だったスナップショットを引き続き使用します。
 
+## Claude Code 帰属ブロックの処理
+
+Claude Code は、Anthropic Messages リクエストの `system` 配列の先頭に帰属テキストブロックを挿入する場合があります。このブロックにはリクエストごとに変化し得るクライアントメタデータが含まれ、サードパーティー上流で本来安定しているプロンプト接頭辞を再利用できなくなることがあります。
+
+各 Provider には `claude_code_attribution_policy` を設定できます。新規の Anthropic 公式 Provider は `preserve`、明確な非公式 Provider はサードパーティー上流のプロンプト接頭辞キャッシュを再利用しやすくするため `strip` がデフォルトです。提供元が不明なカスタム Anthropic エンドポイントは `preserve` がデフォルトです。既存 Provider でこの設定がない場合も、引き続き帰属ブロックを保持します。`strip` は、最初のトップレベル `system` 要素の `type` が `"text"` で、テキストが `x-anthropic-billing-header:` から厳密に始まる場合に限り、その要素を削除します。文字列形式の `system` プロンプト、後続要素、先頭に空白があるテキスト、その他の要素型は削除しません。
+
+Provider Resource は既定で Provider ポリシーを継承し、`options.claude_code_attribution_policy` を `preserve` または `strip` に設定して上書きできます。この Resource オプションを省略すると継承に戻ります。TokenHub はルート試行ごとに有効なポリシーを適用するため、フェイルオーバー先の Resource は元のリクエストを受け取り、独自の設定を適用します。監査ペイロードにも元のリクエストを保持します。`POST /v1/messages/count_tokens` は具体的な Provider Resource を選択しないため、引き続き元のリクエストをカウントします。
+
+## Codex フィンガープリント集約
+
+OpenAI Codex Subscription Resource では、Responses または Compact リクエストを上流へ送る前にクライアントのデバイス ID とセッション ID を集約できます。アカウント Resource の **Codex フィンガープリント集約** を設定してください。既定の `session` モードはアカウント単位で安定した installation ID と session ID を生成し、元のクライアントセッションから安定した thread ID を生成します。`device` は installation ID だけを書き換え、`full` はすべてのクライアントを同じ thread にも集約し、`off` はクライアント ID を変更せずに送信します。
+
+このポリシーは、事前計算した同じ ID セットを使って Codex プロトコルヘッダー、`client_metadata`、および埋め込みの `x-codex-turn-metadata` を書き換え、再試行中も 1 回のリクエストの内部整合性を維持します。`session` と `full` モードでは、元の parent、fork、parent-turn の関係 ID は書き換え前の thread 名前空間に属するため削除されます。安定値は Provider Resource ID から生成され、保存済み OAuth Credential を公開しません。設定は `options.codex_fingerprint_mode` に保存され、既定の `session` はオプション省略で表します。変更前の透過送信へ戻すには `off` を設定してください。
+
 ## Codex 使用量リセットクレジット
 
 有効な OpenAI Codex Subscription アカウントでは、**Provider Channels** から Provider を編集し、**Advanced > Subscription quota** を開きます。アカウントカードには OpenAI が返した権威ある残りリセット回数と最も近い有効期限が表示されます。**使用量ウィンドウをリセット** は、復元できないクレジットを 1 回消費する前に再確認を表示し、対象となる Codex 使用量ウィンドウをリセットしますが、ChatGPT の課金プランは変更しません。完了時または冪等な再実行が成功した場合、クォータとリセットクレジットの詳細を再取得します。
@@ -90,9 +106,19 @@ TokenHub はモデルのライフサイクルを 3 つの管理領域に分離�
 
 Provider モデルの価格は実際の上流コストを表し、内部監査に使用します。Model Directory の価格は統一された外部請求額を表し、顧客の請求見積もり、クォータ計算、メトリクス、利用量レポートに使用します。ルートは上流実装を選択しますが、外部価格は変更しません。
 
-Provider Channels、Model Directory、Routing Policies に設定データがない場合、コンソールには同じ 3 ステップのガイドが表示されます。Provider インベントリの取り込み、組み込みの 165 モデルからの外部モデル作成、ルーティング設定の順です。主アクションは常に最初の未完了前提条件へ移動するため、まだ完了できないフォームに管理者を誘導しません。
+Provider Channels、Model Directory、Routing Policies に設定データがない場合、コンソールには同じ 3 ステップのガイドが表示されます。Provider インベントリの取り込み、組み込みの 178 モデルからの外部モデル作成、ルーティング設定の順です。主アクションは常に最初の未完了前提条件へ移動するため、まだ完了できないフォームに管理者を誘導しません。
 
 「公開状態」と「実行時ヘルス」は独立しています。`GET /v1/models` に含まれるには、外部 `Model` が有効、1 つ以上の `ModelRoute` が有効、さらに API Key にモデル許可リストがある場合は対象モデルが許可済みである必要があります。Provider または Provider Resource の一時的な不健全は一覧の所属を変更せず、現在のリクエストを処理できるかどうかだけに影響し、ディレクトリとルーティング診断に別状態として表示されます。外部モデルを非公開にすると `GET /v1/models` から削除されますが、後で再公開できるようマッピングは保持されます。
+
+## カスタム上流リクエストヘッダー
+
+「Provider Channels」で、Provider の接続設定または Provider Resource の詳細設定に固定カスタムリクエストヘッダーを追加できます。Provider ヘッダーが既定値となり、Resource に同名（大文字小文字を区別しない）のヘッダーがある場合、その実際のルーティング試行では Resource の値が上書きします。アカウントリソースをフェイルオーバーするたびに、TokenHub は選択した Resource ごとの有効ヘッダーを再計算します。たとえば Provider に `User-Agent: TokenHub-Custom-Client/1.0` を設定し、各 Resource で `X-Tenant` を上書きできます。
+
+有効ヘッダーは、接続テスト、カスタムモデル検出、OpenAI 互換の Chat Completions、Responses、Embeddings、Images（ストリーミングと画像編集を含む）、ネイティブ Anthropic Messages、Gemini の各リクエストへ一貫して適用されます。Azure OpenAI と OpenAI Codex のアダプターはプロトコル ID を自身で管理するため、カスタムヘッダーには対応しません。
+
+認証情報やテナント Token は機密値として指定してください。TokenHub は機密値を暗号化して保存し、管理レスポンスとプレビューではマスクし、監査スナップショットからすべてのヘッダー値を除外します。保存済みの機密行を編集するときは、マスク値を変更しないか空欄にすると秘密値を保持し、行を削除した場合だけ消去します。非機密値は引き続き管理者に表示されます。
+
+TokenHub は、認証ヘッダー、API Key と Cookie の認証情報ヘッダー、転送元 ID ヘッダー、`Content-Type`、`Content-Length`、`Host`、`Anthropic-Version`、`Anthropic-Beta`、`OpenAI-Organization`、`OpenAI-Project` などプロトコル管理のヘッダー、および hop-by-hop・転送ヘッダーを拒否します。ヘッダー名は有効で、大文字小文字を区別せず一意である必要があります。値は空にできず、HTTP transport が拒否する制御文字を含められません。最終的にマージされた設定は最大 32 ヘッダー、名前は 128 バイトまで、値は 1 件 4 KiB まで、合計 16 KiB までです。規則に違反する旧データは `header_validation_errors` で通知され、修正するまで上流リクエストへ適用されません。
 
 ## モデルルーティングポリシー
 

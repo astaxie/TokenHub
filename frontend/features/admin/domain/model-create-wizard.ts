@@ -57,7 +57,7 @@ export function externalModelTemplateValues(model: ReferenceModelTemplate): Reco
     embedding_price_usd_per_1m: formNumber(model.embedding_price_usd_per_1m),
     capabilities: (model.capabilities ?? []).join(", "),
     supported_parameters: (model.supported_parameters ?? []).join(", "),
-    input_modalities: (model.input_modalities ?? []).join(", "),
+    input_modalities: (model.input_modalities?.length ? model.input_modalities : ["text"]).join(", "),
     output_modalities: (model.output_modalities ?? []).join(", "),
     initial_provider_models: "",
     status: "active",

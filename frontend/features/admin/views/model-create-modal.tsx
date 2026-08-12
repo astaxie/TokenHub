@@ -176,6 +176,7 @@ export function ModelCreateModal({
                 {renderField("category")}
                 {renderField("family")}
                 {renderField("modality")}
+                {renderField("input_modalities")}
                 {renderField("context_window")}
                 {renderField("status")}
                 {renderField("capabilities")}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -339,6 +340,9 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 		if r.Header.Get("anthropic-beta") != "interleaved-thinking-2025-05-14" {
 			t.Errorf("unexpected beta %q", r.Header.Get("anthropic-beta"))
 		}
+		if r.Header.Get("User-Agent") != "TokenHub-Anthropic/1.0" {
+			t.Errorf("unexpected custom User-Agent %q", r.Header.Get("User-Agent"))
+		}
 		decoder := json.NewDecoder(r.Body)
 		decoder.UseNumber()
 		if err := decoder.Decode(&upstreamPayload); err != nil {
@@ -358,7 +362,12 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	handler, _, secret := newAnthropicGateway(t, upstream.URL+"/v1", ProviderAnthropic)
+	handler, store, secret := newAnthropicGateway(t, upstream.URL+"/v1", ProviderAnthropic)
+	provider, _ := store.GetProvider("prv_claude_code")
+	provider.Headers = map[string]string{"User-Agent": "TokenHub-Anthropic/1.0"}
+	if _, err := store.UpdateProvider(provider.ID, provider); err != nil {
+		t.Fatal(err)
+	}
 	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
 		"model":      "claude-tokenhub-test",
 		"max_tokens": 1024,
@@ -383,6 +392,40 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	if !strings.Contains(resp.Body.String(), `"model":"claude-tokenhub-test"`) ||
 		!strings.Contains(resp.Body.String(), `"type":"tool_use"`) {
 		t.Fatalf("native response was not preserved and remapped: %s", resp.Body)
+	}
+}
+
+func TestAnthropicMessagesUsesBearerAuthForNativeProvider(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("authorization"); got != "Bearer upstream-secret" {
+			t.Errorf("unexpected upstream authorization %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "" {
+			t.Errorf("x-api-key must be omitted in bearer mode, got %q", got)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_bearer",
+			"type":"message",
+			"role":"assistant",
+			"model":"upstream-model",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":1,"output_tokens":1}
+		}`)
+	}))
+	defer upstream.Close()
+
+	handler, _, secret := newAnthropicGatewayWithOptions(t, upstream.URL, ProviderAnthropic, map[string]string{
+		anthropicAuthTypeOption: anthropicAuthTypeBearer,
+	})
+	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 64,
+		"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -873,6 +916,10 @@ func TestGatewayModelsIncludeAnthropicDiscoveryFields(t *testing.T) {
 }
 
 func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) (http.Handler, *GormStore, string) {
+	return newAnthropicGatewayWithOptions(t, upstreamURL, providerType, nil)
+}
+
+func newAnthropicGatewayWithOptions(t *testing.T, upstreamURL string, providerType string, options map[string]string) (http.Handler, *GormStore, string) {
 	t.Helper()
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Claude Code Project", Status: StatusActive})
@@ -901,6 +948,7 @@ func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) 
 		APIKey:  "upstream-secret",
 		Status:  StatusActive,
 		Healthy: true,
+		Options: options,
 	})
 	store.AddRoute(ModelRoute{
 		ID:            "route_claude_code",
@@ -964,4 +1012,25 @@ func findTestBeta(payload any) string {
 		return "interleaved-thinking-2025-05-14"
 	}
 	return ""
+}
+
+// TestDoNativeAnthropicRequestRejectsMissingAdapter guards the native
+// Anthropic path against a registry that does not know the Anthropic adapter:
+// it must fail with a controlled 503 instead of dereferencing an
+// unconfigured zero-value client.
+func TestDoNativeAnthropicRequestRejectsMissingAdapter(t *testing.T) {
+	store := NewMemoryStore()
+	srv := NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+	// Drop every registered adapter so the Anthropic adapter is unavailable.
+	srv.adapterRegistry = NewAdapterRegistry()
+	_, err := srv.doNativeAnthropicRequest(context.Background(), Provider{
+		ID:      "prv_no_adapter",
+		Type:    ProviderAnthropic,
+		BaseURL: "http://127.0.0.1:1",
+		APIKey:  "secret",
+	}, "/v1/messages", map[string]any{"model": "claude-x", "max_tokens": 1}, http.Header{}, false)
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusServiceUnavailable || httpErr.Code != "provider_adapter_missing" {
+		t.Fatalf("expected 503 provider_adapter_missing, got %v", err)
+	}
 }

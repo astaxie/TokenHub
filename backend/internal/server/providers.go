@@ -225,7 +225,7 @@ func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider,
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsage(w, resp.Body)
+	return copyOpenAIStreamAndUsageForProvider(w, resp.Body, provider)
 }
 
 func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -262,7 +262,7 @@ func (c openAICompatibleCore) doRaw(ctx context.Context, provider Provider, meth
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -280,9 +280,7 @@ func openAICompatibleRequest(ctx context.Context, provider Provider, method stri
 		req.Header.Set("authorization", "Bearer "+provider.APIKey)
 	}
 	applyOpenAICompatibleAccountHeaders(req, provider)
-	for key, value := range provider.Headers {
-		req.Header.Set(key, value)
-	}
+	applyProviderHeaders(req.Header, provider.Headers)
 	return req, nil
 }
 
@@ -428,6 +426,51 @@ type AnthropicAdapter struct {
 	StreamIdleTimeout time.Duration
 }
 
+const (
+	anthropicAuthTypeOption = "anthropic_auth_type"
+	anthropicAuthTypeAPIKey = "x-api-key"
+	anthropicAuthTypeBearer = "bearer"
+)
+
+func configureAnthropicProviderAuth(provider *Provider, requested string) error {
+	if provider == nil || provider.Type != ProviderAnthropic {
+		return nil
+	}
+	if provider.Options == nil {
+		provider.Options = map[string]string{}
+	}
+	authType := strings.ToLower(strings.TrimSpace(requested))
+	if authType == "" {
+		authType = strings.ToLower(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]))
+	}
+	if authType == "" {
+		return nil
+	}
+	if authType != anthropicAuthTypeAPIKey && authType != anthropicAuthTypeBearer {
+		return NewHTTPError(
+			http.StatusBadRequest,
+			"provider_anthropic_auth_type_invalid",
+			"Anthropic authentication type must be x-api-key or bearer",
+		)
+	}
+	provider.Options[anthropicAuthTypeOption] = authType
+	return nil
+}
+
+func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
+	if req == nil {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]), anthropicAuthTypeBearer) {
+		req.Header.Del("x-api-key")
+		req.Header.Set("authorization", "Bearer "+provider.APIKey)
+		return
+	}
+	// Preserve the existing Anthropic behavior when no option is configured.
+	req.Header.Del("authorization")
+	req.Header.Set("x-api-key", provider.APIKey)
+}
+
 func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
 	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
 	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
@@ -465,7 +508,7 @@ func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, pro
 	}
 	defer resp.Body.Close()
 	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
-	return streamAnthropicChat(resp.Body, encoder)
+	return streamAnthropicChatForProvider(resp.Body, encoder, provider)
 }
 
 func (a AnthropicAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -516,13 +559,14 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 		version = "2023-06-01"
 	}
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", provider.APIKey)
+	applyAnthropicProviderAuth(req, provider)
 	req.Header.Set("anthropic-version", version)
+	applyProviderHeaders(req.Header, provider.Headers)
 	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -564,7 +608,7 @@ func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, provid
 	}
 	defer resp.Body.Close()
 	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
-	return streamGeminiChat(resp.Body, encoder)
+	return streamGeminiChatForProvider(resp.Body, encoder, provider)
 }
 
 func (a GeminiAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -649,11 +693,12 @@ func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model strin
 		return nil, err
 	}
 	req.Header.Set("content-type", "application/json")
+	applyProviderHeaders(req.Header, provider.Headers)
 	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -939,6 +984,10 @@ func includeOpenAIStreamUsage(req ChatCompletionRequest) ChatCompletionRequest {
 // sseDecoder, which bounds a single event; the frame's raw bytes are what reach
 // the client, so the provider's framing survives the round trip untouched.
 func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
+	return copyOpenAIStreamAndUsageForProvider(w, body, Provider{})
+}
+
+func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider Provider) (Usage, error) {
 	events := newSSEDecoder(body)
 	var usage Usage
 	for {
@@ -949,14 +998,18 @@ func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
 		if err != nil {
 			// A stream that fails mid-frame has already put those bytes on the
 			// wire; the client is owed them before the failure surfaces.
-			if pending := events.Pending(); len(pending) > 0 {
-				if _, writeErr := w.Write(pending); writeErr != nil {
+			if pending := events.PendingEvent(); len(pending.Raw) > 0 {
+				if _, writeErr := w.Write(redactProviderStreamEventSecrets(pending, provider)); writeErr != nil {
 					return usage, writeErr
 				}
 			}
 			return usage, err
 		}
-		if _, err := w.Write(event.Raw); err != nil {
+		output := event.Raw
+		if providerStreamEventIsError(event) {
+			output = redactProviderStreamEventSecrets(event, provider)
+		}
+		if _, err := w.Write(output); err != nil {
 			return usage, err
 		}
 		if flusher, ok := w.(streamFlusher); ok {
@@ -966,6 +1019,30 @@ func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
 			usage = parsed
 		}
 	}
+}
+
+func providerStreamEventIsError(event serverSentEvent) bool {
+	eventName := strings.ToLower(strings.TrimSpace(event.Event))
+	if eventName == "error" || strings.HasSuffix(eventName, ".failed") {
+		return true
+	}
+	payload := strings.TrimSpace(event.Data)
+	if payload == "" || payload == "[DONE]" {
+		return false
+	}
+	var decoded map[string]any
+	if json.Unmarshal([]byte(payload), &decoded) != nil {
+		return false
+	}
+	if eventType, _ := decoded["type"].(string); strings.EqualFold(strings.TrimSpace(eventType), "error") || strings.HasSuffix(strings.ToLower(strings.TrimSpace(eventType)), ".failed") {
+		return true
+	}
+	if errorValue, hasError := decoded["error"]; hasError && errorValue != nil {
+		return true
+	}
+	response, _ := decoded["response"].(map[string]any)
+	errorValue, hasResponseError := response["error"]
+	return hasResponseError && errorValue != nil
 }
 
 // usageFromServerSentEvent reads usage out of one frame. A frame it cannot parse

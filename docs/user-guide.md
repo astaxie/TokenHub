@@ -27,6 +27,8 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 
 Open **Model Playground** in the console to test an available chat model without creating an API script. Each response shows streaming or buffered delivery, TTFT when it can be measured, output throughput, total duration, full-context input tokens, output tokens, estimated cost, local completion time, and a request ID. Expand the response for the actual response details. Provider and route internals appear only when your role has routing-read permission.
 
+Image upload is available only when the selected model's `input_modalities` includes `image`; configure this value in the model directory for multimodal models. The Playground accepts JPEG, PNG, and WebP images, with limits of 4 images per message, 5 MiB per image, and 12 MiB of images across the current conversation. Exported sessions retain image names, media types, and sizes for context, but omit the image data.
+
 The session is temporary and remains only on the current page unless you choose **Export Playground**. **Stop** keeps partial output. **Rerun** creates another candidate from that turn and removes later turns. Changing models starts a new session unless you explicitly choose to keep the existing context. For an upstream that does not support streaming, the page uses buffered mode and marks TTFT as not applicable.
 
 ## List Models
@@ -194,6 +196,27 @@ claude
 ```
 
 `ANTHROPIC_AUTH_TOKEN` sends the TokenHub key in `Authorization: Bearer`. `ANTHROPIC_API_KEY` also works through `x-api-key` when no Authorization header is present. Token counting verifies key and model access but does not create a billed inference record.
+
+## Persistent background Responses
+
+Set `background: true` on `POST /v1/responses` to persist a Responses request and return a stable gateway-owned response ID immediately:
+
+```bash
+curl http://localhost:8080/v1/responses \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-5.4","input":"Summarize the report","background":true}'
+```
+
+Read the status or final response with `GET /v1/responses/{id}`. Request cancellation with `POST /v1/responses/{id}/cancel`. Reads and cancellation require the same project, API key, attributed owner, and current model access as the original submission; a mismatch returns `404`. `background: true` with `stream: true` is rejected because resumable background SSE is not implemented.
+
+The public status values are `queued`, `in_progress`, `completed`, `failed`, and `cancelled`. Quota, budget, concurrency, routing, guardrails, cache affinity, cost accounting, request logs, and traces are applied by the worker before and during the upstream call. A cancellation/completion race has one durable winner, while any upstream usage already incurred is still settled exactly once.
+
+Queued work survives a server restart. Work whose lease expires before admission is safely returned to the queue. Work that loses its worker after admission is marked `failed` with `response_execution_lost` instead of being replayed, because the provider may already have received it. PostgreSQL replicas coordinate claims with fenced leases and row locking. SQLite supports restart recovery but remains a single-backend deployment; do not share one SQLite file between backend replicas.
+
+Request envelopes and results are encrypted at rest with `TOKENHUB_SECRET_KEY`; authentication headers are never stored, and only a bounded protocol-header allowlist is retained. Background request and response bodies are not copied to plaintext request-payload audit records or tracing exports, and upstream route error text is removed from their route-attempt records. Encryption or decryption failure is fail-closed. Terminal payloads are retained for `TOKENHUB_RESPONSE_RESULT_TTL_SECONDS`, then both request and result ciphertext are scrubbed and later reads return `404`. The returned ID is a TokenHub retrieval ID and is not translated into an upstream `previous_response_id`.
+
+Prometheus exposes `tokenhub_gateway_response_jobs_queued`, `tokenhub_gateway_response_job_queue_wait_seconds`, `tokenhub_gateway_response_job_execution_seconds`, `tokenhub_gateway_response_jobs_total`, and `tokenhub_gateway_response_job_recoveries_total` when metrics are enabled. Worker concurrency, polling, timeout, lease, retention, and queue limits are listed in [Deployment](deployment.md#backend-environment-variables).
 
 ## Gemini CLI with Codex subscription GPT
 

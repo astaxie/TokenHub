@@ -115,7 +115,8 @@ func (a CodexSubscriptionAdapter) OpenResponses(ctx context.Context, provider Pr
 	if err != nil {
 		return nil, err
 	}
-	resp, err := a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming)
+	fingerprintIDs := prepareCodexFingerprintRequest(provider, incoming, &request)
+	resp, err := a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
 	if err == nil || providerErrorDisposition(err) != ProviderErrorAuthBroken {
 		return resp, err
 	}
@@ -123,17 +124,17 @@ func (a CodexSubscriptionAdapter) OpenResponses(ctx context.Context, provider Pr
 	if refreshErr != nil {
 		return nil, refreshErr
 	}
-	return a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming)
+	return a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
 }
 
-func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header) (*http.Response, error) {
+func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
 	maxRetries := a.MaxRequestRetries
 	if maxRetries <= 0 {
 		maxRetries = openAICodexMaxRequestRetries
 	}
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		resp, err := a.openResponsesWithCredentials(ctx, endpoint, creds, providerModel, request, incoming)
+		resp, err := a.openResponsesWithCredentials(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
 		if err == nil {
 			return resp, nil
 		}
@@ -159,7 +160,7 @@ func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, en
 	return nil, lastErr
 }
 
-func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header) (*http.Response, error) {
+func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
 	accessToken := strings.TrimSpace(creds.AccessToken)
 	accountID := strings.TrimSpace(creds.AccountID)
 	if accessToken == "" {
@@ -201,6 +202,7 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	applyCodexRequestHeaders(req.Header, incoming)
+	applyCodexFingerprintHeaders(req.Header, fingerprintIDs)
 	client := a.Client
 	if client == nil {
 		client = http.DefaultClient
@@ -506,6 +508,7 @@ func (a CodexSubscriptionAdapter) Probe(ctx context.Context, provider Provider, 
 	if provider.Options == nil {
 		provider.Options = map[string]string{}
 	}
+	provider.Options = mergedStringMap(provider.Options, resource.Options)
 	provider.Options["resource_id"] = resource.ID
 	reasoningEffort := request.ReasoningEffort
 	responsesRequest := ResponsesRequest{

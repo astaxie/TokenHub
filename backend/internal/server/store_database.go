@@ -245,6 +245,8 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 			&RequestPayloadLog{},
 			&ImageJob{},
 			&ImageAsset{},
+			&ResponseJob{},
+			&ResponseJobEvent{},
 			&RouteAttemptLog{},
 			&AlertEvent{},
 			&AlertDelivery{},

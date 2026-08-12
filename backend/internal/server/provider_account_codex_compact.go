@@ -26,6 +26,8 @@ func (a CodexSubscriptionAdapter) CompactWithHeaders(ctx context.Context, provid
 	}
 	encodedModel, _ := json.Marshal(strings.TrimSpace(providerModel))
 	body["model"] = encodedModel
+	clientSessionID, _ := codexSessionIdentifier(incoming, ResponsesRequest{raw: body})
+	fingerprintIDs := resolveCodexFingerprintIDs(provider, clientSessionID)
 	// client_metadata is a TokenHub affinity hint. The Codex compact endpoint
 	// rejects it as an unknown upstream parameter, so consume it locally only.
 	delete(body, "client_metadata")
@@ -38,7 +40,7 @@ func (a CodexSubscriptionAdapter) CompactWithHeaders(ctx context.Context, provid
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	response, usage, err := a.compactWithRetry(ctx, endpoint, credentials, payload, incoming)
+	response, usage, err := a.compactWithRetry(ctx, endpoint, credentials, payload, incoming, fingerprintIDs)
 	if err == nil || providerErrorDisposition(err) != ProviderErrorAuthBroken {
 		return response, usage, err
 	}
@@ -46,17 +48,17 @@ func (a CodexSubscriptionAdapter) CompactWithHeaders(ctx context.Context, provid
 	if refreshErr != nil {
 		return nil, Usage{}, refreshErr
 	}
-	return a.compactWithRetry(ctx, endpoint, credentials, payload, incoming)
+	return a.compactWithRetry(ctx, endpoint, credentials, payload, incoming, fingerprintIDs)
 }
 
-func (a CodexSubscriptionAdapter) compactWithRetry(ctx context.Context, endpoint string, credentials ProviderResourceCredentials, payload []byte, incoming http.Header) (any, Usage, error) {
+func (a CodexSubscriptionAdapter) compactWithRetry(ctx context.Context, endpoint string, credentials ProviderResourceCredentials, payload []byte, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (any, Usage, error) {
 	maxRetries := a.MaxRequestRetries
 	if maxRetries <= 0 {
 		maxRetries = openAICodexMaxRequestRetries
 	}
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		response, usage, err := a.compactOnce(ctx, endpoint, credentials, payload, incoming)
+		response, usage, err := a.compactOnce(ctx, endpoint, credentials, payload, incoming, fingerprintIDs)
 		if err == nil {
 			return response, usage, nil
 		}
@@ -82,7 +84,7 @@ func (a CodexSubscriptionAdapter) compactWithRetry(ctx context.Context, endpoint
 	return nil, Usage{}, lastErr
 }
 
-func (a CodexSubscriptionAdapter) compactOnce(ctx context.Context, endpoint string, credentials ProviderResourceCredentials, payload []byte, incoming http.Header) (any, Usage, error) {
+func (a CodexSubscriptionAdapter) compactOnce(ctx context.Context, endpoint string, credentials ProviderResourceCredentials, payload []byte, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (any, Usage, error) {
 	accessToken := strings.TrimSpace(credentials.AccessToken)
 	accountID := strings.TrimSpace(credentials.AccountID)
 	if accessToken == "" {
@@ -100,6 +102,7 @@ func (a CodexSubscriptionAdapter) compactOnce(ctx context.Context, endpoint stri
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	applyCodexRequestHeaders(request.Header, incoming)
+	applyCodexFingerprintHeaders(request.Header, fingerprintIDs)
 	client := a.Client
 	if client == nil {
 		client = http.DefaultClient

@@ -58,7 +58,6 @@ func splitMixedOpenAIProvider(tx *gorm.DB, provider Provider, subscriptions []Pr
 		Status:    provider.Status,
 		Healthy:   provider.Healthy,
 		Priority:  provider.Priority,
-		Headers:   cloneStringMap(provider.Headers),
 		Options:   cloneStringMap(provider.Options),
 		CreatedAt: provider.CreatedAt,
 	}

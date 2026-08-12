@@ -67,6 +67,16 @@ func (s *GormStore) AddRoute(route ModelRoute) ModelRoute {
 	return route
 }
 
+// CreateRoute persists a route and reports the database error. AddRoute
+// discards it for callers that treat the write as best-effort, but admin
+// route creation needs the error so a failed write is not mistaken for a
+// successful route followed by a partial catalog update.
+func (s *GormStore) CreateRoute(route ModelRoute) (ModelRoute, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return createRouteRecord(s.db, route)
+}
+
 func createRouteRecord(db *gorm.DB, route ModelRoute) (ModelRoute, error) {
 	if route.ID == "" {
 		route.ID = NewID("route")

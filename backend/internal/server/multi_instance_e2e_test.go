@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
+	"gorm.io/gorm"
 )
 
 type multiInstanceBlockingAdapter struct {
@@ -51,6 +52,12 @@ func (a *multiInstanceBlockingAdapter) ChatStream(ctx context.Context, provider 
 
 func TestMultiInstancePostgresE2E(t *testing.T) {
 	storeA, storeB, config := openSharedPostgresStores(t)
+	t.Run("Responses lease renewal and recovery have one winner", func(t *testing.T) {
+		testResponseRecoveryRenewalRace(t, storeA, storeB)
+	})
+	t.Run("durable Responses jobs execute once across replicas", func(t *testing.T) {
+		testSharedResponseJobExecution(t, storeA, storeB, config)
+	})
 	t.Run("concurrent migrations work with a one-connection runtime pool", func(t *testing.T) {
 		testConcurrentMigrations(t, storeA, config)
 	})
@@ -211,6 +218,262 @@ func testA2ATaskAffinityAcrossReplicas(t *testing.T, storeA *GormStore, storeB *
 	})
 	if fetched.Code != http.StatusOK || !strings.Contains(fetched.Body.String(), string(response.Result.Task.ID)) {
 		t.Fatalf("second replica did not resolve shared A2A task: %d %s", fetched.Code, fetched.Body.String())
+	}
+}
+
+type multiInstanceResponseAdapter struct {
+	MockAdapter
+	calls atomic.Int64
+}
+
+func (a *multiInstanceResponseAdapter) Responses(ctx context.Context, provider Provider, providerModel string, request ResponsesRequest) (any, Usage, error) {
+	a.calls.Add(1)
+	return a.MockAdapter.Responses(ctx, provider, providerModel, request)
+}
+
+type multiInstanceBlockingResponseAdapter struct {
+	MockAdapter
+	started chan struct{}
+	once    sync.Once
+}
+
+func (a *multiInstanceBlockingResponseAdapter) Responses(ctx context.Context, provider Provider, providerModel string, request ResponsesRequest) (any, Usage, error) {
+	a.once.Do(func() { close(a.started) })
+	<-ctx.Done()
+	return nil, Usage{}, ctx.Err()
+}
+
+func testSharedResponseJobExecution(t *testing.T, storeA *GormStore, storeB *GormStore, config Config) {
+	t.Helper()
+	config.ResponseWorkerConcurrency = 1
+	config.ResponsePollIntervalMillis = 20
+	config.ResponseJobTimeoutSeconds = 5
+	config.ResponseLeaseTTLSeconds = 2
+	config.ResponseResultTTLSeconds = 60
+	config.ResponseMaxQueuedJobs = 100
+	suffix := NewID("response-e2e")
+	project := storeA.CreateProject(Project{ID: "prj_" + suffix, Name: "Response jobs E2E", Status: StatusActive})
+	modelName := "model-" + suffix
+	storeA.AddModel(Model{ID: modelName, Name: modelName, Modality: "chat", Status: StatusActive})
+	provider := storeA.AddProvider(Provider{ID: "prv_" + suffix, Name: "Response jobs mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	resource, err := storeA.AddProviderResource(ProviderResource{ID: "rsrc_" + suffix, ProviderID: provider.ID, Name: "Response jobs resource", ResourceType: "mock", Status: StatusActive, Healthy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeA.AddRoute(ModelRoute{ID: "route_" + suffix, ModelName: modelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: modelName, Status: StatusActive, Priority: 1, Weight: 100})
+	key, _, err := storeA.CreateAPIKey(project.ID, APIKey{ID: "key_" + suffix, Name: "Response jobs key", Allowed: []string{modelName}, Status: StatusActive}, "thk_"+suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serverA := NewWithConfig(storeA, config)
+	serverB := NewWithConfig(storeB, config)
+	adapter := &multiInstanceResponseAdapter{}
+	serverA.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityResponses)
+	serverB.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityResponses)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = serverA.Shutdown(ctx)
+		_ = serverB.Shutdown(ctx)
+		_ = storeA.db.Where("job_id LIKE ?", "%"+suffix+"%").Delete(&ResponseJobEvent{}).Error
+		_ = storeA.db.Where("resource_type = ? AND resource_id LIKE ?", "response_job", "%"+suffix+"%").Delete(&AuditEvent{}).Error
+		_ = storeA.db.Where("id LIKE ?", "%"+suffix+"%").Delete(&ResponseJob{}).Error
+		_ = storeA.DeleteAPIKey(key.ID)
+		_ = storeA.DeleteProvider(provider.ID)
+		_ = storeA.DeleteModel(modelName)
+		_ = storeA.DeleteProject(project.ID)
+	})
+	// Both replicas started while the queue was empty. Stop the would-be
+	// submitting replica before the durable insert so only the already-idle peer
+	// can discover and execute the new work.
+	time.Sleep(2 * time.Duration(config.ResponsePollIntervalMillis) * time.Millisecond)
+	shutdownContext, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := serverA.Shutdown(shutdownContext); err != nil {
+		shutdownCancel()
+		t.Fatal(err)
+	}
+	shutdownCancel()
+
+	createJob := func(input string) ResponseJob {
+		t.Helper()
+		requestJSON, _ := json.Marshal(ResponsesRequest{Model: modelName, Input: input, Background: true})
+		envelopeJSON, _ := json.Marshal(responseJobEnvelope{Request: requestJSON})
+		job, err := storeA.CreateResponseJob(ResponseJob{
+			ID: NewID("resp") + "_" + suffix, ProjectID: project.ID, APIKeyID: key.ID,
+			AttributedUserID: usageAttributionUserID(key, project), Model: modelName,
+		}, envelopeJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return job
+	}
+	waitTerminal := func(id string) ResponseJob {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			current, ok, err := storeA.GetResponseJob(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok && responseJobTerminal(current.Status) {
+				return current
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("shared response job %s did not complete", id)
+		return ResponseJob{}
+	}
+
+	secretInput := "postgres ciphertext secret " + suffix
+	job := createJob(secretInput)
+	current := waitTerminal(job.ID)
+	if current.Status != responseJobStatusSucceeded {
+		t.Fatalf("shared job failed: %+v", current)
+	}
+	if calls := adapter.calls.Load(); calls != 1 {
+		t.Fatalf("shared job reached upstream %d times", calls)
+	}
+	var persisted ResponseJob
+	if err := storeA.db.First(&persisted, "id = ?", job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(persisted.RequestCiphertext, "enc:v1:") || strings.Contains(persisted.RequestCiphertext, secretInput) ||
+		!strings.HasPrefix(persisted.ResultCiphertext, "enc:v1:") || strings.Contains(persisted.ResultCiphertext, secretInput) {
+		t.Fatalf("PostgreSQL did not retain encrypted response payloads: %+v", persisted)
+	}
+	var requestLogs int64
+	if err := storeA.db.Model(&RequestLog{}).Where("request_id = ?", current.RequestID).Count(&requestLogs).Error; err != nil || requestLogs != 1 {
+		t.Fatalf("shared response request accounting: logs=%d err=%v", requestLogs, err)
+	}
+	var usageRecords int64
+	if err := storeA.db.Model(&UsageRecord{}).Where("request_id = ?", current.RequestID).Count(&usageRecords).Error; err != nil || usageRecords != 1 {
+		t.Fatalf("shared response usage accounting: records=%d err=%v", usageRecords, err)
+	}
+	var payloadLogs int64
+	if err := storeA.db.Model(&RequestPayloadLog{}).Where("request_id = ?", current.RequestID).Count(&payloadLogs).Error; err != nil || payloadLogs != 0 {
+		t.Fatalf("background payload escaped encrypted retention: logs=%d err=%v", payloadLogs, err)
+	}
+	past := time.Now().UTC().Add(-time.Second)
+	if err := storeA.db.Model(&ResponseJob{}).Where("id = ?", job.ID).Update("expires_at", past).Error; err != nil {
+		t.Fatal(err)
+	}
+	if expired, err := storeB.ExpireResponseJobs(); err != nil || expired > 1 {
+		t.Fatalf("expire shared response job: expired=%d err=%v", expired, err)
+	}
+	if err := storeA.db.First(&persisted, "id = ?", job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Status != responseJobStatusExpired || persisted.RequestCiphertext != "" || persisted.ResultCiphertext != "" {
+		t.Fatalf("PostgreSQL retention did not scrub response ciphertext: %+v", persisted)
+	}
+
+	blocking := &multiInstanceBlockingResponseAdapter{started: make(chan struct{})}
+	serverB.adapterRegistry.Register(ProviderMock, blocking, AdapterCapabilityResponses)
+	cancelJob := createJob("cancel on peer " + suffix)
+	select {
+	case <-blocking.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shared cancellation job did not reach the provider")
+	}
+	if _, retained, err := storeA.CancelResponseJob(cancelJob.ID, "postgres-e2e", time.Minute); err != nil || !retained {
+		t.Fatalf("cancel shared response job: retained=%v err=%v", retained, err)
+	}
+	cancelled := waitTerminal(cancelJob.ID)
+	if cancelled.Status != responseJobStatusCancelled || cancelled.ErrorCode != "response_cancelled" {
+		t.Fatalf("shared cancellation did not win: %+v", cancelled)
+	}
+	if err := storeA.db.Model(&RequestLog{}).Where("request_id = ?", cancelled.RequestID).Count(&requestLogs).Error; err != nil || requestLogs != 1 {
+		t.Fatalf("cancelled response request accounting: logs=%d err=%v", requestLogs, err)
+	}
+	if err := storeA.db.Model(&UsageRecord{}).Where("request_id = ?", cancelled.RequestID).Count(&usageRecords).Error; err != nil || usageRecords != 0 {
+		t.Fatalf("cancelled response created usage: records=%d err=%v", usageRecords, err)
+	}
+}
+
+func testResponseRecoveryRenewalRace(t *testing.T, storeA *GormStore, storeB *GormStore) {
+	t.Helper()
+	suffix := NewID("response-recovery-race")
+	envelopeJSON, _ := json.Marshal(responseJobEnvelope{Request: json.RawMessage(`{"model":"race","input":"race","background":true}`)})
+	job, err := storeA.CreateResponseJob(ResponseJob{ID: "resp_" + suffix, ProjectID: "project_" + suffix, APIKeyID: "key_" + suffix, Model: "race"}, envelopeJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = storeA.db.Where("job_id = ?", job.ID).Delete(&ResponseJobEvent{}).Error
+		_ = storeA.db.Where("resource_type = ? AND resource_id = ?", "response_job", job.ID).Delete(&AuditEvent{}).Error
+		_ = storeA.db.Delete(&ResponseJob{}, "id = ?", job.ID).Error
+	})
+	claimed, ok, err := storeA.ClaimResponseJob("renewing-worker", time.Second, time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim recovery race job: ok=%v err=%v", ok, err)
+	}
+	past := time.Now().UTC().Add(-time.Second)
+	if err := storeA.db.Model(&ResponseJob{}).Where("id = ?", job.ID).Update("lease_expires_at", past).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	scanned := make(chan struct{})
+	releaseRecovery := make(chan struct{})
+	var scanOnce sync.Once
+	callbackName := "test:response_recovery_scan_" + suffix
+	if err := storeB.db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "response_jobs" && strings.Contains(tx.Statement.SQL.String(), "lease_expires_at") {
+			scanOnce.Do(func() {
+				close(scanned)
+				<-releaseRecovery
+			})
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer storeB.db.Callback().Query().Remove(callbackName)
+
+	type recoveryResult struct {
+		requeued  int64
+		failed    int64
+		cancelled int64
+		err       error
+	}
+	recoveryDone := make(chan recoveryResult, 1)
+	go func() {
+		requeued, failed, cancelled, err := storeB.RecoverResponseJobs(time.Minute)
+		recoveryDone <- recoveryResult{requeued: requeued, failed: failed, cancelled: cancelled, err: err}
+	}()
+	select {
+	case <-scanned:
+	case <-time.After(3 * time.Second):
+		t.Fatal("recovery did not scan the expired lease")
+	}
+	type renewalResult struct {
+		retained bool
+		err      error
+	}
+	renewalDone := make(chan renewalResult, 1)
+	go func() {
+		_, retained, err := storeA.RenewResponseJobLease(claimed.ID, "renewing-worker", claimed.LeaseEpoch, time.Second)
+		renewalDone <- renewalResult{retained: retained, err: err}
+	}()
+	// If recovery did not lock the scanned row, renewal can complete here. The
+	// recovery update must still re-check expiry so both paths cannot win.
+	var renewal renewalResult
+	renewalReady := false
+	select {
+	case renewal = <-renewalDone:
+		renewalReady = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseRecovery)
+	if !renewalReady {
+		renewal = <-renewalDone
+	}
+	recovery := <-recoveryDone
+	if renewal.err != nil || recovery.err != nil {
+		t.Fatalf("lease race returned errors: renewal=%v recovery=%v", renewal.err, recovery.err)
+	}
+	recovered := recovery.requeued+recovery.failed+recovery.cancelled == 1
+	if renewal.retained == recovered {
+		t.Fatalf("renewal and recovery must have exactly one winner: renewed=%v recovery=%+v", renewal.retained, recovery)
 	}
 }
 

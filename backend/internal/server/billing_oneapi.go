@@ -125,7 +125,7 @@ func normalizeOneAPIBillingRecord(item map[string]any, connector BillingConnecto
 	if err != nil {
 		return BillingRecord{}, NewHTTPError(http.StatusBadGateway, "billing_record_invalid_time", "OneAPI billing record has an invalid created_at")
 	}
-	quota := int64(numberValue(item["quota"]))
+	quota := int64NumberValue(item["quota"])
 	quotaPerUnit := int64(billingConfigInt(connector.Config, "quota_per_unit", 500000, 1, 2_000_000_000))
 	amount := billingDecimalRatio(quota, quotaPerUnit)
 	gross := amount
@@ -139,8 +139,8 @@ func normalizeOneAPIBillingRecord(item map[string]any, connector BillingConnecto
 		sum := sha256.Sum256(raw)
 		externalID = fmt.Sprintf("sha256:%x", sum[:])
 	}
-	promptTokens := int64(numberValue(firstValue(item, "prompt_tokens", "prompt_tokens_used")))
-	completionTokens := int64(numberValue(firstValue(item, "completion_tokens", "completion_tokens_used")))
+	promptTokens := int64NumberValue(firstValue(item, "prompt_tokens", "prompt_tokens_used"))
+	completionTokens := int64NumberValue(firstValue(item, "completion_tokens", "completion_tokens_used"))
 	metadata := map[string]string{}
 	if tokenName := stringValue(firstValue(item, "token_name", "key_name")); tokenName != "" {
 		metadata["token_name"] = tokenName
@@ -234,6 +234,38 @@ func numberValue(value any) float64 {
 	case string:
 		parsed, _ := strconv.ParseFloat(strings.TrimSpace(typed), 64)
 		return parsed
+	default:
+		return 0
+	}
+}
+
+// int64NumberValue parses numeric billing fields without converting through
+// float64, preserving precision for large integer values such as token counts
+// and quota balances.
+func int64NumberValue(value any) int64 {
+	switch typed := value.(type) {
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err == nil {
+			return parsed
+		}
+		f, _ := typed.Float64()
+		return int64(f)
+	case float64:
+		return int64(typed)
+	case float32:
+		return int64(typed)
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err == nil {
+			return parsed
+		}
+		f, _ := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return int64(f)
 	default:
 		return 0
 	}

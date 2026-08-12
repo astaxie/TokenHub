@@ -109,10 +109,6 @@ func (s *Server) handleAdminAnalyticsCredentialItem(w http.ResponseWriter, r *ht
 }
 
 func (s *Server) handleTokenCostAnalytics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	credential, err := s.store.ValidateAnalyticsCredential(bearerToken(r))
 	if err != nil {
 		s.recordTokenCostAudit(r, AnalyticsCredential{}, "failed", AsHTTPError(err).Code, nil)

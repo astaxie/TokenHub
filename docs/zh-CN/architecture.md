@@ -148,6 +148,8 @@ sequenceDiagram
 
 路由筛选会跳过非活跃或不健康的 Provider、Provider Resource 和 Route，但有一个例外：冷却期已过的资源会作为半开候选重新进入候选池。第一个选中它的请求通过把冷却截止时间向后推进来占用这次试探，因此并发请求仍会被拒绝，而试探失败时下一个（更长的）冷却窗口已经就位。只有该次试探自身成功才会关闭熔断器并自动恢复资源，无需管理员介入——熔断触发时已经在途的请求无法把资源救活；反复失败则按指数退避加长窗口，上限为 `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`。被管理员禁用的资源永远不会被重新纳入。非流式调用依次尝试候选路由。已开始输出的流无法安全切换到另一条上游路由；Responses 流式仅选择声明 `response_stream` 能力的适配器。对于 `openai_codex` 路由，系统可根据请求与 Key 派生会话亲和键，并持久化资源绑定以保持会话连续性。
 
+对于设置 `background: true` 的 `POST /v1/responses`，同步请求链路会在认证和持久化提交后结束。每个副本即使在启动时队列为空，也会持续轮询持久化队列。Worker 领取任务并重新验证原始授权后，会在同一个数据库事务中提交 admitted 阶段、请求 ID、配额计数、Token 预留与并发租约，再进入相同的 Guardrail、路由、Provider、计量、审计和链路追踪流程。租约代次用于隔离过期 Worker。PostgreSQL 多实例通过行锁和 `SKIP LOCKED` 领取任务；SQLite 在受支持的单后端部署中通过原子操作领取。准入前的租约丢失可安全重放；准入后的租约丢失会进入明确终态，避免重复请求 Provider，尚未分发的 Token 预留会在恢复时退还。
+
 项目与 API Key 的模型访问是路由选择前的显式最小权限层：限制列表互相取交集，限制且空列表禁止全部模型，而旧记录的空模式仍保持继承。作用域路由策略以 `routing-policies` 种类的可审计 `AdminResource` 记录保存。运行时按 API Key → 项目 → 全局的严格优先级最多选择一个绑定，然后将其 Provider、资源、模型、标签、地域和环境约束与路由项目作用域取交集。已停用、冲突或候选为空的高优先级绑定会安全拒绝。策略覆盖、亲和、半开恢复和故障转移只在筛选后的候选中运行。有效策略 ID、作用域与优先级会复制到请求审计记录。
 
 ## 鉴权、网络与健康检查
@@ -158,7 +160,7 @@ sequenceDiagram
 - `TOKENHUB_TRUSTED_PROXY_CIDRS` 限定哪些代理可提供 `X-Forwarded-For`；`TOKENHUB_CORS_ALLOWED_ORIGINS` 限定允许携带浏览器凭证的 Origin。反向代理部署必须正确配置这两项。
 - `/livez` 只用于进程存活探针；`/readyz` 以及兼容的 `/healthz` 会检查数据库可用性，数据库不可用时返回 `503`。
 
-Provider API Key、Provider Resource 凭证、账单连接器凭证和原始账单快照写入数据库前使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密。项目 API Key 不保存原文，只保存 SHA-256 摘要以及用于展示的前缀和后缀。所有副本必须共享稳定的 `TOKENHUB_SECRET_KEY`，否则既有凭证和会话相关数据无法可靠使用。
+Provider API Key、Provider Resource 凭证、账单连接器凭证、原始账单快照和持久化后台 Responses 载荷写入数据库前使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密。项目 API Key 不保存原文，只保存 SHA-256 摘要以及用于展示的前缀和后缀。所有副本必须共享稳定的 `TOKENHUB_SECRET_KEY`，否则既有凭证和会话相关数据无法可靠使用。
 
 ## 数据与运行边界
 
@@ -170,11 +172,12 @@ Provider API Key、Provider Resource 凭证、账单连接器凭证和原始账�
 | 治理与计量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | 配额、Token 与成本计量、跨副本并发控制 |
 | 外部账单 | `BillingConnector`、`BillingRecord`、`BillingRawSnapshot`、`BillingSyncRun` | 云厂商账单采集、规范化、同步断点和运行历史 |
 | 多实例协调 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | 配置同步、集群操作与 Codex 会话资源绑定 |
+| 后台 Responses | `ResponseJob`、`ResponseJobEvent` | 加密请求与结果保留、带隔离的执行状态、取消、过期和状态转换审计 |
 | 可观测性 | `RequestLog`、`RequestPayloadLog`、`RouteAttemptLog`、`ProviderObservation`、`AuditEvent` | 请求追踪、载荷审计、路由尝试、Provider 观测与管理审计 |
 
 SQLite 使用单连接和 5 秒 `busy_timeout`，适合单实例；不得让多个后端实例共享 SQLite 文件。PostgreSQL 支持连接池、迁移咨询锁、请求并发租约和集群锁，供多实例共享状态。内置备份 API 仅适用于 SQLite；PostgreSQL 应使用数据库平台的备份与恢复机制，例如 `pg_dump` 和 `pg_restore`。
 
-当前部署不依赖 Redis、消息队列或服务网格。请求与响应载荷可用于审计，生产环境应结合保留策略、最小权限、磁盘加密和备份访问控制评估隐私风险。
+当前部署不依赖 Redis、消息队列或服务网格。同步请求与响应载荷可用于审计，生产环境应结合保留策略、最小权限、磁盘加密和备份访问控制评估隐私风险。持久化后台 Responses 不会写入明文载荷审计或链路追踪导出，其内容只保留在受 TTL 约束的加密任务记录中。
 
 ## 相关文档
 

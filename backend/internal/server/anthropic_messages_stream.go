@@ -25,13 +25,17 @@ func (s *Server) streamNativeAnthropicMessages(
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyNativeAnthropicStream(writer, resp.Body, req.Model)
+	return copyNativeAnthropicStreamForProvider(writer, resp.Body, req.Model, route.Provider)
 }
 
 // copyNativeAnthropicStream forwards an upstream Anthropic event stream to the
 // client, rewriting only the model name each data frame reports and collecting
 // usage on the way past.
 func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (Usage, error) {
+	return copyNativeAnthropicStreamForProvider(writer, body, model, Provider{})
+}
+
+func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, model string, provider Provider) (Usage, error) {
 	events := newSSEDecoder(body)
 	var usage Usage
 	for {
@@ -41,21 +45,25 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 		}
 		if err != nil {
 			// A stream that fails mid-frame has already put those bytes on the
-			// wire. They are forwarded unrewritten: the model-name swap needs a
-			// whole frame, and the failure itself is what the client must see.
-			if pending := events.Pending(); len(pending) > 0 {
-				if _, writeErr := writer.Write(pending); writeErr != nil {
+			// wire. Preserve its framing, but redact the parsed data fields before
+			// forwarding so metadata cannot interfere with secret detection.
+			if pending := events.PendingEvent(); len(pending.Raw) > 0 {
+				if _, writeErr := writer.Write(redactProviderStreamEventSecrets(pending, provider)); writeErr != nil {
 					return usage, writeErr
 				}
 			}
 			return usage, err
 		}
 		output := event.Raw
+		isErrorEvent := strings.EqualFold(strings.TrimSpace(event.Event), "error")
 		payload, ok, decodeErr := decodeSSEDataNumbers(event)
 		if decodeErr != nil {
 			return usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Anthropic provider returned invalid stream JSON")
 		}
 		if ok {
+			if _, hasError := payload["error"]; hasError {
+				isErrorEvent = true
+			}
 			message, rewrite := payload["message"].(map[string]any)
 			if rewrite {
 				message["model"] = model
@@ -77,6 +85,9 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 				}
 				output = rewriteSSEEventData(event.Raw, string(encoded))
 			}
+		}
+		if isErrorEvent {
+			output = redactProviderStreamEventSecrets(event, provider)
 		}
 		if _, err := writer.Write(output); err != nil {
 			return usage, err

@@ -16,30 +16,36 @@ import (
 )
 
 type Server struct {
-	store             Store
-	adapterRegistry   *AdapterRegistry
-	integrations      *IntegrationService
-	codexSubscription *CodexSubscriptionAdapter
-	providerCatalog   *providerCatalogService
-	billing           *BillingService
-	reconciliation    *ReconciliationService
-	mux               *http.ServeMux
-	config            Config
-	metrics           *GatewayMetrics
-	traceEmitter      TraceEmitter
-	imageStorageDir   string
-	imageRunner       func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
-	imageContext      context.Context
-	imageCancel       context.CancelFunc
-	imageQueue        chan imageJobWork
-	imageWorkerStart  sync.Once
-	imageWorkerStop   sync.Once
-	imageWorkerGroup  sync.WaitGroup
-	imageAccountMu    sync.Mutex
-	imageAccountSlots map[string]chan struct{}
-	versions          *versionService
-	guardrailEngine   *guardrails.Engine
-	a2aJSONRPC        http.Handler
+	store               Store
+	adapterRegistry     *AdapterRegistry
+	integrations        *IntegrationService
+	codexSubscription   *CodexSubscriptionAdapter
+	providerCatalog     *providerCatalogService
+	billing             *BillingService
+	reconciliation      *ReconciliationService
+	mux                 *http.ServeMux
+	config              Config
+	metrics             *GatewayMetrics
+	traceEmitter        TraceEmitter
+	imageStorageDir     string
+	imageRunner         func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
+	imageContext        context.Context
+	imageCancel         context.CancelFunc
+	imageQueue          chan imageJobWork
+	imageWorkerStart    sync.Once
+	imageWorkerStop     sync.Once
+	imageWorkerGroup    sync.WaitGroup
+	imageAccountMu      sync.Mutex
+	imageAccountSlots   map[string]chan struct{}
+	responseContext     context.Context
+	responseCancel      context.CancelFunc
+	responseWorkerStart sync.Once
+	responseWorkerStop  sync.Once
+	responseWorkerGroup sync.WaitGroup
+	responseInstanceID  string
+	versions            *versionService
+	guardrailEngine     *guardrails.Engine
+	a2aJSONRPC          http.Handler
 }
 
 func New(store Store) *Server {
@@ -60,6 +66,24 @@ func NewWithConfig(store Store, config Config) *Server {
 	}
 	if config.ImageCapabilityRetrySecs <= 0 {
 		config.ImageCapabilityRetrySecs = 86400
+	}
+	if config.ResponseWorkerConcurrency <= 0 {
+		config.ResponseWorkerConcurrency = 2
+	}
+	if config.ResponsePollIntervalMillis <= 0 {
+		config.ResponsePollIntervalMillis = 250
+	}
+	if config.ResponseJobTimeoutSeconds <= 0 {
+		config.ResponseJobTimeoutSeconds = 300
+	}
+	if config.ResponseLeaseTTLSeconds <= 0 {
+		config.ResponseLeaseTTLSeconds = 30
+	}
+	if config.ResponseResultTTLSeconds <= 0 {
+		config.ResponseResultTTLSeconds = 3600
+	}
+	if config.ResponseMaxQueuedJobs <= 0 {
+		config.ResponseMaxQueuedJobs = 1000
 	}
 	if config.MaxJSONRequestBytes <= 0 {
 		config.MaxJSONRequestBytes = defaultMaxJSONRequestBytes
@@ -89,10 +113,21 @@ func NewWithConfig(store Store, config Config) *Server {
 		config.A2AMaxConcurrency = 8
 	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
+	responseContext, responseCancel := context.WithCancel(context.Background())
 	client, streamClient, streamIdleTimeout := newUpstreamClients(config)
+	allowedProviderUpstreams := allowedProviderUpstreamCIDRs()
 	openai := OpenAICompatibleAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout}
 	codexSubscription := &CodexSubscriptionAdapter{
-		Client:             &http.Client{},
+		Client: &http.Client{
+			// The same SSRF guard the other provider adapters get: a custom
+			// Codex endpoint is validated at save time, but DNS answers can
+			// change afterwards and redirects must not bounce
+			// credential-bearing responses/compact/probe/image calls into
+			// the internal network. No Client.Timeout: streaming stays
+			// bounded by StreamIdleTimeout, exactly as before.
+			Transport:     guardProviderUpstreamRequests(ssrfGuardedProviderTransport(allowedProviderUpstreams), allowedProviderUpstreams),
+			CheckRedirect: strictProviderUpstreamRedirect,
+		},
 		StreamIdleTimeout:  streamIdleTimeout,
 		RefreshCredentials: store.RefreshProviderResourceCredentials,
 	}
@@ -119,21 +154,24 @@ func NewWithConfig(store Store, config Config) *Server {
 		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	}
 	s := &Server{
-		store:             store,
-		adapterRegistry:   registry,
-		integrations:      NewIntegrationService(store, registry),
-		codexSubscription: codexSubscription,
-		providerCatalog:   newProviderCatalogService(store, config.ProviderCatalogFile),
-		billing:           newBillingService(store),
-		reconciliation:    newReconciliationService(store),
-		mux:               http.NewServeMux(),
-		config:            config,
-		imageStorageDir:   config.ImageStorageDir,
-		imageContext:      imageContext,
-		imageCancel:       imageCancel,
-		imageQueue:        make(chan imageJobWork, config.ImageQueueCapacity),
-		imageAccountSlots: make(map[string]chan struct{}),
-		versions:          newVersionService(config),
+		store:              store,
+		adapterRegistry:    registry,
+		integrations:       NewIntegrationService(store, registry),
+		codexSubscription:  codexSubscription,
+		providerCatalog:    newProviderCatalogService(store, config.ProviderCatalogFile),
+		billing:            newBillingService(store),
+		reconciliation:     newReconciliationService(store),
+		mux:                http.NewServeMux(),
+		config:             config,
+		imageStorageDir:    config.ImageStorageDir,
+		imageContext:       imageContext,
+		imageCancel:        imageCancel,
+		imageQueue:         make(chan imageJobWork, config.ImageQueueCapacity),
+		imageAccountSlots:  make(map[string]chan struct{}),
+		responseContext:    responseContext,
+		responseCancel:     responseCancel,
+		responseInstanceID: NewID("response-worker"),
+		versions:           newVersionService(config),
 		guardrailEngine: guardrails.NewEngine(guardrails.NewQwenDetector(guardrails.QwenDetectorConfig{
 			URL:     config.GuardrailModelURL,
 			APIKey:  config.GuardrailModelAPIKey,
@@ -163,6 +201,10 @@ func NewWithConfig(store Store, config Config) *Server {
 	s.a2aJSONRPC = initAgentGateway(s)
 	s.syncAgentCatalog()
 	s.routes()
+	// Every replica must poll the durable queue even when it was empty at startup.
+	// Otherwise a replica that never handled a submission cannot take over after
+	// the submitting replica fails.
+	s.startResponseWorkers()
 	return s
 }
 func (s *Server) Handler() http.Handler {
@@ -190,10 +232,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	_, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)

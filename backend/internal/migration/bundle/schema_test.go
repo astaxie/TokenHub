@@ -75,6 +75,57 @@ func TestValidateJSONRejectsInvalidSecretRef(t *testing.T) {
 	}
 }
 
+func TestValidateJSONAcceptsProviderHeaderSecretRefs(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"schema_version": SchemaVersion,
+		"source": map[string]any{
+			"adapter":         "tokenhub",
+			"adapter_version": "1.2.0",
+		},
+		"generated_at": "2026-08-11T00:00:00Z",
+		"providers": []map[string]any{{
+			"external_ref": map[string]any{"system": "tokenhub", "id": "provider/openai"},
+			"spec":         map[string]any{"name": "OpenAI", "type": "openai_compatible", "status": "active"},
+			"header_secrets": map[string]any{
+				"X-Tenant": map[string]any{"$secretRef": "PROVIDER_TENANT"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	if err := ValidateJSON(payload); err != nil {
+		t.Fatalf("validate header secret refs: %v", err)
+	}
+}
+
+func TestValidateJSONRejectsInlineSensitiveProviderHeaders(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"schema_version": SchemaVersion,
+		"source": map[string]any{
+			"adapter":         "tokenhub",
+			"adapter_version": "1.2.0",
+		},
+		"generated_at": "2026-08-11T00:00:00Z",
+		"providers": []map[string]any{{
+			"external_ref": map[string]any{"system": "tokenhub", "id": "provider/openai"},
+			"spec": map[string]any{
+				"name":              "OpenAI",
+				"type":              "openai_compatible",
+				"status":            "active",
+				"headers":           map[string]string{"X-Tenant": "plaintext-secret"},
+				"sensitive_headers": []string{"X-Tenant"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	if err := ValidateJSON(payload); err == nil {
+		t.Fatal("expected inline sensitive headers to be rejected")
+	}
+}
+
 func TestValidateJSONRejectsProviderSpecUnknownFields(t *testing.T) {
 	payload, err := json.Marshal(map[string]any{
 		"schema_version": SchemaVersion,

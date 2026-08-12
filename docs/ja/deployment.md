@@ -341,6 +341,9 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_MANAGED_UPDATES` | `false` | コンテナデプロイでオンライン更新とロールバックを許可します。ネイティブデプロイでは常に許可されます |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | 管理対象 Release のオンライン更新とロールバックで使用するインストールルート |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For` を提供できるプロキシ IP または CIDR（カンマ区切り） |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | 空 | カスタムプロバイダーの base URL としてリテラル IP を許可するプライベート CIDR（RFC1918/ULA のみ、カンマ区切り、社内モデルサーバー向け）。明示的に許可したプライベートリテラルでは HTTP を使用できますが、公開プロバイダー URL には HTTPS が必須です。プライベートアドレスに解決されるホスト名とリダイレクト先は引き続き拒否 |
+| `TOKENHUB_PROVIDER_UPSTREAM_NAT64_PREFIX` | 空 | 埋め込まれた IPv4 宛先を分類するための任意の RFC 6052 DNS64/NAT64 プレフィックス。32、40、48、56、64、96 ビット長をサポートします。`64:ff9b:1::/48` などのネットワーク固有プレフィックスを使用する場合に設定します。標準の `64:ff9b::/96` は設定不要です |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false` | ローカルの Ollama/LM Studio 開発用に、provider base URL の `localhost`、`127.0.0.1`、`::1`（HTTP URL を含む）を明示的に許可します。公開プロバイダー URL には HTTPS が必須です。本番環境では無効のままにしてください |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せるブラウザー Origin（カンマ区切り） |
 | `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Admin API 用の初期 Token |
 | `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初期 `admin` ユーザーのパスワード。本番起動前に変更が必要 |
@@ -391,7 +394,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Chat Completions、Anthropic Messages、Responses で同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 段階的ロールアウト用のモデル許可リスト（カンマ区切り）。空の場合は全モデルが対象 |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Chat/Responses の `user` と Anthropic の `metadata.user_id` もアフィニティキーとして受け入れるか。同一ユーザーの並行セッションが同じ値を共有し単一アカウントに集中するため既定では無効 |
-| `TOKENHUB_GUARDRAIL_MODEL_URL` | 空 | 専用 Qwen3Guard サービスの完全な OpenAI-compatible chat-completions URL。有効化すると検査対象のユーザー表示リクエストテキストをそのサービスへ送信する。空の場合はモデルを呼び出さず、各ポリシーの利用不可時設定を適用 |
+| `TOKENHUB_GUARDRAIL_MODEL_URL` | 空 | 専用 Qwen3Guard サービスの完全な OpenAI-compatible chat-completions URL。呼び出し前にローカルの `mask` ルールで一致した値を `[REDACTED]` に置き換え、一致しなかった検査対象テキストはそのサービスへ送信する。空の場合はモデルを呼び出さず、各ポリシーの利用不可時設定を適用 |
 | `TOKENHUB_GUARDRAIL_MODEL_API_KEY` | 空 | 専用ガードレールモデルサービス用の任意 Bearer 資格情報 |
 | `TOKENHUB_GUARDRAIL_MODEL_NAME` | `Qwen/Qwen3Guard-Gen-0.6B` | ガードレールサービスへ送信するモデル識別子 |
 | `TOKENHUB_GUARDRAIL_MODEL_TIMEOUT_SECONDS` | `10` | 1 回のガードレールモデル分類の制限時間 |
@@ -400,6 +403,12 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | キューで待機できる画像ジョブの上限 |
 | `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | 単一の画像生成ジョブのタイムアウト。超過すると失敗として扱われます |
 | `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | 画像生成非対応と記録されたプロバイダーリソースを再検査するまでの待機時間 |
+| `TOKENHUB_RESPONSE_WORKER_CONCURRENCY` | `2` | 永続化されたバックグラウンド Responses ジョブを取得する Worker 数 |
+| `TOKENHUB_RESPONSE_POLL_INTERVAL_MILLIS` | `250` | バックグラウンド Responses ジョブとキャンセル状態を確認するデータベースのポーリング間隔 |
+| `TOKENHUB_RESPONSE_JOB_TIMEOUT_SECONDS` | `300` | 1 件のバックグラウンド Responses ジョブの実行タイムアウト |
+| `TOKENHUB_RESPONSE_LEASE_TTL_SECONDS` | `30` | 複数レプリカ間でバックグラウンド Responses Worker を保護するリース期間 |
+| `TOKENHUB_RESPONSE_RESULT_TTL_SECONDS` | `3600` | 完了後に暗号化されたリクエストと結果 payload を保持する期間 |
+| `TOKENHUB_RESPONSE_MAX_QUEUED_JOBS` | `1000` | 1 つのデプロイが受け付ける待機中および実行中のバックグラウンド Responses ジョブ上限 |
 | `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI が対象とする Admin API の URL。この CLI のみが読み取り、バックエンドサーバーは読み取りません。`--to` で上書きされます |
 
 ## フロントエンド環境変数

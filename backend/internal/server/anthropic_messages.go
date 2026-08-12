@@ -22,10 +22,6 @@ type anthropicMessagesRequest struct {
 const anthropicMidConversationSystemBeta = "mid-conversation-system-2026-04-07"
 
 func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeAnthropicError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeAnthropicError(w, r, err)
@@ -74,10 +70,6 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeAnthropicError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	_, key, err := s.authenticate(r)
 	if err != nil {
 		writeAnthropicError(w, r, err)
@@ -214,7 +206,7 @@ func (s *Server) executeRoutedAnthropicMessages(
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return s.executeAnthropicMessagesRoute(ctx, route, req, r.Header)
+		return s.executeAnthropicMessagesRoute(ctx, route, anthropicRequestForRoute(req, route), r.Header)
 	})
 }
 
@@ -819,22 +811,23 @@ func (s *Server) doNativeAnthropicRequest(
 		version = "2023-06-01"
 	}
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", provider.APIKey)
 	req.Header.Set("anthropic-version", version)
 	if betas := strings.TrimSpace(downstreamHeaders.Get("anthropic-beta")); betas != "" {
 		req.Header.Set("anthropic-beta", betas)
 	}
-	for key, value := range provider.Headers {
-		req.Header.Set(key, value)
-	}
+	applyProviderHeaders(req.Header, provider.Headers)
+	applyAnthropicProviderAuth(req, provider)
 	// The native path builds its own request but must follow the same streaming
 	// policy as the adapter: a total deadline would truncate a live stream.
-	adapter, _ := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)
+	adapter, ok := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)
+	if !ok {
+		return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Anthropic adapter is not available")
+	}
 	resp, err := sendUpstream(adapter.Client, adapter.StreamClient, adapter.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -870,6 +863,7 @@ func (s *Server) handleAnthropicMessagesStream(
 			if prepareErr != nil {
 				return struct{}{}, Usage{}, prepareErr
 			}
+			attemptReq := anthropicRequestForRoute(req, prepared)
 			// Defer the response headers until the first byte is written, at which
 			// point prepared is the route that actually served the request.
 			tracker.onFirstWrite = func() {
@@ -883,11 +877,11 @@ func (s *Server) handleAnthropicMessagesStream(
 			var streamErr error
 			switch {
 			case prepared.Provider.Type == ProviderAnthropic:
-				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, req, r.Header, tracker)
+				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, attemptReq, r.Header, tracker)
 			case prepared.Provider.Type == ProviderOpenAICodex:
-				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, req, r.Header, tracker)
+				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, attemptReq, r.Header, tracker)
 			case openAIMessageProvider(prepared.Provider.Type):
-				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, req, tracker)
+				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, attemptReq, tracker)
 			default:
 				streamErr = NewHTTPError(
 					http.StatusNotImplemented,

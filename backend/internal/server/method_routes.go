@@ -19,6 +19,20 @@ func jsonMethodNotAllowed(allowedMethod string) http.HandlerFunc {
 	}
 }
 
+func anthropicMethodNotAllowed(allowedMethod string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Allow", allowedMethod)
+		writeAnthropicError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	}
+}
+
+func plainTextMethodNotAllowed(allowedMethod string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Allow", allowedMethod)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) adminAuthenticationMethodNotAllowed(allowedMethod string) http.HandlerFunc {
 	reject := jsonMethodNotAllowed(allowedMethod)
 	return func(w http.ResponseWriter, r *http.Request) {

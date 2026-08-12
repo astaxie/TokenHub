@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tokenhub.dev/schemas/migration/bundle-1.1.json",
+  "$id": "https://tokenhub.dev/schemas/migration/bundle-2.0.json",
   "title": "CanonicalMigrationBundle",
   "type": "object",
   "additionalProperties": false,
@@ -85,7 +85,8 @@
             "created_at": {"type": "string", "format": "date-time"}
           }
         },
-        "api_key_secret": {"$ref": "#/$defs/secretRef"}
+        "api_key_secret": {"$ref": "#/$defs/secretRef"},
+        "header_secrets": {"type": "object", "additionalProperties": {"$ref": "#/$defs/secretRef"}}
       }
     },
     "providerResourceRef": {
@@ -123,7 +124,8 @@
             "updated_at": {"type": "string", "format": "date-time"}
           }
         },
-        "api_key_secret": {"$ref": "#/$defs/secretRef"}
+        "api_key_secret": {"$ref": "#/$defs/secretRef"},
+        "header_secrets": {"type": "object", "additionalProperties": {"$ref": "#/$defs/secretRef"}}
       }
     },
     "modelRef": {

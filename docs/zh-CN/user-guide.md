@@ -27,6 +27,8 @@ Language: [English](../user-guide.md) | 简体中文 | [日本語](../ja/user-gu
 
 打开控制台中的「模型演练场」，无需编写 API 脚本即可测试可用的聊天模型。每次响应都会展示流式或缓冲模式、可测量时的 TTFT、输出吞吐、总耗时、完整上下文输入 Tokens、输出 Tokens、估算成本、本地完成时间和 Request ID。展开响应可查看实际响应详情；只有拥有路由读取权限的角色才能看到 Provider 和路由内部信息。
 
+只有所选模型的 `input_modalities` 包含 `image` 时，演练场才会开放图片上传；多模态模型需要在模型目录中配置该字段。演练场支持 JPEG、PNG 和 WebP 图片，每条消息最多上传 4 张、单张最大 5 MiB，当前会话中的图片总大小最多为 12 MiB。导出的会话会保留图片名称、媒体类型和大小等上下文信息，但不会包含图片内容。
+
 会话默认是临时的，只保留在当前页面；需要留档时请使用「导出演练」。点击「停止」会保留部分输出；「重跑」会从该轮生成新候选并移除后续轮次。切换模型默认新建会话，只有显式选择后才会沿用原上下文。上游不支持流式时，页面会使用缓冲模式，并把 TTFT 标为不适用。
 
 ## 获取模型列表
@@ -194,6 +196,27 @@ claude
 ```
 
 `ANTHROPIC_AUTH_TOKEN` 通过 `Authorization: Bearer` 发送 TokenHub Key。没有 Authorization Header 时，也可通过 `ANTHROPIC_API_KEY` 使用 `x-api-key`。Token 估算会检查 Key 和模型权限，但不生成计费推理记录。
+
+## 持久化后台 Responses
+
+在 `POST /v1/responses` 中设置 `background: true`，即可持久化 Responses 请求并立即获得由网关生成的稳定 Response ID：
+
+```bash
+curl http://localhost:8080/v1/responses \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-5.4","input":"Summarize the report","background":true}'
+```
+
+通过 `GET /v1/responses/{id}` 查询状态或最终结果，通过 `POST /v1/responses/{id}/cancel` 请求取消。查询与取消必须使用原始任务对应的项目、API Key、归属用户，并且该 Key 当前仍有模型访问权限；任一条件不匹配均返回 `404`。暂不支持可恢复的后台 SSE，因此同时设置 `background: true` 与 `stream: true` 会被拒绝。
+
+对外状态包括 `queued`、`in_progress`、`completed`、`failed` 和 `cancelled`。Worker 会在上游调用前后应用配额、预算、并发限制、路由、Guardrail、缓存亲和、成本核算、请求日志和链路追踪。取消与完成竞态只有一个持久化结果；如果上游已经产生用量，仍会且只会结算一次。
+
+排队中的任务可跨服务重启继续执行。租约在准入前丢失的任务会安全地重新排队；准入后丢失 Worker 的任务不会盲目重放，而是以 `response_execution_lost` 明确失败，因为上游可能已经收到请求。PostgreSQL 多实例通过带隔离代次的租约和行锁协调领取。SQLite 支持重启恢复，但仍限定为单后端部署，不得让多个后端实例共享同一个 SQLite 文件。
+
+请求信封与结果使用 `TOKENHUB_SECRET_KEY` 静态加密；认证 Header 不会落库，只保留有长度限制的协议 Header 白名单。后台请求与响应正文不会复制到明文请求载荷审计记录或链路追踪导出中，路由尝试记录也会移除上游错误文本。加解密失败时流程会关闭并返回错误，不会回退到明文。终态载荷保留 `TOKENHUB_RESPONSE_RESULT_TTL_SECONDS`，到期后会擦除请求与结果密文，后续查询返回 `404`。返回的 ID 是 TokenHub 查询 ID，不会转换为上游 `previous_response_id`。
+
+启用指标后，Prometheus 会提供 `tokenhub_gateway_response_jobs_queued`、`tokenhub_gateway_response_job_queue_wait_seconds`、`tokenhub_gateway_response_job_execution_seconds`、`tokenhub_gateway_response_jobs_total` 和 `tokenhub_gateway_response_job_recoveries_total`。Worker 并发数、轮询间隔、超时、租约、保留时间与队列上限见[部署文档](deployment.md#后端环境变量)。
 
 ## Gemini CLI 使用 Codex 订阅 GPT
 

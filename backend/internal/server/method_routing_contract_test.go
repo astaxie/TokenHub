@@ -25,8 +25,8 @@ func TestMethodRoutingContracts(t *testing.T) {
 		wantCode  string
 		wantAllow string
 	}{
-		{name: "gateway wrong method", method: http.MethodGet, path: "/v1/chat/completions", wantCode: "method_not_allowed", wantAllow: ""},
-		{name: "models rejects head", method: http.MethodHead, path: "/v1/models", wantCode: "method_not_allowed", wantAllow: ""},
+		{name: "gateway wrong method", method: http.MethodGet, path: "/v1/chat/completions", wantCode: "method_not_allowed", wantAllow: http.MethodPost},
+		{name: "models rejects head", method: http.MethodHead, path: "/v1/models", wantCode: "method_not_allowed", wantAllow: http.MethodGet},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestMethodRoutingPreservesAnthropicErrorShape(t *testing.T) {
 		t.Fatalf("unexpected Anthropic method error: %#v", payload)
 	}
 	assertRequestID(t, response, payload.RequestID)
-	assertAllowHeader(t, response, "")
+	assertAllowHeader(t, response, http.MethodPost)
 }
 
 func TestMethodRoutingPreservesCORSPreflight(t *testing.T) {
@@ -332,6 +332,9 @@ func assertJSONError(t *testing.T, response *httptest.ResponseRecorder, wantStat
 	}
 	if payload.Error.Message == "" {
 		t.Fatal("error message is empty")
+	}
+	if wantCode == "method_not_allowed" && payload.Error.Message != "Method not allowed" {
+		t.Fatalf("error message = %q, want %q", payload.Error.Message, "Method not allowed")
 	}
 	assertRequestID(t, response, payload.RequestID)
 }

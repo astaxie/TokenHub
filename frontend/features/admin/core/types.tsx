@@ -80,6 +80,9 @@ export type Provider = {
   status: string;
   healthy: boolean;
   priority: number;
+  headers?: Record<string, string>;
+  sensitive_headers?: string[];
+  header_validation_errors?: string[];
   options?: Record<string, string>;
 };
 
@@ -385,6 +388,9 @@ export type ProviderResource = {
   rate_limit_rpm?: number;
   token_limit_tpm?: number;
   max_concurrency?: number;
+  headers?: Record<string, string>;
+  sensitive_headers?: string[];
+  header_validation_errors?: string[];
   options?: Record<string, string>;
   credential_summary?: Record<string, string>;
   failure_count?: number;
@@ -914,7 +920,7 @@ export type TopSearchItem = {
   keywords: string;
 };
 
-export type FieldType = "text" | "number" | "password" | "textarea" | "select" | "multi-select" | "tags" | "boolean";
+export type FieldType = "text" | "number" | "password" | "textarea" | "select" | "multi-select" | "tag-select" | "tags" | "boolean";
 
 export type FieldConfig = {
   key: string;

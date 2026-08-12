@@ -106,9 +106,9 @@ const en: Record<string, string> = {
   "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。": "Add an upstream service in Provider Channels and select models to import. Provider model pricing records actual cost for auditing.",
   "前往 Provider 渠道": "Go to Provider Channels",
   "还没有对外模型": "No external models yet",
-  "从内置的 165 个模型中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。": "Choose an external model from the 165 built-in models, select imported Provider models, and set unified external pricing.",
+  "从内置的 178 个模型中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。": "Choose an external model from the 178 built-in models, select imported Provider models, and set unified external pricing.",
   "先创建一个对外模型": "Create an external model first",
-  "从内置的 165 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。": "Choose an external model from the 165 built-in models, select imported Provider models, and set unified external pricing.",
+  "从内置的 178 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。": "Choose an external model from the 178 built-in models, select imported Provider models, and set unified external pricing.",
   "前往模型目录": "Go to Model Catalog",
   "还没有路由策略": "No routing policies yet",
   "为对外模型添加 Provider 线路，并设置优先级、权重与流量策略。路由不会改变统一对外价格。": "Add Provider routes for external models and configure priority, weight, and traffic policies. Routing does not change unified external pricing.",
@@ -130,6 +130,8 @@ const en: Record<string, string> = {
   "当前还没有模型目录。请先维护模型目录，再配置路由策略。": "No model catalog exists yet. Maintain the model catalog first, then configure routing policy.",
   "当前筛选下没有可见模型。可用性由模型目录、路由策略、项目成员和 Key 白名单共同决定。": "No visible models match the current filters. Availability is determined by the model catalog, routing policy, project membership, and Key allowlist.",
   "当前没有可演练模型。请先在路由策略里启用至少一条模型线路。": "No playground-ready models are available. Enable at least one model route first.",
+  "文本": "Text",
+  "选择模型实际支持的输入类型。": "Select the input types the model actually supports.",
 };
 
 const ja: Record<string, string> = {
@@ -240,9 +242,9 @@ const ja: Record<string, string> = {
   "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。": "まず Provider チャネルで上流サービスを追加し、取り込むモデルを選択してください。Provider モデル価格は実コストの記録と監査に使用します。",
   "前往 Provider 渠道": "Provider チャネルへ",
   "还没有对外模型": "外部モデルがまだありません",
-  "从内置的 165 个模型中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。": "組み込みの 165 モデルから外部モデルを選び、取り込み済み Provider モデルと関連付け、統一外部価格を設定します。",
+  "从内置的 178 个模型中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。": "組み込みの 178 モデルから外部モデルを選び、取り込み済み Provider モデルと関連付け、統一外部価格を設定します。",
   "先创建一个对外模型": "外部モデルを 1 つ作成してください",
-  "从内置的 165 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。": "組み込みの 165 モデルから外部モデルを選び、取り込み済み Provider モデルと関連付けて、統一外部価格を設定します。",
+  "从内置的 178 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。": "組み込みの 178 モデルから外部モデルを選び、取り込み済み Provider モデルと関連付けて、統一外部価格を設定します。",
   "前往模型目录": "モデルカタログへ",
   "还没有路由策略": "ルーティングポリシーがまだありません",
   "为对外模型添加 Provider 线路，并设置优先级、权重与流量策略。路由不会改变统一对外价格。": "外部モデルに Provider ルートを追加し、優先度、重み、トラフィックポリシーを設定します。ルーティングによって統一外部価格は変わりません。",
@@ -261,6 +263,8 @@ const ja: Record<string, string> = {
   "当前还没有模型目录。请先维护模型目录，再配置路由策略。": "モデルカタログがまだありません。先にモデルカタログを整備してから、ルーティングポリシーを設定してください。",
   "当前筛选下没有可见模型。可用性由模型目录、路由策略、项目成员和 Key 白名单共同决定。": "現在の絞り込み条件に一致するモデルがありません。利用可否はモデルカタログ、ルーティングポリシー、プロジェクトメンバー、Key 許可リストによって決まります。",
   "当前没有可演练模型。请先在路由策略里启用至少一条模型线路。": "プレイグラウンドで利用できるモデルがありません。先にルーティングポリシーでモデルルートを 1 件以上有効化してください。",
+  "文本": "テキスト",
+  "选择模型实际支持的输入类型。": "モデルが実際に対応する入力タイプを選択します。",
 };
 
 export const modelGovernanceTranslations = { en, ja } satisfies Record<"en" | "ja", Record<string, string>>;

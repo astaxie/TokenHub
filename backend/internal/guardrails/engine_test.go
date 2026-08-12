@@ -12,10 +12,12 @@ type testModelDetector struct {
 	result ModelResult
 	err    error
 	calls  int
+	texts  []string
 }
 
-func (d *testModelDetector) Detect(context.Context, string) (ModelResult, error) {
+func (d *testModelDetector) Detect(_ context.Context, text string) (ModelResult, error) {
 	d.calls++
+	d.texts = append(d.texts, text)
 	return d.result, d.err
 }
 
@@ -193,6 +195,71 @@ func TestEngineShortCircuitsBeforeModel(t *testing.T) {
 	}
 	if decision.Action != ActionBlock || !decision.ShortCircuited || detector.calls != 0 {
 		t.Fatalf("unexpected decision=%#v model calls=%d", decision, detector.calls)
+	}
+}
+
+func TestEngineMasksSensitiveDataBeforeModelDetection(t *testing.T) {
+	policy := mustNormalizePolicy(t, Policy{
+		Name: "Mask before model",
+		DetectionItems: []DetectionItem{
+			{Name: "Email", DetectorType: DetectorSensitiveData, Action: ActionMask, Config: map[string]any{"data_types": []string{"email"}}},
+			{Name: "Model", DetectorType: DetectorModel, Action: ActionAudit, Config: map[string]any{}},
+		},
+		Bindings: []Binding{{ScopeType: ScopeAllProjects}},
+	})
+
+	for _, test := range []struct {
+		name              string
+		mutable           bool
+		expectReplacement bool
+	}{
+		{name: "mutable provider fragment", mutable: true, expectReplacement: true},
+		{name: "immutable detector-only fragment", mutable: false, expectReplacement: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			detector := &testModelDetector{result: ModelResult{Safety: "safe"}}
+			decision, err := NewEngine(detector).Evaluate(context.Background(), EvaluationRequest{
+				Fragments: []Fragment{
+					{ID: "input", Text: "contact demo@example.com", Mutable: test.mutable},
+					{ID: "context", Text: "copy ops@example.com", Mutable: false},
+				},
+				Policies: []Policy{policy},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.Action != ActionMask || detector.calls != 1 || len(detector.texts) != 1 {
+				t.Fatalf("unexpected decision=%#v calls=%d texts=%#v", decision, detector.calls, detector.texts)
+			}
+			if detector.texts[0] != "contact [REDACTED]\ncopy [REDACTED]" {
+				t.Fatalf("model detector received unsanitized text %q", detector.texts[0])
+			}
+			_, hasReplacement := decision.Replacements["input"]
+			if hasReplacement != test.expectReplacement {
+				t.Fatalf("replacement presence=%v, want %v: %#v", hasReplacement, test.expectReplacement, decision.Replacements)
+			}
+			if _, hasReplacement := decision.Replacements["context"]; hasReplacement {
+				t.Fatalf("immutable fragment received a provider replacement: %#v", decision.Replacements)
+			}
+		})
+	}
+}
+
+func TestEnginePreservesUnmatchedTextForModelDetection(t *testing.T) {
+	detector := &testModelDetector{result: ModelResult{Safety: "safe"}}
+	policy := mustNormalizePolicy(t, Policy{
+		Name: "No local match",
+		DetectionItems: []DetectionItem{
+			{Name: "Email", DetectorType: DetectorSensitiveData, Action: ActionMask, Config: map[string]any{"data_types": []string{"email"}}},
+			{Name: "Model", DetectorType: DetectorModel, Action: ActionAudit, Config: map[string]any{}},
+		},
+		Bindings: []Binding{{ScopeType: ScopeAllProjects}},
+	})
+	decision, err := NewEngine(detector).Evaluate(context.Background(), EvaluationRequest{
+		Fragments: []Fragment{{ID: "input", Text: "ordinary request", Mutable: true}}, Policies: []Policy{policy},
+	})
+	if err != nil || decision.Action != ActionAllow || len(detector.texts) != 1 || detector.texts[0] != "ordinary request" {
+		t.Fatalf("unexpected decision=%#v texts=%#v err=%v", decision, detector.texts, err)
 	}
 }
 

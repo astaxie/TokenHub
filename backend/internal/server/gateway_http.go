@@ -17,10 +17,6 @@ import (
 )
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -146,10 +142,6 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -170,7 +162,15 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_agent_model", "Agent model must use agent/<slug>"))
 			return
 		}
+		if req.Background {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "agent_background_not_supported", "Background Responses are not supported for Agent models"))
+			return
+		}
 		s.handleAgentResponses(w, r, project, key, req, slug)
+		return
+	}
+	if req.Background {
+		s.submitResponseJob(w, r, project, key, req)
 		return
 	}
 	admittedAt := time.Now().UTC()
@@ -261,10 +261,6 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -316,10 +312,6 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -383,40 +375,47 @@ func (s *Server) admitRoutedCall(w http.ResponseWriter, r *http.Request, project
 }
 
 func (s *Server) prepareAdmittedRoutedCallWithAudit(w http.ResponseWriter, r *http.Request, call CallContext, model string, auditPayload any) (RoutedCall, bool) {
-	routes, err := s.store.SelectRouteCandidates(model)
+	routed, err := s.prepareAdmittedRoutedCall(r.Context(), call, model)
 	if err != nil {
-		err = s.annotateRoutingPolicyForCandidateError(&call, err)
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: routed.Call}, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return RoutedCall{}, false
 	}
-	routes, err = s.filterCodexRoutesByModel(r.Context(), model, routes)
+	return routed, true
+}
+
+func (s *Server) prepareAdmittedRoutedCall(ctx context.Context, call CallContext, model string) (RoutedCall, error) {
+	routes, err := s.store.SelectRouteCandidates(model)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&call, err)
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return RoutedCall{}, false
+		return RoutedCall{Call: call}, err
+	}
+	routes, err = s.filterCodexRoutesByModel(ctx, model, routes)
+	if err != nil {
+		err = s.annotateRoutingPolicyForCandidateError(&call, err)
+		return RoutedCall{Call: call}, err
 	}
 	var resolution RoutingPolicyResolution
 	routes, resolution, err = s.resolveScopedRoutingPolicy(call, routes)
 	applyRoutingPolicyResolution(&call, resolution)
 	if err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return RoutedCall{}, false
+		return RoutedCall{Call: call}, err
 	}
-	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, true
+	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, nil
 }
 
 func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
 	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
-	responsesReq := playgroundChatResponsesRequest(req)
 	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(ctx, route)
+		responsesReq, useResponses, err := playgroundResponsesRequestForRoute(route, req)
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		if route.Provider.Type == ProviderOpenAICodex {
+		route, err = s.prepareRouteForUpstream(ctx, route)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		if useResponses {
 			upstreamReq := responsesReq
 			if omitReasoningEffort {
 				upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
@@ -440,22 +439,7 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 }
 
 func (s *Server) executeRoutedResponses(r *http.Request, routed RoutedCall, req ResponsesRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(req)) != nil
-	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(ctx, route)
-		if err != nil {
-			return nil, Usage{}, err
-		}
-		upstreamReq := req
-		if omitReasoningEffort {
-			upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
-		}
-		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
-		}
-		return resp, usage, err
-	})
+	return s.executeRoutedResponsesContext(r.Context(), r.Header, routed, req)
 }
 
 func (s *Server) invokeResponsesAdapter(ctx context.Context, route RouteSelection, req ResponsesRequest, incoming http.Header) (any, Usage, error) {
@@ -470,40 +454,6 @@ func (s *Server) invokeResponsesAdapter(ctx context.Context, route RouteSelectio
 		return responsesAdapter.Responses(ctx, route.Provider, route.ProviderModel, req)
 	}
 	return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses")
-}
-
-func playgroundChatResponsesRequest(req ChatCompletionRequest) ResponsesRequest {
-	instructions := make([]string, 0, len(req.Messages))
-	input := make([]map[string]any, 0, len(req.Messages))
-	for _, message := range req.Messages {
-		role := strings.ToLower(strings.TrimSpace(message.Role))
-		text := contentToText(message.Content)
-		switch role {
-		case "system", "developer":
-			if strings.TrimSpace(text) != "" {
-				instructions = append(instructions, text)
-			}
-		case "assistant":
-			input = append(input, map[string]any{
-				"role":    "assistant",
-				"content": []map[string]any{{"type": "output_text", "text": text}},
-			})
-		default:
-			input = append(input, map[string]any{
-				"role":    role,
-				"content": []map[string]any{{"type": "input_text", "text": text}},
-			})
-		}
-	}
-	responsesReq := ResponsesRequest{
-		Model:        req.Model,
-		Input:        input,
-		Instructions: strings.Join(instructions, "\n\n"),
-	}
-	if effort := normalizedReasoningEffort(req.ReasoningEffort); effort != nil {
-		responsesReq.Reasoning = &ResponsesReasoning{Effort: effort}
-	}
-	return responsesReq
 }
 
 func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, request map[string]json.RawMessage) (any, RouteSelection, Usage, []RouteAttempt, error) {
@@ -553,22 +503,12 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	req := playgroundReq.ChatCompletionRequest
-	req.Model = strings.TrimSpace(req.Model)
+	if err := validatePlaygroundRequest(&req); err != nil {
+		writeError(w, r, err)
+		return
+	}
 	req.Stream = false
-	if req.Model == "" {
-		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
-		return
-	}
-	if len(req.Messages) == 0 {
-		writeError(w, r, NewHTTPError(400, "missing_messages", "messages are required"))
-		return
-	}
-	for _, message := range req.Messages {
-		if strings.TrimSpace(message.Role) == "" {
-			writeError(w, r, NewHTTPError(400, "invalid_message", "message role is required"))
-			return
-		}
-	}
+	req.StreamOptions = nil
 	guardrailProjectID, err := s.resolvePlaygroundGuardrailProjectID(user, playgroundReq.ProjectID)
 	if err != nil {
 		writeError(w, r, err)
@@ -580,7 +520,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	requestID := call.RequestID
 	w.Header().Set("x-request-id", requestID)
 	decision, guardrailErr := s.evaluateOutboundGuardrails(r.Context(), guardrailProjectID, chatGuardrailTargets(&req))
-	requestAuditPayload := guardrailRequestAuditPayload(req.Model, decision, req)
+	requestAuditPayload := guardrailRequestAuditPayload(req.Model, decision, playgroundAuditRequest(req))
 	if guardrailErr != nil {
 		httpErr := AsHTTPError(guardrailErr)
 		s.finishRoutedCall(r, GatewayCallCompletion{
