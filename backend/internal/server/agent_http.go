@@ -193,17 +193,17 @@ func (s *Server) handleAgentGateway(w http.ResponseWriter, r *http.Request) {
 	}
 	agent, found, err := s.store.GetAgentBySlug(slug)
 	if err != nil || !found || agent.Status != StatusActive {
-		writeA2AError(w, id, -32001, "Agent was not found", "TASK_NOT_FOUND")
+		writeA2AAgentNotFound(w, id)
 		return
 	}
 	invocation, err := s.authenticateAgentInvocation(r, agent)
 	if err != nil {
-		writeA2AError(w, id, -32007, "Authentication is required", "UNAUTHENTICATED")
+		writeA2AAgentNotFound(w, id)
 		return
 	}
 	requireSkill := method == "SendMessage" || method == "SendStreamingMessage"
 	if !s.authorizeAgentInvocationForMethod(invocation, skillID, requireSkill) {
-		writeA2AError(w, id, -32008, "Permission denied", "UNAUTHORIZED")
+		writeA2AAgentNotFound(w, id)
 		return
 	}
 	if requireSkill {
@@ -223,6 +223,10 @@ func (s *Server) handleAgentGateway(w http.ResponseWriter, r *http.Request) {
 	defer (&agentGatewayHandler{server: s}).finishInvocation(invocation, "failed")
 	ctx := context.WithValue(r.Context(), agentInvocationContextKey{}, invocation)
 	s.a2aJSONRPC.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func writeA2AAgentNotFound(w http.ResponseWriter, id json.RawMessage) {
+	writeA2AError(w, id, -32001, "Agent was not found", "TASK_NOT_FOUND")
 }
 
 func (s *Server) applyA2AInputGuardrails(ctx context.Context, projectID string, body []byte) ([]byte, error) {

@@ -13,6 +13,7 @@ import (
 	"iter"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/a2aproject/a2a-go/v2/a2asrv"
+	"tokenhub/backend/internal/guardrails"
 )
 
 type agentInvocationContextKey struct{}
@@ -46,6 +48,13 @@ type agentGatewayHandler struct {
 }
 
 var _ a2asrv.RequestHandler = (*agentGatewayHandler)(nil)
+
+const agentOutputGuardrailMessage = "Agent output was blocked by a content security policy"
+
+var (
+	errAgentOutputGuardrailBlocked    = fmt.Errorf("agent output guardrail blocked: %w", a2a.ErrUnauthorized)
+	errAgentOutputGuardrailEvaluation = fmt.Errorf("agent output guardrail evaluation failed: %w", a2a.ErrInternalError)
+)
 
 func (h *agentGatewayHandler) GetTask(ctx context.Context, request *a2a.GetTaskRequest) (*a2a.Task, error) {
 	invocation, err := invocationFromContext(ctx)
@@ -79,6 +88,9 @@ func (h *agentGatewayHandler) GetTask(ctx context.Context, request *a2a.GetTaskR
 		return nil, normalizeAgentUpstreamError(err)
 	}
 	h.recordInstanceSuccess(instance)
+	if err := h.applyAgentOutputGuardrails(ctx, invocation, result); err != nil {
+		return nil, err
+	}
 	if err := h.rewriteAndPersistTask(&task, result, "task"); err != nil {
 		return nil, a2a.NewError(a2a.ErrInternalError, "Task state could not be persisted")
 	}
@@ -128,6 +140,9 @@ func (h *agentGatewayHandler) ListTasks(ctx context.Context, request *a2a.ListTa
 			if request.HistoryLength != nil && *request.HistoryLength >= 0 && len(task.History) > *request.HistoryLength {
 				task.History = task.History[len(task.History)-*request.HistoryLength:]
 			}
+			if err := h.applyAgentOutputGuardrails(ctx, invocation, &task); err != nil {
+				return nil, err
+			}
 			tasks = append(tasks, &task)
 		}
 	}
@@ -171,6 +186,9 @@ func (h *agentGatewayHandler) CancelTask(ctx context.Context, request *a2a.Cance
 		return nil, normalizeAgentUpstreamError(err)
 	}
 	h.recordInstanceSuccess(instance)
+	if err := h.applyAgentOutputGuardrails(ctx, invocation, result); err != nil {
+		return nil, err
+	}
 	if err := h.rewriteAndPersistTask(&task, result, "task"); err != nil {
 		return nil, a2a.NewError(a2a.ErrInternalError, "Task state could not be persisted")
 	}
@@ -207,6 +225,9 @@ func (h *agentGatewayHandler) SendMessage(ctx context.Context, request *a2a.Send
 		return nil, normalizeAgentUpstreamError(err)
 	}
 	h.recordInstanceSuccess(instance)
+	if err := h.applyAgentOutputGuardrails(ctx, invocation, result); err != nil {
+		return nil, err
+	}
 	switch event := result.(type) {
 	case *a2a.Task:
 		task, err = h.ensureTask(invocation, instance, task, string(event.ID), event.ContextID)
@@ -260,6 +281,11 @@ func (h *agentGatewayHandler) SendStreamingMessage(ctx context.Context, request 
 				failed = true
 				h.recordInstanceFailure(instance, streamErr)
 				yield(nil, normalizeAgentUpstreamError(streamErr))
+				break
+			}
+			if err = h.applyAgentOutputGuardrails(ctx, invocation, event); err != nil {
+				failed = true
+				yield(nil, err)
 				break
 			}
 			task, err = h.rewriteAndPersistEvent(invocation, instance, task, event)
@@ -317,6 +343,10 @@ func (h *agentGatewayHandler) SubscribeToTask(ctx context.Context, request *a2a.
 			if streamErr != nil {
 				h.recordInstanceFailure(instance, streamErr)
 				yield(nil, normalizeAgentUpstreamError(streamErr))
+				return
+			}
+			if err = h.applyAgentOutputGuardrails(ctx, invocation, event); err != nil {
+				yield(nil, err)
 				return
 			}
 			task, err = h.rewriteAndPersistEvent(invocation, instance, task, event)
@@ -412,6 +442,78 @@ func (h *agentGatewayHandler) resolveTask(invocation agentInvocation, id string)
 		return AgentTask{}, AgentInstance{}, a2a.NewError(a2a.ErrTaskNotFound, "Task instance was not found")
 	}
 	return task, instance, nil
+}
+
+func (h *agentGatewayHandler) applyAgentOutputGuardrails(ctx context.Context, invocation agentInvocation, event a2a.Event) error {
+	if _, err := h.server.evaluateOutboundGuardrails(ctx, invocation.Project.ID, agentOutputGuardrailTargets(event)); err != nil {
+		if AsHTTPError(err).Status == http.StatusForbidden {
+			return a2a.NewError(errAgentOutputGuardrailBlocked, agentOutputGuardrailMessage).WithDetails(map[string]any{
+				"code": "guardrail_blocked", "reason": "CONTENT_POLICY_VIOLATION",
+			})
+		}
+		return a2a.NewError(errAgentOutputGuardrailEvaluation, "Agent output content security evaluation failed")
+	}
+	return nil
+}
+
+func agentOutputGuardrailTargets(event a2a.Event) []guardrailTextTarget {
+	targets := make([]guardrailTextTarget, 0)
+	switch item := event.(type) {
+	case *a2a.Task:
+		appendAgentMessageGuardrailTargets(&targets, item.Status.Message, "output.task.status.message")
+		for index, artifact := range item.Artifacts {
+			appendAgentArtifactGuardrailTargets(&targets, artifact, fmt.Sprintf("output.task.artifacts.%d", index))
+		}
+		for index, message := range item.History {
+			appendAgentMessageGuardrailTargets(&targets, message, fmt.Sprintf("output.task.history.%d", index))
+		}
+	case *a2a.Message:
+		appendAgentMessageGuardrailTargets(&targets, item, "output.message")
+	case *a2a.TaskStatusUpdateEvent:
+		appendAgentMessageGuardrailTargets(&targets, item.Status.Message, "output.status.message")
+	case *a2a.TaskArtifactUpdateEvent:
+		appendAgentArtifactGuardrailTargets(&targets, item.Artifact, "output.artifact")
+	}
+	return targets
+}
+
+func appendAgentMessageGuardrailTargets(targets *[]guardrailTextTarget, message *a2a.Message, prefix string) {
+	if message == nil {
+		return
+	}
+	appendAgentPartGuardrailTargets(targets, message.Parts, prefix+".parts")
+}
+
+func appendAgentArtifactGuardrailTargets(targets *[]guardrailTextTarget, artifact *a2a.Artifact, prefix string) {
+	if artifact == nil {
+		return
+	}
+	if artifact.Name != "" {
+		*targets = append(*targets, guardrailTextTarget{
+			fragment: guardrails.Fragment{ID: prefix + ".name", Text: artifact.Name, Mutable: true},
+			replace:  func(replacement string) { artifact.Name = replacement },
+		})
+	}
+	if artifact.Description != "" {
+		*targets = append(*targets, guardrailTextTarget{
+			fragment: guardrails.Fragment{ID: prefix + ".description", Text: artifact.Description, Mutable: true},
+			replace:  func(replacement string) { artifact.Description = replacement },
+		})
+	}
+	appendAgentPartGuardrailTargets(targets, artifact.Parts, prefix+".parts")
+}
+
+func appendAgentPartGuardrailTargets(targets *[]guardrailTextTarget, parts a2a.ContentParts, prefix string) {
+	for index, part := range parts {
+		if part == nil || part.Text() == "" {
+			continue
+		}
+		current := part
+		*targets = append(*targets, guardrailTextTarget{
+			fragment: guardrails.Fragment{ID: fmt.Sprintf("%s.%d.text", prefix, index), Text: current.Text(), Mutable: true},
+			replace:  func(replacement string) { current.Content = a2a.Text(replacement) },
+		})
+	}
 }
 
 func (h *agentGatewayHandler) rewriteAndPersistTask(record *AgentTask, task *a2a.Task, eventType string) error {
@@ -721,15 +823,72 @@ func validateAgentUpstreamURL(ctx context.Context, rawURL string, allowPrivate b
 		return err
 	}
 	for _, address := range addresses {
-		if !allowPrivate && isPrivateOrLocalIP(address.IP) {
-			return errors.New("private upstream address is not allowed")
+		if !allowPrivate && isDisallowedAgentUpstreamIP(address.IP) {
+			return errors.New("special-use upstream address is not allowed")
 		}
 	}
 	return nil
 }
 
-func isPrivateOrLocalIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast()
+var disallowedAgentUpstreamPrefixes = []netip.Prefix{
+	// IPv4 special-use networks, including private, shared, documentation,
+	// benchmarking, multicast, and reserved address space.
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("192.31.196.0/24"),
+	netip.MustParsePrefix("192.52.193.0/24"),
+	netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("192.175.48.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	// IPv6 special-use networks. IPv4-mapped addresses are unmapped before
+	// matching so they are covered by the IPv4 prefixes above.
+	netip.MustParsePrefix("::/128"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+	netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("100:0:0:1::/64"),
+	netip.MustParsePrefix("2001::/23"),
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("2620:4f:8000::/48"),
+	netip.MustParsePrefix("3fff::/20"),
+	netip.MustParsePrefix("5f00::/16"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("fe80::/10"),
+	netip.MustParsePrefix("ff00::/8"),
+}
+
+var allocatedAgentUpstreamIPv6Prefix = netip.MustParsePrefix("2000::/3")
+
+func isDisallowedAgentUpstreamIP(ip net.IP) bool {
+	address, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	address = address.Unmap()
+	// IANA currently allocates globally routable IPv6 unicast addresses from
+	// 2000::/3. Treat the rest as reserved unless private upstreams are enabled.
+	if address.Is6() && !allocatedAgentUpstreamIPv6Prefix.Contains(address) {
+		return true
+	}
+	for _, prefix := range disallowedAgentUpstreamPrefixes {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
 }
 
 func newAgentHTTPTransport(allowPrivate bool) *http.Transport {
@@ -751,8 +910,8 @@ func newAgentHTTPTransport(allowPrivate bool) *http.Transport {
 			return nil, errors.New("Agent upstream did not resolve to an address")
 		}
 		for _, candidate := range addresses {
-			if !allowPrivate && isPrivateOrLocalIP(candidate.IP) {
-				return nil, errors.New("private upstream address is not allowed")
+			if !allowPrivate && isDisallowedAgentUpstreamIP(candidate.IP) {
+				return nil, errors.New("special-use upstream address is not allowed")
 			}
 		}
 		return dialer.DialContext(ctx, network, net.JoinHostPort(addresses[0].IP.String(), port))

@@ -7,7 +7,7 @@ TokenHub is a private enterprise AI gateway with a Go backend, a Next.js admin c
 - `backend/`: Go HTTP API, SQLite/GORM persistence, routing, authentication, administration, and backend tests.
 - `frontend/`: Next.js and React admin console.
 - `sdk/`: Node.js smoke tests for the OpenAI-compatible API and security policy endpoints.
-- `data/model-catalog.yaml`: tracked model catalog source.
+- `data/model-catalog.yaml` and `data/agent-catalog.yaml`: tracked model and Agent catalog sources.
 - `deploy/`: Docker Compose deployment and environment template.
 - `docs/`: English, Simplified Chinese, and Japanese documentation.
 
@@ -77,7 +77,7 @@ Use a workflow only when the user explicitly names it; otherwise follow the norm
 - Build dynamic sentences with locale-aware helpers or complete translated templates rather than concatenating translated fragments. Format user-visible dates, times, numbers, and currencies with `languageLocale()` and `Intl` so they follow the selected application language.
 - A few source files are over the line-count ceiling and are frozen at their current size in the `FROZEN` table in `tools/source-lines.mjs`. Avoid broad formatting or unrelated restructuring in them when making a targeted fix; `node tools/check-source-lines.mjs` reports which files are affected.
 - Next.js may rewrite `frontend/next-env.d.ts` during development or production builds. Do not commit incidental mode-dependent changes to that generated file.
-- Keep `data/model-catalog.yaml` tracked; other files under runtime data directories are intentionally ignored.
+- Keep `data/model-catalog.yaml` and `data/agent-catalog.yaml` tracked; other files under runtime data directories are intentionally ignored.
 
 ## Pull request guidelines
 

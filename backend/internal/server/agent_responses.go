@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -51,7 +52,7 @@ func (s *Server) handleAgentResponses(w http.ResponseWriter, r *http.Request, pr
 	}
 	result, err := handler.SendMessage(ctx, send)
 	if err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadGateway, "agent_upstream_error", err.Error()))
+		writeError(w, r, agentResponsesError(err))
 		return
 	}
 	text := agentEventText(result)
@@ -83,8 +84,9 @@ func (s *Server) streamAgentResponse(ctx context.Context, w http.ResponseWriter,
 	var output strings.Builder
 	for event, err := range handler.SendStreamingMessage(ctx, request) {
 		if err != nil {
+			streamError := agentResponsesError(err)
 			writeResponsesSSE(w, "error", map[string]any{
-				"type": "error", "error": map[string]any{"code": "agent_upstream_error", "message": err.Error()},
+				"type": "error", "error": map[string]any{"code": streamError.Code, "message": streamError.Message},
 			})
 			flusher.Flush()
 			return
@@ -106,6 +108,17 @@ func (s *Server) streamAgentResponse(ctx context.Context, w http.ResponseWriter,
 	writeResponsesSSE(w, "response.completed", map[string]any{"type": "response.completed", "response": completed})
 	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 	flusher.Flush()
+}
+
+func agentResponsesError(err error) *HTTPError {
+	switch {
+	case errors.Is(err, errAgentOutputGuardrailBlocked):
+		return NewHTTPError(http.StatusForbidden, "guardrail_blocked", agentOutputGuardrailMessage)
+	case errors.Is(err, errAgentOutputGuardrailEvaluation):
+		return NewHTTPError(http.StatusInternalServerError, "guardrail_evaluation_failed", "Agent output content security evaluation failed")
+	default:
+		return NewHTTPError(http.StatusBadGateway, "agent_upstream_error", err.Error())
+	}
 }
 
 func writeResponsesSSE(w http.ResponseWriter, event string, payload any) {

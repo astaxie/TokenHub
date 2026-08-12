@@ -1,12 +1,13 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -173,8 +174,14 @@ func TestA2A10GatewayEndToEnd(t *testing.T) {
 		},
 	}
 	denied := doA2ARequest(t, app, "/a2a/research", secret, "1.0", requestBody)
-	if !strings.Contains(denied.Body.String(), "UNAUTHORIZED") {
+	missingDenied := doA2ARequest(t, app, "/a2a/missing", secret, "1.0", requestBody)
+	if !strings.Contains(denied.Body.String(), "TASK_NOT_FOUND") || denied.Body.String() != missingDenied.Body.String() {
 		t.Fatalf("default-deny access was not enforced: %s", denied.Body.String())
+	}
+	unauthenticated := doA2ARequest(t, app, "/a2a/research", "", "1.0", requestBody)
+	missingUnauthenticated := doA2ARequest(t, app, "/a2a/missing", "", "1.0", requestBody)
+	if unauthenticated.Body.String() != missingUnauthenticated.Body.String() {
+		t.Fatalf("Agent existence was disclosed before authentication: existing=%s missing=%s", unauthenticated.Body.String(), missingUnauthenticated.Body.String())
 	}
 
 	binding := doJSON(t, app, http.MethodPost, "/api/admin/agent-access-bindings", AgentAccessBinding{
@@ -374,6 +381,73 @@ func TestA2A10GatewayEndToEnd(t *testing.T) {
 	unauthorizedCard := doJSON(t, app, http.MethodGet, "/a2a/research/.well-known/agent-card.json", nil, "")
 	if unauthorizedCard.Code != http.StatusNotFound || strings.Contains(unauthorizedCard.Body, "Research Agent") {
 		t.Fatalf("unauthorized Agent discovery leaked registry data: %d %s", unauthorizedCard.Code, unauthorizedCard.Body)
+	}
+
+	if _, err := store.CreateGuardrailPolicy(guardrails.Policy{
+		Name: "A2A output protection",
+		DetectionItems: []guardrails.DetectionItem{{
+			Name: "Blocked Agent output", DetectorType: guardrails.DetectorPattern, Action: guardrails.ActionBlock,
+			Config: map[string]any{"keywords": []string{"agent says hello", "streamed artifact"}},
+		}},
+		Bindings: []guardrails.Binding{{ScopeType: guardrails.ScopeAllProjects}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var tasksBeforeBlockedOutput int64
+	if err := store.db.Model(&AgentTask{}).Count(&tasksBeforeBlockedOutput).Error; err != nil {
+		t.Fatal(err)
+	}
+	blockedOutput := doA2ARequest(t, app, "/a2a/research", secret, "1.0", map[string]any{
+		"jsonrpc": "2.0", "id": "blocked-output", "method": "SendMessage",
+		"params": map[string]any{"message": map[string]any{
+			"messageId": "blocked-output-message", "role": "ROLE_USER", "parts": []any{map[string]any{"text": "safe request"}},
+		}},
+	})
+	if strings.Contains(blockedOutput.Body.String(), "agent says hello") || !strings.Contains(blockedOutput.Body.String(), "CONTENT_POLICY_VIOLATION") {
+		t.Fatalf("non-streaming Agent output guardrail was not enforced: %s", blockedOutput.Body.String())
+	}
+	var tasksAfterBlockedOutput int64
+	if err := store.db.Model(&AgentTask{}).Count(&tasksAfterBlockedOutput).Error; err != nil {
+		t.Fatal(err)
+	}
+	if tasksAfterBlockedOutput != tasksBeforeBlockedOutput {
+		t.Fatal("guardrail-blocked non-streaming Agent output was persisted")
+	}
+
+	var artifactEventsBefore int64
+	if err := store.db.Model(&AgentTaskEvent{}).Where("payload_json LIKE ?", "%streamed artifact%").Count(&artifactEventsBefore).Error; err != nil {
+		t.Fatal(err)
+	}
+	blockedArtifact := doA2ARequest(t, app, "/a2a/research", secret, "1.0", map[string]any{
+		"jsonrpc": "2.0", "id": "blocked-artifact", "method": "SendStreamingMessage",
+		"params": map[string]any{"message": map[string]any{
+			"messageId": "blocked-artifact-message", "role": "ROLE_USER", "parts": []any{map[string]any{"text": "safe stream request"}},
+		}},
+	})
+	if strings.Contains(blockedArtifact.Body.String(), "streamed artifact") || !strings.Contains(blockedArtifact.Body.String(), "CONTENT_POLICY_VIOLATION") {
+		t.Fatalf("streaming Agent artifact guardrail was not enforced: %s", blockedArtifact.Body.String())
+	}
+	var artifactEventsAfter int64
+	if err := store.db.Model(&AgentTaskEvent{}).Where("payload_json LIKE ?", "%streamed artifact%").Count(&artifactEventsAfter).Error; err != nil {
+		t.Fatal(err)
+	}
+	if artifactEventsAfter != artifactEventsBefore {
+		t.Fatal("guardrail-blocked streaming Agent artifact was persisted")
+	}
+
+	blockedResponses := doJSON(t, app, http.MethodPost, "/v1/responses", map[string]any{
+		"model": "agent/research", "input": "safe bridged request",
+	}, secret)
+	if blockedResponses.Code != http.StatusForbidden || !strings.Contains(blockedResponses.Body, `"code":"guardrail_blocked"`) ||
+		strings.Contains(blockedResponses.Body, "agent says hello") {
+		t.Fatalf("Responses bridge misclassified blocked Agent output: %d %s", blockedResponses.Code, blockedResponses.Body)
+	}
+	blockedResponsesStream := doJSON(t, app, http.MethodPost, "/v1/responses", map[string]any{
+		"model": "agent/research", "input": "safe streamed bridged request", "stream": true,
+	}, secret)
+	if blockedResponsesStream.Code != http.StatusOK || !strings.Contains(blockedResponsesStream.Body, `"code":"guardrail_blocked"`) ||
+		strings.Contains(blockedResponsesStream.Body, "streamed artifact") || strings.Contains(blockedResponsesStream.Body, "agent_upstream_error") {
+		t.Fatalf("streaming Responses bridge misclassified blocked Agent output: %d %s", blockedResponsesStream.Code, blockedResponsesStream.Body)
 	}
 
 	var persisted AgentInstance
@@ -769,6 +843,108 @@ func TestA2ARegistrationBlocksPrivateUpstreamByDefault(t *testing.T) {
 	}
 }
 
+func TestAgentUpstreamSpecialUseAddressesAreBlockedBeforeCredentialedDial(t *testing.T) {
+	tests := []struct {
+		address    string
+		disallowed bool
+	}{
+		{address: "0.0.0.0", disallowed: true},
+		{address: "100.100.100.200", disallowed: true},
+		{address: "192.0.2.10", disallowed: true},
+		{address: "198.18.0.1", disallowed: true},
+		{address: "224.0.0.1", disallowed: true},
+		{address: "2001:db8::1", disallowed: true},
+		{address: "64:ff9b:1::1", disallowed: true},
+		{address: "1.1.1.1", disallowed: false},
+		{address: "2606:4700:4700::1111", disallowed: false},
+	}
+	for _, test := range tests {
+		t.Run(test.address, func(t *testing.T) {
+			if got := isDisallowedAgentUpstreamIP(net.ParseIP(test.address)); got != test.disallowed {
+				t.Fatalf("isDisallowedAgentUpstreamIP(%s) = %v, want %v", test.address, got, test.disallowed)
+			}
+		})
+	}
+
+	if err := validateAgentUpstreamURL(context.Background(), "https://100.100.100.200/a2a", false); err == nil || !strings.Contains(err.Error(), "special-use") {
+		t.Fatalf("CGNAT upstream passed registration validation: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://100.100.100.200/a2a", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &agentCredentialTransport{
+		base: newAgentHTTPTransport(false),
+		headers: map[string]string{
+			"Authorization": "Bearer must-not-leak",
+		},
+		delegationToken: "thd_must-not-leak",
+	}
+	if _, err := transport.RoundTrip(request); err == nil || !strings.Contains(err.Error(), "special-use") {
+		t.Fatalf("credential-bearing CGNAT dial was not rejected: %v", err)
+	}
+}
+
+func TestAgentOutputGuardrailsCoverMessagesStatusesAndArtifacts(t *testing.T) {
+	store := NewMemoryStoreWithConfig(Config{SecretKey: "agent-output-guardrail-secret"})
+	project := store.CreateProject(Project{Name: "Agent output guardrails", Status: StatusActive})
+	if _, err := store.CreateGuardrailPolicy(guardrails.Policy{
+		Name: "Block Agent output marker",
+		DetectionItems: []guardrails.DetectionItem{{
+			Name: "Blocked output", DetectorType: guardrails.DetectorPattern, Action: guardrails.ActionBlock,
+			Config: map[string]any{"keywords": []string{"blocked output marker"}},
+		}},
+		Bindings: []guardrails.Binding{{ScopeType: guardrails.ScopeAllProjects}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := &agentGatewayHandler{server: NewWithConfig(store, Config{SecretKey: "agent-output-guardrail-secret"})}
+	invocation := agentInvocation{Project: project}
+	message := func() *a2a.Message {
+		result := a2a.NewMessage(a2a.MessageRoleAgent, a2a.NewTextPart("blocked output marker"))
+		result.ID = "output-message"
+		return result
+	}
+	tests := []struct {
+		name  string
+		event a2a.Event
+	}{
+		{name: "message", event: message()},
+		{name: "task status", event: &a2a.Task{
+			ID: "task-output", ContextID: "context-output",
+			Status: a2a.TaskStatus{State: a2a.TaskStateCompleted, Message: message()},
+		}},
+		{name: "streaming status", event: &a2a.TaskStatusUpdateEvent{
+			TaskID: "task-output", ContextID: "context-output",
+			Status: a2a.TaskStatus{State: a2a.TaskStateCompleted, Message: message()},
+		}},
+		{name: "task artifact", event: &a2a.Task{
+			ID: "task-artifact", ContextID: "context-output", Status: a2a.TaskStatus{State: a2a.TaskStateCompleted},
+			Artifacts: []*a2a.Artifact{{ID: "artifact-output", Parts: a2a.ContentParts{a2a.NewTextPart("blocked output marker")}}},
+		}},
+		{name: "streaming artifact", event: &a2a.TaskArtifactUpdateEvent{
+			TaskID: "task-output", ContextID: "context-output",
+			Artifact: &a2a.Artifact{ID: "artifact-output", Parts: a2a.ContentParts{a2a.NewTextPart("blocked output marker")}},
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := handler.applyAgentOutputGuardrails(context.Background(), invocation, test.event)
+			if !errors.Is(err, errAgentOutputGuardrailBlocked) {
+				t.Fatalf("output guardrail returned %v", err)
+			}
+		})
+	}
+
+	safe := a2a.NewMessage(a2a.MessageRoleAgent, a2a.NewTextPart("safe output"))
+	safe.ID = "safe-output"
+	if err := handler.applyAgentOutputGuardrails(context.Background(), invocation, safe); err != nil {
+		t.Fatalf("safe Agent output was blocked: %v", err)
+	}
+}
+
 func TestAgentHeaderConfigurationRejectsCredentialForwarding(t *testing.T) {
 	registration := AgentRegistration{
 		Headers:               map[string]string{"authorization": "Bearer upstream"},
@@ -814,16 +990,4 @@ func doA2ARequestForEndUser(t *testing.T, handler http.Handler, path string, tok
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
-}
-
-func parseSSEDataForTest(t *testing.T, body string) []string {
-	t.Helper()
-	var result []string
-	scanner := bufio.NewScanner(strings.NewReader(body))
-	for scanner.Scan() {
-		if strings.HasPrefix(scanner.Text(), "data: ") {
-			result = append(result, strings.TrimPrefix(scanner.Text(), "data: "))
-		}
-	}
-	return result
 }
