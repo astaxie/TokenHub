@@ -104,6 +104,7 @@ func TestInterruptionErrorCodeNormalizesIdleTimeouts(t *testing.T) {
 		ErrorCode:       "provider_stream_idle_timeout",
 		Stream:          true,
 		TimeToFirstByte: time.Second,
+		StreamFailed:    true,
 	})
 	if got := testutil.ToFloat64(m.interruptions.WithLabelValues("m", "t", "p", "internal_error")); got != 1 {
 		t.Fatalf("expected one interruption labeled internal_error, got %v", got)
@@ -122,12 +123,42 @@ func TestInterruptionErrorCodeNormalizesIdleTimeouts(t *testing.T) {
 		ErrorCode:       "codex_stream_failed",
 		Stream:          true,
 		TimeToFirstByte: time.Second,
+		StreamFailed:    true,
 	})
 	if got := testutil.ToFloat64(m.interruptions.WithLabelValues("m", "t", "p", "internal_error")); got != 2 {
 		t.Fatalf("expected two interruptions labeled internal_error, got %v", got)
 	}
 	if got := testutil.ToFloat64(m.interruptions.WithLabelValues("m", "t", "p", "codex_stream_failed")); got != 0 {
 		t.Fatalf("the codex_stream_failed code must not leak through, got %v", got)
+	}
+}
+
+// The interruption series keys off the StreamFailed flag, not the projected
+// status: a committed stream keeps its 200, so a stale 5xx projection without
+// the flag, or a flag without a first byte, must not count.
+func TestMetricsStreamInterruptionRequiresFailedFlag(t *testing.T) {
+	m := NewGatewayMetrics(false)
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", ProviderID: "p", ResourceID: "r",
+		StatusCode: 502, ErrorCode: "provider_stream_error",
+		Stream: true, TimeToFirstByte: time.Second, StreamFailed: false,
+	})
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", ProviderID: "p", ResourceID: "r",
+		StatusCode: 502, ErrorCode: "provider_stream_error",
+		Stream: true, StreamFailed: true,
+	})
+	if got := testutil.ToFloat64(m.interruptions.WithLabelValues("m", "t", "p", "provider_stream_error")); got != 0 {
+		t.Fatalf("neither the status projection alone nor a flag without a first byte may count, got %v", got)
+	}
+
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", ProviderID: "p", ResourceID: "r",
+		StatusCode: 502, ErrorCode: "provider_stream_error",
+		Stream: true, TimeToFirstByte: time.Second, StreamFailed: true,
+	})
+	if got := testutil.ToFloat64(m.interruptions.WithLabelValues("m", "t", "p", "provider_stream_error")); got != 1 {
+		t.Fatalf("a first byte plus the failed flag must count exactly one interruption, got %v", got)
 	}
 }
 

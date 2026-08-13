@@ -829,6 +829,7 @@ func (s *GormStore) observeGatewayCall(call CallContext, route RouteSelection, u
 		StatusCode:   statusCode,
 		ErrorCode:    errorCode,
 		Stream:       call.Stream,
+		StreamFailed: call.StreamFailed,
 		Usage:        usage,
 		Duration:     elapsed,
 		Attempts:     gatewayAttemptSamples(call.RouteAttempts),

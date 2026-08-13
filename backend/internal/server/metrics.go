@@ -137,6 +137,12 @@ type GatewayCallSample struct {
 	// client, measured from the local admission reference. Zero means the request
 	// was not streamed or no byte was written.
 	TimeToFirstByte time.Duration
+	// StreamFailed records that a streamed request ended in failure after the
+	// response started. It carries the failure fact the committed HTTP status can
+	// no longer express: a stream keeps its 200 even when the upstream fails
+	// mid-body, so the interruption classification keys off this flag instead of
+	// the status-code projection.
+	StreamFailed bool
 }
 
 // NewGatewayMetrics builds the collectors. When projectLabel is true every metric
@@ -516,8 +522,10 @@ func (m *GatewayMetrics) ObserveGatewayCall(sample GatewayCallSample) {
 	if sample.Stream && sample.TimeToFirstByte > 0 {
 		m.timeToFirstByte.WithLabelValues(m.labels(sample.ProjectID, model, providerType)...).Observe(sample.TimeToFirstByte.Seconds())
 		// A committed stream never fails over (ProviderErrorStreamCommitted), so a
-		// stream with a first byte and a final error is an interruption.
-		if sample.StatusCode >= 400 {
+		// stream with a first byte and a final error is an interruption. The failure
+		// fact rides the StreamFailed flag: the committed status is locked at 200 and
+		// can no longer express it.
+		if sample.StreamFailed {
 			m.interruptions.WithLabelValues(m.labels(sample.ProjectID, model, providerType, providerID, metricsLabel(interruptionErrorCode(sample.ErrorCode)))...).Inc()
 		}
 	}

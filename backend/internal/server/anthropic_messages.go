@@ -904,6 +904,7 @@ func (s *Server) handleAnthropicMessagesStream(
 	}
 	routed.Call.StreamOutputCommitted = tracker.WroteData()
 	routed.Call.FirstByteAt = tracker.firstByteTime(err == nil)
+	routed.Call.StreamFailed = err != nil && tracker.Wrote()
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,

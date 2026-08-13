@@ -106,6 +106,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 		routed.Call.StreamOutputCommitted = tracker.WroteData()
 		routed.Call.FirstByteAt = tracker.firstByteTime(streamErr == nil)
+		routed.Call.StreamFailed = streamErr != nil && tracker.Wrote()
 		s.finishRoutedCall(r, GatewayCallCompletion{
 			Call:            routed.Call,
 			Route:           route,
