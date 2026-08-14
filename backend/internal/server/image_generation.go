@@ -985,7 +985,22 @@ func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 
 func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 	if model == codexImageModelName {
-		return s.codexImageRouteCandidates(), nil
+		routes, err := s.store.SelectRouteCandidates(codexImageModelName)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]RouteSelection, 0, len(routes))
+		for _, route := range routes {
+			if route.Provider.Type == ProviderOpenAICodex &&
+				route.ProviderModel == codexImageUpstreamModel &&
+				route.Resource != nil && isOpenAIAccountResource(route.Resource.ResourceType) {
+				filtered = append(filtered, route)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, ErrProviderMissing
+		}
+		return filtered, nil
 	}
 	routes, err := s.store.SelectRouteCandidates(openAIImageModelName)
 	if err != nil {

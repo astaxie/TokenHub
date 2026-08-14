@@ -232,7 +232,7 @@ Image jobs have a five-minute default execution timeout controlled by `TOKENHUB_
 
 TokenHub records image-generation capability from real account results. Accounts confirmed as supported are preferred, accounts returning `403` are temporarily skipped, and accounts that have not been checked remain eligible for first-use detection. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), an unsupported account becomes discoverable and routable again so the next real request can retry it. TokenHub does not generate a background image merely to probe recovery.
 
-`codex-gpt-image-2` appears in `GET /v1/models` when a healthy connected Codex account is confirmed as supported or has reached its low-frequency retry window. It is a subscription-backed virtual model and does not require a conventional Provider model route. Except for the Codex-client compatibility mapping above, the separate `gpt-image-2` catalog model uses an OpenAI API provider and does not consume Codex subscription quota.
+Configure an active route from `codex-gpt-image-2` to an OpenAI Codex Provider with upstream model `gpt-image-2`. The route uses the same priority, weight, project scope, resource, and resource-group controls as other models. `codex-gpt-image-2` appears in `GET /v1/models` only when that route exists and a matching healthy Codex account is confirmed as supported or has reached its low-frequency retry window. Except for the Codex-client compatibility mapping above, the separate `gpt-image-2` catalog model uses an OpenAI API provider and does not consume Codex subscription quota.
 
 ## SDK Setup
 

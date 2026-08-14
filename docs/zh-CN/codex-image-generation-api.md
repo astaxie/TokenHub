@@ -4,7 +4,7 @@
 
 本文说明如何通过 TokenHub 的 OpenAI 兼容 Image API 调用 `codex-gpt-image-2` 和 `gpt-image-2`。
 
-`codex-gpt-image-2` 是 TokenHub 对外暴露的 Codex 订阅虚拟模型。它不会请求普通 OpenAI API Provider，而是由服务器选择已确认支持生图的 Codex 订阅账号，直接调用 Codex 订阅 Images 接口。服务器不需要安装或启动 Codex CLI。
+`codex-gpt-image-2` 是 TokenHub 对外暴露的 Codex 订阅虚拟模型。需要在路由策略中把它映射到 OpenAI Codex Provider，并将上游模型设为 `gpt-image-2`；服务器随后从该路由覆盖的账号资源中选择已确认支持生图的 Codex 订阅账号，直接调用 Codex 订阅 Images 接口。服务器不需要安装或启动 Codex CLI。
 
 `gpt-image-2` 通常是独立的 OpenAI API 模型，必须配置 `openai` 类型 Provider、API Key 和模型路由。它调用 Provider 的标准 `/v1/images/generations` 与 `/v1/images/edits`，不会选择 Codex 订阅账号或消耗 Codex 额度。唯一例外是带 Codex `originator` 或 `x-codex-image-turn-id` 请求头的 `/v1/images/generations` 请求：TokenHub 会将其映射为 `codex-gpt-image-2` 并返回 `b64_json`，API Key 必须允许 `codex-gpt-image-2`。
 
@@ -92,8 +92,9 @@ curl -sS \
 
 1. 后端是否已经重启并加载最新模型目录。
 2. API Key 的模型白名单是否包含 `codex-gpt-image-2`。
-3. 是否至少有一个健康启用的 Codex 账号标记为“支持生图”。
-4. 是否存在健康、已授权的 Codex 订阅账号。
+3. 是否存在从 `codex-gpt-image-2` 到 OpenAI Codex Provider、上游模型为 `gpt-image-2` 的启用路由。
+4. 该路由覆盖的账号中，是否至少有一个健康启用的 Codex 账号标记为“支持生图”。
+5. 是否存在健康、已授权的 Codex 订阅账号。
 
 ### 3.3 使用 OpenAI API 额度
 

@@ -300,7 +300,7 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 	publishedModelNames := make([]string, 0, len(routes)+1)
 	seenModelNames := map[string]bool{}
 	for _, route := range routes {
-		if seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) {
+		if route.ModelName == codexImageModelName || seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) {
 			continue
 		}
 		selections := []RouteSelection{{Provider: Provider{ID: route.ProviderID}, ProviderModel: route.ProviderModel, Route: route}}
@@ -341,23 +341,35 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 }
 
 func (s *GormStore) codexImageAllowedByPolicyLocked(project Project, key APIKey, policy *ScopedRoutingPolicy) bool {
-	var providers []Provider
-	if err := s.db.Where("type = ? AND status = ? AND healthy = ?", ProviderOpenAICodex, StatusActive, true).Find(&providers).Error; err != nil {
+	var routes []ModelRoute
+	if err := s.db.Where("model_name = ? AND provider_model = ? AND status = ?", codexImageModelName, codexImageUpstreamModel, StatusActive).Find(&routes).Error; err != nil {
 		return false
 	}
-	for _, provider := range providers {
+	for _, configuredRoute := range routes {
+		var provider Provider
+		if err := s.db.Where("id = ? AND type = ? AND status = ? AND healthy = ?", configuredRoute.ProviderID, ProviderOpenAICodex, StatusActive, true).First(&provider).Error; err != nil {
+			continue
+		}
 		var resources []ProviderResource
-		if err := s.db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true).Find(&resources).Error; err != nil {
+		query := s.db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true)
+		if configuredRoute.ProviderResourceID != "" {
+			query = query.Where("id = ?", configuredRoute.ProviderResourceID)
+		} else if strings.TrimSpace(configuredRoute.ResourceGroup) != "" {
+			query = query.Where("\"group\" = ?", strings.TrimSpace(configuredRoute.ResourceGroup))
+		}
+		if err := query.Find(&resources).Error; err != nil {
 			continue
 		}
 		for index := range resources {
 			resource := &resources[index]
-			if !s.codexImageResourceAvailable(*resource) {
+			if !isOpenAIAccountResource(resource.ResourceType) || !s.codexImageResourceAvailable(*resource) {
 				continue
 			}
+			resourceRoute := configuredRoute
+			resourceRoute.ProviderResourceID = resource.ID
 			route := RouteSelection{
 				Provider: provider, Resource: resource, ProviderModel: codexImageUpstreamModel,
-				Route: ModelRoute{ProviderID: provider.ID, ProviderResourceID: resource.ID, ModelName: codexImageModelName},
+				Route: resourceRoute,
 			}
 			call := CallContext{Project: project, Key: key, Model: Model{Name: codexImageModelName}}
 			if len(routingPolicyCandidateReasons(call, route, policy)) == 0 {

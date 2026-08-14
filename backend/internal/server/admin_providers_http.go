@@ -1327,6 +1327,16 @@ func (s *Server) validateRoutePolicy(route ModelRoute) error {
 func (s *Server) validateImportedProviderModel(route ModelRoute) error {
 	providerID := strings.TrimSpace(route.ProviderID)
 	upstreamModel := strings.TrimSpace(route.ProviderModel)
+	if strings.TrimSpace(route.ModelName) == codexImageModelName {
+		provider, ok := s.providerByID(providerID)
+		if !ok || provider.Type != ProviderOpenAICodex {
+			return NewHTTPError(http.StatusBadRequest, "codex_image_provider_required", "The Codex subscription image model must use an OpenAI Codex Provider")
+		}
+		if upstreamModel != codexImageUpstreamModel {
+			return NewHTTPError(http.StatusBadRequest, "codex_image_upstream_model_invalid", "The Codex subscription image route must use gpt-image-2 as its upstream model")
+		}
+		return nil
+	}
 	for _, model := range s.store.ListProviderModels() {
 		if model.ProviderID == providerID && model.UpstreamModel == upstreamModel {
 			return nil

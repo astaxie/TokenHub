@@ -1106,6 +1106,42 @@ func TestAdminRejectsUnimportedAndDuplicateProviderModelRoutes(t *testing.T) {
 	}
 }
 
+func TestAdminAllowsCodexImageVirtualModelRouteWithoutProviderInventory(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
+	codexProvider := store.AddProvider(Provider{
+		ID: "prv_codex_image_route", Name: "Codex Image Route", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+	})
+	otherProvider := store.AddProvider(Provider{
+		ID: "prv_openai_image_route", Name: "OpenAI Image Route", Type: ProviderOpenAI, Status: StatusActive, Healthy: true,
+	})
+	app := New(store).Handler()
+
+	wrongProvider := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": otherProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusActive,
+	}, "")
+	if wrongProvider.Code != http.StatusBadRequest || !strings.Contains(wrongProvider.Body, "codex_image_provider_required") {
+		t.Fatalf("expected Codex Provider validation, got %d: %s", wrongProvider.Code, wrongProvider.Body)
+	}
+
+	wrongModel := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": "gpt-5.6-luna", "status": StatusActive,
+	}, "")
+	if wrongModel.Code != http.StatusBadRequest || !strings.Contains(wrongModel.Body, "codex_image_upstream_model_invalid") {
+		t.Fatalf("expected Codex image upstream validation, got %d: %s", wrongModel.Code, wrongModel.Body)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusActive,
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected virtual model route created without Provider inventory, got %d: %s", created.Code, created.Body)
+	}
+}
+
 func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
 	store := NewMemoryStore()
 	external := store.AddModel(Model{

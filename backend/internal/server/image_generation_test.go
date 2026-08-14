@@ -209,6 +209,10 @@ func TestImageModelsUseSeparateProviderTypes(t *testing.T) {
 		ModelName: openAIImageModelName, ProviderID: codexProvider.ID, ProviderModel: openAIImageModelName,
 		Priority: 1, Weight: 100, Status: StatusActive,
 	})
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: codexProvider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "separate-image-routes-secret"})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 
@@ -578,6 +582,23 @@ func TestCodexImageVirtualModelRequiresSupportedSubscriptionAccount(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.UpdateProviderResourceOptions(resource.ID, map[string]string{
+		codexImageCapabilityOption: codexImageCapabilitySupported,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if models := store.AccessibleModels(key); len(models) != 0 {
+		t.Fatalf("capable account must not expose virtual image model without a route: %+v", models)
+	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
+	if _, err := store.UpdateProviderResourceOptions(resource.ID, map[string]string{
+		codexImageCapabilityOption: codexImageCapabilityUnsupported,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if models := store.AccessibleModels(key); len(models) != 0 {
 		t.Fatalf("unsupported account must not expose virtual image model: %+v", models)
 	}
@@ -722,6 +743,10 @@ func TestImageGenerationTimesOutAfterConfiguredLimit(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
 	server := NewWithConfig(store, Config{
 		AdminToken: "test-admin-token", SecretKey: "timed-image-secret",
@@ -916,6 +941,10 @@ func TestCodexImageRequestUsesSubscriptionCompatibleResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
 
 	server := NewWithConfig(store, Config{
@@ -1036,6 +1065,10 @@ func TestImageGenerationAsyncUsesCodexSubscriptionAndPersistsImage(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	store.AddModel(Model{Name: codexImageModelName, Category: "codex", Family: "gpt-image", Modality: "image", Status: StatusActive})
 
 	server := NewWithConfig(store, Config{
