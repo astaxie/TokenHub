@@ -1139,7 +1139,7 @@ export const enTranslations: Record<string, string> = {
     "API Key 前缀": "API Key Prefix",
     "API Key 随机长度": "API Key Random Length",
     "新建和轮换 Key 时使用；建议以 _ 结尾，例如 sk_。": "Used when creating and rotating Keys; ending with _ is recommended, for example sk_.",
-    "前缀后面的随机字符数，系统会限制在 24-128 之间。": "Number of random characters after the prefix. The system limits it to 24-128.",
+    "前缀后面的随机字符数，系统会限制在 24-128 之间。": "Number of random characters after the prefix. The system limits it to 24-128.", "JSON 请求体上限": "JSON Request Body Limit", "多模态请求体上限": "Multimodal Request Body Limit", "常规 JSON 请求体最大字节数；留空用默认 8 MiB，上限 512 MiB。": "Maximum bytes for a regular JSON request body. Leave empty for the 8 MiB default; ceiling 512 MiB.", "含图像等多模态内容的请求体最大字节数；留空用默认 32 MiB，上限 512 MiB。": "Maximum bytes for a request body carrying images or multimodal content. Leave empty for the 32 MiB default; ceiling 512 MiB.",
     "用户名字段": "Username Claim",
     "邮箱字段": "Email Claim",
     "团队字段": "Team Claim",

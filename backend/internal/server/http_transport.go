@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 func (s *Server) recordAdminAudit(r *http.Request, user AdminUser, action string, resourceType string, resourceID string, before any, after any) {
@@ -75,16 +77,19 @@ func bearerToken(r *http.Request) string {
 // treats an absent body as acceptable.
 var errEmptyRequestBody = NewHTTPError(http.StatusBadRequest, "invalid_request", "request body is required")
 
-// decodeJSON decodes the request body into target using the global JSON body limit.
+// decodeJSON decodes the request body into target using the effective JSON body
+// limit. The limit is the env-configured default unless an admin raises it from
+// the System Settings page (cfg_gateway.max_json_request_bytes); see
+// effectiveJSONRequestLimit.
 func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
-	return s.decodeJSONLimit(w, r, target, s.config.MaxJSONRequestBytes)
+	return s.decodeJSONLimit(w, r, target, s.effectiveJSONRequestLimit())
 }
 
 // decodeJSONOptional behaves like decodeJSON but treats a completely empty body as
 // success, leaving target at its zero value. Used by endpoints whose JSON body is
 // optional.
 func (s *Server) decodeJSONOptional(w http.ResponseWriter, r *http.Request, target any) error {
-	if err := s.decodeJSONLimit(w, r, target, s.config.MaxJSONRequestBytes); err != nil && !errors.Is(err, errEmptyRequestBody) {
+	if err := s.decodeJSONLimit(w, r, target, s.effectiveJSONRequestLimit()); err != nil && !errors.Is(err, errEmptyRequestBody) {
 		return err
 	}
 	return nil
@@ -140,6 +145,87 @@ func isPayloadTooLarge(err error) bool {
 		return false
 	}
 	return AsHTTPError(err).Status == http.StatusRequestEntityTooLarge
+}
+
+// bodyLimitTTL bounds how long the cached effective body limits stay fresh. Admin
+// edits to cfg_gateway take effect for new requests within this window; it trades
+// up-to-TTL staleness for not querying the store on every request.
+const bodyLimitTTL = 10 * time.Second
+
+type bodyLimitSnapshot struct {
+	jsonLimit       int64
+	multimodalLimit int64
+	refreshedAt     time.Time
+}
+
+// bodyLimitCache holds the effective JSON/multimodal request body limits with an
+// atomic snapshot so the hot path reads without a lock; refreshes are occasional
+// idempotent stores.
+type bodyLimitCache struct {
+	snapshot atomic.Pointer[bodyLimitSnapshot]
+}
+
+// effectiveJSONRequestLimit returns the byte cap enforced on regular JSON request
+// bodies. It prefers a cfg_gateway.max_json_request_bytes override (clamped to the
+// ceiling) so an admin can raise the limit from the console without a restart;
+// otherwise it falls back to the env-configured default.
+func (s *Server) effectiveJSONRequestLimit() int64 {
+	return s.currentBodyLimits().jsonLimit
+}
+
+// effectiveMultimodalRequestLimit is the higher cap for bodies that carry images or
+// other multimodal content (vision, Codex computer-use). It prefers
+// cfg_gateway.max_multimodal_request_bytes and otherwise falls back to the env
+// default.
+func (s *Server) effectiveMultimodalRequestLimit() int64 {
+	return s.currentBodyLimits().multimodalLimit
+}
+
+func (s *Server) currentBodyLimits() bodyLimitSnapshot {
+	if snap := s.bodyLimits.snapshot.Load(); snap != nil && time.Since(snap.refreshedAt) < bodyLimitTTL {
+		return *snap
+	}
+	snap := s.readEffectiveBodyLimits()
+	s.bodyLimits.snapshot.Store(&snap)
+	return snap
+}
+
+// readEffectiveBodyLimits reads the cfg_gateway overrides and clamps them to the
+// ceiling (maxConfigurableRequestBytes). A missing, malformed, or non-positive
+// value falls back to the env-configured default rather than rejecting every
+// request. It mirrors apiKeyGenerationConfig: cfg_gateway is preferred, the first
+// active settings record is a fallback.
+func (s *Server) readEffectiveBodyLimits() bodyLimitSnapshot {
+	snap := bodyLimitSnapshot{
+		jsonLimit:       s.config.MaxJSONRequestBytes,
+		multimodalLimit: s.config.MaxMultimodalRequestBytes,
+	}
+	var fields map[string]any
+	for _, item := range s.store.ListResources("settings") {
+		if item.Status != StatusActive {
+			continue
+		}
+		if item.ID == "cfg_gateway" {
+			fields = item.Fields
+			break
+		}
+		if fields == nil {
+			fields = item.Fields
+		}
+	}
+	if v := int64Field(fields, "max_json_request_bytes"); v > 0 {
+		if v > maxConfigurableRequestBytes {
+			v = maxConfigurableRequestBytes
+		}
+		snap.jsonLimit = v
+	}
+	if v := int64Field(fields, "max_multimodal_request_bytes"); v > 0 {
+		if v > maxConfigurableRequestBytes {
+			v = maxConfigurableRequestBytes
+		}
+		snap.multimodalLimit = v
+	}
+	return snap
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

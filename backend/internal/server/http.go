@@ -45,6 +45,7 @@ type Server struct {
 	responseInstanceID  string
 	versions            *versionService
 	guardrailEngine     *guardrails.Engine
+	bodyLimits          bodyLimitCache
 }
 
 func New(store Store) *Server {
