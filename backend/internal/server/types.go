@@ -1061,7 +1061,7 @@ func (r ResponsesRequest) MarshalJSON() ([]byte, error) {
 	setRawJSONField(raw, "model", r.Model, r.Model != "")
 	setRawJSONField(raw, "input", r.Input, r.Input != nil)
 	setRawJSONField(raw, "stream", r.Stream, true)
-	setRawJSONField(raw, "background", r.Background, true)
+	setRawJSONField(raw, "background", r.Background, r.Background)
 	setRawJSONField(raw, "max_output_tokens", r.MaxTokens, r.MaxTokens != 0)
 	setRawJSONField(raw, "temperature", r.Temperature, r.Temperature != nil)
 	setRawJSONField(raw, "instructions", r.Instructions, r.Instructions != "")
