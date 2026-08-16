@@ -257,8 +257,8 @@ func checkProviderUpstreamLiteralDial(ip net.IP, allowedPrivate []*net.IPNet) er
 //  2. Redirect following: http clients follow 3xx by default, so a public URL
 //     that returns a redirect to a private target would bypass validation.
 //
-// Trade-off: when the caller passes nil or http.DefaultClient (the production
-// call sites) we build a dedicated Transport whose DialContext resolves the
+// When the caller passes nil or http.DefaultClient, we build a dedicated
+// Transport whose DialContext resolves the
 // hostname, drops any private or link-local candidates, and refuses to connect
 // when none are allowed; otherwise it dials one of the validated addresses
 // directly, so the checked IP is the one actually connected to. When the
@@ -294,6 +294,10 @@ type upstreamLookupFunc func(ctx context.Context, host string) ([]net.IPAddr, er
 // upstreamDialFunc dials an address, matching net.Dialer.DialContext.
 type upstreamDialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
+type providerSyntheticDNSResolver interface {
+	allowsResolvedIPContext(context.Context, net.IP) bool
+}
+
 // dialGuardedUpstream dials addr while enforcing the SSRF classification:
 // loopback identifiers pass only after explicit operator opt-in, literal IPs
 // are checked directly, and hostnames resolve to validated dial candidates,
@@ -308,7 +312,7 @@ type upstreamDialFunc func(ctx context.Context, network, addr string) (net.Conn,
 // a slow lookup followed by a silently black-holing first address must not
 // starve the healthy candidates behind it (the Happy Eyeballs fallback the
 // default transport would have provided).
-func dialGuardedUpstream(ctx context.Context, network string, addr string, allowedPrivate []*net.IPNet, budget time.Duration, lookup upstreamLookupFunc, dial upstreamDialFunc) (net.Conn, error) {
+func dialGuardedUpstream(ctx context.Context, network string, addr string, allowedPrivate []*net.IPNet, syntheticDNS providerSyntheticDNSResolver, budget time.Duration, lookup upstreamLookupFunc, dial upstreamDialFunc) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -334,7 +338,7 @@ func dialGuardedUpstream(ctx context.Context, network string, addr string, allow
 	}
 	var allowed []net.IPAddr
 	for _, ip := range ips {
-		if !isDisallowedProviderUpstreamIP(ip.IP) {
+		if !isDisallowedProviderUpstreamIP(ip.IP) || syntheticDNS != nil && syntheticDNS.allowsResolvedIPContext(dialCtx, ip.IP) {
 			allowed = append(allowed, ip)
 		}
 	}
@@ -467,16 +471,16 @@ func raceValidatedUpstreamCandidates(ctx context.Context, network, port string, 
 // validated candidate is dialed in turn, so the checked IP is the one actually
 // connected to and a single unreachable address does not fail the request.
 //
-// The private-range allowlist only applies to literal IPs (allowedPrivate): a
-// hostname that resolves to private addresses is still refused, even when the
-// resolved range is allowlisted, because resolution results cannot be trusted
-// the way an administrator-typed literal can (DNS rebinding).
+// The private-range allowlist only applies to literal IPs (allowedPrivate).
+// Hostname results remain denied by default and may pass only through the
+// separately configured synthetic-DNS policy, which is intended for Fake-IP
+// pools intercepted by a transparent proxy.
 //
 // Proxying is disabled on purpose: with an HTTP(S)_PROXY configured, DialContext
 // would receive the proxy address and the guard would validate the proxy rather
 // than the request target, letting the proxy's own DNS resolution bypass the
 // check. Provider catalog fetches therefore always connect directly.
-func ssrfGuardedProviderTransport(allowedPrivate []*net.IPNet) *http.Transport {
+func ssrfGuardedProviderTransport(allowedPrivate []*net.IPNet, syntheticDNS ...providerSyntheticDNSResolver) *http.Transport {
 	base, ok := http.DefaultTransport.(*http.Transport)
 	var transport *http.Transport
 	if ok {
@@ -490,8 +494,12 @@ func ssrfGuardedProviderTransport(allowedPrivate []*net.IPNet) *http.Transport {
 		KeepAlive: 30 * time.Second,
 	}
 	resolver := net.DefaultResolver
+	var syntheticDNSPolicy providerSyntheticDNSResolver
+	if len(syntheticDNS) > 0 {
+		syntheticDNSPolicy = syntheticDNS[0]
+	}
 	transport.DialContext = func(ctx context.Context, network string, addr string) (net.Conn, error) {
-		return dialGuardedUpstream(ctx, network, addr, allowedPrivate, dialer.Timeout, resolver.LookupIPAddr, dialer.DialContext)
+		return dialGuardedUpstream(ctx, network, addr, allowedPrivate, syntheticDNSPolicy, dialer.Timeout, resolver.LookupIPAddr, dialer.DialContext)
 	}
 	return transport
 }

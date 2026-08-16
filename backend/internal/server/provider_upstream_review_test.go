@@ -149,7 +149,7 @@ func TestProviderUpstreamLoopbackRequiresExplicitOptIn(t *testing.T) {
 
 	dialed := false
 	_, err := dialGuardedUpstream(
-		context.Background(), "tcp", "127.0.0.1:11434", nil, time.Second,
+		context.Background(), "tcp", "127.0.0.1:11434", nil, nil, time.Second,
 		nil,
 		func(context.Context, string, string) (net.Conn, error) {
 			dialed = true
@@ -169,7 +169,7 @@ func TestProviderUpstreamLoopbackExplicitOptIn(t *testing.T) {
 
 	dialed := false
 	_, err := dialGuardedUpstream(
-		context.Background(), "tcp", "127.0.0.1:11434", nil, time.Second,
+		context.Background(), "tcp", "127.0.0.1:11434", nil, nil, time.Second,
 		nil,
 		func(context.Context, string, string) (net.Conn, error) {
 			dialed = true

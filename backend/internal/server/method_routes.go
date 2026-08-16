@@ -1,6 +1,16 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
+
+type methodRoute struct {
+	Method  string
+	Handler http.HandlerFunc
+}
+
+type methodNotAllowedFactory func(allowedMethods string) http.HandlerFunc
 
 // registerSingleMethodRoute must only be called once for a path. Multi-method
 // resources need one shared fallback with the complete Allow value.
@@ -10,6 +20,30 @@ func (s *Server) registerSingleMethodRoute(method string, pattern string, handle
 		s.mux.HandleFunc(http.MethodHead+" "+pattern, methodNotAllowed)
 	}
 	s.mux.HandleFunc(pattern, methodNotAllowed)
+}
+
+// registerMethodRoutes registers every allowed method for one path and one
+// shared fallback. The Allow value comes from the same route list so the two
+// cannot drift apart.
+func (s *Server) registerMethodRoutes(pattern string, methodNotAllowed methodNotAllowedFactory, routes ...methodRoute) {
+	hasGET := false
+	for _, route := range routes {
+		hasGET = hasGET || route.Method == http.MethodGet
+		s.mux.HandleFunc(route.Method+" "+pattern, route.Handler)
+	}
+	fallback := methodNotAllowed(methodRoutesAllow(routes))
+	if hasGET {
+		s.mux.HandleFunc(http.MethodHead+" "+pattern, fallback)
+	}
+	s.mux.HandleFunc(pattern, fallback)
+}
+
+func methodRoutesAllow(routes []methodRoute) string {
+	allowedMethods := make([]string, 0, len(routes))
+	for _, route := range routes {
+		allowedMethods = append(allowedMethods, route.Method)
+	}
+	return strings.Join(allowedMethods, ", ")
 }
 
 // registerDynamicGETRoute rejects the HEAD requests that a GET pattern matches

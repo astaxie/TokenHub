@@ -79,9 +79,22 @@ Use a workflow only when the user explicitly names it; otherwise follow the norm
 - Next.js may rewrite `frontend/next-env.d.ts` during development or production builds. Do not commit incidental mode-dependent changes to that generated file.
 - Keep `data/model-catalog.yaml` and `data/agent-catalog.yaml` tracked; other files under runtime data directories are intentionally ignored.
 
+## GitHub contribution language
+
+- Agents must write every GitHub issue and pull request title and body in English, regardless of whether they use the GitHub website, an API, a connector, or `gh`.
+- Keep unavoidable machine-generated output, logs, identifiers, and code in their original form, but explain them in English.
+
+## GitHub issue guidelines
+
+- Search open and closed issues before creating a new issue.
+- Read and follow the closest matching form under `.github/ISSUE_TEMPLATE/`, including every required field. Do not create a blank issue when an existing form applies.
+- When a CLI or API cannot submit an Issue Form directly, preserve the form's headings and required information in the issue body.
+- Never include API keys, provider credentials, tokens, cookies, unredacted environment files, or other secrets in an issue.
+
 ## Pull request guidelines
 
 - Use an English Conventional Commits-style PR title in the format `<type>[optional scope][!]: <short summary>`, limited to 72 characters. Common types include `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, and `revert`. Use a lowercase imperative summary without a trailing period.
+- Write every pull request body section in English.
 - Before creating a pull request, read and complete `.github/pull_request_template.md`.
 - Preserve every template section, replace all placeholders, and explain any skipped or non-applicable checks.
 - Do not use `gh pr create --fill` or an ad hoc body that bypasses the template; use the completed template as the final pull request body.

@@ -23,8 +23,10 @@ const (
 )
 
 type providerCatalogService struct {
-	store       Store
-	catalogFile string
+	store          Store
+	catalogFile    string
+	upstreamURL    string
+	upstreamClient providerCatalogHTTPClient
 }
 
 func newProviderCatalogService(store Store, catalogFile string) *providerCatalogService {
@@ -32,7 +34,12 @@ func newProviderCatalogService(store Store, catalogFile string) *providerCatalog
 	if catalogFile == "" {
 		catalogFile = defaultProviderCatalogFile()
 	}
-	return &providerCatalogService{store: store, catalogFile: catalogFile}
+	return &providerCatalogService{
+		store:          store,
+		catalogFile:    catalogFile,
+		upstreamURL:    providerCatalogUpstreamURL,
+		upstreamClient: &http.Client{Timeout: providerCatalogUpstreamTimeout},
+	}
 }
 
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
@@ -141,19 +148,22 @@ func seedBuiltinProviderCatalog(store Store) error {
 }
 
 func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogEntry, string, error) {
-	var refreshed []ProviderCatalogEntry
-	err := s.store.RunClusterOperation(ctx, "provider-catalog-reload", func(context.Context) error {
+	var (
+		refreshed []ProviderCatalogEntry
+		source    = providerCatalogLocalSource
+	)
+	err := s.store.RunClusterOperation(ctx, "provider-catalog-reload", func(operationCtx context.Context) error {
 		previous, _, _, err := s.loadStored(false)
 		if err != nil {
 			return err
 		}
-		refreshed, err = s.reloadLocked(previous)
+		refreshed, source, err = s.refreshLocked(operationCtx, previous)
 		return err
 	})
 	if err != nil {
-		return nil, "local-provider-catalog", err
+		return nil, source, err
 	}
-	return refreshed, "local-provider-catalog", nil
+	return refreshed, source, nil
 }
 
 // reloadLocked refreshes the snapshot while provider-catalog-reload is held.
@@ -162,6 +172,17 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 	if err != nil {
 		return nil, err
 	}
+	entries, err = prepareProviderCatalogRefresh(entries, previous)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogLocalSource, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	return cloneCatalogEntries(entries, false), nil
+}
+
+func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
 	if err := validateProviderCatalogRefresh(entries, previous); err != nil {
 		return nil, err
 	}
@@ -173,10 +194,7 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 	}
 	entries = append(filtered, customProviderCatalogEntry())
 	sortCatalogEntries(entries)
-	if err := s.store.SaveProviderCatalogSnapshot(entries, "local-provider-catalog", time.Now().UTC()); err != nil {
-		return nil, err
-	}
-	return cloneCatalogEntries(entries, false), nil
+	return entries, nil
 }
 
 func validateProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) error {
@@ -219,20 +237,35 @@ func loadLocalProviderCatalog(catalogFile string) ([]ProviderCatalogEntry, error
 	if err != nil {
 		return nil, fmt.Errorf("read provider catalog %s: %w", catalogFile, err)
 	}
+	entries, err := parseProviderCatalog(content, providerCatalogLocalSource)
+	if err != nil {
+		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
+	}
+	return entries, nil
+}
+
+func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry, error) {
 	var payload struct {
 		Providers map[string]map[string]any `json:"providers"`
 	}
 	if err := json.Unmarshal(content, &payload); err != nil {
-		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
+		return nil, err
 	}
 	if len(payload.Providers) == 0 {
-		return nil, fmt.Errorf("provider catalog %s has no providers", catalogFile)
+		return nil, fmt.Errorf("provider catalog has no providers")
 	}
 	entries := make([]ProviderCatalogEntry, 0, len(payload.Providers))
 	for id, raw := range payload.Providers {
 		entry := normalizeProviderCatalogEntry(id, raw)
 		if entry.ID == "" || entry.Name == "" {
 			continue
+		}
+		entry.Source = source
+		for index := range entry.Models {
+			if entry.Models[index].Metadata == nil {
+				entry.Models[index].Metadata = map[string]string{}
+			}
+			entry.Models[index].Metadata["source"] = source
 		}
 		entries = append(entries, entry)
 	}
@@ -288,6 +321,18 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	for _, key := range []string{"knowledge", "release_date", "last_updated"} {
 		if value := catalogStringField(raw, key); value != "" {
 			metadata[key] = value
+		}
+	}
+	if rawOptions, ok := raw["reasoning_options"].([]any); ok {
+		for _, rawOption := range rawOptions {
+			option, ok := rawOption.(map[string]any)
+			if !ok || !strings.EqualFold(catalogStringField(option, "type"), "effort") {
+				continue
+			}
+			if values := catalogOrderedStringSliceField(option, "values"); len(values) > 0 {
+				metadata["reasoning_effort_options"] = strings.Join(values, ",")
+			}
+			break
 		}
 	}
 	model := ProviderCatalogModel{
@@ -1052,6 +1097,37 @@ func catalogStringSliceField(raw map[string]any, key string) []string {
 	default:
 		return nil
 	}
+}
+
+func catalogOrderedStringSliceField(raw map[string]any, key string) []string {
+	if raw == nil {
+		return nil
+	}
+	var values []string
+	switch typed := raw[key].(type) {
+	case []string:
+		values = typed
+	case []any:
+		values = make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				values = append(values, text)
+			}
+		}
+	case string:
+		values = []string{typed}
+	}
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" || seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+		result = append(result, normalized)
+	}
+	return result
 }
 
 func catalogUniqueStrings(values []string) []string {

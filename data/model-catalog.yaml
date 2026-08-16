@@ -77,6 +77,33 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
+  - name: "glm-5.3"
+    title: "GLM-5.3"
+    description: "GLM-5.3 is Zhipu AI's flagship model for long-horizon coding, agents, and complex project delivery. It supports a 1M-token context window, always-on reasoning with low, high, and max effort levels, tool calling, and structured outputs."
+    category: "glm"
+    family: "glm"
+    modality: "chat"
+    context_window: 1000000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "zhipuai-coding-plan"
+      provider_model_id: "glm-5.3"
+      provider_model_name: "GLM-5.3"
+      endpoints: "chat/completions"
+      features: "function-calling,structured-outputs,reasoning"
+      max_output_tokens: "131072"
+      billing_mode: "subscription"
+      release_date: "2026-08-14"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_mode: "always_on"
+      reasoning_effort_options: "low,high,max"
   - name: "zai-org/glm-5.2"
     title: "GLM 5.2"
     description: "GLM-5.2 is Z.AI's latest flagship model, meticulously engineered for long-horizon autonomous tasks. Capable of working continuously on a single assignment for up to 8 hours, it autonomously manages the entire workflow—from initial planning and execution to iterative optimization and the delivery of production-grade results. With coding and agentic capabilities that rival leading proprietary frontier models, it excels particularly in sustained execution, complex engineering optimization, and real-world development scenarios. Its context window has been expanded from 200K to 1M tokens, making it an ideal foundational model for powering advanced autonomous agents and long-horizon coding assistants."

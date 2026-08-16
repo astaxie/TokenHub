@@ -16,12 +16,13 @@ import { ReviewItem } from "../shared/modals";
 import { providerTypeOptions } from "../shared/ui";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
+import { ProviderCodexImageCapability } from "./provider-codex-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
 type OpenAIAccountQuota = {
   account_id?: string;
@@ -61,13 +62,11 @@ type CodexSubscriptionTestResult = {
   };
 };
 type ProviderEditTab = "connect" | "models" | "advanced";
-
 type ProviderAccountConfirmation = {
   action: "enable" | "disable" | "delete";
   resource: ProviderResource;
 };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
-
 const codexProviderCatalogSummary: ProviderCatalogEntry = {
   id: "openai-codex",
   name: "OpenAI Codex",
@@ -79,7 +78,6 @@ const codexProviderCatalogSummary: ProviderCatalogEntry = {
   models_count: 0,
   source: "openai-codex-live",
 };
-
 const accountProviderCatalogOptions = [codexProviderCatalogSummary];
 const fallbackCodexReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
 
@@ -530,8 +528,8 @@ export function ProviderUpsertModal({
       .slice(0, 80);
   }, [models, modelQuery]);
   const importedModels = useMemo(
-    () => provider ? providerModels.filter((model) => model.provider_id === provider.id) : [],
-    [provider, providerModels],
+    () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!editingCodexSubscription || model.upstream_model !== "gpt-image-2")) : [],
+    [editingCodexSubscription, provider, providerModels],
   );
   const importedModelIDs = useMemo(() => new Set(importedModels.map((model) => model.upstream_model)), [importedModels]);
   const selectedModelIDs = Object.entries(selectedModels)
@@ -1570,6 +1568,7 @@ export function ProviderUpsertModal({
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
+                            <ProviderAccountTokenRenewal api={api} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} />
                             {resource.status === "active" ? (
                               <button
                                 className="secondary-button provider-account-disable-button"
@@ -1780,6 +1779,7 @@ export function ProviderUpsertModal({
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
             {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
+            {mode === "edit" && editingCodexSubscription && provider ? <div className="provider-model-list provider-codex-image-list"><ProviderCodexImageCapability api={api} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
             {mode === "edit" && editingCodexSubscription && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">
                 {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}

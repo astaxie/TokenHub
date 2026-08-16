@@ -102,6 +102,7 @@ Agent 固有のリポジトリ指示については、[AGENTS.md](AGENTS.md#opti
 
 ## Pull Request
 
+- タイトルと本文のすべてのセクションを英語で記述します。
 - 英語の Conventional Commits 形式のタイトル `<type>[optional scope][!]: <short summary>` を使用します。
 - タイトルは 72 文字以内とし、要約は小文字の命令形で記述し、末尾にピリオドを付けません。
 - [Pull Request テンプレート](.github/pull_request_template.md)のすべてのセクションを記入し、スキップしたチェックや該当しないチェックについて説明します。

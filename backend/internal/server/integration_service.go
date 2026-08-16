@@ -10,6 +10,7 @@ import (
 type IntegrationService struct {
 	store    Store
 	registry *AdapterRegistry
+	client   *http.Client
 }
 
 type ProviderProbeBatchResult struct {
@@ -21,8 +22,12 @@ type ProviderProbeBatchResult struct {
 	Errors     []string              `json:"errors,omitempty"`
 }
 
-func NewIntegrationService(store Store, registry *AdapterRegistry) *IntegrationService {
-	return &IntegrationService{store: store, registry: registry}
+func NewIntegrationService(store Store, registry *AdapterRegistry, clients ...*http.Client) *IntegrationService {
+	client := http.DefaultClient
+	if len(clients) > 0 && clients[0] != nil {
+		client = clients[0]
+	}
+	return &IntegrationService{store: store, registry: registry, client: client}
 }
 
 func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceID string, request *ProviderProbeRequest) (any, error) {
@@ -60,7 +65,7 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 		effective := effectiveProviderResourceConfig(provider, &resource)
 		if len(effective.Headers) > 0 {
 			startedAt := time.Now()
-			_, probeErr := CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, ProviderCreateRequest{
+			_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
 				Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
 				Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
 			})
@@ -132,7 +137,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			if firstResourceErr != nil {
 				return nil, firstResourceErr
 			}
-			_, probeErr := CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, ProviderCreateRequest{
+			_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
 				Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
 				Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
 			})

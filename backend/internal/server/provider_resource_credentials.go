@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+const openAIAccountReauthorizationRequiredOption = "oauth_reauthorization_required"
+
+var openAIAccountProtectedOptions = []string{
+	codexImageCapabilityOption,
+	codexImageCapabilityCheckedAtOption,
+	codexImageRouteBackfillOption,
+	"has_refresh_token",
+	openAIAccountReauthorizationRequiredOption,
+}
+
 type openAIIDTokenClaims struct {
 	Email      string            `json:"email"`
 	OpenAIAuth *openAIAuthClaims `json:"https://api.openai.com/auth,omitempty"`
@@ -52,13 +62,38 @@ func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource,
 	s.mergeOpenAIAccountCredentials(resource, &patch)
 }
 
+func preserveOpenAIAccountProtectedOptions(current map[string]string, patch ProviderResource) map[string]string {
+	options := make(map[string]string, len(patch.Options)+len(openAIAccountProtectedOptions))
+	for key, value := range patch.Options {
+		options[key] = value
+	}
+	for _, key := range openAIAccountProtectedOptions {
+		if openAIAccountAuthenticationPatch(patch.Credentials) && (key == "has_refresh_token" || key == openAIAccountReauthorizationRequiredOption) {
+			delete(options, key)
+			continue
+		}
+		if value, ok := current[key]; ok {
+			options[key] = value
+		} else {
+			delete(options, key)
+		}
+	}
+	return options
+}
+
 func (s *GormStore) mergeOpenAIAccountCredentials(resource *ProviderResource, patch *ProviderResource) {
+	if patch != nil && patch.Credentials == nil && strings.TrimSpace(patch.APIKey) == "" {
+		resource.Credentials = nil
+		return
+	}
 	creds := ProviderResourceCredentials{}
-	if resource.Credentials != nil {
+	if patch != nil {
+		creds = s.providerResourceCredentialsForRuntime(*resource)
+	} else if resource.Credentials != nil {
 		creds = *resource.Credentials
 	}
 	if patch != nil && patch.Credentials != nil {
-		creds = *patch.Credentials
+		mergeProviderResourceCredentials(&creds, *patch.Credentials)
 	}
 	if strings.TrimSpace(creds.AccessToken) == "" && resource.APIKey != "" && !strings.HasPrefix(resource.APIKey, "enc:v1:") {
 		creds.AccessToken = resource.APIKey
@@ -84,7 +119,79 @@ func (s *GormStore) mergeOpenAIAccountCredentials(resource *ProviderResource, pa
 		resource.CredentialBlob = ""
 	}
 	applyOpenAIAccountOptions(resource.Options, creds)
+	if patch != nil && openAIAccountAuthenticationPatch(patch.Credentials) {
+		delete(resource.Options, openAIAccountReauthorizationRequiredOption)
+	}
 	resource.Credentials = nil
+}
+
+func openAIAccountAuthenticationPatch(creds *ProviderResourceCredentials) bool {
+	if creds == nil {
+		return false
+	}
+	return strings.TrimSpace(creds.AccessToken) != "" ||
+		strings.TrimSpace(creds.RefreshToken) != "" ||
+		strings.TrimSpace(creds.IDToken) != "" ||
+		strings.TrimSpace(creds.ClientID) != ""
+}
+
+func openAIAccountImageBindingChanged(
+	before ProviderResource,
+	beforeCredentials ProviderResourceCredentials,
+	after ProviderResource,
+	afterCredentials ProviderResourceCredentials,
+) bool {
+	if before.ProviderID != after.ProviderID ||
+		before.ResourceType != after.ResourceType ||
+		strings.TrimSpace(before.BaseURL) != strings.TrimSpace(after.BaseURL) ||
+		strings.TrimSpace(before.Options["allowed_codex_hosts"]) != strings.TrimSpace(after.Options["allowed_codex_hosts"]) {
+		return true
+	}
+	return !openAIAccountAuthenticationEqual(beforeCredentials, afterCredentials) ||
+		strings.TrimSpace(beforeCredentials.AccountID) != strings.TrimSpace(afterCredentials.AccountID)
+}
+
+func openAIAccountAuthenticationEqual(left ProviderResourceCredentials, right ProviderResourceCredentials) bool {
+	return strings.TrimSpace(left.AuthType) == strings.TrimSpace(right.AuthType) &&
+		strings.TrimSpace(left.AccessToken) == strings.TrimSpace(right.AccessToken) &&
+		strings.TrimSpace(left.RefreshToken) == strings.TrimSpace(right.RefreshToken) &&
+		strings.TrimSpace(left.IDToken) == strings.TrimSpace(right.IDToken) &&
+		strings.TrimSpace(left.ClientID) == strings.TrimSpace(right.ClientID)
+}
+
+func mergeRefreshedProviderResourceCredentials(
+	original ProviderResourceCredentials,
+	current ProviderResourceCredentials,
+	refreshed ProviderResourceCredentials,
+) ProviderResourceCredentials {
+	current.AuthType = firstNonEmpty(refreshed.AuthType, current.AuthType)
+	current.AccessToken = firstNonEmpty(refreshed.AccessToken, current.AccessToken)
+	current.RefreshToken = firstNonEmpty(refreshed.RefreshToken, current.RefreshToken)
+	current.IDToken = firstNonEmpty(refreshed.IDToken, current.IDToken)
+	current.ClientID = firstNonEmpty(refreshed.ClientID, current.ClientID)
+	if current.Scopes == original.Scopes {
+		current.Scopes = firstNonEmpty(refreshed.Scopes, current.Scopes)
+	}
+	if current.TokenType == original.TokenType {
+		current.TokenType = firstNonEmpty(refreshed.TokenType, current.TokenType)
+	}
+	if current.AccountID == original.AccountID {
+		current.AccountID = firstNonEmpty(refreshed.AccountID, current.AccountID)
+	}
+	if current.UserID == original.UserID {
+		current.UserID = firstNonEmpty(refreshed.UserID, current.UserID)
+	}
+	if current.Email == original.Email {
+		current.Email = firstNonEmpty(refreshed.Email, current.Email)
+	}
+	if current.OrganizationID == original.OrganizationID {
+		current.OrganizationID = firstNonEmpty(refreshed.OrganizationID, current.OrganizationID)
+	}
+	if current.PlanType == original.PlanType {
+		current.PlanType = firstNonEmpty(refreshed.PlanType, current.PlanType)
+	}
+	current.ExpiresAt = firstNonEmpty(refreshed.ExpiresAt, current.ExpiresAt)
+	return current
 }
 
 func hasOpenAIAccountSecret(creds ProviderResourceCredentials) bool {
@@ -167,6 +274,7 @@ func providerResourceCredentialSummary(resource ProviderResource) map[string]str
 		"plan_type",
 		"token_expires_at",
 		"has_refresh_token",
+		openAIAccountReauthorizationRequiredOption,
 	} {
 		if value := strings.TrimSpace(resource.Options[key]); value != "" {
 			summary[key] = value
@@ -203,10 +311,16 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			return notFound(err, "provider_resource_not_found", "Provider resource not found")
 		}
 		creds := s.providerResourceCredentialsForRuntime(resource)
+		authentication := creds
 		if !isOpenAIAccountResource(resource.ResourceType) {
 			result = creds
 			s.mu.Unlock()
 			return nil
+		}
+		if resource.Options[openAIAccountReauthorizationRequiredOption] == "true" {
+			result = creds
+			s.mu.Unlock()
+			return NewHTTPError(409, "provider_resource_reauthorization_required", "OpenAI/Codex account session has ended. Reauthorize the account.")
 		}
 		needsRefresh, expired := providerResourceCredentialsNeedRefresh(creds, openAIAccountOAuthRefreshLead)
 		if !force && !needsRefresh {
@@ -226,33 +340,69 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 
 		refreshed, err := refreshOpenAIAccountOAuthCredentials(leaseCtx, creds)
 		if err != nil {
+			if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code == "provider_resource_reauthorization_required" {
+				persistErr := s.withClusterLease(leaseCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {
+					s.mu.Lock()
+					defer s.mu.Unlock()
+					var current ProviderResource
+					if loadErr := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; loadErr != nil {
+						return loadErr
+					}
+					if !isOpenAIAccountResource(current.ResourceType) ||
+						!openAIAccountAuthenticationEqual(s.providerResourceCredentialsForRuntime(current), authentication) {
+						return nil
+					}
+					if current.Options == nil {
+						current.Options = map[string]string{}
+					}
+					current.Options[openAIAccountReauthorizationRequiredOption] = "true"
+					current.UpdatedAt = time.Now().UTC()
+					return updateExistingProviderResourceColumns(s.db.WithContext(mutationCtx), &current, "options", "updated_at")
+				})
+				if persistErr != nil {
+					return persistErr
+				}
+			}
 			return err
 		}
 
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		var current ProviderResource
-		if err := s.db.WithContext(leaseCtx).First(&current, "id = ?", resourceID).Error; err != nil {
-			return notFound(err, "provider_resource_not_found", "Provider resource not found")
-		}
-		if !isOpenAIAccountResource(current.ResourceType) {
-			result = refreshed
+		return s.withClusterLease(leaseCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			var current ProviderResource
+			if err := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; err != nil {
+				return notFound(err, "provider_resource_not_found", "Provider resource not found")
+			}
+			if !isOpenAIAccountResource(current.ResourceType) {
+				result = refreshed
+				return nil
+			}
+			currentCredentials := s.providerResourceCredentialsForRuntime(current)
+			if !openAIAccountAuthenticationEqual(currentCredentials, authentication) {
+				result = currentCredentials
+				return nil
+			}
+			refreshed = mergeRefreshedProviderResourceCredentials(authentication, currentCredentials, refreshed)
+			if current.Options == nil {
+				current.Options = map[string]string{}
+			}
+			delete(current.Options, openAIAccountReauthorizationRequiredOption)
+			current.Credentials = &refreshed
+			s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
+			if strings.TrimSpace(current.APIKey) != "" {
+				current.APIKey = s.encryptSecret(current.APIKey)
+			}
+			current.UpdatedAt = time.Now().UTC()
+			if err := updateExistingProviderResourceColumns(
+				s.db.WithContext(mutationCtx),
+				&current,
+				"api_key", "credential_blob", "options", "updated_at",
+			); err != nil {
+				return err
+			}
+			result = s.providerResourceCredentialsForRuntime(current)
 			return nil
-		}
-		if current.Options == nil {
-			current.Options = map[string]string{}
-		}
-		current.Credentials = &refreshed
-		s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
-		if strings.TrimSpace(current.APIKey) != "" {
-			current.APIKey = s.encryptSecret(current.APIKey)
-		}
-		current.UpdatedAt = time.Now().UTC()
-		if err := s.db.WithContext(leaseCtx).Save(&current).Error; err != nil {
-			return err
-		}
-		result = s.providerResourceCredentialsForRuntime(current)
-		return nil
+		})
 	})
 	if err != nil {
 		return result, err

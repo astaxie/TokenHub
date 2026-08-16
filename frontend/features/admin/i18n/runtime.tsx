@@ -22,6 +22,10 @@ export function tx(value: string | undefined | null) {
   return translations[activeLanguage][value] ?? translateGeneratedText(value, activeLanguage) ?? value;
 }
 
+export function formatTranslationTemplate(template: string, values: Record<string, string>) {
+  return Object.entries(values).reduce((message, [key, value]) => message.split(`{${key}}`).join(value), template);
+}
+
 // Localize the browser's native constraint-validation bubble (e.g. the required-field
 // message) so it follows the app language instead of the browser locale.
 export function handleRequiredFieldInvalid(event: {

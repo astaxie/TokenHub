@@ -44,28 +44,37 @@ var errProviderStreamIdle = NewHTTPError(
 // through the SSRF guard, and follow the strict redirect policy. Save-time
 // validation alone cannot protect old records or later DNS rebinding, and a
 // redirect must never bounce inference traffic into the internal network.
-func newUpstreamClients(config Config) (*http.Client, *http.Client, time.Duration) {
+func newUpstreamClients(config Config, syntheticDNS ...*providerSyntheticDNSPolicy) (*http.Client, *http.Client, time.Duration) {
 	idleTimeout := upstreamTimeout(config.UpstreamStreamIdleTimeoutSeconds, defaultUpstreamStreamIdleTimeoutSeconds)
 	allowedPrivate := allowedProviderUpstreamCIDRs()
+	var syntheticDNSPolicy *providerSyntheticDNSPolicy
+	if len(syntheticDNS) > 0 {
+		syntheticDNSPolicy = syntheticDNS[0]
+	}
 	client := &http.Client{
 		Timeout:       upstreamTimeout(config.UpstreamNonStreamTimeoutSeconds, defaultUpstreamNonStreamTimeoutSeconds),
-		Transport:     guardProviderUpstreamRequests(ssrfGuardedProviderTransport(allowedPrivate), allowedPrivate),
+		Transport:     guardProviderUpstreamRequests(rotatingProviderUpstreamTransport(allowedPrivate, syntheticDNSPolicy, nil), allowedPrivate),
 		CheckRedirect: strictProviderUpstreamRedirect,
 	}
-	return client, newUpstreamStreamClient(idleTimeout), idleTimeout
+	return client, newUpstreamStreamClient(idleTimeout, syntheticDNS...), idleTimeout
 }
 
 // newUpstreamStreamClient returns the client used for streaming upstream calls:
 // no total deadline, and a header timeout matching the idle budget so a stream
 // that never starts fails on the same terms as one that stops. It dials through
 // the same SSRF-guarded transport as the non-streaming client.
-func newUpstreamStreamClient(idleTimeout time.Duration) *http.Client {
-	// ssrfGuardedProviderTransport already clones the default transport (never
-	// mutates the process-global one) and installs the guarded DialContext with
-	// proxying disabled; only the header timeout is added here.
+func newUpstreamStreamClient(idleTimeout time.Duration, syntheticDNS ...*providerSyntheticDNSPolicy) *http.Client {
+	// Each transport generation clones the default transport (never mutates the
+	// process-global one), installs the guarded DialContext with proxying disabled,
+	// and adds the streaming response-header timeout.
 	allowedPrivate := allowedProviderUpstreamCIDRs()
-	transport := ssrfGuardedProviderTransport(allowedPrivate)
-	transport.ResponseHeaderTimeout = idleTimeout
+	var syntheticDNSPolicy *providerSyntheticDNSPolicy
+	if len(syntheticDNS) > 0 {
+		syntheticDNSPolicy = syntheticDNS[0]
+	}
+	transport := rotatingProviderUpstreamTransport(allowedPrivate, syntheticDNSPolicy, func(transport *http.Transport) {
+		transport.ResponseHeaderTimeout = idleTimeout
+	})
 	return &http.Client{Transport: guardProviderUpstreamRequests(transport, allowedPrivate), CheckRedirect: strictProviderUpstreamRedirect}
 }
 

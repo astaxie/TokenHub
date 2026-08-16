@@ -28,12 +28,46 @@ type guardrailPolicyTestFinding struct {
 	End   int `json:"end"`
 }
 
-func (s *Server) handleAdminGuardrailPolicyTest(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "security", r.Method); !ok {
-		return
+const adminGuardrailPolicyTestPath = "/api/admin/guardrail-policies/test"
+
+func (s *Server) registerAdminGuardrailPolicyRoutes() {
+	s.registerMethodRoutes("/api/admin/guardrail-policies", func(allowedMethods string) http.HandlerFunc {
+		return s.adminMethodNotAllowed("security", allowedMethods)
+	},
+		methodRoute{Method: http.MethodGet, Handler: s.handleAdminGuardrailPoliciesGet},
+		methodRoute{Method: http.MethodPost, Handler: s.handleAdminGuardrailPoliciesPost},
+	)
+	s.mux.HandleFunc(http.MethodPost+" "+adminGuardrailPolicyTestPath, s.handleAdminGuardrailPolicyTestPost)
+
+	itemRoutes := []methodRoute{
+		{Method: http.MethodGet, Handler: s.handleAdminGuardrailPolicyGet},
+		{Method: http.MethodPut, Handler: s.handleAdminGuardrailPolicyPut},
+		{Method: http.MethodDelete, Handler: s.handleAdminGuardrailPolicyDelete},
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	itemAllowedMethods := methodRoutesAllow(itemRoutes)
+	itemMethodNotAllowed := s.adminGuardrailPolicyMethodNotAllowed(itemAllowedMethods)
+	for _, pattern := range []string{
+		"/api/admin/guardrail-policies/{policy_id}",
+		"/api/admin/guardrail-policies/{policy_id}/{$}",
+	} {
+		for _, route := range itemRoutes {
+			if route.Method == http.MethodGet {
+				s.registerDynamicGETRoute(pattern, route.Handler, itemMethodNotAllowed)
+				continue
+			}
+			s.registerDynamicMethodRoute(route.Method, pattern, route.Handler)
+		}
+	}
+
+	// Unsupported methods and malformed nested paths still need the legacy
+	// parser because /test and {policy_id} overlap for different methods.
+	s.mux.HandleFunc("/api/admin/guardrail-policies/", func(w http.ResponseWriter, r *http.Request) {
+		s.handleAdminGuardrailPolicyItem(w, r, itemAllowedMethods)
+	})
+}
+
+func (s *Server) handleAdminGuardrailPolicyTestPost(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "security", r.Method); !ok {
 		return
 	}
 	var request guardrailPolicyTestRequest
@@ -79,41 +113,45 @@ func (s *Server) handleAdminGuardrailPolicyTest(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (s *Server) handleAdminGuardrailPolicies(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAdminGuardrailPoliciesGet(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "security", r.Method); !ok {
+		return
+	}
+	policies, err := s.store.ListGuardrailPolicies()
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": policies})
+}
+
+func (s *Server) handleAdminGuardrailPoliciesPost(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "security", r.Method)
 	if !ok {
 		return
 	}
-	switch r.Method {
-	case http.MethodGet:
-		policies, err := s.store.ListGuardrailPolicies()
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": policies})
-	case http.MethodPost:
-		var policy guardrails.Policy
-		if err := s.decodeJSON(w, r, &policy); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		resetGuardrailRequestOwnedFields(&policy, false)
-		created, err := s.store.CreateGuardrailPolicy(policy)
-		if err != nil {
-			writeError(w, r, guardrailStoreError(err))
-			return
-		}
-		s.recordAdminAudit(r, user, "create", "guardrail_policy", created.ID, nil, guardrailPolicyAuditSnapshot(created))
-		writeJSON(w, http.StatusCreated, created)
-	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	var policy guardrails.Policy
+	if err := s.decodeJSON(w, r, &policy); err != nil {
+		writeError(w, r, err)
+		return
 	}
+	resetGuardrailRequestOwnedFields(&policy, false)
+	created, err := s.store.CreateGuardrailPolicy(policy)
+	if err != nil {
+		writeError(w, r, guardrailStoreError(err))
+		return
+	}
+	s.recordAdminAudit(r, user, "create", "guardrail_policy", created.ID, nil, guardrailPolicyAuditSnapshot(created))
+	writeJSON(w, http.StatusCreated, created)
 }
 
-func (s *Server) handleAdminGuardrailPolicyItem(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAdminGuardrailPolicyItem(w http.ResponseWriter, r *http.Request, allowedMethods string) {
 	user, ok := s.requireAdmin(w, r, "security", r.Method)
 	if !ok {
+		return
+	}
+	if r.URL.Path == adminGuardrailPolicyTestPath {
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
 	parts := splitEscapedAdminPath(r.URL.EscapedPath(), "/api/admin/guardrail-policies/")
@@ -124,37 +162,93 @@ func (s *Server) handleAdminGuardrailPolicyItem(w http.ResponseWriter, r *http.R
 	policyID := strings.TrimSpace(parts[0])
 	switch r.Method {
 	case http.MethodGet:
-		policy, err := s.store.GetGuardrailPolicy(policyID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, policy)
+		s.serveAdminGuardrailPolicyGet(w, r, user, policyID)
 	case http.MethodPut:
-		var policy guardrails.Policy
-		if err := s.decodeJSON(w, r, &policy); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		resetGuardrailRequestOwnedFields(&policy, true)
-		before, updated, err := s.store.UpdateGuardrailPolicy(policyID, policy)
-		if err != nil {
-			writeError(w, r, guardrailStoreError(err))
-			return
-		}
-		s.recordAdminAudit(r, user, "update", "guardrail_policy", policyID, guardrailPolicyAuditSnapshot(before), guardrailPolicyAuditSnapshot(updated))
-		writeJSON(w, http.StatusOK, updated)
+		s.serveAdminGuardrailPolicyPut(w, r, user, policyID)
 	case http.MethodDelete:
-		before, err := s.store.DeleteGuardrailPolicy(policyID)
-		if err != nil {
-			writeError(w, r, err)
+		s.serveAdminGuardrailPolicyDelete(w, r, user, policyID)
+	default:
+		jsonMethodNotAllowed(allowedMethods)(w, r)
+	}
+}
+
+func (s *Server) handleAdminGuardrailPolicyGet(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminGuardrailPolicyRoute(w, r, s.serveAdminGuardrailPolicyGet)
+}
+
+func (s *Server) handleAdminGuardrailPolicyPut(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminGuardrailPolicyRoute(w, r, s.serveAdminGuardrailPolicyPut)
+}
+
+func (s *Server) handleAdminGuardrailPolicyDelete(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminGuardrailPolicyRoute(w, r, s.serveAdminGuardrailPolicyDelete)
+}
+
+func (s *Server) handleAdminGuardrailPolicyRoute(w http.ResponseWriter, r *http.Request, handler func(http.ResponseWriter, *http.Request, AdminUser, string)) {
+	user, ok := s.requireAdmin(w, r, "security", r.Method)
+	if !ok {
+		return
+	}
+	if r.URL.Path == adminGuardrailPolicyTestPath {
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
+		return
+	}
+	policyID := strings.TrimSpace(r.PathValue("policy_id"))
+	if policyID == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "not_found", "Not found"))
+		return
+	}
+	handler(w, r, user, policyID)
+}
+
+func (s *Server) adminGuardrailPolicyMethodNotAllowed(allowedMethods string) http.HandlerFunc {
+	itemReject := jsonMethodNotAllowed(allowedMethods)
+	testReject := jsonMethodNotAllowed(http.MethodPost)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := s.requireAdmin(w, r, "security", r.Method); !ok {
 			return
 		}
-		s.recordAdminAudit(r, user, "delete", "guardrail_policy", policyID, guardrailPolicyAuditSnapshot(before), nil)
-		w.WriteHeader(http.StatusNoContent)
-	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		if r.URL.Path == adminGuardrailPolicyTestPath {
+			testReject(w, r)
+			return
+		}
+		itemReject(w, r)
 	}
+}
+
+func (s *Server) serveAdminGuardrailPolicyGet(w http.ResponseWriter, r *http.Request, _ AdminUser, policyID string) {
+	policy, err := s.store.GetGuardrailPolicy(policyID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, policy)
+}
+
+func (s *Server) serveAdminGuardrailPolicyPut(w http.ResponseWriter, r *http.Request, user AdminUser, policyID string) {
+	var policy guardrails.Policy
+	if err := s.decodeJSON(w, r, &policy); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	resetGuardrailRequestOwnedFields(&policy, true)
+	before, updated, err := s.store.UpdateGuardrailPolicy(policyID, policy)
+	if err != nil {
+		writeError(w, r, guardrailStoreError(err))
+		return
+	}
+	s.recordAdminAudit(r, user, "update", "guardrail_policy", policyID, guardrailPolicyAuditSnapshot(before), guardrailPolicyAuditSnapshot(updated))
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) serveAdminGuardrailPolicyDelete(w http.ResponseWriter, r *http.Request, user AdminUser, policyID string) {
+	before, err := s.store.DeleteGuardrailPolicy(policyID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "delete", "guardrail_policy", policyID, guardrailPolicyAuditSnapshot(before), nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func resetGuardrailRequestOwnedFields(policy *guardrails.Policy, preserveDetectionItemIDs bool) {

@@ -771,7 +771,7 @@ func TestDialGuardedUpstreamFallbackAfterSlowLookup(t *testing.T) {
 	}
 
 	started := time.Now()
-	conn, err := dialGuardedUpstream(context.Background(), "tcp", "provider.example:443", nil, budget, lookup, dial)
+	conn, err := dialGuardedUpstream(context.Background(), "tcp", "provider.example:443", nil, nil, budget, lookup, dial)
 	if err != nil {
 		t.Fatalf("expected fallback to reach the healthy candidate, got %v (dialed: %v)", err, dialed)
 	}

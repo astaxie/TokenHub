@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -137,6 +139,38 @@ func responsesGuardrailTargets(request *ResponsesRequest) []guardrailTextTarget 
 		})
 	}
 	appendGuardrailResponseInputTargets(&targets, request.Input, "input", func(value any) { request.Input = value })
+	return targets
+}
+
+// responsesCompactGuardrailTargets mirrors responsesGuardrailTargets for the
+// /v1/responses/compact endpoint, whose body is kept as an opaque raw-JSON map
+// so unknown Codex fields pass through unchanged. Mask replacements are written
+// straight back into the raw map, so only fields the engine actually masked are
+// re-encoded and the rest of the request body is forwarded verbatim.
+func responsesCompactGuardrailTargets(request map[string]json.RawMessage) []guardrailTextTarget {
+	targets := make([]guardrailTextTarget, 0)
+	if value, exists := request["instructions"]; exists {
+		var instructions string
+		if err := json.Unmarshal(value, &instructions); err == nil && instructions != "" {
+			targets = append(targets, guardrailTextTarget{
+				fragment: guardrails.Fragment{ID: "instructions", Text: instructions, Mutable: true},
+				replace:  func(value string) { setRawJSONField(request, "instructions", value, true) },
+			})
+		}
+	}
+	if value, exists := request["input"]; exists {
+		// Decode with UseNumber so integers beyond 2^53 survive the round trip
+		// when a mask forces the whole input to be re-encoded: plain
+		// json.Unmarshal would demote them to float64 and silently round them.
+		decoder := json.NewDecoder(bytes.NewReader(value))
+		decoder.UseNumber()
+		var input any
+		if err := decoder.Decode(&input); err == nil {
+			appendGuardrailResponseInputTargets(&targets, input, "input", func(value any) {
+				setRawJSONField(request, "input", value, true)
+			})
+		}
+	}
 	return targets
 }
 

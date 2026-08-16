@@ -411,6 +411,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_RESPONSE_MAX_QUEUED_JOBS` | `1000` | 单个部署接受的排队中与运行中后台 Responses 任务总上限 |
 | `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI 的目标 Admin API 地址。仅由该 CLI 读取，后端服务不会读取；可被 `--to` 覆盖 |
 
+当 TokenHub 所在主机的代理工作在 Fake-IP 模式时，在「系统设置 → 基础设置 → Synthetic DNS / Fake-IP 网段」中配置。该例外默认关闭，只作用于域名解析结果，不允许字面量 IP Provider URL。应填写代理实际使用的地址池，不要假设所有实现都使用 `198.18.0.0/15`：这个网段为基准测试保留，虽常被 Fake-IP 使用，但并非 Fake-IP 专属。普通模式仍禁止 RFC1918 私网和 IPv6 ULA；如果代理确实使用这些范围（例如 Xray 的 IPv6 Fake-IP 池），必须另行开启高风险私网信任。开启后，Provider 域名可能访问配置范围内的真实内网服务。loopback、link-local、metadata、multicast、NAT64 等范围在任何模式下仍会被拒绝。
+
 ## 前端环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -437,7 +439,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 ## 目录文件
 
-发布的托管镜像和原生安装包都包含对应版本的 `data/model-catalog.yaml`、`data/provider-catalog.json` 与 `data/agent-catalog.yaml`。它们会随其余 Release 一起激活到 `/opt/tokenhub/current/catalog/`，确保后端程序和三类目录来自同一版本。Provider 目录由 PublicProviderConf 数据迁入并随仓库维护，TokenHub 运行时不会拉取远端目录数据。
+发布的托管镜像和原生安装包都包含对应版本的 `data/model-catalog.yaml`、`data/provider-catalog.json` 与 `data/agent-catalog.yaml`。它们会随其余 Release 一起激活到 `/opt/tokenhub/current/catalog/`，确保后端程序和三类目录来自同一版本。后端启动时只读取随版本提供的本地 Provider 目录，不依赖网络。管理员显式刷新 Provider 目录时，系统会从 `https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json` 拉取完整的 `PublicProviderConf` 目录；若响应失败或内容不完整，则回退到配置的本地 `provider-catalog.json`。
 
 需要使用自定义模型目录时，显式指定挂载文件：
 
@@ -449,7 +451,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 更新当前配置的目录文件后，可以重启后端，也可以在「系统设置 → 基础设置」中点击「同步模型参考目录」。两种方式都会同步参考元数据、保留自定义对外模型，但不会发布任何模型。
 
-`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需为启动加载和刷新回退使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
 
 ### 连接 Kronk
 

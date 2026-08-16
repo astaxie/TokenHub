@@ -132,15 +132,15 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/cngump">
-        <img src="https://avatars.githubusercontent.com/u/108251?v=4" width="80px" alt="cngump" />
-        <br /><sub><b>cngump</b></sub>
-      </a>
-    </td>
-    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/Mr0bean">
         <img src="https://avatars.githubusercontent.com/u/19573968?v=4" width="80px" alt="Mr0bean" />
         <br /><sub><b>Mr0bean</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/cngump">
+        <img src="https://avatars.githubusercontent.com/u/108251?v=4" width="80px" alt="cngump" />
+        <br /><sub><b>cngump</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -150,9 +150,9 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/wangle201210">
-        <img src="https://avatars.githubusercontent.com/u/19949348?v=4" width="80px" alt="wangle201210" />
-        <br /><sub><b>wangle201210</b></sub>
+      <a href="https://github.com/bailu-ZZ">
+        <img src="https://avatars.githubusercontent.com/u/311096537?v=4" width="80px" alt="bailu-ZZ" />
+        <br /><sub><b>bailu-ZZ</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -164,15 +164,15 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
   </tr>
   <tr>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/CLukeLi">
-        <img src="https://avatars.githubusercontent.com/u/252523101?v=4" width="80px" alt="CLukeLi" />
-        <br /><sub><b>CLukeLi</b></sub>
+      <a href="https://github.com/wangle201210">
+        <img src="https://avatars.githubusercontent.com/u/19949348?v=4" width="80px" alt="wangle201210" />
+        <br /><sub><b>wangle201210</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/bailu-ZZ">
-        <img src="https://avatars.githubusercontent.com/u/311096537?v=4" width="80px" alt="bailu-ZZ" />
-        <br /><sub><b>bailu-ZZ</b></sub>
+      <a href="https://github.com/CLukeLi">
+        <img src="https://avatars.githubusercontent.com/u/252523101?v=4" width="80px" alt="CLukeLi" />
+        <br /><sub><b>CLukeLi</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -194,6 +194,12 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/hoorayman">
+        <img src="https://avatars.githubusercontent.com/u/73151874?v=4" width="80px" alt="hoorayman" />
+        <br /><sub><b>hoorayman</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/ocass-chen">
         <img src="https://avatars.githubusercontent.com/u/172055494?v=4" width="80px" alt="ocass-chen" />
         <br /><sub><b>ocass-chen</b></sub>
@@ -205,14 +211,14 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
         <br /><sub><b>AnxForever</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/yujiewanwan">
         <img src="https://avatars.githubusercontent.com/u/268286250?v=4" width="80px" alt="yujiewanwan" />
         <br /><sub><b>yujiewanwan</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/lxm">
         <img src="https://avatars.githubusercontent.com/u/1918195?v=4" width="80px" alt="lxm" />

@@ -70,6 +70,9 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("analytics migration preserves legacy time windows", func(t *testing.T) {
 		testPostgresAnalyticsLegacySequenceMigration(t, storeA, config)
 	})
+	t.Run("v0.4 bootstrap upgrade preserves customized admin teams", func(t *testing.T) {
+		testPostgresV040BootstrapUpgrade(t, storeA, config)
+	})
 	t.Run("OAuth state and refresh coordination survive replica changes", func(t *testing.T) {
 		testSharedOAuthAndRefresh(t, storeA, storeB, config)
 	})

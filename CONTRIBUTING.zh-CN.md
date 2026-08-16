@@ -102,6 +102,7 @@ Agent 专用的仓库指令见 [AGENTS.md](AGENTS.md#optional-development-workfl
 
 ## Pull Request
 
+- 标题和正文的每一节均使用英文。
 - 使用英文 Conventional Commits 风格的标题：`<type>[optional scope][!]: <short summary>`。
 - 标题不超过 72 个字符，摘要使用小写祈使句，不添加句号。
 - 完整填写 [Pull Request 模板](.github/pull_request_template.md)的每一节，并说明跳过或不适用的检查。

@@ -220,8 +220,10 @@ type Store interface {
 	ListAuditEvents() []AuditEvent
 	RecordAuditEvent(event AuditEvent)
 	CreateResource(kind string, resource AdminResource) AdminResource
+	CreateResourceChecked(kind string, resource AdminResource) (AdminResource, error)
 	CreateRoutingPolicy(resource AdminResource) (AdminResource, error)
 	ListResources(kind string) []AdminResource
+	ListResourcesChecked(kind string) ([]AdminResource, error)
 	UpdateResource(kind string, id string, patch AdminResource) (AdminResource, error)
 	DeleteResource(kind string, id string) error
 	DeleteTeam(id string) error

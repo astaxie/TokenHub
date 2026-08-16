@@ -694,16 +694,39 @@ export async function importUsersFromCSVContent(ctx: ApiContext, content: string
 }
 
 export async function readAdminError(resp: Response, fallback: string) {
-  if (resp.status === 403) {
-    return permissionDeniedMessage(fallback);
-  }
   const body = await resp.text().catch(() => "");
-  if (!body) return `${fallback} (${resp.status})`;
+  if (!body) return resp.status === 403 ? permissionDeniedMessage(fallback) : `${fallback} (${resp.status})`;
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string }; message?: string };
+    const localized = localizedAdminErrorCode(parsed.error?.code);
+    if (localized) return localized;
+    if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("OpenAI/Codex 账号会话已失效，请重新进行账号授权。");
+    if (parsed.error?.code === "codex_image_forbidden") return tx("所选 Codex 账号不支持生图，无法创建图片。可更换账号后重试。");
+    if (parsed.error?.code === "codex_rate_limited") return tx("Codex 生图测试被限流，请稍后重试；本次结果不会标记为不支持。");
+    if (["codex_upstream_unavailable", "codex_upstream_timeout", "codex_image_request_failed", "codex_image_response_failed"].includes(parsed.error?.code ?? "")) {
+      return tx("Codex 生图上游暂时不可用，请稍后重试；本次结果不会标记为不支持。");
+    }
+    if (resp.status === 403) return permissionDeniedMessage(fallback);
     return parsed.error?.message || parsed.message || `${fallback} (${resp.status})`;
   } catch {
     return body.length > 180 ? `${body.slice(0, 180)}...` : body;
+  }
+}
+
+function localizedAdminErrorCode(code?: string) {
+  switch (code) {
+    case "provider_synthetic_dns_cidrs_required":
+      return tx("开启时至少填写一个 Synthetic DNS CIDR。");
+    case "provider_synthetic_dns_cidrs_invalid":
+      return tx("Synthetic DNS CIDR 格式无效，请每行填写一个 CIDR。");
+    case "provider_synthetic_dns_cidrs_too_broad":
+      return tx("Synthetic DNS CIDR 范围过宽，请缩小后重试。");
+    case "provider_synthetic_dns_cidrs_not_allowed":
+      return tx("该 Synthetic DNS CIDR 与受保护地址范围重叠，无法保存。");
+    case "provider_synthetic_dns_private_cidr_requires_unsafe_mode":
+      return tx("该 Synthetic DNS CIDR 属于私网或 ULA；如确认代理使用此网段，请先开启高风险私网信任。");
+    default:
+      return "";
   }
 }
 

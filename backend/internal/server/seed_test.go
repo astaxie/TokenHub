@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -46,6 +47,81 @@ func TestRunStartupBootstrapReloadsCatalogOnEveryStart(t *testing.T) {
 	}
 	if got := modelCategory(); got != "second-start" {
 		t.Fatalf("catalog edit was not applied on restart: category=%q", got)
+	}
+}
+
+func TestRunStartupBootstrapUpgradesV040DatabaseWithDisabledDefaultTeam(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "v0.4.0.db")
+	legacyDB, err := sql.Open("sqlite3", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`CREATE TABLE admin_resources (
+		id text,
+		kind text,
+		name text,
+		description text,
+		status text,
+		fields text,
+		created_at datetime,
+		updated_at datetime,
+		PRIMARY KEY (id, kind)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`CREATE TABLE admin_users (
+		id text primary key,
+		username text,
+		name text,
+		email text,
+		role text,
+		team_id text,
+		status text,
+		password_hash text,
+		created_at datetime,
+		updated_at datetime,
+		last_login_at datetime
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`INSERT INTO admin_resources
+		(id, kind, name, status, fields, created_at, updated_at) VALUES
+		('team_platform', 'teams', 'Platform Engineering Team', 'disabled', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+		('team_custom', 'teams', 'Custom Team', 'active', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`INSERT INTO admin_users
+		(id, username, name, email, role, team_id, status, password_hash, created_at, updated_at) VALUES
+		('usr_admin', 'admin', 'Platform Admin', 'admin@tokenhub.local', 'admin', 'team_custom', 'active', 'legacy-password-hash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacyDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: startup-test-model\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := Config{
+		BootstrapAdminPassword: "startup-bootstrap-test-password",
+		ModelCatalogFile:       catalogPath,
+	}
+	store, err := NewSQLiteStoreWithConfig("sqlite://"+databasePath, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RunStartupBootstrap(context.Background(), store, config); err != nil {
+		t.Fatalf("v0.4.0 database upgrade should preserve the existing admin assignment: %v", err)
+	}
+	users := store.ListAdminUsers()
+	if len(users) != 1 || users[0].ID != "usr_admin" || users[0].TeamID != "team_custom" || userHasTeam(users[0], "team_platform") {
+		t.Fatalf("startup changed the existing admin assignment: %+v", users)
+	}
+	for _, team := range store.ListResources("teams") {
+		if team.ID == "team_platform" && team.Status != StatusDisabled {
+			t.Fatalf("startup re-enabled the disabled default team: %+v", team)
+		}
 	}
 }
 

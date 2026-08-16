@@ -102,6 +102,7 @@ See [AGENTS.md](AGENTS.md#optional-development-workflows) for agent-specific rep
 
 ## Pull Requests
 
+- Write the title and every body section in English.
 - Use an English Conventional Commits-style title: `<type>[optional scope][!]: <short summary>`.
 - Keep the title at or below 72 characters, use a lowercase imperative summary, and omit the trailing period.
 - Complete every section of [the pull request template](.github/pull_request_template.md). Explain skipped or non-applicable checks.

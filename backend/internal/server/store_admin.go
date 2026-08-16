@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,10 +12,14 @@ import (
 )
 
 func (s *GormStore) CreateResource(kind string, resource AdminResource) AdminResource {
+	resource, _ = s.CreateResourceChecked(kind, resource)
+	return resource
+}
+
+func (s *GormStore) CreateResourceChecked(kind string, resource AdminResource) (AdminResource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	resource, _ = s.createResourceLocked(kind, resource, true)
-	return resource
+	return s.createResourceLocked(kind, resource, true)
 }
 
 func (s *GormStore) CreateRoutingPolicy(resource AdminResource) (AdminResource, error) {
@@ -55,9 +60,22 @@ func (s *GormStore) createResourceLocked(kind string, resource AdminResource, up
 }
 
 func (s *GormStore) ListResources(kind string) []AdminResource {
-	var items []AdminResource
-	_ = s.db.Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	items, _ := s.ListResourcesChecked(kind)
 	return items
+}
+
+// ListResourcesChecked preserves any context already attached to s.db (for
+// example, the startup lease context) while making query failures observable.
+func (s *GormStore) ListResourcesChecked(kind string) ([]AdminResource, error) {
+	var items []AdminResource
+	err := s.db.Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	return items, err
+}
+
+func (s *GormStore) ListResourcesContext(ctx context.Context, kind string) ([]AdminResource, error) {
+	var items []AdminResource
+	err := s.db.WithContext(ctx).Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	return items, err
 }
 
 func (s *GormStore) UpdateResource(kind string, id string, patch AdminResource) (AdminResource, error) {

@@ -1106,6 +1106,75 @@ func TestAdminRejectsUnimportedAndDuplicateProviderModelRoutes(t *testing.T) {
 	}
 }
 
+func TestAdminCodexImageVirtualModelRouteRequiresSupportedProviderInventory(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
+	codexProvider := store.AddProvider(Provider{
+		ID: "prv_codex_image_route", Name: "Codex Image Route", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+	})
+	otherProvider := store.AddProvider(Provider{
+		ID: "prv_openai_image_route", Name: "OpenAI Image Route", Type: ProviderOpenAI, Status: StatusActive, Healthy: true,
+	})
+	app := New(store).Handler()
+
+	wrongProvider := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": otherProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusActive,
+	}, "")
+	if wrongProvider.Code != http.StatusBadRequest || !strings.Contains(wrongProvider.Body, "codex_image_provider_required") {
+		t.Fatalf("expected Codex Provider validation, got %d: %s", wrongProvider.Code, wrongProvider.Body)
+	}
+
+	wrongModel := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": "gpt-5.6-luna", "status": StatusActive,
+	}, "")
+	if wrongModel.Code != http.StatusBadRequest || !strings.Contains(wrongModel.Body, "codex_image_upstream_model_invalid") {
+		t.Fatalf("expected Codex image upstream validation, got %d: %s", wrongModel.Code, wrongModel.Body)
+	}
+
+	activeWithoutCapability := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusActive,
+	}, "")
+	if activeWithoutCapability.Code != http.StatusConflict || !strings.Contains(activeWithoutCapability.Body, "codex_image_capability_required") {
+		t.Fatalf("expected active route without capability to be rejected, got %d: %s", activeWithoutCapability.Code, activeWithoutCapability.Body)
+	}
+
+	disabled := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusDisabled,
+	}, "")
+	if disabled.Code != http.StatusCreated {
+		t.Fatalf("expected disabled route to be created for later activation, got %d: %s", disabled.Code, disabled.Body)
+	}
+	var route ModelRoute
+	if err := json.Unmarshal([]byte(disabled.Body), &route); err != nil {
+		t.Fatal(err)
+	}
+	activateWithoutCapability := doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{"status": StatusActive}, "")
+	if activateWithoutCapability.Code != http.StatusConflict || !strings.Contains(activateWithoutCapability.Body, "codex_image_capability_required") {
+		t.Fatalf("expected activation without capability to be rejected, got %d: %s", activateWithoutCapability.Code, activateWithoutCapability.Body)
+	}
+
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_codex_image_route_supported", ProviderID: codexProvider.ID,
+		Name: "Codex Image Route Supported Account", ResourceType: ProviderResourceOpenAISubscription,
+		Status: StatusActive, Healthy: true,
+		Options:     map[string]string{codexImageCapabilityOption: codexImageCapabilitySupported},
+		Credentials: &ProviderResourceCredentials{AccessToken: "route-supported-access", RefreshToken: "route-supported-refresh", AccountID: "route-supported-account"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activateWithCapability := doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"status": StatusActive, "provider_resource_id": resource.ID,
+	}, "")
+	if activateWithCapability.Code != http.StatusOK {
+		t.Fatalf("expected activation with supported capability to succeed, got %d: %s", activateWithCapability.Code, activateWithCapability.Body)
+	}
+}
+
 func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
 	store := NewMemoryStore()
 	external := store.AddModel(Model{
