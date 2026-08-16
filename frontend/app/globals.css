@@ -32,3 +32,4 @@
 @import "./styles/redesign/responsive.css";
 @import "./styles/redesign/login-flow.css";
 @import "./styles/legacy/routing-policies.css";
+@import "./styles/legacy/agent-gateway.css";

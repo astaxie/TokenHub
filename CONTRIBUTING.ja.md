@@ -12,6 +12,7 @@ TokenHub は、Go バックエンド、Next.js 管理コンソール、Node.js S
 | `frontend/` | Next.js と React の管理コンソール |
 | `sdk/` | OpenAI-Compatible API とセキュリティポリシーエンドポイントの Node.js スモークテスト |
 | `data/model-catalog.yaml` | バージョン管理対象のモデルカタログソース |
+| `data/agent-catalog.yaml` | バージョン管理対象の A2A 1.0 Agent レビュー設定ソース |
 | `deploy/` | Docker Compose デプロイファイルと環境変数テンプレート |
 | `docs/` | 英語、簡体字中国語、日本語のドキュメント |
 
@@ -55,7 +56,7 @@ npm run test:security-policy
 - 認証情報、ローカルの `.env` ファイル、データベース、生成されたバックアップ、実行時ログをコミットしないでください。
 - 環境変数を変更する場合は、関連するサンプル、Compose ファイル、`start.sh`、デプロイドキュメントを同期して更新します。
 - ユーザー向けの共通ドキュメントは、英語、簡体字中国語、日本語で同期して更新します。
-- `data/model-catalog.yaml` をバージョン管理対象のまま維持し、その他の実行時データファイルをコミットしないでください。
+- `data/model-catalog.yaml` と `data/agent-catalog.yaml` をバージョン管理対象のまま維持し、その他の実行時データファイルをコミットしないでください。
 
 ## 検証
 

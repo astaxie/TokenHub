@@ -142,7 +142,16 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
-	project, key, err := s.authenticate(r)
+	delegated := s.config.A2AEnabled && strings.HasPrefix(bearerToken(r), "thd_")
+	var project Project
+	var key APIKey
+	var delegationClaims agentDelegationClaims
+	var err error
+	if delegated {
+		project, key, delegationClaims, err = s.validateAgentDelegation(bearerToken(r))
+	} else {
+		project, key, err = s.authenticate(r)
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -156,9 +165,32 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
 		return
 	}
+	if s.config.A2AEnabled && strings.HasPrefix(req.Model, "agent/") {
+		slug := strings.TrimSpace(strings.TrimPrefix(req.Model, "agent/"))
+		if slug == "" || strings.Contains(slug, "/") {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_agent_model", "Agent model must use agent/<slug>"))
+			return
+		}
+		if req.Background {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "agent_background_not_supported", "Background Responses are not supported for Agent models"))
+			return
+		}
+		s.handleAgentResponses(w, r, project, key, req, slug)
+		return
+	}
 	if req.Background {
+		if delegated {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "delegated_background_not_supported", "Background Responses are not supported for Agent delegation tokens"))
+			return
+		}
 		s.submitResponseJob(w, r, project, key, req)
 		return
+	}
+	if delegated && delegationClaims.ExecutionID != "" {
+		if err := s.store.ConsumeAgentExecutionBudget(delegationClaims.ExecutionID, "model", 0, 0); err != nil {
+			writeError(w, r, err)
+			return
+		}
 	}
 	admittedAt := time.Now().UTC()
 	call, err := s.admitRoutedCall(w, r, project, key, req.Model, req.Stream, requestTokenReservation(req))
@@ -1405,27 +1437,6 @@ func (s *Server) writeRouteHeaders(w http.ResponseWriter, call CallContext, rout
 	w.Header().Set("x-tokenhub-model", route.ProviderModel)
 	w.Header().Set("x-tokenhub-route-id", route.Route.ID)
 	w.Header().Set("x-tokenhub-route-attempts", strconv.Itoa(attempts))
-}
-
-func (s *Server) authenticate(r *http.Request) (Project, APIKey, error) {
-	auth := r.Header.Get("authorization")
-	if auth != "" {
-		const prefix = "Bearer "
-		if !strings.HasPrefix(auth, prefix) {
-			return Project{}, APIKey{}, ErrInvalidAPIKey
-		}
-		return s.store.ValidateAPIKey(strings.TrimSpace(strings.TrimPrefix(auth, prefix)), s.clientIP(r))
-	}
-	if apiKey := strings.TrimSpace(r.Header.Get("x-api-key")); apiKey != "" {
-		return s.store.ValidateAPIKey(apiKey, s.clientIP(r))
-	}
-	// The official Google Gen AI SDK, and therefore Gemini CLI in API-key mode,
-	// sends its credential in x-goog-api-key when GOOGLE_GEMINI_BASE_URL points
-	// at a compatible gateway.
-	if apiKey := strings.TrimSpace(r.Header.Get("x-goog-api-key")); apiKey != "" {
-		return s.store.ValidateAPIKey(apiKey, s.clientIP(r))
-	}
-	return Project{}, APIKey{}, ErrInvalidAPIKey
 }
 
 // playgroundModel resolves the catalog entry for a playground request so its usage

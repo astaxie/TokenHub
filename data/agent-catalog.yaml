@@ -1,0 +1,4 @@
+# Reviewed A2A 1.0 Agents managed as code. Database-managed Agents can also be
+# registered from the admin console. Static credentials belong in environment-
+# rendered deployment configuration, never in this tracked example.
+agents: []

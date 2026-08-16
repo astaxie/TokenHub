@@ -358,6 +358,16 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | バックアップ出力ディレクトリ |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 管理対象デプロイの標準モデルカタログファイル |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 管理対象デプロイの Provider テンプレートと候補モデルのカタログファイル |
+| `TOKENHUB_AGENT_CATALOG_FILE` | `/opt/tokenhub/current/catalog/agent-catalog.yaml` | 起動時にクラスタ Lease の下で同期する、審査済み A2A 1.0 Agent 設定 |
+| `TOKENHUB_A2A_ENABLED` | `false` | A2A 1.0 JSON-RPC/SSE ゲートウェイ、Agent Card、MCP admission API、Responses ブリッジを公開。無効化すると即時ロールバック |
+| `TOKENHUB_A2A_ALLOW_PRIVATE_UPSTREAMS` | `false` | 管理された開発環境で HTTP、プライベート、ループバックの Agent 上流を許可。本番環境では無効を維持 |
+| `TOKENHUB_A2A_MAX_AGENT_HOPS` | `8` | 1 Execution の Agent 間 Hop 上限 |
+| `TOKENHUB_A2A_MAX_MODEL_CALLS` | `32` | 1 Agent Execution の委託モデル呼び出し上限 |
+| `TOKENHUB_A2A_MAX_MCP_CALLS` | `64` | 1 Agent Execution の admission 済み MCP 呼び出し上限 |
+| `TOKENHUB_A2A_MAX_RUNTIME_SECONDS` | `900` | 1 Agent Execution と上流呼び出しの実時間上限 |
+| `TOKENHUB_A2A_MAX_TOKENS` | `200000` | 1 Agent Execution でモデルと対応済み MCP が報告できる Token 上限 |
+| `TOKENHUB_A2A_MAX_COST_USD` | `10` | 1 Execution のモデル、MCP、Agent 固定コスト上限 |
+| `TOKENHUB_A2A_MAX_CONCURRENCY` | `8` | 1 Execution で同時実行できる Agent Step 上限 |
 | `TOKENHUB_SEED_DEMO` | `false` | デモデータを投入するか |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider リソースをクールダウンするまでの失敗しきい値 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | クールダウンした Provider リソースがハーフオープン再試行を得るまでの基本待機秒数 |
@@ -429,7 +439,7 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 
 ## カタログファイル
 
-公開される管理対象イメージとネイティブアーカイブには、対応するバージョンの `data/model-catalog.yaml` と `data/provider-catalog.json` が含まれます。これらは Release の残りのファイルとともに `/opt/tokenhub/current/catalog/` で有効化されるため、バックエンドプログラムと両方のカタログが常に同じバージョンになります。バックエンドの起動時は同梱されたローカル Provider カタログだけを読み込み、ネットワークに依存しません。管理者が Provider カタログを明示的に更新すると、`https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json` から完全な `PublicProviderConf` カタログを取得します。レスポンスの取得に失敗した場合や内容が不完全な場合は、設定済みのローカル `provider-catalog.json` へフォールバックします。
+公開される管理対象イメージとネイティブアーカイブには、対応するバージョンの `data/model-catalog.yaml`、`data/provider-catalog.json`、`data/agent-catalog.yaml` が含まれます。これらは Release の残りのファイルとともに `/opt/tokenhub/current/catalog/` で有効化されるため、バックエンドプログラムと 3 種類のカタログが常に同じバージョンになります。バックエンドの起動時は同梱されたローカル Provider カタログだけを読み込み、ネットワークに依存しません。管理者が Provider カタログを明示的に更新すると、`https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json` から完全な `PublicProviderConf` カタログを取得します。レスポンスの取得に失敗した場合や内容が不完全な場合は、設定済みのローカル `provider-catalog.json` へフォールバックします。
 
 カスタムモデルカタログを使用する場合は、マウントするファイルを明示します。
 

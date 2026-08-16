@@ -25,6 +25,7 @@ import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "./auth";
 import { PageHeader, Sidebar, StatusStack, TopNav } from "./navigation-ui";
 import { ResponsiveVersionStatus } from "./version-status";
 import { AuditView } from "../views/audit";
+import { AgentGatewayView } from "../views/agent-gateway";
 import { CrudView, ReportsView } from "../views/crud-projects";
 import { DatabaseStatusView } from "../views/database-model-pricing";
 import { GatewayView } from "../views/gateway-view";
@@ -836,6 +837,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             <AuditView api={api} data={data} user={currentUser} />
           ) : activeView === "database-status" ? (
             <DatabaseStatusView api={api} isDark={theme === "dark"} />
+			) : activeView === "agents" ? (
+				<AgentGatewayView api={api} />
           ) : activeView === "settings" ? (
             <SettingsView
               data={data}

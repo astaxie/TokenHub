@@ -416,6 +416,7 @@ BACKEND_ENV=(
   TOKENHUB_SQLITE_BACKUP_DIR="$RUN_DIR/data/backups"
   TOKENHUB_MODEL_CATALOG_FILE="$REPO_ROOT/data/model-catalog.yaml"
   TOKENHUB_PROVIDER_CATALOG_FILE="$REPO_ROOT/data/provider-catalog.json"
+  TOKENHUB_AGENT_CATALOG_FILE="$REPO_ROOT/data/agent-catalog.yaml"
   TOKENHUB_ADMIN_TOKEN=local_dev_admin_token
   TOKENHUB_SECRET_KEY=local_dev_secret_key
   TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=admin123456

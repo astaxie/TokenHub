@@ -594,6 +594,7 @@ TOKENHUB_SQLITE_BACKUP_DIR=${STATE_DIR}/backups
 TOKENHUB_IMAGE_STORAGE_DIR=${STATE_DIR}/images
 TOKENHUB_MODEL_CATALOG_FILE=${INSTALL_ROOT}/current/catalog/model-catalog.yaml
 TOKENHUB_PROVIDER_CATALOG_FILE=${INSTALL_ROOT}/current/catalog/provider-catalog.json
+TOKENHUB_AGENT_CATALOG_FILE=${INSTALL_ROOT}/current/catalog/agent-catalog.yaml
 TOKENHUB_INSTALL_ROOT=${INSTALL_ROOT}
 TOKENHUB_SEED_DEMO=false
 TOKENHUB_FRONTEND_HOST=0.0.0.0
@@ -860,6 +861,7 @@ validate_staged_release() {
     frontend/server.js \
     catalog/model-catalog.yaml \
     catalog/provider-catalog.json \
+    catalog/agent-catalog.yaml \
     deploy/tokenhub.service \
     VERSION; do
     [ -f "$staging/$path" ] || fail "release archive is missing regular file $path"

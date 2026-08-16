@@ -106,6 +106,7 @@ type ProviderObservation struct {
 }
 
 type Store interface {
+	AgentStore
 	BillingStore
 	ReconciliationStore
 	CreateProject(project Project) Project

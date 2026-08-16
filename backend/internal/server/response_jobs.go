@@ -224,6 +224,10 @@ func (s *Server) submitResponseJob(w http.ResponseWriter, r *http.Request, proje
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "background_stream_not_supported", "Background Responses do not support stream=true"))
 		return
 	}
+	if strings.HasPrefix(bearerToken(r), "thd_") {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "delegated_background_not_supported", "Background Responses are not supported for Agent delegation tokens"))
+		return
+	}
 	if !keyCanAccessModel(s.store, key, request.Model) {
 		writeError(w, r, ErrModelNotAllowed)
 		return

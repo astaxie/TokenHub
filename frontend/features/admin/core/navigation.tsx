@@ -1,4 +1,4 @@
-import { Activity, AlertCircle, BarChart3, Bell, Boxes, Database, FileText, Gauge, KeyRound, LayoutDashboard, Send, Server, Settings, ShieldCheck, Sparkles, Users, WalletCards } from "lucide-react";
+import { Activity, AlertCircle, BarChart3, Bell, Bot, Boxes, Database, FileText, Gauge, KeyRound, LayoutDashboard, Send, Server, Settings, ShieldCheck, Sparkles, Users, WalletCards } from "lucide-react";
 import { type AdminUser, type AppData, type AppRole, type NavItem, type NavLeafItem, type NavParentItem, recentViewsStorageKey, type TopSearchItem, type ViewKey, viewRoutes } from "./types";
 import { modelCapabilitySummary } from "../domain/entities";
 import { tx } from "../i18n/runtime";
@@ -80,6 +80,7 @@ export const adminNavGroups: NavGroup[] = [
       { view: "routes", label: "路由策略", icon: Gauge },
       { view: "playground", label: "模型演练场", icon: Send },
       { view: "routing-policies", label: "作用域策略", icon: ShieldCheck },
+			{ view: "agents", label: "Agent 网关", icon: Bot },
     ],
   },
   {
@@ -204,6 +205,10 @@ export const standaloneViewMeta: Partial<Record<ViewKey, { title: string; descri
     title: "作用域路由策略",
     description: "按 API Key、项目和全局优先级限制 Provider、资源、模型、标签与部署边界。",
   },
+	agents: {
+		title: "Agent 网关",
+		description: "注册并审核 A2A 1.0 Agent，管理实例、访问范围和版本回滚。",
+	},
 };
 
 export const roleViewAccess: Record<AppRole, ViewKey[]> = {

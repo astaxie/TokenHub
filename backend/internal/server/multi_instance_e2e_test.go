@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a2aproject/a2a-go/v2/a2a"
 	"gorm.io/gorm"
 )
 
@@ -84,6 +85,143 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("lost cluster leases cancel guarded work", func(t *testing.T) {
 		testClusterLeaseLossCancelsWork(t, storeA, storeB)
 	})
+	t.Run("A2A tasks keep affinity across replicas", func(t *testing.T) {
+		testA2ATaskAffinityAcrossReplicas(t, storeA, storeB, config)
+	})
+	t.Run("A2A instance concurrency is atomic across replicas", func(t *testing.T) {
+		testA2AInstanceConcurrencyAcrossReplicas(t, storeA, storeB)
+	})
+}
+
+func testA2AInstanceConcurrencyAcrossReplicas(t *testing.T, storeA *GormStore, storeB *GormStore) {
+	t.Helper()
+	suffix := strings.ToLower(NewID("a2aconcurrency"))
+	slug := strings.ReplaceAll(suffix, "_", "-")
+	card := &a2a.AgentCard{Name: "A2A concurrency", Version: "1"}
+	agent, err := storeA.SaveAgent(Agent{Slug: slug, Name: card.Name, Version: card.Version}, card, AgentInstance{
+		Name: "only", URL: "https://concurrency.agent.example/a2a", Status: StatusActive, Healthy: true,
+		Priority: 1, Weight: 1, MaxConcurrency: 1,
+	}, nil, "integration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance := agent.Instances[0]
+	t.Cleanup(func() {
+		_ = storeA.db.Where("instance_id = ?", instance.ID).Delete(&AgentInstanceLease{}).Error
+		_ = storeA.db.Where("agent_id = ?", agent.ID).Delete(&AgentInstance{}).Error
+		_ = storeA.db.Where("agent_id = ?", agent.ID).Delete(&AgentRevision{}).Error
+		_ = storeA.db.Delete(&Agent{}, "id = ?", agent.ID).Error
+	})
+
+	type reservation struct {
+		store   *GormStore
+		leaseID string
+		err     error
+	}
+	start := make(chan struct{})
+	results := make(chan reservation, 2)
+	for _, store := range []*GormStore{storeA, storeB} {
+		store := store
+		go func() {
+			<-start
+			_, leaseID, reserveErr := store.ReserveAgentInstanceByID(instance.ID, time.Now().Add(time.Minute))
+			results <- reservation{store: store, leaseID: leaseID, err: reserveErr}
+		}()
+	}
+	close(start)
+	var admitted reservation
+	var successes, exhausted int
+	for range 2 {
+		result := <-results
+		if result.err == nil {
+			successes++
+			admitted = result
+			continue
+		}
+		if AsHTTPError(result.err).Code == "agent_concurrency_exhausted" {
+			exhausted++
+			continue
+		}
+		t.Fatalf("unexpected cross-replica reservation error: %v", result.err)
+	}
+	if successes != 1 || exhausted != 1 {
+		t.Fatalf("cross-replica max_concurrency=1 admitted successes=%d exhausted=%d", successes, exhausted)
+	}
+	if err := admitted.store.ReleaseAgentInstance(admitted.leaseID); err != nil {
+		t.Fatal(err)
+	}
+	_, leaseID, err := storeB.ReserveAgentInstanceByID(instance.ID, time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("released cross-replica capacity was not reusable: %v", err)
+	}
+	if err := storeB.ReleaseAgentInstance(leaseID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testA2ATaskAffinityAcrossReplicas(t *testing.T, storeA *GormStore, storeB *GormStore, config Config) {
+	t.Helper()
+	fixture := &fakeA2AUpstream{}
+	upstream := httptest.NewServer(fixture)
+	defer upstream.Close()
+	suffix := strings.ToLower(NewID("a2apg"))
+	slug := strings.ReplaceAll(suffix, "_", "-")
+	project := storeA.CreateProject(Project{ID: "prj_" + suffix, Name: "A2A PostgreSQL", Status: StatusActive})
+	key, secret, err := storeA.CreateAPIKey(project.ID, APIKey{ID: "key_" + suffix, Name: "A2A PostgreSQL", Status: StatusActive}, "thk_"+suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := &a2a.AgentCard{
+		Name: "A2A PostgreSQL", Version: "1",
+		SupportedInterfaces: []*a2a.AgentInterface{{URL: upstream.URL, ProtocolBinding: a2a.TransportProtocolJSONRPC, ProtocolVersion: a2a.Version}},
+		Capabilities:        a2a.AgentCapabilities{Streaming: true},
+	}
+	agent, err := storeA.SaveAgent(Agent{Slug: slug, Name: card.Name, Version: card.Version, Status: StatusActive, Source: agentSourceAdmin}, card, AgentInstance{
+		URL: upstream.URL, Status: StatusActive, Healthy: true, Headers: map[string]string{"Authorization": "Bearer postgres-fixture"},
+	}, nil, "integration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storeA.SaveAgentAccessBinding(AgentAccessBinding{
+		AgentID: agent.ID, ScopeType: "api_key", ScopeID: key.ID, Effect: agentBindingAllow, Status: StatusActive,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = storeA.db.Where("agent_id = ?", agent.ID).Delete(&AgentTaskEvent{}).Error
+		_ = storeA.db.Where("agent_id = ?", agent.ID).Delete(&AgentTask{}).Error
+		_ = storeA.db.Where("root_agent_id = ?", agent.ID).Delete(&AgentExecution{}).Error
+		_ = storeA.db.Where("agent_id = ?", agent.ID).Delete(&AgentAccessBinding{}).Error
+		_ = storeA.db.Where("agent_id = ?", agent.ID).Delete(&AgentInstance{}).Error
+		_ = storeA.db.Where("agent_id = ?", agent.ID).Delete(&AgentRevision{}).Error
+		_ = storeA.db.Delete(&Agent{}, "id = ?", agent.ID).Error
+		_ = storeA.DeleteAPIKey(key.ID)
+		_ = storeA.DeleteProject(project.ID)
+	})
+	config.A2AEnabled = true
+	config.A2AAllowPrivateUpstreams = true
+	serverA := NewWithConfig(storeA, config).Handler()
+	serverB := NewWithConfig(storeB, config).Handler()
+	sent := doA2ARequest(t, serverA, "/a2a/"+slug, secret, "1.0", map[string]any{
+		"jsonrpc": "2.0", "id": "pg-send", "method": "SendMessage",
+		"params": map[string]any{"message": map[string]any{
+			"messageId": "pg-message", "role": "ROLE_USER", "parts": []any{map[string]any{"text": "postgres"}},
+		}},
+	})
+	var response struct {
+		Result struct {
+			Task a2a.Task `json:"task"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(sent.Body.Bytes(), &response); err != nil || response.Result.Task.ID == "" {
+		t.Fatalf("first replica did not create A2A task: err=%v body=%s", err, sent.Body.String())
+	}
+	fetched := doA2ARequest(t, serverB, "/a2a/"+slug, secret, "1.0", map[string]any{
+		"jsonrpc": "2.0", "id": "pg-get", "method": "GetTask", "params": map[string]any{"id": response.Result.Task.ID},
+	})
+	if fetched.Code != http.StatusOK || !strings.Contains(fetched.Body.String(), string(response.Result.Task.ID)) {
+		t.Fatalf("second replica did not resolve shared A2A task: %d %s", fetched.Code, fetched.Body.String())
+	}
 }
 
 type multiInstanceResponseAdapter struct {

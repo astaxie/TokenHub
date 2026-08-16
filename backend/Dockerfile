@@ -59,6 +59,7 @@ ENV NODE_ENV=production \
     TOKENHUB_INSTALL_ROOT=/opt/tokenhub \
     TOKENHUB_MODEL_CATALOG_FILE=/opt/tokenhub/current/catalog/model-catalog.yaml \
     TOKENHUB_PROVIDER_CATALOG_FILE=/opt/tokenhub/current/catalog/provider-catalog.json \
+    TOKENHUB_AGENT_CATALOG_FILE=/opt/tokenhub/current/catalog/agent-catalog.yaml \
     TOKENHUB_RUN_MODE=all
 
 WORKDIR /app
@@ -69,6 +70,7 @@ COPY --chown=node:node deploy/native/tokenhub-run /usr/local/lib/tokenhub-image/
 COPY --chown=node:node deploy/native/tokenhub.service /usr/local/lib/tokenhub-image/deploy/tokenhub.service
 COPY --chown=node:node data/model-catalog.yaml /usr/local/lib/tokenhub-image/catalog/model-catalog.yaml
 COPY --chown=node:node data/provider-catalog.json /usr/local/lib/tokenhub-image/catalog/provider-catalog.json
+COPY --chown=node:node data/agent-catalog.yaml /usr/local/lib/tokenhub-image/catalog/agent-catalog.yaml
 COPY deploy/container/tokenhub-build-id /usr/local/bin/tokenhub-build-id
 COPY deploy/container/tokenhub-entrypoint /usr/local/bin/tokenhub-entrypoint
 
