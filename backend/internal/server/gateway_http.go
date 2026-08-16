@@ -142,7 +142,16 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
-	project, key, err := s.authenticate(r)
+	delegated := s.config.A2AEnabled && strings.HasPrefix(bearerToken(r), "thd_")
+	var project Project
+	var key APIKey
+	var delegationClaims agentDelegationClaims
+	var err error
+	if delegated {
+		project, key, delegationClaims, err = s.validateAgentDelegation(bearerToken(r))
+	} else {
+		project, key, err = s.authenticate(r)
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -170,8 +179,18 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Background {
+		if delegated {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "delegated_background_not_supported", "Background Responses are not supported for Agent delegation tokens"))
+			return
+		}
 		s.submitResponseJob(w, r, project, key, req)
 		return
+	}
+	if delegated && delegationClaims.ExecutionID != "" {
+		if err := s.store.ConsumeAgentExecutionBudget(delegationClaims.ExecutionID, "model", 0, 0); err != nil {
+			writeError(w, r, err)
+			return
+		}
 	}
 	admittedAt := time.Now().UTC()
 	call, err := s.admitRoutedCall(w, r, project, key, req.Model, req.Stream, requestTokenReservation(req))

@@ -117,21 +117,22 @@ type AgentAccessGroupMember struct {
 }
 
 type AgentTask struct {
-	ID             string     `json:"id" gorm:"primaryKey"`
-	UpstreamTaskID string     `json:"-" gorm:"index"`
-	AgentID        string     `json:"agent_id" gorm:"index"`
-	InstanceID     string     `json:"instance_id" gorm:"index"`
-	ProjectID      string     `json:"project_id" gorm:"index"`
-	APIKeyID       string     `json:"api_key_id" gorm:"index"`
-	EndUserID      string     `json:"end_user_id,omitempty" gorm:"index"`
-	ExecutionID    string     `json:"execution_id" gorm:"index"`
-	ContextID      string     `json:"context_id" gorm:"index"`
-	State          string     `json:"state" gorm:"index"`
-	SnapshotJSON   string     `json:"-" gorm:"type:text"`
-	LastEventSeq   int64      `json:"last_event_sequence"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	ExpiresAt      *time.Time `json:"expires_at,omitempty" gorm:"index"`
+	ID              string     `json:"id" gorm:"primaryKey"`
+	UpstreamTaskID  string     `json:"-" gorm:"index"`
+	AgentID         string     `json:"agent_id" gorm:"index"`
+	InstanceID      string     `json:"instance_id" gorm:"index"`
+	ProjectID       string     `json:"project_id" gorm:"index"`
+	APIKeyID        string     `json:"api_key_id" gorm:"index"`
+	EndUserID       string     `json:"end_user_id,omitempty" gorm:"index"`
+	ExecutionID     string     `json:"execution_id" gorm:"index"`
+	ExecutionStepID string     `json:"execution_step_id" gorm:"index"`
+	ContextID       string     `json:"context_id" gorm:"index"`
+	State           string     `json:"state" gorm:"index"`
+	SnapshotJSON    string     `json:"-" gorm:"type:text"`
+	LastEventSeq    int64      `json:"last_event_sequence"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	ExpiresAt       *time.Time `json:"expires_at,omitempty" gorm:"index"`
 }
 
 type AgentTaskEvent struct {

@@ -32,24 +32,45 @@ func (s *Server) authenticate(r *http.Request) (Project, APIKey, error) {
 }
 
 func (s *Server) authenticateAgentDelegation(token string) (Project, APIKey, error) {
-	claims, err := s.parseAgentDelegation(token)
+	project, key, claims, err := s.validateAgentDelegation(token)
 	if err != nil {
 		return Project{}, APIKey{}, err
 	}
+	if claims.ExecutionID != "" {
+		if err := s.store.ConsumeAgentExecutionBudget(claims.ExecutionID, "model", 0, 0); err != nil {
+			return Project{}, APIKey{}, err
+		}
+	}
+	return project, key, nil
+}
+
+func (s *Server) validateAgentDelegation(token string) (Project, APIKey, agentDelegationClaims, error) {
+	claims, err := s.parseAgentDelegation(token)
+	if err != nil {
+		return Project{}, APIKey{}, agentDelegationClaims{}, err
+	}
 	project, found := s.store.GetProject(claims.ProjectID)
 	if !found || project.Status != StatusActive {
-		return Project{}, APIKey{}, ErrInvalidAPIKey
+		return Project{}, APIKey{}, agentDelegationClaims{}, ErrInvalidAPIKey
 	}
 	for _, key := range s.store.ListAPIKeys() {
 		if key.ID == claims.APIKeyID && key.ProjectID == project.ID && key.Status == StatusActive &&
 			(key.ExpiresAt == nil || key.ExpiresAt.After(time.Now().UTC())) {
 			if claims.ExecutionID != "" {
-				if err := s.store.ConsumeAgentExecutionBudget(claims.ExecutionID, "model", 0, 0); err != nil {
-					return Project{}, APIKey{}, err
+				details, found, err := s.store.GetAgentExecutionDetails(claims.ExecutionID)
+				if err != nil || !found || details.ProjectID != project.ID || details.APIKeyID != key.ID {
+					return Project{}, APIKey{}, agentDelegationClaims{}, ErrInvalidAPIKey
+				}
+				if details.Status != "running" {
+					return Project{}, APIKey{}, agentDelegationClaims{}, NewHTTPError(409, "agent_execution_not_running", "Agent execution is no longer running")
+				}
+				if details.Deadline != nil && !details.Deadline.After(time.Now().UTC()) {
+					_ = s.store.FinishAgentExecution(details.ID, "budget_exceeded")
+					return Project{}, APIKey{}, agentDelegationClaims{}, NewHTTPError(429, "agent_runtime_budget_exceeded", "Agent execution runtime budget was exceeded")
 				}
 			}
-			return project, key, nil
+			return project, key, claims, nil
 		}
 	}
-	return Project{}, APIKey{}, ErrInvalidAPIKey
+	return Project{}, APIKey{}, agentDelegationClaims{}, ErrInvalidAPIKey
 }

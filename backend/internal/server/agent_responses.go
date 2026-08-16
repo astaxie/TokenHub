@@ -15,19 +15,19 @@ import (
 func (s *Server) handleAgentResponses(w http.ResponseWriter, r *http.Request, project Project, key APIKey, request ResponsesRequest, slug string) {
 	agent, found, err := s.store.GetAgentBySlug(slug)
 	if err != nil || !found || agent.Status != StatusActive {
-		writeError(w, r, NewHTTPError(http.StatusNotFound, "agent_not_found", "Agent was not found"))
+		writeError(w, r, agentResponsesNotFoundError())
 		return
 	}
 	invocation := agentInvocation{Agent: agent, Project: project, APIKey: key, IncomingHeaders: r.Header.Clone()}
 	if endUserID := strings.TrimSpace(r.Header.Get("X-TokenHub-End-User-ID")); endUserID != "" {
 		if !strings.EqualFold(key.Metadata["allow_end_user_identity"], "true") {
-			writeError(w, r, NewHTTPError(http.StatusForbidden, "end_user_identity_not_allowed", "End-user identity is not allowed for this key"))
+			writeError(w, r, agentResponsesNotFoundError())
 			return
 		}
 		invocation.EndUserID = endUserID
 	}
 	if !s.authorizeAgentInvocation(invocation, "") {
-		writeError(w, r, NewHTTPError(http.StatusForbidden, "agent_access_denied", "API key is not allowed to invoke this Agent"))
+		writeError(w, r, agentResponsesNotFoundError())
 		return
 	}
 	if _, err := s.evaluateOutboundGuardrails(r.Context(), project.ID, responsesGuardrailTargets(&request)); err != nil {
@@ -63,6 +63,10 @@ func (s *Server) handleAgentResponses(w http.ResponseWriter, r *http.Request, pr
 	response["created_at"] = time.Now().UTC().Unix()
 	w.Header().Set("x-tokenhub-agent", agent.Slug)
 	writeJSON(w, http.StatusOK, response)
+}
+
+func agentResponsesNotFoundError() *HTTPError {
+	return NewHTTPError(http.StatusNotFound, "agent_not_found", "Agent was not found")
 }
 
 func (s *Server) streamAgentResponse(ctx context.Context, w http.ResponseWriter, model string, handler *agentGatewayHandler, request *a2a.SendMessageRequest) {

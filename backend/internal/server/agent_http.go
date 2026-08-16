@@ -215,12 +215,31 @@ func (s *Server) handleAgentGateway(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(bytes.NewReader(guardedBody))
 		r.ContentLength = int64(len(guardedBody))
 	}
-	invocation, err = s.startAgentInvocation(invocation)
-	if err != nil {
-		writeA2AError(w, id, -32008, err.Error(), "UNAUTHORIZED")
-		return
+	handler := &agentGatewayHandler{server: s}
+	resumed := false
+	if taskID := inspectA2AContinuationTaskID(body, method); taskID != "" {
+		task, _, taskErr := handler.resolveTask(invocation, taskID)
+		if taskErr != nil || (invocation.ExecutionID != "" && task.ExecutionID != "" && task.ExecutionID != invocation.ExecutionID) {
+			writeA2AAgentNotFound(w, id)
+			return
+		}
+		if invocation.ExecutionID == "" {
+			invocation, resumed, err = s.resumeAgentTaskInvocation(invocation, task)
+			if err != nil {
+				writeA2AError(w, id, -32008, err.Error(), "UNAUTHORIZED")
+				return
+			}
+		}
 	}
-	defer (&agentGatewayHandler{server: s}).finishInvocation(invocation, "failed")
+	if !resumed {
+		invocation, err = s.startAgentInvocation(invocation)
+		if err != nil {
+			writeA2AError(w, id, -32008, err.Error(), "UNAUTHORIZED")
+			return
+		}
+	}
+
+	defer handler.finishInvocation(invocation, "failed")
 	ctx := context.WithValue(r.Context(), agentInvocationContextKey{}, invocation)
 	s.a2aJSONRPC.ServeHTTP(w, r.WithContext(ctx))
 }
@@ -374,8 +393,10 @@ func (s *Server) authenticateAgentInvocation(r *http.Request, agent AgentWithDet
 			return agentInvocation{}, ErrInvalidAPIKey
 		}
 		var key APIKey
+		now := time.Now().UTC()
 		for _, candidate := range s.store.ListAPIKeys() {
-			if candidate.ID == claims.APIKeyID && candidate.ProjectID == project.ID && candidate.Status == StatusActive {
+			if candidate.ID == claims.APIKeyID && candidate.ProjectID == project.ID && candidate.Status == StatusActive &&
+				(candidate.ExpiresAt == nil || candidate.ExpiresAt.After(now)) {
 				key = candidate
 				break
 			}

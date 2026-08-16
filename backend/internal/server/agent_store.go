@@ -666,6 +666,7 @@ func (s *GormStore) UpdateAgentTask(task AgentTask, eventType string, payload an
 		}
 		current.State = task.State
 		current.ContextID = task.ContextID
+		current.ExecutionStepID = task.ExecutionStepID
 		current.SnapshotJSON = task.SnapshotJSON
 		current.LastEventSeq++
 		if err := tx.Save(&current).Error; err != nil {

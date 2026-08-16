@@ -94,7 +94,7 @@ func (h *agentGatewayHandler) GetTask(ctx context.Context, request *a2a.GetTaskR
 	if err := h.rewriteAndPersistTask(&task, result, "task"); err != nil {
 		return nil, a2a.NewError(a2a.ErrInternalError, "Task state could not be persisted")
 	}
-	status = "completed"
+	status = agentExecutionStatusForTask(result.Status.State)
 	return result, nil
 }
 
@@ -192,7 +192,7 @@ func (h *agentGatewayHandler) CancelTask(ctx context.Context, request *a2a.Cance
 	if err := h.rewriteAndPersistTask(&task, result, "task"); err != nil {
 		return nil, a2a.NewError(a2a.ErrInternalError, "Task state could not be persisted")
 	}
-	status = "completed"
+	status = agentExecutionStatusForTask(result.Status.State)
 	return result, nil
 }
 
@@ -234,15 +234,16 @@ func (h *agentGatewayHandler) SendMessage(ctx context.Context, request *a2a.Send
 		if err == nil {
 			err = h.rewriteAndPersistTask(&task, event, "task")
 		}
+		status = agentExecutionStatusForTask(event.Status.State)
 	case *a2a.Message:
 		if task.ID != "" && event.TaskID != "" {
 			event.TaskID = a2a.TaskID(task.ID)
 		}
+		status = "completed"
 	}
 	if err != nil {
 		return nil, a2a.NewError(a2a.ErrInternalError, "Task state could not be persisted")
 	}
-	status = "completed"
 	return result, nil
 }
 
@@ -294,6 +295,9 @@ func (h *agentGatewayHandler) SendStreamingMessage(ctx context.Context, request 
 				yield(nil, a2a.NewError(a2a.ErrInternalError, "Task event could not be persisted"))
 				break
 			}
+			if task.ID != "" {
+				status = agentExecutionStatusForTask(a2a.TaskState(task.State))
+			}
 			if !yield(event, nil) {
 				status = "canceled"
 				return
@@ -303,7 +307,9 @@ func (h *agentGatewayHandler) SendStreamingMessage(ctx context.Context, request 
 			return
 		}
 		h.recordInstanceSuccess(instance)
-		status = "completed"
+		if task.ID == "" {
+			status = "completed"
+		}
 	}
 }
 
@@ -321,6 +327,7 @@ func (h *agentGatewayHandler) SubscribeToTask(ctx context.Context, request *a2a.
 			yield(nil, err)
 			return
 		}
+		status = agentExecutionStatusForTask(a2a.TaskState(task.State))
 		instance, leaseID, err := h.server.store.ReserveAgentInstanceByID(instance.ID, invocation.Deadline)
 		if err != nil {
 			yield(nil, normalizeAgentUpstreamError(err))
@@ -354,13 +361,13 @@ func (h *agentGatewayHandler) SubscribeToTask(ctx context.Context, request *a2a.
 				yield(nil, a2a.NewError(a2a.ErrInternalError, "Task event could not be persisted"))
 				return
 			}
+			status = agentExecutionStatusForTask(a2a.TaskState(task.State))
 			if !yield(event, nil) {
 				status = "canceled"
 				return
 			}
 		}
 		h.recordInstanceSuccess(instance)
-		status = "completed"
 	}
 }
 
@@ -427,7 +434,8 @@ func (h *agentGatewayHandler) ensureTask(invocation agentInvocation, instance Ag
 	return h.server.store.CreateAgentTask(AgentTask{
 		UpstreamTaskID: upstreamID, AgentID: invocation.Agent.ID, InstanceID: instance.ID,
 		ProjectID: invocation.Project.ID, APIKeyID: invocation.APIKey.ID, EndUserID: invocation.EndUserID,
-		ExecutionID: invocation.ExecutionID, ContextID: contextID, State: string(a2a.TaskStateSubmitted),
+		ExecutionID: invocation.ExecutionID, ExecutionStepID: invocation.ParentStepID,
+		ContextID: contextID, State: string(a2a.TaskStateSubmitted),
 	})
 }
 
@@ -578,10 +586,8 @@ func (h *agentGatewayHandler) rewriteAndPersistEvent(invocation agentInvocation,
 	case *a2a.TaskArtifactUpdateEvent:
 		item.TaskID = a2a.TaskID(task.ID)
 	}
-	if task.SnapshotJSON == "" {
-		snapshot := &a2a.Task{ID: a2a.TaskID(task.ID), ContextID: task.ContextID, Status: a2a.TaskStatus{State: a2a.TaskState(task.State)}}
-		data, _ := json.Marshal(snapshot)
-		task.SnapshotJSON = string(data)
+	if err := mergeAgentTaskSnapshot(&task, event); err != nil {
+		return AgentTask{}, err
 	}
 	task, err = h.server.store.UpdateAgentTask(task, fmt.Sprintf("%T", event), event)
 	return task, err
@@ -652,6 +658,9 @@ func (h *agentGatewayHandler) chargeInvocationCost(invocation agentInvocation, i
 }
 
 func (h *agentGatewayHandler) finishInvocation(invocation agentInvocation, status string) {
+	if status == "running" || (status == "failed" && h.hasNonTerminalInvocationTask(invocation)) {
+		return
+	}
 	if invocation.ParentStepID != "" {
 		_ = h.server.store.FinishAgentExecutionEdge(invocation.ParentStepID, status)
 	}
