@@ -7,6 +7,7 @@ import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentVie
 import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
 import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
+import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { uniqueUIID, viewFromPath } from "../domain/formatting";
@@ -724,7 +725,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 
   const viewItems = activeConfig?.list(data) ?? [];
   const categoryItems = filterByModelCategory(activeConfig?.view, viewItems, modelCategoryFilter, data);
-  const filteredItems = filterRows(categoryItems, query);
+  const filteredItems =
+    activeConfig?.view === "api-keys" ? filterAPIKeys(categoryItems as APIKey[], query) : filterRows(categoryItems, query);
   const crudPagination = usePagination(filteredItems.length, `${activeView}:${modelCategoryFilter}:${query}`);
   const pagedItems = useMemo(
     () => filteredItems.slice(crudPagination.startIndex, crudPagination.endIndex),

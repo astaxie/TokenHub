@@ -105,7 +105,7 @@ flowchart LR
 | Provider 型 | アダプターと能力 |
 | --- | --- |
 | `openai`、`openai_compatible`、`qwen`、`local` | OpenAI 互換：Chat、ストリーミング Chat、Responses、Embeddings、プローブ |
-| `deepseek` | OpenAI 互換：Chat、ストリーミング Chat、Embeddings、プローブ。Responses とストリーミング Responses はモデル単位で宣言し、現在は `deepseek-v4-flash` のみ有効 |
+| `deepseek` | OpenAI 互換：Chat、ストリーミング Chat、Embeddings、プローブ。Responses とストリーミング Responses はモデル単位で宣言し、`deepseek-v4-flash` と `deepseek-v4-pro` で有効 |
 | `azure_openai` | Chat、ストリーミング Chat、Embeddings、プローブ |
 | `anthropic` | Chat、ストリーミング Chat、プローブ |
 | `gemini` | Chat、ストリーミング Chat、Embeddings、プローブ |

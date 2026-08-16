@@ -105,7 +105,7 @@ The default image uses the model catalog bundled at build time so the executable
 | Provider type | Adapter and capabilities |
 | --- | --- |
 | `openai`, `openai_compatible`, `qwen`, `local` | OpenAI compatible: Chat, streaming Chat, Responses, Embeddings, and probes |
-| `deepseek` | OpenAI compatible; Chat, streaming Chat, Embeddings, and probes. Responses and streaming Responses are model-scoped and currently enabled only for `deepseek-v4-flash` |
+| `deepseek` | OpenAI compatible; Chat, streaming Chat, Embeddings, and probes. Responses and streaming Responses are model-scoped and enabled for `deepseek-v4-flash` and `deepseek-v4-pro` |
 | `azure_openai` | Chat, streaming Chat, Embeddings, and probes |
 | `anthropic` | Chat, streaming Chat, and probes |
 | `gemini` | Chat, streaming Chat, Embeddings, and probes |

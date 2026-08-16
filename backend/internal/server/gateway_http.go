@@ -913,9 +913,9 @@ func (s *Server) routeSupportsAdapterCapability(route RouteSelection, capability
 		return true
 	}
 	// DeepSeek's Responses API is model-scoped rather than provider-scoped. Keep
-	// this allowlist narrow: unsupported parameters are otherwise silently ignored
-	// upstream, which would make an endpoint-level capability claim misleading.
-	return strings.EqualFold(strings.TrimSpace(route.ProviderModel), "deepseek-v4-flash")
+	// this allowlist aligned with the models advertised by the upstream endpoint.
+	model := strings.ToLower(strings.TrimSpace(route.ProviderModel))
+	return model == "deepseek-v4-flash" || model == "deepseek-v4-pro"
 }
 
 func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []RouteSelection {

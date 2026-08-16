@@ -277,12 +277,22 @@ func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
 
 func (s *Server) usageBreakdownForUser(user AdminUser) map[string]any {
 	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
-	breakdown := s.usageBreakdownFromRecords(records)
-	breakdown["members"] = s.aggregateUsageByMember(user, records)
+	projectsByID := indexProjectsByID(s.store.ListProjects())
+	breakdown := s.usageBreakdownFromRecords(records, projectsByID)
+	breakdown["members"] = s.aggregateUsageByMember(user, records, projectsByID)
 	return breakdown
 }
 
-func (s *Server) usageBreakdownFromRecords(records []UsageRecord) map[string]any {
+func indexProjectsByID(projects []Project) map[string]Project {
+	projectsByID := make(map[string]Project, len(projects))
+	for _, project := range projects {
+		projectsByID[project.ID] = project
+	}
+	return projectsByID
+}
+
+func (s *Server) usageBreakdownFromRecords(records []UsageRecord, projectsByID map[string]Project) map[string]any {
+	costCentersByProjectID := s.usageCostCentersByProjectID(records, projectsByID)
 	return map[string]any{
 		"projects":  aggregateUsage(records, func(record UsageRecord) string { return record.ProjectID }),
 		"models":    aggregateUsage(records, func(record UsageRecord) string { return record.ModelName }),
@@ -291,23 +301,15 @@ func (s *Server) usageBreakdownFromRecords(records []UsageRecord) map[string]any
 			return record.ProviderResourceID
 		}),
 		"cost_centers": aggregateUsage(records, func(record UsageRecord) string {
-			project, ok := s.store.GetProject(record.ProjectID)
-			if !ok {
-				return "unknown"
-			}
-			return s.costCenterForProject(project)
+			return costCentersByProjectID[record.ProjectID]
 		}),
 	}
 }
 
-func (s *Server) aggregateUsageByMember(user AdminUser, records []UsageRecord) []map[string]any {
+func (s *Server) aggregateUsageByMember(user AdminUser, records []UsageRecord, projectsByID map[string]Project) []map[string]any {
 	keysByID := map[string]APIKey{}
 	for _, key := range s.store.ListAPIKeys() {
 		keysByID[key.ID] = key
-	}
-	projectsByID := map[string]Project{}
-	for _, project := range s.store.ListProjects() {
-		projectsByID[project.ID] = project
 	}
 	usersByID := map[string]AdminUser{}
 	for _, item := range s.store.ListAdminUsers() {
@@ -535,25 +537,61 @@ func (s *Server) visibleAPIKeyIDSet(user AdminUser) map[string]bool {
 	return out
 }
 
-func (s *Server) costCenterForProject(project Project) string {
+func (s *Server) usageCostCentersByProjectID(records []UsageRecord, projectsByID map[string]Project) map[string]string {
+	projectsWithUsage := map[string]Project{}
+	needsTeams := false
+	needsQuotas := false
+	for _, record := range records {
+		if _, seen := projectsWithUsage[record.ProjectID]; seen {
+			continue
+		}
+		project, ok := projectsByID[record.ProjectID]
+		if !ok {
+			continue
+		}
+		projectsWithUsage[record.ProjectID] = project
+		if strings.TrimSpace(project.CostCenter) == "" {
+			needsTeams = needsTeams || strings.TrimSpace(project.TeamID) != ""
+			needsQuotas = needsQuotas || strings.TrimSpace(project.DefaultQuotaRef) != ""
+		}
+	}
+	if len(projectsWithUsage) == 0 {
+		return map[string]string{}
+	}
+	teamsByID := map[string]AdminResource{}
+	if needsTeams {
+		for _, team := range s.store.ListResources("teams") {
+			teamsByID[team.ID] = team
+		}
+	}
+	quotasByID := map[string]AdminResource{}
+	if needsQuotas {
+		for _, quota := range s.store.ListResources("quota-policies") {
+			quotasByID[quota.ID] = quota
+		}
+	}
+	costCenters := make(map[string]string, len(projectsWithUsage))
+	for projectID, project := range projectsWithUsage {
+		costCenters[projectID] = costCenterForProject(project, teamsByID, quotasByID)
+	}
+	return costCenters
+}
+
+func costCenterForProject(project Project, teamsByID, quotasByID map[string]AdminResource) string {
 	if costCenter := strings.TrimSpace(project.CostCenter); costCenter != "" {
 		return costCenter
 	}
 	if strings.TrimSpace(project.TeamID) != "" {
-		for _, team := range s.store.ListResources("teams") {
-			if team.ID == project.TeamID {
-				if costCenter := strings.TrimSpace(stringField(team.Fields, "cost_center")); costCenter != "" {
-					return costCenter
-				}
+		if team, ok := teamsByID[project.TeamID]; ok {
+			if costCenter := strings.TrimSpace(stringField(team.Fields, "cost_center")); costCenter != "" {
+				return costCenter
 			}
 		}
 	}
 	if strings.TrimSpace(project.DefaultQuotaRef) != "" {
-		for _, quota := range s.store.ListResources("quota-policies") {
-			if quota.ID == project.DefaultQuotaRef {
-				if costCenter := strings.TrimSpace(stringField(quota.Fields, "cost_center")); costCenter != "" {
-					return costCenter
-				}
+		if quota, ok := quotasByID[project.DefaultQuotaRef]; ok {
+			if costCenter := strings.TrimSpace(stringField(quota.Fields, "cost_center")); costCenter != "" {
+				return costCenter
 			}
 		}
 	}

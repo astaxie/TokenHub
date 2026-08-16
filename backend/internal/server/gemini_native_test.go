@@ -226,10 +226,14 @@ func TestGeminiNativeCallsEmitGatewayTraces(t *testing.T) {
 }
 
 func newGeminiCodexTestServer(t *testing.T, responder func(map[string]any) string) (*Server, string) {
+	return newGeminiCodexTestServerForModel(t, geminiCodexTestModel, responder)
+}
+
+func newGeminiCodexTestServerForModel(t *testing.T, modelName string, responder func(map[string]any) string) (*Server, string) {
 	t.Helper()
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Gemini CLI Project", Status: StatusActive})
-	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Gemini CLI Key", Allowed: []string{geminiCodexTestModel, "chat-only-model"}, Status: StatusActive}, "thk_gemini_cli_test")
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Gemini CLI Key", Allowed: []string{modelName, "chat-only-model"}, Status: StatusActive}, "thk_gemini_cli_test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,14 +241,14 @@ func newGeminiCodexTestServer(t *testing.T, responder func(map[string]any) strin
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID: "rsrc_gemini_codex", ProviderID: provider.ID, Name: "Gemini Codex Account",
 		ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
-		Options:     codexCapabilityOptionsForTest(geminiCodexTestModel),
+		Options:     codexCapabilityOptionsForTest(modelName),
 		Credentials: &ProviderResourceCredentials{AccessToken: "gemini-codex-access", AccountID: "gemini-codex-account"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.AddModel(Model{Name: geminiCodexTestModel, Modality: "chat", ContextWindow: 128000, Status: StatusActive})
-	store.AddRoute(ModelRoute{ID: "route_gemini_codex", ModelName: geminiCodexTestModel, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: geminiCodexTestModel, Status: StatusActive})
+	store.AddModel(Model{Name: modelName, Modality: "chat", ContextWindow: 128000, Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_gemini_codex", ModelName: modelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: modelName, Status: StatusActive})
 	const chatOnlyProviderType = "gemini_chat_only"
 	chatProvider := store.AddProvider(Provider{ID: "prv_gemini_chat_only", Name: "Chat Only", Type: chatOnlyProviderType, Status: StatusActive, Healthy: true})
 	store.AddModel(Model{Name: "chat-only-model", Modality: "chat", Status: StatusActive})

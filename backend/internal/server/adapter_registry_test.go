@@ -42,6 +42,12 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
 	},
+	ProviderKronk: {
+		AdapterCapabilityChat, AdapterCapabilityChatStream,
+		AdapterCapabilityEmbeddings, AdapterCapabilityModels,
+		AdapterCapabilityProbe, AdapterCapabilityResponses,
+		AdapterCapabilityResponseStream,
+	},
 	"deepseek": {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,

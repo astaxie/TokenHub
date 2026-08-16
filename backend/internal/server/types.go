@@ -40,6 +40,7 @@ const (
 	ProviderAzureOpenAI      = "azure_openai"
 	ProviderAnthropic        = "anthropic"
 	ProviderGemini           = "gemini"
+	ProviderKronk            = "kronk"
 
 	ProviderResourceAPIKey             = "api_key"
 	ProviderResourceOpenAISubscription = "openai_subscription"
@@ -274,6 +275,7 @@ type ProviderCreateRequest struct {
 	Type                        string            `json:"type"`
 	BaseURL                     string            `json:"base_url"`
 	APIKey                      string            `json:"api_key"`
+	ClearAPIKey                 bool              `json:"clear_api_key"`
 	Status                      string            `json:"status"`
 	Healthy                     *bool             `json:"healthy"`
 	Priority                    int               `json:"priority"`
@@ -303,6 +305,7 @@ type Provider struct {
 	Type                   string            `json:"type"`
 	BaseURL                string            `json:"base_url,omitempty"`
 	APIKey                 string            `json:"-"`
+	ClearAPIKey            bool              `json:"-" gorm:"-"`
 	Status                 string            `json:"status"`
 	Healthy                bool              `json:"healthy"`
 	Priority               int               `json:"priority"`

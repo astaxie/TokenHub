@@ -385,6 +385,7 @@ func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
 		builtinCatalogEntry("qwen", "Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://help.aliyun.com/zh/model-studio", []string{"qwen-max", "qwen-plus"}),
 		{ID: "siliconflow", Name: "SiliconFlow", DisplayName: "SiliconFlow", Type: ProviderOpenAICompatible, BaseURL: "https://api.siliconflow.cn/v1", DocURL: "https://cloud.siliconflow.com/models", Source: "builtin"},
 		{ID: "ollama", Name: "Ollama", DisplayName: "Ollama", Type: "local", BaseURL: "http://127.0.0.1:11434/v1", DocURL: "https://ollama.com", Source: "builtin"},
+		kronkCatalogEntry(),
 		customProviderCatalogEntry(),
 	}
 	if includeModels {
@@ -416,6 +417,11 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 				"source":                   "builtin",
 				"upstream_source":          "deepseek-api",
 				"endpoints":                "responses,chat/completions,anthropic",
+				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
+				"top_logprobs_range":       "0,20",
+				"responses_stateful":       "false",
+				"prompt_cache_mode":        "automatic",
+				"custom_tool_names":        "apply_patch",
 				"reasoning_effort_options": "low,high,max",
 				"reasoning_default":        "true",
 				"tool_call":                "true",
@@ -431,7 +437,12 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 			model.Metadata = map[string]string{
 				"source":                   "builtin",
 				"upstream_source":          "deepseek-api",
-				"endpoints":                "chat/completions,anthropic",
+				"endpoints":                "responses,chat/completions,anthropic",
+				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
+				"top_logprobs_range":       "0,20",
+				"responses_stateful":       "false",
+				"prompt_cache_mode":        "automatic",
+				"custom_tool_names":        "apply_patch",
 				"reasoning_effort_options": "low,high,max",
 				"reasoning_default":        "true",
 				"tool_call":                "true",
@@ -443,7 +454,7 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 		model.InputModalities = []string{"text"}
 		model.OutputModalities = []string{"text"}
 		model.Capabilities = []string{"chat", "reasoning", "tools", "structured_outputs"}
-		model.SupportedParameters = []string{"temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"}
+		model.SupportedParameters = []string{"temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"}
 	}
 	return entry
 }
@@ -568,6 +579,11 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		if providerType == ProviderKronk {
+			return ProviderCatalogEntry{}, checkProviderResponseForProvider(resp, Provider{
+				Type: ProviderKronk, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
+			})
+		}
 		return ProviderCatalogEntry{}, NewHTTPError(statusForProvider(resp.StatusCode), "provider_models_upstream_error", resp.Status)
 	}
 	var payload map[string]any
@@ -705,6 +721,8 @@ func inferProviderType(id string, baseURL string) string {
 		return "qwen"
 	case strings.Contains(normalized, "ollama") || strings.Contains(normalized, "lmstudio") || strings.Contains(normalized, "local"):
 		return "local"
+	case strings.Contains(normalized, "kronk"):
+		return ProviderKronk
 	default:
 		return ProviderOpenAICompatible
 	}
@@ -723,6 +741,8 @@ func normalizeProviderBaseURL(id string, raw string) string {
 		return firstNonEmpty(raw, "http://127.0.0.1:11434/v1")
 	case "lmstudio":
 		return firstNonEmpty(raw, "http://127.0.0.1:1234/v1")
+	case ProviderKronk:
+		return firstNonEmpty(raw, kronkDefaultBaseURL)
 	default:
 		return normalizeOpenAICompatibleBaseURL(id, raw)
 	}

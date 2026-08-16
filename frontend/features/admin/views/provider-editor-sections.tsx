@@ -24,15 +24,30 @@ export function ProviderConnectionFields({ values, onUpdate, validationErrors = 
           <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
         </label>
         <label className="field">
-          <span>API Key</span>
+          <span>{values.type === "kronk" ? tx("Application Token（可选）") : "API Key"}</span>
           <input
             autoComplete="new-password"
             value={values.api_key ?? ""}
             type="password"
-            onChange={(event) => onUpdate("api_key", event.target.value)}
+            onChange={(event) => {
+              onUpdate("api_key", event.target.value);
+              if (event.target.value.trim()) onUpdate("clear_api_key", "false");
+            }}
           />
-          <small>{tx("留空表示不修改现有 Key；填写新值才会覆盖。")}</small>
+          <small>{tx(values.type === "kronk" ? "留空表示不修改现有 token；填写新值才会覆盖。" : "留空表示不修改现有 Key；填写新值才会覆盖。")}</small>
         </label>
+        {values.type === "kronk" ? (
+          <div className="field">
+            <span>{tx("Kronk 认证")}</span>
+            <label className="checkbox-line">
+              <input checked={values.clear_api_key === "true"} type="checkbox" onChange={(event) => {
+                onUpdate("clear_api_key", String(event.target.checked));
+                if (event.target.checked) onUpdate("api_key", "");
+              }} />
+              <span>{tx("移除已保存的 application token，改为无认证访问")}</span>
+            </label>
+          </div>
+        ) : null}
       </div>
       <ProviderCustomHeaders
         disabled={values.type === "azure_openai" || values.type === "openai_codex"}

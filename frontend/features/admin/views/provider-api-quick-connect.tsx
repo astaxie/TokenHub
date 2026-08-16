@@ -112,8 +112,9 @@ export function ProviderAPIQuickConnect({
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
   const connectionTestRun = useRef(0);
   const custom = catalogID === "custom";
+  const optionalAPIKey = catalogID === "kronk";
   const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
-  const connectionReady = Boolean(values.base_url?.trim() && values.api_key?.trim());
+  const connectionReady = Boolean(values.base_url?.trim() && (optionalAPIKey || values.api_key?.trim()));
 
   function updateConnectionValue(key: string, value: string) {
     const nextRun = providerConnectionTestRunAfterUpdate(connectionTestRun.current, key);
@@ -128,7 +129,7 @@ export function ProviderAPIQuickConnect({
     const headerError = providerHeaderFormError(values.custom_headers);
     if (headerError) { setConnectionTest({ status: "error", message: tx(headerError) }); return; }
     if (!connectionReady) {
-      setConnectionTest({ status: "error", message: tx("请填写 Base URL 和 API Key 后测试。") });
+      setConnectionTest({ status: "error", message: tx(optionalAPIKey ? "请填写 Base URL 后测试。" : "请填写 Base URL 和 API Key 后测试。") });
       return;
     }
     const run = connectionTestRun.current + 1;
@@ -154,7 +155,7 @@ export function ProviderAPIQuickConnect({
       setConnectionTest({
         status: "success",
         latencyMS: Math.max(0, result.latency_ms),
-        message: tx("API Key 配置有效"),
+        message: tx(optionalAPIKey ? "Kronk 服务连接正常" : "API Key 配置有效"),
       });
     } catch (err) {
       if (connectionTestRun.current !== run || isAuthExpiredError(err)) return;
@@ -188,8 +189,8 @@ export function ProviderAPIQuickConnect({
           <div className="provider-api-quick-intro">
             <span><KeyRound size={18} /></span>
             <div>
-              <strong>{tx(custom ? "填写连接信息" : "只需填写 API Key")}</strong>
-              <p>{tx(custom ? "自定义渠道需要填写名称、Base URL 和 API Key。" : "把上游 Key 保存到 Provider，适合单账号或兼容 API。")}</p>
+              <strong>{tx(custom ? "填写连接信息" : optionalAPIKey ? "连接 Kronk Model Server" : "只需填写 API Key")}</strong>
+              <p>{tx(custom ? "自定义渠道需要填写名称、Base URL 和 API Key。" : optionalAPIKey ? "未启用 Kronk 认证时可留空；启用后填写 application token。" : "把上游 Key 保存到 Provider，适合单账号或兼容 API。")}</p>
             </div>
           </div>
 
@@ -212,7 +213,7 @@ export function ProviderAPIQuickConnect({
           )}
 
           <label className="field provider-quick-key-field">
-            <span>API Key</span>
+            <span>{optionalAPIKey ? tx("Application Token（可选）") : "API Key"}</span>
             <div className="provider-quick-key-input">
               <input
                 autoComplete="new-password"
@@ -224,13 +225,13 @@ export function ProviderAPIQuickConnect({
                   updateConnectionValue("api_key", event.target.value);
                 }}
                 onInvalid={handleRequiredFieldInvalid}
-                required
+                required={!optionalAPIKey}
               />
               <button aria-label={tx(showKey ? "隐藏 API Key" : "显示 API Key")} onClick={() => setShowKey((current) => !current)} type="button">
                 {showKey ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
-            {entry?.doc_url ? <a href={entry.doc_url} rel="noreferrer" target="_blank">{tx("获取 API Key")}</a> : null}
+            {entry?.doc_url ? <a href={entry.doc_url} rel="noreferrer" target="_blank">{tx(optionalAPIKey ? "查看 Kronk 文档" : "获取 API Key")}</a> : null}
           </label>
           <div className="provider-quick-test-row">
             <button

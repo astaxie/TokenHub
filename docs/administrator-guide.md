@@ -72,6 +72,14 @@ An exceeded limit returns HTTP 429 with `api_key_rpm_exceeded` or `api_key_tpm_e
 
 TokenHub stores the last known-good provider catalog in the database. On every backend startup, it validates and loads the configured local `provider-catalog.json`, then atomically replaces the database snapshot. Ordinary **Provider Channels** requests only read the database snapshot, and administrators can manually refresh the same local catalog. If local catalog reading, parsing, or completeness validation fails, TokenHub keeps using the last known-good snapshot.
 
+### Kronk local inference
+
+Choose **Kronk** in **Provider Channels** to connect an independently running Kronk Model Server. The default Base URL is `http://127.0.0.1:11435/v1`. Leave the application token empty when Kronk authentication is disabled; otherwise TokenHub sends the saved secret only as `Authorization: Bearer <token>`. Connection testing checks `/v1/liveness`, `/v1/readiness`, and `/v1/models` separately so a reachable process, a ready service, and usable local models remain distinct states.
+
+The model picker discovers the live inventory from `GET /v1/models` and preserves each complete Kronk model ID, including `/`, `:`, and quantization suffixes. Import the selected inventory, then create the external standard name in **Model Directory** and map it to the Kronk ID under **Routing Policies**. Repeated imports are idempotent. A successful later discovery marks missing Kronk models unavailable without deleting their inventory or routes; a failed discovery leaves existing configuration unchanged.
+
+Kronk routes support OpenAI-compatible Chat Completions, Responses, and Embeddings, including SSE streaming. TokenHub continues to enforce its client authentication, project isolation, quota, audit, routing, and failover policies. It never forwards the caller's `Authorization` header to Kronk and does not expose the saved Kronk token in management responses, audit payloads, logs, or upstream error responses.
+
 ## Claude Code Attribution Handling
 
 Claude Code can place an attribution text block at the start of an Anthropic Messages `system` array. The block contains client metadata that can vary between requests and prevent a third-party upstream from reusing an otherwise stable prompt prefix.

@@ -451,6 +451,12 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 
 `data/model-catalog.yaml` は追跡対象カタログの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデルを提供します。選択項目の取り込みでは永続化された Provider モデルインベントリだけが作成されます。外部モデルと統一された顧客向け価格は Model Directory で個別に作成し、Routing Policies で取り込み済みの Provider モデルへマッピングします。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
 
+### Kronk への接続
+
+TokenHub は外部の Kronk Model Server に接続するだけで、Kronk のインストール、GGUF ファイルのダウンロード、llama.cpp の組み込みは行いません。TokenHub コンテナ内の `127.0.0.1` は Docker ホストではなく、そのコンテナ自身を指します。Kronk をホストで実行する場合は、環境で利用可能な `host.docker.internal` などのホスト到達可能なアドレスを使用してください。別コンテナで実行する場合は、共有 Docker ネットワークと Kronk のサービス名を使用します。信頼済みプライベートリテラル IP は `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` で許可します。TokenHub と Kronk が同じホストネットワーク名前空間を共有する場合に限り、既定の loopback アドレス用に `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=true` を設定してください。
+
+Kronk は既定で平文 HTTP を待ち受けます。リモート配置では、信頼済みプライベートネットワークまたは TLS リバースプロキシを使用し、適切な Kronk authorization mode を有効にしてください。TokenHub は推論、モデル検出、liveness、readiness エンドポイントだけを使用し、モデルダウンロード、ディレクトリ、セキュリティ管理、debug、pprof、管理 UI の各エンドポイントはプロキシしません。
+
 ## リバースプロキシ
 
 本番環境では HTTPS の背後に置き、次のように転送してください。

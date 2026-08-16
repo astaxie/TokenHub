@@ -454,6 +454,12 @@ The custom mount intentionally overrides the image catalog and is therefore mana
 
 `data/model-catalog.yaml` provides tracked reference metadata; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory only. External models and their unified client-facing prices are created separately in Model Directory, then mapped to imported Provider models under Routing Policies. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
 
+### Connecting to Kronk
+
+TokenHub connects to an external Kronk Model Server; it does not install Kronk, download GGUF files, or embed llama.cpp. `127.0.0.1` inside the TokenHub container points to that container, not the Docker host. When Kronk runs on the host, use a host-reachable address such as `host.docker.internal` where supported; when it runs in another container, use a shared Docker network and the Kronk service name. Allow trusted private literal ranges with `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS`. The loopback default requires `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=true` only when TokenHub and Kronk actually share the same host network namespace.
+
+Kronk listens on plaintext HTTP by default. For remote deployment, use a trusted private network or a TLS reverse proxy and enable an appropriate Kronk authorization mode. TokenHub accesses only inference, model discovery, liveness, and readiness endpoints; it does not proxy model download, directory, security administration, debug, pprof, or management UI endpoints.
+
 ## Reverse Proxy
 
 For production, place TokenHub behind HTTPS and forward:

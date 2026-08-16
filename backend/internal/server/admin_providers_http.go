@@ -196,6 +196,20 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}
+	if id == ProviderKronk && r.Method == http.MethodPost {
+		var req ProviderCreateRequest
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
+			return
+		}
+		entry, err := s.discoverKronkCatalog(r.Context(), req)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
@@ -217,7 +231,17 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	var catalog ProviderCatalogEntry
 	catalogSource := ""
 	catalogID := strings.TrimSpace(req.CatalogID)
-	if catalogID == codexProviderCatalogID {
+	if catalogID == ProviderKronk && len(req.CustomModels) > 0 {
+		catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
+		catalog.ID = ProviderKronk
+		catalog.Name = "Kronk"
+		catalog.DisplayName = "Kronk"
+		catalog.Type = ProviderKronk
+		catalog.BaseURL = firstNonEmpty(strings.TrimSpace(req.BaseURL), kronkDefaultBaseURL)
+		catalog.DocURL = kronkDocURL
+		catalog.Source = "kronk-upstream"
+		catalogSource = catalog.Source
+	} else if catalogID == codexProviderCatalogID {
 		if len(req.CustomModels) > 0 {
 			catalog = codexProviderCatalogFromModels(req.CustomModels)
 		} else {
@@ -253,6 +277,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		Type:             firstNonEmpty(req.Type, catalog.Type, ProviderOpenAICompatible),
 		BaseURL:          firstNonEmpty(req.BaseURL, catalog.BaseURL),
 		APIKey:           req.APIKey,
+		ClearAPIKey:      req.ClearAPIKey,
 		Status:           firstNonEmpty(req.Status, StatusActive),
 		Healthy:          req.Healthy != nil && *req.Healthy,
 		Priority:         req.Priority,
@@ -461,14 +486,31 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to test the connection"))
 			return
 		}
-		if strings.TrimSpace(req.APIKey) == "" {
+		if strings.TrimSpace(req.APIKey) == "" && strings.TrimSpace(req.Type) != ProviderKronk {
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "provider_api_key_required", "API key is required to test the connection"))
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 		startedAt := time.Now()
-		catalog, err := CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, req)
+		var catalog ProviderCatalogEntry
+		var health *KronkHealthResult
+		var err error
+		if strings.TrimSpace(req.Type) == ProviderKronk {
+			adapter, ok := resolveTypedAdapter[KronkAdapter](s.adapterRegistry, ProviderKronk)
+			if !ok {
+				writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable"))
+				return
+			}
+			provider := Provider{Name: req.Name, Type: ProviderKronk, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
+			result, healthErr := adapter.Health(ctx, provider)
+			health, err = &result, healthErr
+			if err == nil {
+				catalog, err = KronkProviderCatalogFromUpstream(ctx, http.DefaultClient, req)
+			}
+		} else {
+			catalog, err = CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, req)
+		}
 		if err != nil {
 			writeError(w, r, err)
 			return
@@ -477,6 +519,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 			"healthy":      true,
 			"latency_ms":   time.Since(startedAt).Milliseconds(),
 			"models_count": catalog.ModelsCount,
+			"health":       health,
 		})
 		return
 	}

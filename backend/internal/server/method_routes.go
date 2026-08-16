@@ -12,6 +12,25 @@ func (s *Server) registerSingleMethodRoute(method string, pattern string, handle
 	s.mux.HandleFunc(pattern, methodNotAllowed)
 }
 
+// registerDynamicGETRoute rejects the HEAD requests that a GET pattern matches
+// automatically. The route family must also register a path-only subtree
+// handler for other wrong methods and malformed paths.
+func (s *Server) registerDynamicGETRoute(pattern string, handler http.HandlerFunc, headFallback http.HandlerFunc) {
+	s.mux.HandleFunc(http.MethodGet+" "+pattern, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			headFallback(w, r)
+			return
+		}
+		handler(w, r)
+	})
+}
+
+// registerDynamicMethodRoute registers one non-GET method-specific part of a
+// dynamic route. The route family handles other methods through its subtree.
+func (s *Server) registerDynamicMethodRoute(method string, pattern string, handler http.HandlerFunc) {
+	s.mux.HandleFunc(method+" "+pattern, handler)
+}
+
 func jsonMethodNotAllowed(allowedMethod string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", allowedMethod)

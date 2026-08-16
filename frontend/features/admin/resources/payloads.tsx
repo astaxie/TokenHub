@@ -22,6 +22,7 @@ export function providerPayload(values: Record<string, string>) {
     type: values.type,
     base_url: values.base_url,
     api_key: values.api_key,
+    clear_api_key: values.clear_api_key === "true",
     status: values.status || "active",
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 10),

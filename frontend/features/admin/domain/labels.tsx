@@ -322,6 +322,7 @@ export function providerTypeLabel(type: string | undefined) {
     deepseek: "DeepSeek",
     qwen: "Qwen / 通义千问",
     local: "本地模型",
+    kronk: "Kronk 本地推理",
   };
   return tx(labels[normalized] ?? type ?? "-");
 }

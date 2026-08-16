@@ -20,21 +20,74 @@ type responseJobEnvelope struct {
 }
 
 func (s *Server) handleResponseJob(w http.ResponseWriter, r *http.Request) {
-	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/responses/"), "/")
-	parts := strings.Split(path, "/")
-	if path == "" || len(parts) > 2 || (len(parts) == 2 && parts[1] != "cancel") {
+	if r.URL.Path == "/v1/responses/compact" {
+		w.Header().Set("Allow", http.MethodPost)
+		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		return
+	}
+	id, cancel, ok := responseJobPath(r)
+	if !ok {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "response_not_found", "Response job not found"))
 		return
 	}
-	if len(parts) == 1 && r.Method != http.MethodGet {
+	if !cancel && r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
 		return
 	}
-	if len(parts) == 2 && r.Method != http.MethodPost {
+	if cancel && r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
 		return
 	}
+	s.serveResponseJob(w, r, id, cancel)
+}
 
+func (s *Server) handleResponseJobGet(w http.ResponseWriter, r *http.Request) {
+	id, cancel, ok := responseJobPath(r)
+	if !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "response_not_found", "Response job not found"))
+		return
+	}
+	if cancel {
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
+		return
+	}
+	s.serveResponseJob(w, r, id, false)
+}
+
+func responseJobGetHeadFallback(w http.ResponseWriter, r *http.Request) {
+	_, cancel, ok := responseJobPath(r)
+	if !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "response_not_found", "Response job not found"))
+		return
+	}
+	if cancel {
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
+		return
+	}
+	jsonMethodNotAllowed(http.MethodGet)(w, r)
+}
+
+func (s *Server) handleResponseJobCancel(w http.ResponseWriter, r *http.Request) {
+	id, cancel, ok := responseJobPath(r)
+	if !ok || !cancel {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "response_not_found", "Response job not found"))
+		return
+	}
+	s.serveResponseJob(w, r, id, true)
+}
+
+func responseJobPath(r *http.Request) (string, bool, bool) {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/responses/"), "/")
+	parts := strings.Split(path, "/")
+	if path == "" || len(parts) > 2 || (len(parts) == 2 && parts[1] != "cancel") {
+		return "", false, false
+	}
+	return parts[0], len(parts) == 2, true
+}
+
+func (s *Server) serveResponseJob(w http.ResponseWriter, r *http.Request, id string, cancel bool) {
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -42,12 +95,12 @@ func (s *Server) handleResponseJob(w http.ResponseWriter, r *http.Request) {
 	}
 	expired, _ := s.store.ExpireResponseJobs()
 	s.metrics.ObserveResponseJobTerminalCount(responseJobStatusExpired, "response_expired", expired)
-	job, ok := s.authorizedResponseJob(project, key, parts[0])
+	job, ok := s.authorizedResponseJob(project, key, id)
 	if !ok || job.Status == responseJobStatusExpired {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "response_not_found", "Response job not found"))
 		return
 	}
-	if len(parts) == 2 {
+	if cancel {
 		wasTerminal := responseJobTerminal(job.Status)
 		resultTTL := time.Duration(s.config.ResponseResultTTLSeconds) * time.Second
 		job, ok, err = s.store.CancelResponseJob(job.ID, "api_key:"+key.ID, resultTTL)

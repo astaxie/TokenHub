@@ -366,7 +366,7 @@ models:
     input_modalities: ["text"]
     output_modalities: ["text"]
     capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"]
+    supported_parameters: ["temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "deepseek-api"
@@ -374,8 +374,12 @@ models:
       provider_model_id: "deepseek-v4-flash"
       provider_model_name: "DeepSeek V4 Flash"
       endpoints: "responses,chat/completions,anthropic"
-      features: "function-calling,structured-outputs,reasoning,apply-patch"
+      features: "function-calling,structured-outputs,reasoning,apply-patch,web-search"
       max_output_tokens: "393216"
+      top_logprobs_range: "0,20"
+      responses_stateful: "false"
+      prompt_cache_mode: "automatic"
+      custom_tool_names: "apply_patch"
       tool_call: "true"
       vision: "false"
       reasoning_supported: "true"
@@ -383,7 +387,7 @@ models:
       reasoning_effort_options: "low,high,max"
   - name: "deepseek-v4-pro"
     title: "DeepSeek V4 Pro"
-    description: "Official DeepSeek V4 Pro API model. Responses API is intentionally not advertised until DeepSeek enables it upstream."
+    description: "Official DeepSeek V4 Pro API model with native Responses API and Codex support."
     category: "deepseek"
     family: "deepseek"
     modality: "chat"
@@ -394,16 +398,20 @@ models:
     input_modalities: ["text"]
     output_modalities: ["text"]
     capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"]
+    supported_parameters: ["temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "deepseek-api"
       provider_catalog_id: "deepseek"
       provider_model_id: "deepseek-v4-pro"
       provider_model_name: "DeepSeek V4 Pro"
-      endpoints: "chat/completions,anthropic"
-      features: "function-calling,structured-outputs,reasoning"
+      endpoints: "responses,chat/completions,anthropic"
+      features: "function-calling,structured-outputs,reasoning,apply-patch,web-search"
       max_output_tokens: "393216"
+      top_logprobs_range: "0,20"
+      responses_stateful: "false"
+      prompt_cache_mode: "automatic"
+      custom_tool_names: "apply_patch"
       tool_call: "true"
       vision: "false"
       reasoning_supported: "true"

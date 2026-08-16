@@ -772,7 +772,11 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 			}
 			records = filtered
 		}
-		breakdown := s.usageBreakdownFromRecords(records)
+		projectsByID := map[string]Project{}
+		if len(records) > 0 {
+			projectsByID = indexProjectsByID(s.store.ListProjects())
+		}
+		breakdown := s.usageBreakdownFromRecords(records, projectsByID)
 		for _, dimension := range []string{"projects", "models", "providers", "provider_resources", "cost_centers"} {
 			rows, _ := breakdown[dimension].([]map[string]any)
 			for _, row := range rows {

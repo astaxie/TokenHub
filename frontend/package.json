@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "check:lines": "node ../tools/check-source-lines.mjs",
+    "test": "node --test features/admin/domain/*.test.mjs",
     "typecheck": "npm run check:lines && tsc --noEmit"
   },
   "dependencies": {

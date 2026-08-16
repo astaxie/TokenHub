@@ -144,7 +144,9 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 		provider.Type = patch.Type
 	}
 	provider.BaseURL = patch.BaseURL
-	if patch.APIKey != "" {
+	if patch.ClearAPIKey {
+		provider.APIKey = ""
+	} else if patch.APIKey != "" {
 		if firstNonEmpty(patch.Type, provider.Type) == ProviderOpenAICodex {
 			return Provider{}, NewHTTPError(409, "provider_adapter_credential_conflict", "Codex Subscription credentials must be stored on account resources")
 		}

@@ -451,6 +451,12 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 `data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
 
+### 连接 Kronk
+
+TokenHub 只连接外部 Kronk Model Server，不安装 Kronk、不下载 GGUF 文件，也不在进程内嵌 llama.cpp。TokenHub 容器内的 `127.0.0.1` 指向容器自身，而不是 Docker 宿主机。Kronk 运行在宿主机时，应使用环境支持的宿主机可达地址（例如 `host.docker.internal`）；运行在其他容器时，应加入共享 Docker 网络并使用 Kronk 服务名。可信私网字面 IP 通过 `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` 放行。只有 TokenHub 与 Kronk 确实共享同一宿主网络命名空间时，才为默认 loopback 地址设置 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=true`。
+
+Kronk 默认监听明文 HTTP。远程部署时应使用可信私网或 TLS 反向代理，并启用合适的 Kronk authorization mode。TokenHub 只访问推理、模型发现、存活和就绪端点，不代理模型下载、目录、安全管理、调试、pprof 或管理 UI 端点。
+
 ## 反向代理
 
 生产环境建议使用 HTTPS，并转发：

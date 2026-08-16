@@ -311,9 +311,14 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleImageJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
 		return
 	}
+	s.handleImageJobGet(w, r)
+}
+
+func (s *Server) handleImageJobGet(w http.ResponseWriter, r *http.Request) {
 	project, _, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -366,9 +371,14 @@ func (s *Server) handleAdminImageJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleImageAsset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
 		return
 	}
+	s.handleImageAssetGet(w, r)
+}
+
+func (s *Server) handleImageAssetGet(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/image-assets/"), "/")
 	parts := strings.Split(path, "/")
 	if len(parts) != 2 || parts[1] != "content" {

@@ -165,7 +165,7 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 		t.Fatalf("summary cached input tokens = %#v, want 400", got)
 	}
 
-	breakdown := New(store).usageBreakdownFromRecords(store.ListUsageRecords())
+	breakdown := New(store).usageBreakdownFromRecords(store.ListUsageRecords(), indexProjectsByID(store.ListProjects()))
 	models, ok := breakdown["models"].([]map[string]any)
 	if !ok || len(models) != 1 {
 		t.Fatalf("model breakdown = %#v, want one row", breakdown["models"])
