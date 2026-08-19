@@ -7,9 +7,9 @@ import { identityProviderDefaultGrantLabel, identityProviderIconLabel, identityP
 import { tx } from "../i18n/runtime";
 import { defaultFormValues } from "../resources/payloads";
 import { apiKeyConfig } from "../resources/project-key-config";
-import { FieldInput } from "./ui";
-import { identityProviderTemplateByKey, identityProviderTemplateHelp, identityProviderTemplates, inferIdentityProviderTemplateKey, loginIdentityProviderIconConfig, updateIdentityProviderFormValue } from "../shell/auth";
-import { DetailField } from "../views/audit";
+import { identityProviderTemplateByKey, identityProviderTemplateHelp, identityProviderTemplates, inferIdentityProviderTemplateKey, loginIdentityProviderIconConfig, updateIdentityProviderFormValue } from "../shared/auth";
+import { FieldInput } from "../shared/ui";
+import { DetailField } from "./audit";
 
 export function IdentityProviderEditModal({
   state,

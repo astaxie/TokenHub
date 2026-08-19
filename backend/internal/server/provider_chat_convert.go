@@ -350,9 +350,11 @@ func withoutGatewayExtensions(req ChatCompletionRequest, preserveReasoningConten
 		_, hasReasoningContent := message.raw["reasoning_content"]
 		_, hasReasoningSignature := message.raw["reasoning_signature"]
 		_, hasRedactedReasoningContent := message.raw["redacted_reasoning_content"]
+		_, hasCodexReasoningDetails := withoutCodexReasoningDetails(message.raw["reasoning_details"])
 		if (!preserveReasoningContent && (message.ReasoningContent != "" || hasReasoningContent)) ||
 			message.ReasoningSignature != "" || hasReasoningSignature ||
-			message.RedactedReasoningContent != "" || hasRedactedReasoningContent {
+			message.RedactedReasoningContent != "" || hasRedactedReasoningContent ||
+			hasCodexReasoningDetails {
 			needsCopy = true
 			break
 		}
@@ -374,9 +376,48 @@ func withoutGatewayExtensions(req ChatCompletionRequest, preserveReasoningConten
 		messages[index].RedactedReasoningContent = ""
 		delete(messages[index].raw, "reasoning_signature")
 		delete(messages[index].raw, "redacted_reasoning_content")
+		if details, changed := withoutCodexReasoningDetails(messages[index].raw["reasoning_details"]); changed {
+			if len(details) == 0 {
+				delete(messages[index].raw, "reasoning_details")
+			} else {
+				messages[index].raw["reasoning_details"] = details
+			}
+		}
 	}
 	req.Messages = messages
 	return req
+}
+
+func withoutCodexReasoningDetails(value json.RawMessage) (json.RawMessage, bool) {
+	var details []json.RawMessage
+	if len(value) == 0 || json.Unmarshal(value, &details) != nil {
+		return value, false
+	}
+	filtered := make([]json.RawMessage, 0, len(details))
+	changed := false
+	for _, detail := range details {
+		var encoded struct {
+			Data string `json:"data"`
+		}
+		if json.Unmarshal(detail, &encoded) == nil {
+			if _, codex := decodeProviderSignature(codexSignatureProvider, encoded.Data); codex {
+				changed = true
+				continue
+			}
+		}
+		filtered = append(filtered, detail)
+	}
+	if !changed {
+		return value, false
+	}
+	if len(filtered) == 0 {
+		return nil, true
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return value, false
+	}
+	return encoded, true
 }
 
 func encodeProviderSignature(provider string, raw string) string {

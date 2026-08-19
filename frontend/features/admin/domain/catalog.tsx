@@ -3,7 +3,7 @@ import { providerRoutesFor, stringifyValue } from "./entities";
 import { formatMoney } from "./formatting";
 import { compactList } from "./labels";
 import { tx } from "../i18n/runtime";
-import { modelCategoryLabels, preferredModelCategories } from "../shared/ui";
+import { modelCategoryLabels, preferredModelCategories } from "./model-categories";
 
 export function emptyData(): AppData {
   return {

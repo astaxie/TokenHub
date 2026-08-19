@@ -989,14 +989,7 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 					identity = cacheDomainID
 					score = weightedCacheDomainScore
 				}
-				sort.SliceStable(group, func(i, j int) bool {
-					left := score(routingKey, identity(group[i]), routeEffectiveWeight(group[i]))
-					right := score(routingKey, identity(group[j]), routeEffectiveWeight(group[j]))
-					if left != right {
-						return left > right
-					}
-					return routeSortID(group[i]) < routeSortID(group[j])
-				})
+				sortRouteGroupByRendezvous(routingKey, group, identity, score)
 				planned = append(planned, group...)
 				priorityGroup = priorityGroup[groupEnd:]
 				continue
@@ -1011,6 +1004,36 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 		ordered = ordered[end:]
 	}
 	return planned
+}
+
+type rendezvousRouteRanking struct {
+	routes []RouteSelection
+	scores []float64
+}
+
+func (ranking rendezvousRouteRanking) Len() int { return len(ranking.routes) }
+
+func (ranking rendezvousRouteRanking) Less(i, j int) bool {
+	if ranking.scores[i] != ranking.scores[j] {
+		return ranking.scores[i] > ranking.scores[j]
+	}
+	return routeSortID(ranking.routes[i]) < routeSortID(ranking.routes[j])
+}
+
+func (ranking rendezvousRouteRanking) Swap(i, j int) {
+	ranking.routes[i], ranking.routes[j] = ranking.routes[j], ranking.routes[i]
+	ranking.scores[i], ranking.scores[j] = ranking.scores[j], ranking.scores[i]
+}
+
+func sortRouteGroupByRendezvous(routingKey string, group []RouteSelection, identity func(RouteSelection) string, score func(string, string, int) float64) {
+	if len(group) < 2 {
+		return
+	}
+	scores := make([]float64, len(group))
+	for index := range group {
+		scores[index] = score(routingKey, identity(group[index]), routeEffectiveWeight(group[index]))
+	}
+	sort.Stable(rendezvousRouteRanking{routes: group, scores: scores})
 }
 
 // weightedRendezvousScore scores candidates for Codex session affinity, where

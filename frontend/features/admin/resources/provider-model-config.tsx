@@ -1,11 +1,11 @@
 import { type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
+import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptions, StatusPill } from "../shared/ui";
 
@@ -129,11 +129,11 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/provider-resources/${item.id}`),
     actions: [
       {
-        label: "刷新 Token",
-        title: "使用保存的 refresh token 更新账号访问 Token",
+        label: "续租 Token",
+        title: "使用保存的 refresh token 续租账号访问 Token",
         visible: (item) => item.resource_type === "openai_subscription" && item.credential_summary?.has_refresh_token === "true",
         run: (ctx, item) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}/refresh-token`, "POST", {}),
-        doneMessage: (item) => `${item.name} ${tx("Token 已刷新")}`,
+        doneMessage: (item) => formatTranslationTemplate(tx("{name} Token 已续租"), { name: item.name }),
       },
     ],
     toForm: (item) => providerResourceToForm(item, provider?.options),
@@ -231,12 +231,13 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "category", label: "模型类型", render: (item) => modelCategoryLabel(modelCategory(item)) },
       { key: "capabilities", label: "能力", render: (item) => modelCapabilitySummary(item) },
       { key: "routes", label: "可用供应商", render: (item, ctx) => <ModelRouteProviders model={item} data={ctx} /> },
-      { key: "route_count", label: "路由数", render: (item, ctx) => isCodexSubscriptionImageModel(item) ? codexImageCapableResources(ctx).length : modelRoutesFor(item, ctx).length },
+      { key: "route_count", label: "路由数", render: (item, ctx) => modelRoutesFor(item, ctx).length },
       { key: "price", label: "对外统一价", render: (item) => modelPriceSummary(item) },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
     fields: [
-      { key: "name", label: "模型名", required: true },
+      { key: "name", label: "对外模型 ID", required: true, readOnlyOnEdit: true },
+      { key: "display_name", label: "显示名称" },
       {
         key: "initial_provider_models",
         label: "可用 Provider 模型",
@@ -271,7 +272,7 @@ export function modelConfig(): ResourceConfig<Model> {
     ],
     list: (ctx) => ctx.models,
     create: (ctx, values) => adminMutate(ctx, "/api/admin/models", "POST", modelPayload(values)),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`, "PATCH", modelPayload(values)),
+    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`, "PATCH", modelPayload(values, item.metadata)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`),
     actions: [
       {
@@ -317,7 +318,7 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
         help: "从模型目录选择需要新增 Provider 线路的模型。",
       },
       { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true },
-      { key: "provider_model", label: "Provider 模型", type: "select", optionsFromData: providerModelSelectOptions, required: true, help: "选择 Provider 后，只显示该 Provider 已引入的模型。" },
+      { key: "provider_model", label: "Provider 模型", type: "select", optionsFromData: providerModelSelectOptions, required: true, help: "选择 Provider 后，只显示可用于该路由的上游模型。" },
       { key: "weight", label: "流量权重", type: "number", required: true, help: "固定比例下决定目标占比；自适应策略下作为基础权重。" },
       { key: "project_scope", label: "项目作用域", type: "select", options: ["all", "include", "exclude"], required: true, help: "可让私有项目只命中内部 Provider，并让其他项目继续使用外部 Provider。" },
       { key: "project_ids", label: "指定项目", type: "multi-select", optionsFromData: projectMemberProjectSelectOptions, multiSelectOnEdit: true, visible: (values) => values.project_scope !== "all", help: "“仅指定项目”表示白名单；“排除指定项目”表示这些项目不能使用该线路。" },

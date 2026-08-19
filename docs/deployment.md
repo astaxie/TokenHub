@@ -404,6 +404,8 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES` | `30` | Maximum connection lifetime in minutes (PostgreSQL only) |
 | `TOKENHUB_API` | empty | Target Admin API for the `tokenhub-migrate` CLI. Read only by that CLI, never by the running server; overridden by `--to` |
 
+When the TokenHub host runs a proxy in Fake-IP mode, configure **System Settings → Base Settings → Synthetic DNS / Fake-IP ranges**. The exception is disabled by default and applies only to hostname resolution results, never to literal-IP Provider URLs. Enter the proxy's actual pool rather than assuming every implementation uses `198.18.0.0/15`: that range is reserved for benchmarking and is common, but not exclusive, for Fake-IP. RFC1918 private networks and IPv6 ULA remain blocked in ordinary mode. If a proxy genuinely uses one of those ranges (for example, an Xray IPv6 Fake-IP pool), the separate high-risk private-range trust switch is required; enabling it allows provider hostnames to reach real internal services in the configured range. Loopback, link-local, metadata, multicast, and NAT64 ranges remain blocked in every mode.
+
 ## Frontend Environment Variables
 
 | Variable | Default | Description |

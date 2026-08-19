@@ -39,9 +39,13 @@ func (s *Server) handleAdminAlertItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminAlertDelivery(w, r, user, parts[0])
+}
+
+func (s *Server) serveAdminAlertDelivery(w http.ResponseWriter, r *http.Request, user AdminUser, alertID string) {
 	var req struct {
 		ChannelID string `json:"channel_id"`
 	}
@@ -51,12 +55,12 @@ func (s *Server) handleAdminAlertItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	delivery, err := s.deliverAlert(r.Context(), parts[0], req.ChannelID)
+	delivery, err := s.deliverAlert(r.Context(), alertID, req.ChannelID)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "deliver", "alert", parts[0], "", delivery)
+	s.recordAdminAudit(r, user, "deliver", "alert", alertID, "", delivery)
 	writeJSON(w, http.StatusOK, delivery)
 }
 
@@ -86,9 +90,13 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminApprovalAction(w, r, user, parts[0], parts[1])
+}
+
+func (s *Server) serveAdminApprovalAction(w http.ResponseWriter, r *http.Request, user AdminUser, approvalID string, action string) {
 	var req struct {
 		Reason string `json:"reason"`
 	}
@@ -99,10 +107,10 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	status := "approved"
-	if parts[1] == "reject" {
+	if action == "reject" {
 		status = "rejected"
 	}
-	pending, err := s.store.GetApprovalRequest(parts[0])
+	pending, err := s.store.GetApprovalRequest(approvalID)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -120,7 +128,7 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		}
 		s.recordAdminAudit(r, user, "apply_approval", pending.ResourceType, pending.ResourceID, pending, result)
 	}
-	item, err := s.store.UpdateApprovalRequestStatus(parts[0], status, user.ID, req.Reason)
+	item, err := s.store.UpdateApprovalRequestStatus(approvalID, status, user.ID, req.Reason)
 	if err != nil {
 		writeError(w, r, err)
 		return

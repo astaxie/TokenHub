@@ -29,7 +29,11 @@ func TestLiveCodexImageGeneration(t *testing.T) {
 
 	targetResourceID := strings.TrimSpace(os.Getenv("TOKENHUB_LIVE_CODEX_RESOURCE_ID"))
 	var selected RouteSelection
-	routes := server.filterAndPrioritizeCodexImageRoutes(server.codexImageRouteCandidates())
+	routes, err := server.imageRouteCandidates(codexImageModelName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes = server.filterAndPrioritizeCodexImageRoutes(routes)
 	for _, route := range routes {
 		if targetResourceID == "" || routeResourceID(route) == targetResourceID {
 			selected = route

@@ -187,6 +187,12 @@ func TestAnthropicUsageRecordsCacheWriteTokens(t *testing.T) {
 	if usage.CachedInputTokens != 50 {
 		t.Fatalf("cached input tokens = %d, want 50", usage.CachedInputTokens)
 	}
+	if got := anthropicUsageObject(usage); got["input_tokens"] != int64(10) || got["cache_creation_input_tokens"] != int64(40) || got["cache_read_input_tokens"] != int64(50) {
+		t.Fatalf("Anthropic cache usage = %#v", got)
+	}
+	if got := anthropicUsageObject(Usage{PromptTokens: 10, CachedInputTokens: 9, CacheWriteInputTokens: 9}); got["input_tokens"] != int64(0) || got["cache_creation_input_tokens"] != int64(1) || got["cache_read_input_tokens"] != int64(9) {
+		t.Fatalf("Anthropic bounded cache usage = %#v", got)
+	}
 	if usage.TotalTokens != 105 {
 		t.Fatalf("total tokens = %d, want 105", usage.TotalTokens)
 	}

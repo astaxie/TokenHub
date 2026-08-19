@@ -323,6 +323,18 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 			metadata[key] = value
 		}
 	}
+	if rawOptions, ok := raw["reasoning_options"].([]any); ok {
+		for _, rawOption := range rawOptions {
+			option, ok := rawOption.(map[string]any)
+			if !ok || !strings.EqualFold(catalogStringField(option, "type"), "effort") {
+				continue
+			}
+			if values := catalogOrderedStringSliceField(option, "values"); len(values) > 0 {
+				metadata["reasoning_effort_options"] = strings.Join(values, ",")
+			}
+			break
+		}
+	}
 	model := ProviderCatalogModel{
 		ID:                     id,
 		Name:                   name,
@@ -1085,6 +1097,37 @@ func catalogStringSliceField(raw map[string]any, key string) []string {
 	default:
 		return nil
 	}
+}
+
+func catalogOrderedStringSliceField(raw map[string]any, key string) []string {
+	if raw == nil {
+		return nil
+	}
+	var values []string
+	switch typed := raw[key].(type) {
+	case []string:
+		values = typed
+	case []any:
+		values = make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				values = append(values, text)
+			}
+		}
+	case string:
+		values = []string{typed}
+	}
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" || seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+		result = append(result, normalized)
+	}
+	return result
 }
 
 func catalogUniqueStrings(values []string) []string {

@@ -180,7 +180,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		var entry ProviderCatalogEntry
 		var err error
 		for _, candidate := range catalogRequests {
-			entry, err = CustomProviderCatalogFromUpstream(r.Context(), http.DefaultClient, candidate)
+			entry, err = CustomProviderCatalogFromUpstream(r.Context(), s.upstreamClient, candidate)
 			if err == nil {
 				break
 			}
@@ -581,10 +581,10 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		result, healthErr := adapter.Health(ctx, provider)
 		health, err = &result, healthErr
 		if err == nil {
-			catalog, err = KronkProviderCatalogFromUpstream(ctx, http.DefaultClient, req)
+			catalog, err = KronkProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
 		}
 	} else {
-		catalog, err = CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, req)
+		catalog, err = CustomProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
 	}
 	if err != nil {
 		writeError(w, r, err)
@@ -644,7 +644,21 @@ func (s *Server) serveAdminProviderPatch(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) serveAdminProviderDelete(w http.ResponseWriter, r *http.Request, user AdminUser, providerID string) {
-	if err := s.store.DeleteProvider(providerID); err != nil {
+	provider, found := s.store.GetProvider(providerID)
+	if !found {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
+		return
+	}
+	deleteProvider := func() error { return s.store.DeleteProvider(providerID) }
+	var err error
+	if provider.Type == ProviderOpenAICodex {
+		err = s.store.RunClusterOperation(r.Context(), "codex-image-capability:"+providerID, func(context.Context) error {
+			return deleteProvider()
+		})
+	} else {
+		err = deleteProvider()
+	}
+	if err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -781,6 +795,8 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 		return
 	}
 	switch parts[1] {
+	case "image-capability":
+		s.handleAdminCodexImageCapability(w, r, user, parts[0])
 	case "test":
 		s.serveAdminProviderResourceTest(w, r, user, parts[0])
 	case "refresh-token":
@@ -858,7 +874,7 @@ func (s *Server) serveAdminModelsPost(w http.ResponseWriter, r *http.Request, us
 			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_route", "provider_id and provider_model are required"))
 			return
 		}
-		if err := s.validateRouteAdapter(route); err != nil {
+		if err := s.validateRouteAdapterForModel(route, &req.Model); err != nil {
 			writeError(w, r, err)
 			return
 		}
@@ -1207,6 +1223,10 @@ func (s *Server) serveAdminRouteDelete(w http.ResponseWriter, r *http.Request, u
 }
 
 func (s *Server) validateRouteAdapter(route ModelRoute) error {
+	return s.validateRouteAdapterForModel(route, nil)
+}
+
+func (s *Server) validateRouteAdapterForModel(route ModelRoute, pendingModel *Model) error {
 	if err := s.validateRoutePolicy(route); err != nil {
 		return err
 	}
@@ -1214,8 +1234,12 @@ func (s *Server) validateRouteAdapter(route ModelRoute) error {
 	if !ok {
 		return NewHTTPError(http.StatusBadRequest, "route_provider_not_found", "Route provider does not exist")
 	}
-	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
+	descriptor, ok := s.adapterRegistry.Describe(provider.Type)
+	if !ok {
 		return NewHTTPError(http.StatusBadRequest, "provider_adapter_missing", "Route provider adapter is not registered")
+	}
+	if err := s.validateRouteModelProtocol(route.ModelName, pendingModel, provider.Type, descriptor); err != nil {
+		return err
 	}
 	if strings.TrimSpace(route.ProviderResourceID) == "" {
 		return nil
@@ -1225,6 +1249,57 @@ func (s *Server) validateRouteAdapter(route ModelRoute) error {
 		return NewHTTPError(http.StatusBadRequest, "route_resource_mismatch", "Route resource must belong to the selected Provider")
 	}
 	return nil
+}
+
+// validateRouteModelProtocol rejects only known catalog mismatches. Models
+// without endpoint metadata remain valid so operators can route custom models.
+func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Model, providerType string, descriptor AdapterDescriptor) error {
+	var model Model
+	found := pendingModel != nil && pendingModel.Name == modelName
+	if found {
+		model = *pendingModel
+	} else {
+		for _, candidate := range s.store.ListModels() {
+			if candidate.Name == modelName {
+				model, found = candidate, true
+				break
+			}
+		}
+	}
+	if !found || model.Metadata == nil {
+		return nil
+	}
+	endpoints := strings.Split(model.Metadata["endpoints"], ",")
+	if len(endpoints) == 0 || strings.TrimSpace(model.Metadata["endpoints"]) == "" {
+		return nil
+	}
+	compatible := routeProviderProtocols(providerType, descriptor)
+	for _, endpoint := range endpoints {
+		if compatible[strings.ToLower(strings.TrimSpace(endpoint))] {
+			return nil
+		}
+	}
+	return NewHTTPError(http.StatusBadRequest, "route_protocol_mismatch", "Model does not support the selected Provider protocol")
+}
+
+func routeProviderProtocols(providerType string, descriptor AdapterDescriptor) map[string]bool {
+	if providerType == ProviderAnthropic {
+		return map[string]bool{"anthropic": true}
+	}
+	if providerType == ProviderGemini {
+		return map[string]bool{"gemini": true}
+	}
+	protocols := map[string]bool{}
+	if adapterSupports(descriptor, AdapterCapabilityChat) {
+		protocols["chat/completions"] = true
+	}
+	if adapterSupports(descriptor, AdapterCapabilityResponses) {
+		protocols["responses"] = true
+	}
+	if adapterSupports(descriptor, AdapterCapabilityEmbeddings) {
+		protocols["embeddings"] = true
+	}
+	return protocols
 }
 
 func (s *Server) validateRoutePolicy(route ModelRoute) error {
@@ -1256,6 +1331,20 @@ func (s *Server) validateRoutePolicy(route ModelRoute) error {
 func (s *Server) validateImportedProviderModel(route ModelRoute) error {
 	providerID := strings.TrimSpace(route.ProviderID)
 	upstreamModel := strings.TrimSpace(route.ProviderModel)
+	if strings.TrimSpace(route.ModelName) == codexImageModelName {
+		provider, ok := s.providerByID(providerID)
+		if !ok || provider.Type != ProviderOpenAICodex {
+			return NewHTTPError(http.StatusBadRequest, "codex_image_provider_required", "The Codex subscription image model must use an OpenAI Codex Provider")
+		}
+		if upstreamModel != codexImageUpstreamModel {
+			return NewHTTPError(http.StatusBadRequest, "codex_image_upstream_model_invalid", "The Codex subscription image route must use gpt-image-2 as its upstream model")
+		}
+		status := strings.TrimSpace(route.Status)
+		if (status == "" || status == StatusActive) && !codexImageRouteHasSupportedResource(route, s.store.ListProviderResources()) {
+			return NewHTTPError(http.StatusConflict, "codex_image_capability_required", "Test image generation with an eligible Codex subscription account before activating this route")
+		}
+		return nil
+	}
 	for _, model := range s.store.ListProviderModels() {
 		if model.ProviderID == providerID && model.UpstreamModel == upstreamModel {
 			return nil
@@ -1298,6 +1387,9 @@ func mergedModelRoute(current ModelRoute, patch ModelRoute) ModelRoute {
 	current.ResourceGroup = patch.ResourceGroup
 	if patch.ProviderModel != "" {
 		current.ProviderModel = patch.ProviderModel
+	}
+	if patch.Status != "" {
+		current.Status = patch.Status
 	}
 	if patch.Strategy != "" {
 		current.Strategy = patch.Strategy

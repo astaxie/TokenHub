@@ -11,6 +11,12 @@ TokenHub is a private enterprise AI gateway with a Go backend, a Next.js admin c
 - `deploy/`: Docker Compose deployment and environment template.
 - `docs/`: English, Simplified Chinese, and Japanese documentation.
 
+## Repository source language
+
+- Use English for source-code identifiers, code comments, test suite and test case titles, developer-facing fixtures, logs, and configuration descriptions.
+- Localized UI copy is the exception: keep Simplified Chinese as the canonical literal passed to `tx("...")`, with matching English and Japanese catalog entries.
+- Tests may use localized selectors or assertions when they intentionally exercise translated UI, but their suite names, case titles, and diagnostics must remain in English.
+
 ## Development commands
 
 Run backend checks from `backend/`:
@@ -25,9 +31,17 @@ Run frontend checks from `frontend/`:
 
 ```bash
 npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+The browser smoke suite starts an isolated Next.js frontend, Go backend, fake
+provider upstream, and temporary SQLite database. It does not require real
+credentials or an already-running TokenHub stack.
 
 Run the repository gates from the repository root. These enforce the change guidelines below, so a failure names the rule that was broken:
 

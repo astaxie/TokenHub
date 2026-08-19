@@ -1,19 +1,20 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { type FormEvent, useMemo, useState } from "react";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, type ModalState, type Model, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
 import { filterRows } from "../domain/catalog";
 import { readPath, rowID, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
 import { settingsTabLabel } from "../domain/labels";
 import { LanguageSwitcher, languageOptionLabel } from "../i18n/language-switcher";
-import { activeLanguage, type AppLanguage, countWithLabel, displayText, languageOptions, translatedCell, tx } from "../i18n/runtime";
+import { type AppLanguage, countWithLabel, displayText, languageOptions, translatedCell, tx } from "../i18n/runtime";
 import { defaultFormValues } from "../resources/payloads";
 import { apiKeyStatusAction, APIKeyDownloadMenu, APIKeyStatusSwitch } from "../resources/project-key-config";
 import { identityProviderConfig, roleConfig, systemSettingConfig } from "../resources/settings-config";
-import { IdentityProviderEditModal } from "../shared/modals";
+import { usePagination } from "../shared/pagination";
 import { FieldInput, StatusPill } from "../shared/ui";
-import { identityProviderInitialFormValues } from "../shell/auth";
+import { identityProviderInitialFormValues } from "../shared/auth";
 import { CrudView } from "./crud-projects";
+import { IdentityProviderEditModal } from "./modals";
 import { ModelCreateModal } from "./model-create-modal";
 
 export function SettingsView({
@@ -451,120 +452,6 @@ export function TableSkeleton({ columns, rows }: { columns: number; rows: number
 
 export function resultCountLabel(totalItems: number, query: string) {
   return query.trim() ? `${formatNumber(totalItems)} ${tx("条匹配")}` : `${formatNumber(totalItems)} ${tx("条记录")}`;
-}
-
-export type PaginationState = {
-  page: number;
-  pageSize: number;
-  pageCount: number;
-  startIndex: number;
-  endIndex: number;
-  setPage: (page: number) => void;
-  setPageSize: (pageSize: number) => void;
-};
-
-export const pageSizeOptions = [10, 20, 50, 100];
-
-export function usePagination(totalItems: number, resetKey: string): PaginationState {
-  const [page, setPageState] = useState(1);
-  const [pageSize, setPageSizeState] = useState(20);
-  const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
-
-  useEffect(() => {
-    setPageState(1);
-  }, [resetKey]);
-
-  useEffect(() => {
-    if (page > pageCount) {
-      setPageState(pageCount);
-    }
-  }, [page, pageCount]);
-
-  const safePage = Math.min(page, pageCount);
-  const startIndex = totalItems === 0 ? 0 : (safePage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalItems);
-
-  return {
-    page: safePage,
-    pageSize,
-    pageCount,
-    startIndex,
-    endIndex,
-    setPage: (nextPage) => setPageState(Math.min(Math.max(nextPage, 1), pageCount)),
-    setPageSize: (nextPageSize) => {
-      setPageSizeState(nextPageSize);
-      setPageState(1);
-    },
-  };
-}
-
-export function PaginationControls({
-  pagination,
-  totalItems,
-}: {
-  pagination: PaginationState;
-  totalItems: number;
-}) {
-  if (totalItems <= pageSizeOptions[0]) return null;
-  return (
-    <div className="pagination">
-      <div className="pagination-summary">
-        {activeLanguage === "zh-CN"
-          ? `第 ${pagination.startIndex + 1}-${pagination.endIndex} 条，共 ${totalItems} 条`
-          : activeLanguage === "ja"
-            ? `${pagination.startIndex + 1}-${pagination.endIndex} / ${totalItems} 件`
-            : `${pagination.startIndex + 1}-${pagination.endIndex} of ${totalItems}`}
-      </div>
-      <div className="pagination-controls">
-        <label className="page-size">
-          <span>{tx("每页")}</span>
-          <select
-            value={pagination.pageSize}
-            onChange={(event) => pagination.setPageSize(Number(event.target.value))}
-          >
-            {pageSizeOptions.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        </label>
-        <div className="page-buttons">
-          <button
-            type="button"
-            title={tx("第一页")}
-            onClick={() => pagination.setPage(1)}
-            disabled={pagination.page <= 1}
-          >
-            <ChevronsLeft size={15} />
-          </button>
-          <button
-            type="button"
-            title={tx("上一页")}
-            onClick={() => pagination.setPage(pagination.page - 1)}
-            disabled={pagination.page <= 1}
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <span>{pagination.page} / {pagination.pageCount}</span>
-          <button
-            type="button"
-            title={tx("下一页")}
-            onClick={() => pagination.setPage(pagination.page + 1)}
-            disabled={pagination.page >= pagination.pageCount}
-          >
-            <ChevronRight size={15} />
-          </button>
-          <button
-            type="button"
-            title={tx("最后一页")}
-            onClick={() => pagination.setPage(pagination.pageCount)}
-            disabled={pagination.page >= pagination.pageCount}
-          >
-            <ChevronsRight size={15} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function EditModal<T>({

@@ -66,7 +66,7 @@ func (a MockAdapter) Chat(ctx context.Context, provider Provider, providerModel 
 				"finish_reason": "stop",
 			},
 		},
-		"usage": usage,
+		"usage": openAIChatUsageObject(usage),
 	}, usage, nil
 }
 
@@ -133,7 +133,7 @@ func (a MockAdapter) Responses(ctx context.Context, provider Provider, providerM
 				},
 			},
 		},
-		"usage": usage,
+		"usage": openAIResponsesUsageObject(usage),
 	}, usage, nil
 }
 
@@ -1005,8 +1005,12 @@ func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider P
 			}
 			return usage, err
 		}
+		// A token stream is mostly frames that are neither an error nor a usage
+		// report, so both questions are answered from a single decode of the
+		// payload rather than one full map decode each.
+		probe := probeProviderStreamEvent(event.Data)
 		output := event.Raw
-		if providerStreamEventIsError(event) {
+		if sseEventNameIsError(event.Event) || probe.isError() {
 			output = redactProviderStreamEventSecrets(event, provider)
 		}
 		if _, err := w.Write(output); err != nil {
@@ -1015,49 +1019,142 @@ func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider P
 		if flusher, ok := w.(streamFlusher); ok {
 			flusher.Flush()
 		}
-		if parsed, ok := usageFromServerSentEvent(event); ok {
+		if parsed, ok := usageFromProbedFrame(event, probe); ok {
 			usage = parsed
 		}
 	}
 }
 
-func providerStreamEventIsError(event serverSentEvent) bool {
-	eventName := strings.ToLower(strings.TrimSpace(event.Event))
-	if eventName == "error" || strings.HasSuffix(eventName, ".failed") {
-		return true
-	}
-	payload := strings.TrimSpace(event.Data)
+// providerStreamEventProbe is one SSE payload decoded down to its top-level
+// keys and no further, so a single decode answers both the error check and the
+// usage read.
+//
+// Leaving the values raw is what makes that safe: a field carrying an
+// unexpected JSON type cannot fail the decode and take the other field's answer
+// with it, which is the same independence the old per-key type assertions on
+// map[string]any had. A map rather than a struct is deliberate too —
+// encoding/json matches struct fields case-insensitively, so a frame could hide
+// its "error" behind a later "ERROR" key and be forwarded to the client without
+// redaction. Map keys match exactly, the way the old lookups did.
+type providerStreamEventProbe map[string]json.RawMessage
+
+// probeProviderStreamEvent decodes one SSE payload's top-level keys. A payload
+// that carries no JSON object — empty, [DONE], malformed, or a non-object —
+// probes as nil, which reports neither an error nor usage.
+func probeProviderStreamEvent(data string) providerStreamEventProbe {
+	payload := strings.TrimSpace(data)
 	if payload == "" || payload == "[DONE]" {
-		return false
+		return nil
 	}
-	var decoded map[string]any
-	if json.Unmarshal([]byte(payload), &decoded) != nil {
-		return false
+	var probe providerStreamEventProbe
+	if json.Unmarshal([]byte(payload), &probe) != nil {
+		return nil
 	}
-	if eventType, _ := decoded["type"].(string); strings.EqualFold(strings.TrimSpace(eventType), "error") || strings.HasSuffix(strings.ToLower(strings.TrimSpace(eventType)), ".failed") {
+	return probe
+}
+
+func (probe providerStreamEventProbe) isError() bool {
+	if sseEventTypeIsError(probe["type"]) {
 		return true
 	}
-	if errorValue, hasError := decoded["error"]; hasError && errorValue != nil {
+	if jsonRawIsPresent(probe["error"]) {
 		return true
 	}
-	response, _ := decoded["response"].(map[string]any)
-	errorValue, hasResponseError := response["error"]
-	return hasResponseError && errorValue != nil
+	// Only an object can carry a nested error; anything else failed the old
+	// map[string]any assertion and was read as no error.
+	response := jsonRawValue(probe["response"])
+	if len(response) == 0 || response[0] != '{' {
+		return false
+	}
+	var nested providerStreamEventProbe
+	return json.Unmarshal(response, &nested) == nil && jsonRawIsPresent(nested["error"])
+}
+
+// usage decodes the frame's usage object. Only an object counts, and an empty
+// one counts as no usage, matching what the old map assertion accepted.
+func (probe providerStreamEventProbe) usage() (Usage, bool) {
+	value := jsonRawValue(probe["usage"])
+	if len(value) == 0 || value[0] != '{' {
+		return Usage{}, false
+	}
+	var usageMap map[string]any
+	if json.Unmarshal(value, &usageMap) != nil || len(usageMap) == 0 {
+		return Usage{}, false
+	}
+	// usageFromMap only ever reads body["usage"], so handing it the decoded
+	// usage object under that one key is the same call the whole-payload map
+	// used to make.
+	return usageFromMap(map[string]any{"usage": usageMap}), true
+}
+
+func sseEventNameIsError(name string) bool {
+	eventName := strings.ToLower(strings.TrimSpace(name))
+	return eventName == "error" || strings.HasSuffix(eventName, ".failed")
+}
+
+// sseEventTypeIsError reads the payload's "type" field. The value is only read
+// when it is a JSON string, because the old code reached it through a string
+// type assertion that failed for every other JSON type.
+func sseEventTypeIsError(raw json.RawMessage) bool {
+	value := jsonRawValue(raw)
+	if len(value) < 2 || value[0] != '"' {
+		return false
+	}
+	quoted := value[1 : len(value)-1]
+	eventType := string(quoted)
+	if bytes.IndexByte(quoted, '\\') >= 0 {
+		// An escaped name has to be unquoted before it can be compared, but
+		// every frame a stream actually carries names a plain type, so the
+		// decode stays off the common path.
+		if json.Unmarshal(value, &eventType) != nil {
+			return false
+		}
+	}
+	trimmed := strings.TrimSpace(eventType)
+	return strings.EqualFold(trimmed, "error") || strings.HasSuffix(strings.ToLower(trimmed), ".failed")
+}
+
+// jsonRawValue strips the JSON whitespace that can surround a raw value so its
+// first byte identifies its type.
+func jsonRawValue(raw json.RawMessage) []byte {
+	return bytes.Trim(raw, " \t\r\n")
+}
+
+// jsonRawIsPresent reports whether a field was present and is not JSON null,
+// which is what "the key exists and its value is not nil" meant when these
+// payloads were decoded into a map[string]any.
+func jsonRawIsPresent(raw json.RawMessage) bool {
+	value := jsonRawValue(raw)
+	return len(value) > 0 && !bytes.Equal(value, []byte("null"))
+}
+
+func providerStreamEventIsError(event serverSentEvent) bool {
+	return sseEventNameIsError(event.Event) || probeProviderStreamEvent(event.Data).isError()
 }
 
 // usageFromServerSentEvent reads usage out of one frame. A frame it cannot parse
 // is reported as carrying no usage rather than as an error: this is a
 // pass-through, and the client is owed the frame either way.
 func usageFromServerSentEvent(frame serverSentEvent) (Usage, bool) {
+	return usageFromProbedFrame(frame, probeProviderStreamEvent(frame.Data))
+}
+
+// usageFromProbedFrame reads usage from a frame whose payload has already been
+// probed, so the streaming path pays for one decode instead of two.
+//
+// A payload spanning more than one line is handed back to the parsing the probe
+// replaced. Some OpenAI-compatible servers separate chunks with a single
+// newline rather than the blank line SSE requires, which leaves every payload
+// joined into one frame; scanning the joined segments keeps usage — and so
+// billing — working for those upstreams instead of silently recording zero. But
+// which segment wins depends on which segments parse at all, so that whole
+// decision is left with the parser that has always made it.
+func usageFromProbedFrame(frame serverSentEvent, probe providerStreamEventProbe) (Usage, bool) {
+	if !strings.Contains(frame.Data, "\n") {
+		return probe.usage()
+	}
 	if usage, ok := usageFromSSEPayload(frame.Data); ok {
 		return usage, true
-	}
-	// Some OpenAI-compatible servers separate chunks with a single newline
-	// rather than the blank line SSE requires, which leaves every payload joined
-	// into one frame. Scanning the joined segments keeps usage — and so billing —
-	// working for those upstreams instead of silently recording zero.
-	if !strings.Contains(frame.Data, "\n") {
-		return Usage{}, false
 	}
 	var (
 		usage Usage
@@ -1071,6 +1168,12 @@ func usageFromServerSentEvent(frame serverSentEvent) (Usage, bool) {
 	return usage, found
 }
 
+// usageFromSSEPayload reads usage out of a multi-line payload or one of its
+// newline-separated segments. It keeps the whole-payload decode the probe
+// replaced, on purpose: a segment carrying a number no float64 can hold has
+// never parsed here, and that is part of which segment wins. Only a frame whose
+// data spans more than one line reaches it, so the frames a token stream is
+// actually made of never pay for it.
 func usageFromSSEPayload(data string) (Usage, bool) {
 	payload := strings.TrimSpace(data)
 	if payload == "" || payload == "[DONE]" {
@@ -1101,7 +1204,7 @@ func responseObject(model string, text string, usage Usage) map[string]any {
 				"content": []map[string]any{{"type": "output_text", "text": text}},
 			},
 		},
-		"usage": usage,
+		"usage": openAIResponsesUsageObject(usage),
 	}
 }
 

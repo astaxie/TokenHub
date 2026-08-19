@@ -151,10 +151,11 @@ Anthropic and Gemini require the opaque signature attached to a reasoning step t
 | --- | --- |
 | `message.reasoning_content` | Anthropic `thinking` text, Gemini thought parts, Codex reasoning summaries |
 | `message.reasoning_signature` | Anthropic `thinking.signature`, Codex encrypted reasoning |
+| `message.reasoning_details` | Codex encrypted reasoning bound to a tool call ID |
 | `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
 | `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
 
-Echo these fields on the assistant message of the following request to preserve reasoning continuity. Clients that ignore them still work: TokenHub omits the reasoning block rather than replaying a signature the provider would reject. Signatures are tagged with the provider that issued them and are never replayed to a different provider.
+Echo these fields on the assistant message of the following request to preserve reasoning continuity. For `reasoning_details`, preserve the complete item and its `id`; TokenHub accepts it only when that ID matches a tool call in the same assistant message. Clients that ignore these fields still work: TokenHub omits the reasoning block rather than replaying a signature the provider would reject. Signatures are tagged with the provider that issued them and are never replayed to a different provider.
 
 ## Anthropic Messages and Claude Code
 
@@ -230,9 +231,9 @@ Gemini CLI can connect directly to TokenHub's native Gemini `v1beta` surface and
 
 Image jobs have a five-minute default execution timeout controlled by `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS`.
 
-TokenHub records image-generation capability from real account results. Accounts confirmed as supported are preferred, accounts returning `403` are temporarily skipped, and accounts that have not been checked remain eligible for first-use detection. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), an unsupported account becomes discoverable and routable again so the next real request can retry it. TokenHub does not generate a background image merely to probe recovery.
+Administrators configure this capability in **Provider Channels**: open an OpenAI Codex Provider, select the **Models** tab, and check **Codex subscription image generation**. After an active account is selected, TokenHub displays a quota warning and sends that real account one low-quality `gpt-image-2` request. Only a non-empty, valid image result records the account as supported and creates or re-enables the Provider route. A `403` result records the account as unsupported; expired credentials require reauthorization; rate limits, timeouts, and transient upstream failures can be retried from the dialog without overwriting the previous capability result. The test consumes a small amount of subscription quota, and TokenHub never runs it in the background.
 
-`codex-gpt-image-2` appears in `GET /v1/models` when a healthy connected Codex account is confirmed as supported or has reached its low-frequency retry window. It is a subscription-backed virtual model and does not require a conventional Provider model route. Except for the Codex-client compatibility mapping above, the separate `gpt-image-2` catalog model uses an OpenAI API provider and does not consume Codex subscription quota.
+The checkbox idempotently manages an active route from `codex-gpt-image-2` to the OpenAI Codex Provider with upstream model `gpt-image-2`. An upgrade performs a one-time backfill for active accounts already confirmed as supported. Clearing the checkbox disables matching routes but retains the account capability result. Startup backfill does not reactivate an explicitly disabled route or recreate a route deleted after its migration marker; an administrator can explicitly test and enable it again. Advanced priority, weight, project scope, resource, and resource-group controls remain editable in routing. With an active route, supported accounts are preferred and an account returning `403` is temporarily skipped. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), it becomes eligible for a low-frequency retry on the next real request. An initial failed test that created no route must be retried manually. `codex-gpt-image-2` appears in `GET /v1/models` only when an eligible route and account exist. Except for the Codex-client compatibility mapping above, the separate `gpt-image-2` catalog model uses an OpenAI API Provider and does not consume Codex subscription quota.
 
 ## SDK Setup
 

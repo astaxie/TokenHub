@@ -273,15 +273,28 @@ func TestAdminModelAndRoutingRoutesPreserveSuccessfulMutationsAndAudits(t *testi
 
 	createdModel := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/models", map[string]any{
 		"name": "method-routing-model", "family": "routing", "modality": "chat", "status": StatusActive,
+		"metadata": map[string]string{"title": "Temporary title"},
 	}, adminToken)
 	if createdModel.Code != http.StatusCreated {
 		t.Fatalf("POST model: expected 201, got %d: %s", createdModel.Code, createdModel.Body.String())
 	}
 	patchedModel := methodRoutingJSONRequest(t, app, http.MethodPatch, "/api/admin/models/method-routing-model", map[string]any{
-		"family": "routing-updated", "modality": "chat", "status": StatusActive,
+		"family": "routing-updated", "modality": "chat", "status": StatusActive, "metadata": map[string]string{},
 	}, adminToken)
 	if patchedModel.Code != http.StatusOK {
 		t.Fatalf("PATCH model: expected 200, got %d: %s", patchedModel.Code, patchedModel.Body.String())
+	}
+	modelFound := false
+	for _, model := range store.ListModels() {
+		if model.Name == "method-routing-model" {
+			modelFound = true
+		}
+		if model.Name == "method-routing-model" && model.Metadata["title"] != "" {
+			t.Fatalf("PATCH model retained the cleared display name: %#v", model.Metadata)
+		}
+	}
+	if !modelFound {
+		t.Fatal("PATCH model removed the model")
 	}
 	store.AddModel(Model{Name: "method-routing-delete", Family: "routing", Modality: "chat", Status: StatusActive})
 	deletedModel := methodRoutingRequest(app, http.MethodDelete, "/api/admin/models/method-routing-delete", adminToken)

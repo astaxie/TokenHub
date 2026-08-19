@@ -182,7 +182,7 @@ func TestCodexCompatibilityRoutesBridgeChatAndAnthropicNonStreaming(t *testing.T
 		payload map[string]any
 		markers []string
 	}{
-		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(false), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_signature":"codex:`}},
+		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(false), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_signature":"codex:`, `"reasoning_details":[{"data":"codex:`}},
 		{name: "anthropic", path: "/v1/messages", payload: codexCompatibilityAnthropicPayload(false), markers: []string{"bridge text", `"type":"tool_use"`, `"type":"thinking"`, `"signature":"codex:`}},
 	}
 	for _, test := range cases {
@@ -210,7 +210,7 @@ func TestCodexCompatibilityRoutesBridgeChatAndAnthropicStreaming(t *testing.T) {
 		payload map[string]any
 		markers []string
 	}{
-		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(true), markers: []string{"bridge text", `"tool_calls"`, "[DONE]"}},
+		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(true), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_details":[{"data":"codex:`, "[DONE]"}},
 		{name: "anthropic", path: "/v1/messages", payload: codexCompatibilityAnthropicPayload(true), markers: []string{"bridge text", "content_block_delta", "input_json_delta", "message_stop"}},
 	}
 	for _, test := range cases {

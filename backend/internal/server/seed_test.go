@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,6 +48,31 @@ func TestRunStartupBootstrapReloadsCatalogOnEveryStart(t *testing.T) {
 	}
 	if got := modelCategory(); got != "second-start" {
 		t.Fatalf("catalog edit was not applied on restart: category=%q", got)
+	}
+}
+
+func TestSeedDefaultModelCatalogReportsLegacyNameConflict(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddModel(Model{
+		ID:       "legacy-catalog-id",
+		Name:     "catalog-conflict-model",
+		Modality: "chat",
+		Status:   StatusActive,
+	})
+	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: catalog-conflict-model\n    modality: chat\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := seedDefaultModelCatalog(store, catalogPath)
+	if err == nil {
+		t.Fatal("expected catalog seed conflict to be reported")
+	}
+	if !strings.Contains(err.Error(), `seed catalog model "catalog-conflict-model"`) {
+		t.Fatalf("expected model name in seed error, got %v", err)
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "duplicated key") {
+		t.Fatalf("expected database conflict cause in seed error, got %v", err)
 	}
 }
 
@@ -212,4 +238,48 @@ models:
 		newModel.OutputPriceUSDPer1M != 22 || newModel.EmbeddingPriceUSDPer1M != 2.2 {
 		t.Fatalf("new catalog model did not use catalog prices: %+v", newModel)
 	}
+}
+
+func TestBootstrapBaseDataPreservesRoutesWhenRefreshingLegacyCatalogModel(t *testing.T) {
+	store := NewMemoryStore()
+	const modelName = "deepseek-v4-flash"
+	store.AddModel(Model{
+		Name:     modelName,
+		Modality: "chat",
+		Status:   StatusActive,
+		Metadata: map[string]string{"source": "public-provider-conf"},
+	})
+	provider := store.AddProvider(Provider{
+		ID:      "prv_catalog_route",
+		Name:    "Catalog Route Provider",
+		Type:    ProviderOpenAICompatible,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	route := store.AddRoute(ModelRoute{
+		ID:            "route_catalog_model",
+		ModelName:     modelName,
+		ProviderID:    provider.ID,
+		ProviderModel: modelName,
+		Status:        StatusActive,
+	})
+	config := Config{
+		BootstrapAdminPassword: "catalog-route-bootstrap-password",
+		ModelCatalogFile:       "../../../data/model-catalog.yaml",
+	}
+
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+
+	model, ok := modelByNameForTest(store.ListModels(), modelName)
+	if !ok || model.Metadata["source"] != "tokenhub-standard-catalog" {
+		t.Fatalf("expected standard catalog model after refresh, got %+v", model)
+	}
+	for _, existing := range store.ListRoutes() {
+		if existing.ID == route.ID && existing.ModelName == modelName {
+			return
+		}
+	}
+	t.Fatalf("expected catalog refresh to preserve route %+v", route)
 }

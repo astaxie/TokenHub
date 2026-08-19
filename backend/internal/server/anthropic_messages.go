@@ -750,10 +750,12 @@ func anySlice(value any) ([]any, bool) {
 }
 
 func anthropicUsageObject(usage Usage) map[string]any {
-	cachedInputTokens := minInt64(maxInt64(usage.CachedInputTokens, 0), maxInt64(usage.PromptTokens, 0))
+	promptTokens := maxInt64(usage.PromptTokens, 0)
+	cachedInputTokens := minInt64(maxInt64(usage.CachedInputTokens, 0), promptTokens)
+	cacheWriteInputTokens := minInt64(maxInt64(usage.CacheWriteInputTokens, 0), promptTokens-cachedInputTokens)
 	return map[string]any{
-		"input_tokens":                maxInt64(usage.PromptTokens-cachedInputTokens, 0),
-		"cache_creation_input_tokens": int64(0),
+		"input_tokens":                promptTokens - cachedInputTokens - cacheWriteInputTokens,
+		"cache_creation_input_tokens": cacheWriteInputTokens,
 		"cache_read_input_tokens":     cachedInputTokens,
 		"output_tokens":               usage.CompletionTokens,
 	}

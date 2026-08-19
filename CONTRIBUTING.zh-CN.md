@@ -73,9 +73,15 @@ go vet ./...
 
 ```bash
 npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+浏览器冒烟测试会启动相互隔离的 Next.js 前端、Go 后端、模拟 Provider 上游和临时 SQLite 数据库，不需要真实凭据，也不要求预先启动 TokenHub。
 
 修改 Docker 或部署配置时，如果本地可以使用 Docker，需要渲染 Compose 配置：
 

@@ -9,11 +9,13 @@ import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
 import { providerAnthropicAuthType } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
-import { providerReasoningFormValues, providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
+import { modelMetadataPayload } from "../domain/model-display-name";
+import { defaultDisplayName } from "../domain/form-defaults";
+import { providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
 import { providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
-import { projectQuotaFields, type ProjectQuotaValues } from "../views/crud-projects";
+import { projectQuotaFields, type ProjectQuotaValues } from "../domain/project-quota";
 
 export function providerPayload(values: Record<string, string>) {
   return {
@@ -184,7 +186,7 @@ export function providerResourceAttributionPolicyPayload(resource: ProviderResou
   };
 }
 
-export function modelPayload(values: Record<string, string>) {
+export function modelPayload(values: Record<string, string>, existingMetadata?: Record<string, string>) {
   const payload = numberPayload(
     {
       name: values.name,
@@ -207,6 +209,7 @@ export function modelPayload(values: Record<string, string>) {
   payload.supported_parameters = splitList(values.supported_parameters);
   payload.input_modalities = splitList(values.input_modalities);
   payload.output_modalities = splitList(values.output_modalities);
+  Object.assign(payload, modelMetadataPayload(existingMetadata, values.display_name ?? ""));
   const routes = initialModelRoutes(values.initial_provider_models);
   if (routes.length > 0) payload.routes = routes;
   return payload;
@@ -479,7 +482,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "owner") values[field.key] = firstActiveUser(data)?.id ?? "";
     if (field.key === "cost_center") values[field.key] = firstCostCenterCode(data);
     if (field.key === "role_key") values[field.key] = "user";
-    if (field.key === "display_name") values[field.key] = "普通用户";
+    if (field.key === "display_name") values[field.key] = defaultDisplayName(config.view);
     if (field.key === "data_scope") values[field.key] = "self";
     if (field.key === "permissions") values[field.key] = "overview:read, project:read";
     if (field.key === "menu_scopes") values[field.key] = "overview, projects";
@@ -694,16 +697,39 @@ export async function importUsersFromCSVContent(ctx: ApiContext, content: string
 }
 
 export async function readAdminError(resp: Response, fallback: string) {
-  if (resp.status === 403) {
-    return permissionDeniedMessage(fallback);
-  }
   const body = await resp.text().catch(() => "");
-  if (!body) return `${fallback} (${resp.status})`;
+  if (!body) return resp.status === 403 ? permissionDeniedMessage(fallback) : `${fallback} (${resp.status})`;
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string }; message?: string };
+    const localized = localizedAdminErrorCode(parsed.error?.code);
+    if (localized) return localized;
+    if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("OpenAI/Codex 账号会话已失效，请重新进行账号授权。");
+    if (parsed.error?.code === "codex_image_forbidden") return tx("所选 Codex 账号不支持生图，无法创建图片。可更换账号后重试。");
+    if (parsed.error?.code === "codex_rate_limited") return tx("Codex 生图测试被限流，请稍后重试；本次结果不会标记为不支持。");
+    if (["codex_upstream_unavailable", "codex_upstream_timeout", "codex_image_request_failed", "codex_image_response_failed"].includes(parsed.error?.code ?? "")) {
+      return tx("Codex 生图上游暂时不可用，请稍后重试；本次结果不会标记为不支持。");
+    }
+    if (resp.status === 403) return permissionDeniedMessage(fallback);
     return parsed.error?.message || parsed.message || `${fallback} (${resp.status})`;
   } catch {
     return body.length > 180 ? `${body.slice(0, 180)}...` : body;
+  }
+}
+
+function localizedAdminErrorCode(code?: string) {
+  switch (code) {
+    case "provider_synthetic_dns_cidrs_required":
+      return tx("开启时至少填写一个 Synthetic DNS CIDR。");
+    case "provider_synthetic_dns_cidrs_invalid":
+      return tx("Synthetic DNS CIDR 格式无效，请每行填写一个 CIDR。");
+    case "provider_synthetic_dns_cidrs_too_broad":
+      return tx("Synthetic DNS CIDR 范围过宽，请缩小后重试。");
+    case "provider_synthetic_dns_cidrs_not_allowed":
+      return tx("该 Synthetic DNS CIDR 与受保护地址范围重叠，无法保存。");
+    case "provider_synthetic_dns_private_cidr_requires_unsafe_mode":
+      return tx("该 Synthetic DNS CIDR 属于私网或 ULA；如确认代理使用此网段，请先开启高风险私网信任。");
+    default:
+      return "";
   }
 }
 

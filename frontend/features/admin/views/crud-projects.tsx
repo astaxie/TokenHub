@@ -5,7 +5,8 @@ import { appRole } from "../core/navigation";
 import { type AdminResource, type AdminUser, type ApiContext, type AppData, type AuditEvent, type OpenAIAccountQuota, type OpenAIQuotaWindow, type Project, type Provider, type ProviderMonitoringSnapshot, type ProviderQuotaSummary, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type ToolbarAction } from "../core/types";
 import { notificationChannelLabel } from "../domain/catalog";
 import { providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerRoutesFor, providerRouteSummary, stringifyValue } from "../domain/entities";
-import { activeRouteCount, formatNumber, formatTime } from "../domain/formatting";
+import { formatNumber, formatTime } from "../domain/formatting";
+import { providerLatencyLabel, providerPerformanceExplanation, providerQualityScoreLabel } from "../domain/provider-monitoring";
 import { enumValueLabel, providerTypeLabel, reportDatasetLabel, roleLabel } from "../domain/labels";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { reportExportDefinitions } from "../resources/governance-config";
@@ -15,7 +16,8 @@ import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
 import { latencyDisplay, requestLogFailed } from "./overview";
-import { APIKeyFlowHint, EntityTable, PaginationControls, type PaginationState, ResourceEmptyState, resultCountLabel, RouteStrategyHint, TableSkeleton } from "./settings-table";
+import { PaginationControls, type PaginationState } from "../shared/pagination";
+import { APIKeyFlowHint, EntityTable, ResourceEmptyState, resultCountLabel, RouteStrategyHint, TableSkeleton } from "./settings-table";
 
 export function CrudView<T>({
   config,
@@ -396,11 +398,12 @@ export function ProviderChannelTable({
                 <td>
                   <div className="provider-channel-performance">
                     <div>
-                      <span>{tx("真实延迟")}<strong>{latencyDisplay(row.latencyMS)}</strong></span>
+                      <span>{tx(providerLatencyLabel)}<strong>{latencyDisplay(row.latencyMS)}</strong></span>
                       <span>{tx("24H 可用率")}<strong>{row.observed24h ? providerPercent(row.availability24h) : "-"}</strong></span>
                     </div>
                     <div className="provider-channel-quality">
                       <div className="provider-quality-score">
+                        <small className="provider-monitor-subtle">{tx(providerQualityScoreLabel)}</small>
                         <strong>{row.qualityScore}</strong>
                         <span><i style={{ width: `${row.qualityScore}%` }} /></span>
                       </div>
@@ -408,6 +411,7 @@ export function ProviderChannelTable({
                         {row.trend.map((tone, index) => <span className={tone} key={`${row.provider.id}-trend-${index}`} />)}
                       </div>
                     </div>
+                    <small className="provider-monitor-subtle">{tx(providerPerformanceExplanation)}</small>
                   </div>
                 </td>
                 <td><ProviderCodexQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
@@ -988,31 +992,6 @@ export function TeamMembersPanel({ data, team, onClose }: { data: AppData; team:
     </div>
   );
 }
-
-export type ProjectQuotaValues = {
-  status: string;
-  rate_limit_rpm: string;
-  token_limit_tpm: string;
-  daily_requests: string;
-  monthly_requests: string;
-  daily_tokens: string;
-  monthly_tokens: string;
-  daily_cost_usd: string;
-  monthly_cost_usd: string;
-  max_concurrency: string;
-};
-
-export const projectQuotaFields: Array<{ key: keyof ProjectQuotaValues; label: string; suffix?: string }> = [
-  { key: "rate_limit_rpm", label: "每分钟请求（RPM）" },
-  { key: "token_limit_tpm", label: "每分钟 Token（TPM）" },
-  { key: "daily_requests", label: "日请求" },
-  { key: "monthly_requests", label: "月请求" },
-  { key: "daily_tokens", label: "日 Token" },
-  { key: "monthly_tokens", label: "月 Token" },
-  { key: "daily_cost_usd", label: "日成本", suffix: "USD" },
-  { key: "monthly_cost_usd", label: "月成本", suffix: "USD" },
-  { key: "max_concurrency", label: "最大并发" },
-];
 
 export function ProjectMemberRow({
   data,

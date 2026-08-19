@@ -126,6 +126,12 @@ TokenHub は、実際のエンタープライズ利用からのフィードバ�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/Mr0bean">
+        <img src="https://avatars.githubusercontent.com/u/19573968?v=4" width="80px" alt="Mr0bean" />
+        <br /><sub><b>Mr0bean</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/deepjerry-ai">
         <img src="https://avatars.githubusercontent.com/u/262369278?v=4" width="80px" alt="deepjerry-ai" />
         <br /><sub><b>deepjerry-ai</b></sub>
@@ -138,9 +144,9 @@ TokenHub は、実際のエンタープライズ利用からのフィードバ�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/Mr0bean">
-        <img src="https://avatars.githubusercontent.com/u/19573968?v=4" width="80px" alt="Mr0bean" />
-        <br /><sub><b>Mr0bean</b></sub>
+      <a href="https://github.com/bailu-ZZ">
+        <img src="https://avatars.githubusercontent.com/u/311096537?v=4" width="80px" alt="bailu-ZZ" />
+        <br /><sub><b>bailu-ZZ</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -153,12 +159,6 @@ TokenHub は、実際のエンタープライズ利用からのフィードバ�
       <a href="https://github.com/samz406">
         <img src="https://avatars.githubusercontent.com/u/3055810?v=4" width="80px" alt="samz406" />
         <br /><sub><b>samz406</b></sub>
-      </a>
-    </td>
-    <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/bailu-ZZ">
-        <img src="https://avatars.githubusercontent.com/u/311096537?v=4" width="80px" alt="bailu-ZZ" />
-        <br /><sub><b>bailu-ZZ</b></sub>
       </a>
     </td>
   </tr>
@@ -200,19 +200,25 @@ TokenHub は、実際のエンタープライズ利用からのフィードバ�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/debin-ge">
+        <img src="https://avatars.githubusercontent.com/u/21329997?v=4" width="80px" alt="debin-ge" />
+        <br /><sub><b>debin-ge</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/ocass-chen">
         <img src="https://avatars.githubusercontent.com/u/172055494?v=4" width="80px" alt="ocass-chen" />
         <br /><sub><b>ocass-chen</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/AnxForever">
         <img src="https://avatars.githubusercontent.com/u/130662349?v=4" width="80px" alt="AnxForever" />
         <br /><sub><b>AnxForever</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/yujiewanwan">
         <img src="https://avatars.githubusercontent.com/u/268286250?v=4" width="80px" alt="yujiewanwan" />

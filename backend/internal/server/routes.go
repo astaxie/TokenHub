@@ -166,6 +166,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/quota/reset", s.handleAdminProviderResourceQuotaResetPost, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/health", s.handleAdminProviderResourceHealthPost, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/test", s.handleAdminProviderResourceTestPost, s.adminMethodNotAllowed("provider", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/image-capability", s.handleAdminProviderResourceImageCapabilityPost, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/refresh-token", s.handleAdminProviderResourceRefreshTokenPost, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.mux.HandleFunc("/api/admin/provider-resources/", s.handleAdminProviderResourceNested)
 	providerModelImportMethodNotAllowed := s.adminMethodNotAllowed("model", http.MethodPost)
@@ -205,23 +206,50 @@ func (s *Server) routes() {
 	s.registerDynamicMethodRoute(http.MethodDelete, "/api/admin/routing-rules/{route_id}", s.handleAdminRouteDelete)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/routing-rules/{route_id}/explain", s.handleAdminRouteExplainGet, s.adminMethodNotAllowed("routing", http.MethodGet))
 	s.mux.HandleFunc("/api/admin/routing-rules/", s.handleAdminRouteItem)
+	s.registerMethodRoutes("/api/admin/resources/{kind}", s.adminResourceMethodNotAllowed,
+		methodRoute{Method: http.MethodGet, Handler: s.handleAdminResourceCollectionGet},
+		methodRoute{Method: http.MethodPost, Handler: s.handleAdminResourceCollectionPost},
+	)
+	s.registerMethodRoutes("/api/admin/resources/{kind}/{resource_id}", s.adminResourceMethodNotAllowed,
+		methodRoute{Method: http.MethodPatch, Handler: s.handleAdminResourcePatch},
+		methodRoute{Method: http.MethodDelete, Handler: s.handleAdminResourceDelete},
+	)
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/invoices/{invoice_id}/confirm", s.handleAdminInvoiceConfirmPost, s.adminMethodNotAllowed("usage", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/invoices/{invoice_id}/reject", s.handleAdminInvoiceRejectPost, s.adminMethodNotAllowed("usage", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/monitors/{monitor_id}/run", s.handleAdminMonitorRunPost, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.mux.HandleFunc("/api/admin/resources/", s.handleAdminResources)
-	s.mux.HandleFunc("/api/admin/sqlite/backups", s.handleAdminSQLiteBackups)
+	s.registerMethodRoutes("/api/admin/sqlite/backups", func(allowedMethods string) http.HandlerFunc {
+		return s.adminMethodNotAllowed("backup", allowedMethods)
+	},
+		methodRoute{Method: http.MethodGet, Handler: s.handleAdminSQLiteBackupsGet},
+		methodRoute{Method: http.MethodPost, Handler: s.handleAdminSQLiteBackupsPost},
+	)
+	s.registerMethodRoutes("/api/admin/sqlite/backups/{backup_id}", s.adminSQLiteBackupMethodNotAllowed,
+		methodRoute{Method: http.MethodGet, Handler: s.handleAdminSQLiteBackupGet},
+		methodRoute{Method: http.MethodDelete, Handler: s.handleAdminSQLiteBackupDelete},
+	)
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/sqlite/backups/{backup_id}/download", s.handleAdminSQLiteBackupDownloadGet, s.adminSQLiteBackupMethodNotAllowed(http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/sqlite/backups/{backup_id}/restore", s.handleAdminSQLiteBackupRestorePost, s.adminSQLiteBackupMethodNotAllowed(http.MethodPost))
 	s.mux.HandleFunc("/api/admin/sqlite/backups/", s.handleAdminSQLiteBackupItem)
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/billing/generate", s.handleAdminGenerateBilling, s.adminMethodNotAllowed("usage", http.MethodPost))
 	s.registerBillingRoutes()
+	s.registerDynamicGETRoute("/api/admin/export/{dataset}", s.handleAdminExportGet, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.mux.HandleFunc("/api/admin/export/", s.handleAdminExport)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/summary", s.handleAdminUsageSummary, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/breakdown", s.handleAdminUsageBreakdown, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/timeseries", s.handleAdminUsageTimeseries, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/audit/requests", s.handleAdminRequestLogs, s.adminMethodNotAllowed("audit", http.MethodGet))
+	s.registerDynamicGETRoute("/api/admin/audit/requests/{request_id}", s.handleAdminRequestDetailGet, s.adminMethodNotAllowed("audit", http.MethodGet))
 	s.mux.HandleFunc("/api/admin/audit/requests/", s.handleAdminRequestDetail)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/audit/image-jobs", s.handleAdminImageJobs, s.adminMethodNotAllowed("audit", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/audit/events", s.handleAdminAuditEvents, s.adminMethodNotAllowed("admin_audit", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/alerts", s.handleAdminAlerts, s.adminMethodNotAllowed("alert", http.MethodGet))
+	s.registerDynamicMethodRoute(http.MethodPost, "/api/admin/alerts/{alert_id}/deliver", s.handleAdminAlertDeliverPost)
 	s.mux.HandleFunc("/api/admin/alerts/", s.handleAdminAlertItem)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/alert-deliveries", s.handleAdminAlertDeliveries, s.adminMethodNotAllowed("alert", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/approvals", s.handleAdminApprovals, s.adminMethodNotAllowed("approval", http.MethodGet))
+	s.registerDynamicMethodRoute(http.MethodPost, "/api/admin/approvals/{approval_id}/approve", s.handleAdminApprovalApprovePost)
+	s.registerDynamicMethodRoute(http.MethodPost, "/api/admin/approvals/{approval_id}/reject", s.handleAdminApprovalRejectPost)
 	s.mux.HandleFunc("/api/admin/approvals/", s.handleAdminApprovalItem)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/system/db-status", s.handleAdminSystemDBStatus, plainTextMethodNotAllowed(http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/system/version", s.handleAdminSystemVersion, jsonMethodNotAllowed(http.MethodGet))

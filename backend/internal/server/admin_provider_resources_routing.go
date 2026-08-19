@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -119,6 +120,10 @@ func (s *Server) handleAdminProviderResourceTestPost(w http.ResponseWriter, r *h
 	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminProviderResourceTest)
 }
 
+func (s *Server) handleAdminProviderResourceImageCapabilityPost(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminProviderResourceActionRoute(w, r, s.handleAdminCodexImageCapability)
+}
+
 func (s *Server) handleAdminProviderResourceRefreshTokenPost(w http.ResponseWriter, r *http.Request) {
 	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminProviderResourceRefreshToken)
 }
@@ -148,7 +153,20 @@ func (s *Server) serveAdminProviderResourcePatch(w http.ResponseWriter, r *http.
 		writeError(w, r, err)
 		return
 	}
-	resource, err := s.store.UpdateProviderResource(resourceID, req)
+	var resource ProviderResource
+	updateResource := func() error {
+		var updateErr error
+		resource, updateErr = s.store.UpdateProviderResource(resourceID, req)
+		return updateErr
+	}
+	var err error
+	if current.ResourceType == ProviderResourceOpenAISubscription {
+		err = s.store.RunClusterOperation(r.Context(), "codex-image-capability:"+current.ProviderID, func(context.Context) error {
+			return updateResource()
+		})
+	} else {
+		err = updateResource()
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -158,7 +176,21 @@ func (s *Server) serveAdminProviderResourcePatch(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) serveAdminProviderResourceDelete(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	if err := s.store.DeleteProviderResource(resourceID); err != nil {
+	deleteResource := func() error { return s.store.DeleteProviderResource(resourceID) }
+	resource, found := s.store.GetProviderResource(resourceID)
+	if !found {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found"))
+		return
+	}
+	var err error
+	if resource.ResourceType == ProviderResourceOpenAISubscription {
+		err = s.store.RunClusterOperation(r.Context(), "codex-image-capability:"+resource.ProviderID, func(context.Context) error {
+			return deleteResource()
+		})
+	} else {
+		err = deleteResource()
+	}
+	if err != nil {
 		writeError(w, r, err)
 		return
 	}

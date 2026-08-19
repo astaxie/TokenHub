@@ -1,6 +1,6 @@
 import { type ApiContext, type PlaygroundStreamEvent } from "../core/types";
-import { readAPIError } from "./formatting";
-import { adminFetch } from "../resources/payloads";
+import { readAPIError } from "../domain/formatting";
+import { adminFetch } from "./payloads";
 
 type PlaygroundEventHandler = (name: string, event: PlaygroundStreamEvent) => void;
 

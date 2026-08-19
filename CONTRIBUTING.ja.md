@@ -73,9 +73,15 @@ go vet ./...
 
 ```bash
 npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+ブラウザスモークテストは、分離された Next.js フロントエンド、Go バックエンド、模擬 Provider アップストリーム、一時 SQLite データベースを起動します。実際の認証情報や、起動済みの TokenHub 環境は不要です。
 
 Docker またはデプロイ構成を変更した場合は、Docker を利用できる環境で Compose 構成をレンダリングします。
 

@@ -54,7 +54,11 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 			activeRoutes++
 		}
 	}
-	summary := s.usageSummaryForUser(user)
+	summary, err := s.usageSummaryForUser(r.Context(), user)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
 	summary["api_key_count"] = len(s.filterAPIKeysForUser(user, s.store.ListAPIKeys()))
 	summary["route_count"] = len(routes)
 	summary["active_route_count"] = activeRoutes

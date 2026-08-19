@@ -14,7 +14,8 @@ func TestUsageBreakdownQueryCountDoesNotGrowWithRecords(t *testing.T) {
 		CostCenter: "CC-BREAKDOWN",
 		Status:     StatusActive,
 	})
-	server := New(store)
+	// Keep background response-job polling out of this query-count unit test.
+	server := &Server{store: store}
 	admin := AdminUser{ID: "usr_breakdown_admin", Role: "admin", Status: StatusActive}
 
 	insertUsageRecords := func(start, count int) {

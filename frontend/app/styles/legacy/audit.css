@@ -124,8 +124,18 @@
 }
 
 .request-filter-tabs button.active {
-  background: var(--text);
-  color: white;
+	background: var(--text);
+	color: white;
+}
+
+.request-log-model-filter {
+	min-width: 160px;
+	height: 36px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0 10px;
+	background: var(--surface-soft);
+	color: var(--text);
 }
 
 .request-metrics {

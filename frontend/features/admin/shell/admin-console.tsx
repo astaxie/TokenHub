@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
@@ -19,9 +19,9 @@ import { downloadReport } from "../resources/governance-config";
 import { adminFetch, adminMutate, importUsersFromCSVContent, isAuthExpiredError, loadRequestLabel, notificationChannelDefaults, permissionPartialLoadMessage, readAdminError, readLoadError, restoreDefaultModelCatalog } from "../resources/payloads";
 import { projectMemberConfig, projectMemberInitialValues } from "../resources/project-key-config";
 import { resourceConfigFor } from "../resources/settings-config";
-import { APIKeyWizardModal, UserImportModal } from "../shared/modals";
+import { usePagination } from "../shared/pagination";
+import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "../shared/auth";
 import { ConfirmDialog, IssuedKeyModal } from "../shared/ui";
-import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "./auth";
 import { PageHeader, Sidebar, StatusStack, TopNav } from "./navigation-ui";
 import { ResponsiveVersionStatus } from "./version-status";
 import { AuditView } from "../views/audit";
@@ -37,7 +37,8 @@ import { ProviderUpsertModal } from "../views/provider-editor";
 import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
 import { RoutingPolicySimulator } from "../views/routing-policy-simulator";
 import { ContentSecurityPolicies, SecurityPolicyTabs } from "../views/security-policies";
-import { EditModal, SettingsView, usePagination } from "../views/settings-table";
+import { APIKeyWizardModal, UserImportModal } from "../views/modals";
+import { EditModal, SettingsView } from "../views/settings-table";
 import { BillingView, UsageView } from "../views/usage-billing";
 
 export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
@@ -92,7 +93,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setTheme((value) => (value === "light" ? "dark" : "light"));
   }
 
-  function selectView(view: ViewKey, options: { replace?: boolean; routeModelQuery?: string } = {}) {
+  const selectView = useCallback((view: ViewKey, options: { replace?: boolean; routeModelQuery?: string } = {}) => {
     if (view !== activeView) {
       setNotice("");
       setError("");
@@ -111,7 +112,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     } else {
       router.push(nextURL);
     }
-  }
+  }, [activeView, pathname, router]);
 
   function openRoutes(model?: Model) {
     selectView("routes", { routeModelQuery: model?.name ?? "" });
@@ -170,7 +171,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [defaultBaseURL]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -190,8 +191,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     selectView("providers", { replace: true });
     setProviderCreateOpen(true);
     setNotice(tx("收到账号授权回调，已打开账号池创建向导。"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser]);
+  }, [currentUser, selectView]);
 
   useEffect(() => {
     if (!bootstrapped || currentUser) return;
@@ -227,7 +227,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!bootstrapped || !adminToken || !currentUser) return;
     if (!canAccessView(currentUser, activeView)) return;
     void load(activeView);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load is an orchestration command; the explicit state keys define when it runs.
   }, [bootstrapped, adminToken, currentUser, activeView]);
 
   useEffect(() => {
@@ -241,8 +241,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!canAccessView(currentUser, activeView)) {
       selectView(defaultViewForRole(currentUser), { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, activeView]);
+  }, [currentUser, activeView, selectView]);
 
   useEffect(() => {
     if (!currentUser || !canAccessView(currentUser, activeView)) return;
@@ -281,7 +280,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     }
     window.addEventListener(authExpiredEventName, onAuthExpired);
     return () => window.removeEventListener(authExpiredEventName, onAuthExpired);
-  }, []);
+  }, [selectView]);
 
   useEffect(() => {
     function onIssuedKey(event: Event) {

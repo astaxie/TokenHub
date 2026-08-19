@@ -1,5 +1,5 @@
 import { Activity, AlertCircle, Check, Database, Server, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type ApiContext, type DatabaseStatus, type Model } from "../core/types";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError } from "../resources/payloads";
@@ -15,12 +15,7 @@ export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }
   // fresher one, and unmounting cancels the last.
   const inFlight = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    void fetchDatabaseStatus();
-    return () => inFlight.current?.abort();
-  }, []);
-
-  const fetchDatabaseStatus = async () => {
+  const fetchDatabaseStatus = useCallback(async () => {
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
@@ -45,7 +40,12 @@ export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  };
+  }, [api]);
+
+  useEffect(() => {
+    void fetchDatabaseStatus();
+    return () => inFlight.current?.abort();
+  }, [fetchDatabaseStatus]);
 
   if (loading) {
     return (

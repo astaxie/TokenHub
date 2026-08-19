@@ -72,6 +72,10 @@ RPM 在调用 Provider 前扣减。TPM 同时按请求的预估输入量和最�
 
 TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照。管理员显式刷新时，系统会下载最新的 `PublicProviderConf` 目录，执行相同的完整性校验，并仅在校验通过后原子替换快照。若上游请求或校验失败，TokenHub 会回退到配置的本地目录；若本地回退也失败，刷新请求会返回错误，并继续使用最后一次有效快照。刷新响应会用 `upstream-provider-catalog` 或 `local-provider-catalog` 标明实际采用的来源。
 
+## Codex OAuth Token 续租
+
+对于已启用且保存了刷新 Token 的 OpenAI Codex Subscription 账号，TokenHub 会在后端启动时检查一次，之后每分钟检查一次。只有访问 Token 将在五分钟内过期时才会续租。数据库凭证租约保证集群部署中同一个账号只会由一个实例续租。在「Provider 渠道 > 高级 > 订阅额度」中，管理员可以点击「续租 Token」手动续租单个账号。手动续租用于故障恢复，不要重复点击：上游可能在续租响应中轮换刷新 Token，TokenHub 会自动保存返回的新值。如果 OpenAI 返回刷新 Token 已失效，TokenHub 会把账号标记为需要重新授权，停止后续定时续租，并向管理员显示重新授权提示。
+
 ### Kronk 本地推理
 
 在「Provider 渠道」中选择 **Kronk**，即可连接独立运行的 Kronk Model Server。默认 Base URL 为 `http://127.0.0.1:11435/v1`。Kronk 未启用认证时可将 application token 留空；启用认证后，TokenHub 只会将保存的密钥作为 `Authorization: Bearer <token>` 发送。连接测试会分别检查 `/v1/liveness`、`/v1/readiness` 和 `/v1/models`，从而区分进程可达、服务就绪和本地模型可用状态。
@@ -79,7 +83,6 @@ TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中�
 模型选择器通过 `GET /v1/models` 发现实时库存，并完整保留 Kronk 模型 ID 中的 `/`、`:` 和量化后缀。引入选中的库存后，在「模型目录」中创建对外标准模型名，再到「路由策略」将其映射到 Kronk 模型 ID。重复引入保持幂等。后续模型发现成功时，已从 Kronk 移除的模型会被标记为不可用，但不会删除其库存或路由；发现失败不会改写现有配置。
 
 Kronk 路由支持 OpenAI-compatible Chat Completions、Responses 和 Embeddings，包括 SSE 流式输出。TokenHub 继续执行客户端认证、项目隔离、配额、审计、路由与故障转移策略；不会把调用方的 `Authorization` 请求头转发给 Kronk，也不会在管理响应、审计载荷、日志或上游错误响应中暴露保存的 Kronk token。
-
 ## Claude Code 归因块处理
 
 Claude Code 可能在 Anthropic Messages 请求的 `system` 数组开头插入归因文本块。该块包含可能随请求变化的客户端元数据，可能导致第三方上游无法复用原本稳定的提示词前缀。
@@ -303,6 +306,8 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 每次结果都保存完整规则快照、规则版本与哈希、输入哈希、执行人、时间和审计事件。重新计算使用该次执行保存的规则快照；若重新计算失败，上一次成功结果及其明细仍会保留，失败尝试会写入审计。源记录不变时，输入哈希和分类金额可复现。成功结果可锁定，锁定后不能再重新计算。明细接口使用服务端 `limit`/`offset` 分页；CSV 默认按有界批次流式导出全部差异行和源记录引用，不做静默行数截断。其中不包含 Provider 凭证或原始快照，资源账号在管理 API 和 CSV 中都会脱敏，资源账号映射也不会写入审计快照。
 
 相关端点包括 `GET/POST /api/admin/billing/reconciliation-rules`、`GET/PATCH /api/admin/billing/reconciliation-rules/{id}`、`POST /api/admin/billing/reconciliation-rules/{id}/run`、`GET /api/admin/billing/reconciliations`、`GET /api/admin/billing/reconciliations/{id}`，以及 `{id}/lock`、`{id}/recalculate` 和 `{id}/export` 操作。这些端点仅允许平台管理员访问。
+
+`audit_retention` 网关设置仅接受 `1d` 至 `3650d` 的 `Nd` 格式。集群每个 UTC 小时分批删除超过保留期的请求和响应正文。请求日志元数据、用量分析数据、后台审计事件和告警事件不受该设置影响。
 
 ## 安全检查清单
 

@@ -10,136 +10,6 @@ import (
 	"time"
 )
 
-func (s *Server) handleAdminResources(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, adminResourcePermission(r.URL.Path), r.Method)
-	if !ok {
-		return
-	}
-	parts := splitEscapedAdminPath(r.URL.EscapedPath(), "/api/admin/resources/")
-	if len(parts) == 0 || parts[0] == "" {
-		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
-		return
-	}
-	kind := parts[0]
-	if kind == openAIAccountQuotaResetOperationKind {
-		writeError(w, r, NewHTTPError(http.StatusNotFound, "not_found", "Not found"))
-		return
-	}
-	if len(parts) == 1 {
-		switch r.Method {
-		case http.MethodGet:
-			if kind == "monitors" {
-				s.ensureDefaultMonitors()
-			}
-			if kind == "alert-rules" {
-				s.ensureDefaultAlertRules()
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"data": s.filterResourcesForUser(user, kind, s.store.ListResources(kind))})
-		case http.MethodPost:
-			if normalizeAdminRole(user.Role) == "team_leader" && kind == "teams" {
-				writeError(w, r, NewHTTPError(403, "team_forbidden", "Team leader cannot create teams"))
-				return
-			}
-			var req AdminResource
-			if err := s.decodeJSON(w, r, &req); err != nil {
-				writeError(w, r, err)
-				return
-			}
-			if req.Name == "" {
-				writeError(w, r, NewHTTPError(400, "invalid_resource", "name is required"))
-				return
-			}
-			if err := s.validateScopedResourceMutation(user, kind, "", req); err != nil {
-				writeError(w, r, err)
-				return
-			}
-			if approval, required := s.adminResourceApproval(user, kind, "", req); required {
-				s.recordAdminAudit(r, user, "request_approval", kind, approval.ID, "", approval)
-				writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
-				return
-			}
-			var resource AdminResource
-			if kind == routingPolicyResourceKind {
-				var err error
-				resource, err = s.store.CreateRoutingPolicy(req)
-				if err != nil {
-					writeError(w, r, err)
-					return
-				}
-			} else {
-				resource = s.store.CreateResource(kind, req)
-			}
-			s.recordAdminAudit(r, user, "create", kind, resource.ID, "", resource)
-			writeJSON(w, http.StatusCreated, resource)
-		default:
-			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		}
-		return
-	}
-	if kind == "invoices" && len(parts) == 3 && parts[1] != "" {
-		s.handleAdminInvoiceAction(w, r, user, parts[1], parts[2])
-		return
-	}
-	if kind == "monitors" && len(parts) == 3 && parts[1] != "" && parts[2] == "run" {
-		s.handleAdminMonitorRun(w, r, user, parts[1])
-		return
-	}
-	if len(parts) != 2 || parts[1] == "" {
-		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
-		return
-	}
-	switch r.Method {
-	case http.MethodPatch:
-		if normalizeAdminRole(user.Role) == "team_leader" && kind == "teams" && parts[1] != user.TeamID {
-			writeError(w, r, NewHTTPError(403, "team_forbidden", "Team leader can only update own team"))
-			return
-		}
-		var req AdminResource
-		if err := s.decodeJSON(w, r, &req); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		if err := s.validateScopedResourceMutation(user, kind, parts[1], req); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		if approval, required := s.adminResourceApproval(user, kind, parts[1], req); required {
-			s.recordAdminAudit(r, user, "request_approval", kind, approval.ID, "", approval)
-			writeJSON(w, http.StatusAccepted, map[string]any{"approval_required": true, "approval": approval})
-			return
-		}
-		resource, err := s.store.UpdateResource(kind, parts[1], req)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "update", kind, parts[1], "", resource)
-		writeJSON(w, http.StatusOK, resource)
-	case http.MethodDelete:
-		if normalizeAdminRole(user.Role) == "team_leader" && kind == "teams" {
-			writeError(w, r, NewHTTPError(403, "team_forbidden", "Team leader cannot delete teams"))
-			return
-		}
-		if kind == "teams" {
-			if err := s.store.DeleteTeam(parts[1]); err != nil {
-				writeError(w, r, err)
-				return
-			}
-			s.recordAdminAudit(r, user, "delete", kind, parts[1], "", nil)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if err := s.store.DeleteResource(kind, parts[1]); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "delete", kind, parts[1], "", nil)
-		w.WriteHeader(http.StatusNoContent)
-	default:
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-	}
-}
-
 func (s *Server) handleAdminProjectQuotaIncrease(w http.ResponseWriter, r *http.Request, user AdminUser, projectID string) {
 	if r.Method != http.MethodPost {
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
@@ -480,9 +350,13 @@ func alertRuleKey(fields map[string]any) string {
 
 func (s *Server) handleAdminMonitorRun(w http.ResponseWriter, r *http.Request, user AdminUser, monitorID string) {
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminMonitorRun(w, r, user, monitorID)
+}
+
+func (s *Server) serveAdminMonitorRun(w http.ResponseWriter, r *http.Request, user AdminUser, monitorID string) {
 	result, err := s.store.RunMonitor(monitorID)
 	if err != nil {
 		writeError(w, r, err)
@@ -492,34 +366,27 @@ func (s *Server) handleAdminMonitorRun(w http.ResponseWriter, r *http.Request, u
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) handleAdminSQLiteBackups(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, "backup", r.Method)
-	if !ok {
-		return
+func (s *Server) serveAdminSQLiteBackupsGet(w http.ResponseWriter, _ *http.Request, _ AdminUser) {
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListSQLiteBackups()})
+}
+
+func (s *Server) serveAdminSQLiteBackupsPost(w http.ResponseWriter, r *http.Request, user AdminUser) {
+	var req struct {
+		ExpireDays int `json:"expire_days"`
 	}
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListSQLiteBackups()})
-	case http.MethodPost:
-		var req struct {
-			ExpireDays int `json:"expire_days"`
-		}
-		if r.Body != nil && r.ContentLength != 0 {
-			if err := s.decodeJSON(w, r, &req); err != nil {
-				writeError(w, r, err)
-				return
-			}
-		}
-		backup, err := s.store.CreateSQLiteBackup(user.ID, req.ExpireDays)
-		if err != nil {
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := s.decodeJSON(w, r, &req); err != nil {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "create", "sqlite_backup", backup.ID, "", backup)
-		writeJSON(w, http.StatusCreated, backup)
-	default:
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 	}
+	backup, err := s.store.CreateSQLiteBackup(user.ID, req.ExpireDays)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "create", "sqlite_backup", backup.ID, "", backup)
+	writeJSON(w, http.StatusCreated, backup)
 }
 
 func (s *Server) handleAdminSQLiteBackupItem(w http.ResponseWriter, r *http.Request) {
@@ -536,75 +403,91 @@ func (s *Server) handleAdminSQLiteBackupItem(w http.ResponseWriter, r *http.Requ
 	if len(parts) == 1 {
 		switch r.Method {
 		case http.MethodGet:
-			backup, err := s.store.GetSQLiteBackup(backupID)
-			if err != nil {
-				writeError(w, r, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, backup)
+			s.serveAdminSQLiteBackupGet(w, r, user, backupID)
 		case http.MethodDelete:
-			before, _ := s.store.GetSQLiteBackup(backupID)
-			if err := s.store.DeleteSQLiteBackup(backupID); err != nil {
-				writeError(w, r, err)
-				return
-			}
-			s.recordAdminAudit(r, user, "delete", "sqlite_backup", backupID, before, nil)
-			w.WriteHeader(http.StatusNoContent)
+			s.serveAdminSQLiteBackupDelete(w, r, user, backupID)
 		default:
-			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+			jsonMethodNotAllowed(http.MethodGet+", "+http.MethodDelete)(w, r)
 		}
 		return
 	}
 	switch parts[1] {
 	case "download":
 		if r.Method != http.MethodGet {
-			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		backup, err := s.store.GetSQLiteBackup(backupID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		if backup.Status != "ready" && backup.Status != "restored" {
-			writeError(w, r, NewHTTPError(409, "backup_not_ready", "Backup is not ready to download"))
-			return
-		}
-		if _, err := os.Stat(backup.FilePath); err != nil {
-			writeError(w, r, NewHTTPError(404, "backup_file_missing", "Backup file is missing"))
-			return
-		}
-		w.Header().Set("content-type", "application/vnd.sqlite3")
-		w.Header().Set("content-disposition", `attachment; filename="`+backup.FileName+`"`)
-		http.ServeFile(w, r, backup.FilePath)
-		s.recordAdminAudit(r, user, "download", "sqlite_backup", backupID, "", map[string]any{"file_name": backup.FileName})
+		s.serveAdminSQLiteBackupDownload(w, r, user, backupID)
 	case "restore":
 		if r.Method != http.MethodPost {
-			writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+			jsonMethodNotAllowed(http.MethodPost)(w, r)
 			return
 		}
-		var req struct {
-			Confirmation string `json:"confirmation"`
-		}
-		if err := s.decodeJSON(w, r, &req); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		if strings.TrimSpace(req.Confirmation) != "RESTORE "+backupID {
-			writeError(w, r, NewHTTPError(400, "invalid_restore_confirmation", "Restore confirmation is invalid"))
-			return
-		}
-		before, _ := s.store.GetSQLiteBackup(backupID)
-		backup, err := s.store.RestoreSQLiteBackup(backupID, user.ID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "restore", "sqlite_backup", backupID, before, backup)
-		writeJSON(w, http.StatusOK, backup)
+		s.serveAdminSQLiteBackupRestore(w, r, user, backupID)
 	default:
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 	}
+}
+
+func (s *Server) serveAdminSQLiteBackupGet(w http.ResponseWriter, r *http.Request, _ AdminUser, backupID string) {
+	backup, err := s.store.GetSQLiteBackup(backupID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, backup)
+}
+
+func (s *Server) serveAdminSQLiteBackupDelete(w http.ResponseWriter, r *http.Request, user AdminUser, backupID string) {
+	before, _ := s.store.GetSQLiteBackup(backupID)
+	if err := s.store.DeleteSQLiteBackup(backupID); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "delete", "sqlite_backup", backupID, before, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) serveAdminSQLiteBackupDownload(w http.ResponseWriter, r *http.Request, user AdminUser, backupID string) {
+	backup, err := s.store.GetSQLiteBackup(backupID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if backup.Status != "ready" && backup.Status != "restored" {
+		writeError(w, r, NewHTTPError(409, "backup_not_ready", "Backup is not ready to download"))
+		return
+	}
+	if _, err := os.Stat(backup.FilePath); err != nil {
+		writeError(w, r, NewHTTPError(404, "backup_file_missing", "Backup file is missing"))
+		return
+	}
+	w.Header().Set("content-type", "application/vnd.sqlite3")
+	w.Header().Set("content-disposition", `attachment; filename="`+backup.FileName+`"`)
+	http.ServeFile(w, r, backup.FilePath)
+	s.recordAdminAudit(r, user, "download", "sqlite_backup", backupID, "", map[string]any{"file_name": backup.FileName})
+}
+
+func (s *Server) serveAdminSQLiteBackupRestore(w http.ResponseWriter, r *http.Request, user AdminUser, backupID string) {
+	var req struct {
+		Confirmation string `json:"confirmation"`
+	}
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if strings.TrimSpace(req.Confirmation) != "RESTORE "+backupID {
+		writeError(w, r, NewHTTPError(400, "invalid_restore_confirmation", "Restore confirmation is invalid"))
+		return
+	}
+	before, _ := s.store.GetSQLiteBackup(backupID)
+	backup, err := s.store.RestoreSQLiteBackup(backupID, user.ID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "restore", "sqlite_backup", backupID, before, backup)
+	writeJSON(w, http.StatusOK, backup)
 }
 
 func (s *Server) handleAdminInvoiceAction(w http.ResponseWriter, r *http.Request, user AdminUser, invoiceID string, action string) {
@@ -613,9 +496,13 @@ func (s *Server) handleAdminInvoiceAction(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminInvoiceAction(w, r, user, invoiceID, action)
+}
+
+func (s *Server) serveAdminInvoiceAction(w http.ResponseWriter, r *http.Request, user AdminUser, invoiceID string, action string) {
 	var req struct {
 		InvoiceNote  string `json:"invoice_note"`
 		RejectReason string `json:"reject_reason"`
@@ -651,7 +538,12 @@ func (s *Server) handleAdminUsageSummary(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.usageSummaryForUser(user))
+	summary, err := s.usageSummaryForUser(r.Context(), user)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
 }
 
 func (s *Server) handleAdminUsageBreakdown(w http.ResponseWriter, r *http.Request) {
@@ -699,7 +591,7 @@ func (s *Server) handleAdminRequestDetail(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodGet)(w, r)
 		return
 	}
 	requestID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/audit/requests/"), "/")
@@ -707,6 +599,10 @@ func (s *Server) handleAdminRequestDetail(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 		return
 	}
+	s.serveAdminRequestDetail(w, r, user, requestID)
+}
+
+func (s *Server) serveAdminRequestDetail(w http.ResponseWriter, r *http.Request, user AdminUser, requestID string) {
 	detail, err := s.store.GetRequestDetail(requestID)
 	if err != nil {
 		writeError(w, r, err)
@@ -738,7 +634,7 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodGet)(w, r)
 		return
 	}
 	kind := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/export/"), "/")
@@ -746,6 +642,10 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 		return
 	}
+	s.serveAdminExport(w, r, user, kind)
+}
+
+func (s *Server) serveAdminExport(w http.ResponseWriter, r *http.Request, user AdminUser, kind string) {
 	if !s.canExportKind(user, kind) {
 		writeError(w, r, NewHTTPError(403, "export_forbidden", "Export is not available for this user"))
 		return

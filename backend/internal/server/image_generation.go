@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -8,6 +9,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	_ "golang.org/x/image/webp"
 )
 
 const (
@@ -491,6 +497,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			return err
 		}
 	}
+	if s.credentialRefresh != nil {
+		if err := s.credentialRefresh.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	if s.payloadRetention != nil {
+		if err := s.payloadRetention.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
 	s.imageWorkerStop.Do(func() {
 		s.imageCancel()
 	})
@@ -793,6 +809,11 @@ func decodeGeneratedImage(encoded string) ([]byte, error) {
 	if len(decoded) > maxGeneratedImageBytes {
 		return nil, fmt.Errorf("image result exceeds %d bytes", maxGeneratedImageBytes)
 	}
+	if _, format, err := image.Decode(bytes.NewReader(decoded)); err != nil {
+		return nil, fmt.Errorf("decode image result: %w", err)
+	} else if format != "png" && format != "jpeg" && format != "webp" {
+		return nil, fmt.Errorf("image result must be PNG, JPEG, or WebP")
+	}
 	return decoded, nil
 }
 
@@ -985,7 +1006,22 @@ func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 
 func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 	if model == codexImageModelName {
-		return s.codexImageRouteCandidates(), nil
+		routes, err := s.store.SelectRouteCandidates(codexImageModelName)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]RouteSelection, 0, len(routes))
+		for _, route := range routes {
+			if route.Provider.Type == ProviderOpenAICodex &&
+				route.ProviderModel == codexImageUpstreamModel &&
+				route.Resource != nil && isOpenAIAccountResource(route.Resource.ResourceType) {
+				filtered = append(filtered, route)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, ErrProviderMissing
+		}
+		return filtered, nil
 	}
 	routes, err := s.store.SelectRouteCandidates(openAIImageModelName)
 	if err != nil {

@@ -2,11 +2,14 @@ package server
 
 import (
 	"database/sql"
+	"errors"
 	"math"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func TestPriceUsageAppliesConfiguredCacheReadPrice(t *testing.T) {
@@ -27,6 +30,65 @@ func TestPriceUsageAppliesConfiguredCacheReadPrice(t *testing.T) {
 	}
 	if usage.TotalTokens != 1100 {
 		t.Fatalf("total tokens = %d, want 1100", usage.TotalTokens)
+	}
+}
+
+// TestPriceUsageClampsNegativeUpstreamUsage guards the quota ledger against
+// upstreams that report negative counts: priceUsage is the single choke point
+// before addUsage, so anything negative surviving it would shrink the day and
+// month quota counters and let a key spend past its configured limits.
+func TestPriceUsageClampsNegativeUpstreamUsage(t *testing.T) {
+	model := Model{
+		Modality:            "chat",
+		InputPriceUSDPer1M:  2,
+		OutputPriceUSDPer1M: 8,
+	}
+	cases := []struct {
+		name           string
+		usage          Usage
+		wantPrompt     int64
+		wantCompletion int64
+		wantTotal      int64
+		wantCost       float64
+	}{
+		{
+			name:  "negative total only",
+			usage: Usage{TotalTokens: -1_000_000},
+		},
+		{
+			name:           "negative prompt keeps completion",
+			usage:          Usage{PromptTokens: -500, CompletionTokens: 200},
+			wantCompletion: 200,
+			wantTotal:      200,
+			wantCost:       200 * 8.0 / 1_000_000,
+		},
+		{
+			name:           "negative total rebuilt from parts",
+			usage:          Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: -3},
+			wantPrompt:     100,
+			wantCompletion: 50,
+			wantTotal:      150,
+			wantCost:       (100*2.0 + 50*8.0) / 1_000_000,
+		},
+		{
+			name:  "negative prompt does not drag cached tokens negative",
+			usage: Usage{PromptTokens: -100, CachedInputTokens: 50, CompletionTokens: -5},
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got := priceUsage(model, tt.usage)
+			if got.PromptTokens != tt.wantPrompt || got.CompletionTokens != tt.wantCompletion || got.TotalTokens != tt.wantTotal {
+				t.Fatalf("clamped tokens = prompt %d completion %d total %d, want prompt %d completion %d total %d",
+					got.PromptTokens, got.CompletionTokens, got.TotalTokens, tt.wantPrompt, tt.wantCompletion, tt.wantTotal)
+			}
+			if got.CachedInputTokens < 0 {
+				t.Fatalf("cached input tokens = %d, want >= 0", got.CachedInputTokens)
+			}
+			if math.Abs(got.CostUSD-tt.wantCost) > 1e-12 {
+				t.Fatalf("cost = %.12f, want %.12f", got.CostUSD, tt.wantCost)
+			}
+		})
 	}
 }
 
@@ -172,6 +234,108 @@ func TestFinishCallPersistsCachedInputTokensInUsageAggregates(t *testing.T) {
 	}
 	if got := models[0]["cached_input_tokens"]; got != int64(400) {
 		t.Fatalf("breakdown cached input tokens = %#v, want 400", got)
+	}
+}
+
+// TestFinishCallNegativeUsageDoesNotShrinkQuotaCounters exercises the full
+// FinishCall path: a completion carrying negative upstream usage must leave
+// the persisted day quota counters untouched instead of subtracting from them.
+func TestFinishCallNegativeUsageDoesNotShrinkQuotaCounters(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Negative Usage", Status: StatusActive})
+	key, _, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "negative-usage",
+		Allowed: []string{"clamped-chat"},
+		Status:  StatusActive,
+	}, "thk_negative_usage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := Model{
+		Name:                "clamped-chat",
+		Modality:            "chat",
+		InputPriceUSDPer1M:  2,
+		OutputPriceUSDPer1M: 8,
+	}
+	newCall := func(requestID string) CallContext {
+		return CallContext{
+			RequestID: requestID,
+			Project:   project,
+			Key:       key,
+			Model:     model,
+			StartedAt: time.Now(),
+		}
+	}
+	route := RouteSelection{Provider: Provider{ID: "provider_negative_usage"}}
+
+	store.FinishCall(newCall("req_negative_usage_baseline"), route, Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 100,
+	}, 200, "", "127.0.0.1", "store-test")
+	store.FinishCall(newCall("req_negative_usage_hostile"), route, Usage{
+		PromptTokens:     -900,
+		CompletionTokens: -90,
+		TotalTokens:      -990,
+	}, 200, "", "127.0.0.1", "store-test")
+
+	var bucket QuotaBucket
+	if err := store.db.Where("key_id = ? AND scope = ?", key.ID, "day").First(&bucket).Error; err != nil {
+		t.Fatalf("read day quota bucket: %v", err)
+	}
+	if bucket.PromptTokens != 1000 || bucket.CompletionTokens != 100 || bucket.TotalTokens != 1100 {
+		t.Fatalf("day counters shrank after negative usage: %+v", bucket.QuotaCounter)
+	}
+	wantCost := (1000*2.0 + 100*8.0) / 1_000_000
+	if math.Abs(bucket.CostUSD-wantCost) > 1e-12 {
+		t.Fatalf("day cost = %.12f, want %.12f", bucket.CostUSD, wantCost)
+	}
+}
+
+// TestFinishCallSettlesUsageInTheAdmissionPeriod pins quota settlement to the
+// database clock reading admission took. Deriving the buckets from the local
+// completion clock instead counted a request in one period and charged its
+// tokens to another whenever the two disagreed across a day boundary.
+func TestFinishCallSettlesUsageInTheAdmissionPeriod(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Admission Period", Status: StatusActive})
+	key, _, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "admission-period",
+		Allowed: []string{"period-chat"},
+		Status:  StatusActive,
+	}, "thk_admission_period")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admittedAt := time.Now().UTC().Add(-48 * time.Hour)
+	store.FinishCall(CallContext{
+		RequestID: "req_admission_period",
+		Project:   project,
+		Key:       key,
+		Model:     Model{Name: "period-chat", Modality: "chat", InputPriceUSDPer1M: 2, OutputPriceUSDPer1M: 8},
+		StartedAt: admittedAt,
+	}, RouteSelection{Provider: Provider{ID: "provider_admission_period"}}, Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 100,
+	}, 200, "", "127.0.0.1", "store-test")
+
+	var admitted QuotaBucket
+	if err := store.db.Where("key_id = ? AND scope = ? AND bucket = ?", key.ID, "day", dayBucket(admittedAt)).First(&admitted).Error; err != nil {
+		t.Fatalf("read the admission day bucket %s: %v", dayBucket(admittedAt), err)
+	}
+	if admitted.TotalTokens != 1100 {
+		t.Fatalf("admission day bucket total tokens = %d, want 1100", admitted.TotalTokens)
+	}
+	var completion QuotaBucket
+	err = store.db.Where("key_id = ? AND scope = ? AND bucket = ?", key.ID, "day", dayBucket(time.Now().UTC())).First(&completion).Error
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("usage settled in the completion day bucket %s: %+v (err %v)", dayBucket(time.Now().UTC()), completion.QuotaCounter, err)
+	}
+	var month QuotaBucket
+	if err := store.db.Where("key_id = ? AND scope = ? AND bucket = ?", key.ID, "month", monthBucket(admittedAt)).First(&month).Error; err != nil {
+		t.Fatalf("read the admission month bucket %s: %v", monthBucket(admittedAt), err)
+	}
+	if month.TotalTokens != 1100 {
+		t.Fatalf("admission month bucket total tokens = %d, want 1100", month.TotalTokens)
 	}
 }
 

@@ -541,6 +541,7 @@ func adminProviderResourceMethodRoutes() []adminProviderResourceMethodRoute {
 		{name: "provider_resource_quota_reset", path: "/api/admin/provider-resources/rsrc_mock_primary/quota/reset", wrongMethod: http.MethodGet, allow: http.MethodPost},
 		{name: "provider_resource_health", path: "/api/admin/provider-resources/rsrc_mock_primary/health", wrongMethod: http.MethodGet, allow: http.MethodPost},
 		{name: "provider_resource_test", path: "/api/admin/provider-resources/rsrc_mock_primary/test", wrongMethod: http.MethodGet, allow: http.MethodPost},
+		{name: "provider_resource_image_capability", path: "/api/admin/provider-resources/rsrc_mock_primary/image-capability", wrongMethod: http.MethodGet, allow: http.MethodPost},
 		{name: "provider_resource_refresh_token", path: "/api/admin/provider-resources/rsrc_mock_primary/refresh-token", wrongMethod: http.MethodGet, allow: http.MethodPost},
 		{name: "provider_model_item", path: "/api/admin/provider-models/pmdl_missing", wrongMethod: http.MethodGet, allow: "PATCH, DELETE"},
 		{name: "provider_model_import", path: "/api/admin/provider-models/import", wrongMethod: http.MethodDelete, allow: http.MethodPost},

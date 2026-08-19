@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 import { type AdminUser, type ApiContext } from "../core/types";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
-import { GitHubBrandIcon } from "./auth";
+import { GitHubBrandIcon } from "../shared/auth";
 
 type VersionReleaseInfo = {
   version: string;

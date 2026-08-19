@@ -8,41 +8,27 @@ import (
 	"strings"
 )
 
-func (s *Server) registerReconciliationRoutes() {
-	s.mux.HandleFunc("/api/admin/billing/reconciliation-rules", s.handleAdminReconciliationRules)
-	s.mux.HandleFunc("/api/admin/billing/reconciliation-rules/", s.handleAdminReconciliationRuleItem)
-	s.mux.HandleFunc("/api/admin/billing/reconciliations", s.handleAdminReconciliations)
-	s.mux.HandleFunc("/api/admin/billing/reconciliations/", s.handleAdminReconciliationItem)
+func (s *Server) serveAdminReconciliationRulesGet(w http.ResponseWriter, _ *http.Request, _ AdminUser) {
+	writeJSON(w, http.StatusOK, map[string]any{"data": newReconciliationRuleResponses(s.store.ListReconciliationRules())})
 }
 
-func (s *Server) handleAdminReconciliationRules(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, "billing", r.Method)
-	if !ok {
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"data": newReconciliationRuleResponses(s.store.ListReconciliationRules())})
-	case http.MethodPost:
-		var request ReconciliationRuleRequest
-		if err := s.decodeJSON(w, r, &request); err != nil {
-			if isPayloadTooLarge(err) {
-				writeError(w, r, err)
-				return
-			}
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_reconciliation_rule", "Invalid reconciliation rule payload"))
-			return
-		}
-		rule, err := s.reconciliation.CreateRule(request, user.ID)
-		if err != nil {
+func (s *Server) serveAdminReconciliationRulesPost(w http.ResponseWriter, r *http.Request, user AdminUser) {
+	var request ReconciliationRuleRequest
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		if isPayloadTooLarge(err) {
 			writeError(w, r, err)
 			return
 		}
-		s.recordAdminAudit(r, user, "create", "reconciliation_rule", rule.ID, nil, reconciliationRuleAuditSnapshot(rule))
-		writeJSON(w, http.StatusCreated, newReconciliationRuleResponse(rule))
-	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_reconciliation_rule", "Invalid reconciliation rule payload"))
+		return
 	}
+	rule, err := s.reconciliation.CreateRule(request, user.ID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "create", "reconciliation_rule", rule.ID, nil, reconciliationRuleAuditSnapshot(rule))
+	writeJSON(w, http.StatusCreated, newReconciliationRuleResponse(rule))
 }
 
 func (s *Server) handleAdminReconciliationRuleItem(w http.ResponseWriter, r *http.Request) {
@@ -60,71 +46,76 @@ func (s *Server) handleAdminReconciliationRuleItem(w http.ResponseWriter, r *htt
 			writeError(w, r, NewHTTPError(http.StatusNotFound, "reconciliation_action_not_found", "Reconciliation action not found"))
 			return
 		}
-		var request ReconciliationRunRequest
-		if err := s.decodeJSON(w, r, &request); err != nil {
-			httpErr := NewHTTPError(http.StatusBadRequest, "invalid_reconciliation_run", "Invalid reconciliation run payload")
-			if isPayloadTooLarge(err) {
-				httpErr = AsHTTPError(err)
-			}
-			s.recordAdminAuditWithStatus(r, user, "reconcile", "billing_reconciliation", parts[0], "failed", httpErr.Code, nil, map[string]any{"rule_id": parts[0], "error_code": httpErr.Code})
-			writeError(w, r, httpErr)
-			return
-		}
-		run, err := s.reconciliation.Run(r.Context(), parts[0], request, "manual", user.ID)
-		if err != nil {
-			httpErr := AsHTTPError(err)
-			resourceID := parts[0]
-			after := any(map[string]any{"rule_id": parts[0], "error_code": httpErr.Code})
-			if run.ID != "" {
-				resourceID = run.ID
-				after = reconciliationAuditSnapshot(run)
-			}
-			s.recordAdminAuditWithStatus(r, user, "reconcile", "billing_reconciliation", resourceID, "failed", httpErr.Code, nil, after)
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "reconcile", "billing_reconciliation", run.ID, nil, reconciliationAuditSnapshot(run))
-		writeJSON(w, http.StatusCreated, newReconciliationRunResponse(run))
+		s.serveAdminReconciliationRuleRun(w, r, user, parts[0])
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		rule, err := s.store.GetReconciliationRule(parts[0])
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, newReconciliationRuleResponse(rule))
+		s.serveAdminReconciliationRuleGet(w, r, user, parts[0])
 	case http.MethodPatch:
-		var request ReconciliationRulePatchRequest
-		if err := s.decodeJSON(w, r, &request); err != nil {
-			if isPayloadTooLarge(err) {
-				writeError(w, r, err)
-				return
-			}
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_reconciliation_rule", "Invalid reconciliation rule payload"))
-			return
-		}
-		before, updated, err := s.reconciliation.UpdateRule(parts[0], request, user.ID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "update", "reconciliation_rule", updated.ID, reconciliationRuleAuditSnapshot(before), reconciliationRuleAuditSnapshot(updated))
-		writeJSON(w, http.StatusOK, newReconciliationRuleResponse(updated))
+		s.serveAdminReconciliationRulePatch(w, r, user, parts[0])
 	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed("GET, PATCH")(w, r)
 	}
 }
 
-func (s *Server) handleAdminReconciliations(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "billing", r.Method); !ok {
+func (s *Server) serveAdminReconciliationRuleGet(w http.ResponseWriter, r *http.Request, _ AdminUser, ruleID string) {
+	rule, err := s.store.GetReconciliationRule(ruleID)
+	if err != nil {
+		writeError(w, r, err)
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	writeJSON(w, http.StatusOK, newReconciliationRuleResponse(rule))
+}
+
+func (s *Server) serveAdminReconciliationRulePatch(w http.ResponseWriter, r *http.Request, user AdminUser, ruleID string) {
+	var request ReconciliationRulePatchRequest
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		if isPayloadTooLarge(err) {
+			writeError(w, r, err)
+			return
+		}
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_reconciliation_rule", "Invalid reconciliation rule payload"))
 		return
 	}
+	before, updated, err := s.reconciliation.UpdateRule(ruleID, request, user.ID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "update", "reconciliation_rule", updated.ID, reconciliationRuleAuditSnapshot(before), reconciliationRuleAuditSnapshot(updated))
+	writeJSON(w, http.StatusOK, newReconciliationRuleResponse(updated))
+}
+
+func (s *Server) serveAdminReconciliationRuleRun(w http.ResponseWriter, r *http.Request, user AdminUser, ruleID string) {
+	var request ReconciliationRunRequest
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		httpErr := NewHTTPError(http.StatusBadRequest, "invalid_reconciliation_run", "Invalid reconciliation run payload")
+		if isPayloadTooLarge(err) {
+			httpErr = AsHTTPError(err)
+		}
+		s.recordAdminAuditWithStatus(r, user, "reconcile", "billing_reconciliation", ruleID, "failed", httpErr.Code, nil, map[string]any{"rule_id": ruleID, "error_code": httpErr.Code})
+		writeError(w, r, httpErr)
+		return
+	}
+	run, err := s.reconciliation.Run(r.Context(), ruleID, request, "manual", user.ID)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		resourceID := ruleID
+		after := any(map[string]any{"rule_id": ruleID, "error_code": httpErr.Code})
+		if run.ID != "" {
+			resourceID = run.ID
+			after = reconciliationAuditSnapshot(run)
+		}
+		s.recordAdminAuditWithStatus(r, user, "reconcile", "billing_reconciliation", resourceID, "failed", httpErr.Code, nil, after)
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "reconcile", "billing_reconciliation", run.ID, nil, reconciliationAuditSnapshot(run))
+	writeJSON(w, http.StatusCreated, newReconciliationRunResponse(run))
+}
+
+func (s *Server) serveAdminReconciliationsGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": newReconciliationRunResponses(s.store.ListReconciliationRuns(r.URL.Query().Get("rule_id"), reconciliationListLimit(r, 100, 500)))})
 }
 
@@ -141,81 +132,97 @@ func (s *Server) handleAdminReconciliationItem(w http.ResponseWriter, r *http.Re
 	runID := parts[0]
 	if len(parts) == 1 {
 		if r.Method != http.MethodGet {
-			writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		run, err := s.store.GetReconciliationRun(runID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		limit := reconciliationListLimit(r, 100, 500)
-		offset := reconciliationListOffset(r)
-		items, total := s.store.ListReconciliationItems(runID, r.URL.Query().Get("status"), limit, offset)
-		writeJSON(w, http.StatusOK, newReconciliationDetailResponse(ReconciliationDetail{Run: run, Items: items, Total: total, Limit: limit, Offset: offset}))
+		s.serveAdminReconciliationGet(w, r, user, runID)
 		return
 	}
 	switch parts[1] {
 	case "lock":
 		if r.Method != http.MethodPost {
-			writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+			jsonMethodNotAllowed(http.MethodPost)(w, r)
 			return
 		}
-		before, err := s.store.GetReconciliationRun(runID)
-		if err != nil {
-			httpErr := AsHTTPError(err)
-			s.recordAdminAuditWithStatus(r, user, "lock", "billing_reconciliation", runID, "failed", httpErr.Code, nil, map[string]any{"id": runID, "error_code": httpErr.Code})
-			writeError(w, r, err)
-			return
-		}
-		run, err := s.store.LockReconciliationRun(runID, user.ID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "lock", "billing_reconciliation", run.ID, reconciliationAuditSnapshot(before), reconciliationAuditSnapshot(run))
-		writeJSON(w, http.StatusOK, newReconciliationRunResponse(run))
+		s.serveAdminReconciliationLock(w, r, user, runID)
 	case "recalculate":
 		if r.Method != http.MethodPost {
-			writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+			jsonMethodNotAllowed(http.MethodPost)(w, r)
 			return
 		}
-		before, err := s.store.GetReconciliationRun(runID)
-		if err != nil {
-			httpErr := AsHTTPError(err)
-			s.recordAdminAuditWithStatus(r, user, "recalculate", "billing_reconciliation", runID, "failed", httpErr.Code, nil, map[string]any{"id": runID, "error_code": httpErr.Code})
-			writeError(w, r, err)
-			return
-		}
-		run, err := s.reconciliation.Recalculate(r.Context(), runID)
-		if err != nil {
-			httpErr := AsHTTPError(err)
-			after := any(map[string]any{"id": runID, "error_code": httpErr.Code})
-			if run.ID != "" {
-				after = reconciliationAuditSnapshot(run)
-			}
-			s.recordAdminAuditWithStatus(r, user, "recalculate", "billing_reconciliation", runID, "failed", httpErr.Code, reconciliationAuditSnapshot(before), after)
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "recalculate", "billing_reconciliation", run.ID, reconciliationAuditSnapshot(before), reconciliationAuditSnapshot(run))
-		writeJSON(w, http.StatusOK, newReconciliationRunResponse(run))
+		s.serveAdminReconciliationRecalculate(w, r, user, runID)
 	case "export":
 		if r.Method != http.MethodGet {
-			writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		run, err := s.store.GetReconciliationRun(runID)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		status := strings.TrimSpace(r.URL.Query().Get("status"))
-		s.recordAdminAudit(r, user, "export", "billing_reconciliation", run.ID, nil, reconciliationAuditSnapshot(run))
-		s.writeReconciliationCSV(w, run, status)
+		s.serveAdminReconciliationExport(w, r, user, runID)
 	default:
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "reconciliation_action_not_found", "Reconciliation action not found"))
 	}
+}
+
+func (s *Server) serveAdminReconciliationGet(w http.ResponseWriter, r *http.Request, _ AdminUser, runID string) {
+	run, err := s.store.GetReconciliationRun(runID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	limit := reconciliationListLimit(r, 100, 500)
+	offset := reconciliationListOffset(r)
+	items, total := s.store.ListReconciliationItems(runID, r.URL.Query().Get("status"), limit, offset)
+	writeJSON(w, http.StatusOK, newReconciliationDetailResponse(ReconciliationDetail{Run: run, Items: items, Total: total, Limit: limit, Offset: offset}))
+}
+
+func (s *Server) serveAdminReconciliationLock(w http.ResponseWriter, r *http.Request, user AdminUser, runID string) {
+	before, err := s.store.GetReconciliationRun(runID)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		s.recordAdminAuditWithStatus(r, user, "lock", "billing_reconciliation", runID, "failed", httpErr.Code, nil, map[string]any{"id": runID, "error_code": httpErr.Code})
+		writeError(w, r, err)
+		return
+	}
+	run, err := s.store.LockReconciliationRun(runID, user.ID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "lock", "billing_reconciliation", run.ID, reconciliationAuditSnapshot(before), reconciliationAuditSnapshot(run))
+	writeJSON(w, http.StatusOK, newReconciliationRunResponse(run))
+}
+
+func (s *Server) serveAdminReconciliationRecalculate(w http.ResponseWriter, r *http.Request, user AdminUser, runID string) {
+	before, err := s.store.GetReconciliationRun(runID)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		s.recordAdminAuditWithStatus(r, user, "recalculate", "billing_reconciliation", runID, "failed", httpErr.Code, nil, map[string]any{"id": runID, "error_code": httpErr.Code})
+		writeError(w, r, err)
+		return
+	}
+	run, err := s.reconciliation.Recalculate(r.Context(), runID)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		after := any(map[string]any{"id": runID, "error_code": httpErr.Code})
+		if run.ID != "" {
+			after = reconciliationAuditSnapshot(run)
+		}
+		s.recordAdminAuditWithStatus(r, user, "recalculate", "billing_reconciliation", runID, "failed", httpErr.Code, reconciliationAuditSnapshot(before), after)
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "recalculate", "billing_reconciliation", run.ID, reconciliationAuditSnapshot(before), reconciliationAuditSnapshot(run))
+	writeJSON(w, http.StatusOK, newReconciliationRunResponse(run))
+}
+
+func (s *Server) serveAdminReconciliationExport(w http.ResponseWriter, r *http.Request, user AdminUser, runID string) {
+	run, err := s.store.GetReconciliationRun(runID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	s.recordAdminAudit(r, user, "export", "billing_reconciliation", run.ID, nil, reconciliationAuditSnapshot(run))
+	s.writeReconciliationCSV(w, run, status)
 }
 
 func pathPartsAfter(path string, prefix string) []string {

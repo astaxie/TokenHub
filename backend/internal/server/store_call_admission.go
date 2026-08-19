@@ -27,6 +27,9 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 		return admission, ErrInvalidAPIKey
 	}
 	hydrateAPIKey(&privateKey)
+	if err := s.lockScopeForSharedRead(tx, "project", privateKey.ProjectID); err != nil {
+		return admission, err
+	}
 	var privateProject Project
 	if err := tx.First(&privateProject, "id = ?", privateKey.ProjectID).Error; err != nil {
 		return admission, ErrInvalidAPIKey
@@ -100,7 +103,7 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 		exceedsCostQuota(effectiveLimits, &dayCounter.QuotaCounter, &monthCounter.QuotaCounter) {
 		return admission, ErrQuotaExceeded
 	}
-	if err := s.checkRuntimeBudget(tx, privateProject); err != nil {
+	if err := s.checkRuntimeBudget(tx, privateProject, now); err != nil {
 		return admission, err
 	}
 	dayCounter.Requests++

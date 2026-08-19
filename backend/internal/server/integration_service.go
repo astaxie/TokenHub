@@ -10,6 +10,7 @@ import (
 type IntegrationService struct {
 	store    Store
 	registry *AdapterRegistry
+	client   *http.Client
 }
 
 type ProviderProbeBatchResult struct {
@@ -21,8 +22,12 @@ type ProviderProbeBatchResult struct {
 	Errors     []string              `json:"errors,omitempty"`
 }
 
-func NewIntegrationService(store Store, registry *AdapterRegistry) *IntegrationService {
-	return &IntegrationService{store: store, registry: registry}
+func NewIntegrationService(store Store, registry *AdapterRegistry, clients ...*http.Client) *IntegrationService {
+	client := http.DefaultClient
+	if len(clients) > 0 && clients[0] != nil {
+		client = clients[0]
+	}
+	return &IntegrationService{store: store, registry: registry, client: client}
 }
 
 func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceID string, request *ProviderProbeRequest) (any, error) {
@@ -57,20 +62,20 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	}
 	prober, supported := adapter.(ProviderResourceProber)
 	if !supported {
-		effective := effectiveProviderResourceConfig(provider, &resource)
-		if len(effective.Headers) > 0 {
-			startedAt := time.Now()
-			_, probeErr := CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, ProviderCreateRequest{
-				Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
-				Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
-			})
-			s.finishProbe(ctx, provider, resource, startedAt, probeErr, Usage{})
-			if probeErr != nil {
-				return nil, probeErr
-			}
-			return s.store.RecoverProviderResource(resourceID)
+		if provider.Type == ProviderMock {
+			return s.store.TestProviderResource(resourceID)
 		}
-		return s.store.TestProviderResource(resourceID)
+		effective := effectiveProviderResourceConfig(provider, &resource)
+		startedAt := time.Now()
+		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
+			Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
+			Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
+		})
+		s.finishProbe(ctx, provider, resource, startedAt, probeErr, Usage{})
+		if probeErr != nil {
+			return nil, probeErr
+		}
+		return s.store.RecoverProviderResource(resourceID)
 	}
 	probeRequest := prober.DefaultProbeRequest()
 	if request != nil {
@@ -82,9 +87,9 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	if err != nil {
 		return nil, err
 	}
-	// A probe that reached the upstream and came back clean is the one signal strong
-	// enough to clear the breaker. This is deliberately confined to the prober branch:
-	// the fallback above never contacts the upstream, so its "success" proves nothing.
+	// An adapter probe that reached the upstream and came back clean is strong
+	// enough to clear the breaker. The catalog-discovery fallback performs the
+	// same upstream check and recovers its resource before returning above.
 	if _, recoverErr := s.store.RecoverProviderResource(resource.ID); recoverErr != nil {
 		return nil, recoverErr
 	}
@@ -113,37 +118,13 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		return result, nil
 	}
 	if _, supported := adapter.(ProviderResourceProber); !supported {
+		if provider.Type == ProviderMock {
+			return s.store.TestProvider(providerID)
+		}
 		effectiveProvider := effectiveProviderResourceConfig(provider, nil)
 		var firstResourceErr error
-		if len(effectiveProvider.Headers) > 0 {
-			for _, resource := range s.store.ListProviderResources() {
-				if resource.ProviderID == providerID && resource.Status == StatusActive {
-					result, probeErr := s.TestProviderResource(ctx, resource.ID, nil)
-					if probeErr != nil {
-						if firstResourceErr == nil {
-							firstResourceErr = probeErr
-						}
-						continue
-					}
-					_, _ = s.store.SetProviderHealth(providerID, true)
-					return result, nil
-				}
-			}
-			if firstResourceErr != nil {
-				return nil, firstResourceErr
-			}
-			_, probeErr := CustomProviderCatalogFromUpstream(ctx, http.DefaultClient, ProviderCreateRequest{
-				Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
-				Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
-			})
-			if probeErr != nil {
-				_, _ = s.store.SetProviderHealth(providerID, false)
-				return nil, probeErr
-			}
-			return s.store.SetProviderHealth(providerID, true)
-		}
 		for _, resource := range s.store.ListProviderResources() {
-			if resource.ProviderID == providerID && resource.Status == StatusActive && len(resource.Headers) > 0 {
+			if resource.ProviderID == providerID && resource.Status == StatusActive {
 				result, probeErr := s.TestProviderResource(ctx, resource.ID, nil)
 				if probeErr != nil {
 					if firstResourceErr == nil {
@@ -156,9 +137,18 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			}
 		}
 		if firstResourceErr != nil {
+			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, firstResourceErr
 		}
-		return s.store.TestProvider(providerID)
+		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
+			Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
+			Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
+		})
+		if probeErr != nil {
+			_, _ = s.store.SetProviderHealth(providerID, false)
+			return nil, probeErr
+		}
+		return s.store.SetProviderHealth(providerID, true)
 	}
 	result := ProviderProbeBatchResult{ProviderID: providerID}
 	var firstErr error

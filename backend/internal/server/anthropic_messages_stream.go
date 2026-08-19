@@ -432,9 +432,7 @@ func (c *openAIAnthropicStreamConverter) Finalize(usage Usage) error {
 			"stop_reason":   stopReason,
 			"stop_sequence": nil,
 		},
-		"usage": map[string]any{
-			"output_tokens": usage.CompletionTokens,
-		},
+		"usage": anthropicUsageObject(usage),
 	}); err != nil {
 		return err
 	}

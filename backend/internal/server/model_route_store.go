@@ -11,6 +11,10 @@ func (s *GormStore) AddModel(model Model) Model {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	model, _ = createModelRecord(s.db, model)
+	// createModelRecord reports no error here, so the snapshot is dropped either
+	// way: an unnecessary invalidation costs one reload, a missed one leaves a new
+	// model reported as unknown for a full TTL.
+	s.modelLabels.invalidate()
 	return model
 }
 
@@ -32,6 +36,9 @@ func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute) (Mod
 		}
 		return nil
 	})
+	if err == nil {
+		s.modelLabels.invalidate()
+	}
 	return created, err
 }
 

@@ -172,7 +172,8 @@ export function ModelCreateModal({
             <section className="model-create-section">
               <div className="model-create-section-head"><div><strong>{tx("对外模型设置")}</strong><span>{tx("确认客户端使用的名称、能力和状态。")}</span></div></div>
               <div className="model-create-form-grid">
-                {renderField("name", { label: "对外模型名" })}
+                {renderField("name", { label: "对外模型 ID" })}
+                {renderField("display_name")}
                 {renderField("category")}
                 {renderField("family")}
                 {renderField("modality")}

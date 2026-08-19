@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -346,6 +349,120 @@ func TestSSRFGuardedDialContextDialsValidatedAddress(t *testing.T) {
 		t.Fatalf("expected connection to a loopback address, got %s", conn.RemoteAddr())
 	}
 	conn.Close()
+}
+
+// TestSSRFGuardedProviderTransportPoolsIdleConnections covers the gateway
+// connection-pool sizing. A burst of concurrent requests to one upstream must
+// leave every connection in the idle pool, so the requests behind it reuse
+// them instead of paying a fresh TCP and TLS handshake; the standard library
+// default of two idle connections per host would discard the rest.
+func TestSSRFGuardedProviderTransportPoolsIdleConnections(t *testing.T) {
+	const parallel = 8
+
+	transport := ssrfGuardedProviderTransport(nil)
+	if transport.DialContext == nil {
+		t.Fatal("expected guarded transport to install a DialContext")
+	}
+	if transport.MaxIdleConnsPerHost != 64 {
+		t.Fatalf("expected 64 idle connections per host, got %d", transport.MaxIdleConnsPerHost)
+	}
+	if transport.MaxIdleConns != 256 {
+		t.Fatalf("expected a 256 connection idle pool, got %d", transport.MaxIdleConns)
+	}
+
+	// The burst handler holds every request until all of them have arrived, so
+	// the transport has to open one connection per request.
+	arrived := make(chan struct{}, parallel)
+	release := make(chan struct{})
+	var connections atomic.Int32
+	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/burst" {
+			arrived <- struct{}{}
+			<-release
+		}
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte("ok"))
+	}))
+	upstream.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			connections.Add(1)
+		}
+	}
+	upstream.Start()
+	defer upstream.Close()
+	// Registered after Close so it runs first: a failed burst must not leave
+	// handlers blocked, which would hang the server shutdown.
+	var releaseOnce sync.Once
+	releaseBurst := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseBurst()
+
+	// PutIdleConn reports per connection whether the transport kept it for
+	// reuse; under the default limit the surplus connections would report
+	// "too many idle connections for host" instead.
+	pooled := make(chan error, parallel)
+	trace := &httptrace.ClientTrace{PutIdleConn: func(err error) { pooled <- err }}
+	// The timeout bounds Do and the body read together, so a stalled request
+	// fails the test instead of hanging the package on the burst collection.
+	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+
+	burst := make(chan error, parallel)
+	for i := 0; i < parallel; i++ {
+		go func() {
+			request, err := http.NewRequestWithContext(httptrace.WithClientTrace(context.Background(), trace), http.MethodGet, upstream.URL+"/burst", nil)
+			if err != nil {
+				burst <- err
+				return
+			}
+			response, err := client.Do(request)
+			if err == nil {
+				_, _ = io.Copy(io.Discard, response.Body)
+				err = response.Body.Close()
+			}
+			burst <- err
+		}()
+	}
+	for i := 0; i < parallel; i++ {
+		select {
+		case <-arrived:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timed out waiting for the concurrent burst, %d of %d requests arrived", i, parallel)
+		}
+	}
+	releaseBurst()
+	for i := 0; i < parallel; i++ {
+		if err := <-burst; err != nil {
+			t.Fatalf("burst request failed: %v", err)
+		}
+	}
+	if got := connections.Load(); got != parallel {
+		t.Fatalf("expected the burst to open %d connections, got %d", parallel, got)
+	}
+
+	// Draining a response returns its connection to the idle pool, so
+	// collecting every callback both asserts the pooling and synchronizes the
+	// reuse round below.
+	for i := 0; i < parallel; i++ {
+		select {
+		case err := <-pooled:
+			if err != nil {
+				t.Fatalf("expected every burst connection to stay pooled, got %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timed out waiting for idle connections, only %d of %d were pooled", i, parallel)
+		}
+	}
+
+	for i := 0; i < parallel; i++ {
+		response, err := client.Get(upstream.URL + "/reuse")
+		if err != nil {
+			t.Fatalf("reuse request %d failed: %v", i, err)
+		}
+		_, _ = io.Copy(io.Discard, response.Body)
+		_ = response.Body.Close()
+	}
+	if got := connections.Load(); got != parallel {
+		t.Fatalf("expected the reuse round to open no new connections, got %d in total", got)
+	}
 }
 
 func mustParseCIDRs(t *testing.T, cidrs ...string) []*net.IPNet {
@@ -771,7 +888,7 @@ func TestDialGuardedUpstreamFallbackAfterSlowLookup(t *testing.T) {
 	}
 
 	started := time.Now()
-	conn, err := dialGuardedUpstream(context.Background(), "tcp", "provider.example:443", nil, budget, lookup, dial)
+	conn, err := dialGuardedUpstream(context.Background(), "tcp", "provider.example:443", nil, nil, budget, lookup, dial)
 	if err != nil {
 		t.Fatalf("expected fallback to reach the healthy candidate, got %v (dialed: %v)", err, dialed)
 	}

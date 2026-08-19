@@ -401,6 +401,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_RESPONSE_MAX_QUEUED_JOBS` | `1000` | 单个部署接受的排队中与运行中后台 Responses 任务总上限 |
 | `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI 的目标 Admin API 地址。仅由该 CLI 读取，后端服务不会读取；可被 `--to` 覆盖 |
 
+当 TokenHub 所在主机的代理工作在 Fake-IP 模式时，在「系统设置 → 基础设置 → Synthetic DNS / Fake-IP 网段」中配置。该例外默认关闭，只作用于域名解析结果，不允许字面量 IP Provider URL。应填写代理实际使用的地址池，不要假设所有实现都使用 `198.18.0.0/15`：这个网段为基准测试保留，虽常被 Fake-IP 使用，但并非 Fake-IP 专属。普通模式仍禁止 RFC1918 私网和 IPv6 ULA；如果代理确实使用这些范围（例如 Xray 的 IPv6 Fake-IP 池），必须另行开启高风险私网信任。开启后，Provider 域名可能访问配置范围内的真实内网服务。loopback、link-local、metadata、multicast、NAT64 等范围在任何模式下仍会被拒绝。
+
 ## 前端环境变量
 
 | 变量 | 默认值 | 说明 |
