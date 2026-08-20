@@ -342,6 +342,17 @@ When updating an identity source or notification channel, the following values m
 
 The derived addresses end in `<provider>.tokenhub.local`. They are internal account identifiers, not deliverable mailboxes. Keep a controlled password administrator until the new login has been tested end to end.
 
+## Email Notification Channels
+
+Notification channels of type `email` are delivered over SMTP. By default
+TokenHub connects in plaintext and upgrades to STARTTLS on the server's
+advertised capabilities (typically port 587). For mail servers that only expose
+SMTP over an implicit-TLS port such as 465 or 994, set the channel field
+`smtp_encryption` to `ssl`, `tls`, `smtps`, or `implicit` to open the connection
+with TLS from the first byte. The channel keeps the other standard fields
+(`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`, `smtp_from`,
+`email_to`).
+
 ## Screenshot
 
 ![Routing policies](assets/screenshots/routes-en.png)

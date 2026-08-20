@@ -341,6 +341,10 @@ ID ソースまたは通知チャネルを更新するとき、空文字列、�
 
 生成されたアドレスの末尾は `<provider>.tokenhub.local` です。これは内部アカウント識別子であり、メール配送先ではありません。新しいログインを E2E で確認するまで、管理可能なパスワード管理者アカウントを残してください。
 
+## メール通知チャンネル
+
+タイプ `email` の通知チャンネルは SMTP で配信されます。デフォルトでは TokenHub は平文で接続し、サーバーが通知する能力に応じて STARTTLS にアップグレードします（通常はポート 587）。465 や 994 などの暗黙的 TLS ポートでのみ SMTP を提供するメールサーバーの場合は、チャンネルフィールド `smtp_encryption` を `ssl`、`tls`、`smtps`、`implicit` のいずれかに設定すると、最初のバイトから TLS で接続します。他の標準フィールド（`smtp_host`、`smtp_port`、`smtp_username`、`smtp_password`、`smtp_from`、`email_to`）は変わりません。
+
 ## スクリーンショット
 
 ![Routing policies](../assets/screenshots/routes-en.png)

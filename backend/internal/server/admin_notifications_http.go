@@ -659,7 +659,14 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	}
 	addr := net.JoinHostPort(host, strconv.FormatInt(port, 10))
 	dialer := net.Dialer{Timeout: 5 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	directTLS := directSMTPTLSEnabled(fields)
+	var conn net.Conn
+	var err error
+	if directTLS {
+		conn, err = tls.DialWithDialer(&dialer, "tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	} else {
+		conn, err = dialer.DialContext(ctx, "tcp", addr)
+	}
 	if err != nil {
 		return err
 	}
@@ -673,9 +680,11 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	// The static type is *smtp.Client, so the io.Closer exemption does not apply.
 	defer client.Close() //nolint:errcheck // delivery result comes from Quit
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
-			return err
+	if !directTLS {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+				return err
+			}
 		}
 	}
 	username := strings.TrimSpace(firstStringField(fields, "smtp_username", "username"))
@@ -705,6 +714,14 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 		return err
 	}
 	return client.Quit()
+}
+
+func directSMTPTLSEnabled(fields map[string]any) bool {
+	switch strings.ToLower(strings.TrimSpace(firstStringField(fields, "smtp_encryption", "encryption"))) {
+	case "ssl", "tls", "smtps", "implicit":
+		return true
+	}
+	return false
 }
 
 func splitNotificationRecipients(value string) []string {
