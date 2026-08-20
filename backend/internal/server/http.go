@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"math"
@@ -50,6 +51,10 @@ type Server struct {
 	upstreamClient      *http.Client
 	syntheticDNSPolicy  *providerSyntheticDNSPolicy
 	syntheticDNSSetting sync.Mutex
+	// smtpRootCAs is a test seam for implicit-TLS SMTP delivery. When nil the
+	// production dial validates the server certificate against the platform
+	// roots; tests inject the in-process fake server's certificate here.
+	smtpRootCAs *x509.CertPool
 }
 
 func New(store Store) *Server {

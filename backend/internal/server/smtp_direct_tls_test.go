@@ -7,12 +7,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/pem"
 	"math/big"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -48,9 +45,10 @@ func testTLSCertificate(t *testing.T) tls.Certificate {
 
 // configureTestTLSSMTPChannel registers an active email notification channel
 // backed by an in-process SMTP server that requires implicit TLS on the wire
-// (like the 465/994 ports). It reuses serveTestSMTPConnection after the TLS
-// handshake. Returns the channel of received message bodies.
-func configureTestTLSSMTPChannel(t *testing.T, store *GormStore) <-chan string {
+// (like the 465/994 ports). It reuses serveDirectTLSSMTPConnection after the
+// TLS handshake. Returns the channel of received message bodies and the
+// certificate pool the test must trust for the sendEmail dial.
+func configureTestTLSSMTPChannel(t *testing.T, store *GormStore) (<-chan string, *x509.CertPool) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -78,13 +76,12 @@ func configureTestTLSSMTPChannel(t *testing.T, store *GormStore) <-chan string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Trust the throwaway certificate for the sendEmail dial, which validates
-	// the server certificate against the platform roots.
-	pemFile := filepath.Join(t.TempDir(), "ca.pem")
-	if err := os.WriteFile(pemFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0600); err != nil {
+	rootCAs := x509.NewCertPool()
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SSL_CERT_FILE", pemFile)
+	rootCAs.AddCert(leaf)
 	store.CreateResource("notification-channels", AdminResource{
 		Name:   "Implicit TLS SMTP",
 		Status: StatusActive,
@@ -100,10 +97,10 @@ func configureTestTLSSMTPChannel(t *testing.T, store *GormStore) <-chan string {
 			"display_name":    "TokenHub",
 		},
 	})
-	return messages
+	return messages, rootCAs
 }
 
-func deliverEmailAlert(t *testing.T, store *GormStore, channelID string) {
+func deliverEmailAlert(t *testing.T, store *GormStore, channelID string, rootCAs *x509.CertPool) {
 	t.Helper()
 	alert := AlertEvent{
 		ID:        "alt_email_tls",
@@ -117,7 +114,9 @@ func deliverEmailAlert(t *testing.T, store *GormStore, channelID string) {
 	if err := store.db.Create(&alert).Error; err != nil {
 		t.Fatal(err)
 	}
-	app := New(store).Handler()
+	srv := New(store)
+	srv.smtpRootCAs = rootCAs
+	app := srv.Handler()
 	resp := doJSON(t, app, http.MethodPost, "/api/admin/alerts/"+alert.ID+"/deliver", map[string]any{"channel_id": channelID}, "")
 	if resp.Code != http.StatusOK || !strings.Contains(resp.Body, `"status":"success"`) {
 		t.Fatalf("expected successful email delivery, got %d: %s", resp.Code, resp.Body)
@@ -126,12 +125,12 @@ func deliverEmailAlert(t *testing.T, store *GormStore, channelID string) {
 
 func TestEmailDeliveryViaImplicitTLSSMTP(t *testing.T) {
 	store := NewMemoryStore()
-	messages := configureTestTLSSMTPChannel(t, store)
+	messages, rootCAs := configureTestTLSSMTPChannel(t, store)
 	channels := store.ListResources("notification-channels")
 	if len(channels) != 1 {
 		t.Fatalf("expected one notification channel, got %d", len(channels))
 	}
-	deliverEmailAlert(t, store, channels[0].ID)
+	deliverEmailAlert(t, store, channels[0].ID, rootCAs)
 
 	select {
 	case message := <-messages:
