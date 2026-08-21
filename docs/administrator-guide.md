@@ -347,14 +347,14 @@ The derived addresses end in `<provider>.tokenhub.local`. They are internal acco
 Notification channels of type `email` are delivered over SMTP. By default
 TokenHub connects in plaintext and upgrades to STARTTLS on the server's
 advertised capabilities (typically port 587). For mail servers that only expose
-SMTP over an implicit-TLS port such as 465 or 994, set the channel field
+SMTP over an implicit-TLS port such as 465, set the channel field
 `smtp_encryption` to `ssl`, `tls`, `smtps`, or `implicit` to open the connection
 with TLS from the first byte. The channel keeps the other standard fields
 (`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`, `smtp_from`,
 `email_to`).
 
 In the admin console's email channel form, the **SMTP encryption** selector
-offers `starttls` (default, port 587) and `ssl` (implicit TLS, ports 465/994);
+offers `starttls` (default, port 587) and `ssl` (implicit TLS, port 465);
 it writes the `smtp_encryption` field on create and update.
 
 ## Screenshot

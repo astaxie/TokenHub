@@ -269,7 +269,7 @@ export function notificationChannelConfig(): ResourceConfig<AdminResource> {
     { key: "whatsapp_api_version", label: "WhatsApp API Version", visible: notificationChannelUsesWhatsApp },
     { key: "smtp_host", label: "SMTP Host", required: true, visible: notificationChannelUsesEmail },
     { key: "smtp_port", label: "SMTP 端口", type: "number", required: true, visible: notificationChannelUsesEmail },
-    { key: "smtp_encryption", label: "SMTP 加密", type: "select", options: ["starttls", "ssl"], visible: notificationChannelUsesEmail, help: "STARTTLS（端口 587，默认）或隐式 TLS/SSL（端口 465/994）。" },
+    { key: "smtp_encryption", label: "SMTP 加密", type: "select", options: ["starttls", "ssl"], visible: notificationChannelUsesEmail, help: "STARTTLS（端口 587，默认）或隐式 TLS/SSL（端口 465）。" },
     { key: "smtp_username", label: "SMTP 用户名", visible: notificationChannelUsesEmail },
     { key: "smtp_password", label: "SMTP 密码", type: "password", help: "编辑时留空表示不修改。", visible: notificationChannelUsesEmail },
     { key: "smtp_from", label: "发件人", required: true, visible: notificationChannelUsesEmail },

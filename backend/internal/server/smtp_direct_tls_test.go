@@ -47,7 +47,7 @@ func testTLSCertificate(t *testing.T) tls.Certificate {
 
 // configureTestTLSSMTPChannel registers an active email notification channel
 // backed by an in-process SMTP server that requires implicit TLS on the wire
-// (like the 465/994 ports). It reuses serveDirectTLSSMTPConnection after the
+// (like port 465). It reuses serveDirectTLSSMTPConnection after the
 // TLS handshake. Returns the channel of received message bodies and the
 // certificate pool the test must trust for the sendEmail dial.
 func configureTestTLSSMTPChannel(t *testing.T, store *GormStore) (<-chan string, *x509.CertPool) {
