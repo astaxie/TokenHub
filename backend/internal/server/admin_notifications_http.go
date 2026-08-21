@@ -664,7 +664,10 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	var conn net.Conn
 	var err error
 	if directTLS {
-		conn, err = tls.DialWithDialer(&dialer, "tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12, RootCAs: rootCAs})
+		tlsDialer := tls.Dialer{NetDialer: &dialer, Config: &tls.Config{
+			ServerName: host, MinVersion: tls.VersionTLS12, RootCAs: rootCAs,
+		}}
+		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
 	} else {
 		conn, err = dialer.DialContext(ctx, "tcp", addr)
 	}

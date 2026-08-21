@@ -2,11 +2,13 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"math/big"
 	"net"
 	"net/http"
@@ -167,6 +169,35 @@ func TestDirectSMTPTLSEnabled(t *testing.T) {
 				t.Fatalf("directSMTPTLSEnabled(%v) = %v, want %v", tc.fields, got, tc.want)
 			}
 		})
+	}
+}
+
+// The implicit-TLS dial must honour the caller context: a cancelled request
+// fails fast instead of blocking until the net.Dialer timeout.
+func TestDirectTLSSMTPDialHonorsContextCancellation(t *testing.T) {
+	store := NewMemoryStore()
+	_, rootCAs := configureTestTLSSMTPChannel(t, store)
+	channels := store.ListResources("notification-channels")
+	if len(channels) != 1 {
+		t.Fatalf("expected one notification channel, got %d", len(channels))
+	}
+	fields := channels[0].Fields
+	// Point the channel at a host that will not answer, then cancel the
+	// context immediately: the dial must return the context error, not wait
+	// out the 5s dialer timeout.
+	fields["smtp_host"] = "10.255.255.1"
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	err := sendEmail(ctx, fields, []string{"ops@example.com"}, []byte("message"), rootCAs)
+	if err == nil {
+		t.Fatal("expected a dial error for the cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("cancelled dial blocked for %v; context was not honoured", elapsed)
 	}
 }
 
