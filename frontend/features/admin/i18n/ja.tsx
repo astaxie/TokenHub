@@ -1095,6 +1095,8 @@ export const jaTranslations: Record<string, string> = {
     "签名密钥": "署名シークレット",
     "可选预留。当前按普通机器人 Webhook 发送，留空不影响通知。": "任意の予約項目です。現在は通常のボット Webhook で送信するため、空欄でも問題ありません。",
     "SMTP 端口": "SMTP ポート",
+    "SMTP 加密": "SMTP 暗号化",
+    "STARTTLS（端口 587，默认）或隐式 TLS/SSL（端口 465/994）。": "STARTTLS（ポート 587、デフォルト）または暗黙 TLS/SSL（ポート 465/994）。",
     "SMTP 用户名": "SMTP ユーザー名",
     "SMTP 密码": "SMTP パスワード",
     "收件人": "受信者",

@@ -1095,6 +1095,8 @@ export const enTranslations: Record<string, string> = {
     "签名密钥": "Signing Secret",
     "可选预留。当前按普通机器人 Webhook 发送，留空不影响通知。": "Optional reserved field. Notifications are sent by normal bot Webhook; leaving it blank is fine.",
     "SMTP 端口": "SMTP Port",
+    "SMTP 加密": "SMTP Encryption",
+    "STARTTLS（端口 587，默认）或隐式 TLS/SSL（端口 465/994）。": "STARTTLS (port 587, default) or implicit TLS/SSL (ports 465/994).",
     "SMTP 用户名": "SMTP Username",
     "SMTP 密码": "SMTP Password",
     "收件人": "Recipients",
