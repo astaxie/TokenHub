@@ -8,12 +8,15 @@ import (
 )
 
 func (s *Server) registerModelRoutes() {
-	s.registerSingleMethodRoute(http.MethodGet, "/v1/models", s.handleModels, jsonMethodNotAllowed(http.MethodGet))
-	s.registerDynamicGETRoute("/v1/models/{model...}", s.handleModelGet, jsonMethodNotAllowed(http.MethodGet))
+	s.registerPublicSingleMethodRoute(http.MethodGet, "/v1/models", s.handleModels, jsonMethodNotAllowed(http.MethodGet))
+	s.registerPublicDynamicGETRoute("/v1/models/{model...}", s.handleModelGet, jsonMethodNotAllowed(http.MethodGet))
 	s.mux.HandleFunc("/v1/models/", s.handleModel)
-	s.registerSingleMethodRoute(http.MethodGet, "/v1beta/models", s.handleGeminiModels, jsonMethodNotAllowed(http.MethodGet))
-	s.registerDynamicGETRoute("/v1beta/models/{model...}", s.handleGeminiModelGetRoute, geminiModelHeadFallback)
+	s.registerPublicSingleMethodRoute(http.MethodGet, "/v1beta/models", s.handleGeminiModels, jsonMethodNotAllowed(http.MethodGet))
+	s.registerPublicDynamicGETRoute("/v1beta/models/{model...}", s.handleGeminiModelGetRoute, geminiModelHeadFallback)
 	s.registerDynamicMethodRoute(http.MethodPost, "/v1beta/models/{model...}", s.handleGeminiModelPostRoute)
+	for _, action := range []string{"generateContent", "streamGenerateContent", "countTokens"} {
+		s.registerPublicGatewayOperation(http.MethodPost, "/v1beta/models/{model}:"+action)
+	}
 	s.mux.HandleFunc("/v1beta/models/", s.handleGeminiModel)
 }
 

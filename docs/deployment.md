@@ -72,6 +72,7 @@ flowchart TB
 In multi-instance mode:
 
 - Nginx load-balances console, API, and health-check traffic across healthy replicas.
+- Nginx routes `/docs`, `/openapi.json`, and `/openapi.yaml` to the backend so the self-hosted public gateway API reference uses the same public origin as model API calls.
 - Backend replicas keep durable configuration, OAuth sessions, quota buckets, audit data, cluster locks, and in-flight concurrency leases in PostgreSQL.
 - Lease expiry and ownership decisions use the PostgreSQL clock, avoiding early takeover caused by clock skew between hosts. Heartbeats cancel work when lease ownership is lost.
 - Candidate-model metadata from the configured model catalog is synchronized on every backend startup; a cluster lease serializes the idempotent synchronization across replicas.
@@ -181,6 +182,10 @@ Edit `deploy/.env` before starting:
 - `TOKENHUB_FRONTEND_PORT`: Host port for the admin console. Default: `3000`.
 - `TOKENHUB_BACKEND_REPLICAS`: Backend replica count for remote PostgreSQL Compose. Default: `2`.
 - `TOKENHUB_FRONTEND_REPLICAS`: Frontend replica count for remote PostgreSQL Compose. Default: `2`.
+
+The backend serves the public gateway API reference at `/docs` and the machine-readable OpenAPI 3.1 contract at `/openapi.json` and `/openapi.yaml`. The document server URL is derived from `TOKENHUB_PUBLIC_BASE_URL` when set, otherwise from the current request origin. Keep `TOKENHUB_PUBLIC_BASE_URL` aligned with the browser-facing backend origin when the service is behind a reverse proxy.
+
+Browser clients, including the `/docs` **Try it out** flow, can call the gateway without extra CORS configuration only when the documentation page and backend gateway share the same origin. If the admin console or documentation is served from a different origin than `TOKENHUB_PUBLIC_BASE_URL`, add that exact browser origin to `TOKENHUB_CORS_ALLOWED_ORIGINS`. Do not loosen production CORS with wildcards merely to make browser calls work.
 
 Start the stack from the repository root:
 
@@ -463,7 +468,7 @@ Kronk listens on plaintext HTTP by default. For remote deployment, use a trusted
 For production, place TokenHub behind HTTPS and forward:
 
 - Admin console traffic to the frontend service.
-- `/v1/*` and `/api/admin/*` traffic to the backend service.
+- `/api/*`, `/v1/*`, `/v1beta/*`, `/docs`, `/openapi.json`, `/openapi.yaml`, `/livez`, `/readyz`, and `/healthz` traffic to the backend service.
 
 Set request body and streaming timeouts high enough for long model responses.
 

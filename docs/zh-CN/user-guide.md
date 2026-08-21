@@ -23,6 +23,8 @@ Language: [English](../user-guide.md) | 简体中文 | [日本語](../ja/user-gu
 4. 选择一个模型 ID，调用 `POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses` 或 `POST /v1/embeddings`。
 5. 在 **用量统计** 和 **请求日志** 中查看请求、Token、成本和错误。
 
+控制台中的「接口文档」仍是面向上手的引导页。需要完整的交互式和机器可读网关合约时，请在私有部署中打开 `http://localhost:8080/docs`，或将 `http://localhost:8080/openapi.json` 导入 API 客户端、SDK 生成器、测试工具或企业 API 目录。文档页中输入的项目 Key 只保存在浏览器内存中。
+
 ## 查看单个 API Key 的用量
 
 在 **Key 管理** 中点击某个 Key 的「用量」，即可打开独立用量页。页面展示请求数、成功率、延迟、详细 Token 分类、对外预估成本、模型与错误分布，以及可分页的请求明细。可以选择最近 7 天、30 天、90 天，或者最长 366 天的自定义 UTC 日期范围。

@@ -1,0 +1,1600 @@
+openapi: 3.1.0
+info:
+  title: TokenHub Public Gateway API
+  summary: OpenAPI contract for TokenHub's externally supported model gateway.
+  description: |
+    TokenHub exposes OpenAI-compatible, Anthropic-compatible, and native Gemini gateway endpoints.
+    Administrative, analytics, health, and metrics endpoints are intentionally excluded from this
+    public gateway contract. They require a separate authenticated specification if documented later.
+
+    Entered project API keys are bearer tokens. Documentation clients must keep them in memory,
+    never in URLs, local storage, logs, examples, or exported files.
+  version: 0.6.0
+  x-tokenhub-contract-version: gateway-2026-08-issue-260
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+servers:
+  - url: https://tokenhub.example
+    description: Replaced at runtime with TOKENHUB_PUBLIC_BASE_URL or the current request origin.
+security:
+  - TokenHubProjectKey: []
+  - TokenHubXAPIKey: []
+  - TokenHubGoogleAPIKey: []
+tags:
+  - name: Models
+    description: Discover models available to the supplied project API key.
+  - name: Chat Completions
+    description: OpenAI-compatible chat completions, including SSE streaming.
+  - name: Responses
+    description: OpenAI-compatible Responses API, streaming, background jobs, cancellation, and compaction.
+  - name: Anthropic Messages
+    description: Anthropic-compatible messages and token counting.
+  - name: Embeddings
+    description: OpenAI-compatible embeddings.
+  - name: Images
+    description: Image generation, edits, asynchronous jobs, and signed asset downloads.
+  - name: Gemini Native
+    description: Native Gemini v1beta model, generation, streaming, and token-counting routes.
+paths:
+  /v1/models:
+    get:
+      operationId: listOpenAIModels
+      tags: [Models]
+      summary: List OpenAI-compatible models.
+      description: Returns active models that the project API key is allowed to access.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      responses:
+        "200":
+          description: Accessible models.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenAIModelList"
+              examples:
+                default:
+                  value:
+                    object: list
+                    data:
+                      - id: gpt-4.1-mini
+                        object: model
+                        owned_by: tokenhub
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/models/{model}:
+    get:
+      operationId: getOpenAIModel
+      tags: [Models]
+      summary: Get one OpenAI-compatible model.
+      description: Returns metadata for one accessible model.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ModelPath"
+      responses:
+        "200":
+          description: Model metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenAIModel"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ModelNotFound"
+  /v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      tags: [Chat Completions]
+      summary: Create a chat completion.
+      description: |
+        Accepts OpenAI-compatible chat completion requests. Set `stream: true` for SSE streaming.
+        Streaming responses use `text/event-stream` with OpenAI-compatible data frames and `[DONE]`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+            examples:
+              buffered:
+                value:
+                  model: gpt-4.1-mini
+                  messages:
+                    - role: user
+                      content: Say hello from TokenHub.
+              streaming:
+                value:
+                  model: gpt-4.1-mini
+                  stream: true
+                  messages:
+                    - role: user
+                      content: Stream a short greeting.
+      responses:
+        "200":
+          description: Buffered JSON completion or SSE stream.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                chunk:
+                  value: "data: {\"id\":\"chatcmpl_...\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/responses:
+    post:
+      operationId: createResponse
+      tags: [Responses]
+      summary: Create a response.
+      description: |
+        Accepts OpenAI-compatible Responses requests. Set `stream: true` for SSE streaming, or
+        `background: true` to create a persistent response job that can be retrieved or cancelled.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponsesRequest"
+            examples:
+              buffered:
+                value:
+                  model: gpt-4.1-mini
+                  input: Write one sentence about TokenHub.
+              streaming:
+                value:
+                  model: gpt-4.1-mini
+                  stream: true
+                  input: Stream one sentence about TokenHub.
+              background:
+                value:
+                  model: gpt-4.1-mini
+                  background: true
+                  input: Run this response as a background job.
+      responses:
+        "200":
+          description: Buffered JSON response, streaming response, or accepted background job.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ResponsesResponse"
+                  - $ref: "#/components/schemas/ResponseJob"
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                delta:
+                  value: "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/responses/{response_id}:
+    get:
+      operationId: getResponseJob
+      tags: [Responses]
+      summary: Retrieve a background response.
+      description: Polls a persistent background Responses job until it completes, fails, expires, or is cancelled.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ResponseID"
+      responses:
+        "200":
+          description: Current background response job state.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponseJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/responses/{response_id}/cancel:
+    post:
+      operationId: cancelResponseJob
+      tags: [Responses]
+      summary: Cancel a background response.
+      description: Requests cancellation of a queued, running, or admitted background Responses job.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ResponseID"
+      responses:
+        "200":
+          description: Cancelled response job.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponseJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/responses/compact:
+    post:
+      operationId: compactResponseConversation
+      tags: [Responses]
+      summary: Compact a Responses conversation.
+      description: Compacts compatible Responses conversation state when the selected provider and route support compaction.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                model:
+                  type: string
+                input:
+                  description: Provider-specific conversation or response state to compact.
+      responses:
+        "200":
+          description: Provider-specific compaction response.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/messages:
+    post:
+      operationId: createAnthropicMessage
+      tags: [Anthropic Messages]
+      summary: Create an Anthropic-compatible message.
+      description: |
+        Accepts Anthropic Messages requests. Set `stream: true` for Anthropic-compatible SSE events.
+        Anthropic-compatible clients may send the TokenHub project API key in `x-api-key`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnthropicMessagesRequest"
+            examples:
+              buffered:
+                value:
+                  model: claude-sonnet-4.5
+                  max_tokens: 128
+                  messages:
+                    - role: user
+                      content: Say hello from TokenHub.
+      responses:
+        "200":
+          description: Anthropic message or message stream.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicMessageResponse"
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                messageStart:
+                  value: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4.5\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":8,\"output_tokens\":0}}}\n\n"
+        "400":
+          $ref: "#/components/responses/AnthropicBadRequest"
+        "401":
+          $ref: "#/components/responses/AnthropicUnauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/AnthropicQuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/messages/count_tokens:
+    post:
+      operationId: countAnthropicMessageTokens
+      tags: [Anthropic Messages]
+      summary: Count Anthropic message tokens.
+      description: Counts tokens for an Anthropic-compatible Messages request without invoking generation. Anthropic-compatible clients may send the TokenHub project API key in `x-api-key`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnthropicMessagesRequest"
+      responses:
+        "200":
+          description: Token count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicTokenCount"
+        "400":
+          $ref: "#/components/responses/AnthropicBadRequest"
+        "401":
+          $ref: "#/components/responses/AnthropicUnauthorized"
+        "403":
+          $ref: "#/components/responses/AnthropicModelNotAllowed"
+  /v1/embeddings:
+    post:
+      operationId: createEmbedding
+      tags: [Embeddings]
+      summary: Create embeddings.
+      description: Accepts OpenAI-compatible embeddings requests and returns vector embeddings.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingsRequest"
+      responses:
+        "200":
+          description: Embeddings response.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbeddingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/images/generations:
+    post:
+      operationId: createImageGeneration
+      tags: [Images]
+      summary: Generate images.
+      description: >-
+        Generates images synchronously. Send `Prefer: respond-async` or
+        `x-tokenhub-async: true` to receive a `202` image job instead of
+        waiting for completion.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/PreferRespondAsync"
+        - $ref: "#/components/parameters/XTokenHubAsync"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageGenerationRequest"
+      responses:
+        "200":
+          description: Generated image payload.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageResponse"
+        "202":
+          description: Asynchronous image job accepted.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+            location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/images/edits:
+    post:
+      operationId: createImageEdit
+      tags: [Images]
+      summary: Edit images.
+      description: >-
+        Accepts multipart image edits. Send `Prefer: respond-async` or
+        `x-tokenhub-async: true` to receive a `202` image job. Browser execution
+        is disabled in the hosted docs because callers must provide local image
+        files explicitly.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      parameters:
+        - $ref: "#/components/parameters/PreferRespondAsync"
+        - $ref: "#/components/parameters/XTokenHubAsync"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImageEditRequest"
+            examples:
+              editWithMask:
+                value:
+                  model: gpt-image-1
+                  prompt: Replace the background with a quiet office.
+                  image: "@portrait.png"
+                  mask: "@mask.png"
+      responses:
+        "200":
+          description: Edited image payload.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageResponse"
+        "202":
+          description: Asynchronous image edit job accepted.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+            location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ImageMaskNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/image-jobs/{job_id}:
+    get:
+      operationId: getImageJob
+      tags: [Images]
+      summary: Retrieve an image job.
+      description: Polls an asynchronous image generation or edit job.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ImageJobID"
+      responses:
+        "200":
+          description: Current image job state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/image-assets/{asset_id}/content:
+    get:
+      operationId: downloadImageAsset
+      tags: [Images]
+      summary: Download a signed image asset.
+      description: Downloads binary image content. The `expires` and `signature` query parameters come from image response URLs.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ImageAssetID"
+        - name: expires
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: signature
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Binary image bytes.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+              examples:
+                pngBytes:
+                  summary: Binary image bytes are streamed in the response body.
+                  value: "<binary image bytes>"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1beta/models:
+    get:
+      operationId: listGeminiModels
+      tags: [Gemini Native]
+      summary: List native Gemini models.
+      description: Returns Gemini-compatible models available to the supplied project API key. Gemini-compatible clients may send the key in `x-goog-api-key`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      responses:
+        "200":
+          description: Gemini model list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiModelList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1beta/models/{model}:
+    get:
+      operationId: getGeminiModel
+      tags: [Gemini Native]
+      summary: Get a native Gemini model.
+      description: Returns Gemini-compatible model metadata. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ModelPath"
+      responses:
+        "200":
+          description: Gemini model metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiModel"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ModelNotFound"
+  /v1beta/models/{model}:generateContent:
+    post:
+      operationId: generateGeminiContent
+      tags: [Gemini Native]
+      summary: Generate Gemini content.
+      description: Native Gemini `generateContent` route translated through TokenHub routing and authentication. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ModelPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeminiGenerateContentRequest"
+      responses:
+        "200":
+          description: Gemini generateContent response.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiGenerateContentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1beta/models/{model}:streamGenerateContent:
+    post:
+      operationId: streamGeminiContent
+      tags: [Gemini Native]
+      summary: Stream Gemini content.
+      description: Native Gemini streaming route. Use `?alt=sse` for SSE framing. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ModelPath"
+        - name: alt
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sse]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeminiGenerateContentRequest"
+      responses:
+        "200":
+          description: Gemini streaming response.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                candidate:
+                  value: "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hello from TokenHub.\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":5,\"totalTokenCount\":13}}\n\n"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1beta/models/{model}:countTokens:
+    post:
+      operationId: countGeminiTokens
+      tags: [Gemini Native]
+      summary: Count Gemini tokens.
+      description: Native Gemini token-counting route translated through TokenHub authentication. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/ModelPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeminiGenerateContentRequest"
+      responses:
+        "200":
+          description: Gemini token count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalTokens:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+components:
+  securitySchemes:
+    TokenHubProjectKey:
+      type: http
+      scheme: bearer
+      bearerFormat: TokenHub project API key
+      description: Project API key generated by TokenHub. Never use an administrator token here.
+    TokenHubXAPIKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Protocol-native API key header accepted by Anthropic-compatible clients.
+    TokenHubGoogleAPIKey:
+      type: apiKey
+      in: header
+      name: x-goog-api-key
+      description: Protocol-native API key header accepted by Gemini-compatible clients and Google Gen AI SDKs.
+  parameters:
+    ModelPath:
+      name: model
+      in: path
+      required: true
+      schema:
+        type: string
+      examples:
+        simple:
+          value: gpt-4.1-mini
+    ResponseID:
+      name: response_id
+      in: path
+      required: true
+      schema:
+        type: string
+      examples:
+        job:
+          value: resp_123
+    ImageJobID:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+      examples:
+        job:
+          value: imgjob_123
+    ImageAssetID:
+      name: asset_id
+      in: path
+      required: true
+      schema:
+        type: string
+      examples:
+        asset:
+          value: imgasset_123
+    PreferRespondAsync:
+      name: Prefer
+      in: header
+      required: false
+      description: Set to `respond-async` to accept an asynchronous image job immediately.
+      schema:
+        type: string
+        enum: [respond-async]
+    XTokenHubAsync:
+      name: x-tokenhub-async
+      in: header
+      required: false
+      description: >-
+        TokenHub extension equivalent to `Prefer: respond-async` when set to
+        `true`.
+      schema:
+        type: boolean
+  headers:
+    XRequestID:
+      description: TokenHub request identifier.
+      schema:
+        type: string
+    XRateLimitLimitRequests:
+      description: Effective request-per-minute limit when configured.
+      schema:
+        type: integer
+    XRateLimitRemainingRequests:
+      description: Remaining requests in the current minute bucket when configured.
+      schema:
+        type: integer
+    XRateLimitResetRequests:
+      description: Seconds until the request-per-minute bucket resets when configured.
+      schema:
+        type: integer
+    XRateLimitLimitTokens:
+      description: Effective token-per-minute limit when configured.
+      schema:
+        type: integer
+    XRateLimitRemainingTokens:
+      description: Remaining tokens in the current minute bucket when configured.
+      schema:
+        type: integer
+    XRateLimitResetTokens:
+      description: Seconds until the token-per-minute bucket resets when configured.
+      schema:
+        type: integer
+    RetryAfter:
+      description: Seconds to wait before retrying after a rate-limit response.
+      schema:
+        type: integer
+    Location:
+      description: Relative URL for the accepted asynchronous job.
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid project API key.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    QuotaExceeded:
+      description: Quota, rate limit, or concurrency limit exceeded.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+        x-ratelimit-limit-requests:
+          $ref: "#/components/headers/XRateLimitLimitRequests"
+        x-ratelimit-remaining-requests:
+          $ref: "#/components/headers/XRateLimitRemainingRequests"
+        x-ratelimit-reset-requests:
+          $ref: "#/components/headers/XRateLimitResetRequests"
+        x-ratelimit-limit-tokens:
+          $ref: "#/components/headers/XRateLimitLimitTokens"
+        x-ratelimit-remaining-tokens:
+          $ref: "#/components/headers/XRateLimitRemainingTokens"
+        x-ratelimit-reset-tokens:
+          $ref: "#/components/headers/XRateLimitResetTokens"
+        retry-after:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ModelNotAllowed:
+      description: Model exists but is not allowed for this project API key.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            modelNotAllowed:
+              value:
+                error:
+                  code: model_not_allowed
+                  message: Model is not allowed for this API key
+                  type: forbidden
+                request_id: req_example
+    ModelNotFound:
+      description: Model not found.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Request is not allowed or a signed URL is invalid or expired.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ProviderError:
+      description: Upstream provider error.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ProviderCapabilityNotSupported:
+      description: The selected provider or route does not support this operation.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ImageMaskNotSupported:
+      description: Image edits with masks are not supported by the selected image route.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            codexMaskUnsupported:
+              value:
+                error:
+                  code: image_mask_not_supported
+                  message: Masks are not supported through Codex subscription accounts; use reference-image editing without a mask
+                  type: not_implemented
+                request_id: req_example
+    AnthropicBadRequest:
+      description: Anthropic-compatible invalid request.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AnthropicErrorResponse"
+    AnthropicUnauthorized:
+      description: Anthropic-compatible authentication error.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AnthropicErrorResponse"
+    AnthropicModelNotAllowed:
+      description: Anthropic-compatible model access error.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AnthropicErrorResponse"
+          examples:
+            modelNotAllowed:
+              value:
+                type: error
+                error:
+                  type: permission_error
+                  message: Model is not allowed for this API key
+                  code: model_not_allowed
+                request_id: req_example
+    AnthropicQuotaExceeded:
+      description: Anthropic-compatible quota or rate limit error.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+        x-ratelimit-limit-requests:
+          $ref: "#/components/headers/XRateLimitLimitRequests"
+        x-ratelimit-remaining-requests:
+          $ref: "#/components/headers/XRateLimitRemainingRequests"
+        x-ratelimit-reset-requests:
+          $ref: "#/components/headers/XRateLimitResetRequests"
+        x-ratelimit-limit-tokens:
+          $ref: "#/components/headers/XRateLimitLimitTokens"
+        x-ratelimit-remaining-tokens:
+          $ref: "#/components/headers/XRateLimitRemainingTokens"
+        x-ratelimit-reset-tokens:
+          $ref: "#/components/headers/XRateLimitResetTokens"
+        retry-after:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AnthropicErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        request_id:
+          type: string
+    ErrorObject:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: [invalid_api_key, quota_exceeded, provider_error]
+        message:
+          type: string
+        type:
+          type: string
+        param:
+          type: string
+          nullable: true
+    AnthropicErrorResponse:
+      type: object
+      required: [type, error, request_id]
+      properties:
+        type:
+          type: string
+          const: error
+        error:
+          type: object
+          required: [type, message]
+          properties:
+            type:
+              type: string
+            message:
+              type: string
+        request_id:
+          type: string
+    Usage:
+      type: object
+      additionalProperties: true
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        cache_read_input_tokens:
+          type: integer
+        cache_creation_input_tokens:
+          type: integer
+    OpenAIModelList:
+      type: object
+      required: [object, data]
+      properties:
+        object:
+          type: string
+          const: list
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenAIModel"
+    OpenAIModel:
+      type: object
+      required: [id, object]
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          const: model
+        created:
+          type: integer
+        owned_by:
+          type: string
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        stream:
+          type: boolean
+        temperature:
+          type: number
+        max_tokens:
+          type: integer
+    ChatMessage:
+      type: object
+      required: [role, content]
+      additionalProperties: true
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool, developer]
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+    ChatCompletionResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usage:
+          $ref: "#/components/schemas/Usage"
+    ResponsesRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        input: {}
+        stream:
+          type: boolean
+        background:
+          type: boolean
+        previous_response_id:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    ResponsesResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+        status:
+          type: string
+        output:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usage:
+          $ref: "#/components/schemas/Usage"
+    ResponseJob:
+      type: object
+      required: [id, status]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          const: response
+        created_at:
+          type: integer
+        status:
+          type: string
+          enum: [queued, in_progress, completed, failed, cancelled]
+        background:
+          type: boolean
+          const: true
+        model:
+          type: string
+        output:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        completed_at:
+          type: integer
+        usage:
+          $ref: "#/components/schemas/Usage"
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/ErrorObject"
+            - type: "null"
+    AnthropicMessagesRequest:
+      type: object
+      required: [model, messages, max_tokens]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        max_tokens:
+          type: integer
+        stream:
+          type: boolean
+        system:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+    AnthropicMessageResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        role:
+          type: string
+        content:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usage:
+          $ref: "#/components/schemas/Usage"
+    AnthropicTokenCount:
+      type: object
+      required: [input_tokens]
+      properties:
+        input_tokens:
+          type: integer
+    EmbeddingsRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items: {}
+        encoding_format:
+          type: string
+    EmbeddingsResponse:
+      type: object
+      required: [object, data]
+      additionalProperties: true
+      properties:
+        object:
+          type: string
+          const: list
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usage:
+          $ref: "#/components/schemas/Usage"
+    ImageGenerationRequest:
+      type: object
+      required: [model, prompt]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        prompt:
+          type: string
+        n:
+          type: integer
+        size:
+          type: string
+        response_format:
+          type: string
+          enum: [url, b64_json]
+    ImageEditRequest:
+      type: object
+      required: [model, image, prompt]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        image:
+          oneOf:
+            - type: string
+              format: binary
+            - type: array
+              items:
+                type: string
+                format: binary
+        prompt:
+          type: string
+        mask:
+          type: string
+          format: binary
+        size:
+          type: string
+    ImageResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        created:
+          type: integer
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              b64_json:
+                type: string
+              revised_prompt:
+                type: string
+        usage:
+          $ref: "#/components/schemas/Usage"
+    ImageJob:
+      type: object
+      required: [id, status]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          const: image.job
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        model:
+          type: string
+        action:
+          type: string
+          enum: [generate, edit]
+        prompt:
+          type: string
+        created_at:
+          type: integer
+        request_id:
+          type: string
+        revised_prompt:
+          type: string
+        started_at:
+          type: integer
+        completed_at:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageJobAsset"
+        input_image_count:
+          type: integer
+        usage:
+          $ref: "#/components/schemas/Usage"
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+    ImageJobAsset:
+      type: object
+      additionalProperties: false
+      properties:
+        asset_id:
+          type: string
+        url:
+          type: string
+        url_expires_at:
+          type: integer
+        content_type:
+          type: string
+        bytes:
+          type: integer
+        sha256:
+          type: string
+    GeminiModelList:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeminiModel"
+    GeminiModel:
+      type: object
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+          examples: [models/gemini-2.5-flash]
+        displayName:
+          type: string
+        version:
+          type: string
+        supportedGenerationMethods:
+          type: array
+          items:
+            type: string
+    GeminiGenerateContentRequest:
+      type: object
+      required: [contents]
+      additionalProperties: true
+      properties:
+        contents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        generationConfig:
+          type: object
+          additionalProperties: true
+        safetySettings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    GeminiGenerateContentResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        candidates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usageMetadata:
+          type: object
+          additionalProperties: true

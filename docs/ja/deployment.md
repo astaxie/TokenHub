@@ -72,6 +72,7 @@ flowchart TB
 マルチインスタンスモードでは：
 
 - Nginx が管理コンソール、API、ヘルスチェックのトラフィックを正常なレプリカへ分散します。
+- Nginx は `/docs`、`/openapi.json`、`/openapi.yaml` をバックエンドへ転送するため、セルフホストの公開ゲートウェイ API Reference はモデル API と同じ公開 origin を使用します。
 - バックエンドレプリカは、永続設定、OAuth セッション、クォータカウンター、監査データ、クラスターロック、実行中リクエストの並行数リースを PostgreSQL で共有します。
 - リースの期限と所有権は PostgreSQL のクロックで判定し、ホスト間の時刻ずれによる早期引き継ぎを防ぎます。所有権を失った処理はハートビートによってキャンセルされます。
 - 設定されたモデルカタログの候補モデルメタデータはバックエンドの起動ごとに同期され、冪等な同期処理はクラスターロックによって直列化されます。
@@ -181,6 +182,10 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_FRONTEND_PORT`: 管理コンソールのホスト側ポート。デフォルトは `3000`。
 - `TOKENHUB_BACKEND_REPLICAS`: リモート PostgreSQL Compose のバックエンドレプリカ数。デフォルトは `2`。
 - `TOKENHUB_FRONTEND_REPLICAS`: リモート PostgreSQL Compose のフロントエンドレプリカ数。デフォルトは `2`。
+
+バックエンドは `/docs` で公開ゲートウェイ API Reference を提供し、`/openapi.json` と `/openapi.yaml` で機械可読の OpenAPI 3.1 契約を提供します。ドキュメント内の server URL は `TOKENHUB_PUBLIC_BASE_URL` が設定されていればそれを使用し、未設定の場合は現在のリクエスト origin を使用します。リバースプロキシ配下では、`TOKENHUB_PUBLIC_BASE_URL` をブラウザから到達できるバックエンド origin と一致させてください。
+
+ブラウザクライアント（`/docs` の **Try it out** フローを含む）は、ドキュメントページとバックエンドゲートウェイが同一 origin の場合だけ追加の CORS 設定なしで呼び出せます。管理コンソールまたはドキュメントが `TOKENHUB_PUBLIC_BASE_URL` と異なる origin で提供される場合は、その正確なブラウザ origin を `TOKENHUB_CORS_ALLOWED_ORIGINS` に追加してください。ブラウザ呼び出しを動かすためだけに、本番環境の CORS をワイルドカードで緩めないでください。
 
 リポジトリルートから起動します。
 
@@ -460,7 +465,7 @@ Kronk は既定で平文 HTTP を待ち受けます。リモート配置では�
 本番環境では HTTPS の背後に置き、次のように転送してください。
 
 - 管理コンソールのトラフィックはフロントエンドサービスへ。
-- `/v1/*` と `/api/admin/*` はバックエンドサービスへ。
+- `/api/*`、`/v1/*`、`/v1beta/*`、`/docs`、`/openapi.json`、`/openapi.yaml`、`/livez`、`/readyz`、`/healthz` はバックエンドサービスへ。
 
 長いモデル応答に備えて、リクエストボディサイズとストリーミングタイムアウトを十分に設定してください。
 

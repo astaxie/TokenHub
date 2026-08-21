@@ -23,6 +23,8 @@ Language: [English](../user-guide.md) | [简体中文](../zh-CN/user-guide.md) |
 4. モデル ID を選び、`POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses`、`POST /v1/embeddings` を呼び出します。
 5. **Usage Analytics** と **Request Logs** でリクエスト、Token、コスト、エラーを確認します。
 
+コンソールの **API Documentation** は、引き続きオンボーディング向けのガイド画面です。完全な対話型かつ機械可読のゲートウェイ契約が必要な場合は、プライベートデプロイで `http://localhost:8080/docs` を開くか、`http://localhost:8080/openapi.json` を API クライアント、SDK ジェネレーター、テストツール、または企業 API カタログへ取り込んでください。ドキュメントページに入力した Project Key はブラウザーのメモリ内だけに保持されます。
+
 ## 1 つの API Key の利用量を確認する
 
 **Key Management** で対象 Key の **Usage** を選ぶと、専用の利用量ページが開きます。リクエスト数、成功率、レイテンシ、詳細な Token 分類、クライアント向け推定コスト、モデル別・エラー別内訳、ページング対応のリクエスト明細を確認できます。期間は直近 7 日、30 日、90 日、または最大 366 日のカスタム UTC 範囲から選択できます。
