@@ -353,6 +353,10 @@ with TLS from the first byte. The channel keeps the other standard fields
 (`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`, `smtp_from`,
 `email_to`).
 
+In the admin console's email channel form, the **SMTP encryption** selector
+offers `starttls` (default, port 587) and `ssl` (implicit TLS, ports 465/994);
+it writes the `smtp_encryption` field on create and update.
+
 ## Screenshot
 
 ![Routing policies](assets/screenshots/routes-en.png)

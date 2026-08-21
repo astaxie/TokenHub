@@ -345,6 +345,8 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 类型为 `email` 的通知渠道通过 SMTP 投递。默认情况下 TokenHub 使用明文连接，并按服务器通告的能力升级到 STARTTLS（通常为 587 端口）。如果邮件服务器只在隐式 TLS 端口（如 465 或 994）上提供 SMTP，请将渠道字段 `smtp_encryption` 设置为 `ssl`、`tls`、`smtps` 或 `implicit`，以便从第一个字节开始即以 TLS 建立连接。渠道的其他标准字段（`smtp_host`、`smtp_port`、`smtp_username`、`smtp_password`、`smtp_from`、`email_to`）保持不变。
 
+在管理控制台的邮件渠道表单中，**SMTP 加密** 下拉框提供 `starttls`（默认，端口 587）与 `ssl`（隐式 TLS，端口 465/994）两个选项；创建和更新时会将该值写入 `smtp_encryption` 字段。
+
 ## 截图
 
 ![Routing policies](../assets/screenshots/routes-en.png)
