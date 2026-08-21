@@ -78,6 +78,8 @@ export function dataScopeLabel(scope: string) {
     global: "全局",
     team: "团队",
     project: "项目",
+    user: "用户",
+    api_key: "API Key",
     self: "本人",
     all: "所有项目",
     include: "仅指定项目",

@@ -23,6 +23,12 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, or `POST /v1/embeddings`.
 5. Review **Usage Analytics** and **Request Logs** for requests, tokens, cost, and errors.
 
+## Review One API Key's Usage
+
+In **Key Management**, select **Usage** for a Key to open its dedicated usage page. The page reports requests, success rate, latency, detailed token categories, estimated client cost, model and error breakdowns, and paginated request details. Use the 7-, 30-, or 90-day presets, or select a custom UTC range of up to 366 days.
+
+The quota section compares the current UTC day and month counters with the effective limits after Key, Project, Team, and global quota policies are combined. Usage belongs only to the selected saved Key ID. A rotated predecessor or successor is shown as related information but is never merged into the totals. Request payloads, when audit capture is enabled, follow the existing redaction and truncation rules; the complete API Key is never returned.
+
 ## Test a Model in the Playground
 
 Open **Model Playground** in the console to test an available chat model without creating an API script. Each response shows streaming or buffered delivery, TTFT when it can be measured, output throughput, total duration, full-context input tokens, output tokens, estimated cost, local completion time, and a request ID. Expand the response for the actual response details. Provider and route internals appear only when your role has routing-read permission.

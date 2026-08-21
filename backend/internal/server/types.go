@@ -173,6 +173,11 @@ type QuotaCounter struct {
 	CostUSD          float64 `json:"cost_usd"`
 }
 
+type QuotaPolicyUsage struct {
+	Daily   QuotaCounter `json:"daily"`
+	Monthly QuotaCounter `json:"monthly"`
+}
+
 type Model struct {
 	ID                     string            `json:"id" gorm:"primaryKey"`
 	Name                   string            `json:"name" gorm:"uniqueIndex"`
@@ -516,6 +521,13 @@ type ImageJob struct {
 	APIKeyID                string     `json:"api_key_id" gorm:"index"`
 	AttributedUserID        string     `json:"attributed_user_id,omitempty" gorm:"index"`
 	RequestID               string     `json:"request_id,omitempty" gorm:"index"`
+	UserQuotaEnabled        bool       `json:"-"`
+	UserMinuteRequestHeld   bool       `json:"-"`
+	UserTokenLimitBucket    string     `json:"-"`
+	TokenLimitBucket        string     `json:"-"`
+	MinuteRequestHeld       bool       `json:"-"`
+	ReservedTokens          int64      `json:"-"`
+	AdmittedAt              *time.Time `json:"-"`
 	Status                  string     `json:"status" gorm:"index"`
 	Model                   string     `json:"model"`
 	Action                  string     `json:"action"`
@@ -559,40 +571,43 @@ const (
 // stored only in the encrypted columns; the plaintext fields are transient values
 // populated after authenticated reads.
 type ResponseJob struct {
-	ID                 string     `json:"id" gorm:"primaryKey"`
-	ProjectID          string     `json:"project_id" gorm:"index"`
-	APIKeyID           string     `json:"api_key_id" gorm:"index"`
-	AttributedUserID   string     `json:"attributed_user_id,omitempty" gorm:"index"`
-	RequestID          string     `json:"request_id,omitempty" gorm:"index"`
-	TokenLimitBucket   string     `json:"-"`
-	MinuteRequestHeld  bool       `json:"-"`
-	ReservedTokens     int64      `json:"-"`
-	AdmittedAt         *time.Time `json:"-"`
-	Status             string     `json:"status" gorm:"index:idx_response_job_claim,priority:1;index:idx_response_job_lease,priority:1"`
-	Phase              string     `json:"phase" gorm:"index"`
-	Model              string     `json:"model" gorm:"index"`
-	RequestCiphertext  string     `json:"-" gorm:"type:text"`
-	ResultCiphertext   string     `json:"-" gorm:"type:text"`
-	RequestJSON        []byte     `json:"-" gorm:"-"`
-	ResultJSON         []byte     `json:"-" gorm:"-"`
-	ClientIP           string     `json:"-" gorm:"-"`
-	UserAgent          string     `json:"-" gorm:"-"`
-	LeaseOwner         string     `json:"-" gorm:"index"`
-	LeaseEpoch         int64      `json:"-"`
-	LeaseExpiresAt     *time.Time `json:"-" gorm:"index:idx_response_job_lease,priority:2"`
-	CancelRequestedAt  *time.Time `json:"-" gorm:"index"`
-	ProviderID         string     `json:"provider_id,omitempty" gorm:"index"`
-	ProviderResourceID string     `json:"provider_resource_id,omitempty" gorm:"index"`
-	ProviderModel      string     `json:"provider_model,omitempty"`
-	UpstreamRequestID  string     `json:"upstream_request_id,omitempty"`
-	UpstreamResponseID string     `json:"upstream_response_id,omitempty"`
-	ErrorCode          string     `json:"error_code,omitempty"`
-	ErrorMessage       string     `json:"error_message,omitempty"`
-	CreatedAt          time.Time  `json:"created_at" gorm:"index:idx_response_job_claim,priority:2"`
-	StartedAt          *time.Time `json:"started_at,omitempty"`
-	CompletedAt        *time.Time `json:"completed_at,omitempty"`
-	ExpiresAt          *time.Time `json:"expires_at,omitempty" gorm:"index"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                    string     `json:"id" gorm:"primaryKey"`
+	ProjectID             string     `json:"project_id" gorm:"index"`
+	APIKeyID              string     `json:"api_key_id" gorm:"index"`
+	AttributedUserID      string     `json:"attributed_user_id,omitempty" gorm:"index"`
+	UserQuotaEnabled      bool       `json:"-"`
+	UserMinuteRequestHeld bool       `json:"-"`
+	UserTokenLimitBucket  string     `json:"-"`
+	RequestID             string     `json:"request_id,omitempty" gorm:"index"`
+	TokenLimitBucket      string     `json:"-"`
+	MinuteRequestHeld     bool       `json:"-"`
+	ReservedTokens        int64      `json:"-"`
+	AdmittedAt            *time.Time `json:"-"`
+	Status                string     `json:"status" gorm:"index:idx_response_job_claim,priority:1;index:idx_response_job_lease,priority:1"`
+	Phase                 string     `json:"phase" gorm:"index"`
+	Model                 string     `json:"model" gorm:"index"`
+	RequestCiphertext     string     `json:"-" gorm:"type:text"`
+	ResultCiphertext      string     `json:"-" gorm:"type:text"`
+	RequestJSON           []byte     `json:"-" gorm:"-"`
+	ResultJSON            []byte     `json:"-" gorm:"-"`
+	ClientIP              string     `json:"-" gorm:"-"`
+	UserAgent             string     `json:"-" gorm:"-"`
+	LeaseOwner            string     `json:"-" gorm:"index"`
+	LeaseEpoch            int64      `json:"-"`
+	LeaseExpiresAt        *time.Time `json:"-" gorm:"index:idx_response_job_lease,priority:2"`
+	CancelRequestedAt     *time.Time `json:"-" gorm:"index"`
+	ProviderID            string     `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID    string     `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel         string     `json:"provider_model,omitempty"`
+	UpstreamRequestID     string     `json:"upstream_request_id,omitempty"`
+	UpstreamResponseID    string     `json:"upstream_response_id,omitempty"`
+	ErrorCode             string     `json:"error_code,omitempty"`
+	ErrorMessage          string     `json:"error_message,omitempty"`
+	CreatedAt             time.Time  `json:"created_at" gorm:"index:idx_response_job_claim,priority:2"`
+	StartedAt             *time.Time `json:"started_at,omitempty"`
+	CompletedAt           *time.Time `json:"completed_at,omitempty"`
+	ExpiresAt             *time.Time `json:"expires_at,omitempty" gorm:"index"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 // ResponseJobEvent is the append-only audit trail for every durable state
@@ -706,15 +721,16 @@ type AuditEvent struct {
 }
 
 type AdminResource struct {
-	ID                      string         `json:"id" gorm:"primaryKey"`
-	Kind                    string         `json:"kind" gorm:"primaryKey;index"`
-	Name                    string         `json:"name"`
-	Description             string         `json:"description,omitempty"`
-	Status                  string         `json:"status"`
-	Fields                  map[string]any `json:"fields,omitempty" gorm:"serializer:json"`
-	RoutingPolicyBindingKey *string        `json:"-" gorm:"uniqueIndex:idx_admin_resource_routing_policy_binding"`
-	CreatedAt               time.Time      `json:"created_at"`
-	UpdatedAt               time.Time      `json:"updated_at"`
+	ID                      string            `json:"id" gorm:"primaryKey"`
+	Kind                    string            `json:"kind" gorm:"primaryKey;index"`
+	Name                    string            `json:"name"`
+	Description             string            `json:"description,omitempty"`
+	Status                  string            `json:"status"`
+	Fields                  map[string]any    `json:"fields,omitempty" gorm:"serializer:json"`
+	CurrentUsage            *QuotaPolicyUsage `json:"current_usage,omitempty" gorm:"-"`
+	RoutingPolicyBindingKey *string           `json:"-" gorm:"uniqueIndex:idx_admin_resource_routing_policy_binding"`
+	CreatedAt               time.Time         `json:"created_at"`
+	UpdatedAt               time.Time         `json:"updated_at"`
 }
 
 type MonitorRunResult struct {
@@ -1232,6 +1248,17 @@ type CallContext struct {
 	TokenLimitBucket  string
 	MinuteRequestHeld bool
 	ReservedTokens    int64
+	// UserQuotaID identifies the durable aggregate bucket when a user-scoped
+	// quota policy applies. It is intentionally internal and never exposed to
+	// gateway clients.
+	UserQuotaID           string
+	UserQuotaEnabled      bool
+	UserMinuteRequestHeld bool
+	UserTokenLimitBucket  string
+	UserQuotaLimits       QuotaLimits
+	// AttributedUserID is captured at admission so settlement remains attached
+	// to the owner who actually started the request, even if the key is transferred.
+	AttributedUserID string
 	// StreamOutputCommitted keeps the reservation when a stream delivered data but
 	// ended before an authoritative usage event was received.
 	StreamOutputCommitted bool

@@ -820,7 +820,7 @@ export const enTranslations: Record<string, string> = {
     "关闭成员列表": "Close member list",
     "姓名": "Name",
     "成员数": "Members",
-    "项目额度": "Project Quota",
+    "项目额度": "Project Quota", "额度策略": "Quota Policies", "额度策略列表": "Quota Policies", "新增额度策略": "Add Quota Policy", "按全局、项目、团队、API Key 或用户聚合请求、Token、成本与并发上限": "Aggregate request, token, cost, and concurrency limits globally, by project, team, API key, or user", "作用域对象": "Scope Target", "用户作用域会合并该用户所有归属 Key 的用量，Key 轮换不会重置额度。": "A user scope aggregates usage from every key attributed to that user; key rotation does not reset the quota.", "日：{requests} 次请求 · {tokens} Token · {cost}": "Daily: {requests} requests · {tokens} tokens · {cost}", "月：{requests} 次请求 · {tokens} Token · {cost}": "Monthly: {requests} requests · {tokens} tokens · {cost}",
     "关闭额度配置": "Close quota settings",
     "已配置项目专属额度": "Project-specific quota configured",
     "未配置项目专属额度": "No project-specific quota configured",

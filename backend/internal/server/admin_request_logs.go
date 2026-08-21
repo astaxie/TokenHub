@@ -77,6 +77,19 @@ func (s *Server) requestLogQueryForUser(user AdminUser, r *http.Request) (Reques
 	if query.Status != "all" && query.Status != "ok" && query.Status != "error" {
 		return RequestLogQuery{}, NewHTTPError(http.StatusBadRequest, "invalid_request", "status must be all, ok, or error")
 	}
+	apiKeyID := strings.TrimSpace(r.URL.Query().Get("api_key_id"))
+	if apiKeyID != "" {
+		if !s.canManageAPIKey(user, apiKeyID) {
+			return RequestLogQuery{}, NewHTTPError(http.StatusForbidden, "api_key_forbidden", "API key is not available for this user")
+		}
+		if _, err := s.findAPIKey(apiKeyID); err != nil {
+			return RequestLogQuery{}, err
+		}
+		query.Global = false
+		query.ProjectIDs = nil
+		query.APIKeyIDs = []string{apiKeyID}
+		return query, nil
+	}
 	if query.Global {
 		return query, nil
 	}

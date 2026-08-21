@@ -15,9 +15,8 @@ const (
 	BillingSyncFailed    = "failed"
 )
 
-// BillingConnector is the persisted configuration for one external billing
-// source. Credentials are accepted through Credentials, encrypted into
-// CredentialCiphertext by the store, and never serialized back to callers.
+// BillingConnector is the persistence and HTTP representation retained by the
+// server until the W04 persistence/admin adapter migration.
 type BillingConnector struct {
 	ID                      string            `json:"id" gorm:"primaryKey"`
 	Name                    string            `json:"name"`
@@ -59,9 +58,6 @@ type BillingConnectorPatchRequest struct {
 	Credentials             map[string]string `json:"credentials"`
 }
 
-// BillingRecord is the provider-neutral billing model consumed by later
-// reconciliation and analysis modules. Monetary values are canonical decimal
-// strings so source precision is not lost through floating-point conversion.
 type BillingRecord struct {
 	ID                string            `json:"id" gorm:"primaryKey"`
 	ConnectorID       string            `json:"connector_id" gorm:"uniqueIndex:idx_billing_record_source;index"`

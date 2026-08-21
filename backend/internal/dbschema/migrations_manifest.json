@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "baselines": {
+    "postgres": "5c45c167f5e1da10111d4723983fc22b592905ce06a153d8b784601c67fa4630",
+    "sqlite": "27c05e35075a61ba38f6b69dd73584c994dcf84f791566ed990952af82e58917"
+  },
+  "migrations": []
+}

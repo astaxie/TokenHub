@@ -13,6 +13,7 @@ import (
 
 const (
 	gatewaySettingsID                 = "cfg_gateway"
+	dashboardTimezoneField            = "dashboard_timezone"
 	syntheticDNSEnabledField          = "provider_synthetic_dns_enabled"
 	syntheticDNSCIDRsField            = "provider_synthetic_dns_cidrs"
 	syntheticDNSAllowPrivateField     = "provider_synthetic_dns_allow_private_ranges"
@@ -346,6 +347,11 @@ func validateProviderSyntheticDNSSettings(resource AdminResource) error {
 	if resource.ID != "" && resource.ID != gatewaySettingsID {
 		return nil
 	}
+	if timezone := strings.TrimSpace(stringField(resource.Fields, dashboardTimezoneField)); timezone != "" {
+		if _, err := time.LoadLocation(timezone); err != nil {
+			return NewHTTPError(http.StatusBadRequest, "invalid_dashboard_timezone", "dashboard_timezone must be a valid IANA timezone")
+		}
+	}
 	if !truthyField(resource.Fields, syntheticDNSEnabledField) {
 		return nil
 	}
@@ -377,6 +383,10 @@ func ensureProviderSyntheticDNSSettings(store Store) error {
 		}
 		if _, ok := setting.Fields[syntheticDNSAllowPrivateField]; !ok {
 			setting.Fields[syntheticDNSAllowPrivateField] = false
+			changed = true
+		}
+		if strings.TrimSpace(stringField(setting.Fields, dashboardTimezoneField)) == "" {
+			setting.Fields[dashboardTimezoneField] = "UTC"
 			changed = true
 		}
 		if changed {

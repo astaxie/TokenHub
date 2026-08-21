@@ -1,14 +1,21 @@
 package server
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 func newUsageRecord(call CallContext, route RouteSelection, usage Usage, createdAt time.Time) *UsageRecord {
+	attributedUserID := strings.TrimSpace(call.AttributedUserID)
+	if attributedUserID == "" {
+		attributedUserID = usageAttributionUserID(call.Key, call.Project)
+	}
 	return &UsageRecord{
 		ID:                       NewID("use"),
 		RequestID:                call.RequestID,
 		ProjectID:                call.Project.ID,
 		APIKeyID:                 call.Key.ID,
-		AttributedUserID:         usageAttributionUserID(call.Key, call.Project),
+		AttributedUserID:         attributedUserID,
 		ModelName:                call.Model.Name,
 		ProviderID:               route.Provider.ID,
 		ProviderResourceID:       routeResourceID(route),

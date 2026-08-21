@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -13,6 +14,8 @@ type UsageSummaryScope struct {
 	AttributedUserIDs []string
 	ProjectIDs        []string
 	APIKeyIDs         []string
+	CreatedAtFrom     time.Time
+	CreatedAtBefore   time.Time
 }
 
 type UsageSummaryQuery struct {
@@ -93,6 +96,12 @@ func (s *GormStore) QueryUsageSummary(ctx context.Context, query UsageSummaryQue
 }
 
 func applyUsageSummaryScope(db *gorm.DB, driver string, scope UsageSummaryScope) (*gorm.DB, error) {
+	if !scope.CreatedAtFrom.IsZero() {
+		db = db.Where("created_at >= ?", scope.CreatedAtFrom)
+	}
+	if !scope.CreatedAtBefore.IsZero() {
+		db = db.Where("created_at < ?", scope.CreatedAtBefore)
+	}
 	if scope.Global {
 		return db, nil
 	}

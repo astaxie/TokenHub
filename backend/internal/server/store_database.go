@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"tokenhub/backend/internal/dbschema"
 	"tokenhub/backend/internal/guardrails"
 
 	"gorm.io/driver/postgres"
@@ -130,7 +132,17 @@ func OpenStoreWithConfig(databaseURL string, config Config) (*GormStore, error) 
 	if strings.TrimSpace(databaseURL) == "" {
 		databaseURL = defaultConfigDatabaseURL()
 	}
-	return NewStoreWithDialect(databaseURL, config)
+	return newStoreWithDialect(databaseURL, config, true)
+}
+
+// OpenStoreForMaintenance opens the store without publishing an instance
+// heartbeat. Maintenance commands never serve traffic and must not make their
+// own no-live-instances preflight fail.
+func OpenStoreForMaintenance(databaseURL string, config Config) (*GormStore, error) {
+	if strings.TrimSpace(databaseURL) == "" {
+		databaseURL = defaultConfigDatabaseURL()
+	}
+	return newStoreWithDialect(databaseURL, config, false)
 }
 
 func NewSQLiteStore(databaseURL string) (*GormStore, error) {
@@ -140,6 +152,10 @@ func NewSQLiteStore(databaseURL string) (*GormStore, error) {
 // NewStoreWithDialect creates a Store with the appropriate driver based on the database URL.
 // It supports SQLite and PostgreSQL.
 func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) {
+	return newStoreWithDialect(databaseURL, config, true)
+}
+
+func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat bool) (*GormStore, error) {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
 		return nil, err
@@ -211,56 +227,21 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 		}
 	}
 
-	migrate := func() error {
-		if err := db.AutoMigrate(
-			&BillingConnector{}, &BillingRecord{}, &BillingRawSnapshot{}, &BillingSyncRun{},
-			&ReconciliationRule{}, &ReconciliationRun{}, &ReconciliationItem{},
-			&Project{},
-			&ProjectTeam{},
-			&guardrails.Policy{},
-			&guardrails.DetectionItem{},
-			&guardrails.Binding{},
-			&APIKey{},
-			&Provider{},
-			&ProviderResource{},
-			&ProviderModel{},
-			&Model{},
-			&ModelRoute{},
-			&QuotaBucket{},
-			&InFlightLease{},
-			&ClusterLease{},
-			&ClusterTaskState{},
-			&AdapterSessionBinding{},
-			&ProviderResourceObservation{},
-			&ProviderObservation{},
-			&ProviderCatalogSnapshot{},
-			&providerAccountOAuthSessionRecord{},
-			&UsageRecord{},
-			&AnalyticsSequence{},
-			&RequestLog{},
-			&AnalyticsCredential{},
-			&RequestPayloadLog{},
-			&ImageJob{},
-			&ImageAsset{},
-			&ResponseJob{},
-			&ResponseJobEvent{},
-			&RouteAttemptLog{},
-			&AlertEvent{},
-			&AlertDelivery{},
-			&ProviderResourceBucket{},
-			&AuditEvent{},
-			&AdminResource{},
-			&ApprovalRequest{},
-			&AdminUser{},
-			&AdminSession{},
-			&adminOAuthFlowRecord{},
-			&adminOAuthExchangeRecord{},
-			&AdminPasswordResetToken{},
-			&SQLiteBackupRecord{},
-		); err != nil {
-			return err
+	legacySchemaFlow := func(context.Context) error {
+		// The frozen legacy flow follows the live model set. Once versioned
+		// migrations exist, running it would apply their model changes ahead
+		// of the migration chain and then re-apply them as migrations; refuse
+		// instead and let the migration-chain design take over.
+		if len(SchemaMigrationRegistry()) > 0 {
+			return fmt.Errorf("legacy adoption is a bridge-release operation; this release carries versioned migrations and requires a database adopted by the bridge release first")
 		}
-		if err := ensureRequestLogCommitSequence(db, driver); err != nil {
+		return migrateSchemaObjects(db, driver)
+	}
+	legacyDataBackfills := func() error {
+		// The commit-sequence history reorder runs per boot: legacy-shaped
+		// sequence data can reappear through backup restores or an older
+		// release writing to the same database.
+		if err := backfillRequestLogCommitSequence(db, driver); err != nil {
 			return err
 		}
 		if err := ensureRequestPayloadRetentionIndex(db, driver); err != nil {
@@ -275,10 +256,43 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 		if err := backfillRequestLogAttribution(db, driver); err != nil {
 			return err
 		}
+		if err := backfillQuotaBucketAttribution(db); err != nil {
+			return err
+		}
 		return backfillRoutingPolicyBindingKeys(db)
 	}
-	if err := runSchemaMigrationLocked(sqlDB, driver, migrate); err != nil {
-		return nil, err
+	var instanceHeartbeatID string
+	const startupSchemaLockWait = time.Duration(dbschema.DefaultExpandLockTimeoutSeconds) * time.Second
+	schemaLockCtx, cancelSchemaLock := context.WithTimeout(context.Background(), startupSchemaLockWait)
+	schemaErr := runSchemaMigrationLocked(schemaLockCtx, sqlDB, driver, func() error {
+		if err := adoptSchemaLedger(context.Background(), sqlDB, driver, dsn, legacySchemaFlow); err != nil {
+			return err
+		}
+		// Data repairs keep running on every boot until they become versioned
+		// data backfills; they are idempotent, and legacy-shaped
+		// data can appear after adoption through backup restores or an older
+		// release writing to the same database.
+		if err := legacyDataBackfills(); err != nil {
+			return err
+		}
+		if publishHeartbeat {
+			// Publish the instance heartbeat before the schema lock is released:
+			// once the lock drops, `tokenhub db contract` may acquire it, and its
+			// no-live-instances preflight must not mistake this booting instance
+			// for a drained cluster. Fail startup when publication cannot be
+			// established: releasing the lock without a row would let contract
+			// maintenance miss this booting instance.
+			id, err := publishInitialInstanceHeartbeat(db, config.AppVersion)
+			if err != nil {
+				return fmt.Errorf("publish initial instance heartbeat under schema lock: %w", err)
+			}
+			instanceHeartbeatID = id
+		}
+		return nil
+	})
+	cancelSchemaLock()
+	if schemaErr != nil {
+		return nil, schemaErr
 	}
 	if postgresMaxOpenConns > 0 {
 		sqlDB.SetMaxOpenConns(postgresMaxOpenConns)
@@ -293,6 +307,8 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 		analyticsDB:          analyticsDB,
 		mu:                   &sync.Mutex{},
 		leaseHeartbeats:      &sync.Map{},
+		heartbeatState:       new(atomic.Int32),
+		instanceHeartbeatID:  instanceHeartbeatID,
 		lastUsed:             newLastUsedThrottle(),
 		modelLabels:          newModelLabelCache(),
 		secretKey:            config.SecretKey,
@@ -306,6 +322,131 @@ func NewStoreWithDialect(databaseURL string, config Config) (*GormStore, error) 
 		clusterLockTTL:       time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
 		imageCapabilityRetry: time.Duration(defaultInt(config.ImageCapabilityRetrySecs, 86400)) * time.Second,
 	}, nil
+}
+
+type quotaBucketColumnInfo struct {
+	Name string
+	PK   int
+}
+
+// ensureQuotaBucketAttributionSchema upgrades the pre-attribution three-column
+// primary key before GORM inspects the model. Existing counters remain in the
+// canonical unattributed row; no historical usage is guessed to belong to an
+// owner.
+func ensureQuotaBucketAttributionSchema(db *gorm.DB, driver string) error {
+	if !db.Migrator().HasTable(&QuotaBucket{}) {
+		return nil
+	}
+	if driver == "sqlite" {
+		var columns []quotaBucketColumnInfo
+		if err := db.Raw("PRAGMA table_info(quota_buckets)").Scan(&columns).Error; err != nil {
+			return err
+		}
+		hasAttribution := false
+		attributionInPK := false
+		for _, column := range columns {
+			if column.Name == "attributed_user_id" {
+				hasAttribution = true
+				attributionInPK = column.PK > 0
+			}
+		}
+		if attributionInPK {
+			return nil
+		}
+		return db.Transaction(func(tx *gorm.DB) error {
+			if !hasAttribution {
+				if err := tx.Exec("ALTER TABLE quota_buckets ADD COLUMN attributed_user_id TEXT").Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Exec("ALTER TABLE quota_buckets RENAME TO quota_buckets_legacy").Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("DROP INDEX IF EXISTS idx_quota_buckets_attributed_user_id").Error; err != nil {
+				return err
+			}
+			if err := tx.Exec(`CREATE TABLE quota_buckets (
+key_id TEXT NOT NULL,
+scope TEXT NOT NULL,
+bucket TEXT NOT NULL,
+attributed_user_id TEXT NOT NULL DEFAULT '__tokenhub_unattributed__',
+requests INTEGER NOT NULL DEFAULT 0,
+prompt_tokens INTEGER NOT NULL DEFAULT 0,
+completion_tokens INTEGER NOT NULL DEFAULT 0,
+total_tokens INTEGER NOT NULL DEFAULT 0,
+cost_usd REAL NOT NULL DEFAULT 0,
+PRIMARY KEY (key_id, scope, bucket, attributed_user_id)
+)`).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("INSERT INTO quota_buckets (key_id, scope, bucket, attributed_user_id, requests, prompt_tokens, completion_tokens, total_tokens, cost_usd) SELECT key_id, scope, bucket, CASE WHEN key_id LIKE 'user:%' THEN SUBSTR(key_id, 6) ELSE COALESCE(NULLIF(attributed_user_id, ''), ?) END, requests, prompt_tokens, completion_tokens, total_tokens, cost_usd FROM quota_buckets_legacy", unattributedQuotaUserID).Error; err != nil {
+				return err
+			}
+			return tx.Exec("DROP TABLE quota_buckets_legacy").Error
+		})
+	}
+	// PostgreSQL can replace the primary-key constraint in place. Add the new
+	// column before backfilling it because this helper runs before AutoMigrate;
+	// legacy databases do not have attributed_user_id yet.
+	if err := db.Exec("ALTER TABLE quota_buckets ADD COLUMN IF NOT EXISTS attributed_user_id TEXT").Error; err != nil {
+		return err
+	}
+	if err := db.Exec("UPDATE quota_buckets SET attributed_user_id = CASE WHEN key_id LIKE 'user:%' THEN SUBSTRING(key_id FROM 6) ELSE ? END WHERE attributed_user_id IS NULL OR attributed_user_id = ''", unattributedQuotaUserID).Error; err != nil {
+		return err
+	}
+	if err := db.Exec("ALTER TABLE quota_buckets ALTER COLUMN attributed_user_id SET DEFAULT '__tokenhub_unattributed__'").Error; err != nil {
+		return err
+	}
+	var pkColumns []struct {
+		Column string `gorm:"column:column_name"`
+	}
+	if err := db.Raw(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.table_schema = current_schema() AND tc.table_name = 'quota_buckets' AND tc.constraint_type = 'PRIMARY KEY' ORDER BY kcu.ordinal_position`).Scan(&pkColumns).Error; err != nil {
+		return err
+	}
+	wantPK := []string{"key_id", "scope", "bucket", "attributed_user_id"}
+	primaryKeyMatches := len(pkColumns) == len(wantPK)
+	for index := range pkColumns {
+		if index >= len(wantPK) || pkColumns[index].Column != wantPK[index] {
+			primaryKeyMatches = false
+			break
+		}
+	}
+	if primaryKeyMatches {
+		return nil
+	}
+	if err := db.Exec("ALTER TABLE quota_buckets DROP CONSTRAINT IF EXISTS quota_buckets_pkey").Error; err != nil {
+		return err
+	}
+	return db.Exec("ALTER TABLE quota_buckets ADD PRIMARY KEY (key_id, scope, bucket, attributed_user_id)").Error
+}
+
+// backfillQuotaBucketAttribution preserves legacy API-key counters as
+// unattributed canonical rows. They cannot be safely assigned to the current
+// owner because ownership may have changed since the usage was recorded.
+func backfillQuotaBucketAttribution(db *gorm.DB) error {
+	return db.Model(&QuotaBucket{}).
+		Where("attributed_user_id IS NULL OR attributed_user_id = ''").
+		Update("attributed_user_id", gorm.Expr("CASE WHEN key_id LIKE 'user:%' THEN SUBSTR(key_id, 6) ELSE ? END", unattributedQuotaUserID)).Error
+}
+
+// Close releases the primary and analytics database pools owned by the store.
+func (s *GormStore) Close() error {
+	var closeErr error
+	if s.db != nil {
+		if db, err := s.db.DB(); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		} else {
+			closeErr = errors.Join(closeErr, db.Close())
+		}
+	}
+	if s.analyticsDB != nil {
+		if db, err := s.analyticsDB.DB(); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		} else {
+			closeErr = errors.Join(closeErr, db.Close())
+		}
+	}
+	return closeErr
 }
 
 func openAnalyticsDatabase(driver string, dsn string, config Config) (*gorm.DB, error) {
@@ -425,9 +566,6 @@ END;`}
 		if err := db.Exec(statement).Error; err != nil {
 			return fmt.Errorf("create request log sequence trigger: %w", err)
 		}
-	}
-	if err := backfillRequestLogCommitSequence(db, driver); err != nil {
-		return err
 	}
 	return nil
 }
@@ -782,6 +920,76 @@ func (s *GormStore) WithContext(ctx context.Context) *GormStore {
 	return &contextual
 }
 
+// schemaModels is the frozen GORM model set of the bridge-release schema flow.
+// Order follows the original AutoMigrate call; keep it stable.
+func schemaModels() []any {
+	return []any{
+		&BillingConnector{}, &BillingRecord{}, &BillingRawSnapshot{}, &BillingSyncRun{},
+		&ReconciliationRule{}, &ReconciliationRun{}, &ReconciliationItem{},
+		&Project{},
+		&ProjectTeam{},
+		&guardrails.Policy{},
+		&guardrails.DetectionItem{},
+		&guardrails.Binding{},
+		&APIKey{},
+		&Provider{},
+		&ProviderResource{},
+		&ProviderModel{},
+		&Model{},
+		&ModelRoute{},
+		&QuotaBucket{},
+		&InFlightLease{},
+		&ClusterLease{},
+		&ClusterTaskState{},
+		&AdapterSessionBinding{},
+		&ProviderResourceObservation{},
+		&ProviderObservation{},
+		&ProviderCatalogSnapshot{},
+		&providerAccountOAuthSessionRecord{},
+		&UsageRecord{},
+		&AnalyticsSequence{},
+		&RequestLog{},
+		&AnalyticsCredential{},
+		&RequestPayloadLog{},
+		&ImageJob{},
+		&ImageAsset{},
+		&ResponseJob{},
+		&ResponseJobEvent{},
+		&RouteAttemptLog{},
+		&AlertEvent{},
+		&AlertDelivery{},
+		&ProviderResourceBucket{},
+		&AuditEvent{},
+		&AdminResource{},
+		&ApprovalRequest{},
+		&AdminUser{},
+		&AdminSession{},
+		&adminOAuthFlowRecord{},
+		&adminOAuthExchangeRecord{},
+		&AdminPasswordResetToken{},
+		&SQLiteBackupRecord{},
+	}
+}
+
+// migrateSchemaObjects applies the structural part of the frozen startup
+// schema flow: the AutoMigrate model set plus the request-log commit sequence
+// fixtures. Data backfills stay in the startup closure. The schema reference
+// snapshot (store_schema_ledger.go) reuses this function on a scratch database
+// to derive its expectations.
+func migrateSchemaObjects(db *gorm.DB, driver string) error {
+	// Upgrade the pre-attribution quota table before GORM inspects the model.
+	// This is part of the frozen legacy flow as well as the schema reference
+	// builder, so old databases are upgraded safely while fresh databases are
+	// created directly from the current model shape.
+	if err := ensureQuotaBucketAttributionSchema(db, driver); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(schemaModels()...); err != nil {
+		return err
+	}
+	return ensureRequestLogCommitSequence(db, driver)
+}
+
 // withReadSnapshot runs a compound read against one consistent database
 // snapshot. PostgreSQL's default read-committed isolation can observe a new
 // snapshot for each statement, so explicitly pin multi-query reads there.
@@ -796,33 +1004,12 @@ func (s *GormStore) withReadSnapshot(read func(*gorm.DB) error) error {
 	return s.db.Transaction(read)
 }
 
-func runSchemaMigrationLocked(sqlDB *sql.DB, driver string, migrate func() error) error {
-	if driver != "postgres" {
-		return migrate()
-	}
-	ctx := context.Background()
-	conn, err := sqlDB.Conn(ctx)
+func runSchemaMigrationLocked(ctx context.Context, sqlDB *sql.DB, driver string, migrate func() error) error {
+	release, err := dbschema.AcquireMigrationLock(ctx, sqlDB, dbschema.Dialect(driver), time.Duration(dbschema.DefaultExpandLockTimeoutSeconds)*time.Second, log.Printf)
 	if err != nil {
-		return err
+		return fmt.Errorf("acquire startup schema migration lock: %w", err)
 	}
-	defer conn.Close()
-	const lockName = "tokenhub:schema-migration"
-	// A blocking advisory-lock statement remains active while it waits. That
-	// would keep CREATE INDEX CONCURRENTLY in the lock holder waiting for this
-	// session, so poll with completed statements until the lock is available.
-	for {
-		var acquired bool
-		if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", lockName).Scan(&acquired); err != nil {
-			return err
-		}
-		if acquired {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	defer func() {
-		_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock(hashtextextended($1, 0))", lockName)
-	}()
+	defer release()
 	return migrate()
 }
 

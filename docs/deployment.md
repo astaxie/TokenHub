@@ -461,4 +461,4 @@ For production, place TokenHub behind HTTPS and forward:
 
 Set request body and streaming timeouts high enough for long model responses.
 
-Use `/livez` for liveness and `/readyz` for readiness. `/readyz` and the backwards-compatible `/healthz` return `503` when the database is unavailable.
+Use `/livez` for liveness and `/readyz` for readiness. `/readyz` and the backwards-compatible `/healthz` return `503` when the database is unavailable or the database evolution state is not servable: a dirty or unverifiable migration ledger, or an incomplete blocking data backfill. Pending online data backfills do not affect readiness.

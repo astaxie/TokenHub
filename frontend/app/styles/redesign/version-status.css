@@ -372,6 +372,41 @@
   cursor: pointer;
 }
 
+.version-option-meta {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.version-compat-badge {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.version-compat-badge.ok {
+  color: var(--ok, #1f883d);
+  border-color: color-mix(in srgb, var(--ok, #1f883d) 36%, var(--border));
+  background: color-mix(in srgb, var(--ok, #1f883d) 8%, transparent);
+}
+
+.version-compat-badge.blocked {
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+.version-option label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .version-option input {
   width: 16px;
   height: 16px;

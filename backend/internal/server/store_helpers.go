@@ -286,19 +286,43 @@ func monitorResourceMessage(resource ProviderResource, healthy bool) string {
 	return "Provider 资源实例未启用或不可用：" + resource.Status
 }
 
-func exceedsRequestQuota(limits QuotaLimits, day, month *QuotaCounter) bool {
-	return (limits.DailyRequests > 0 && day.Requests >= limits.DailyRequests) ||
-		(limits.MonthlyRequests > 0 && month.Requests >= limits.MonthlyRequests)
+func exceededQuotaLimitWithScope(limits QuotaLimits, scopes MinuteLimitScopes, day, month *QuotaCounter) (string, string) {
+	switch {
+	case limits.DailyRequests > 0 && day.Requests >= limits.DailyRequests:
+		return "daily_requests", normalizedQuotaPolicyScope(scopes.DailyRequests)
+	case limits.MonthlyRequests > 0 && month.Requests >= limits.MonthlyRequests:
+		return "monthly_requests", normalizedQuotaPolicyScope(scopes.MonthlyRequests)
+	case limits.DailyTokens > 0 && day.TotalTokens >= limits.DailyTokens:
+		return "daily_tokens", normalizedQuotaPolicyScope(scopes.DailyTokens)
+	case limits.MonthlyTokens > 0 && month.TotalTokens >= limits.MonthlyTokens:
+		return "monthly_tokens", normalizedQuotaPolicyScope(scopes.MonthlyTokens)
+	case limits.DailyCostUSD > 0 && day.CostUSD >= limits.DailyCostUSD:
+		return "daily_cost_usd", normalizedQuotaPolicyScope(scopes.DailyCostUSD)
+	case limits.MonthlyCostUSD > 0 && month.CostUSD >= limits.MonthlyCostUSD:
+		return "monthly_cost_usd", normalizedQuotaPolicyScope(scopes.MonthlyCostUSD)
+	default:
+		return "", ""
+	}
 }
 
-func exceedsTokenQuota(limits QuotaLimits, day, month *QuotaCounter) bool {
-	return (limits.DailyTokens > 0 && day.TotalTokens >= limits.DailyTokens) ||
-		(limits.MonthlyTokens > 0 && month.TotalTokens >= limits.MonthlyTokens)
-}
-
-func exceedsCostQuota(limits QuotaLimits, day, month *QuotaCounter) bool {
-	return (limits.DailyCostUSD > 0 && day.CostUSD >= limits.DailyCostUSD) ||
-		(limits.MonthlyCostUSD > 0 && month.CostUSD >= limits.MonthlyCostUSD)
+func exceededQuotaLimitWithReservation(limits QuotaLimits, day, month *QuotaCounter, reservation int64) string {
+	reservation = maxInt64(reservation, 0)
+	switch {
+	case limits.DailyRequests > 0 && day.Requests >= limits.DailyRequests:
+		return "daily_requests"
+	case limits.MonthlyRequests > 0 && month.Requests >= limits.MonthlyRequests:
+		return "monthly_requests"
+	case limits.DailyTokens > 0 && (day.TotalTokens >= limits.DailyTokens || saturatingAddNonNegative(day.TotalTokens, reservation) > limits.DailyTokens):
+		return "daily_tokens"
+	case limits.MonthlyTokens > 0 && (month.TotalTokens >= limits.MonthlyTokens || saturatingAddNonNegative(month.TotalTokens, reservation) > limits.MonthlyTokens):
+		return "monthly_tokens"
+	case limits.DailyCostUSD > 0 && day.CostUSD >= limits.DailyCostUSD:
+		return "daily_cost_usd"
+	case limits.MonthlyCostUSD > 0 && month.CostUSD >= limits.MonthlyCostUSD:
+		return "monthly_cost_usd"
+	default:
+		return ""
+	}
 }
 
 func addUsage(counter *QuotaCounter, usage Usage) {
@@ -306,6 +330,15 @@ func addUsage(counter *QuotaCounter, usage Usage) {
 	counter.CompletionTokens += usage.CompletionTokens
 	counter.TotalTokens += usage.TotalTokens
 	counter.CostUSD += usage.CostUSD
+}
+
+func refundQuotaReservation(counter *QuotaCounter, reservation int64) {
+	reservation = maxInt64(reservation, 0)
+	if reservation >= counter.TotalTokens {
+		counter.TotalTokens = 0
+		return
+	}
+	counter.TotalTokens -= reservation
 }
 
 func aggregateUsage(records []UsageRecord, keyFn func(UsageRecord) string) []map[string]any {

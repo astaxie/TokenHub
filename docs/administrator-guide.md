@@ -54,7 +54,15 @@ When a policy blocks a request, compatible APIs return HTTP 403 with `guardrail_
 
 When issuing an API Key, select the actual user in **Owner User**. The issuer remains in audit metadata, but the Key's usage is attributed to its owner. Platform administrators may select any active user; team leaders may select an active user in their own team; ordinary users can only assign Keys to themselves.
 
-Each new usage record snapshots the attributed user, so later ownership changes or Key deletion do not rewrite that recorded history. Records created before this field existed fall back to the Key's current owner, then its legacy issuer, then the project owner, and finally `unknown`. The individual ranking shows distinct used Keys and currently owned non-revoked Keys separately.
+Each new usage record snapshots the attributed user, so later ownership changes or Key deletion do not rewrite that recorded history. Records created before this field existed use only attribution that can be proven from their immutable usage record or request history; otherwise they remain `unknown`. Legacy quota buckets are retained as unattributed canonical history and are never silently assigned to the current owner during upgrade. The individual ranking shows distinct used Keys and currently owned non-revoked Keys separately.
+
+The per-Key **Usage** page uses the saved Key ID as an exact boundary for trends, model and error breakdowns, and request details. Rotation links are informational and do not combine predecessor and successor usage. Its current day and month Key quota cards use UTC buckets and resolve the same global, project, team, and Key limits used for the gateway's per-Key admission checks. Aggregate user quotas are enforced separately and are not included in this per-Key view. Platform administrators additionally receive Provider and Resource performance breakdowns; other roles retain the existing scoped request-detail visibility, and Provider cost remains restricted to platform administrators.
+
+## Daily Usage Dashboard
+
+Open **Usage** to see the current day's usage above the longer-range executive report. The daily section shows today's tokens, requests, estimated cost, cache reads, and tables for token type, model, project, and API Key. Platform administrators also see Provider and Provider Resource tables; other roles receive only the remaining scoped dimensions. Team leaders also see member usage for their team, and governance roles see cost-center attribution.
+
+The day boundary comes from **System Settings > Gateway Base Settings > Dashboard Timezone**. Use an IANA timezone such as `UTC`, `Asia/Shanghai`, or `America/New_York`. TokenHub stores this setting centrally, so all administrators see the same daily window and the dashboard resets at that timezone's local midnight. The usage view refreshes the daily section every 30 seconds while it is open.
 
 ## Read-only Cost Access for Local Agents
 
@@ -66,7 +74,17 @@ Each API Key can have optional requests-per-minute (RPM) and tokens-per-minute (
 
 RPM is consumed before a Provider is invoked. TPM is reserved at the same point from the request's estimated input and maximum output; text requests without an explicit maximum reserve 4,096 output tokens. After the request finishes, the reservation is settled to the Provider's reported total tokens, or to prompt plus completion tokens when a total is unavailable. Cached and reasoning tokens are already included in those totals and are not added again. Failed or interrupted requests return the unused reservation.
 
-An exceeded limit returns HTTP 429 with `api_key_rpm_exceeded` or `api_key_tpm_exceeded`, plus `Retry-After` and the relevant `X-RateLimit-Limit-*`, `X-RateLimit-Remaining-*`, and `X-RateLimit-Reset-*` headers. Minute buckets are database-backed and shared across TokenHub instances on both SQLite and PostgreSQL. Metrics expose only a short hashed Key reference, never the complete API Key.
+An exceeded limit returns HTTP 429 with `api_key_rpm_exceeded` or `api_key_tpm_exceeded`, plus `Retry-After` and the relevant `X-RateLimit-Limit-*`, `X-RateLimit-Remaining-*`, and `X-RateLimit-Reset-*` headers. Minute buckets are database-backed. PostgreSQL shares enforcement across TokenHub instances; SQLite retains its supported single-backend behavior. Metrics expose only a short hashed Key reference, never the complete API Key.
+
+## Aggregate User Quotas
+
+Platform administrators and team leaders configure aggregate user limits under **Cost Governance > Quota Policies** by selecting `user` as the scope and an active user ID as `scope_id`. A team leader may manage policies only for users in the leader's own teams; platform administrators may manage any active user. The user selector lists the users available to the current administrator, and the policy table shows current daily and monthly consumption. User policies support the complete quota surface: RPM, TPM, daily and monthly requests, tokens and cost, plus maximum concurrency.
+
+TokenHub resolves the attributed user with the same order used for usage accounting: API Key `owner_user_id`, then legacy Key metadata `created_by`, then Project `owner_user_id`. Every Key attributed to that user consumes the same user buckets, including Keys in different Projects. Rotating, revoking, deleting, or replacing a Key does not reset those counters because the buckets are owned by the user rather than the Key.
+
+User limits are enforced alongside the applicable API Key, Project, Team, and global limits. Positive limits keep the existing strictest-value behavior, while user counters remain aggregate rather than becoming a per-Key allowance. User maximum concurrency is held in addition to the effective Key-scoped concurrency lease, so neither constraint can bypass the other.
+
+Admission reserves user requests and estimated tokens before any Provider call. The shared settlement transaction reconciles the reservation to actual metered usage and uses the request ID as its durable idempotency marker for buffered, streaming, image, and background Responses calls. Background jobs persist their reservation state so cancellation, restart recovery, and stale workers cannot settle it twice. PostgreSQL uses transaction-scoped advisory locks and row locks across replicas; SQLite uses its single-backend transaction serialization. A blocked request returns HTTP 429 before Provider invocation with `details.scope` set to `user`. Audit payloads, alerts, and metrics retain that bounded scope without exposing the user ID or any API Key secret.
 
 ## Provider Catalog Availability
 

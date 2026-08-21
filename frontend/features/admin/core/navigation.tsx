@@ -96,6 +96,7 @@ export const adminNavGroups: NavGroup[] = [
     title: "成本治理",
     items: [
       { view: "billing", label: "成本账单", icon: WalletCards },
+      { view: "quota-policies", label: "额度策略", icon: Gauge },
       { view: "cost-centers", label: "成本中心", icon: Database },
     ],
   },
@@ -208,10 +209,10 @@ export const standaloneViewMeta: Partial<Record<ViewKey, { title: string; descri
 
 export const roleViewAccess: Record<AppRole, ViewKey[]> = {
   admin: (Object.keys(viewRoutes) as ViewKey[]).filter(
-    (view) => view !== "project-members" && view !== "quota-policies" && view !== "approval-flows",
+    (view) => view !== "project-members" && view !== "approval-flows",
   ),
   security: ["overview", "gateway", "usage", "audit", "alerts", "alert-events", "notification-channels", "alert-deliveries", "security-policies", "approvals"],
-  team_leader: ["overview", "gateway", "playground", "models", "projects", "api-keys", "teams", "users", "usage", "billing", "audit", "approvals"],
+  team_leader: ["overview", "gateway", "playground", "models", "projects", "api-keys", "teams", "users", "usage", "billing", "quota-policies", "audit", "approvals"],
   user: ["overview", "gateway", "playground", "models", "api-keys", "usage", "audit"],
 };
 

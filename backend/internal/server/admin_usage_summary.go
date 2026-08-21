@@ -7,6 +7,10 @@ func (s *Server) usageSummaryForUser(ctx context.Context, user AdminUser) (map[s
 	if err != nil {
 		return nil, err
 	}
+	return usageSummaryPayload(summary), nil
+}
+
+func usageSummaryPayload(summary UsageSummary) map[string]any {
 	return map[string]any{
 		"request_count":            summary.RequestCount,
 		"usage_record_count":       summary.UsageRecordCount,
@@ -18,7 +22,7 @@ func (s *Server) usageSummaryForUser(ctx context.Context, user AdminUser) (map[s
 		"total_tokens":             summary.TotalTokens,
 		"estimated_cost_usd":       summary.EstimatedCostUSD,
 		"errors":                   summary.Errors,
-	}, nil
+	}
 }
 
 func (s *Server) usageSummaryQueryForUser(user AdminUser) UsageSummaryQuery {

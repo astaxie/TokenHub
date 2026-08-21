@@ -178,7 +178,10 @@ func TestDBStatusMethodRoutePreservesRBAC(t *testing.T) {
 }
 
 func TestSystemRollbackMethodRoutePreservesRequestAndAudit(t *testing.T) {
-	root := prepareNativeInstallRoot(t, "0.3.2", map[string]string{"0.3.1": "previous"})
+	// The rollback target must carry a verified database compatibility record
+	// (v0.4.0 for the bridge release); records for other legacy versions do
+	// not exist, so the compatibility preflight would refuse them.
+	root := prepareNativeInstallRoot(t, "0.4.1", map[string]string{"0.4.0": "previous"})
 	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unexpected release lookup", http.StatusInternalServerError)
 	}))
@@ -186,17 +189,17 @@ func TestSystemRollbackMethodRoutePreservesRequestAndAudit(t *testing.T) {
 
 	config := Config{
 		AdminToken:     "system-rollback-routing-token",
-		AppVersion:     "0.3.2",
+		AppVersion:     "0.4.1",
 		BuildType:      releaseBuildType,
 		DeploymentType: nativeDeploymentType,
 		InstallRoot:    root,
 	}
 	store := NewMemoryStoreWithConfig(config)
 	app := NewWithConfig(store, config)
-	app.versions = nativeTestVersionService(root, "0.3.2", releases)
+	app.versions = nativeTestVersionService(root, "0.4.1", releases)
 
 	response := methodRoutingJSONRequest(t, app.Handler(), http.MethodPost, "/api/admin/system/rollback", map[string]any{
-		"version": "0.3.1",
+		"version": "0.4.0",
 	}, "system-rollback-routing-token")
 	if response.Code != http.StatusOK {
 		t.Fatalf("POST rollback: expected 200, got %d: %s", response.Code, response.Body.String())
@@ -208,11 +211,11 @@ func TestSystemRollbackMethodRoutePreservesRequestAndAudit(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
-	if !payload.NeedRestart || payload.TargetVersion != "0.3.1" {
+	if !payload.NeedRestart || payload.TargetVersion != "0.4.0" {
 		t.Fatalf("POST rollback: unexpected response: %#v", payload)
 	}
-	assertNativeCurrentVersion(t, root, "0.3.1")
-	assertSystemVersionAudit(t, store, "rollback", "success", "0.3.1")
+	assertNativeCurrentVersion(t, root, "0.4.0")
+	assertSystemVersionAudit(t, store, "rollback", "success", "0.4.0")
 }
 
 func TestMetricsMethodRoutePreservesDisabledState(t *testing.T) {

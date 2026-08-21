@@ -158,7 +158,7 @@ sequenceDiagram
 - 管理调用使用管理员登录生成的会话 Token，或受控运维场景中的 `TOKENHUB_ADMIN_TOKEN`。初始 `admin` 用户由 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` 创建。
 - 非开发环境启动时，后端会拒绝占位值、少于 32 字节的 Admin Token 或后端密钥，以及少于 12 字节的初始管理员密码。
 - `TOKENHUB_TRUSTED_PROXY_CIDRS` 限定哪些代理可提供 `X-Forwarded-For`、`X-Forwarded-Host` 和 `X-Forwarded-Proto`，可信代理必须覆盖这些请求头；`TOKENHUB_CORS_ALLOWED_ORIGINS` 限定允许携带浏览器凭证的 Origin。反向代理部署必须正确配置这两项。
-- `/livez` 只用于进程存活探针；`/readyz` 以及兼容的 `/healthz` 会检查数据库可用性，数据库不可用时返回 `503`。
+- `/livez` 只用于进程存活探针；`/readyz` 以及兼容的 `/healthz` 会检查数据库可用性与数据库演进状态：数据库不可用、迁移处于脏状态、账本校验失败，或阻塞型数据回填未完成时返回 `503`。待执行的在线回填不影响就绪状态。
 
 Provider API Key、Provider Resource 凭证、账单连接器凭证、原始账单快照和持久化后台 Responses 载荷写入数据库前使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密。项目 API Key 不保存原文，只保存 SHA-256 摘要以及用于展示的前缀和后缀。所有副本必须共享稳定的 `TOKENHUB_SECRET_KEY`，否则既有凭证和会话相关数据无法可靠使用。
 

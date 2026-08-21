@@ -155,7 +155,7 @@ Project と API Key のモデルアクセスはルート選択前の明示的な
 - 管理 API はログインセッション Token または `TOKENHUB_ADMIN_TOKEN` を使用します。初期 `admin` アカウントは `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` から作成されます。
 - 開発以外の起動時は、プレースホルダー値、32 バイト未満の Admin Token/バックエンドシークレット、12 バイト未満の初期管理者パスワードを拒否します。
 - `TOKENHUB_TRUSTED_PROXY_CIDRS` は `X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto` を提供できるプロキシを限定し、信頼済みプロキシはこれらのヘッダーを上書きする必要があります。`TOKENHUB_CORS_ALLOWED_ORIGINS` は資格情報を伴うブラウザ Origin を制御します。
-- `/livez` はプロセス生存確認用です。`/readyz` と互換用の `/healthz` はデータベース可用性を確認し、利用不可時には `503` を返します。
+- `/livez` はプロセス生存確認用です。`/readyz` と互換用の `/healthz` はデータベース可用性とデータベース進化状態を確認し、データベースが利用できない場合、マイグレーションが不完全な場合、台帳検証が失敗した場合、ブロッキングデータバックフィルが未完了の場合に `503` を返します。保留中のオンラインバックフィルは準備状態を維持します。
 
 Provider 認証情報、請求コネクター認証情報、生の請求スナップショット、永続化されたバックグラウンド Responses payload は `TOKENHUB_SECRET_KEY` から導出した AES-GCM で暗号化されます。Project API Key は SHA-256 ダイジェストと表示用のプレフィックス/サフィックスだけを保持します。すべてのレプリカは同じ安定したシークレットを使用する必要があります。
 

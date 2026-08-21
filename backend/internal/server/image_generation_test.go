@@ -539,6 +539,99 @@ func TestServerStartupFailsUnfinishedImageJobsWithoutRecovery(t *testing.T) {
 	}
 }
 
+func TestFailUnfinishedImageJobsRefundsPersistedAdmission(t *testing.T) {
+	store, project, key, _ := setupUserQuotaTest(t, map[string]any{"daily_tokens": 10, "token_limit_tpm": 10})
+	if _, err := store.UpdateAPIKey(key.ID, APIKey{TokenLimitSet: true, TokenLimitTPM: int64Pointer(10)}); err != nil {
+		t.Fatal(err)
+	}
+	key, ok := store.GetAPIKey(key.ID)
+	if !ok {
+		t.Fatal("API key disappeared")
+	}
+	call, err := store.StartCall(context.Background(), project, key, "user-quota-model", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := store.CreateImageJob(imageJobWithAdmission(ImageJob{
+		ProjectID:        project.ID,
+		APIKeyID:         key.ID,
+		AttributedUserID: usageAttributionUserID(key, project),
+		RequestID:        call.RequestID,
+		Status:           imageJobStatusQueued,
+		Model:            "user-quota-model",
+		Action:           "generate",
+	}, call), "queued prompt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FailUnfinishedImageJobs("image_worker_restarted", "restart"); err != nil {
+		t.Fatal(err)
+	}
+	failed, ok := store.GetImageJob(job.ID)
+	if !ok || failed.Status != imageJobStatusFailed {
+		t.Fatalf("unfinished image job was not failed: %+v", failed)
+	}
+	assertQuotaBucket := func(bucketID string, scope string, bucket string) QuotaBucket {
+		t.Helper()
+		var counter QuotaBucket
+		if err := store.db.First(&counter, "key_id = ? AND scope = ? AND bucket = ?", bucketID, scope, bucket).Error; err != nil {
+			t.Fatal(err)
+		}
+		return counter
+	}
+	keyMinute := assertQuotaBucket(key.ID, "minute", call.TokenLimitBucket)
+	if keyMinute.TotalTokens != 0 {
+		t.Fatalf("key minute reservation = %d, want 0", keyMinute.TotalTokens)
+	}
+	userMinute := assertQuotaBucket(userQuotaBucketKey("usr_user_quota"), "minute", call.UserTokenLimitBucket)
+	if userMinute.TotalTokens != 0 {
+		t.Fatalf("user minute reservation = %d, want 0", userMinute.TotalTokens)
+	}
+	for _, period := range []struct {
+		scope  string
+		bucket string
+	}{
+		{scope: "day", bucket: dayBucket(call.StartedAt)},
+		{scope: "month", bucket: monthBucket(call.StartedAt)},
+	} {
+		keyCounter := assertQuotaBucket(key.ID, period.scope, period.bucket)
+		if keyCounter.Requests != 0 {
+			t.Fatalf("key %s requests = %d, want 0", period.scope, keyCounter.Requests)
+		}
+		userCounter := assertQuotaBucket(userQuotaBucketKey("usr_user_quota"), period.scope, period.bucket)
+		if userCounter.Requests != 0 || userCounter.TotalTokens != 0 {
+			t.Fatalf("user %s counter = %+v, want no held request or tokens", period.scope, userCounter.QuotaCounter)
+		}
+	}
+}
+
+func TestImageAdmissionAndJobCreationRollbackTogether(t *testing.T) {
+	store, project, key, _ := setupUserQuotaTest(t, map[string]any{"daily_tokens": 10, "max_concurrency": 1})
+	if _, err := store.CreateImageJob(ImageJob{ID: "img_duplicate", ProjectID: project.ID, APIKeyID: key.ID, Status: imageJobStatusQueued, Model: "user-quota-model", Action: "generate"}, "existing"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := store.CreateImageJobWithAdmission(context.Background(), project, key, "user-quota-model", 5, ImageJob{
+		ID: "img_duplicate", ProjectID: project.ID, APIKeyID: key.ID, Status: imageJobStatusQueued, Model: "user-quota-model", Action: "generate",
+	}, "duplicate")
+	if err == nil {
+		t.Fatal("duplicate image job should fail")
+	}
+	var leases int64
+	if err := store.db.Model(&InFlightLease{}).Count(&leases).Error; err != nil {
+		t.Fatal(err)
+	}
+	if leases != 0 {
+		t.Fatalf("failed image job creation leaked %d concurrency leases", leases)
+	}
+	var requests int64
+	if err := store.db.Model(&QuotaBucket{}).Where("key_id = ? AND scope IN ?", key.ID, []string{"day", "month"}).Select("COALESCE(SUM(requests), 0)").Scan(&requests).Error; err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 {
+		t.Fatalf("failed image job creation retained %d quota requests", requests)
+	}
+}
+
 func TestCodexImageVirtualModelRequiresSupportedSubscriptionAccount(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Codex Image Model Project"})

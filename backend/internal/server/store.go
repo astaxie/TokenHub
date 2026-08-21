@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tokenhub/backend/internal/guardrails"
@@ -16,9 +17,10 @@ const (
 )
 
 type QuotaBucket struct {
-	KeyID  string `gorm:"primaryKey;index"`
-	Scope  string `gorm:"primaryKey"`
-	Bucket string `gorm:"primaryKey;index"`
+	KeyID            string `gorm:"primaryKey;index"`
+	Scope            string `gorm:"primaryKey"`
+	Bucket           string `gorm:"primaryKey;index"`
+	AttributedUserID string `gorm:"primaryKey;index;default:__tokenhub_unattributed__"`
 	QuotaCounter
 }
 
@@ -202,6 +204,7 @@ type Store interface {
 	GetImageAsset(id string) (ImageAsset, bool)
 	ListUsageRecords() []UsageRecord
 	QueryUsageSummary(ctx context.Context, query UsageSummaryQuery) (UsageSummary, error)
+	QueryAPIKeyUsage(ctx context.Context, query APIKeyUsageQuery) (APIKeyUsage, error)
 	CreateAnalyticsCredential(credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error)
 	ListAnalyticsCredentials() []AnalyticsCredential
 	RevokeAnalyticsCredential(id string) (AnalyticsCredential, error)
@@ -229,6 +232,7 @@ type Store interface {
 	ListResourcesContext(ctx context.Context, kind string) ([]AdminResource, error)
 	UpdateResource(kind string, id string, patch AdminResource) (AdminResource, error)
 	DeleteResource(kind string, id string) error
+	GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPolicyUsage, bool, error)
 	DeleteTeam(id string) error
 	RunMonitor(id string) (MonitorRunResult, error)
 	CreateApprovalRequest(request ApprovalRequest) ApprovalRequest
@@ -278,20 +282,25 @@ type Store interface {
 var _ Store = (*GormStore)(nil)
 
 type GormStore struct {
-	db                   *gorm.DB
-	analyticsDB          *gorm.DB
-	mu                   *sync.Mutex
-	leaseHeartbeats      *sync.Map
-	lastUsed             *lastUsedThrottle
-	modelLabels          *modelLabelCache
-	secretKey            string
-	metrics              *GatewayMetrics
-	failureThreshold     int
-	cooldownDuration     time.Duration
-	cooldownMax          time.Duration
-	sqliteDSN            string
-	backupDir            string
-	dbDriver             string // "sqlite" or "postgres"
+	db               *gorm.DB
+	analyticsDB      *gorm.DB
+	mu               *sync.Mutex
+	leaseHeartbeats  *sync.Map
+	lastUsed         *lastUsedThrottle
+	modelLabels      *modelLabelCache
+	secretKey        string
+	metrics          *GatewayMetrics
+	failureThreshold int
+	cooldownDuration time.Duration
+	cooldownMax      time.Duration
+	sqliteDSN        string
+	backupDir        string
+	dbDriver         string        // "sqlite" or "postgres"
+	heartbeatState   *atomic.Int32 // shared across value copies of the store
+	// instanceHeartbeatID identifies the row this instance published while it
+	// still held the schema migration lock; StartInstanceHeartbeat refreshes
+	// that row instead of creating a second one.
+	instanceHeartbeatID  string
 	inFlightLeaseTTL     time.Duration
 	clusterLockTTL       time.Duration
 	imageCapabilityRetry time.Duration

@@ -188,9 +188,6 @@ func (s *GormStore) DeleteProject(id string) error {
 			if err := tx.Where("scope_type = ? AND scope_id IN ?", "api_key", keyIDs).Delete(&InFlightLease{}).Error; err != nil {
 				return err
 			}
-			if err := tx.Where("key_id IN ?", keyIDs).Delete(&QuotaBucket{}).Error; err != nil {
-				return err
-			}
 			if err := tx.Where("id IN ?", keyIDs).Delete(&APIKey{}).Error; err != nil {
 				return err
 			}
@@ -691,9 +688,6 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 		var key APIKey
 		if err := tx.First(&key, "id = ?", id).Error; err != nil {
 			return notFound(err, "api_key_not_found", "API key not found")
-		}
-		if err := tx.Where("key_id = ?", id).Delete(&QuotaBucket{}).Error; err != nil {
-			return err
 		}
 		if err := tx.Where("scope_type = ? AND scope_id = ?", "api_key", id).Delete(&InFlightLease{}).Error; err != nil {
 			return err

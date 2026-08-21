@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"tokenhub/backend/internal/dbcli"
 	"tokenhub/backend/internal/server"
 )
 
@@ -21,6 +22,11 @@ var (
 
 func main() {
 	loadDotEnv()
+
+	if len(os.Args) > 1 && os.Args[1] == "db" {
+		dbcli.AppRelease = buildVersion
+		os.Exit(dbcli.Run(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	addr := getenv("TOKENHUB_HTTP_ADDR", ":8080")
 	config := server.ConfigFromEnv()
@@ -34,12 +40,31 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// The managed-upgrade contract in docs/database-evolution.md keeps the
+	// target release guarded until its first boot runs the auto-rollback guard
+	// before any schema flow — a crashed boot
+	// re-activates the previous release once, breaking a crash loop before the
+	// new release touches the database.
+	guardCtx, cancelGuard := context.WithTimeout(context.Background(), 60*time.Second)
+	if err := server.RunStartupGuard(guardCtx, config); err != nil {
+		cancelGuard()
+		log.Fatalf("startup guard failed: %v", err)
+	}
+	cancelGuard()
+
 	store, err := server.OpenStoreWithConfig(config.DatabaseURL, config)
 	if err != nil {
 		log.Fatal(err)
 	}
 	if err := server.RunStartupBootstrap(context.Background(), store, config); err != nil {
 		log.Fatal(err)
+	}
+	// The target release completed both the schema flow and the startup
+	// bootstrap; settle the pending upgrade so a later boot never auto-rolls
+	// back a healthy release. Settling only after bootstrap keeps the
+	// one-shot rollback armed for boots that fail before serving.
+	if err := server.RecordStartupGuardSuccess(config); err != nil {
+		log.Fatalf("record startup guard success: %v", err)
 	}
 
 	app := server.NewWithConfig(store, config)

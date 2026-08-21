@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"tokenhub/backend/internal/billing"
 )
 
 func (s *Server) StartBillingScheduler() {
@@ -140,9 +142,9 @@ func (s *Server) handleAdminBillingConnectorAction(w http.ResponseWriter, r *htt
 func (s *Server) serveAdminBillingConnectorTest(w http.ResponseWriter, r *http.Request, user AdminUser, connectorID string) {
 	result, err := s.billing.Test(r.Context(), connectorID)
 	if err != nil {
-		httpErr := AsHTTPError(err)
+		httpErr := billingHTTPError(err)
 		s.recordAdminAuditWithStatus(r, user, "test", "billing_connector", connectorID, BillingSyncFailed, httpErr.Code, nil, map[string]any{"error_code": httpErr.Code})
-		writeError(w, r, err)
+		writeError(w, r, httpErr)
 		return
 	}
 	s.recordAdminAudit(r, user, "test", "billing_connector", connectorID, nil, result)
@@ -159,15 +161,16 @@ func (s *Server) serveAdminBillingConnectorSync(w http.ResponseWriter, r *http.R
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_sync", "Invalid billing sync payload"))
 		return
 	}
-	run, err := s.billing.Sync(r.Context(), connectorID, request, "manual")
+	run, err := s.billing.Sync(r.Context(), connectorID, billing.SyncRequest{From: request.From, To: request.To}, "manual")
 	if err != nil {
-		httpErr := AsHTTPError(err)
-		s.recordAdminAuditWithStatus(r, user, "sync", "billing_connector", connectorID, BillingSyncFailed, httpErr.Code, nil, run)
-		writeError(w, r, err)
+		httpErr := billingHTTPError(err)
+		s.recordAdminAuditWithStatus(r, user, "sync", "billing_connector", connectorID, BillingSyncFailed, httpErr.Code, nil, serverBillingSyncRun(run))
+		writeError(w, r, httpErr)
 		return
 	}
-	s.recordAdminAudit(r, user, "sync", "billing_connector", connectorID, nil, run)
-	writeJSON(w, http.StatusOK, run)
+	response := serverBillingSyncRun(run)
+	s.recordAdminAudit(r, user, "sync", "billing_connector", connectorID, nil, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) serveAdminBillingRecordsGet(w http.ResponseWriter, r *http.Request) {

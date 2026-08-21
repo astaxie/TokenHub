@@ -60,8 +60,24 @@ func (s *Server) serveAdminResourceCollectionGet(w http.ResponseWriter, _ *http.
 	if kind == "alert-rules" {
 		s.ensureDefaultAlertRules()
 	}
-	resources := s.filterResourcesForUser(user, kind, s.store.ListResources(kind))
-	writeJSON(w, http.StatusOK, map[string]any{"data": redactAdminResourcesForResponse(kind, resources)})
+	items := s.filterResourcesForUser(user, kind, s.store.ListResources(kind))
+	if kind == "quota-policies" {
+		items = s.attachQuotaPolicyUsage(items)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": redactAdminResourcesForResponse(kind, items)})
+}
+
+func (s *Server) attachQuotaPolicyUsage(items []AdminResource) []AdminResource {
+	for index := range items {
+		scope := firstStringField(items[index].Fields, "scope", "scope_type")
+		scopeID := firstStringField(items[index].Fields, "scope_id")
+		usage, supported, err := s.store.GetQuotaPolicyUsage(scope, scopeID)
+		if err != nil || !supported {
+			continue
+		}
+		items[index].CurrentUsage = &usage
+	}
+	return items
 }
 
 func (s *Server) serveAdminResourceCollectionPost(w http.ResponseWriter, r *http.Request, user AdminUser, kind string) {

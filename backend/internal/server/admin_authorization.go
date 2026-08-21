@@ -940,6 +940,9 @@ func (s *Server) filterQuotaPoliciesForTeamLeader(user AdminUser, resources []Ad
 			visible = visibleProjects[scopeID]
 		case "team":
 			visible = scopeID == user.TeamID
+		case "user":
+			target, ok := s.findAdminUser(scopeID)
+			visible = ok && userHasTeam(target, user.TeamID)
 		case "cost_center", "cost-center":
 			visible = costCenters[normalizeScopeValue(scopeID)]
 		default:
@@ -1010,6 +1013,9 @@ func (s *Server) canAccessQuotaPolicy(user AdminUser, item AdminResource) bool {
 		return s.visibleProjectIDSet(user)[scopeID]
 	case "team":
 		return scopeID == user.TeamID
+	case "user":
+		target, ok := s.findAdminUser(scopeID)
+		return ok && userHasTeam(target, user.TeamID)
 	case "cost_center", "cost-center":
 		return s.teamCostCenterSet(user.TeamID)[normalizeScopeValue(scopeID)]
 	}
@@ -1028,9 +1034,58 @@ func (s *Server) validateScopedResourceMutation(user AdminUser, kind string, res
 	if kind == "project-members" {
 		return s.validateProjectMemberMutation(user, resourceID, req)
 	}
+	var quotaFields map[string]any
 	if kind == "quota-policies" {
 		if err := validateQuotaPolicyMinuteLimits(req.Fields); err != nil {
 			return err
+		}
+		fields := req.Fields
+		if resourceID != "" {
+			existing, err := s.findResource(kind, resourceID)
+			if err != nil {
+				return err
+			}
+			if fields == nil {
+				fields = existing.Fields
+			} else {
+				mergedFields := make(map[string]any, len(existing.Fields)+len(fields))
+				for key, value := range existing.Fields {
+					mergedFields[key] = value
+				}
+				for key, value := range fields {
+					mergedFields[key] = value
+				}
+				fields = mergedFields
+			}
+		}
+		quotaFields = fields
+		scope := strings.ToLower(strings.TrimSpace(firstStringField(fields, "scope", "scope_type")))
+		if scope == "user" {
+			scopeID := strings.TrimSpace(stringField(fields, "scope_id"))
+			if scopeID == "" {
+				return NewHTTPError(http.StatusBadRequest, "invalid_quota_policy_scope", "User quota policies require a user scope_id")
+			}
+			target, ok := s.findAdminUser(scopeID)
+			if !ok {
+				return NewHTTPError(http.StatusNotFound, "admin_user_not_found", "Quota policy user not found")
+			}
+			resultingStatus := StatusActive
+			if resourceID != "" {
+				existing, err := s.findResource(kind, resourceID)
+				if err != nil {
+					return err
+				}
+				resultingStatus = existing.Status
+			}
+			if req.Status != "" {
+				resultingStatus = req.Status
+			}
+			if target.Status != StatusActive && !strings.EqualFold(strings.TrimSpace(resultingStatus), StatusDisabled) {
+				return NewHTTPError(http.StatusBadRequest, "invalid_quota_policy_scope", "User quota policies require an active user")
+			}
+			if normalizeAdminRole(user.Role) == "team_leader" && !userHasTeam(target, user.TeamID) {
+				return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Team leader can only manage quotas for users in own team")
+			}
 		}
 	}
 	if normalizeAdminRole(user.Role) != "team_leader" || kind != "quota-policies" {
@@ -1048,7 +1103,12 @@ func (s *Server) validateScopedResourceMutation(user AdminUser, kind string, res
 			return nil
 		}
 	}
-	if !s.quotaPolicyReferencesManageableProject(user, req) {
+	if strings.EqualFold(strings.TrimSpace(firstStringField(quotaFields, "scope", "scope_type")), "user") {
+		return nil
+	}
+	validationReq := req
+	validationReq.Fields = quotaFields
+	if !s.quotaPolicyReferencesManageableProject(user, validationReq) {
 		return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Quota policy must belong to a manageable project")
 	}
 	return nil

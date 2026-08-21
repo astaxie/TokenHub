@@ -1,4 +1,5 @@
 import { Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, type ModalState, type Model, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
 import { filterRows } from "../domain/catalog";
@@ -327,14 +328,12 @@ export function EntityTable<T>({
                   ) : null}
                   {(config.actions ?? [])
                     .filter((action) => action.visible?.(item) ?? true)
-                    .map((action) => (
-                      <button
-                        className="text-button"
-                        key={action.label}
-                        onClick={() => onAction(action, item)}
-                        title={tx(action.title ?? action.label)}
-                        type="button"
-                      >
+                    .map((action) => action.href ? (
+                      <Link className="text-button row-action-link" href={action.href(item)} key={action.label} title={tx(action.title ?? action.label)}>
+                        {tx(action.label)}
+                      </Link>
+                    ) : (
+                      <button className="text-button" key={action.label} onClick={() => onAction(action, item)} title={tx(action.title ?? action.label)} type="button">
                         {tx(action.label)}
                       </button>
                     ))}

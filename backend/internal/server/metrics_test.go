@@ -153,6 +153,65 @@ func TestMetricsRecordInheritedRateLimitScopeWithoutPerKeySeries(t *testing.T) {
 	}
 }
 
+func TestMetricsAndAuditRecordUserRateLimitScopeWithoutIdentityLabels(t *testing.T) {
+	store, server, secret := newMetricsTestServer(t, false)
+	key := store.ListAPIKeys()[0]
+	const userID = "usr_metrics_quota"
+	if err := store.db.Model(&APIKey{}).Where("id = ?", key.ID).Update("owner_user_id", userID).Error; err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("quota-policies", AdminResource{
+		Name: "User RPM", Status: StatusActive,
+		Fields: map[string]any{"scope": "user", "scope_id": userID, "rate_limit_rpm": int64(1)},
+	})
+	app := server.Handler()
+	if code := chatOnce(t, app, secret, false); code != http.StatusOK {
+		t.Fatalf("first chat failed: %d", code)
+	}
+	rejected := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-4.1-mini", "messages": []map[string]any{{"role": "user", "content": "hi"}},
+	}, secret)
+	if rejected.Code != http.StatusTooManyRequests || !strings.Contains(rejected.Body, `"scope":"user"`) {
+		t.Fatalf("user RPM rejection did not expose the bounded scope diagnostic: %d %s", rejected.Code, rejected.Body)
+	}
+	if got := testutil.ToFloat64(server.metrics.rateLimitHits.WithLabelValues("user", "rpm", metricsLabelUnset)); got != 1 {
+		t.Fatalf("expected one user RPM hit without an identity label, got %v", got)
+	}
+	var payload RequestPayloadLog
+	if err := store.db.Order("created_at DESC").First(&payload).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(payload.ResponseBody, `"scope": "user"`) || strings.Contains(payload.ResponseBody, userID) {
+		t.Fatalf("quota audit payload did not retain only the bounded scope: %s", payload.ResponseBody)
+	}
+}
+
+func TestMetricsRecordUserDailyQuotaScope(t *testing.T) {
+	store, server, secret := newMetricsTestServer(t, false)
+	key := store.ListAPIKeys()[0]
+	const userID = "usr_metrics_daily_quota"
+	if err := store.db.Model(&APIKey{}).Where("id = ?", key.ID).Update("owner_user_id", userID).Error; err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("quota-policies", AdminResource{
+		Name: "User daily requests", Status: StatusActive,
+		Fields: map[string]any{"scope": "user", "scope_id": userID, "daily_requests": int64(1)},
+	})
+	app := server.Handler()
+	if code := chatOnce(t, app, secret, false); code != http.StatusOK {
+		t.Fatalf("first chat failed: %d", code)
+	}
+	rejected := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-4.1-mini", "messages": []map[string]any{{"role": "user", "content": "hi"}},
+	}, secret)
+	if rejected.Code != http.StatusTooManyRequests || !strings.Contains(rejected.Body, `"scope":"user"`) {
+		t.Fatalf("user daily quota rejection did not expose its scope: %d %s", rejected.Code, rejected.Body)
+	}
+	if got := testutil.ToFloat64(server.metrics.rateLimitHits.WithLabelValues("user", "daily_requests", metricsLabelUnset)); got != 1 {
+		t.Fatalf("expected one bounded user daily quota hit, got %v", got)
+	}
+}
+
 // The cost reported to Prometheus must be the priced value, which is only computed
 // inside FinishCall — instrumenting earlier would have reported zero.
 func TestMetricsCostMatchesUsageRecord(t *testing.T) {

@@ -7,6 +7,7 @@ export type AuditRequestPageParameters = {
 	status: AuditRequestStatus;
 	query: string;
 	model?: string;
+	apiKeyID?: string;
 	since?: string;
 	until?: string;
 };
@@ -31,6 +32,7 @@ export function auditRequestPagePath(parameters: AuditRequestPageParameters) {
 	query.set("status", parameters.status);
 	query.set("q", parameters.query.trim());
 	if (parameters.model?.trim()) query.set("model", parameters.model.trim());
+	if (parameters.apiKeyID?.trim()) query.set("api_key_id", parameters.apiKeyID.trim());
 	if (parameters.since) query.set("since", parameters.since);
 	if (parameters.until) query.set("until", parameters.until);
 	return `/api/admin/audit/requests?${query.toString()}`;

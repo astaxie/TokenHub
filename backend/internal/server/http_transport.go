@@ -297,12 +297,16 @@ func isSensitiveAuditKey(key string) bool {
 
 func auditErrorPayload(err error, requestID string) map[string]any {
 	httpErr := AsHTTPError(err)
+	errorPayload := map[string]any{
+		"message": httpErr.Message,
+		"type":    httpErr.Code,
+		"code":    httpErr.Code,
+	}
+	if httpErr.Details != nil {
+		errorPayload["details"] = httpErr.Details
+	}
 	return map[string]any{
-		"error": map[string]any{
-			"message": httpErr.Message,
-			"type":    httpErr.Code,
-			"code":    httpErr.Code,
-		},
+		"error":      errorPayload,
 		"request_id": requestID,
 	}
 }

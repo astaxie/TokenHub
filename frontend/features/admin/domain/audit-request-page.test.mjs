@@ -13,10 +13,11 @@ test("audit request page path carries server-side filters and pagination", () =>
       status: "error",
       query: "Alpha Finance / 429",
 	  model: "gpt-4.1",
+	  apiKeyID: "key_123",
 	  since: "2026-08-16T00:00:00.000Z",
 	  until: "2026-08-16T01:00:00.000Z",
     }),
-    "/api/admin/audit/requests?page=3&page_size=50&status=error&q=Alpha+Finance+%2F+429&model=gpt-4.1&since=2026-08-16T00%3A00%3A00.000Z&until=2026-08-16T01%3A00%3A00.000Z",
+    "/api/admin/audit/requests?page=3&page_size=50&status=error&q=Alpha+Finance+%2F+429&model=gpt-4.1&api_key_id=key_123&since=2026-08-16T00%3A00%3A00.000Z&until=2026-08-16T01%3A00%3A00.000Z",
   );
 });
 

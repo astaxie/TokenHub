@@ -23,6 +23,12 @@ Language: [English](../user-guide.md) | [简体中文](../zh-CN/user-guide.md) |
 4. モデル ID を選び、`POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses`、`POST /v1/embeddings` を呼び出します。
 5. **Usage Analytics** と **Request Logs** でリクエスト、Token、コスト、エラーを確認します。
 
+## 1 つの API Key の利用量を確認する
+
+**Key Management** で対象 Key の **Usage** を選ぶと、専用の利用量ページが開きます。リクエスト数、成功率、レイテンシ、詳細な Token 分類、クライアント向け推定コスト、モデル別・エラー別内訳、ページング対応のリクエスト明細を確認できます。期間は直近 7 日、30 日、90 日、または最大 366 日のカスタム UTC 範囲から選択できます。
+
+クォータ欄では、Key、Project、Team、グローバルの各クォータポリシーを統合した実効上限と、現在の UTC 日次・月次カウンターを比較します。集計対象は選択した保存済み Key ID だけです。ローテーション前後の Key は関連情報として表示されますが、利用量には合算されません。監査スナップショットが有効な場合も、リクエスト内容には既存のマスキングと切り詰め規則が適用され、完全な API Key が返ることはありません。
+
 ## Playground でモデルをテストする
 
 コンソールの **Model Playground** を開くと、API スクリプトを作成せずに利用可能な chat model をテストできます。各レスポンスには streaming / buffered mode、計測可能な場合の TTFT、出力スループット、総所要時間、コンテキスト全体の input tokens、output tokens、推定コスト、ローカル完了時刻、Request ID が表示されます。レスポンスを展開すると、実レスポンスの詳細を確認できます。Provider と route の内部情報は routing-read 権限を持つロールだけに表示されます。

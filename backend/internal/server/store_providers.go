@@ -965,6 +965,36 @@ func (s *GormStore) stopInFlightLeaseHeartbeat(leaseID string) error {
 	return nil
 }
 
+func userConcurrencyLeaseID(requestID string) string {
+	return strings.TrimSpace(requestID) + ":user"
+}
+
+func requestConcurrencyLeaseIDs(requestID string) []string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return nil
+	}
+	return []string{requestID, userConcurrencyLeaseID(requestID)}
+}
+
+func (s *GormStore) stopRequestConcurrencyHeartbeats(requestID string) error {
+	var result error
+	for _, leaseID := range requestConcurrencyLeaseIDs(requestID) {
+		if err := s.stopInFlightLeaseHeartbeat(leaseID); err != nil {
+			result = err
+		}
+	}
+	return result
+}
+
+func (s *GormStore) deleteRequestConcurrencyLeases(tx *gorm.DB, requestID string) error {
+	leaseIDs := requestConcurrencyLeaseIDs(requestID)
+	if len(leaseIDs) == 0 {
+		return nil
+	}
+	return tx.Delete(&InFlightLease{}, "id IN ?", leaseIDs).Error
+}
+
 // ReleaseProviderResourceCapacity releases concurrency bookkeeping without
 // treating a local coordination failure as an upstream provider failure.
 func (s *GormStore) ReleaseProviderResourceCapacity(resourceID string, leaseID string) {

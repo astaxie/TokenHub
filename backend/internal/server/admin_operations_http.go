@@ -546,6 +546,19 @@ func (s *Server) handleAdminUsageSummary(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, summary)
 }
 
+func (s *Server) handleAdminUsageDaily(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAdmin(w, r, "usage", r.Method)
+	if !ok {
+		return
+	}
+	daily, err := s.usageDailyForUser(r.Context(), user, time.Now())
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, daily)
+}
+
 func (s *Server) handleAdminUsageBreakdown(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "usage", r.Method)
 	if !ok {

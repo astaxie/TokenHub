@@ -237,8 +237,8 @@ func testPostgresAPIKeyDeletionOrdering(t *testing.T, store *GormStore) {
 	if err := store.db.Model(&InFlightLease{}).Where("scope_type = ? AND scope_id = ?", "api_key", key.ID).Count(&leaseRows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if quotaRows != 0 || leaseRows != 0 {
-		t.Fatalf("deleted key retained quota rows=%d lease rows=%d", quotaRows, leaseRows)
+	if quotaRows == 0 || leaseRows != 0 {
+		t.Fatalf("deleted key quota history rows=%d lease rows=%d, want retained history and no leases", quotaRows, leaseRows)
 	}
 	if _, err := store.StartCall(context.Background(), project, key, model.Name, 0); !errors.Is(err, ErrInvalidAPIKey) {
 		t.Fatalf("deleted API key admission error = %v, want ErrInvalidAPIKey", err)

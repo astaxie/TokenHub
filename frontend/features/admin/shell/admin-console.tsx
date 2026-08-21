@@ -1,16 +1,16 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
-import { uniqueUIID, viewFromPath } from "../domain/formatting";
+import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/formatting";
 import { reportDatasetLabel } from "../domain/labels";
 import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
 import { resourceCreateTarget } from "../domain/resource-create-target";
@@ -41,11 +41,13 @@ import { ContentSecurityPolicies, SecurityPolicyTabs } from "../views/security-p
 import { APIKeyWizardModal, UserImportModal } from "../views/modals";
 import { EditModal, SettingsView } from "../views/settings-table";
 import { BillingView, UsageView } from "../views/usage-billing";
+import { APIKeyUsageView } from "../views/api-key-usage";
 
 export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const routeView = viewFromPath(pathname);
+  const apiKeyUsageID = apiKeyUsageIDFromPath(pathname);
   const [language, setLanguage] = useState<AppLanguage>(() => readSavedLanguage());
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [baseURL, setBaseURL] = useState(defaultBaseURL);
@@ -78,6 +80,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [confirmDelete, setConfirmDelete] = useState<ConfirmState<any> | null>(null);
   const [confirmRestoreModels, setConfirmRestoreModels] = useState(false);
   const [issuedKey, setIssuedKey] = useState("");
+  const loadRef = useRef<(view?: ViewKey) => Promise<void>>(async () => undefined);
   const [reportHistory, setReportHistory] = useState<ReportExportHistoryItem[]>([]);
   const [resetToken, setResetToken] = useState("");
 
@@ -265,6 +268,14 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   }, [bootstrapped, adminToken, currentUser, activeView]);
 
   useEffect(() => {
+    if (!bootstrapped || !adminToken || !currentUser || activeView !== "usage") return;
+    const timer = window.setInterval(() => {
+      void loadRef.current("usage");
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [activeView, adminToken, bootstrapped, currentUser]);
+
+  useEffect(() => {
     if (activeView === "notification-channels" && !notificationChannelTypes.includes(modelCategoryFilter)) {
       setModelCategoryFilter("webhook");
     }
@@ -356,6 +367,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.alertDeliveries, "alert-deliveries", "/api/admin/alert-deliveries");
       queue(plan.approvals, "approvals", "/api/admin/approvals");
       queue(plan.sqliteBackups, "sqlite-backups", "/api/admin/sqlite/backups");
+      queue(plan.dailyUsage, "daily-usage", "/api/admin/usage/daily");
       queue(plan.breakdown, "breakdown", "/api/admin/usage/breakdown");
       queue(plan.timeseries, "timeseries", "/api/admin/usage/timeseries");
       queue(plan.users, "users", "/api/admin/users");
@@ -429,6 +441,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         } else if (name === "sqlite-backups") {
           const payload = (await resp.json()) as { data: SQLiteBackup[] };
           loaded.sqliteBackups = payload.data ?? [];
+        } else if (name === "daily-usage") {
+          loaded.dailyUsage = (await resp.json()) as UsageDaily;
         } else if (name === "breakdown") {
           loaded.breakdown = (await resp.json()) as UsageBreakdown;
         } else if (name === "timeseries") {
@@ -476,6 +490,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setLoading(false);
     }
   }
+  loadRef.current = load;
 
   async function login(identity: string, password: string) {
     setLoading(true);
@@ -833,7 +848,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         />
 
         <div className={activeView === "playground" ? "content-panel playground-content-panel" : "content-panel"}>
-          {activeView === "playground" || activeView === "overview" ? null : (
+          {activeView === "playground" || activeView === "overview" || apiKeyUsageID ? null : (
             <PageHeader activeView={activeView} data={data} meta={activeMeta} user={currentUser} />
           )}
 
@@ -844,9 +859,11 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             onClearNotice={() => setNotice("")}
           />
 
-          {activeView === "playground" ? null : <div className="divider" />}
+          {activeView === "playground" || apiKeyUsageID ? null : <div className="divider" />}
 
-          {activeView === "overview" ? (
+          {apiKeyUsageID ? (
+            <APIKeyUsageView api={api} data={data} user={currentUser} keyID={apiKeyUsageID} onBack={() => selectView("api-keys")} />
+          ) : activeView === "overview" ? (
             <OverviewView data={data} user={currentUser} onSelectView={selectView} />
           ) : activeView === "playground" ? (
             <PlaygroundPage api={api} data={data} canViewRoutes={canAccessView(currentUser, "routes")} />

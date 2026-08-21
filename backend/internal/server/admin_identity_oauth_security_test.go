@@ -222,6 +222,7 @@ func TestSafeOAuthReturnURLIgnoresOriginAndReferer(t *testing.T) {
 		PublicBaseURL:      "https://api.tokenhub.example",
 		CORSAllowedOrigins: []string{"not-an-origin", "https://console.tokenhub.example:8443"},
 	})
+	t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
 	request := httptest.NewRequest(http.MethodGet, "http://internal:8080/api/admin/auth/oauth/start", nil)
 	request.Header.Set("Origin", "https://attacker.example")
 	request.Header.Set("Referer", "https://attacker.example/login")
@@ -253,13 +254,13 @@ func TestSafeOAuthReturnURLIgnoresOriginAndReferer(t *testing.T) {
 	}
 
 	request.Host = "admin.internal.test:8080"
-	server.config = Config{}
-	if got := server.safeOAuthReturnURL("https://attacker.example/steal", request); got != "http://admin.internal.test:8080/overview" {
+	unconfigured := &Server{}
+	if got := unconfigured.safeOAuthReturnURL("https://attacker.example/steal", request); got != "http://admin.internal.test:8080/overview" {
 		t.Fatalf("request Host fallback = %q", got)
 	}
 
 	loopbackRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/admin/auth/oauth/start", nil)
-	if got := server.safeOAuthReturnURL("http://localhost:3000/settings", loopbackRequest); got != "http://127.0.0.1:8080/overview" {
+	if got := unconfigured.safeOAuthReturnURL("http://localhost:3000/settings", loopbackRequest); got != "http://127.0.0.1:8080/overview" {
 		t.Fatalf("unconfigured loopback return URL = %q", got)
 	}
 }

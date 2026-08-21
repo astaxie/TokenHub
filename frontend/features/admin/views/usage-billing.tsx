@@ -2,9 +2,9 @@ import { CirclePause, CirclePlay, Pencil, Plus, RefreshCw, TestTube2, X } from "
 import { type FormEvent, useState } from "react";
 import { appRole } from "../core/navigation";
 import { type AdminUser, type ApiContext, type AppData, type BillingConnector, type UsageBreakdownRow } from "../core/types";
-import { costCenterLabel, projectName, providerCostDetailRows, teamLabel, usageMemberLabel } from "../domain/entities";
+import { apiKeyAuditLabel, costCenterLabel, findProvider, projectName, providerCostDetailRows, providerResourceAuditLabel, teamLabel, usageMemberLabel } from "../domain/entities";
 import { compactNumber, formatMoney, formatNumber } from "../domain/formatting";
-import { countWithUnit, displayText, languageLocale, tx } from "../i18n/runtime";
+import { countWithUnit, displayText, formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
 import { ReconciliationManager } from "./billing-reconciliation";
@@ -15,6 +15,7 @@ export function UsageView({ data, user }: { data: AppData; user: AdminUser }) {
   const showExecutiveReport = appRole(user.role) !== "user";
   return (
     <>
+      <DailyUsageSection data={data} user={user} />
       {showExecutiveReport ? <ExecutiveUsageReport data={data} /> : <PersonalUsageSummary data={data} />}
       <div className="two-column">
         <DataSection title="模型用量">
@@ -64,6 +65,152 @@ export function UsageView({ data, user }: { data: AppData; user: AdminUser }) {
       ) : null}
     </>
   );
+}
+
+export function DailyUsageSection({ data, user }: { data: AppData; user: AdminUser }) {
+  const daily = data.dailyUsage;
+  const summary = daily.summary;
+  const role = appRole(user.role);
+  const showMemberBreakdown = role === "team_leader";
+  const showGovernanceBreakdown = role !== "user";
+  const showProviderBreakdown = role === "admin";
+  const tokenDetail = dailyUsageTokenDetail(summary.input_tokens, summary.cached_input_tokens ?? 0, summary.cache_write_input_tokens ?? 0, summary.output_tokens);
+  const tokenTypeRows = dailyUsageTokenTypeRows(summary);
+  return (
+    <section className="executive-report daily-usage-report">
+      <header className="executive-report-head">
+        <div>
+          <p className="eyebrow">{tx("今日用量")}</p>
+          <h2>{tx("当天用量")}</h2>
+          <span>{dailyUsageWindowLabel(daily.window_start, daily.window_end, daily.timezone)}</span>
+        </div>
+        <div className="executive-report-tools">
+          <span>{daily.timezone}</span>
+          <span>{dailyUsageDateLabel(daily.window_start, daily.timezone)}</span>
+          <span>{tx("每 30 秒刷新")}</span>
+        </div>
+      </header>
+
+      <div className="executive-kpi-grid">
+        <ExecutiveKPI label="今日 Token 消耗" value={compactNumber(summary.total_tokens)} detail={tokenDetail} />
+        <ExecutiveKPI label="今日请求" value={formatNumber(summary.request_count)} detail={countWithUnit(summary.usage_record_count ?? summary.request_count, "条用量记录", "usage record", "件の利用記録")} />
+        <ExecutiveKPI label="今日估算成本" value={`$${formatMoney(summary.estimated_cost_usd)}`} detail={tx("按当前可见记录汇总")} />
+        <ExecutiveKPI label="今日缓存读" value={compactNumber(summary.cached_input_tokens ?? 0)} detail={cacheHitRate(summary.cached_input_tokens ?? 0, summary.input_tokens)} />
+      </div>
+
+      <div className="executive-grid daily-usage-grid">
+        <DailyTokenTypeTable rows={tokenTypeRows} />
+        <DailyUsageTable title="今日模型用量" label="模型" rows={daily.breakdown.models ?? []} nameForRow={(row) => row.id} paginationKey="daily-usage-models" />
+        {showMemberBreakdown ? <DailyUsageTable title="今日成员用量" label="成员" rows={daily.breakdown.members ?? []} nameForRow={(row) => usageMemberLabel(data, row.id)} paginationKey="daily-usage-members" /> : null}
+        <DailyUsageTable title="今日项目归因" label="项目" rows={daily.breakdown.projects ?? []} nameForRow={(row) => projectName(data, row.id)} paginationKey="daily-usage-projects" />
+        <DailyUsageTable title="今日 API Key 用量" label="API Key" rows={daily.breakdown.api_keys ?? []} nameForRow={(row) => apiKeyAuditLabel(data, row.id)} paginationKey="daily-usage-api-keys" />
+        {showProviderBreakdown ? <DailyUsageTable title="今日 Provider 用量" label="Provider" rows={daily.breakdown.providers ?? []} nameForRow={(row) => findProvider(data, row.id)?.name || row.id} paginationKey="daily-usage-providers" /> : null}
+        {showProviderBreakdown ? <DailyUsageTable title="今日资源账号用量" label="资源账号" rows={daily.breakdown.provider_resources ?? []} nameForRow={(row) => providerResourceAuditLabel(data, row.id)} paginationKey="daily-usage-provider-resources" /> : null}
+        {showGovernanceBreakdown ? <DailyUsageTable title="今日成本中心用量" label="成本中心" rows={daily.breakdown.cost_centers ?? []} nameForRow={(row) => costCenterLabel(data, row.id)} paginationKey="daily-usage-cost-centers" /> : null}
+      </div>
+    </section>
+  );
+}
+
+function DailyTokenTypeTable({ rows }: { rows: UsageBreakdownRow[] }) {
+  return (
+    <article className="executive-panel">
+      <div className="executive-panel-head compact">
+        <div>
+          <h3>{tx("今日 Token 类型")}</h3>
+          <span>{tx("按 Token 降序")}</span>
+        </div>
+      </div>
+      <SimpleTable
+        columns={["类型", "Token"]}
+        paginationKey="daily-usage-token-types"
+        rows={rows.map((row) => [
+          displayText(row.id),
+          compactNumber(row.total_tokens),
+        ])}
+      />
+    </article>
+  );
+}
+
+function DailyUsageTable({ title, label, rows, nameForRow, paginationKey }: { title: string; label: string; rows: UsageBreakdownRow[]; nameForRow: (row: UsageBreakdownRow) => string; paginationKey: string }) {
+  return (
+    <article className="executive-panel">
+      <div className="executive-panel-head compact">
+        <div>
+          <h3>{tx(title)}</h3>
+          <span>{tx("按 Token 降序")}</span>
+        </div>
+      </div>
+      <SimpleTable
+        columns={[label, "请求", "Token", "缓存读", "成本"]}
+        paginationKey={paginationKey}
+        rows={rows.map((row) => [
+          displayText(nameForRow(row)),
+          formatNumber(row.request_count),
+          compactNumber(row.total_tokens),
+          compactNumber(row.cached_input_tokens ?? 0),
+          `$${formatMoney(row.estimated_cost_usd)}`,
+        ])}
+      />
+    </article>
+  );
+}
+
+function dailyUsageWindowLabel(start: string, end: string, timezone: string) {
+  if (!start || !end) return tx("按仪表盘时区切换自然日");
+  const formatter = new Intl.DateTimeFormat(languageLocale(), {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: timezone,
+  });
+  return formatTranslationTemplate(tx("统计窗口：{start} - {end}"), {
+    start: formatter.format(new Date(start)),
+    end: formatter.format(new Date(end)),
+  });
+}
+
+function dailyUsageDateLabel(start: string, timezone: string) {
+  if (!start) return tx("今日");
+  return new Intl.DateTimeFormat(languageLocale(), {
+    dateStyle: "medium",
+    timeZone: timezone,
+  }).format(new Date(start));
+}
+
+function dailyUsageTokenDetail(inputTokens: number, cachedInputTokens: number, cacheWriteInputTokens: number, outputTokens: number) {
+  return formatTranslationTemplate(tx("输入 {input} / 缓存读 {cached} / 缓存写 {cacheWrite} / 输出 {output}"), {
+    input: compactNumber(inputTokens),
+    cached: compactNumber(cachedInputTokens),
+    cacheWrite: compactNumber(cacheWriteInputTokens),
+    output: compactNumber(outputTokens),
+  });
+}
+
+function dailyUsageTokenTypeRows(summary: AppData["dailyUsage"]["summary"]): UsageBreakdownRow[] {
+  const cachedInputTokens = summary.cached_input_tokens ?? 0;
+  const cacheWriteInputTokens = summary.cache_write_input_tokens ?? 0;
+  const uncachedInputTokens = Math.max(0, summary.input_tokens - cachedInputTokens - cacheWriteInputTokens);
+  return [
+    dailyUsageTokenTypeRow("输入", uncachedInputTokens),
+    dailyUsageTokenTypeRow("缓存读", cachedInputTokens),
+    dailyUsageTokenTypeRow("缓存写", cacheWriteInputTokens),
+    dailyUsageTokenTypeRow("输出", summary.output_tokens),
+  ].filter((row) => row.total_tokens > 0);
+}
+
+function dailyUsageTokenTypeRow(id: string, tokens: number): UsageBreakdownRow {
+  return {
+    id,
+    request_count: 0,
+    input_tokens: id === "输入" ? tokens : 0,
+    cached_input_tokens: id === "缓存读" ? tokens : 0,
+    output_tokens: id === "输出" ? tokens : 0,
+    total_tokens: tokens,
+    estimated_cost_usd: 0,
+  };
 }
 
 export function cacheHitRate(cachedInputTokens: number, inputTokens: number) {

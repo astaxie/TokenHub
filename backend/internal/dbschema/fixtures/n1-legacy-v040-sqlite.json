@@ -1,0 +1,2793 @@
+{
+  "tables": [
+    {
+      "name": "adapter_session_bindings",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "adapter_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "affinity_kind",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "affinity_key_hash",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "generation",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rebind_reason",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "last_used_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "adapter_type",
+            "provider_id",
+            "affinity_key_hash"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "resource_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "admin_password_reset_tokens",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "token_hash",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "used_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "token_hash"
+          ],
+          "unique": true
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "admin_resources",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "fields",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id",
+        "kind"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "kind"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "admin_sessions",
+      "columns": [
+        {
+          "name": "token",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "token"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "admin_users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "username",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "team_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "password_hash",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "last_login_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "username"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "email"
+          ],
+          "unique": true
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "alert_deliveries",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "alert_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "channel_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "channel",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "target",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status_code",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "alert_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "channel_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "status"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "alert_events",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "scope_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "scope_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "scope_type"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "scope_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "api_keys",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "owner_user_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "group",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "key_hash",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "key_prefix",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "key_suffix",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "allowed",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "ip_allowlist",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "limit_daily_requests",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "limit_monthly_requests",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "limit_daily_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "limit_monthly_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "limit_daily_cost_usd",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "limit_monthly_cost_usd",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "limit_max_concurrency",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "rotated_from_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "grace_until",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "last_used_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "metadata",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "owner_user_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "group"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "key_hash"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "rotated_from_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "approval_requests",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "flow_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "trigger",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "requester_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "requester",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "decided_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "decided_by",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "flow_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "trigger"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "resource_type"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "resource_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "requester_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "status"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "audit_events",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "actor_user_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "actor_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "actor_role",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "before_snapshot",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "after_snapshot",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "ip",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "user_agent",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "actor_user_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "action"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "resource_type"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "resource_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "cluster_leases",
+      "columns": [
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "owner_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "name"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "owner_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "expires_at"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "cluster_task_states",
+      "columns": [
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "completed_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "name"
+      ],
+      "indexes": null,
+      "triggers": null
+    },
+    {
+      "name": "image_assets",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "job_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "relative_path",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "content_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "byte_size",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sha256",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "role"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "image_jobs",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "api_key_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "prompt_ciphertext",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "revised_prompt_ciphertext",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "quality",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "size",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "upstream_request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "input_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cached_input_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "output_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "error_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "started_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "completed_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "api_key_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "request_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_resource_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "in_flight_leases",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "scope_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "scope_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "scope_type",
+            "scope_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "expires_at"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "model_routes",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "model_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_group",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "sticky_session",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "provider_model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "priority",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "weight",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "quality_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cost_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "strategy",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "project_scope",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "project_ids",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "last_used_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "model_name"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_resource_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "resource_group"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "models",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "family",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "modality",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "context_window",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "input_price_usd_per1_m",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "cache_read_price_usd_per1_m",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "output_price_usd_per1_m",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "embedding_price_usd_per1_m",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "input_modalities",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "output_modalities",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "capabilities",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "supported_parameters",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "metadata",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "name"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "category"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "projects",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "team_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "owner_user_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "cost_center",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "default_quota_ref",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "cost_center"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "provider_account_o_auth_session_records",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "state_hash",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "code_verifier_encrypted",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "client_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "redirect_uri",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "return_url",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "state_hash"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "expires_at"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "provider_catalog_snapshots",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "summary_json",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "catalog_json",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "fetched_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "source"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "fetched_at"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "provider_models",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "upstream_model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "canonical_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "family",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "modality",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "context_window",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "input_price_usd_per1_m",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "cache_read_price_usd_per1_m",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "output_price_usd_per1_m",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "input_modalities",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "output_modalities",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "capabilities",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "supported_parameters",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "metadata",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "last_seen_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "provider_id",
+            "upstream_model"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "category"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "source"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "status"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "provider_observations",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "adapter_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "operation",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "success",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "latency_ms",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "error_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "observed_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "resource_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "adapter_type"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "source"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "operation"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "success"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "observed_at"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "provider_resource_buckets",
+      "columns": [
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "bucket",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "requests",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "resource_id",
+        "bucket"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "resource_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "bucket"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "provider_resource_observations",
+      "columns": [
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "adapter_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "rate_limit_headers",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "quota_snapshot",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "quota_fetched_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "upstream_request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "served_model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model_e_tag",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "transport",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "resource_id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "adapter_type"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "provider_resources",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "group",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "resource_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "base_url",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "api_key",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "region",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "environment",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "healthy",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "priority",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "weight",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rate_limit_rpm",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "token_limit_tpm",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "max_concurrency",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "headers",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "options",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "credential_blob",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "failure_count",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cooldown_until",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "last_used_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "last_checked_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "group"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "providers",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "base_url",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "api_key",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "healthy",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "priority",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "headers",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "options",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": null,
+      "triggers": null
+    },
+    {
+      "name": "quota_buckets",
+      "columns": [
+        {
+          "name": "key_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "scope",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "bucket",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "requests",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "prompt_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "completion_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cost_usd",
+          "type": "real",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "key_id",
+        "scope",
+        "bucket"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "key_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "bucket"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "request_logs",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "api_key_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "upstream_request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "served_model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model_e_tag",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "transport",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status_code",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "error_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "latency_ms",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "client_ip",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "user_agent",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "request_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "api_key_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "model_name"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_resource_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "request_payload_logs",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "request_body",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "response_body",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "request_truncated",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "response_truncated",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "request_id"
+          ],
+          "unique": true
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "route_attempt_logs",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "attempt_index",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "route_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_model",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status_code",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "error_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "invoked",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "latency_ms",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "request_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "route_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "route_id",
+            "invoked",
+            "created_at"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_resource_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "invoked"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "sq_lite_backup_records",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "file_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "file_path",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "trigger",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "size_bytes",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "checksum_sha256",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "restored_by",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "restored_at",
+          "type": "datetime",
+          "nullable": true
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "created_by"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "name": "usage_records",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "api_key_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "attributed_user_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "provider_resource_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "input_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cached_input_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cache_write_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "output_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "reasoning_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cost_usd",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true
+        }
+      ],
+      "pk_columns": [
+        "id"
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "request_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "api_key_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "attributed_user_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "model_name"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_id"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "provider_resource_id"
+          ],
+          "unique": false
+        }
+      ],
+      "triggers": null
+    }
+  ]
+}

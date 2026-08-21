@@ -66,6 +66,7 @@ func TestAdminOperationGETMethodRoutesRejectHEADAfterAuthorization(t *testing.T)
 
 	paths := []string{
 		"/api/admin/usage/summary",
+		"/api/admin/usage/daily",
 		"/api/admin/usage/breakdown",
 		"/api/admin/usage/timeseries",
 		"/api/admin/audit/requests",
@@ -214,6 +215,7 @@ func adminOperationMethodRouteContracts() []adminOperationMethodRouteContract {
 	return []adminOperationMethodRouteContract{
 		{name: "billing_generate", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/billing/generate", userWantStatus: http.StatusMethodNotAllowed, securityWantStatus: http.StatusMethodNotAllowed},
 		{name: "usage_summary", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/usage/summary", userWantStatus: http.StatusForbidden, securityWantStatus: http.StatusForbidden},
+		{name: "usage_daily", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/usage/daily", userWantStatus: http.StatusForbidden, securityWantStatus: http.StatusForbidden},
 		{name: "usage_breakdown", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/usage/breakdown", userWantStatus: http.StatusForbidden, securityWantStatus: http.StatusForbidden},
 		{name: "usage_timeseries", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/usage/timeseries", userWantStatus: http.StatusForbidden, securityWantStatus: http.StatusForbidden},
 		{name: "request_logs", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/audit/requests", userWantStatus: http.StatusForbidden, securityWantStatus: http.StatusMethodNotAllowed},

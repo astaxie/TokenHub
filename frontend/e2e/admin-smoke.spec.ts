@@ -47,7 +47,7 @@ test("admin can validate and create a custom Provider", async ({ page }) => {
   await expect(page.getByText("E2E Fake Provider", { exact: true }).first()).toBeVisible();
 });
 
-test("admin can issue a one-time API Key", async ({ page }) => {
+test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "Key 管理", exact: true }).click();
   await expect(page).toHaveURL(/\/api-keys$/);
@@ -65,4 +65,14 @@ test("admin can issue a one-time API Key", async ({ page }) => {
   const issuedKeyDialog = page.getByRole("dialog", { name: "新 Key 已生成" });
   await expect(issuedKeyDialog).toBeVisible();
   await expect(issuedKeyDialog.getByLabel("完整 Key")).toHaveValue(/^sk_/);
+  const closeButton = issuedKeyDialog.getByRole("button", { name: "我已保存，关闭" });
+  await expect(closeButton).toBeEnabled({ timeout: 5_000 });
+  await closeButton.click();
+
+  const keyRow = page.getByRole("row").filter({ hasText: "E2E Regression Key" });
+  await keyRow.getByRole("link", { name: "用量" }).click();
+  await expect(page).toHaveURL(/\/api-keys\/[^/]+\/usage$/);
+  await expect(page.getByRole("heading", { name: "E2E Regression Key" })).toBeVisible();
+  await expect(page.getByText("当前 Key 有效额度", { exact: true })).toBeVisible();
+  await expect(page.getByText("所选条件下暂无请求", { exact: true })).toBeVisible();
 });

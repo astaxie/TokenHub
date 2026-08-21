@@ -265,6 +265,7 @@ func seedDefaultOrgResources(store Store) error {
 			"public_base_url":             "http://localhost:8080",
 			"default_timeout":             "120s",
 			"audit_retention":             "180d",
+			"dashboard_timezone":          "UTC",
 			"api_key_prefix":              DefaultAPIKeyPrefix,
 			"api_key_random_length":       DefaultAPIKeyRandomLength,
 			syntheticDNSEnabledField:      false,

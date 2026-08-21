@@ -214,6 +214,11 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/api-keys/${item.id}`),
     actions: [
       {
+        label: "用量",
+        title: "查看这个 Key 的用量详情",
+        href: (item) => `/api-keys/${encodeURIComponent(item.id)}/usage`,
+      },
+      {
         label: "轮换",
         title: "生成新 Key，并立即吊销旧 Key",
         run: async (ctx, item) => {

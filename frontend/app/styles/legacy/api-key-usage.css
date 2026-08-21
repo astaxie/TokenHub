@@ -1,0 +1,51 @@
+.api-key-usage-page { display: grid; gap: 20px; }
+.api-key-usage-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 18px; }
+.api-key-usage-head > .secondary-button { display: inline-flex; align-items: center; gap: 6px; }
+.row-action-link { display: inline-flex; align-items: center; justify-content: center; border: 0; line-height: 1; text-decoration: none; }
+.api-key-usage-head h1 { margin: 4px 0; font-size: 28px; }
+.api-key-usage-head p { margin: 0; color: var(--muted); }
+.api-key-identity { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--border); }
+.api-key-identity > div { display: grid; gap: 5px; min-width: 0; padding: 14px 16px; background: var(--surface); }
+.api-key-identity span, .api-key-usage-kpis span, .api-key-quota-card > span { color: var(--muted); font-size: 12px; }
+.api-key-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.api-key-range-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.api-key-range-presets { display: flex; gap: 6px; }
+.api-key-range-presets button, .api-key-chart-tools button { border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted); padding: 7px 11px; cursor: pointer; }
+.api-key-range-presets button.active, .api-key-chart-tools button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text); }
+.api-key-custom-range { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.api-key-custom-range label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.api-key-custom-range input, .api-key-request-filters select { min-height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); color: var(--text); padding: 6px 9px; }
+.api-key-range-toolbar > small { margin-left: auto; color: var(--muted); }
+.api-key-usage-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.api-key-usage-kpis article { display: grid; gap: 7px; padding: 17px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.api-key-usage-kpis strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.api-key-usage-kpis small { color: var(--muted); }
+.api-key-quota-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.api-key-quota-card { position: relative; display: grid; gap: 6px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; }
+.api-key-quota-card strong { font-size: 20px; }
+.api-key-quota-card small, .api-key-quota-card em { color: var(--muted); font-size: 11px; font-style: normal; }
+.api-key-quota-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.api-key-quota-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.api-key-effective-limits { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+.api-key-chart-tools { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+.api-key-chart-tools span { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--muted); font-size: 12px; }
+.api-key-usage-chart { display: flex; align-items: end; gap: 3px; height: 230px; padding: 10px 4px 30px; border-bottom: 1px solid var(--border); }
+.api-key-usage-bar { position: relative; display: flex; align-items: end; flex: 1; height: 100%; min-width: 2px; }
+.api-key-usage-bar > span { width: 100%; min-height: 1px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 45%, transparent)); }
+.api-key-usage-bar small { position: absolute; top: calc(100% + 8px); left: 0; color: var(--muted); font-size: 9px; white-space: nowrap; }
+.api-key-request-filters { display: grid; grid-template-columns: minmax(240px, 1fr) auto auto; gap: 9px; margin-bottom: 14px; }
+.api-key-request-filters .search-box { width: auto; }
+.request-list-summary { display: flex; gap: 12px; padding: 8px 2px; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 1000px) {
+  .api-key-identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .api-key-usage-kpis, .api-key-quota-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .api-key-usage-breakdowns { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .api-key-usage-head { grid-template-columns: 1fr; }
+  .api-key-identity, .api-key-usage-kpis, .api-key-quota-grid, .api-key-request-filters { grid-template-columns: 1fr; }
+  .api-key-custom-range { align-items: stretch; }
+  .api-key-range-toolbar > small { margin-left: 0; width: 100%; }
+}

@@ -13,7 +13,18 @@ export function initialView(): ViewKey {
 export function viewFromPath(pathname: string): ViewKey {
   const normalized = pathname.replace(/^\/+|\/+$/g, "");
   if (!normalized) return "overview";
+  if (apiKeyUsageIDFromPath(pathname)) return "api-keys";
   return routeViews[normalized] ?? "overview";
+}
+
+export function apiKeyUsageIDFromPath(pathname: string) {
+  const match = pathname.match(/^\/api-keys\/([^/]+)\/usage\/?$/);
+  if (!match?.[1]) return "";
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return "";
+  }
 }
 
 export function playgroundModels(data: AppData, sortByRoutes = data.routes.length > 0) {
