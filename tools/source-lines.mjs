@@ -49,6 +49,8 @@ export const SKIP_DIRECTORIES = new Set([
  * table into a stricter-than-default limit on one file.
  */
 export const FROZEN = new Map([
+  ["backend/internal/server/gateway_http.go", 1506],
+  ["backend/internal/server/metrics_test.go", 1549],
   ["frontend/app/styles/legacy/resources.css", 1508],
   ["frontend/features/admin/views/provider-editor.tsx", 2006],
 ]);

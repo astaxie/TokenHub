@@ -307,14 +307,14 @@ func newMetricsKronkTestServer(t *testing.T, upstreamURL string) (*Server, strin
 		Healthy: true,
 	})
 	resource, err := store.AddProviderResource(ProviderResource{
-		ID:           "rsrc_metrics_kronk",
-		ProviderID:   provider.ID,
-		Name:         "Metrics Kronk Resource",
-		ResourceType: "openai",
-		Status:       StatusActive,
-		Healthy:      true,
-		Priority:     1,
-		Weight:       100,
+		ID:             "rsrc_metrics_kronk",
+		ProviderID:     provider.ID,
+		Name:           "Metrics Kronk Resource",
+		ResourceType:   "openai",
+		Status:         StatusActive,
+		Healthy:        true,
+		Priority:       1,
+		Weight:         100,
 		MaxConcurrency: 10,
 	})
 	if err != nil {
