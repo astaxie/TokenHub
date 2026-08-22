@@ -346,6 +346,8 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireOperationParameter(t, document, "/v1/messages/count_tokens", "post", "header", "anthropic-version")
 	requireOperationParameter(t, document, "/v1/messages/count_tokens", "post", "header", "anthropic-beta")
 	requireArrayItemsRef(t, document, "AnthropicCountTokensRequest", "messages", "#/components/schemas/AnthropicMessage")
+	requireSchemaRequired(t, document, "ChatMessage", []string{"role"})
+	requireSchemaEnum(t, document, "ChatCompletionRequest", "reasoning_effort", []string{"minimal", "low", "medium", "high", "xhigh", "max"})
 	requireSchemaProperty(t, document, "ResponsesRequest", "max_output_tokens")
 	requireSchemaProperty(t, document, "ResponsesRequest", "temperature")
 	requireSchemaProperty(t, document, "ResponsesRequest", "instructions")
@@ -353,6 +355,9 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireSchemaProperty(t, document, "ResponsesRequest", "reasoning")
 	requireSchemaProperty(t, document, "ResponsesRequest", "service_tier")
 	requireOneOfContainsRef(t, document, "ResponsesRequest", "input", "#/components/schemas/ResponseInputItem")
+	requireSchemaEnum(t, document, "ResponsesReasoning", "effort", []string{"minimal", "low", "medium", "high", "xhigh", "max"})
+	requireSchemaRequired(t, document, "ResponseTool", []string{"type"})
+	requireSchemaPropertyNoConst(t, document, "ResponseTool", "type")
 	requireArrayItemsRef(t, document, "ResponsesResponse", "output", "#/components/schemas/ResponseOutputItem")
 	requireArrayItemsRef(t, document, "ChatCompletionResponse", "choices", "#/components/schemas/ChatCompletionChoice")
 }
@@ -809,6 +814,16 @@ func requireSchemaProperty(t *testing.T, document map[string]any, schemaName str
 	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
 	if _, ok := properties[property]; !ok {
 		t.Fatalf("schema %s must document property %s", schemaName, property)
+	}
+}
+
+func requireSchemaPropertyNoConst(t *testing.T, document map[string]any, schemaName string, property string) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
+	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
+	propertySchema := asMap(t, properties[property], "components.schemas."+schemaName+".properties."+property)
+	if value, ok := propertySchema["const"]; ok {
+		t.Fatalf("schema %s property %s must not use const, got %v", schemaName, property, value)
 	}
 }
 

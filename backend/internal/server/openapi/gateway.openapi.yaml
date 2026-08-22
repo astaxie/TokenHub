@@ -1358,7 +1358,7 @@ components:
           $ref: "#/components/schemas/ChatResponseFormat"
         reasoning_effort:
           type: string
-          enum: [minimal, low, medium, high, xhigh]
+          enum: [minimal, low, medium, high, xhigh, max]
         metadata:
           type: object
           additionalProperties: true
@@ -1366,7 +1366,7 @@ components:
         user: {}
     ChatMessage:
       type: object
-      required: [role, content]
+      required: [role]
       additionalProperties: true
       properties:
         role:
@@ -1642,7 +1642,7 @@ components:
       properties:
         effort:
           type: string
-          enum: [minimal, low, medium, high, xhigh]
+          enum: [minimal, low, medium, high, xhigh, max]
         mode:
           type: string
         context:
@@ -1769,12 +1769,15 @@ components:
           type: string
     ResponseTool:
       type: object
-      required: [type, name]
+      description: >
+        Responses tool definition. TokenHub forwards OpenAI-compatible function
+        tools and built-in Responses tools such as web_search and file_search,
+        preserving additional provider-supported tool fields.
+      required: [type]
       additionalProperties: true
       properties:
         type:
           type: string
-          const: function
         name:
           type: string
         description:
@@ -1789,12 +1792,11 @@ components:
         - type: string
           enum: [none, auto, required]
         - type: object
-          required: [type, name]
+          required: [type]
           additionalProperties: true
           properties:
             type:
               type: string
-              const: function
             name:
               type: string
     ResponseTextConfig:
