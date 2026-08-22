@@ -402,7 +402,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AnthropicMessagesRequest"
+              $ref: "#/components/schemas/AnthropicCountTokensRequest"
       responses:
         "200":
           description: Token count.
@@ -1037,7 +1037,7 @@ components:
                 error:
                   code: model_not_allowed
                   message: Model is not allowed for this API key
-                  type: forbidden
+                  type: model_not_allowed
                 request_id: req_example
     ModelNotFound:
       description: Model not found.
@@ -1099,7 +1099,7 @@ components:
                 error:
                   code: image_mask_not_supported
                   message: Masks are not supported through Codex subscription accounts; use reference-image editing without a mask
-                  type: not_implemented
+                  type: image_mask_not_supported
                 request_id: req_example
     AnthropicBadRequest:
       description: Anthropic-compatible invalid request.
@@ -1369,6 +1369,24 @@ components:
           type: integer
         stream:
           type: boolean
+        system:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+    AnthropicCountTokensRequest:
+      type: object
+      required: [model, messages]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
         system:
           oneOf:
             - type: string

@@ -331,6 +331,8 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireNoResponseContentType(t, document, "/v1beta/models/{model}:streamGenerateContent", "post", "200", "application/json")
 	requireExampleValueContains(t, document, "/v1/messages", "post", "200", "text/event-stream", "messageStart", "event: message_start")
 	requireExampleValueContains(t, document, "/v1beta/models/{model}:streamGenerateContent", "post", "200", "text/event-stream", "candidate", `"candidates"`)
+	requireRequestSchemaRef(t, document, "/v1/messages/count_tokens", "post", "#/components/schemas/AnthropicCountTokensRequest")
+	requireSchemaRequired(t, document, "AnthropicCountTokensRequest", []string{"model", "messages"})
 	requireResponseRef(t, document, "/v1/messages/count_tokens", "post", "400", "#/components/responses/AnthropicBadRequest")
 	requireResponseRef(t, document, "/v1/messages/count_tokens", "post", "403", "#/components/responses/AnthropicModelNotAllowed")
 }
@@ -404,6 +406,26 @@ func assertGatewaySecuritySchemes(t *testing.T, document map[string]any) {
 	errorObject := asMap(t, value["error"], "ModelNotAllowed example error")
 	if got := errorObject["code"]; got != "model_not_allowed" {
 		t.Fatalf("ModelNotAllowed example code=%v, want model_not_allowed", got)
+	}
+	assertErrorExampleCodeAndTypeMatch(t, responses, "ModelNotAllowed", "modelNotAllowed")
+	assertErrorExampleCodeAndTypeMatch(t, responses, "ImageMaskNotSupported", "codexMaskUnsupported")
+}
+
+func assertErrorExampleCodeAndTypeMatch(t *testing.T, responses map[string]any, responseName string, exampleName string) {
+	t.Helper()
+	response := asMap(t, responses[responseName], "components.responses."+responseName)
+	content := asMap(t, response["content"], responseName+".content")
+	jsonContent := asMap(t, content["application/json"], responseName+" application/json")
+	examples := asMap(t, jsonContent["examples"], responseName+" examples")
+	example := asMap(t, examples[exampleName], responseName+" example "+exampleName)
+	value := asMap(t, example["value"], responseName+" example "+exampleName+" value")
+	errorObject := asMap(t, value["error"], responseName+" example "+exampleName+" error")
+	code, _ := errorObject["code"].(string)
+	if code == "" {
+		t.Fatalf("%s example %s missing error.code", responseName, exampleName)
+	}
+	if got := errorObject["type"]; got != code {
+		t.Fatalf("%s example %s error.type=%v, want %s", responseName, exampleName, got, code)
 	}
 }
 
@@ -714,6 +736,17 @@ func requireRequestContentType(t *testing.T, document map[string]any, path strin
 	}
 }
 
+func requireRequestSchemaRef(t *testing.T, document map[string]any, path string, method string, want string) {
+	t.Helper()
+	operation := openAPIOperation(t, document, path, method)
+	content := operationRequestContent(t, operation, strings.ToUpper(method)+" "+path)
+	media := asMap(t, content["application/json"], strings.ToUpper(method)+" "+path+" application/json")
+	schema := asMap(t, media["schema"], strings.ToUpper(method)+" "+path+" request schema")
+	if got := schema["$ref"]; got != want {
+		t.Fatalf("%s %s request schema ref=%v, want %s", strings.ToUpper(method), path, got, want)
+	}
+}
+
 func requireResponseContentType(t *testing.T, document map[string]any, path string, method string, status string, mediaType string) {
 	t.Helper()
 	operation := openAPIOperation(t, document, path, method)
@@ -756,6 +789,26 @@ func requireSchemaProperty(t *testing.T, document map[string]any, schemaName str
 	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
 	if _, ok := properties[property]; !ok {
 		t.Fatalf("schema %s must document property %s", schemaName, property)
+	}
+}
+
+func requireSchemaRequired(t *testing.T, document map[string]any, schemaName string, want []string) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
+	rawRequired, ok := schema["required"].([]any)
+	if !ok {
+		t.Fatalf("schema %s must declare required fields", schemaName)
+	}
+	got := make([]string, 0, len(rawRequired))
+	for _, raw := range rawRequired {
+		if field, ok := raw.(string); ok {
+			got = append(got, field)
+		}
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("schema %s required=%v, want %v", schemaName, got, want)
 	}
 }
 

@@ -1,8 +1,8 @@
 export const gatewayDocsTranslations: Record<"en" | "ja", Record<string, string>> = {
   en: {
-    "完整 API Reference": "Complete API Reference",
+    "完整 API 参考": "Complete API reference",
   },
   ja: {
-    "完整 API Reference": "完全な API Reference",
+    "完整 API 参考": "完全な API リファレンス",
   },
 };

@@ -107,7 +107,7 @@ function GatewayDocsView({
 
           <section className="api-doc-quick-grid" aria-label={docBundle.quickInfoLabel}>
             <GatewayCopyCard label={docBundle.quickCards.baseURL} value={baseURL} />
-            <GatewayCopyCard label={tx("完整 API Reference")} value={referenceURL} href={referenceURL} />
+            <GatewayCopyCard label={tx("完整 API 参考")} value={referenceURL} href={referenceURL} />
             <GatewayCopyCard label={docBundle.quickCards.authorization} value={`Bearer ${keyHint}`} />
             <GatewayCopyCard label={docBundle.quickCards.sampleModel} value={sampleModel} />
             <article className="gateway-copy-card api-doc-config-card">

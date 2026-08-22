@@ -72,7 +72,7 @@ flowchart TB
 多实例模式下：
 
 - Nginx 将管理后台、API 和健康检查流量负载均衡到健康副本。
-- Nginx 会把 `/docs`、`/openapi.json` 和 `/openapi.yaml` 转发到后端，因此自托管的公开网关 API Reference 与模型 API 使用同一个公开 origin。
+- Nginx 会把 `/docs`、`/openapi.json` 和 `/openapi.yaml` 转发到后端，因此自托管的公开网关 API 参考与模型 API 使用同一个公开 origin。
 - 后端副本将持久化配置、OAuth 会话、配额计数、审计数据、集群锁和请求并发租约统一存储在 PostgreSQL 中。
 - 租约过期和归属判断使用 PostgreSQL 时钟，避免不同宿主机的时钟偏差导致租约被提前接管；失去租约后，心跳会取消对应任务或请求。
 - 每个后端启动时都会同步当前配置目录中的候选模型元数据，并通过集群租约串行执行幂等同步。
@@ -183,7 +183,7 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_BACKEND_REPLICAS`：远端 PostgreSQL Compose 的后端副本数，默认 `2`。
 - `TOKENHUB_FRONTEND_REPLICAS`：远端 PostgreSQL Compose 的前端副本数，默认 `2`。
 
-后端会在 `/docs` 提供公开网关 API Reference，并在 `/openapi.json` 和 `/openapi.yaml` 提供机器可读的 OpenAPI 3.1 合约。文档中的 server URL 优先来自 `TOKENHUB_PUBLIC_BASE_URL`，未配置时使用当前请求 origin。服务位于反向代理后方时，请让 `TOKENHUB_PUBLIC_BASE_URL` 与浏览器可访问的后端 origin 保持一致。
+后端会在 `/docs` 提供公开网关 API 参考，并在 `/openapi.json` 和 `/openapi.yaml` 提供机器可读的 OpenAPI 3.1 合约。文档中的 server URL 优先来自 `TOKENHUB_PUBLIC_BASE_URL`，未配置时使用当前请求 origin。服务位于反向代理后方时，请让 `TOKENHUB_PUBLIC_BASE_URL` 与浏览器可访问的后端 origin 保持一致。
 
 浏览器客户端（包括 `/docs` 的 **Try it out** 流程）只有在文档页与后端网关同源时才无需额外 CORS 配置。如果管理后台或文档页与 `TOKENHUB_PUBLIC_BASE_URL` 不同源，请将该浏览器 origin 精确加入 `TOKENHUB_CORS_ALLOWED_ORIGINS`。不要为了让浏览器调用可用而在生产环境放宽为通配 CORS。
 
