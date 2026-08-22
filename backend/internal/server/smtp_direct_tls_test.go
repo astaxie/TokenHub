@@ -158,7 +158,7 @@ func TestDirectSMTPTLSEnabled(t *testing.T) {
 		{name: "tls uppercase", fields: map[string]any{"smtp_encryption": "TLS"}, want: true},
 		{name: "smtps", fields: map[string]any{"smtp_encryption": "smtps"}, want: true},
 		{name: "implicit", fields: map[string]any{"smtp_encryption": "implicit"}, want: true},
-		{name: "legacy encryption alias", fields: map[string]any{"encryption": "ssl"}, want: true},
+		{name: "generic encryption field is not a switch", fields: map[string]any{"encryption": "ssl"}, want: false},
 		{name: "starttls", fields: map[string]any{"smtp_encryption": "starttls"}, want: false},
 		{name: "empty", fields: map[string]any{}, want: false},
 		{name: "unrelated", fields: map[string]any{"type": "email"}, want: false},

@@ -721,7 +721,7 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 }
 
 func directSMTPTLSEnabled(fields map[string]any) bool {
-	switch strings.ToLower(strings.TrimSpace(firstStringField(fields, "smtp_encryption", "encryption"))) {
+	switch strings.ToLower(strings.TrimSpace(firstStringField(fields, "smtp_encryption"))) {
 	case "ssl", "tls", "smtps", "implicit":
 		return true
 	}
