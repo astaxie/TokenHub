@@ -28,6 +28,14 @@ describe("LoginView", () => {
     expect(onLogin).toHaveBeenCalledWith("admin@example.com", "correct-horse");
   });
 
+  it("hides SSO actions when no identity providers are configured", () => {
+    render(<LoginView {...baseProps} onLogin={vi.fn()} />);
+
+    expect(screen.queryByText("或")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "SSO 企业单点登录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /登录/ })).not.toBeInTheDocument();
+  });
+
   it("shows server errors and configured SSO entry points", () => {
     render(
       <LoginView

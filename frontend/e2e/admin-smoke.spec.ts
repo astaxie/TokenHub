@@ -21,7 +21,7 @@ function sidebar(page: Page) {
 test("admin can sign in and sign out of the console", async ({ page }) => {
   await login(page);
   await page.getByTitle("退出登录").click();
-  await expect(page.getByRole("heading", { name: "登录控制台" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
 });
 
 test("admin can validate and create a custom Provider", async ({ page }) => {
