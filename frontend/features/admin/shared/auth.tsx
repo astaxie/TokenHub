@@ -522,11 +522,13 @@ export function loginIdentityProviderIconConfig(key: string): { key: string; ico
 }
 
 function LoginUtilityActions({
+  showBrand = false,
   language,
   theme,
   onLanguageChange,
   onThemeToggle,
 }: {
+  showBrand?: boolean;
   language: AppLanguage;
   theme: "light" | "dark";
   onLanguageChange: (language: AppLanguage) => void;
@@ -534,10 +536,23 @@ function LoginUtilityActions({
 }) {
   return (
     <div className="login-utility-actions">
-      <LanguageSelect className="login-language-select" language={language} onChange={onLanguageChange} />
-      <button className="login-theme-toggle" onClick={onThemeToggle} title={tx("切换主题")} type="button">
-        {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-      </button>
+      {showBrand ? (
+        <div className="login-brand-lockup">
+          <span className="login-brand-mark" aria-hidden="true">
+            <img src="/brand/tokenhub-logo.png" alt="" />
+          </span>
+          <span className="login-brand-copy">
+            <strong>Token<span>Hub</span></strong>
+            <small>{tx("企业 AI 网关")}</small>
+          </span>
+        </div>
+      ) : null}
+      <div className="login-utility-controls">
+        <LanguageSelect className="login-language-select" language={language} onChange={onLanguageChange} />
+        <button className="login-theme-toggle" onClick={onThemeToggle} title={tx("切换主题")} type="button">
+          {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+        </button>
+      </div>
     </div>
   );
 }
@@ -595,6 +610,7 @@ export function LoginView({
   return (
     <main className="login-shell login-home-shell" data-theme={theme}>
       <LoginUtilityActions
+        showBrand
         language={language}
         theme={theme}
         onLanguageChange={onLanguageChange}
@@ -602,16 +618,6 @@ export function LoginView({
       />
       <section className="login-stage">
         <aside className="login-hero-panel" aria-label="TokenHub">
-          <div className="login-brand-lockup">
-            <span className="login-brand-mark" aria-hidden="true">
-              <img src="/brand/tokenhub-logo.png" alt="" />
-            </span>
-            <span className="login-brand-copy">
-              <strong>Token<span>Hub</span></strong>
-              <small>{tx("企业 AI 网关")}</small>
-            </span>
-          </div>
-
           <div className="login-hero-copy">
             <h1>
               {headline.split("AI").map((part, index, parts) => (

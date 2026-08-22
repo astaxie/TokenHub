@@ -39,7 +39,14 @@
   background: transparent;
 }
 
+.login-home-shell .login-utility-actions {
+  left: clamp(28px, 3.6vw, 48px);
+  right: clamp(28px, 3.6vw, 48px);
+  justify-content: space-between;
+}
+
 .login-home-shell .login-brand-lockup {
+  position: relative;
   top: 0;
   left: 0;
   translate: none;
@@ -428,8 +435,9 @@
   .login-home-shell .login-utility-actions {
     position: relative;
     top: auto;
+    left: auto;
     right: auto;
-    justify-content: flex-end;
+    justify-content: space-between;
     margin-bottom: 18px;
   }
 
@@ -442,7 +450,6 @@
     padding-top: 82px;
   }
 
-  .login-home-shell .login-brand-lockup,
   .login-home-shell .login-hero-copy,
   .login-home-shell .login-feature-grid,
   .login-home-shell .login-dashboard-scene {
@@ -505,6 +512,12 @@
 @media (max-width: 460px) {
   .login-home-shell.login-shell {
     padding: 16px;
+  }
+
+  .login-home-shell .login-utility-actions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 14px;
   }
 
   .login-home-shell .login-feature-grid {
