@@ -158,6 +158,10 @@ export function apiGatewayBaseURL(baseURL: string) {
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
+export function apiReferenceURL(baseURL: string) {
+  return apiGatewayBaseURL(baseURL).replace(/\/v1$/, "/docs");
+}
+
 export function activeRouteCount(modelName: string, data: AppData) {
   return data.routes.filter((route) => route.model_name === modelName && route.status === "active").length;
 }

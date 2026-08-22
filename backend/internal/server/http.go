@@ -16,42 +16,43 @@ import (
 )
 
 type Server struct {
-	store               Store
-	adapterRegistry     *AdapterRegistry
-	integrations        *IntegrationService
-	codexSubscription   *CodexSubscriptionAdapter
-	providerCatalog     *providerCatalogService
-	billing             *BillingService
-	reconciliation      *ReconciliationService
-	credentialRefresh   *ProviderCredentialRefreshService
-	payloadRetention    *requestPayloadRetentionService
-	mux                 *http.ServeMux
-	config              Config
-	metrics             *GatewayMetrics
-	traceEmitter        TraceEmitter
-	imageStorageDir     string
-	imageRunner         func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
-	imageContext        context.Context
-	imageCancel         context.CancelFunc
-	imageQueue          chan imageJobWork
-	imageWorkerStart    sync.Once
-	imageWorkerStop     sync.Once
-	imageWorkerGroup    sync.WaitGroup
-	imageAccountMu      sync.Mutex
-	imageAccountSlots   map[string]chan struct{}
-	responseContext     context.Context
-	responseCancel      context.CancelFunc
-	responseWorkerStart sync.Once
-	responseWorkerStop  sync.Once
-	responseWorkerGroup sync.WaitGroup
-	responseInstanceID  string
-	stopHeartbeat       func()
-	versions            *versionService
-	guardrailEngine     *guardrails.Engine
-	upstreamClient      *http.Client
-	syntheticDNSPolicy  *providerSyntheticDNSPolicy
-	providerProxyPolicy *providerProxyPolicy
-	syntheticDNSSetting sync.Mutex
+	store                   Store
+	adapterRegistry         *AdapterRegistry
+	integrations            *IntegrationService
+	codexSubscription       *CodexSubscriptionAdapter
+	providerCatalog         *providerCatalogService
+	billing                 *BillingService
+	reconciliation          *ReconciliationService
+	credentialRefresh       *ProviderCredentialRefreshService
+	payloadRetention        *requestPayloadRetentionService
+	mux                     *http.ServeMux
+	publicGatewayOperations map[gatewayOperation]bool
+	config                  Config
+	metrics                 *GatewayMetrics
+	traceEmitter            TraceEmitter
+	imageStorageDir         string
+	imageRunner             func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
+	imageContext            context.Context
+	imageCancel             context.CancelFunc
+	imageQueue              chan imageJobWork
+	imageWorkerStart        sync.Once
+	imageWorkerStop         sync.Once
+	imageWorkerGroup        sync.WaitGroup
+	imageAccountMu          sync.Mutex
+	imageAccountSlots       map[string]chan struct{}
+	responseContext         context.Context
+	responseCancel          context.CancelFunc
+	responseWorkerStart     sync.Once
+	responseWorkerStop      sync.Once
+	responseWorkerGroup     sync.WaitGroup
+	responseInstanceID      string
+	stopHeartbeat           func()
+	versions                *versionService
+	guardrailEngine         *guardrails.Engine
+	upstreamClient          *http.Client
+	syntheticDNSPolicy      *providerSyntheticDNSPolicy
+	providerProxyPolicy     *providerProxyPolicy
+	syntheticDNSSetting     sync.Mutex
 }
 
 func New(store Store) *Server {
@@ -153,26 +154,27 @@ func NewWithConfig(store Store, config Config) *Server {
 		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	}
 	s := &Server{
-		store:              store,
-		adapterRegistry:    registry,
-		integrations:       NewIntegrationService(store, registry, client),
-		codexSubscription:  codexSubscription,
-		providerCatalog:    newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient),
-		billing:            newBillingService(store),
-		reconciliation:     newReconciliationService(store),
-		credentialRefresh:  newProviderCredentialRefreshService(store),
-		payloadRetention:   newRequestPayloadRetentionService(store),
-		mux:                http.NewServeMux(),
-		config:             config,
-		imageStorageDir:    config.ImageStorageDir,
-		imageContext:       imageContext,
-		imageCancel:        imageCancel,
-		imageQueue:         make(chan imageJobWork, config.ImageQueueCapacity),
-		imageAccountSlots:  make(map[string]chan struct{}),
-		responseContext:    responseContext,
-		responseCancel:     responseCancel,
-		responseInstanceID: NewID("response-worker"),
-		versions:           newVersionService(config),
+		store:                   store,
+		adapterRegistry:         registry,
+		integrations:            NewIntegrationService(store, registry, client),
+		codexSubscription:       codexSubscription,
+		providerCatalog:         newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient),
+		billing:                 newBillingService(store),
+		reconciliation:          newReconciliationService(store),
+		credentialRefresh:       newProviderCredentialRefreshService(store),
+		payloadRetention:        newRequestPayloadRetentionService(store),
+		mux:                     http.NewServeMux(),
+		publicGatewayOperations: make(map[gatewayOperation]bool),
+		config:                  config,
+		imageStorageDir:         config.ImageStorageDir,
+		imageContext:            imageContext,
+		imageCancel:             imageCancel,
+		imageQueue:              make(chan imageJobWork, config.ImageQueueCapacity),
+		imageAccountSlots:       make(map[string]chan struct{}),
+		responseContext:         responseContext,
+		responseCancel:          responseCancel,
+		responseInstanceID:      NewID("response-worker"),
+		versions:                newVersionService(config),
 		guardrailEngine: guardrails.NewEngine(guardrails.NewQwenDetector(guardrails.QwenDetectorConfig{
 			URL:     config.GuardrailModelURL,
 			APIKey:  config.GuardrailModelAPIKey,

@@ -23,6 +23,8 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, or `POST /v1/embeddings`.
 5. Review **Usage Analytics** and **Request Logs** for requests, tokens, cost, and errors.
 
+The console **API Documentation** page remains the guided onboarding view. For the complete interactive and machine-readable gateway contract, open `http://localhost:8080/docs` in a private deployment or import `http://localhost:8080/openapi.json` into an API client, SDK generator, test tool, or enterprise API catalog. The documentation page keeps any entered project key in browser memory only.
+
 ## Review One API Key's Usage
 
 In **Key Management**, select **Usage** for a Key to open its dedicated usage page. The page reports requests, success rate, latency, detailed token categories, estimated client cost, model and error breakdowns, and paginated request details. Use the 7-, 30-, or 90-day presets, or select a custom UTC range of up to 366 days.
