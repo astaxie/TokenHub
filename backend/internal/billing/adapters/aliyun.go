@@ -1,4 +1,4 @@
-package server
+package adapters
 
 import (
 	"context"
@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"tokenhub/backend/internal/billing"
 )
 
 type AliyunBillingAdapter struct {
@@ -148,6 +150,8 @@ func aliyunCanonicalQuery(values map[string][]string) string {
 	return strings.Join(parts, "&")
 }
 
+func AliyunCanonicalQuery(values map[string][]string) string { return aliyunCanonicalQuery(values) }
+
 func aliyunPercentEncode(value string) string {
 	encoded := url.QueryEscape(value)
 	encoded = strings.ReplaceAll(encoded, "+", "%20")
@@ -155,6 +159,8 @@ func aliyunPercentEncode(value string) string {
 	encoded = strings.ReplaceAll(encoded, "*", "%2A")
 	return encoded
 }
+
+func AliyunPercentEncode(value string) string { return aliyunPercentEncode(value) }
 
 func aliyunBillingCursor(cursor string, from time.Time, location *time.Location) (string, int, error) {
 	if strings.TrimSpace(cursor) == "" {
@@ -271,6 +277,10 @@ func billingRecordStartsInRange(record BillingRecord, from time.Time, to time.Ti
 	return to.IsZero() || !record.UsageStartAt.After(to.UTC())
 }
 
+func BillingRecordStartsInRange(record billing.Record, from, to time.Time) bool {
+	return billingRecordStartsInRange(record, from, to)
+}
+
 func aliyunBillingExternalID(item map[string]any, billingPeriod string, usageStart time.Time, usageEnd time.Time) string {
 	if externalID := stringValue(firstValue(item, "RecordID", "record_id", "BillID", "bill_id")); externalID != "" {
 		return externalID
@@ -306,6 +316,8 @@ func billingDecimalValue(value any) (string, error) {
 	return billingRatText(ratio), nil
 }
 
+func BillingDecimalValue(value any) (string, error) { return billingDecimalValue(value) }
+
 // billingDecimalAdd sums discount components. A value that is present but
 // cannot be parsed is an upstream contract violation: silently skipping it
 // would understate the discount, so it is rejected instead.
@@ -324,6 +336,8 @@ func billingDecimalAdd(values ...any) (string, error) {
 	}
 	return billingRatText(total), nil
 }
+
+func BillingDecimalAdd(values ...any) (string, error) { return billingDecimalAdd(values...) }
 
 func billingDecimalCalculate(gross string, discount string, tax string, refund string) string {
 	result, _ := new(big.Rat).SetString(defaultString(gross, "0"))

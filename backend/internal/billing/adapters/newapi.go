@@ -1,4 +1,4 @@
-package server
+package adapters
 
 import (
 	"context"

@@ -164,7 +164,7 @@ func TestAdminBillingMethodRoutesPreserveDynamicPayloadValidation(t *testing.T) 
 	config.SecretKey = "billing-method-routing-validation-secret"
 	config.MaxJSONRequestBytes = 1 << 10
 	store := NewMemoryStoreWithConfig(config)
-	connector, err := store.CreateBillingConnector(BillingConnector{
+	connector, err := store.BillingRepository().CreateBillingConnector(BillingConnector{
 		ID:      "billing-validation",
 		Name:    "Billing Validation Connector",
 		Type:    BillingConnectorOneAPI,
@@ -289,7 +289,7 @@ func TestAdminBillingMethodRoutesPreserveSuccessfulOperationsAndSideEffects(t *t
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete connector: status=%d body=%s", deleted.Code, deleted.Body.String())
 	}
-	if len(store.ListBillingRecords(connector.ID, 10)) != 1 || len(store.ListBillingSyncRuns(connector.ID, 10)) != 1 {
+	if len(store.BillingRepository().ListBillingRecords(connector.ID, 10)) != 1 || len(store.BillingRepository().ListBillingSyncRuns(connector.ID, 10)) != 1 {
 		t.Fatal("deleting the connector removed billing records or sync history")
 	}
 	audits := store.ListAuditEvents()
@@ -306,7 +306,7 @@ func TestAdminBillingMethodRoutesPreserveSuccessfulOperationsAndSideEffects(t *t
 func TestAdminBillingMethodRoutesPreserveEncodedAndTrailingIDs(t *testing.T) {
 	upstream := newBillingMethodRoutingUpstream(t, time.Now().UTC().Add(-30*time.Minute))
 	store, app := newMethodRoutingBillingServer(t, "billing-routing-encoded-password")
-	connector, err := store.CreateBillingConnector(BillingConnector{
+	connector, err := store.BillingRepository().CreateBillingConnector(BillingConnector{
 		ID:      "billing/encoded",
 		Name:    "Encoded Billing Connector",
 		Type:    BillingConnectorOneAPI,

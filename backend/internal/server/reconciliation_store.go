@@ -110,13 +110,7 @@ func (s *GormStore) ListDueReconciliationRules(now time.Time, limit int) []Recon
 	return rules
 }
 
-func (s *GormStore) LoadReconciliationInputs(connectorID string, from time.Time, to time.Time, window time.Duration) ([]BillingRecord, []UsageRecord, error) {
-	connectorID = strings.TrimSpace(connectorID)
-	var records []BillingRecord
-	if err := s.db.Where("connector_id = ? AND usage_start_at >= ? AND usage_start_at < ?", connectorID, from.UTC(), to.UTC()).
-		Order("usage_start_at asc, id asc").Find(&records).Error; err != nil {
-		return nil, nil, err
-	}
+func (s *GormStore) ListReconciliationUsages(from time.Time, to time.Time, window time.Duration) ([]UsageRecord, error) {
 	usageFrom := from.UTC()
 	usageTo := to.UTC()
 	if window > 0 {
@@ -126,9 +120,9 @@ func (s *GormStore) LoadReconciliationInputs(connectorID string, from time.Time,
 	var usages []UsageRecord
 	if err := s.db.Where("created_at >= ? AND created_at < ?", usageFrom, usageTo).
 		Order("created_at asc, id asc").Find(&usages).Error; err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return records, usages, nil
+	return usages, nil
 }
 
 func (s *GormStore) SaveReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error) {

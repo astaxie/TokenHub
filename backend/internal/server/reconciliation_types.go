@@ -1,6 +1,19 @@
 package server
 
-import "time"
+import (
+	"time"
+
+	"tokenhub/backend/internal/billing"
+)
+
+type BillingConnector = billing.Connector
+type BillingRecord = billing.Record
+
+const (
+	BillingConnectorAliyun = billing.ConnectorAliyun
+	BillingConnectorNewAPI = billing.ConnectorNewAPI
+	BillingConnectorOneAPI = billing.ConnectorOneAPI
+)
 
 const (
 	ReconciliationGranularityDetail = "detail"
@@ -184,7 +197,7 @@ type ReconciliationStore interface {
 	UpdateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error)
 	BackfillReconciliationRuleConnectorSnapshot(id string, connectorType string, providerID string, providerResourceID string) (ReconciliationRule, error)
 	ListDueReconciliationRules(now time.Time, limit int) []ReconciliationRule
-	LoadReconciliationInputs(connectorID string, from time.Time, to time.Time, window time.Duration) ([]BillingRecord, []UsageRecord, error)
+	ListReconciliationUsages(from time.Time, to time.Time, window time.Duration) ([]UsageRecord, error)
 	SaveReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
 	ReplaceReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
 	ListReconciliationRuns(ruleID string, limit int) []ReconciliationRun
@@ -193,4 +206,12 @@ type ReconciliationStore interface {
 	ListReconciliationItemBatch(runID string, status string, afterID string, excludeMatched bool, limit int) []ReconciliationItem
 	LockReconciliationRun(id string, actor string) (ReconciliationRun, error)
 	RecordScheduledReconciliationAudit(run ReconciliationRun)
+}
+
+// ReconciliationBillingReader is owned by the reconciliation consumer. It
+// exposes only the billing projections required to snapshot a connector and
+// calculate a run.
+type ReconciliationBillingReader interface {
+	GetBillingConnector(id string, includeCredentials bool) (BillingConnector, error)
+	ListBillingRecordsInRange(connectorID string, from, to time.Time) ([]BillingRecord, error)
 }

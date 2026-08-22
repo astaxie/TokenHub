@@ -181,6 +181,17 @@ func (s *GormStore) decryptSecret(secret string) string {
 	return string(plaintext)
 }
 
+func (s *GormStore) encryptSecretStrict(plaintext string) (string, error) {
+	if strings.TrimSpace(plaintext) == "" || strings.HasPrefix(plaintext, "enc:v1:") {
+		return "", errors.New("protected value must be non-empty plaintext")
+	}
+	ciphertext := s.encryptSecret(plaintext)
+	if ciphertext == plaintext || !strings.HasPrefix(ciphertext, "enc:v1:") {
+		return "", errors.New("protected value encryption failed")
+	}
+	return ciphertext, nil
+}
+
 func (s *GormStore) protectAdminResourceSecret(secret string) (string, error) {
 	return s.encryptSecretStrict(secret)
 }

@@ -17,7 +17,8 @@ const (
 	SyncSucceeded = "succeeded"
 	SyncFailed    = "failed"
 
-	StatusActive = "active"
+	StatusActive   = "active"
+	StatusDisabled = "disabled"
 )
 
 // Connector is the persisted configuration for one external billing source.
@@ -136,6 +137,24 @@ type Store interface {
 	FinishBillingSyncRun(SyncRun) (SyncRun, error)
 	ListDueBillingConnectors(time.Time, int) []Connector
 	RecordScheduledBillingAudit(SyncRun)
+}
+
+// ManagementStore is the persistence seam used by the connector management
+// application. It is separate from Store because synchronization does not need
+// connector mutation or administrative list queries.
+type ManagementStore interface {
+	CreateBillingConnector(Connector) (Connector, error)
+	ListBillingConnectors() []Connector
+	GetBillingConnector(string, bool) (Connector, error)
+	UpdateBillingConnector(string, Connector) (Connector, error)
+	DeleteBillingConnector(string) error
+	ListBillingRecords(string, int) []Record
+	ListBillingSyncRuns(string, int) []SyncRun
+}
+
+type Repository interface {
+	Store
+	ManagementStore
 }
 
 type ErrorKind string
