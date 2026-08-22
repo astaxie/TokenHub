@@ -232,21 +232,16 @@
   height: 408px;
   border-radius: 24px 0 0 0;
   display: grid;
-  grid-template-rows: 58px repeat(5, 38px) 1fr;
+  grid-template-rows: repeat(5, 38px) 1fr;
   justify-items: center;
   gap: 8px;
-  padding: 24px 0 20px;
+  padding: 72px 0 20px;
   background: linear-gradient(180deg, #1f3974, #172b60);
   box-shadow: 0 24px 44px rgba(28, 55, 118, 0.24);
 }
 
-.login-home-shell .login-dashboard-sidebar img {
-  width: 32px;
-  height: 32px;
-  filter: brightness(0) invert(1);
-}
-
 .login-home-shell .login-dashboard-sidebar span {
+  position: relative;
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -259,6 +254,83 @@
   color: #ffffff;
   background: #3478f6;
   box-shadow: 0 12px 24px rgba(52, 120, 246, 0.36);
+}
+
+.login-home-shell .login-dashboard-sidebar span::before,
+.login-home-shell .login-dashboard-sidebar span::after {
+  content: "";
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-home::before {
+  width: 15px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 3px;
+  transform: translateY(2px);
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-home::after {
+  width: 13px;
+  height: 13px;
+  border-top: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+  border-radius: 2px 0 0 0;
+  transform: translateY(-3px) rotate(45deg);
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-chart::before {
+  width: 3px;
+  height: 15px;
+  background: currentColor;
+  box-shadow: -7px 5px 0 currentColor, 7px -3px 0 currentColor;
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-team::before {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  box-shadow: -7px 1px 0 currentColor, 7px 1px 0 currentColor;
+  transform: translateY(-5px);
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-team::after {
+  width: 22px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  transform: translateY(7px);
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-card::before {
+  width: 18px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-card::after {
+  width: 14px;
+  height: 2px;
+  background: currentColor;
+  transform: translateY(-3px);
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-gear::before {
+  width: 16px;
+  height: 16px;
+  border: 3px dotted currentColor;
+  border-radius: 50%;
+}
+
+.login-home-shell .login-dashboard-sidebar .nav-gear::after {
+  width: 5px;
+  height: 5px;
+  background: currentColor;
 }
 
 .login-home-shell .login-dashboard-panel {
@@ -278,10 +350,30 @@
   backdrop-filter: blur(20px);
 }
 
+.login-home-shell .login-dashboard-logo {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(202, 216, 244, 0.84);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 24px rgba(58, 99, 190, 0.1);
+}
+
+.login-home-shell .login-dashboard-logo img {
+  width: 28px;
+  height: 28px;
+}
+
 .login-home-shell .login-dashboard-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-right: 54px;
   margin-bottom: 16px;
 }
 
@@ -293,7 +385,7 @@
   font-weight: 820;
 }
 
-.login-home-shell .login-dashboard-head span,
+.login-home-shell .login-dashboard-filter,
 .login-home-shell .login-trend-card span {
   border: 1px solid rgba(211, 222, 242, 0.86);
   border-radius: 10px;
@@ -509,23 +601,6 @@
     linear-gradient(55deg, transparent 44%, #ffffff 45% 55%, transparent 56%),
     linear-gradient(-55deg, transparent 44%, #ffffff 45% 55%, transparent 56%);
   opacity: 0.56;
-}
-
-.login-home-shell .login-floating-node.large {
-  right: 20px;
-  bottom: 66px;
-  width: 122px;
-  height: 100px;
-  border-radius: 20px;
-  transform: rotateX(58deg) rotateZ(-8deg);
-}
-
-.login-home-shell .login-floating-node.large img {
-  width: 58px;
-  height: 58px;
-  filter: brightness(0) invert(1);
-  transform: rotateZ(8deg);
-  opacity: 0.86;
 }
 
 .login-home-shell .login-card {

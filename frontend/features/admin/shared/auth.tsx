@@ -1,4 +1,4 @@
-import { BarChart3, Check, CreditCard, Database, Eye, EyeOff, Fingerprint, Home, KeyRound, LockKeyhole, Moon, ReceiptText, Route, Settings, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
+import { Check, Database, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, ReceiptText, Route, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { savePendingOAuthLogin } from "../core/session";
 import { type LoginIdentityProvider, viewRoutes } from "../core/types";
@@ -657,17 +657,19 @@ export function LoginView({
 
           <div className="login-dashboard-scene" aria-hidden="true">
             <div className="login-dashboard-sidebar">
-              <img src="/brand/tokenhub-logo.png" alt="" />
-              <span className="active"><Home size={17} /></span>
-              <span><BarChart3 size={16} /></span>
-              <span><Users size={16} /></span>
-              <span><CreditCard size={16} /></span>
-              <span><Settings size={16} /></span>
+              <span className="active nav-home" />
+              <span className="nav-chart" />
+              <span className="nav-team" />
+              <span className="nav-card" />
+              <span className="nav-gear" />
             </div>
             <div className="login-dashboard-panel">
+              <span className="login-dashboard-logo">
+                <img src="/brand/tokenhub-logo.png" alt="" />
+              </span>
               <div className="login-dashboard-head">
                 <strong>{tx("今日概览")}</strong>
-                <span>{tx("全部应用")}</span>
+                <span className="login-dashboard-filter">{tx("全部应用")}</span>
               </div>
               <div className="login-metric-grid">
                 {metricCards.map((card) => (
@@ -700,9 +702,6 @@ export function LoginView({
               </div>
             </div>
             <span className="login-floating-node small" />
-            <span className="login-floating-node large">
-              <img src="/brand/tokenhub-logo.png" alt="" />
-            </span>
           </div>
         </aside>
 
