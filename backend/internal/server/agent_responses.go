@@ -146,16 +146,15 @@ func agentEventText(event any) string {
 	case *a2a.Message:
 		return agentPartsText(item.Parts)
 	case *a2a.Task:
+		// Artifacts are task outputs in A2A. Prefer all text-bearing artifacts
+		// so a completed task does not collapse a full report into a generic
+		// lifecycle message such as "completed".
+		if text := agentArtifactsText(item.Artifacts); text != "" {
+			return text
+		}
 		if item.Status.Message != nil {
 			if text := agentPartsText(item.Status.Message.Parts); text != "" {
 				return text
-			}
-		}
-		for index := len(item.Artifacts) - 1; index >= 0; index-- {
-			if item.Artifacts[index] != nil {
-				if text := agentPartsText(item.Artifacts[index].Parts); text != "" {
-					return text
-				}
 			}
 		}
 		for index := len(item.History) - 1; index >= 0; index-- {
@@ -175,6 +174,19 @@ func agentEventText(event any) string {
 		}
 	}
 	return ""
+}
+
+func agentArtifactsText(artifacts []*a2a.Artifact) string {
+	texts := make([]string, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact == nil {
+			continue
+		}
+		if text := agentPartsText(artifact.Parts); text != "" {
+			texts = append(texts, text)
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 func agentPartsText(parts a2a.ContentParts) string {
