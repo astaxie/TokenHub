@@ -365,7 +365,7 @@ export function notificationChannelConfig(): ResourceConfig<AdminResource> {
       whatsapp_api_version: stringifyValue(item.fields?.whatsapp_api_version || item.fields?.api_version || "v20.0"),
       smtp_host: stringifyValue(item.fields?.smtp_host),
       smtp_port: stringifyValue(item.fields?.smtp_port),
-      smtp_encryption: stringifyValue(item.fields?.smtp_encryption),
+      smtp_encryption: stringifyValue(item.fields?.smtp_encryption) || "starttls",
       smtp_username: stringifyValue(item.fields?.smtp_username),
       smtp_password: "",
       smtp_from: stringifyValue(item.fields?.smtp_from),
