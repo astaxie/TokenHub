@@ -701,12 +701,13 @@ export function LoginView({
           <button className="button login-submit" disabled={loading} type="submit">
             {loading ? tx("登录中") : tx("登录控制台")}
           </button>
-          <div className="login-divider" aria-hidden="true">
-            <span />
-            <small>{tx("或")}</small>
-            <span />
-          </div>
           {identityProviders.length > 0 ? (
+            <>
+              <div className="login-divider" aria-hidden="true">
+                <span />
+                <small>{tx("或")}</small>
+                <span />
+              </div>
               <div className={ssoListClassName}>
                 {identityProviders.map((provider) => {
                   const displayName = loginIdentityProviderDisplayName(provider);
@@ -744,14 +745,8 @@ export function LoginView({
                   );
                 })}
               </div>
-          ) : (
-            <button className="login-sso-button" disabled type="button">
-              <span className="login-sso-icon sso" aria-hidden="true">
-                <ShieldCheck size={15} />
-              </span>
-              <span className="login-sso-label">{tx("SSO 企业单点登录")}</span>
-            </button>
-          )}
+            </>
+          ) : null}
         </form>
       </section>
     </main>
