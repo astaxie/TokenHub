@@ -380,7 +380,9 @@ with TLS from the first byte. The channel keeps the other standard fields
 In the admin console's email channel form, the **SMTP encryption** selector
 offers `auto` (opportunistic STARTTLS, legacy default), `starttls` (require
 STARTTLS, refuse to send when unsupported, port 587), and `ssl` (implicit TLS
-from the first byte, port 465); new channels default to `starttls`.
+from the first byte, port 465); new channels default to `starttls`. Selecting
+`auto` leaves `smtp_encryption` unset so the legacy opportunistic STARTTLS
+behavior is preserved; only `starttls` and `ssl` write the field.
 
 ## Screenshot
 
