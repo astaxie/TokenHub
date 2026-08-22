@@ -805,13 +805,17 @@ func TestMetricsImageJobAttributesAttempts(t *testing.T) {
 		t.Fatalf("missing image job id: %s", create.Body)
 	}
 	deadline := time.Now().Add(5 * time.Second)
+	// Completion commits before the gateway observation runs, so a completed
+	// status alone does not guarantee the counters are published yet. The
+	// overhead series is the last one ObserveGatewayCall writes; wait for it.
 	for {
 		job, ok := store.GetImageJob(jobID)
-		if ok && job.Status == imageJobStatusCompleted {
-			break
-		}
 		if ok && job.Status == imageJobStatusFailed {
 			t.Fatalf("image job failed: %+v", job)
+		}
+		if ok && job.Status == imageJobStatusCompleted &&
+			testutil.CollectAndCount(server.metrics.overhead) > 0 {
+			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("image job did not complete")
