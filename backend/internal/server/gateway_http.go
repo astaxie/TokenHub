@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"hash/fnv"
-	"io"
 	"math"
 	"net/http"
 	"sort"
@@ -105,6 +104,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			s.store.MarkProviderResourceUsed(routeResourceID(route))
 		}
 		routed.Call.StreamOutputCommitted = tracker.WroteData()
+		routed.Call.FirstByteAt = tracker.firstByteTime(streamErr == nil)
+		routed.Call.StreamFailed = streamErr != nil && tracker.Wrote()
 		s.finishRoutedCall(r, GatewayCallCompletion{
 			Call:            routed.Call,
 			Route:           route,
@@ -789,35 +790,6 @@ func finishProviderResourceAttempt(ctx context.Context, store Store, resourceID 
 	store.FinishProviderResourceAttempt(ctx, resourceID, leaseID, providerAttemptOutcome(err), usage)
 }
 
-type streamWriteTracker struct {
-	writer       io.Writer
-	wrote        bool
-	bytesWritten int64
-	// onFirstWrite runs once, just before the first byte is written. Response
-	// headers must wait until that moment: failover can move to another candidate,
-	// and writing early would expose the preferred route rather than the one that
-	// actually served the request.
-	onFirstWrite func()
-}
-
-func (w *streamWriteTracker) Write(data []byte) (int, error) {
-	if !w.wrote {
-		if w.onFirstWrite != nil {
-			w.onFirstWrite()
-		}
-		if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
-			responseWriter.WriteHeader(http.StatusOK)
-			if flusher, ok := responseWriter.(http.Flusher); ok {
-				flusher.Flush()
-			}
-		}
-	}
-	w.wrote = true
-	n, err := w.writer.Write(data)
-	w.bytesWritten = saturatingAddNonNegative(w.bytesWritten, int64(n))
-	return n, err
-}
-
 // classifyStreamError decides whether a streaming failure may move to the next
 // candidate.
 //
@@ -844,39 +816,6 @@ func classifyStreamError(ctx context.Context, err error, wrote bool) error {
 		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorStreamCommitted}
 	}
 	return err
-}
-
-func (w *streamWriteTracker) Wrote() bool {
-	return w != nil && w.wrote
-}
-
-func (w *streamWriteTracker) WroteData() bool {
-	return w != nil && w.bytesWritten > 0
-}
-
-// ensureStarted runs the deferred hook even when the upstream produced no bytes.
-// A 200 response with an empty body would otherwise reach the client with none of
-// the headers onFirstWrite installs, including content-type.
-func (w *streamWriteTracker) ensureStarted() {
-	if w == nil || w.wrote {
-		return
-	}
-	if w.onFirstWrite != nil {
-		w.onFirstWrite()
-	}
-	if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
-		responseWriter.WriteHeader(http.StatusOK)
-	}
-	w.wrote = true
-}
-
-func (w *streamWriteTracker) Flush() {
-	if w == nil {
-		return
-	}
-	if flusher, ok := w.writer.(http.Flusher); ok {
-		flusher.Flush()
-	}
 }
 
 func (s *Server) adapterForRoute(route RouteSelection) (ProviderAdapter, error) {

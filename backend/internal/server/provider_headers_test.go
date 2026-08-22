@@ -490,8 +490,8 @@ func TestStreamingProviderErrorsRedactEffectiveSensitiveHeaderValues(t *testing.
 	}
 	openAIStream := "data: {\"error\":{\"message\":\"\\u0074enant-secret provider-api-secret\"}}\n\n"
 	var openAIOutput bytes.Buffer
-	if _, err := copyOpenAIStreamAndUsageForProvider(&openAIOutput, strings.NewReader(openAIStream), provider); err != nil {
-		t.Fatal(err)
+	if _, err := copyOpenAIStreamAndUsageForProvider(&openAIOutput, strings.NewReader(openAIStream), provider); err == nil {
+		t.Fatalf("in-band OpenAI error must fail the stream: %s", openAIOutput.String())
 	}
 	if output := openAIOutput.String(); strings.Contains(output, "tenant-secret") || strings.Contains(output, `\u0074enant-secret`) || strings.Contains(output, "provider-api-secret") {
 		t.Fatalf("OpenAI stream leaked a secret: %s", output)
@@ -520,8 +520,8 @@ func TestStreamingProviderErrorsRedactEffectiveSensitiveHeaderValues(t *testing.
 	}
 
 	var nativeOutput bytes.Buffer
-	if _, err := copyNativeAnthropicStreamForProvider(&nativeOutput, strings.NewReader(anthropicStream), "model", provider); err != nil {
-		t.Fatal(err)
+	if _, err := copyNativeAnthropicStreamForProvider(&nativeOutput, strings.NewReader(anthropicStream), "model", provider); err == nil {
+		t.Fatalf("in-band Anthropic error must fail the stream: %s", nativeOutput.String())
 	}
 	if output := nativeOutput.String(); strings.Contains(output, "tenant-secret") {
 		t.Fatalf("native Anthropic stream leaked a secret: %s", output)
@@ -547,7 +547,8 @@ func TestStreamingProviderRedactionPreservesSuccessfulContent(t *testing.T) {
 		t.Fatalf("OpenAI Responses success content was modified: %s", output)
 	}
 
-	nativeStream := "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"tenant-secret\"}}\n\n"
+	nativeStream := "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"tenant-secret\"}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 	var nativeOutput bytes.Buffer
 	if _, err := copyNativeAnthropicStreamForProvider(&nativeOutput, strings.NewReader(nativeStream), "model", provider); err != nil {
 		t.Fatal(err)
