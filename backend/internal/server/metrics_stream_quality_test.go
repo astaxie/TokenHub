@@ -84,6 +84,9 @@ func TestInterruptionErrorCodeNormalizesIdleTimeouts(t *testing.T) {
 		{"codex_stream_idle_timeout", "internal_error"},
 		{"codex_stream_incomplete", "internal_error"},
 		{"codex_stream_failed", "internal_error"},
+		{"provider_upstream_timeout", "internal_error"},
+		{"provider_stream_interrupted", "internal_error"},
+		{"provider_upstream_unreachable", "internal_error"},
 		{"provider_stream_error", "provider_stream_error"},
 		{"upstream_http_502", "upstream_http_502"},
 		{"", ""},
@@ -275,5 +278,221 @@ func TestMetricsOpenAIAsAnthropicBridgeInBandErrorCountsInterruption(t *testing.
 	}
 	if findMetricLine(body, "tokenhub_gateway_time_to_first_byte_seconds_count") == "" {
 		t.Fatalf("TTFB must still be observed for the interrupted bridge stream")
+	}
+}
+
+// newMetricsKronkTestServer creates a full gateway with a Kronk provider
+// that routes to the given upstream URL.
+func newMetricsKronkTestServer(t *testing.T, upstreamURL string) (*Server, string) {
+	t.Helper()
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "metrics-kronk", Status: StatusActive})
+	const model = "kronk-metrics-model"
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "metrics-kronk-key",
+		Allowed: []string{model},
+		Status:  StatusActive,
+	}, "thk_metrics_kronk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: model, Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID:      "prv_metrics_kronk",
+		Name:    "Metrics Kronk",
+		Type:    ProviderKronk,
+		BaseURL: upstreamURL,
+		APIKey:  "test-key",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_metrics_kronk",
+		ProviderID:   provider.ID,
+		Name:         "Metrics Kronk Resource",
+		ResourceType: "openai",
+		Status:       StatusActive,
+		Healthy:      true,
+		Priority:     1,
+		Weight:       100,
+		MaxConcurrency: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddRoute(ModelRoute{
+		ID:                 "route_metrics_kronk",
+		ModelName:          model,
+		ProviderID:         provider.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      model,
+		Priority:           1,
+		Weight:             100,
+		Status:             StatusActive,
+		Strategy:           RouteStrategyPriorityOnly,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", MetricsEnabled: true})
+	if server.metrics == nil {
+		t.Fatal("expected metrics to be enabled")
+	}
+	return server, secret
+}
+
+// A Kronk stream that writes a partial response and then hangs up is a
+// transport interruption: the error code is normalized to internal_error
+// at the metric boundary.
+func TestMetricsKronkTransportInterruptionNormalizesErrorCode(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		w.Header().Set("content-length", "4096")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"index\":0}]}\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		// Close the connection without sending the advertised content-length.
+		// The Kronk adapter reads the body and gets io.ErrUnexpectedEOF, which
+		// normalizeKronkTransportError maps to provider_stream_interrupted.
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
+		conn, _, err := hijacker.Hijack()
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+	}))
+	defer upstream.Close()
+
+	server, secret := newMetricsKronkTestServer(t, upstream.URL)
+	resp := postStream(t, server.Handler(), "/v1/chat/completions", map[string]any{
+		"model":    "kronk-metrics-model",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+		"stream":   true,
+	}, secret)
+	// A committed stream still returns 200 even though the gateway recorded
+	// the interruption.
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected the committed 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "partial") {
+		t.Fatalf("partial data must reach the client:\n%s", resp.Body.String())
+	}
+
+	body := scrapeMetrics(t, server.Handler())
+	// The interruption must carry internal_error, not provider_stream_interrupted.
+	interruption := findMetricLine(body, "tokenhub_gateway_stream_interruptions_total", `provider_id="prv_metrics_kronk"`)
+	if interruption == "" {
+		t.Fatalf("missing Kronk interruption series:\n%s", body)
+	}
+	if strings.Contains(interruption, `error_code="provider_stream_interrupted"`) {
+		t.Fatalf("Kronk transport interruption must not leak provider_stream_interrupted:\n%s", body)
+	}
+	if !strings.Contains(interruption, `error_code="internal_error"`) {
+		t.Fatalf("Kronk transport interruption must be normalized to internal_error:\n%s", body)
+	}
+	if metricLineValue(t, interruption) != 1 {
+		t.Fatalf("expected one Kronk transport interruption, got %v", metricLineValue(t, interruption))
+	}
+	// TTFB is still observed for the interrupted stream.
+	if findMetricLine(body, "tokenhub_gateway_time_to_first_byte_seconds_count") == "" {
+		t.Fatalf("TTFB must still be observed for the interrupted Kronk stream")
+	}
+}
+
+// An in-band error frame that echoes provider secrets is forwarded to the
+// client with secrets redacted, and the classified error that reaches
+// RouteAttempt.Error is built from the redacted payload so the secret does
+// not survive into the persisted attempt/audit data.
+
+// A full end-to-end regression: an in-band error frame that echoes a provider
+// API key is redacted before the classified error reaches RouteAttempt.Error
+// (via errorMessage). The forwarded SSE frame is also redacted. This test
+// exercises the full pipeline through executeRoutedWithStore and FinishCall.
+func TestMetricsInBandErrorSecretsRedactedThroughFullPipeline(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl\",\"choices\":[{\"delta\":{\"content\":\"partial\"},\"index\":0}]}\n\n")
+		// The upstream echoes the API key in the error message.
+		_, _ = io.WriteString(w, "data: {\"error\":{\"type\":\"server_error\",\"message\":\"provider-api-secret failed\"}}\n\n")
+	}))
+	defer upstream.Close()
+
+	// Build a custom gateway with a provider that has an API key, so the
+	// redaction path is exercised through the full streaming pipeline.
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "metrics-secrets", Status: StatusActive})
+	const model = "metrics-secrets-model"
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "metrics-secrets-key",
+		Allowed: []string{model},
+		Status:  StatusActive,
+	}, "thk_metrics_secrets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: model, Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID:      "prv_metrics_secrets",
+		Name:    "Metrics Secrets",
+		Type:    ProviderOpenAICompatible,
+		BaseURL: upstream.URL,
+		APIKey:  "provider-api-secret",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:             "rsrc_metrics_secrets",
+		ProviderID:     provider.ID,
+		Name:           "Metrics Secrets Resource",
+		ResourceType:   "openai",
+		Status:         StatusActive,
+		Healthy:        true,
+		Priority:       1,
+		Weight:         100,
+		MaxConcurrency: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddRoute(ModelRoute{
+		ID:                 "route_metrics_secrets",
+		ModelName:          model,
+		ProviderID:         provider.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      model,
+		Priority:           1,
+		Weight:             100,
+		Status:             StatusActive,
+		Strategy:           RouteStrategyPriorityOnly,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", MetricsEnabled: true})
+	if server.metrics == nil {
+		t.Fatal("expected metrics to be enabled")
+	}
+
+	resp := postStream(t, server.Handler(), "/v1/chat/completions", map[string]any{
+		"model":    model,
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+		"stream":   true,
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("a committed stream still returns the committed 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	// The forwarded SSE frame must not contain the raw API key.
+	if strings.Contains(resp.Body.String(), "provider-api-secret") {
+		t.Fatalf("the forwarded frame leaked the provider API key:\n%s", resp.Body.String())
+	}
+
+	body := scrapeMetrics(t, server.Handler())
+	interruption := findMetricLine(body, "tokenhub_gateway_stream_interruptions_total", `provider_id="prv_metrics_secrets"`)
+	if interruption == "" {
+		t.Fatalf("missing in-band error interruption series:\n%s", body)
+	}
+	if metricLineValue(t, interruption) != 1 {
+		t.Fatalf("expected one in-band error interruption")
+	}
+	if !strings.Contains(interruption, `error_code="provider_stream_error"`) {
+		t.Fatalf("in-band error must carry provider_stream_error:\n%s", interruption)
 	}
 }

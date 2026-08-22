@@ -555,7 +555,9 @@ func (m *GatewayMetrics) labels(projectID string, values ...string) []string {
 func interruptionErrorCode(code string) string {
 	switch code {
 	case "provider_stream_idle_timeout", "codex_stream_idle_timeout",
-		"codex_stream_incomplete", "codex_stream_failed":
+		"codex_stream_incomplete", "codex_stream_failed",
+		"provider_upstream_timeout", "provider_stream_interrupted",
+		"provider_upstream_unreachable":
 		return "internal_error"
 	}
 	return code
