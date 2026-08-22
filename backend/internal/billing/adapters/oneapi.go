@@ -1,4 +1,4 @@
-package server
+package adapters
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"tokenhub/backend/internal/billing"
 )
 
 type OneAPIBillingAdapter struct {
@@ -170,6 +172,10 @@ func normalizeOneAPIBillingRecord(item map[string]any, connector BillingConnecto
 	}, nil
 }
 
+func NormalizeOneAPIBillingRecord(item map[string]any, connector billing.Connector) (billing.Record, error) {
+	return normalizeOneAPIBillingRecord(item, connector)
+}
+
 func billingResponseError(response *http.Response) error {
 	retryAfter := time.Duration(0)
 	if seconds, err := strconv.Atoi(strings.TrimSpace(response.Header.Get("retry-after"))); err == nil && seconds > 0 {
@@ -216,6 +222,10 @@ func billingDecimalRatio(numerator int64, denominator int64) string {
 		return "0"
 	}
 	return text
+}
+
+func BillingDecimalRatio(numerator, denominator int64) string {
+	return billingDecimalRatio(numerator, denominator)
 }
 
 func numberValue(value any) float64 {

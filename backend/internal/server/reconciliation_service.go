@@ -13,6 +13,7 @@ import (
 
 type ReconciliationService struct {
 	store         Store
+	billing       ReconciliationBillingReader
 	mu            sync.Mutex
 	active        map[string]bool
 	schedulerOnce sync.Once
@@ -20,8 +21,8 @@ type ReconciliationService struct {
 	schedulerDone chan struct{}
 }
 
-func newReconciliationService(store Store) *ReconciliationService {
-	return &ReconciliationService{store: store, active: map[string]bool{}}
+func newReconciliationService(store Store, billingReader ReconciliationBillingReader) *ReconciliationService {
+	return &ReconciliationService{store: store, billing: billingReader, active: map[string]bool{}}
 }
 
 func (s *ReconciliationService) CreateRule(request ReconciliationRuleRequest, actor string) (ReconciliationRule, error) {
@@ -31,10 +32,11 @@ func (s *ReconciliationService) CreateRule(request ReconciliationRuleRequest, ac
 	if err := normalizeAndValidateReconciliationRule(&rule); err != nil {
 		return ReconciliationRule{}, err
 	}
-	connector, err := s.store.GetBillingConnector(rule.ConnectorID, false)
+	domainConnector, err := s.billing.GetBillingConnector(rule.ConnectorID, false)
 	if err != nil {
 		return ReconciliationRule{}, err
 	}
+	connector := domainConnector
 	if err := snapshotReconciliationConnector(&rule, connector); err != nil {
 		return ReconciliationRule{}, err
 	}
@@ -54,10 +56,11 @@ func (s *ReconciliationService) UpdateRule(id string, request ReconciliationRule
 	if err := normalizeAndValidateReconciliationRule(&rule); err != nil {
 		return before, ReconciliationRule{}, err
 	}
-	connector, err := s.store.GetBillingConnector(rule.ConnectorID, false)
+	domainConnector, err := s.billing.GetBillingConnector(rule.ConnectorID, false)
 	if err != nil {
 		return before, ReconciliationRule{}, err
 	}
+	connector := domainConnector
 	if err := snapshotReconciliationConnector(&rule, connector); err != nil {
 		return before, ReconciliationRule{}, err
 	}
@@ -71,10 +74,11 @@ func (s *ReconciliationService) ensureReconciliationRuleConnectorSnapshot(rule R
 	if strings.TrimSpace(rule.ConnectorType) != "" && normalizeReconciliationScope(rule.ProviderID) != "" {
 		return rule, validateReconciliationConnectorSnapshot(rule.Granularity, rule.ConnectorType, rule.ProviderID)
 	}
-	connector, err := s.store.GetBillingConnector(rule.ConnectorID, false)
+	domainConnector, err := s.billing.GetBillingConnector(rule.ConnectorID, false)
 	if err != nil {
 		return ReconciliationRule{}, err
 	}
+	connector := domainConnector
 	if err := snapshotReconciliationConnector(&rule, connector); err != nil {
 		return ReconciliationRule{}, err
 	}
@@ -85,10 +89,11 @@ func (s *ReconciliationService) ensureReconciliationRunConnectorSnapshot(run Rec
 	if strings.TrimSpace(run.ConnectorType) != "" && normalizeReconciliationScope(run.ProviderID) != "" {
 		return run, validateReconciliationConnectorSnapshot(run.Granularity, run.ConnectorType, run.ProviderID)
 	}
-	connector, err := s.store.GetBillingConnector(run.ConnectorID, false)
+	domainConnector, err := s.billing.GetBillingConnector(run.ConnectorID, false)
 	if err != nil {
 		return ReconciliationRun{}, err
 	}
+	connector := domainConnector
 	if err := snapshotReconciliationRunConnector(&run, connector); err != nil {
 		return ReconciliationRun{}, err
 	}
@@ -166,7 +171,10 @@ func (s *ReconciliationService) calculateAndSave(ctx context.Context, run Reconc
 	var bills []BillingRecord
 	var usages []UsageRecord
 	if err == nil {
-		bills, usages, err = s.store.LoadReconciliationInputs(run.ConnectorID, run.PeriodStart, run.PeriodEnd, window)
+		bills, err = s.billing.ListBillingRecordsInRange(run.ConnectorID, run.PeriodStart, run.PeriodEnd)
+	}
+	if err == nil {
+		usages, err = s.store.ListReconciliationUsages(run.PeriodStart, run.PeriodEnd, window)
 	}
 	if err == nil {
 		usages = scopeReconciliationUsages(run, usages)

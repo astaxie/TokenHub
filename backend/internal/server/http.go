@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"tokenhub/backend/internal/admin"
+	"tokenhub/backend/internal/billing"
+	billingadapters "tokenhub/backend/internal/billing/adapters"
 	"tokenhub/backend/internal/guardrails"
 )
 
@@ -21,7 +24,9 @@ type Server struct {
 	integrations            *IntegrationService
 	codexSubscription       *CodexSubscriptionAdapter
 	providerCatalog         *providerCatalogService
-	billing                 *BillingService
+	billing                 *billing.Service
+	billingAdmin            *admin.BillingHandler
+	billingAvailable        bool
 	reconciliation          *ReconciliationService
 	credentialRefresh       *ProviderCredentialRefreshService
 	payloadRetention        *requestPayloadRetentionService
@@ -58,7 +63,28 @@ type Server struct {
 func New(store Store) *Server {
 	return NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
 }
+
 func NewWithConfig(store Store, config Config) *Server {
+	return newWithConfig(store, config, billingDependenciesFromStore(store))
+}
+
+// BillingDependencies are composition-only billing capabilities. They allow a
+// Store decorator to preserve billing behavior without widening Store itself.
+type BillingDependencies struct {
+	Repository           billing.Repository
+	ReconciliationReader ReconciliationBillingReader
+}
+
+// NewWithConfigAndBillingDependencies constructs a server with explicitly
+// supplied billing dependencies. It is intended for Store decorators that do
+// not expose the private composition hooks implemented by GormStore.
+func NewWithConfigAndBillingDependencies(store Store, config Config, dependencies BillingDependencies) *Server {
+	return newWithConfig(store, config, dependencies)
+}
+
+func newWithConfig(store Store, config Config, billingDependencies BillingDependencies) *Server {
+	billingAvailable := billingDependencies.Repository != nil && billingDependencies.ReconciliationReader != nil
+	billingDependencies = normalizeBillingDependencies(billingDependencies)
 	if strings.TrimSpace(config.ImageStorageDir) == "" {
 		config.ImageStorageDir = defaultImageStorageDir()
 	}
@@ -159,8 +185,9 @@ func NewWithConfig(store Store, config Config) *Server {
 		integrations:            NewIntegrationService(store, registry, client),
 		codexSubscription:       codexSubscription,
 		providerCatalog:         newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient),
-		billing:                 newBillingService(store),
-		reconciliation:          newReconciliationService(store),
+		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
+		billingAvailable:        billingAvailable,
+		reconciliation:          newReconciliationService(store, billingDependencies.ReconciliationReader),
 		credentialRefresh:       newProviderCredentialRefreshService(store),
 		payloadRetention:        newRequestPayloadRetentionService(store),
 		mux:                     http.NewServeMux(),
@@ -185,6 +212,21 @@ func NewWithConfig(store Store, config Config) *Server {
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
 	}
+	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
+		DecodeJSON:         s.decodeJSON,
+		DecodeJSONOptional: s.decodeJSONOptional,
+		IsPayloadTooLarge:  isPayloadTooLarge,
+		NewError: func(status int, code, message string) error {
+			return NewHTTPError(status, code, message)
+		},
+		MapError:   func(err error) error { return billingHTTPError(err) },
+		WriteJSON:  writeJSON,
+		WriteError: writeError,
+		Audit: func(r *http.Request, actor admin.BillingActor, event admin.BillingAudit) {
+			s.recordAdminAuditWithStatus(r, AdminUser{ID: actor.ID, Name: actor.Name, Role: actor.Role},
+				event.Action, "billing_connector", event.ResourceID, event.Status, event.Message, event.Before, event.After)
+		},
+	})
 	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
 		log.Printf("[tokenhub] failed to mark unfinished image jobs after startup: %v", err)
 	} else if len(jobs) > 0 {

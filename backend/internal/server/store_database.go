@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"tokenhub/backend/internal/billing"
+	billingpersistence "tokenhub/backend/internal/billing/persistence"
 	"tokenhub/backend/internal/dbschema"
 	"tokenhub/backend/internal/guardrails"
 
@@ -304,7 +306,7 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		return nil, err
 	}
 
-	return &GormStore{
+	store := &GormStore{
 		db:                   db,
 		analyticsDB:          analyticsDB,
 		mu:                   &sync.Mutex{},
@@ -324,7 +326,22 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		clusterLockTTL:       time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
 		imageCapabilityRetry: time.Duration(defaultInt(config.ImageCapabilityRetrySecs, 86400)) * time.Second,
 		billingRedis:         billingRedis,
-	}, nil
+	}
+	store.billingPersistence = billingpersistence.NewStore(db, store.mu, config.SecretKey, store.recordScheduledBillingAudit)
+	store.billingRepository = store.billingPersistence
+	return store, nil
+}
+
+func (s *GormStore) recordScheduledBillingAudit(run billing.SyncRun) {
+	status := "success"
+	if run.Status != billing.SyncSucceeded {
+		status = "failed"
+	}
+	s.RecordAuditEvent(AuditEvent{
+		ActorUserID: "system", ActorName: "TokenHub Scheduler", ActorRole: "system",
+		Action: "sync", ResourceType: "billing_connector", ResourceID: run.ConnectorID,
+		Status: status, Message: run.ErrorCode, AfterSnapshot: snapshotJSON(run),
+	})
 }
 
 type quotaBucketColumnInfo struct {
@@ -927,7 +944,7 @@ func (s *GormStore) WithContext(ctx context.Context) *GormStore {
 // Order follows the original AutoMigrate call; keep it stable.
 func schemaModels() []any {
 	return []any{
-		&BillingConnector{}, &BillingRecord{}, &BillingRawSnapshot{}, &BillingSyncRun{},
+		&billingpersistence.ConnectorRow{}, &billingpersistence.RecordRow{}, &billingpersistence.RawSnapshotRow{}, &billingpersistence.SyncRunRow{},
 		&ReconciliationRule{}, &ReconciliationRun{}, &ReconciliationItem{},
 		&Project{},
 		&ProjectTeam{},
