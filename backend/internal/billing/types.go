@@ -17,7 +17,7 @@ const (
 	SyncSucceeded = "succeeded"
 	SyncFailed    = "failed"
 
-	StatusActive = "active"
+	StatusActive   = "active"
 	StatusDisabled = "disabled"
 )
 
