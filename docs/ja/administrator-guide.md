@@ -369,7 +369,7 @@ ID ソースまたは通知チャネルを更新するとき、空文字列、�
 
 タイプ `email` の通知チャンネルは SMTP で配信されます。デフォルトでは TokenHub は平文で接続し、サーバーが通知する能力に応じて STARTTLS にアップグレードします（通常はポート 587）。465 などの暗黙的 TLS ポートでのみ SMTP を提供するメールサーバーの場合は、チャンネルフィールド `smtp_encryption` を `ssl`、`tls`、`smtps`、`implicit` のいずれかに設定すると、最初のバイトから TLS で接続します。他の標準フィールド（`smtp_host`、`smtp_port`、`smtp_username`、`smtp_password`、`smtp_from`、`email_to`）は変わりません。
 
-管理コンソールのメールチャンネルフォームでは、**SMTP 暗号化** セレクターで `auto`（機会的 STARTTLS、legacy デフォルト）、`starttls`（STARTTLS を必須とし、サーバーが非対応の場合は送信を拒否、ポート 587）、`ssl`（最初のバイトから暗黙的 TLS、ポート 465）を選択できます。新しいチャンネルのデフォルトは `starttls` で、作成・更新時にこの値が `smtp_encryption` フィールドに書き込まれます。
+管理コンソールのメールチャンネルフォームでは、**SMTP 暗号化** セレクターで `auto`（機会的 STARTTLS、legacy デフォルト）、`starttls`（STARTTLS を必須とし、サーバーが非対応の場合は送信を拒否、ポート 587）、`ssl`（最初のバイトから暗黙的 TLS、ポート 465）を選択できます。新しいチャンネルのデフォルトは `starttls` です。`auto` を選択した場合はフィールドを空欄のままにして legacy の機会的 STARTTLS を維持し、`starttls` または `ssl` を選択した場合にのみ `smtp_encryption` フィールドに書き込まれます。
 
 ## スクリーンショット
 
