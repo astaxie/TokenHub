@@ -215,7 +215,7 @@ func (s *Server) discoverKronkCatalog(ctx context.Context, req ProviderCreateReq
 		}
 		req.Options = mergedStringMap(provider.Options, req.Options)
 	}
-	entry, err := KronkProviderCatalogFromUpstream(ctx, http.DefaultClient, req)
+	entry, err := KronkProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
 	if err != nil {
 		return ProviderCatalogEntry{}, err
 	}

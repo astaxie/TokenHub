@@ -6,54 +6,43 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-func (s *Server) registerBillingRoutes() {
-	s.mux.HandleFunc("/api/admin/billing/connectors", s.handleAdminBillingConnectors)
-	s.mux.HandleFunc("/api/admin/billing/connectors/", s.handleAdminBillingConnectorItem)
-	s.mux.HandleFunc("/api/admin/billing/records", s.handleAdminBillingRecords)
-	s.mux.HandleFunc("/api/admin/billing/sync-runs", s.handleAdminBillingSyncRuns)
-	s.registerReconciliationRoutes()
-}
+	"tokenhub/backend/internal/billing"
+)
 
 func (s *Server) StartBillingScheduler() {
 	s.billing.StartScheduler(30 * time.Second)
 	s.reconciliation.StartScheduler(30 * time.Second)
+	s.credentialRefresh.StartScheduler(providerCredentialRefreshInterval)
+	s.payloadRetention.StartScheduler(requestPayloadRetentionInterval)
 }
 
-func (s *Server) handleAdminBillingConnectors(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, "billing", r.Method)
-	if !ok {
+func (s *Server) serveAdminBillingConnectorsGet(w http.ResponseWriter, _ *http.Request, _ AdminUser) {
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListBillingConnectors()})
+}
+
+func (s *Server) serveAdminBillingConnectorsPost(w http.ResponseWriter, r *http.Request, user AdminUser) {
+	var request BillingConnectorRequest
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		if isPayloadTooLarge(err) {
+			writeError(w, r, err)
+			return
+		}
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
 		return
 	}
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListBillingConnectors()})
-	case http.MethodPost:
-		var request BillingConnectorRequest
-		if err := s.decodeJSON(w, r, &request); err != nil {
-			if isPayloadTooLarge(err) {
-				writeError(w, r, err)
-				return
-			}
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
-			return
-		}
-		connector, err := billingConnectorFromRequest(request)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		created, err := s.store.CreateBillingConnector(connector)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "create", "billing_connector", created.ID, nil, created)
-		writeJSON(w, http.StatusCreated, created)
-	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	connector, err := billingConnectorFromRequest(request)
+	if err != nil {
+		writeError(w, r, err)
+		return
 	}
+	created, err := s.store.CreateBillingConnector(connector)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "create", "billing_connector", created.ID, nil, created)
+	writeJSON(w, http.StatusCreated, created)
 }
 
 func (s *Server) handleAdminBillingConnectorItem(w http.ResponseWriter, r *http.Request) {
@@ -62,126 +51,133 @@ func (s *Server) handleAdminBillingConnectorItem(w http.ResponseWriter, r *http.
 		return
 	}
 	parts := splitEscapedAdminPath(r.URL.EscapedPath(), "/api/admin/billing/connectors/")
-	id := parts[0]
-	if id == "" || len(parts) > 2 {
+	if len(parts) == 0 || parts[0] == "" || len(parts) > 2 {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "billing_connector_not_found", "Billing connector not found"))
 		return
 	}
+	id := parts[0]
 	if len(parts) == 2 {
 		s.handleAdminBillingConnectorAction(w, r, user, id, parts[1])
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		connector, err := s.store.GetBillingConnector(id, false)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, connector)
+		s.serveAdminBillingConnectorGet(w, r, user, id)
 	case http.MethodPatch:
-		before, err := s.store.GetBillingConnector(id, false)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		var request BillingConnectorPatchRequest
-		if err := s.decodeJSON(w, r, &request); err != nil {
-			if isPayloadTooLarge(err) {
-				writeError(w, r, err)
-				return
-			}
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
-			return
-		}
-		patch, err := billingConnectorPatch(request, before)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		updated, err := s.store.UpdateBillingConnector(id, patch)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "update", "billing_connector", id, before, updated)
-		writeJSON(w, http.StatusOK, updated)
+		s.serveAdminBillingConnectorPatch(w, r, user, id)
 	case http.MethodDelete:
-		before, err := s.store.GetBillingConnector(id, false)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		if err := s.store.DeleteBillingConnector(id); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "delete", "billing_connector", id, before, nil)
-		w.WriteHeader(http.StatusNoContent)
+		s.serveAdminBillingConnectorDelete(w, r, user, id)
 	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed("GET, PATCH, DELETE")(w, r)
 	}
+}
+
+func (s *Server) serveAdminBillingConnectorGet(w http.ResponseWriter, r *http.Request, _ AdminUser, connectorID string) {
+	connector, err := s.store.GetBillingConnector(connectorID, false)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, connector)
+}
+
+func (s *Server) serveAdminBillingConnectorPatch(w http.ResponseWriter, r *http.Request, user AdminUser, connectorID string) {
+	before, err := s.store.GetBillingConnector(connectorID, false)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	var request BillingConnectorPatchRequest
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		if isPayloadTooLarge(err) {
+			writeError(w, r, err)
+			return
+		}
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
+		return
+	}
+	patch, err := billingConnectorPatch(request, before)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	updated, err := s.store.UpdateBillingConnector(connectorID, patch)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "update", "billing_connector", connectorID, before, updated)
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) serveAdminBillingConnectorDelete(w http.ResponseWriter, r *http.Request, user AdminUser, connectorID string) {
+	before, err := s.store.GetBillingConnector(connectorID, false)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if err := s.store.DeleteBillingConnector(connectorID); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "delete", "billing_connector", connectorID, before, nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleAdminBillingConnectorAction(w http.ResponseWriter, r *http.Request, user AdminUser, connectorID string, action string) {
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
 	switch action {
 	case "test":
-		result, err := s.billing.Test(r.Context(), connectorID)
-		if err != nil {
-			httpErr := AsHTTPError(err)
-			s.recordAdminAuditWithStatus(r, user, "test", "billing_connector", connectorID, BillingSyncFailed, httpErr.Code, nil, map[string]any{"error_code": httpErr.Code})
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "test", "billing_connector", connectorID, nil, result)
-		writeJSON(w, http.StatusOK, result)
+		s.serveAdminBillingConnectorTest(w, r, user, connectorID)
 	case "sync":
-		var request BillingSyncRequest
-		if err := s.decodeJSONOptional(w, r, &request); err != nil {
-			if isPayloadTooLarge(err) {
-				writeError(w, r, err)
-				return
-			}
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_sync", "Invalid billing sync payload"))
-			return
-		}
-		run, err := s.billing.Sync(r.Context(), connectorID, request, "manual")
-		if err != nil {
-			httpErr := AsHTTPError(err)
-			s.recordAdminAuditWithStatus(r, user, "sync", "billing_connector", connectorID, BillingSyncFailed, httpErr.Code, nil, run)
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "sync", "billing_connector", connectorID, nil, run)
-		writeJSON(w, http.StatusOK, run)
+		s.serveAdminBillingConnectorSync(w, r, user, connectorID)
 	default:
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "billing_action_not_found", "Billing connector action not found"))
 	}
 }
 
-func (s *Server) handleAdminBillingRecords(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "billing", r.Method); !ok {
+func (s *Server) serveAdminBillingConnectorTest(w http.ResponseWriter, r *http.Request, user AdminUser, connectorID string) {
+	result, err := s.billing.Test(r.Context(), connectorID)
+	if err != nil {
+		httpErr := billingHTTPError(err)
+		s.recordAdminAuditWithStatus(r, user, "test", "billing_connector", connectorID, BillingSyncFailed, httpErr.Code, nil, map[string]any{"error_code": httpErr.Code})
+		writeError(w, r, httpErr)
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	s.recordAdminAudit(r, user, "test", "billing_connector", connectorID, nil, result)
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) serveAdminBillingConnectorSync(w http.ResponseWriter, r *http.Request, user AdminUser, connectorID string) {
+	var request BillingSyncRequest
+	if err := s.decodeJSONOptional(w, r, &request); err != nil {
+		if isPayloadTooLarge(err) {
+			writeError(w, r, err)
+			return
+		}
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_billing_sync", "Invalid billing sync payload"))
 		return
 	}
+	run, err := s.billing.Sync(r.Context(), connectorID, billing.SyncRequest{From: request.From, To: request.To}, "manual")
+	if err != nil {
+		httpErr := billingHTTPError(err)
+		s.recordAdminAuditWithStatus(r, user, "sync", "billing_connector", connectorID, BillingSyncFailed, httpErr.Code, nil, serverBillingSyncRun(run))
+		writeError(w, r, httpErr)
+		return
+	}
+	response := serverBillingSyncRun(run)
+	s.recordAdminAudit(r, user, "sync", "billing_connector", connectorID, nil, response)
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) serveAdminBillingRecordsGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListBillingRecords(r.URL.Query().Get("connector_id"), billingListLimit(r))})
 }
 
-func (s *Server) handleAdminBillingSyncRuns(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "billing", r.Method); !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
+func (s *Server) serveAdminBillingSyncRunsGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListBillingSyncRuns(r.URL.Query().Get("connector_id"), billingListLimit(r))})
 }
 

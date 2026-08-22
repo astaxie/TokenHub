@@ -23,6 +23,12 @@ Language: [English](../user-guide.md) | 简体中文 | [日本語](../ja/user-gu
 4. 选择一个模型 ID，调用 `POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses` 或 `POST /v1/embeddings`。
 5. 在 **用量统计** 和 **请求日志** 中查看请求、Token、成本和错误。
 
+## 查看单个 API Key 的用量
+
+在 **Key 管理** 中点击某个 Key 的「用量」，即可打开独立用量页。页面展示请求数、成功率、延迟、详细 Token 分类、对外预估成本、模型与错误分布，以及可分页的请求明细。可以选择最近 7 天、30 天、90 天，或者最长 366 天的自定义 UTC 日期范围。
+
+额度区域会把当前 UTC 日/月计数与有效上限进行比较；有效上限由 Key、项目、团队和全局额度策略合并后得出。统计严格属于当前保存的 Key ID，轮换前后的 Key 只展示关联关系，不会合并用量。启用审计快照时，请求内容仍遵循现有的脱敏和截断规则，接口永远不会返回完整 API Key。
+
 ## 在演练场测试模型
 
 打开控制台中的「模型演练场」，无需编写 API 脚本即可测试可用的聊天模型。每次响应都会展示流式或缓冲模式、可测量时的 TTFT、输出吞吐、总耗时、完整上下文输入 Tokens、输出 Tokens、估算成本、本地完成时间和 Request ID。展开响应可查看实际响应详情；只有拥有路由读取权限的角色才能看到 Provider 和路由内部信息。
@@ -151,10 +157,11 @@ Anthropic 与 Gemini 要求在多轮工具调用的下一轮中，原样回传�
 | --- | --- |
 | `message.reasoning_content` | Anthropic `thinking` 文本、Gemini thought 片段、Codex 推理摘要 |
 | `message.reasoning_signature` | Anthropic `thinking.signature`、Codex 加密推理内容 |
+| `message.reasoning_details` | 与工具调用 ID 绑定的 Codex 加密推理内容 |
 | `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
 | `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
 
-在后续请求的 assistant 消息中回传这些字段即可保持推理连续性。忽略这些字段的客户端同样可用：TokenHub 会省略推理块，而不会回传供应商将拒绝的签名。签名带有签发供应商的标记，绝不会被回传给其他供应商。
+在后续请求的 assistant 消息中回传这些字段即可保持推理连续性。对于 `reasoning_details`，必须完整保留条目及其 `id`；只有该 ID 与同一 assistant 消息中的工具调用匹配时，TokenHub 才会接受。忽略这些字段的客户端同样可用：TokenHub 会省略推理块，而不会回传供应商将拒绝的签名。签名带有签发供应商的标记，绝不会被回传给其他供应商。
 
 ## Anthropic Messages 与 Claude Code
 
@@ -230,9 +237,9 @@ Gemini CLI 可以直接连接 TokenHub 的 Gemini 原生 `v1beta` 接口，并�
 
 生图任务默认最多执行 5 分钟，可通过 `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` 调整。
 
-TokenHub 根据账号的真实调用结果记录生图能力。已确认支持的账号会被优先选择；返回 `403` 的账号会被临时跳过；尚未检测的账号仍可在首次使用时完成检测。经过 `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（默认 24 小时）后，不支持的账号会重新进入模型发现和路由范围，由下一次真实请求低频复测。TokenHub 不会为了探测恢复而在后台自动生成图片。
+管理员在 **Provider 渠道** 中配置这项能力：打开 OpenAI Codex Provider，在 **模型** 页签勾选 **Codex 订阅生图**。选择一个已启用账号后，TokenHub 会先提示额度消耗，再向该真实账号发送一次低质量 `gpt-image-2` 请求。只有收到非空且有效的图片，系统才会把账号记录为“支持生图”，并创建或重新启用 Provider 线路。返回 `403` 会记录为“不支持生图”；凭据过期时需要重新授权；限流、超时和上游临时故障不会覆盖之前的能力结果，可在弹窗中重试。测试会消耗少量订阅额度，TokenHub 不会在后台自动执行这项测试。
 
-至少一个健康的 Codex 接入账号已确认支持生图或进入低频复测窗口时，`codex-gpt-image-2` 会出现在 `GET /v1/models` 中。它是订阅制虚拟模型，不需要配置普通 Provider 模型路由。除上述 Codex 客户端兼容映射外，独立的 `gpt-image-2` 模型使用 OpenAI API Provider，不会消耗 Codex 订阅额度。
+这个勾选项会以幂等方式（重复操作不会创建重复数据）管理一条从 `codex-gpt-image-2` 到 OpenAI Codex Provider、上游模型为 `gpt-image-2` 的启用线路。升级时，系统会为之前已经确认支持生图的启用账号做一次性线路补齐。取消勾选会停用匹配线路，但保留账号能力测试结果；服务启动时不会重新启用管理员明确停用的线路，也不会在迁移标记完成后重新创建被管理员删除的线路，管理员仍可主动重新测试并启用。优先级、权重、项目范围、指定资源和资源分组等高级控制仍可在路由策略中编辑。有启用线路后，已确认支持的账号会被优先选择，返回 `403` 的账号会被临时跳过；经过 `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（默认 24 小时）后，该账号可由下一次真实请求低频复测。首次测试失败且没有创建线路时，需要管理员手动重试。只有存在可用线路和账号时，`codex-gpt-image-2` 才会出现在 `GET /v1/models` 中。除上述 Codex 客户端兼容映射外，独立的 `gpt-image-2` 模型使用 OpenAI API Provider，不会消耗 Codex 订阅额度。
 
 完整的 curl、异步轮询、参考图、Node.js 和 Python 测试流程见 [Codex 生图 API 调用与测试指南](codex-image-generation-api.md)。
 

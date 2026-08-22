@@ -207,19 +207,22 @@ func (c Config) ValidateForStartup() error {
 	if environment == "" {
 		return fmt.Errorf("unsafe TOKENHUB_ENV configuration: set an explicit environment")
 	}
-	switch environment {
-	case "dev", "development", "local", "test":
+	if isDevelopmentEnvironment(environment) {
 		return nil
 	}
 	invalid := make([]string, 0, 3)
-	if reason := weakProductionSecretReason(c.AdminToken, 32, "dev_admin_token", "change-me-tokenhub-admin-token"); reason != "" {
-		invalid = append(invalid, "TOKENHUB_ADMIN_TOKEN "+reason)
+	if strings.TrimSpace(c.AdminToken) != "" {
+		if reason := weakProductionSecretReason(c.AdminToken, 32, "dev_admin_token", "change-me-tokenhub-admin-token"); reason != "" {
+			invalid = append(invalid, "TOKENHUB_ADMIN_TOKEN "+reason)
+		}
 	}
 	if reason := weakProductionSecretReason(c.SecretKey, 32, "dev_tokenhub_secret_key", "change-me-tokenhub-secret-key"); reason != "" {
 		invalid = append(invalid, "TOKENHUB_SECRET_KEY "+reason)
 	}
-	if reason := weakProductionSecretReason(c.BootstrapAdminPassword, 12, "admin123456", "change-me-tokenhub-admin-password"); reason != "" {
-		invalid = append(invalid, "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD "+reason)
+	if strings.TrimSpace(c.BootstrapAdminPassword) != "" {
+		if reason := weakProductionSecretReason(c.BootstrapAdminPassword, 12, "admin123456", "change-me-tokenhub-admin-password"); reason != "" {
+			invalid = append(invalid, "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD "+reason)
+		}
 	}
 	if len(invalid) > 0 {
 		return fmt.Errorf("unsafe %s configuration: %s", environment, strings.Join(invalid, "; "))

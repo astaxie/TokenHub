@@ -39,9 +39,13 @@ func (s *Server) handleAdminAlertItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminAlertDelivery(w, r, user, parts[0])
+}
+
+func (s *Server) serveAdminAlertDelivery(w http.ResponseWriter, r *http.Request, user AdminUser, alertID string) {
 	var req struct {
 		ChannelID string `json:"channel_id"`
 	}
@@ -51,12 +55,12 @@ func (s *Server) handleAdminAlertItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	delivery, err := s.deliverAlert(r.Context(), parts[0], req.ChannelID)
+	delivery, err := s.deliverAlert(r.Context(), alertID, req.ChannelID)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "deliver", "alert", parts[0], "", delivery)
+	s.recordAdminAudit(r, user, "deliver", "alert", alertID, "", delivery)
 	writeJSON(w, http.StatusOK, delivery)
 }
 
@@ -64,7 +68,7 @@ func (s *Server) handleAdminAlertDeliveries(w http.ResponseWriter, r *http.Reque
 	if _, ok := s.requireAdmin(w, r, "alert", r.Method); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAlertDeliveries()})
+	writeJSON(w, http.StatusOK, map[string]any{"data": redactAlertDeliveriesForResponse(s.store.ListAlertDeliveries())})
 }
 
 func (s *Server) handleAdminApprovals(w http.ResponseWriter, r *http.Request) {
@@ -86,9 +90,13 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminApprovalAction(w, r, user, parts[0], parts[1])
+}
+
+func (s *Server) serveAdminApprovalAction(w http.ResponseWriter, r *http.Request, user AdminUser, approvalID string, action string) {
 	var req struct {
 		Reason string `json:"reason"`
 	}
@@ -99,10 +107,10 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	status := "approved"
-	if parts[1] == "reject" {
+	if action == "reject" {
 		status = "rejected"
 	}
-	pending, err := s.store.GetApprovalRequest(parts[0])
+	pending, err := s.store.GetApprovalRequest(approvalID)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -120,7 +128,7 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		}
 		s.recordAdminAudit(r, user, "apply_approval", pending.ResourceType, pending.ResourceID, pending, result)
 	}
-	item, err := s.store.UpdateApprovalRequestStatus(parts[0], status, user.ID, req.Reason)
+	item, err := s.store.UpdateApprovalRequestStatus(approvalID, status, user.ID, req.Reason)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -363,26 +371,26 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if !supportedNotificationChannel(delivery.Channel) {
 		delivery.Status = "failed"
 		delivery.Error = "unsupported notification channel"
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	if delivery.Channel == "email" {
 		if err := sendEmailAlert(ctx, channel, alert); err != nil {
 			delivery.Status = "failed"
 			delivery.Error = err.Error()
 		}
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	target, err := notificationChannelRequestTarget(channel)
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	bodyPayload, headers, err := notificationChannelPayloadForChannel(channel, payload, alert)
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	body, _ := json.Marshal(bodyPayload)
 	if delivery.Channel == "dingtalk" {
@@ -390,7 +398,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 		if err != nil {
 			delivery.Status = "failed"
 			delivery.Error = err.Error()
-			return s.store.RecordAlertDelivery(delivery), nil
+			return s.recordAlertDelivery(channel, delivery), nil
 		}
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -399,7 +407,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	req.Header.Set("content-type", "application/json")
 	for key, value := range headers {
@@ -409,7 +417,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	defer resp.Body.Close()
 	delivery.StatusCode = resp.StatusCode
@@ -421,7 +429,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
 	}
-	return s.store.RecordAlertDelivery(delivery), nil
+	return s.recordAlertDelivery(channel, delivery), nil
 }
 
 func signedDingTalkWebhookURL(rawURL string, secret string) (string, error) {
@@ -595,7 +603,7 @@ func notificationChannelTarget(channel AdminResource) string {
 		}
 		return "whatsapp"
 	}
-	return firstStringField(channel.Fields, "webhook_url", "url")
+	return redactNotificationDeliveryURL(firstStringField(channel.Fields, "webhook_url", "url"))
 }
 
 func notificationChannelRequestTarget(channel AdminResource) (string, error) {
@@ -750,30 +758,19 @@ func (s *Server) sendAdminPasswordResetEmail(r *http.Request, channel AdminResou
 	if err != nil {
 		return err
 	}
-	resetLink := adminPasswordResetLink(r, plainToken)
+	resetLink := s.adminPasswordResetLink(r, plainToken)
 	return sendEmail(r.Context(), channel.Fields, []string{user.Email}, passwordResetEmailMessage(channel.Fields, []string{user.Email}, user, resetLink, token.ExpiresAt))
 }
 
-func adminPasswordResetLink(r *http.Request, token string) string {
-	baseURL := ""
-	if r != nil {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
-			scheme = strings.TrimSpace(strings.Split(proto, ",")[0])
-		}
-		if host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); host != "" {
-			baseURL = scheme + "://" + strings.TrimSpace(strings.Split(host, ",")[0])
-		} else if r.Host != "" {
-			baseURL = scheme + "://" + r.Host
-		}
+func (s *Server) adminPasswordResetLink(r *http.Request, token string) string {
+	returnURL := canonicalOAuthReturnURL(s.config, r)
+	origin, ok := normalizedOAuthOrigin(returnURL, false)
+	if !ok {
+		origin = "http://localhost:3000"
 	}
-	if baseURL == "" {
-		baseURL = "http://localhost:3000"
-	}
-	return strings.TrimRight(baseURL, "/") + "/?reset_token=" + token
+	values := url.Values{}
+	values.Set("reset_token", token)
+	return oauthRedirectWithFragment(origin+"/", values)
 }
 
 func passwordResetEmailMessage(fields map[string]any, recipients []string, user AdminUser, resetLink string, expiresAt time.Time) []byte {

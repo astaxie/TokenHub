@@ -2,7 +2,7 @@ import { Activity, AlertCircle, Check, Copy, Gauge, Search, ShieldCheck } from "
 import { useEffect, useMemo, useState } from "react";
 import { canViewAdminAudit } from "../core/navigation";
 import { type AdminUser, type ApiContext, type AppData, type RequestDetail, type RequestLogPage, type RequestLogPagination, type RequestLogSummary, type RequestPayloadLog } from "../core/types";
-import { auditRequestPagePath, type AuditRequestStatus } from "../domain/audit-request-page";
+import { auditRequestPagePath, auditRequestTimeRangeParameters, type AuditRequestStatus, type AuditRequestTimeRange } from "../domain/audit-request-page";
 import { copyText } from "../domain/clipboard";
 import { apiKeyAuditLabel, projectName, providerAttemptLabel, providerAuditLabel, providerResourceAuditLabel } from "../domain/entities";
 import { compactNumber, formatMoney, formatNumber, formatTime } from "../domain/formatting";
@@ -10,12 +10,14 @@ import { actionLabel, enumValueLabel, resourceTypeLabel } from "../domain/labels
 import { countWithUnit, routeAttemptCountText, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError } from "../resources/payloads";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
-import { PaginationControls, type PaginationState } from "./settings-table";
+import { PaginationControls, type PaginationState } from "../shared/pagination";
 
 export function AuditView({ api, data, user }: { api: ApiContext; data: AppData; user: AdminUser }) {
   const [activeAuditTab, setActiveAuditTab] = useState<"requests" | "admin">("requests");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<AuditRequestStatus>("all");
+  const [timeRange, setTimeRange] = useState<AuditRequestTimeRange>("all");
+  const [modelFilter, setModelFilter] = useState("");
   const [requestLogs, setRequestLogs] = useState<RequestLogPage["data"]>([]);
   const [requestPage, setRequestPage] = useState(1);
   const [requestPageSize, setRequestPageSize] = useState(20);
@@ -28,6 +30,10 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const showAdminAudit = canViewAdminAudit(user);
+  const modelOptions = useMemo(
+    () => [...new Set(data.models.map((model) => model.name).filter(Boolean))].sort((left, right) => left.localeCompare(right)),
+    [data.models],
+  );
 
   useEffect(() => {
     if (!showAdminAudit && activeAuditTab === "admin") {
@@ -45,11 +51,14 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
     setRequestPagination(emptyRequestLogPagination(requestPage, requestPageSize));
     setRequestSummary(emptyRequestLogSummary());
     const timeout = window.setTimeout(() => {
+	  const requestTimeRange = auditRequestTimeRangeParameters(timeRange, new Date());
       adminFetch(api, auditRequestPagePath({
         page: requestPage,
         pageSize: requestPageSize,
         status: statusFilter,
         query,
+		model: modelFilter,
+		...requestTimeRange,
       }), { signal: controller.signal })
         .then(async (resp) => {
           if (!resp.ok) throw new Error(`request logs ${resp.status}`);
@@ -74,7 +83,7 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [activeAuditTab, api, query, requestPage, requestPageSize, statusFilter]);
+  }, [activeAuditTab, api, modelFilter, query, requestPage, requestPageSize, statusFilter, timeRange]);
 
   const requestLogPagination = useMemo<PaginationState>(() => {
     const pageCount = Math.max(1, requestPagination.total_pages);
@@ -158,6 +167,12 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
     { key: "ok", label: `${tx("成功")} ${requestSummary.ok}` },
     { key: "error", label: `${tx("失败")} ${requestSummary.error}` },
   ] as const;
+  const timeFilters = [
+    { key: "all", label: tx("全部时间") },
+    { key: "15m", label: tx("最近 15 分钟") },
+    { key: "1h", label: tx("最近 1 小时") },
+    { key: "24h", label: tx("最近 24 小时") },
+  ] as const;
 
   return (
     <div className="audit-view">
@@ -218,6 +233,34 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
                   </button>
                 ))}
               </div>
+              <div className="request-filter-tabs" role="group" aria-label={tx("请求时间范围")}>
+                {timeFilters.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    className={timeRange === filter.key ? "active" : ""}
+					aria-pressed={timeRange === filter.key}
+                    onClick={() => {
+                      setTimeRange(filter.key);
+                      setRequestPage(1);
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+              <select
+                aria-label={tx("按模型筛选")}
+                className="request-log-model-filter"
+                value={modelFilter}
+                onChange={(event) => {
+                  setModelFilter(event.target.value);
+                  setRequestPage(1);
+                }}
+              >
+                <option value="">{tx("全部模型")}</option>
+                {modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
+              </select>
             </div>
 
             <div className="metrics request-metrics">

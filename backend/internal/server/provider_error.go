@@ -15,6 +15,7 @@ const (
 	ProviderErrorAuthBroken       ProviderErrorDisposition = "auth_broken"
 	ProviderErrorModelUnsupported ProviderErrorDisposition = "model_unsupported"
 	ProviderErrorResourceBroken   ProviderErrorDisposition = "resource_broken"
+	ProviderErrorEgress           ProviderErrorDisposition = "proxy_egress_failure"
 	ProviderErrorStreamCommitted  ProviderErrorDisposition = "stream_failed_committed"
 )
 
@@ -44,6 +45,15 @@ func providerErrorDisposition(err error) ProviderErrorDisposition {
 		return invocationErr.Disposition
 	}
 	return ""
+}
+
+func providerEgressFailure(err error) error {
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if invocationErr, ok := current.(*ProviderInvocationError); ok && invocationErr.Disposition == ProviderErrorEgress {
+			return invocationErr
+		}
+	}
+	return nil
 }
 
 func providerErrorRetryAfter(err error) time.Duration {
@@ -83,7 +93,7 @@ func providerAttemptOutcome(err error) AttemptOutcome {
 		return AttemptSucceeded
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorModelUnsupported:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorModelUnsupported, ProviderErrorEgress:
 		return AttemptNeutral
 	default:
 		if isCodexModelUnsupportedError(err) {

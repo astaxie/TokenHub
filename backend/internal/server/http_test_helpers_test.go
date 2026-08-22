@@ -123,7 +123,7 @@ func assertPasswordResetEmail(t *testing.T, messages <-chan string, recipient st
 	t.Helper()
 	select {
 	case message := <-messages:
-		if !strings.Contains(message, "To: "+recipient) || !strings.Contains(message, "reset_token=") {
+		if !strings.Contains(message, "To: "+recipient) || !strings.Contains(message, "#reset_token=") || strings.Contains(message, "?reset_token=") {
 			t.Fatalf("unexpected password reset email: %s", message)
 		}
 	case <-time.After(time.Second):

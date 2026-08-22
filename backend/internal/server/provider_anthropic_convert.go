@@ -391,6 +391,6 @@ func anthropicChatResponse(body map[string]any, model string, usage Usage) (map[
 			"message":       message,
 			"finish_reason": finishReason,
 		}},
-		"usage": usage,
+		"usage": openAIChatUsageObject(usage),
 	}, nil
 }

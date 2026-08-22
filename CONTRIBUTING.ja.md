@@ -28,7 +28,7 @@ TokenHub は、Go バックエンド、Next.js 管理コンソール、Node.js S
 コンポーネントを個別に実行する場合は、`backend/` でバックエンドを起動します。
 
 ```bash
-go run ./cmd/tokenhub
+TOKENHUB_CORS_ALLOWED_ORIGINS=http://localhost:3000 go run ./cmd/tokenhub
 ```
 
 `frontend/` で管理コンソールを起動します。
@@ -73,9 +73,15 @@ go vet ./...
 
 ```bash
 npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+ブラウザスモークテストは、分離された Next.js フロントエンド、Go バックエンド、模擬 Provider アップストリーム、一時 SQLite データベースを起動します。実際の認証情報や、起動済みの TokenHub 環境は不要です。
 
 Docker またはデプロイ構成を変更した場合は、Docker を利用できる環境で Compose 構成をレンダリングします。
 
@@ -101,6 +107,7 @@ Agent 固有のリポジトリ指示については、[AGENTS.md](AGENTS.md#opti
 
 ## Pull Request
 
+- タイトルと本文のすべてのセクションを英語で記述します。
 - 英語の Conventional Commits 形式のタイトル `<type>[optional scope][!]: <short summary>` を使用します。
 - タイトルは 72 文字以内とし、要約は小文字の命令形で記述し、末尾にピリオドを付けません。
 - [Pull Request テンプレート](.github/pull_request_template.md)のすべてのセクションを記入し、スキップしたチェックや該当しないチェックについて説明します。

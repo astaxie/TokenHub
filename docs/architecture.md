@@ -114,7 +114,7 @@ The default image uses the model catalog bundled at build time so the executable
 
 ## Model Request Flow
 
-`Model` is the external API contract, `ProviderModel` is a persisted upstream inventory item for one Provider, and `ModelRoute` maps between them. External models carry an explicit persisted directory role, so removing their last route leaves them as drafts instead of turning them back into candidate templates. Route creation and editing require the selected `ProviderModel` to exist in inventory. This allows a same-name 1:1 mapping or a custom alias without exposing provider-specific model names to callers. `POST /v1/chat/completions`, `POST /v1/responses`, `POST /v1/responses/compact`, and `POST /v1/embeddings` share the same authentication, quota, and routing entry point.
+`Model` is the external API contract, `ProviderModel` is a persisted upstream inventory item for one Provider, and `ModelRoute` maps between them. External models carry an explicit persisted directory role, so removing their last route leaves them as drafts instead of turning them back into candidate templates. Route creation and editing require the selected `ProviderModel` to exist in inventory. The narrow exception is the subscription-backed virtual model `codex-gpt-image-2`: its route must target an OpenAI Codex Provider and the fixed upstream model `gpt-image-2`, which is an execution capability rather than a chat-model inventory item. This allows a same-name 1:1 mapping or a custom alias without exposing provider-specific model names to callers. `POST /v1/chat/completions`, `POST /v1/responses`, `POST /v1/responses/compact`, and `POST /v1/embeddings` share the same authentication, quota, and routing entry point.
 
 ```mermaid
 sequenceDiagram
@@ -152,10 +152,10 @@ Project and API-key model access is an explicit least-privilege layer before rou
 ## Security, Health, and Data Boundaries
 
 - Project API keys are validated for hash, status, project state, expiration, model scope, IP allowlist, quota, and concurrency.
-- Admin calls use a login session token or `TOKENHUB_ADMIN_TOKEN`; the initial `admin` account is created from `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`.
-- Non-development startup rejects placeholder values, Admin Tokens or backend secrets under 32 bytes, and bootstrap passwords under 12 bytes.
-- `TOKENHUB_TRUSTED_PROXY_CIDRS` defines which proxies may supply `X-Forwarded-For`; `TOKENHUB_CORS_ALLOWED_ORIGINS` controls credentialed browser origins.
-- `/livez` is a process liveness probe. `/readyz` and compatibility `/healthz` check database availability and return `503` when it is unavailable.
+- Admin calls use a login session token or an optional `TOKENHUB_ADMIN_TOKEN`. The initial `admin` account uses `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` when configured; otherwise TokenHub generates a password whose encrypted retrievable copy is deleted after first login or reset.
+- Non-development startup disables known placeholders for optional bootstrap credentials and rejects other weak non-empty values. `TOKENHUB_SECRET_KEY` stays mandatory, except that a brand-new file-backed SQLite database receives a persistent key file beside the database. Existing databases never receive a replacement key automatically.
+- `TOKENHUB_TRUSTED_PROXY_CIDRS` defines which proxies may supply `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`; trusted proxies must overwrite those headers. `TOKENHUB_CORS_ALLOWED_ORIGINS` controls credentialed browser origins.
+- `/livez` is a process liveness probe. `/readyz` and compatibility `/healthz` check database availability and the database evolution state: they return `503` when the database is unavailable, a migration is dirty or the ledger fails verification, or a blocking data backfill is incomplete. Pending online backfills keep the instance ready. Unsafe startup configuration also keeps only `/livez` healthy while all readiness and application routes return `503` until configuration is corrected and the process restarts.
 
 Provider credentials, billing connector credentials, raw billing snapshots, and persistent background Responses payloads are AES-GCM encrypted from `TOKENHUB_SECRET_KEY`; project API keys retain only a SHA-256 digest plus display prefix and suffix. Every replica must use the same stable secret.
 

@@ -20,7 +20,12 @@ import (
 
 func TestNativeUpdateDownloadsVerifiesAndActivatesRelease(t *testing.T) {
 	root := prepareNativeInstallRoot(t, "0.3.1", nil)
-	archive := nativeTestArchive(t, "0.3.2", nil)
+	// The target binary must satisfy database preparation and verification
+	// before the release can be activated.
+	targetBinary := "#!/bin/sh\ncase \"$2\" in prepare|verify) exit 0;; *) exit 1;; esac\n"
+	archive := nativeTestArchive(t, "0.3.2", map[string]nativeTestArchiveEntry{
+		"bin/tokenhub": {content: targetBinary, mode: 0o755},
+	})
 	checksum := sha256.Sum256(archive)
 	assetName := "tokenhub_0.3.2_linux_amd64.tar.gz"
 
@@ -40,6 +45,7 @@ func TestNativeUpdateDownloadsVerifiesAndActivatesRelease(t *testing.T) {
 	defer releases.Close()
 
 	service := nativeTestVersionService(root, "0.3.1", releases)
+	service.databaseURL = "sqlite://" + filepath.Join(t.TempDir(), "preflight.db")
 	version, err := service.performNativeUpdate(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +61,7 @@ func TestNativeUpdateDownloadsVerifiesAndActivatesRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(content) != "tokenhub-0.3.2" {
+	if string(content) != targetBinary {
 		t.Fatalf("activated backend content = %q", content)
 	}
 	version, err = service.performNativeUpdate(t.Context())

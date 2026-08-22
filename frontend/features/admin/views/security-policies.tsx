@@ -127,7 +127,7 @@ export function ContentSecurityPolicies({ api, data }: { api: ApiContext; data: 
 
   useEffect(() => {
     void loadPolicies();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- api identity is the load key; loadPolicies is also reused by mutation handlers.
   }, [api]);
 
   async function savePolicy() {
@@ -403,7 +403,7 @@ function PatternConfig({ item, onChange }: { item: GuardrailDetectionItem; onCha
 
 function SensitiveDataConfig({ item, onChange }: { item: GuardrailDetectionItem; onChange: (item: GuardrailDetectionItem) => void }) {
   const selected = new Set(stringList(item.config.data_types));
-  return <fieldset className="guardrail-data-types guardrail-wide-field"><legend>{tx("敏感数据类型")}</legend>{dataTypes.map((type) => <label key={type}><input checked={selected.has(type)} onChange={(event) => { const next = new Set(selected); event.target.checked ? next.add(type) : next.delete(type); onChange({ ...item, config: { data_types: Array.from(next) } }); }} type="checkbox" /><span><strong>{tx(dataTypeLabel(type))}</strong><small>{tx("样例")}：{sensitiveDataExamples[type]}</small></span></label>)}</fieldset>;
+  return <fieldset className="guardrail-data-types guardrail-wide-field"><legend>{tx("敏感数据类型")}</legend>{dataTypes.map((type) => <label key={type}><input checked={selected.has(type)} onChange={(event) => { const next = new Set(selected); if (event.target.checked) next.add(type); else next.delete(type); onChange({ ...item, config: { data_types: Array.from(next) } }); }} type="checkbox" /><span><strong>{tx(dataTypeLabel(type))}</strong><small>{tx("样例")}：{sensitiveDataExamples[type]}</small></span></label>)}</fieldset>;
 }
 
 function ModelConfig({ item, onChange }: { item: GuardrailDetectionItem; onChange: (item: GuardrailDetectionItem) => void }) {

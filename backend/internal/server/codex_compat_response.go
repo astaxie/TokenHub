@@ -154,6 +154,15 @@ func codexResponsesToChat(
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
+		if reasoningSignature != "" {
+			firstCall, _ := toolCalls[0].(map[string]any)
+			callID, _ := firstCall["id"].(string)
+			message["reasoning_details"] = []any{map[string]any{
+				"type": "reasoning.encrypted",
+				"id":   callID,
+				"data": reasoningSignature,
+			}}
+		}
 		if text.Len() == 0 {
 			message["content"] = nil
 		}
@@ -182,7 +191,7 @@ func codexResponsesToChat(
 			"message":       message,
 			"finish_reason": finishReason,
 		}},
-		"usage": usage,
+		"usage": openAIChatUsageObject(usage),
 	}, nil
 }
 

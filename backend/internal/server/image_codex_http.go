@@ -107,51 +107,6 @@ func (s *Server) codexSubscriptionImageRequest(job ImageJob) (codexSubscriptionI
 	return request, nil
 }
 
-func (s *Server) codexImageRouteCandidates() []RouteSelection {
-	providers := make(map[string]Provider)
-	for _, provider := range s.store.ListProviders() {
-		if provider.Type == ProviderOpenAICodex && provider.Status == StatusActive && provider.Healthy {
-			providers[provider.ID] = provider
-		}
-	}
-	routes := make([]RouteSelection, 0)
-	for _, resource := range s.store.ListProviderResources() {
-		provider, ok := providers[resource.ProviderID]
-		if !ok || resource.Status != StatusActive || !resource.Healthy ||
-			!isOpenAIAccountResource(resource.ResourceType) {
-			continue
-		}
-		effective := provider
-		if strings.TrimSpace(resource.BaseURL) != "" {
-			effective.BaseURL = resource.BaseURL
-		}
-		effective.Headers = mergedStringMap(provider.Headers, resource.Headers)
-		effective.Options = mergedStringMap(provider.Options, resource.Options)
-		publicResource := resource
-		redactProviderResourceSecrets(&publicResource)
-		priority := provider.Priority + resource.Priority
-		weight := resource.Weight
-		if weight <= 0 {
-			weight = 100
-		}
-		routes = append(routes, RouteSelection{
-			Provider:      effective,
-			Resource:      &publicResource,
-			ProviderModel: codexImageUpstreamModel,
-			Route: ModelRoute{
-				ModelName:          codexImageModelName,
-				ProviderID:         provider.ID,
-				ProviderResourceID: resource.ID,
-				ProviderModel:      codexImageUpstreamModel,
-				Priority:           priority,
-				Weight:             weight,
-				Status:             StatusActive,
-			},
-		})
-	}
-	return routes
-}
-
 func mergedStringMap(base map[string]string, override map[string]string) map[string]string {
 	if len(base) == 0 && len(override) == 0 {
 		return nil
@@ -270,6 +225,9 @@ func (a CodexSubscriptionAdapter) imageWithCredentials(
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return codexSubscriptionImageResponse{}, nil, egressErr
+		}
 		return codexSubscriptionImageResponse{}, nil, &ProviderInvocationError{
 			Err:         NewHTTPError(http.StatusBadGateway, "codex_image_request_failed", fmt.Sprintf("Codex image request failed: %v", err)),
 			Disposition: ProviderErrorTransientSame,

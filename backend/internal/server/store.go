@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tokenhub/backend/internal/guardrails"
@@ -16,9 +18,10 @@ const (
 )
 
 type QuotaBucket struct {
-	KeyID  string `gorm:"primaryKey;index"`
-	Scope  string `gorm:"primaryKey"`
-	Bucket string `gorm:"primaryKey;index"`
+	KeyID            string `gorm:"primaryKey;index"`
+	Scope            string `gorm:"primaryKey"`
+	Bucket           string `gorm:"primaryKey;index"`
+	AttributedUserID string `gorm:"primaryKey;index;default:__tokenhub_unattributed__"`
 	QuotaCounter
 }
 
@@ -126,6 +129,7 @@ type Store interface {
 	CreateAPIKey(projectID string, key APIKey, rawSecret string) (APIKey, string, error)
 	ListProjectKeys(projectID string) []APIKey
 	ListAPIKeys() []APIKey
+	GetAPIKey(id string) (APIKey, bool)
 	UpdateAPIKey(id string, patch APIKey) (APIKey, error)
 	RotateAPIKey(id string, graceUntil *time.Time) (APIKey, string, error)
 	DeleteAPIKey(id string) error
@@ -176,6 +180,7 @@ type Store interface {
 	ClaimImageJob(id string) (ImageJob, bool, error)
 	GetImageJob(id string) (ImageJob, bool)
 	ListImageJobs(limit int) []ImageJob
+	ListImageJobsForAudit(query ImageJobAuditQuery) []ImageJob
 	FailUnfinishedImageJobs(code string, message string) ([]ImageJob, error)
 	UpdateImageJob(job ImageJob, revisedPrompt string) error
 	CompleteImageJob(call CallContext, job ImageJob, revisedPrompt string, asset ImageAsset, route RouteSelection, usage Usage, clientIP string, userAgent string) error
@@ -199,6 +204,8 @@ type Store interface {
 	ListImageAssets(jobID string) []ImageAsset
 	GetImageAsset(id string) (ImageAsset, bool)
 	ListUsageRecords() []UsageRecord
+	QueryUsageSummary(ctx context.Context, query UsageSummaryQuery) (UsageSummary, error)
+	QueryAPIKeyUsage(ctx context.Context, query APIKeyUsageQuery) (APIKeyUsage, error)
 	CreateAnalyticsCredential(credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error)
 	ListAnalyticsCredentials() []AnalyticsCredential
 	RevokeAnalyticsCredential(id string) (AnalyticsCredential, error)
@@ -219,10 +226,14 @@ type Store interface {
 	ListAuditEvents() []AuditEvent
 	RecordAuditEvent(event AuditEvent)
 	CreateResource(kind string, resource AdminResource) AdminResource
+	CreateResourceChecked(kind string, resource AdminResource) (AdminResource, error)
 	CreateRoutingPolicy(resource AdminResource) (AdminResource, error)
 	ListResources(kind string) []AdminResource
+	ListResourcesChecked(kind string) ([]AdminResource, error)
+	ListResourcesContext(ctx context.Context, kind string) ([]AdminResource, error)
 	UpdateResource(kind string, id string, patch AdminResource) (AdminResource, error)
 	DeleteResource(kind string, id string) error
+	GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPolicyUsage, bool, error)
 	DeleteTeam(id string) error
 	RunMonitor(id string) (MonitorRunResult, error)
 	CreateApprovalRequest(request ApprovalRequest) ApprovalRequest
@@ -230,6 +241,8 @@ type Store interface {
 	GetApprovalRequest(id string) (ApprovalRequest, error)
 	UpdateApprovalRequestStatus(id string, status string, decidedBy string, reason string) (ApprovalRequest, error)
 	CreateAdminUser(user AdminUser, password string) (AdminUser, error)
+	CreateBootstrapAdmin(user AdminUser, password string, retainInitialPassword bool) (AdminUser, bool, error)
+	InitialAdminPassword() (string, bool, error)
 	ListAdminUsers() []AdminUser
 	UpdateAdminUser(id string, patch AdminUser, password string) (AdminUser, error)
 	DeleteAdminUser(id string) error
@@ -239,6 +252,10 @@ type Store interface {
 	CreateAdminSession(userID string, ttl time.Duration) (AdminUser, AdminSession, error)
 	ValidateAdminSession(token string) (AdminUser, bool)
 	RevokeAdminSession(token string)
+	SaveAdminOAuthFlow(flow adminOAuthFlow) error
+	ConsumeAdminOAuthFlow(state string, browserNonce string) (adminOAuthFlow, bool, error)
+	SaveAdminOAuthExchange(exchange adminOAuthExchange) error
+	ConsumeAdminOAuthExchange(code string, codeVerifier string) (adminOAuthExchange, bool, error)
 	CreateSQLiteBackup(createdBy string, expireDays int) (SQLiteBackupRecord, error)
 	ListSQLiteBackups() []SQLiteBackupRecord
 	GetSQLiteBackup(id string) (SQLiteBackupRecord, error)
@@ -253,6 +270,8 @@ type Store interface {
 	RefreshProviderResourceCredentials(ctx context.Context, resourceID string, force bool) (ProviderResourceCredentials, error)
 	GetAdapterSessionBinding(ctx context.Context, adapterType string, providerID string, affinityKeyHash string) (AdapterSessionBinding, bool, error)
 	CommitAdapterSessionBinding(ctx context.Context, binding AdapterSessionBinding, expectedGeneration int64) (AdapterSessionBinding, bool, error)
+	DeleteRequestPayloadLogsBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
+	RunClusterTask(ctx context.Context, name string, revision int64, fn func(context.Context) error) error
 	RunClusterOperation(ctx context.Context, name string, fn func(context.Context) error) error
 	SaveProviderAccountOAuthSession(session providerAccountOAuthSession) error
 	GetProviderAccountOAuthSessionByState(state string) (providerAccountOAuthSession, bool, error)
@@ -266,18 +285,27 @@ type Store interface {
 var _ Store = (*GormStore)(nil)
 
 type GormStore struct {
-	db                   *gorm.DB
-	analyticsDB          *gorm.DB
-	mu                   *sync.Mutex
-	leaseHeartbeats      *sync.Map
-	secretKey            string
-	metrics              *GatewayMetrics
-	failureThreshold     int
-	cooldownDuration     time.Duration
-	cooldownMax          time.Duration
-	sqliteDSN            string
-	backupDir            string
-	dbDriver             string // "sqlite" or "postgres"
+	db                     *gorm.DB
+	analyticsDB            *gorm.DB
+	mu                     *sync.Mutex
+	leaseHeartbeats        *sync.Map
+	lastUsed               *lastUsedThrottle
+	modelLabels            *modelLabelCache
+	secretKey              string
+	metrics                *GatewayMetrics
+	providerUpstreamClient *http.Client
+	providerProxyPolicy    *providerProxyPolicy
+	failureThreshold       int
+	cooldownDuration       time.Duration
+	cooldownMax            time.Duration
+	sqliteDSN              string
+	backupDir              string
+	dbDriver               string        // "sqlite" or "postgres"
+	heartbeatState         *atomic.Int32 // shared across value copies of the store
+	// instanceHeartbeatID identifies the row this instance published while it
+	// still held the schema migration lock; StartInstanceHeartbeat refreshes
+	// that row instead of creating a second one.
+	instanceHeartbeatID  string
 	inFlightLeaseTTL     time.Duration
 	clusterLockTTL       time.Duration
 	imageCapabilityRetry time.Duration

@@ -169,11 +169,11 @@ Create a deployment environment file:
 cp deploy/.env.example deploy/.env
 ```
 
-Edit `deploy/.env` before starting:
+Review `deploy/.env` before starting:
 
-- `TOKENHUB_ADMIN_TOKEN`: Admin API bootstrap token. Use a random value of at least 32 bytes.
-- `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: Password used only when creating the initial `admin` user. Use at least 12 bytes.
-- `TOKENHUB_SECRET_KEY`: Backend secret key. Use a random value of at least 32 bytes and keep it stable.
+- `TOKENHUB_ADMIN_TOKEN`: Optional static Admin API token. Set at least 32 random bytes when operational automation needs it; otherwise leave the placeholder to disable it.
+- `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: Optional initial `admin` password. Set at least 12 bytes, or leave the placeholder so TokenHub generates one.
+- `TOKENHUB_SECRET_KEY`: Backend encryption root key. PostgreSQL and existing SQLite databases require at least 32 stable bytes. A brand-new file-backed SQLite deployment can leave the placeholder so TokenHub generates a `0600` key file beside the database.
 - `TOKENHUB_IMAGE_TAG`: Managed TokenHub image tag. Default: `latest`.
 - `TOKENHUB_PUBLIC_BASE_URL`: Public backend URL shown to users.
 - `TOKENHUB_API_BASE_URL`: Backend URL used by the browser admin console. The frontend server reads it at runtime. The deprecated `NEXT_PUBLIC_API_BASE_URL` remains a fallback for one compatibility cycle.
@@ -281,9 +281,18 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 Initial admin login:
 
 - Username: `admin`
-- Password: the configured `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`
+- Password: the configured `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`, or the generated value returned by:
 
-For `prod`, `production`, staging, and other non-development environments, startup rejects placeholder values, admin tokens or secret keys shorter than 32 bytes, and bootstrap passwords shorter than 12 bytes.
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml \
+  exec tokenhub-backend /opt/tokenhub/current/bin/tokenhub initial-admin-password
+```
+
+The generated password is stored only as ciphertext and stops being retrievable after the first successful login or a password reset. Change it after signing in. In Kubernetes, use the same command through `kubectl exec <pod> -- ...`.
+
+For `prod`, `production`, staging, and other non-development environments, known Admin Token and bootstrap-password placeholders are treated as unset. Other non-empty weak values are rejected. The encryption root key remains mandatory except for a brand-new file-backed SQLite database, where it is generated once and persisted beside the database. TokenHub never generates a replacement key for an existing database.
+
+If startup cannot proceed safely, the process remains available on `/livez` but returns `503` from `/readyz`, `/healthz`, and application routes. This prevents an orchestrator liveness loop while keeping the Pod out of service. Correct the configuration and restart TokenHub; use `/livez` for liveness and `/readyz` for readiness probes.
 
 View or follow logs manually:
 
@@ -340,14 +349,16 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_DEPLOYMENT_TYPE` | build-time value | Overrides the deployment type compiled into the binary: `source`, `container` or `native`. The Compose files set `container` |
 | `TOKENHUB_MANAGED_UPDATES` | `false` | Allows a container deployment to perform online update and rollback. A native deployment always allows it |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | Managed Release installation root used for online update and rollback |
-| `TOKENHUB_TRUSTED_PROXY_CIDRS` | empty | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For` |
+| `TOKENHUB_TRUSTED_PROXY_CIDRS` | empty | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`. Trusted proxies must overwrite these headers rather than pass through client values |
 | `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | empty | Comma-separated private CIDRs (RFC1918/ULA only) whose literal IPs may be used as custom provider base URLs, for in-house model servers. These explicitly allowed private literals may use HTTP; public provider URLs must use HTTPS. Hostnames resolving to private addresses and redirect targets stay rejected |
 | `TOKENHUB_PROVIDER_UPSTREAM_NAT64_PREFIX` | empty | Optional RFC 6052 DNS64/NAT64 prefix used to classify its embedded IPv4 targets. Supported prefix lengths: 32, 40, 48, 56, 64, and 96. Configure this when using a network-specific prefix such as `64:ff9b:1::/48`; the well-known `64:ff9b::/96` prefix works automatically |
 | `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false` | Explicitly allow provider base URLs, including HTTP URLs, on `localhost`, `127.0.0.1`, or `::1` for local Ollama/LM Studio development. Public provider URLs must use HTTPS. Keep disabled in production |
-| `TOKENHUB_CORS_ALLOWED_ORIGINS` | public URL | Comma-separated browser origins allowed to call the backend |
-| `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Bootstrap admin token for Admin API access |
-| `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | Password for the initial `admin` user; must be changed before production startup |
-| `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | Backend secret key |
+| `HTTP_PROXY` / `HTTPS_PROXY` | empty | Standard outbound forward proxy used by every HTTP Provider channel. Proxy selection is operator-managed; direct requests continue to use TokenHub's DNS/IP egress checks |
+| `NO_PROXY` | empty | Standard comma-separated proxy bypass list. Matching Provider requests use the guarded direct path |
+| `TOKENHUB_CORS_ALLOWED_ORIGINS` | public URL | Comma-separated exact browser origins allowed to call the backend; when set, the same origins are the exact allowlist for OAuth console returns. Each entry must contain only the scheme, host, and optional port, with no path |
+| `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Optional static Admin API token; the known placeholder disables it |
+| `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | Optional initial `admin` password; the known placeholder generates a random first-run password |
+| `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | Stable encryption root key; generated beside a new file-backed SQLite database only |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | Database connection URL (sqlite:// or postgresql://) |
 | `TOKENHUB_DB_HOST` | empty | PostgreSQL host. Setting it builds the DSN from the `TOKENHUB_DB_*` fields instead of `TOKENHUB_DATABASE_URL`, which avoids URL encoding when the password contains `#`, `?`, `/` or `%`. `TOKENHUB_DATABASE_URL` still takes precedence when both are set |
 | `TOKENHUB_DB_PORT` | `5432` | PostgreSQL port; used only when `TOKENHUB_DB_HOST` is set |
@@ -404,6 +415,12 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES` | `30` | Maximum connection lifetime in minutes (PostgreSQL only) |
 | `TOKENHUB_API` | empty | Target Admin API for the `tokenhub-migrate` CLI. Read only by that CLI, never by the running server; overridden by `--to` |
 
+Provider egress can also be changed without restarting under **System Settings → Base Settings → Provider Egress Mode**. `Inherit Environment Proxy` (the upgrade default) reads `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` captured at process startup; `Direct Connection` bypasses them; `Use Global Proxy` applies one HTTP or HTTPS forward proxy to every Provider upstream channel, including inference, streaming, images, model discovery, provider catalog refresh, quota calls, and Provider credential refresh. Identity login, notifications, tracing, and version updates are not routed through this setting.
+
+The configured proxy supports optional Basic authentication. Its password is encrypted at rest and masked in APIs and the console. Saving the proxy validates its syntax only; **Test Proxy Connection** uses the current unsaved form and an existing Provider to verify proxy TCP/TLS, authentication, CONNECT, and target TLS with system CAs, without sending Provider credentials or a model request. Provider and Provider Resource base URLs retain their existing save-time scheme and literal-address validation in every proxy mode: metadata and other always-denied targets remain rejected, and private literals still require `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS`. Before every proxied request, TokenHub resolves the original Provider hostname locally, rejects private, loopback, link-local, metadata, and other disallowed results, and pins the proxy request or CONNECT tunnel to the validated IP while preserving the original HTTP Host and TLS server name. Direct and `NO_PROXY` requests apply the same address policy in their guarded dial path. Proxy configuration, authentication, connection, timeout, and HTTPS CONNECT failures are treated as platform egress failures: they do not penalize a Provider resource or trigger route failover. For plaintext HTTP proxy requests, an HTTP error response may come from either the proxy or the Provider and retains normal upstream error handling. Replicas reload shared settings within five seconds and keep the last valid setting across temporary database read failures.
+
+When the TokenHub host runs a proxy in Fake-IP mode, configure **System Settings → Base Settings → Synthetic DNS / Fake-IP ranges**. The exception is disabled by default and applies only to hostname resolution results, never to literal-IP Provider URLs. Enter the proxy's actual pool rather than assuming every implementation uses `198.18.0.0/15`: that range is reserved for benchmarking and is common, but not exclusive, for Fake-IP. RFC1918 private networks and IPv6 ULA remain blocked in ordinary mode. If a proxy genuinely uses one of those ranges (for example, an Xray IPv6 Fake-IP pool), the separate high-risk private-range trust switch is required; enabling it allows provider hostnames to reach real internal services in the configured range. Loopback, link-local, metadata, multicast, and NAT64 ranges remain blocked in every mode.
+
 ## Frontend Environment Variables
 
 | Variable | Default | Description |
@@ -430,7 +447,7 @@ Recommended production setup:
 
 ## Catalog Files
 
-Published managed images and native archives include matching copies of `data/model-catalog.yaml` and `data/provider-catalog.json`. They are activated with the rest of the release under `/opt/tokenhub/current/catalog/`, so the backend binary and both catalogs always come from the same version. The Provider catalog is vendored from PublicProviderConf and is read locally at runtime; TokenHub does not fetch remote catalog data.
+Published managed images and native archives include matching copies of `data/model-catalog.yaml` and `data/provider-catalog.json`. They are activated with the rest of the release under `/opt/tokenhub/current/catalog/`, so the backend binary and both catalogs always come from the same version. Backend startup reads the vendored Provider catalog locally and does not depend on network access. An explicit administrator Provider-catalog refresh fetches the complete `PublicProviderConf` catalog from `https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json`; a failed or incomplete response falls back to the configured local `provider-catalog.json`.
 
 To mount a custom catalog explicitly:
 
@@ -442,7 +459,7 @@ After editing the configured catalog file, restart the backend or choose **Setti
 
 The custom mount intentionally overrides the image catalog and is therefore managed separately from `TOKENHUB_IMAGE_TAG`. After updating that file, restart the backend container or run the settings synchronization action, and confirm that the operation completes without a model-catalog error.
 
-`data/model-catalog.yaml` provides tracked reference metadata; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory only. External models and their unified client-facing prices are created separately in Model Directory, then mapped to imported Provider models under Routing Policies. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. To use a custom Provider catalog, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
+`data/model-catalog.yaml` provides tracked reference metadata; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory only. External models and their unified client-facing prices are created separately in Model Directory, then mapped to imported Provider models under Routing Policies. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. To use a custom Provider catalog for startup and refresh fallback, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
 
 ### Connecting to Kronk
 
@@ -459,4 +476,4 @@ For production, place TokenHub behind HTTPS and forward:
 
 Set request body and streaming timeouts high enough for long model responses.
 
-Use `/livez` for liveness and `/readyz` for readiness. `/readyz` and the backwards-compatible `/healthz` return `503` when the database is unavailable.
+Use `/livez` for liveness and `/readyz` for readiness. `/readyz` and the backwards-compatible `/healthz` return `503` when the database is unavailable or the database evolution state is not servable: a dirty or unverifiable migration ledger, or an incomplete blocking data backfill. Pending online data backfills do not affect readiness.

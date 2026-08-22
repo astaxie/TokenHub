@@ -12,7 +12,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ApiContext,
   type ApiExampleLanguage,
@@ -51,7 +51,7 @@ import {
   playgroundMaxTokenLimit,
   selectPlaygroundCandidateBranch,
 } from "../domain/playground-logic";
-import { playgroundMissingStreamBodyCode, streamPlaygroundChat } from "../domain/playground-stream";
+import { playgroundMissingStreamBodyCode, streamPlaygroundChat } from "../resources/playground-stream";
 import { activeLanguage, countWithUnit, defaultPlaygroundSystemPrompt, isDefaultPlaygroundSystemPrompt, languageLocale, tx } from "../i18n/runtime";
 import { isAuthExpiredError } from "../resources/payloads";
 import { DetailField } from "./audit";
@@ -300,21 +300,21 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     commitImages(value);
   }
 
-  function invalidatePendingImageUploads() {
+  const invalidatePendingImageUploads = useCallback(() => {
     imageUploadGenerationRef.current += 1;
     imageUploadPendingRef.current = false;
     setImageUploadPending(false);
-  }
+  }, []);
 
-  function changeModelName(nextModelName: string) {
+  const changeModelName = useCallback((nextModelName: string) => {
     invalidatePendingImageUploads();
     setModelName(nextModelName);
-  }
+  }, [invalidatePendingImageUploads]);
 
   useEffect(() => {
     if (!modelName && models[0]?.name) changeModelName(models[0].name);
     if (modelName && !models.some((model) => model.name === modelName)) changeModelName(models[0]?.name ?? "");
-  }, [modelName, models]);
+  }, [changeModelName, modelName, models]);
 
   useEffect(() => {
     if (!projectID && projects[0]?.id) setProjectID(projects[0].id);
@@ -327,7 +327,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
 
   useEffect(() => {
     if (!supportsImages) invalidatePendingImageUploads();
-  }, [supportsImages]);
+  }, [invalidatePendingImageUploads, supportsImages]);
 
   const languageVersion = activeLanguage;
   useEffect(() => {

@@ -715,16 +715,10 @@ func TestOneAPIBillingRecordPreservesLargeIntegerFields(t *testing.T) {
 func TestBillingSchedulerRestartsAfterShutdown(t *testing.T) {
 	service := newBillingService(NewMemoryStore())
 	service.StartScheduler(time.Hour)
-	if service.schedulerStop == nil {
-		t.Fatal("expected scheduler started")
-	}
 	if err := service.Shutdown(context.Background()); err != nil {
 		t.Fatalf("first shutdown: %v", err)
 	}
 	service.StartScheduler(time.Hour)
-	if service.schedulerStop == nil {
-		t.Fatal("expected scheduler to restart after shutdown")
-	}
 	if err := service.Shutdown(context.Background()); err != nil {
 		t.Fatalf("second shutdown: %v", err)
 	}

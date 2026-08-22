@@ -2,7 +2,7 @@ import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucid
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
-import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategory, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
+import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
@@ -12,16 +12,16 @@ import { providerCatalogModelIsSelectable } from "../domain/provider-model-selec
 import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerResourceDraftDefaults } from "../resources/provider-model-config";
-import { ReviewItem } from "../shared/modals";
-import { providerTypeOptions } from "../shared/ui";
+import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
+import { ProviderCodexImageCapability } from "./provider-codex-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
-import { ProviderInlineField, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
+import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
 type OpenAIAccountQuota = {
   account_id?: string;
@@ -61,13 +61,11 @@ type CodexSubscriptionTestResult = {
   };
 };
 type ProviderEditTab = "connect" | "models" | "advanced";
-
 type ProviderAccountConfirmation = {
   action: "enable" | "disable" | "delete";
   resource: ProviderResource;
 };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
-
 const codexProviderCatalogSummary: ProviderCatalogEntry = {
   id: "openai-codex",
   name: "OpenAI Codex",
@@ -79,7 +77,6 @@ const codexProviderCatalogSummary: ProviderCatalogEntry = {
   models_count: 0,
   source: "openai-codex-live",
 };
-
 const accountProviderCatalogOptions = [codexProviderCatalogSummary];
 const fallbackCodexReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
 
@@ -247,7 +244,7 @@ export function ProviderUpsertModal({
     if (!categoryCatalog.some((entry) => entry.id === catalogID)) {
       selectCatalog(categoryCatalog[0]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectCatalog also rewrites form state; catalog identity changes alone control this correction.
   }, [modelCategory, categoryCatalog.length, credentialMode, catalogID, quickAPIFlow]);
 
   useEffect(() => {
@@ -351,7 +348,7 @@ export function ProviderUpsertModal({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the explicit catalog and connection keys are the request identity; form setters must not refetch.
   }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id]);
 
   useEffect(() => {
@@ -415,6 +412,15 @@ export function ProviderUpsertModal({
     usesCodexCatalog,
     accountValues.access_token,
     accountValues.account_id,
+    accountValues.account_email,
+    accountValues.auth_type,
+    accountValues.expires_at,
+    accountValues.id_token,
+    accountValues.organization_id,
+    accountValues.plan_type,
+    accountValues.refresh_token,
+    accountValues.scopes,
+    accountValues.token_type,
     catalogReloadKey,
     mode,
   ]);
@@ -475,7 +481,7 @@ export function ProviderUpsertModal({
       if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
     }
     const timer = window.setInterval(() => { for (const resource of selectedAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
   }, [editTab, mode, selectedAccountResources]);
 
   const selectedAccountCatalog = useMemo(
@@ -530,8 +536,8 @@ export function ProviderUpsertModal({
       .slice(0, 80);
   }, [models, modelQuery]);
   const importedModels = useMemo(
-    () => provider ? providerModels.filter((model) => model.provider_id === provider.id) : [],
-    [provider, providerModels],
+    () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!editingCodexSubscription || model.upstream_model !== "gpt-image-2")) : [],
+    [editingCodexSubscription, provider, providerModels],
   );
   const importedModelIDs = useMemo(() => new Set(importedModels.map((model) => model.upstream_model)), [importedModels]);
   const selectedModelIDs = Object.entries(selectedModels)
@@ -553,7 +559,7 @@ export function ProviderUpsertModal({
     if (!normalized) return false;
     return resources.some((resource) => resource.name.trim().toLocaleLowerCase() === normalized);
   }, [accountValues.name, resources]);
-  const codexTestModels = selectedAccountCatalog?.models ?? [];
+  const codexTestModels = useMemo(() => selectedAccountCatalog?.models ?? [], [selectedAccountCatalog?.models]);
   const selectedCodexTestModel = codexTestModels.find((model) => model.id === codexTestValues.model);
   const codexReasoningEfforts = selectedCodexTestModel?.metadata?.supported_reasoning_levels
     ?.split(",")
@@ -574,13 +580,13 @@ export function ProviderUpsertModal({
       if (nextModel === current.model && nextEffort === current.reasoning_effort) return current;
       return { ...current, model: nextModel, reasoning_effort: nextEffort };
     });
-  }, [codexTestModels, codexTestValues.model]);
+  }, [codexTestModels]);
 
   useEffect(() => {
     if (mode !== "create" || !hasPendingProviderAccountOAuthResult()) return;
     selectCredentialMode("account_integration");
     setCreateStep(2);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- this one-shot callback restore is keyed only by create mode.
   }, [mode]);
 
   useEffect(() => {
@@ -588,14 +594,14 @@ export function ProviderUpsertModal({
     const pending = consumePendingProviderAccountOAuthResult();
     if (!pending) return;
     void applyProviderAccountOAuthResult(pending, tx("已从回调 URL 自动回填账号 Token。"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- consuming the stored callback result must run once per credential-mode transition.
   }, [mode, credentialMode]);
 
   useEffect(() => {
     if (mode !== "create" || credentialMode !== "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
     setModelCategory("codex");
     selectCatalog(codexProviderCatalogSummary);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- catalog selection is the corrective action; including it would retrigger the correction.
   }, [credentialMode, mode, catalogID]);
 
   function update(key: string, value: string) {
@@ -996,17 +1002,6 @@ export function ProviderUpsertModal({
     setDetail(null);
     setSelectedModels({});
     setModelError("");
-  }
-
-  function canContinueCreateStep(targetStep = createStep) {
-    if (mode !== "create") return true;
-    if (targetStep === 0) return Boolean(credentialMode);
-    if (targetStep === 1) {
-      return Boolean(selectedEntry && values.name?.trim());
-    }
-    if (targetStep === 2 && credentialMode === "provider_api_key") return catalogID === "kronk" || Boolean(values.api_key?.trim());
-    if (targetStep === 2 && credentialMode === "account_integration") return providerAccountResourceReady(accountValues);
-    return true;
   }
 
   function validateCreateStep(targetStep = createStep) {
@@ -1570,6 +1565,7 @@ export function ProviderUpsertModal({
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
+                            <ProviderAccountTokenRenewal api={api} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} />
                             {resource.status === "active" ? (
                               <button
                                 className="secondary-button provider-account-disable-button"
@@ -1780,6 +1776,7 @@ export function ProviderUpsertModal({
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
             {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
+            {mode === "edit" && editingCodexSubscription && provider ? <div className="provider-model-list provider-codex-image-list"><ProviderCodexImageCapability api={api} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
             {mode === "edit" && editingCodexSubscription && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">
                 {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}

@@ -1,0 +1,110 @@
+.api-key-usage-page { display: grid; gap: 20px; }
+.api-key-usage-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 18px; }
+.api-key-usage-head > .secondary-button { display: inline-flex; align-items: center; gap: 6px; }
+.row-action-link { display: inline-flex; align-items: center; justify-content: center; border: 0; line-height: 1; text-decoration: none; }
+.api-key-usage-head h1 { margin: 4px 0; font-size: 28px; }
+.api-key-usage-head p { margin: 0; color: var(--muted); }
+.api-key-identity { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--border); }
+.api-key-identity > div { display: grid; gap: 5px; min-width: 0; padding: 14px 16px; background: var(--surface); }
+.api-key-identity span, .api-key-usage-kpis span, .api-key-quota-card > span { color: var(--muted); font-size: 12px; }
+.api-key-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.api-key-range-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.api-key-range-presets { display: flex; gap: 6px; }
+.api-key-range-presets button, .api-key-chart-tools button { border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted); padding: 7px 11px; cursor: pointer; }
+.api-key-range-presets button.active, .api-key-chart-tools button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text); }
+.api-key-custom-range { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; }
+.api-key-custom-range label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.api-key-custom-range-sep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 36px;
+  color: var(--muted);
+  line-height: 1;
+}
+.api-key-custom-range > .secondary-button { min-height: 36px; }
+.api-key-custom-range input, .api-key-request-filters select { min-height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); color: var(--text); padding: 6px 9px; box-sizing: border-box; }
+.api-key-range-toolbar > small { margin-left: auto; color: var(--muted); }
+.api-key-usage-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.api-key-usage-kpis article { display: grid; gap: 7px; padding: 17px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.api-key-usage-kpis strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.api-key-usage-kpis small { color: var(--muted); }
+.api-key-quota-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.api-key-quota-card { position: relative; display: grid; gap: 6px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; }
+.api-key-quota-card strong { font-size: 20px; }
+.api-key-quota-card small, .api-key-quota-card em { color: var(--muted); font-size: 11px; font-style: normal; }
+.api-key-quota-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.api-key-quota-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.api-key-effective-limits { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+.api-key-chart-tools { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+.api-key-usage-trend { width: 100%; }
+.api-key-usage-trend-body { display: grid; grid-template-columns: 52px minmax(0, 1fr); height: 292px; overflow: visible; }
+.api-key-usage-trend-y { position: relative; height: 100%; }
+.api-key-usage-trend-y span {
+  position: absolute;
+  right: 6px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.api-key-usage-trend-plot-wrap { position: relative; min-width: 0; height: 100%; overflow: visible; }
+.api-key-usage-trend-plot { display: block; width: 100%; height: 100%; }
+.api-key-usage-trend-plot line { stroke: var(--chart-grid); }
+.api-key-usage-trend-hit { fill: transparent; cursor: pointer; }
+.api-key-usage-trend-bar { fill: var(--accent); }
+.api-key-usage-trend-bar.is-active { fill: color-mix(in srgb, var(--accent) 78%, white); }
+.api-key-usage-trend-tooltip {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, calc(-100% - 8px));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.api-key-usage-trend-tooltip strong {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.api-key-usage-trend-tooltip span { font-variant-numeric: tabular-nums; font-weight: 650; }
+.api-key-usage-trend-x {
+  display: flex;
+  margin: 8px 0 0 52px;
+  min-height: 18px;
+  font-size: 11px;
+  line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.api-key-usage-trend-x span { flex: 1 1 0; min-width: 0; text-align: center; }
+.api-key-usage-trend-x .is-spacer { visibility: hidden; }
+.api-key-request-filters { display: grid; grid-template-columns: minmax(240px, 1fr) auto auto; gap: 9px; margin-bottom: 14px; }
+.api-key-request-filters .search-box { width: auto; }
+.request-list-summary { display: flex; gap: 12px; padding: 8px 2px; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 1000px) {
+  .api-key-identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .api-key-usage-kpis, .api-key-quota-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .api-key-usage-breakdowns { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .api-key-usage-head { grid-template-columns: 1fr; }
+  .api-key-identity, .api-key-usage-kpis, .api-key-quota-grid, .api-key-request-filters { grid-template-columns: 1fr; }
+  .api-key-custom-range { align-items: stretch; }
+  .api-key-custom-range-sep { align-self: center; min-height: auto; }
+  .api-key-range-toolbar > small { margin-left: 0; width: 100%; }
+}

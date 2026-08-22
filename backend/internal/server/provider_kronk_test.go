@@ -414,15 +414,19 @@ func TestKronkImportIsIdempotentAndKeepsExactRouteModel(t *testing.T) {
 }
 
 func TestKronkStreamingCancellationStopsUpstream(t *testing.T) {
+	upstreamStarted := make(chan struct{})
 	upstreamCanceled := make(chan struct{})
+	var upstreamStartedOnce sync.Once
+	var upstreamCanceledOnce sync.Once
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
 		}
+		upstreamStartedOnce.Do(func() { close(upstreamStarted) })
 		<-r.Context().Done()
-		close(upstreamCanceled)
+		upstreamCanceledOnce.Do(func() { close(upstreamCanceled) })
 	}))
 	defer upstream.Close()
 
@@ -433,7 +437,11 @@ func TestKronkStreamingCancellationStopsUpstream(t *testing.T) {
 		_, err := adapter.ChatStream(ctx, Provider{Type: ProviderKronk, BaseURL: upstream.URL}, "model", simpleChatRequest(), io.Discard)
 		finished <- err
 	}()
-	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-upstreamStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Kronk upstream did not start")
+	}
 	cancel()
 	select {
 	case <-finished:

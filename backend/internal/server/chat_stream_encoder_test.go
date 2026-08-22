@@ -108,7 +108,14 @@ func TestStreamEncoderEmitsTrailingUsageChunkWhenRequested(t *testing.T) {
 	if err := encoder.EmitText("hi"); err != nil {
 		t.Fatalf("EmitText: %v", err)
 	}
-	if err := encoder.Finalize("stop", Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7}); err != nil {
+	if err := encoder.Finalize("stop", Usage{
+		PromptTokens:          10,
+		CachedInputTokens:     6,
+		CacheWriteInputTokens: 2,
+		CompletionTokens:      4,
+		ReasoningOutputTokens: 3,
+		TotalTokens:           14,
+	}); err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
 
@@ -121,6 +128,17 @@ func TestStreamEncoderEmitsTrailingUsageChunkWhenRequested(t *testing.T) {
 	usage, _ := final["usage"].(map[string]any)
 	if usage == nil {
 		t.Fatalf("expected a usage payload on the final chunk, got %v", final)
+	}
+	inputDetails, _ := usage["prompt_tokens_details"].(map[string]any)
+	if inputDetails["cached_tokens"] != float64(6) || inputDetails["cache_write_tokens"] != float64(2) {
+		t.Fatalf("standard input details = %#v", inputDetails)
+	}
+	outputDetails, _ := usage["completion_tokens_details"].(map[string]any)
+	if outputDetails["reasoning_tokens"] != float64(3) {
+		t.Fatalf("standard output details = %#v", outputDetails)
+	}
+	if usage["cached_input_tokens"] != float64(6) || usage["cache_write_input_tokens"] != float64(2) {
+		t.Fatalf("legacy usage aliases = %#v", usage)
 	}
 	// Every preceding chunk carries an explicit null usage.
 	for _, frame := range frames[:len(frames)-1] {
@@ -168,6 +186,26 @@ func TestStreamEncoderAssignsDenseToolSlots(t *testing.T) {
 	call, _ := calls[0].(map[string]any)
 	if index, _ := call["index"].(float64); int(index) != 1 {
 		t.Fatalf("tool call must report its dense index, got %v", call)
+	}
+}
+
+func TestStreamEncoderEmitsToolBoundReasoningDetail(t *testing.T) {
+	writer := &recordingWriter{}
+	encoder := newOpenAIChatStreamEncoder(writer, "model-x", false)
+
+	if err := encoder.EmitToolReasoningDetail("call_1", codexSignatureProvider, "opaque-state"); err != nil {
+		t.Fatalf("EmitToolReasoningDetail: %v", err)
+	}
+
+	frames := writer.frames(t)
+	delta := frameDelta(t, frames[len(frames)-1])
+	details, _ := delta["reasoning_details"].([]any)
+	if len(details) != 1 {
+		t.Fatalf("reasoning_details = %#v, want one item", delta["reasoning_details"])
+	}
+	detail, _ := details[0].(map[string]any)
+	if detail["type"] != "reasoning.encrypted" || detail["id"] != "call_1" || detail["data"] != encodeProviderSignature(codexSignatureProvider, "opaque-state") {
+		t.Fatalf("reasoning detail = %#v", detail)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -49,18 +50,46 @@ func (s *Server) requestLogQueryForUser(user AdminUser, r *http.Request) (Reques
 	if page-1 > int(^uint(0)>>1)/pageSize {
 		return RequestLogQuery{}, NewHTTPError(http.StatusBadRequest, "invalid_request", "page offset is too large")
 	}
+	since, err := parseRequestLogQueryTime("since", r.URL.Query().Get("since"))
+	if err != nil {
+		return RequestLogQuery{}, err
+	}
+	until, err := parseRequestLogQueryTime("until", r.URL.Query().Get("until"))
+	if err != nil {
+		return RequestLogQuery{}, err
+	}
+	if !since.IsZero() && !until.IsZero() && since.After(until) {
+		return RequestLogQuery{}, NewHTTPError(http.StatusBadRequest, "invalid_request", "since must be before or equal to until")
+	}
 	query := RequestLogQuery{
-		Page:     page,
-		PageSize: pageSize,
-		Status:   strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status"))),
-		Keyword:  strings.TrimSpace(r.URL.Query().Get("q")),
-		Global:   s.canViewGlobalOperations(user),
+		Page:      page,
+		PageSize:  pageSize,
+		Status:    strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status"))),
+		Keyword:   strings.TrimSpace(r.URL.Query().Get("q")),
+		ModelName: strings.TrimSpace(r.URL.Query().Get("model")),
+		Since:     since,
+		Until:     until,
+		Global:    s.canViewGlobalOperations(user),
 	}
 	if query.Status == "" {
 		query.Status = "all"
 	}
 	if query.Status != "all" && query.Status != "ok" && query.Status != "error" {
 		return RequestLogQuery{}, NewHTTPError(http.StatusBadRequest, "invalid_request", "status must be all, ok, or error")
+	}
+	apiKeyID := strings.TrimSpace(r.URL.Query().Get("api_key_id"))
+	if apiKeyID != "" {
+		key, err := s.findAPIKey(apiKeyID)
+		if err != nil {
+			return RequestLogQuery{}, err
+		}
+		if !s.canAccessAPIKey(user, key) {
+			return RequestLogQuery{}, NewHTTPError(http.StatusForbidden, "api_key_forbidden", "API key is not available for this user")
+		}
+		query.Global = false
+		query.ProjectIDs = nil
+		query.APIKeyIDs = []string{apiKeyID}
+		return query, nil
 	}
 	if query.Global {
 		return query, nil
@@ -70,6 +99,18 @@ func (s *Server) requestLogQueryForUser(user AdminUser, r *http.Request) (Reques
 	}
 	query.APIKeyIDs = trueMapKeys(s.visibleAPIKeyIDSet(user))
 	return query, nil
+}
+
+func parseRequestLogQueryTime(name, value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, NewHTTPError(http.StatusBadRequest, "invalid_request", name+" must be an RFC3339 timestamp")
+	}
+	return parsed.UTC(), nil
 }
 
 func positiveRequestLogQueryInt(value string, fallback int) (int, error) {

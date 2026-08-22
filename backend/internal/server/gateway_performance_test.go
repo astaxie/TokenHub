@@ -80,6 +80,39 @@ func BenchmarkGatewayGovernanceCosts(b *testing.B) {
 	}
 }
 
+func BenchmarkPlanRouteOrderRendezvous(b *testing.B) {
+	server := &Server{}
+	call := CallContext{
+		RequestID: "req_rendezvous_benchmark",
+		Affinity: &RequestAffinity{
+			Kind:    AffinityKindCodexSession,
+			KeyHash: "rendezvous-benchmark-affinity",
+		},
+	}
+	for _, candidateCount := range []int{1, 8, 32, 128} {
+		b.Run(fmt.Sprintf("Candidates%d", candidateCount), func(b *testing.B) {
+			routes := make([]RouteSelection, candidateCount)
+			for index := range routes {
+				routes[index] = RouteSelection{Route: ModelRoute{
+					ID:       fmt.Sprintf("route_rendezvous_%03d", index),
+					Priority: 1,
+					Weight:   100,
+					Strategy: RouteStrategyBalanced,
+				}}
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				planned := server.planRouteOrder(call, routes)
+				if len(planned) != candidateCount {
+					b.Fatalf("planned routes = %d, want %d", len(planned), candidateCount)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkGatewayPayloadAuditRendering(b *testing.B) {
 	for _, size := range []int{256, 32 * 1024} {
 		b.Run(fmt.Sprintf("Bytes%d", size), func(b *testing.B) {

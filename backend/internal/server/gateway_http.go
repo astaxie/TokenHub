@@ -269,14 +269,29 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "missing_model", "model is required"))
 		return
 	}
-	routed, ok := s.startRoutedCall(w, r, project, key, model, false, request)
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, model, false, requestTokenReservation(request))
+	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, false, err, guardrailAuditSummary{Model: model})
+		w.Header().Set("x-request-id", requestID)
+		writeError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, responsesCompactGuardrailTargets(request))
+	auditPayload := guardrailRequestAuditPayload(model, decision, request)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
 	if !ok {
 		return
 	}
 	affinityRequest := ResponsesRequest{Model: model, raw: request}
 	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, affinityRequest)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, request)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
@@ -287,13 +302,13 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 	}
 	response, route, usage, attempts, err := s.executeRoutedCompact(r, routed, request)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, request)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, request, response)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -1013,14 +1028,7 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 					identity = cacheDomainID
 					score = weightedCacheDomainScore
 				}
-				sort.SliceStable(group, func(i, j int) bool {
-					left := score(routingKey, identity(group[i]), routeEffectiveWeight(group[i]))
-					right := score(routingKey, identity(group[j]), routeEffectiveWeight(group[j]))
-					if left != right {
-						return left > right
-					}
-					return routeSortID(group[i]) < routeSortID(group[j])
-				})
+				sortRouteGroupByRendezvous(routingKey, group, identity, score)
 				planned = append(planned, group...)
 				priorityGroup = priorityGroup[groupEnd:]
 				continue
@@ -1035,6 +1043,36 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 		ordered = ordered[end:]
 	}
 	return planned
+}
+
+type rendezvousRouteRanking struct {
+	routes []RouteSelection
+	scores []float64
+}
+
+func (ranking rendezvousRouteRanking) Len() int { return len(ranking.routes) }
+
+func (ranking rendezvousRouteRanking) Less(i, j int) bool {
+	if ranking.scores[i] != ranking.scores[j] {
+		return ranking.scores[i] > ranking.scores[j]
+	}
+	return routeSortID(ranking.routes[i]) < routeSortID(ranking.routes[j])
+}
+
+func (ranking rendezvousRouteRanking) Swap(i, j int) {
+	ranking.routes[i], ranking.routes[j] = ranking.routes[j], ranking.routes[i]
+	ranking.scores[i], ranking.scores[j] = ranking.scores[j], ranking.scores[i]
+}
+
+func sortRouteGroupByRendezvous(routingKey string, group []RouteSelection, identity func(RouteSelection) string, score func(string, string, int) float64) {
+	if len(group) < 2 {
+		return
+	}
+	scores := make([]float64, len(group))
+	for index := range group {
+		scores[index] = score(routingKey, identity(group[index]), routeEffectiveWeight(group[index]))
+	}
+	sort.Stable(rendezvousRouteRanking{routes: group, scores: scores})
 }
 
 // weightedRendezvousScore scores candidates for Codex session affinity, where
@@ -1323,7 +1361,7 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 		return false
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted, ProviderErrorEgress:
 		return false
 	case ProviderErrorTransientSame:
 		return !routeIsBound

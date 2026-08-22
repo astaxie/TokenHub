@@ -209,6 +209,9 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return nil, egressErr
+		}
 		return nil, &ProviderInvocationError{
 			Err:         NewHTTPError(http.StatusBadGateway, "codex_request_failed", fmt.Sprintf("Codex request failed: %v", err)),
 			Disposition: ProviderErrorTransientSame,

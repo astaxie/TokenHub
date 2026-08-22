@@ -481,7 +481,7 @@ func chatMessageToCodex(message ChatMessage, toolNames map[string]string) ([]any
 		}}, nil
 	case "assistant":
 		items := make([]any, 0, 3)
-		if encrypted, ok := decodeProviderSignature(codexSignatureProvider, message.ReasoningSignature); ok {
+		if encrypted, ok := chatCodexReasoningContinuation(message); ok {
 			reasoning := map[string]any{
 				"type":              "reasoning",
 				"summary":           []any{},
@@ -548,6 +548,42 @@ func chatMessageToCodex(message ChatMessage, toolNames map[string]string) ([]any
 	default:
 		return nil, NewHTTPError(http.StatusBadRequest, "invalid_message", fmt.Sprintf("unsupported message role %q", message.Role))
 	}
+}
+
+func chatCodexReasoningContinuation(message ChatMessage) (string, bool) {
+	if encrypted, ok := decodeProviderSignature(codexSignatureProvider, message.ReasoningSignature); ok {
+		return encrypted, true
+	}
+	if message.raw == nil {
+		return "", false
+	}
+	var details []map[string]any
+	if err := json.Unmarshal(message.raw["reasoning_details"], &details); err != nil {
+		return "", false
+	}
+	toolCallIDs := map[string]struct{}{}
+	if calls, ok := anySlice(message.ToolCalls); ok {
+		for _, rawCall := range calls {
+			call, _ := rawCall.(map[string]any)
+			if id, _ := call["id"].(string); id != "" {
+				toolCallIDs[id] = struct{}{}
+			}
+		}
+	}
+	for _, detail := range details {
+		id, _ := detail["id"].(string)
+		data, _ := detail["data"].(string)
+		if detail["type"] != "reasoning.encrypted" || id == "" {
+			continue
+		}
+		if _, exists := toolCallIDs[id]; !exists {
+			continue
+		}
+		if encrypted, ok := decodeProviderSignature(codexSignatureProvider, data); ok {
+			return encrypted, true
+		}
+	}
+	return "", false
 }
 
 func chatContentToCodex(content any, assistant bool) ([]any, error) {

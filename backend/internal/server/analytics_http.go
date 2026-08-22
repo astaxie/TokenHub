@@ -50,51 +50,63 @@ type tokenCostCursorQuery struct {
 	GroupBy     []string `json:"group_by"`
 }
 
-func (s *Server) handleAdminAnalyticsCredentials(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, "analytics_credential", r.Method)
-	if !ok {
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAnalyticsCredentials()})
-	case http.MethodPost:
-		var request struct {
-			Name      string     `json:"name"`
-			ScopeType string     `json:"scope_type"`
-			ProjectID string     `json:"project_id"`
-			ExpiresAt *time.Time `json:"expires_at"`
-		}
-		if err := s.decodeJSON(w, r, &request); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		credential, token, err := s.store.CreateAnalyticsCredential(AnalyticsCredential{
-			Name: request.Name, ScopeType: request.ScopeType, ProjectID: request.ProjectID,
-			ExpiresAt: request.ExpiresAt, CreatedBy: user.ID,
-		}, "")
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "create", "analytics_credential", credential.ID, nil, credential)
-		w.Header().Set("cache-control", "no-store")
-		writeJSON(w, http.StatusCreated, map[string]any{"credential": credential, "token": token})
-	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-	}
+func (s *Server) registerAdminAnalyticsCredentialRoutes() {
+	s.registerMethodRoutes("/api/admin/analytics/credentials", func(allowedMethods string) http.HandlerFunc {
+		return s.adminMethodNotAllowed("analytics_credential", allowedMethods)
+	},
+		methodRoute{Method: http.MethodGet, Handler: s.handleAdminAnalyticsCredentialsGet},
+		methodRoute{Method: http.MethodPost, Handler: s.handleAdminAnalyticsCredentialsPost},
+	)
+	s.registerSingleMethodRoute(
+		http.MethodDelete,
+		"/api/admin/analytics/credentials/{credential_id}",
+		s.handleAdminAnalyticsCredentialDelete,
+		s.adminMethodNotAllowed("analytics_credential", http.MethodDelete),
+	)
+	s.mux.HandleFunc("/api/admin/analytics/credentials/", s.handleAdminAnalyticsCredentialNested)
 }
 
-func (s *Server) handleAdminAnalyticsCredentialItem(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAdminAnalyticsCredentialsGet(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "analytics_credential", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAnalyticsCredentials()})
+}
+
+func (s *Server) handleAdminAnalyticsCredentialsPost(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "analytics_credential", r.Method)
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodDelete {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	var request struct {
+		Name      string     `json:"name"`
+		ScopeType string     `json:"scope_type"`
+		ProjectID string     `json:"project_id"`
+		ExpiresAt *time.Time `json:"expires_at"`
+	}
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, err)
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/api/admin/analytics/credentials/")
+	credential, token, err := s.store.CreateAnalyticsCredential(AnalyticsCredential{
+		Name: request.Name, ScopeType: request.ScopeType, ProjectID: request.ProjectID,
+		ExpiresAt: request.ExpiresAt, CreatedBy: user.ID,
+	}, "")
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "create", "analytics_credential", credential.ID, nil, credential)
+	w.Header().Set("cache-control", "no-store")
+	writeJSON(w, http.StatusCreated, map[string]any{"credential": credential, "token": token})
+}
+
+func (s *Server) handleAdminAnalyticsCredentialDelete(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAdmin(w, r, "analytics_credential", r.Method)
+	if !ok {
+		return
+	}
+	id := r.PathValue("credential_id")
 	if id == "" || strings.Contains(id, "/") {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "analytics_credential_not_found", "Analytics credential not found"))
 		return
@@ -106,6 +118,17 @@ func (s *Server) handleAdminAnalyticsCredentialItem(w http.ResponseWriter, r *ht
 	}
 	s.recordAdminAudit(r, user, "revoke", "analytics_credential", credential.ID, nil, credential)
 	writeJSON(w, http.StatusOK, credential)
+}
+
+func (s *Server) handleAdminAnalyticsCredentialNested(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "analytics_credential", r.Method); !ok {
+		return
+	}
+	if r.Method != http.MethodDelete {
+		jsonMethodNotAllowed(http.MethodDelete)(w, r)
+		return
+	}
+	writeError(w, r, NewHTTPError(http.StatusNotFound, "analytics_credential_not_found", "Analytics credential not found"))
 }
 
 func (s *Server) handleTokenCostAnalytics(w http.ResponseWriter, r *http.Request) {

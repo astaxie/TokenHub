@@ -3,6 +3,7 @@ package server
 import (
 	"math"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -12,6 +13,9 @@ type RequestLogQuery struct {
 	PageSize   int
 	Status     string
 	Keyword    string
+	ModelName  string
+	Since      time.Time
+	Until      time.Time
 	Global     bool
 	ProjectIDs []string
 	APIKeyIDs  []string
@@ -93,7 +97,20 @@ func (s *GormStore) QueryRequestLogs(query RequestLogQuery) (RequestLogPage, err
 }
 
 func requestLogBaseQuery(db *gorm.DB, query RequestLogQuery) *gorm.DB {
-	return applyRequestLogKeyword(applyRequestLogScope(db.Model(&RequestLog{}), query), query.Keyword)
+	return applyRequestLogFilters(applyRequestLogKeyword(applyRequestLogScope(db.Model(&RequestLog{}), query), query.Keyword), query)
+}
+
+func applyRequestLogFilters(db *gorm.DB, query RequestLogQuery) *gorm.DB {
+	if query.ModelName != "" {
+		db = db.Where("model_name = ?", query.ModelName)
+	}
+	if !query.Since.IsZero() {
+		db = db.Where("created_at >= ?", query.Since)
+	}
+	if !query.Until.IsZero() {
+		db = db.Where("created_at <= ?", query.Until)
+	}
+	return db
 }
 
 func applyRequestLogKeyword(db *gorm.DB, keyword string) *gorm.DB {

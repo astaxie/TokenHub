@@ -114,7 +114,7 @@ flowchart LR
 
 ## モデルリクエスト経路
 
-`Model` は外部 API 契約、`ProviderModel` は 1 つの Provider に対する永続化された上流モデルインベントリ、`ModelRoute` はその間のマッピングです。外部モデルには明示的で永続化されたディレクトリロールが付くため、最後のルートを削除しても候補テンプレートへ戻らず、下書きとして残ります。ルートの作成または編集では、選択した `ProviderModel` がインベントリに存在する必要があります。これにより、同名 1:1 マッピングとカスタムエイリアスの両方を支持し、呼び出し側は Provider 固有のモデル名を意識しません。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings` は同じ認証、クォータ、ルーティング入口を共有します。
+`Model` は外部 API 契約、`ProviderModel` は 1 つの Provider に対する永続化された上流モデルインベントリ、`ModelRoute` はその間のマッピングです。外部モデルには明示的で永続化されたディレクトリロールが付くため、最後のルートを削除しても候補テンプレートへ戻らず、下書きとして残ります。ルートの作成または編集では、選択した `ProviderModel` がインベントリに存在する必要があります。限定的な例外は、サブスクリプション型仮想モデル `codex-gpt-image-2` です。このルートは OpenAI Codex Provider を対象とし、上流モデルを `gpt-image-2` に固定する必要があります。これはチャットモデルのインベントリ項目ではなく、実行能力です。これにより、同名 1:1 マッピングとカスタムエイリアスの両方を支持し、呼び出し側は Provider 固有のモデル名を意識しません。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings` は同じ認証、クォータ、ルーティング入口を共有します。
 
 ```mermaid
 sequenceDiagram
@@ -152,10 +152,10 @@ Project と API Key のモデルアクセスはルート選択前の明示的な
 ## セキュリティ、ヘルス、データ境界
 
 - Project API Key はハッシュ、状態、Project 状態、有効期限、モデル範囲、IP 許可リスト、クォータ、並行数で検証されます。
-- 管理 API はログインセッション Token または `TOKENHUB_ADMIN_TOKEN` を使用します。初期 `admin` アカウントは `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` から作成されます。
-- 開発以外の起動時は、プレースホルダー値、32 バイト未満の Admin Token/バックエンドシークレット、12 バイト未満の初期管理者パスワードを拒否します。
-- `TOKENHUB_TRUSTED_PROXY_CIDRS` は `X-Forwarded-For` を提供できるプロキシを限定し、`TOKENHUB_CORS_ALLOWED_ORIGINS` は資格情報を伴うブラウザ Origin を制御します。
-- `/livez` はプロセス生存確認用です。`/readyz` と互換用の `/healthz` はデータベース可用性を確認し、利用不可時には `503` を返します。
+- 管理 API はログインセッション Token または任意の `TOKENHUB_ADMIN_TOKEN` を使用します。`TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` が設定されている場合は初期 `admin` アカウントに使用し、未設定の場合は TokenHub がパスワードを生成します。取得可能な暗号化コピーは、初回ログイン成功後またはリセット後に削除されます。
+- 開発以外の環境では、任意のブートストラップ認証情報にある既知のプレースホルダーを無効化し、それ以外の空でない弱い値を拒否します。`TOKENHUB_SECRET_KEY` は引き続き必須ですが、新規のファイル型 SQLite データベースに限り、データベースの隣に永続キーファイルを生成できます。既存データベースに代替キーを自動生成することはありません。
+- `TOKENHUB_TRUSTED_PROXY_CIDRS` は `X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto` を提供できるプロキシを限定し、信頼済みプロキシはこれらのヘッダーを上書きする必要があります。`TOKENHUB_CORS_ALLOWED_ORIGINS` は資格情報を伴うブラウザ Origin を制御します。
+- `/livez` はプロセス生存確認用です。`/readyz` と互換用の `/healthz` はデータベース可用性とデータベース進化状態を確認し、データベースが利用できない場合、マイグレーションが不完全な場合、台帳検証が失敗した場合、ブロッキングデータバックフィルが未完了の場合に `503` を返します。保留中のオンラインバックフィルは準備状態を維持します。起動構成が安全でない場合も `/livez` だけが正常となり、構成を修正して再起動するまで readiness とアプリケーションルートは `503` を返します。
 
 Provider 認証情報、請求コネクター認証情報、生の請求スナップショット、永続化されたバックグラウンド Responses payload は `TOKENHUB_SECRET_KEY` から導出した AES-GCM で暗号化されます。Project API Key は SHA-256 ダイジェストと表示用のプレフィックス/サフィックスだけを保持します。すべてのレプリカは同じ安定したシークレットを使用する必要があります。
 

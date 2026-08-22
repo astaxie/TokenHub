@@ -131,6 +131,7 @@ for name, default in (
     ("TOKENHUB_ENV", "prod"),
     ("TOKENHUB_ADMIN_TOKEN", "change-me-tokenhub-admin-token"),
     ("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "change-me-tokenhub-admin-password"),
+    ("TOKENHUB_DATABASE_URL", "sqlite:///app/data/tokenhub.db"),
     ("TOKENHUB_SECRET_KEY", "change-me-tokenhub-secret-key"),
 ):
     value = environment.get(name, default)
@@ -149,6 +150,7 @@ fi
 tokenhub_environment=""
 admin_token=""
 bootstrap_admin_password=""
+database_url=""
 secret_key=""
 image_tag=""
 
@@ -157,6 +159,7 @@ while IFS= read -r line; do
     TOKENHUB_ENV=*) tokenhub_environment="${line#*=}" ;;
     TOKENHUB_ADMIN_TOKEN=*) admin_token="${line#*=}" ;;
     TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=*) bootstrap_admin_password="${line#*=}" ;;
+    TOKENHUB_DATABASE_URL=*) database_url="${line#*=}" ;;
     TOKENHUB_SECRET_KEY=*) secret_key="${line#*=}" ;;
     TOKENHUB_IMAGE_TAG=*) image_tag="${line#*=}" ;;
   esac
@@ -167,6 +170,7 @@ unset compose_environment
 tokenhub_environment="${tokenhub_environment:-prod}"
 admin_token="${admin_token:-change-me-tokenhub-admin-token}"
 bootstrap_admin_password="${bootstrap_admin_password:-change-me-tokenhub-admin-password}"
+database_url="${database_url:-sqlite:///app/data/tokenhub.db}"
 secret_key="${secret_key:-change-me-tokenhub-secret-key}"
 image_tag="${image_tag:-latest}"
 
@@ -246,6 +250,175 @@ byte_length() {
   printf '%d' "${#value}"
 }
 
+sqlite_database_file_path() {
+  local database_url
+  local lower_database_url
+  local database_path
+  database_url="$(trim_whitespace "$1")"
+  lower_database_url="$(printf '%s' "$database_url" | tr '[:upper:]' '[:lower:]')"
+
+  case "$lower_database_url" in
+    *mode=memory*|:memory:)
+      return 1
+      ;;
+    sqlite://*)
+      database_path="${database_url#sqlite://}"
+      ;;
+    sqlite:*)
+      database_path="${database_url#sqlite:}"
+      ;;
+    file:*)
+      database_path="${database_url#file:}"
+      while [[ "$database_path" == //* ]]; do
+        database_path="${database_path#/}"
+      done
+      ;;
+    *://*)
+      return 1
+      ;;
+    *)
+      database_path="$database_url"
+      ;;
+  esac
+
+  database_path="${database_path%%\?*}"
+  if [ -z "$database_path" ] || [ "$database_path" = ":memory:" ]; then
+    return 1
+  fi
+  printf '%s' "$database_path"
+}
+
+sqlite_secret_key_file_is_safe() {
+  local key_path="$1"
+  local permissions
+  local key
+
+  if permissions="$(stat -c '%a' -- "$key_path" 2>/dev/null)"; then
+    :
+  elif permissions="$(stat -f '%Lp' "$key_path" 2>/dev/null)"; then
+    :
+  else
+    return 1
+  fi
+  case "$permissions" in
+    *[!0-7]*)
+      return 1
+      ;;
+    *00)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  if [ ! -r "$key_path" ]; then
+    return 1
+  fi
+  if ! key="$(<"$key_path")"; then
+    return 1
+  fi
+  key="$(trim_whitespace "$key")"
+  case "$key" in
+    dev_tokenhub_secret_key|change-me-tokenhub-secret-key)
+      return 1
+      ;;
+  esac
+  [ "$(byte_length "$key")" -ge 32 ]
+}
+
+# A placeholder root key is safe only when the backend can create a sidecar for
+# a new database or reuse the sidecar already paired with an existing database.
+sqlite_root_key_can_be_unset() {
+  local database_path
+  local relative_path
+  local volume_names
+  local volume_mountpoint
+  local backend_id
+  local database_file
+  local key_file
+
+  if ! database_path="$(sqlite_database_file_path "$1")"; then
+    return 1
+  fi
+  case "$database_path" in
+    /app/data/*)
+      relative_path="${database_path#/app/data/}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  case "$relative_path" in
+    ""|..|../*|*/../*|*/..)
+      return 1
+      ;;
+  esac
+
+  if ! volume_names="$("$DOCKER_BIN" volume ls --quiet --filter 'name=^tokenhub-data$' 2>/dev/null)"; then
+    return 1
+  fi
+  if [ -z "$volume_names" ]; then
+    return 0
+  fi
+  if [ "$volume_names" != "tokenhub-data" ]; then
+    return 1
+  fi
+
+  if volume_mountpoint="$("$DOCKER_BIN" volume inspect --format '{{.Mountpoint}}' tokenhub-data 2>/dev/null)" &&
+    [ -d "$volume_mountpoint" ]; then
+    database_file="$volume_mountpoint/$relative_path"
+    key_file="$database_file.secret-key"
+    if [ -e "$key_file" ] || [ -L "$key_file" ]; then
+      if sqlite_secret_key_file_is_safe "$key_file"; then
+        return 0
+      fi
+    else
+      if [ -L "$database_file" ]; then
+        return 1
+      fi
+      if [ ! -e "$database_file" ] || [ ! -s "$database_file" ]; then
+        return 0
+      fi
+    fi
+  fi
+
+  if backend_id="$("${compose[@]}" ps -a -q tokenhub-backend 2>/dev/null)" &&
+    [ -n "$backend_id" ]; then
+    if "$DOCKER_BIN" exec "$backend_id" node -e '
+const fs = require("node:fs");
+const databasePath = process.argv[1];
+const keyPath = databasePath + ".secret-key";
+let keyInfo;
+try {
+  keyInfo = fs.statSync(keyPath);
+} catch (error) {
+  if (error.code !== "ENOENT") process.exit(1);
+}
+if (keyInfo) {
+  if ((keyInfo.mode & 0o77) !== 0) process.exit(1);
+  let key;
+  try {
+    key = fs.readFileSync(keyPath, "utf8").replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
+  } catch {
+    process.exit(1);
+  }
+  const blocked = new Set(["dev_tokenhub_secret_key", "change-me-tokenhub-secret-key"]);
+  process.exit(Buffer.byteLength(key) >= 32 && !blocked.has(key) ? 0 : 1);
+}
+let databaseInfo;
+try {
+  databaseInfo = fs.lstatSync(databasePath);
+} catch (error) {
+  if (error.code !== "ENOENT") process.exit(1);
+}
+process.exit(!databaseInfo || (!databaseInfo.isSymbolicLink() && databaseInfo.size === 0) ? 0 : 1);
+' "$database_path" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
 validation_errors=()
 environment="$(trim_whitespace "$tokenhub_environment")"
 environment="$(printf '%s' "$environment" | tr '[:upper:]' '[:lower:]')"
@@ -253,20 +426,33 @@ environment="$(printf '%s' "$environment" | tr '[:upper:]' '[:lower:]')"
 if [ -z "$environment" ]; then
   validation_errors+=("TOKENHUB_ENV must not be empty")
 elif [[ "$environment" != "dev" && "$environment" != "development" && "$environment" != "local" && "$environment" != "test" ]]; then
+  root_key_can_be_unset=false
+  if sqlite_root_key_can_be_unset "$database_url"; then
+    root_key_can_be_unset=true
+  fi
+
   validate_secret() {
     local name="$1"
     local value="$2"
     local minimum_length="$3"
-    shift 3
+    local allow_unset="$4"
+    shift 4
     value="$(trim_whitespace "$value")"
 
     local blocked
     for blocked in "$@"; do
       if [ "$value" = "$blocked" ]; then
+        if [ "$allow_unset" = true ]; then
+          return 0
+        fi
         validation_errors+=("$name must not use a default placeholder value")
         return
       fi
     done
+
+    if [ "$allow_unset" = true ] && [ -z "$value" ]; then
+      return 0
+    fi
 
     if [ "$(byte_length "$value")" -lt "$minimum_length" ]; then
       validation_errors+=("$name must be at least $minimum_length bytes after trimming whitespace")
@@ -274,15 +460,15 @@ elif [[ "$environment" != "dev" && "$environment" != "development" && "$environm
     fi
   }
 
-  validate_secret "TOKENHUB_ADMIN_TOKEN" "$admin_token" 32 \
+  validate_secret "TOKENHUB_ADMIN_TOKEN" "$admin_token" 32 true \
     "dev_admin_token" "change-me-tokenhub-admin-token"
-  validate_secret "TOKENHUB_SECRET_KEY" "$secret_key" 32 \
+  validate_secret "TOKENHUB_SECRET_KEY" "$secret_key" 32 "$root_key_can_be_unset" \
     "dev_tokenhub_secret_key" "change-me-tokenhub-secret-key"
-  validate_secret "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD" "$bootstrap_admin_password" 12 \
+  validate_secret "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD" "$bootstrap_admin_password" 12 true \
     "admin123456" "change-me-tokenhub-admin-password"
 fi
 
-unset admin_token bootstrap_admin_password secret_key
+unset admin_token bootstrap_admin_password database_url root_key_can_be_unset secret_key
 
 if [ "${#validation_errors[@]}" -gt 0 ]; then
   error "deployment configuration is unsafe for $environment:"

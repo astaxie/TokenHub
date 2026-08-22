@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const codexCompatibilityRouteModel = "gpt-5.5"
@@ -44,9 +46,86 @@ func newCodexCompatibilityRouteTestServer(t *testing.T, transport http.RoundTrip
 		Priority: 1, Weight: 100, Status: StatusActive, Strategy: RouteStrategyPriorityOnly,
 	})
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "codex-bridge-route-secret"})
-	server.codexSubscription.Client = &http.Client{Transport: transport}
+	if transport != nil {
+		server.codexSubscription.Client = &http.Client{Transport: transport}
+	}
 	server.codexSubscription.MaxRequestRetries = 1
 	return server, store, secret
+}
+
+func TestCodexResponsesDistinguishesUnavailableResourceState(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		mutate     func(*testing.T, *GormStore)
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name: "missing",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Delete(&ProviderResource{}, "id = ?", "rsrc_codex_bridge_route").Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "provider_resource_missing",
+		},
+		{
+			name: "disabled",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Model(&ProviderResource{}).Where("id = ?", "rsrc_codex_bridge_route").Update("status", StatusDisabled).Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "provider_resource_disabled",
+		},
+		{
+			name: "unhealthy",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Model(&ProviderResource{}).Where("id = ?", "rsrc_codex_bridge_route").Updates(map[string]any{
+					"healthy": false, "cooldown_until": nil,
+				}).Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "provider_resource_unhealthy",
+		},
+		{
+			name: "cooling down",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Model(&ProviderResource{}).Where("id = ?", "rsrc_codex_bridge_route").Updates(map[string]any{
+					"healthy": false, "cooldown_until": time.Now().UTC().Add(time.Minute),
+				}).Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusTooManyRequests,
+			wantCode:   "provider_resource_cooling_down",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var upstreamRequests atomic.Int32
+			server, store, secret := newCodexCompatibilityRouteTestServer(t, roundTripperFunc(func(*http.Request) (*http.Response, error) {
+				upstreamRequests.Add(1)
+				return nil, NewHTTPError(http.StatusBadGateway, "unexpected_upstream_request", "Unexpected upstream request")
+			}))
+			t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
+			test.mutate(t, store)
+
+			response := doCodexCompatibilityRouteJSON(t, server.Handler(), "/v1/responses", map[string]any{
+				"model": codexCompatibilityRouteModel,
+				"input": "report the unavailable resource state",
+			}, secret, "resource-state-regression")
+			if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), `"code":"`+test.wantCode+`"`) {
+				t.Fatalf("resource state response=%d %s want=%d %s", response.Code, response.Body.String(), test.wantStatus, test.wantCode)
+			}
+			if upstreamRequests.Load() != 0 {
+				t.Fatalf("unavailable resource reached upstream: requests=%d", upstreamRequests.Load())
+			}
+		})
+	}
 }
 
 func codexCompatibilityRouteResponse(t *testing.T, request *http.Request) (*http.Response, error) {
@@ -182,7 +261,7 @@ func TestCodexCompatibilityRoutesBridgeChatAndAnthropicNonStreaming(t *testing.T
 		payload map[string]any
 		markers []string
 	}{
-		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(false), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_signature":"codex:`}},
+		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(false), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_signature":"codex:`, `"reasoning_details":[{"data":"codex:`}},
 		{name: "anthropic", path: "/v1/messages", payload: codexCompatibilityAnthropicPayload(false), markers: []string{"bridge text", `"type":"tool_use"`, `"type":"thinking"`, `"signature":"codex:`}},
 	}
 	for _, test := range cases {
@@ -210,7 +289,7 @@ func TestCodexCompatibilityRoutesBridgeChatAndAnthropicStreaming(t *testing.T) {
 		payload map[string]any
 		markers []string
 	}{
-		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(true), markers: []string{"bridge text", `"tool_calls"`, "[DONE]"}},
+		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(true), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_details":[{"data":"codex:`, "[DONE]"}},
 		{name: "anthropic", path: "/v1/messages", payload: codexCompatibilityAnthropicPayload(true), markers: []string{"bridge text", "content_block_delta", "input_json_delta", "message_stop"}},
 	}
 	for _, test := range cases {

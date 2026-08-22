@@ -27,8 +27,8 @@ func (s *Server) recordAdminAuditWithStatus(r *http.Request, user AdminUser, act
 		ResourceID:     resourceID,
 		Status:         status,
 		Message:        message,
-		BeforeSnapshot: snapshotJSON(before),
-		AfterSnapshot:  snapshotJSON(after),
+		BeforeSnapshot: auditSnapshotJSON(before),
+		AfterSnapshot:  auditSnapshotJSON(after),
 		IP:             s.clientIP(r),
 		UserAgent:      r.UserAgent(),
 	})
@@ -43,6 +43,38 @@ func snapshotJSON(value any) string {
 		return ""
 	}
 	return string(data)
+}
+
+func auditSnapshotJSON(value any) string {
+	if value == nil {
+		return ""
+	}
+	return snapshotJSON(redactAuditPayload(value))
+}
+
+func redactAuditEventsForResponse(events []AuditEvent) []AuditEvent {
+	redacted := make([]AuditEvent, len(events))
+	for index, event := range events {
+		event.BeforeSnapshot = redactStoredAuditSnapshot(event.BeforeSnapshot)
+		event.AfterSnapshot = redactStoredAuditSnapshot(event.AfterSnapshot)
+		if isAlertDeliveryAuditEvent(event) {
+			event.BeforeSnapshot = redactAlertDeliveryAuditSnapshot(event.BeforeSnapshot)
+			event.AfterSnapshot = redactAlertDeliveryAuditSnapshot(event.AfterSnapshot)
+		}
+		redacted[index] = event
+	}
+	return redacted
+}
+
+func redactStoredAuditSnapshot(snapshot string) string {
+	if strings.TrimSpace(snapshot) == "" {
+		return ""
+	}
+	var decoded any
+	if err := json.Unmarshal([]byte(snapshot), &decoded); err != nil {
+		return ""
+	}
+	return auditSnapshotJSON(decoded)
 }
 
 func stringifyCSV(value any) string {
@@ -254,7 +286,9 @@ func redactAuditValue(value any) any {
 func isSensitiveAuditKey(key string) bool {
 	normalized := strings.NewReplacer("_", "", "-", "", ".", "").Replace(strings.ToLower(key))
 	switch normalized {
-	case "authorization", "apikey", "apitoken", "accesstoken", "refreshtoken", "clientsecret", "secretkey", "password", "token", "secret":
+	case "authorization", "apikey", "apitoken", "accesstoken", "refreshtoken", "clientsecret", "secretkey", "password", "token", "secret",
+		"bottoken", "telegrambottoken", "whatsappaccesstoken", "smtppassword", "signsecret", "dingtalksecret", "webhookurl", "url",
+		"idtoken", "oauthtoken", "sessiontoken", "credentialblob", "privatekey", "cookie", "setcookie":
 		return true
 	default:
 		return strings.Contains(normalized, "authorization") || strings.Contains(normalized, "password") || strings.Contains(normalized, "secret")
@@ -263,12 +297,16 @@ func isSensitiveAuditKey(key string) bool {
 
 func auditErrorPayload(err error, requestID string) map[string]any {
 	httpErr := AsHTTPError(err)
+	errorPayload := map[string]any{
+		"message": httpErr.Message,
+		"type":    httpErr.Code,
+		"code":    httpErr.Code,
+	}
+	if httpErr.Details != nil {
+		errorPayload["details"] = httpErr.Details
+	}
 	return map[string]any{
-		"error": map[string]any{
-			"message": httpErr.Message,
-			"type":    httpErr.Code,
-			"code":    httpErr.Code,
-		},
+		"error":      errorPayload,
 		"request_id": requestID,
 	}
 }

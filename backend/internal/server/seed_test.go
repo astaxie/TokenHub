@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunStartupBootstrapReloadsCatalogOnEveryStart(t *testing.T) {
@@ -46,6 +49,175 @@ func TestRunStartupBootstrapReloadsCatalogOnEveryStart(t *testing.T) {
 	}
 	if got := modelCategory(); got != "second-start" {
 		t.Fatalf("catalog edit was not applied on restart: category=%q", got)
+	}
+}
+
+func TestBootstrapGeneratesRetrievableInitialAdminPassword(t *testing.T) {
+	store := NewMemoryStoreWithConfig(Config{SecretKey: strings.Repeat("s", 32)})
+	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: bootstrap-test-model\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := Config{
+		SecretKey:        strings.Repeat("s", 32),
+		ModelCatalogFile: catalogPath,
+	}
+
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+	password, available, err := store.InitialAdminPassword()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !available || len(password) < 32 {
+		t.Fatalf("generated password was not retrievable: available=%v length=%d", available, len(password))
+	}
+	var credential BootstrapCredential
+	if err := store.db.First(&credential, "name = ?", initialAdminPasswordCredential).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(credential.Ciphertext, password) || !strings.HasPrefix(credential.Ciphertext, "enc:v1:") {
+		t.Fatalf("initial password was not encrypted at rest: %q", credential.Ciphertext)
+	}
+
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+	restartedPassword, available, err := store.InitialAdminPassword()
+	if err != nil || !available || restartedPassword != password {
+		t.Fatalf("restart changed the initial password: available=%v err=%v", available, err)
+	}
+	if _, _, err := store.AuthenticateAdminUser("admin", password, time.Hour); err != nil {
+		t.Fatalf("generated password did not authenticate: %v", err)
+	}
+	if _, available, err := store.InitialAdminPassword(); err != nil || available {
+		t.Fatalf("initial password remained retrievable after login: available=%v err=%v", available, err)
+	}
+}
+
+func TestCreateAdminSessionDeletesGeneratedInitialAdminPassword(t *testing.T) {
+	store := NewMemoryStoreWithConfig(Config{SecretKey: strings.Repeat("s", 32)})
+	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: oauth-bootstrap-test-model\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := Config{
+		SecretKey:        strings.Repeat("s", 32),
+		ModelCatalogFile: catalogPath,
+	}
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, available, err := store.InitialAdminPassword(); err != nil || !available {
+		t.Fatalf("generated password was not available before session creation: available=%v err=%v", available, err)
+	}
+
+	if _, _, err := store.CreateAdminSession("usr_admin", time.Hour); err != nil {
+		t.Fatalf("create admin session: %v", err)
+	}
+	if _, available, err := store.InitialAdminPassword(); err != nil || available {
+		t.Fatalf("initial password remained retrievable after session creation: available=%v err=%v", available, err)
+	}
+}
+
+func TestSeedDefaultModelCatalogReportsLegacyNameConflict(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddModel(Model{
+		ID:       "legacy-catalog-id",
+		Name:     "catalog-conflict-model",
+		Modality: "chat",
+		Status:   StatusActive,
+	})
+	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: catalog-conflict-model\n    modality: chat\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := seedDefaultModelCatalog(store, catalogPath)
+	if err == nil {
+		t.Fatal("expected catalog seed conflict to be reported")
+	}
+	if !strings.Contains(err.Error(), `seed catalog model "catalog-conflict-model"`) {
+		t.Fatalf("expected model name in seed error, got %v", err)
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "duplicated key") {
+		t.Fatalf("expected database conflict cause in seed error, got %v", err)
+	}
+}
+
+func TestRunStartupBootstrapUpgradesV040DatabaseWithDisabledDefaultTeam(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "v0.4.0.db")
+	legacyDB, err := sql.Open("sqlite3", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`CREATE TABLE admin_resources (
+		id text,
+		kind text,
+		name text,
+		description text,
+		status text,
+		fields text,
+		created_at datetime,
+		updated_at datetime,
+		PRIMARY KEY (id, kind)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`CREATE TABLE admin_users (
+		id text primary key,
+		username text,
+		name text,
+		email text,
+		role text,
+		team_id text,
+		status text,
+		password_hash text,
+		created_at datetime,
+		updated_at datetime,
+		last_login_at datetime
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`INSERT INTO admin_resources
+		(id, kind, name, status, fields, created_at, updated_at) VALUES
+		('team_platform', 'teams', 'Platform Engineering Team', 'disabled', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+		('team_custom', 'teams', 'Custom Team', 'active', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec(`INSERT INTO admin_users
+		(id, username, name, email, role, team_id, status, password_hash, created_at, updated_at) VALUES
+		('usr_admin', 'admin', 'Platform Admin', 'admin@tokenhub.local', 'admin', 'team_custom', 'active', 'legacy-password-hash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacyDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: startup-test-model\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := Config{
+		BootstrapAdminPassword: "startup-bootstrap-test-password",
+		ModelCatalogFile:       catalogPath,
+	}
+	store, err := NewSQLiteStoreWithConfig("sqlite://"+databasePath, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RunStartupBootstrap(context.Background(), store, config); err != nil {
+		t.Fatalf("v0.4.0 database upgrade should preserve the existing admin assignment: %v", err)
+	}
+	users := store.ListAdminUsers()
+	if len(users) != 1 || users[0].ID != "usr_admin" || users[0].TeamID != "team_custom" || userHasTeam(users[0], "team_platform") {
+		t.Fatalf("startup changed the existing admin assignment: %+v", users)
+	}
+	for _, team := range store.ListResources("teams") {
+		if team.ID == "team_platform" && team.Status != StatusDisabled {
+			t.Fatalf("startup re-enabled the disabled default team: %+v", team)
+		}
 	}
 }
 
@@ -136,4 +308,48 @@ models:
 		newModel.OutputPriceUSDPer1M != 22 || newModel.EmbeddingPriceUSDPer1M != 2.2 {
 		t.Fatalf("new catalog model did not use catalog prices: %+v", newModel)
 	}
+}
+
+func TestBootstrapBaseDataPreservesRoutesWhenRefreshingLegacyCatalogModel(t *testing.T) {
+	store := NewMemoryStore()
+	const modelName = "deepseek-v4-flash"
+	store.AddModel(Model{
+		Name:     modelName,
+		Modality: "chat",
+		Status:   StatusActive,
+		Metadata: map[string]string{"source": "public-provider-conf"},
+	})
+	provider := store.AddProvider(Provider{
+		ID:      "prv_catalog_route",
+		Name:    "Catalog Route Provider",
+		Type:    ProviderOpenAICompatible,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	route := store.AddRoute(ModelRoute{
+		ID:            "route_catalog_model",
+		ModelName:     modelName,
+		ProviderID:    provider.ID,
+		ProviderModel: modelName,
+		Status:        StatusActive,
+	})
+	config := Config{
+		BootstrapAdminPassword: "catalog-route-bootstrap-password",
+		ModelCatalogFile:       "../../../data/model-catalog.yaml",
+	}
+
+	if err := BootstrapBaseDataWithConfig(store, config); err != nil {
+		t.Fatal(err)
+	}
+
+	model, ok := modelByNameForTest(store.ListModels(), modelName)
+	if !ok || model.Metadata["source"] != "tokenhub-standard-catalog" {
+		t.Fatalf("expected standard catalog model after refresh, got %+v", model)
+	}
+	for _, existing := range store.ListRoutes() {
+		if existing.ID == route.ID && existing.ModelName == modelName {
+			return
+		}
+	}
+	t.Fatalf("expected catalog refresh to preserve route %+v", route)
 }

@@ -1165,6 +1165,9 @@ func TestProviderTestUsesCodexDefaultProbeProfile(t *testing.T) {
 		if payload["model"] != openAICodexDefaultProbeModel || payload["service_tier"] != nil || reasoning["effort"] != "medium" {
 			t.Fatalf("unexpected default probe profile: %#v", payload)
 		}
+		if _, ok := payload["background"]; ok {
+			t.Fatalf("default Codex probe must omit unsupported background parameter: %#v", payload)
+		}
 		stream := strings.Join([]string{
 			"event: response.output_text.delta",
 			`data: {"type":"response.output_text.delta","delta":"Codex connection works."}`,

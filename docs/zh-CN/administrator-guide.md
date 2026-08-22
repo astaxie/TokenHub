@@ -46,7 +46,7 @@ TokenHub 会向演练场输出统一的 SSE 事件格式。所选上游支持流
 
 敏感数据检测覆盖带标签或经过结构校验的中国大陆身份证号、手机号、电子邮箱、银行卡号、凭证与私钥、姓名、地址和出生日期等样例。日期合法性、身份证校验位和 Luhn 校验等规则用于降低常见数字误报。策略广泛启用前，应使用「测试策略」同时验证有代表性的正例和反例。
 
-当前请求侧拦截覆盖 `/v1/chat/completions`、`/v1/responses` 和 `/v1/messages`，也包括模型演练场发出的请求。TokenHub 会在路由到 Provider 前检查普通的用户可见文本。本版本暂不检查结构化工具参数、JSON 载荷中的值、需要代码语义解析的内容，也不检查 Provider 响应。安全检查本身不再设置独立的文本大小上限，请求仍受已配置的请求体大小限制。确定性检测还会应用按规则复杂度加权的累计工作预算和命中数量预算，避免超长文本、高开销表达式或密集脱敏命中的病态组合长期占用 CPU 或内存；超限时返回 HTTP 503 `guardrail_evaluation_budget_exceeded`，普通长上下文配合适量规则仍可正常处理。
+当前请求侧拦截覆盖 `/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact` 和 `/v1/messages`，也包括模型演练场发出的请求。TokenHub 会在路由到 Provider 前检查普通的用户可见文本。本版本暂不检查结构化工具参数、JSON 载荷中的值、需要代码语义解析的内容，也不检查 Provider 响应。安全检查本身不再设置独立的文本大小上限，请求仍受已配置的请求体大小限制。确定性检测还会应用按规则复杂度加权的累计工作预算和命中数量预算，避免超长文本、高开销表达式或密集脱敏命中的病态组合长期占用 CPU 或内存；超限时返回 HTTP 503 `guardrail_evaluation_budget_exceeded`，普通长上下文配合适量规则仍可正常处理。
 
 策略阻断请求时，兼容 API 返回 HTTP 403 和 `guardrail_blocked`。错误详情包含 `categories`、`reason_codes` 和 `policy_matches`；每条策略命中会标明策略、检测项、检测器类型、分类和原因码。响应还包含用于关联审计记录的 `request_id`，但不会返回命中的原始文本。模型演练场展示相同的策略与原因信息，方便管理员反馈可复现的问题，而不只是看到“请求已被内容安全策略阻断”。
 
@@ -54,7 +54,15 @@ TokenHub 会向演练场输出统一的 SSE 事件格式。所选上游支持流
 
 发放 API Key 时，应在「归属用户」中选择实际使用人。发放人仍保留在审计元数据中，但 Key 的用量会统计到归属用户。平台管理员可以选择任一启用用户；团队负责人只能选择本团队的启用用户；普通用户只能把 Key 归属给自己。
 
-每条新用量记录都会固化当时的归属用户，因此以后转移归属或删除 Key 不会改写已记录的历史。对该字段上线前的旧记录，系统依次回退到 Key 当前归属用户、旧的发放人、项目负责人，最后显示为「未知」。个人排行会分别展示用量中实际出现过的 Key 数，以及当前归属且未吊销的 Key 数。
+每条新用量记录都会固化当时的归属用户，因此以后转移归属或删除 Key 不会改写已记录的历史。对该字段上线前的旧记录，系统只使用能够从不可变用量记录或请求历史证明的归因，否则保留为「未知」。升级时旧额度桶会保留为未归属的规范历史，绝不会静默归属给当前 owner。个人排行会分别展示用量中实际出现过的 Key 数，以及当前归属且未吊销的 Key 数。
+
+单 Key「用量」页以保存的 Key ID 作为趋势、模型与错误分布和请求明细的严格边界。轮换关系只用于提示，不会合并新旧 Key 的用量。当前日/月 Key 额度卡使用 UTC 桶，并采用网关单 Key 准入检查所用的全局、项目、团队和 Key 额度解析。用户聚合额度会单独执行，不包含在这个单 Key 视图中。平台管理员还可以查看 Provider 和 Resource 聚合表现；其他角色仍遵守现有请求详情权限，Provider 真实成本只对平台管理员可见。
+
+## 当天用量看板
+
+打开「用量」页面，可以在长期管理层报表上方查看当天用量。当天区块展示今日 Token、请求数、估算成本、缓存读，并按 Token 类型、模型、项目和 API Key 拆分。平台管理员还会看到 Provider 和 Provider Resource 表；其他角色只会收到其余按权限裁剪后的维度。团队负责人还会看到本团队成员用量，治理角色会看到成本中心归因。
+
+自然日边界来自「系统设置 > Gateway Base Settings > 用量看板时区」。请使用 IANA 时区，例如 `UTC`、`Asia/Shanghai` 或 `America/New_York`。TokenHub 会集中保存该设置，因此所有管理员看到相同的当天窗口，并在该时区的本地零点重置。用量页面打开期间，当天区块每 30 秒刷新一次。
 
 ## 本地 Agent 只读成本访问
 
@@ -66,11 +74,25 @@ TokenHub 会向演练场输出统一的 SSE 事件格式。所选上游支持流
 
 RPM 在调用 Provider 前扣减。TPM 同时按请求的预估输入量和最大输出量进行预留；文本请求未显式指定最大输出时，会预留 4,096 个输出 Token。请求结束后，系统按 Provider 返回的总 Token 数结算；若无总数，则使用提示词与补全 Token 之和。缓存与推理 Token 已包含在这些总数中，不会重复累加。失败或中断的请求会返还未使用的预留量。
 
-超过限制时返回 HTTP 429，错误码为 `api_key_rpm_exceeded` 或 `api_key_tpm_exceeded`，并附带 `Retry-After` 以及对应的 `X-RateLimit-Limit-*`、`X-RateLimit-Remaining-*` 和 `X-RateLimit-Reset-*` 响应头。分钟桶保存在数据库中，在 SQLite 和 PostgreSQL 上都会由多个 TokenHub 实例共享。指标只暴露短哈希形式的 Key 引用，绝不会包含完整 API Key。
+超过限制时返回 HTTP 429，错误码为 `api_key_rpm_exceeded` 或 `api_key_tpm_exceeded`，并附带 `Retry-After` 以及对应的 `X-RateLimit-Limit-*`、`X-RateLimit-Remaining-*` 和 `X-RateLimit-Reset-*` 响应头。分钟桶保存在数据库中；PostgreSQL 会在多个 TokenHub 实例之间共享强制状态，SQLite 保持其受支持的单后端运行方式。指标只暴露短哈希形式的 Key 引用，绝不会包含完整 API Key。
+
+## 用户聚合额度
+
+平台管理员和团队负责人都可在「成本治理 > 额度策略」中选择 `user` 作用域，并把有效用户 ID 填入 `scope_id`，以配置用户聚合限额。团队负责人只能管理自己团队内用户的策略；平台管理员可以管理任意启用用户。用户选择器会按当前管理员权限列出可用用户，策略表会显示当前日用量和月用量。用户策略支持完整额度字段：RPM、TPM、日/月请求数、日/月 Token、日/月成本和最大并发。
+
+TokenHub 使用与用量统计相同的归属顺序解析用户：先取 API Key 的 `owner_user_id`，再取旧 Key 元数据中的 `created_by`，最后取项目的 `owner_user_id`。归属于同一用户的所有 Key 都会消耗同一组用户桶，包括不同项目中的 Key。轮换、吊销、删除或替换 Key 不会重置这些计数，因为桶归属于用户而不是 Key。
+
+用户限额会与适用的 API Key、项目、团队和全局限额同时执行。所有正数限额继续使用现有的最严格值规则，但用户计数始终是跨 Key 聚合，而不是为每个 Key 单独发放额度。用户最大并发租约会与有效的 Key 级并发租约同时持有，因此任一约束都不能绕过另一个约束。
+
+系统会在调用任何 Provider 前预留用户请求数和预估 Token。共享结算事务会把预留量对账为实际计量用量，并以请求 ID 作为持久化幂等标记，覆盖普通、流式、图片和后台 Responses 调用。后台任务会持久化预留状态，使取消、重启恢复和过期 worker 无法重复结算。PostgreSQL 使用事务级 advisory lock 与行锁在多个副本间协调；SQLite 使用单后端事务串行化。被阻止的请求会在调用 Provider 前返回 HTTP 429，并把 `details.scope` 设为 `user`。审计载荷、告警和指标只保留这一有限作用域，不暴露用户 ID 或任何 API Key 密钥。
 
 ## Provider 目录可用性
 
-TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照，管理员也可以手动刷新同一份本地目录。若本地目录读取、解析或完整性校验失败，TokenHub 会继续使用最后一次有效快照。
+TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照。管理员显式刷新时，系统会下载最新的 `PublicProviderConf` 目录，执行相同的完整性校验，并仅在校验通过后原子替换快照。若上游请求或校验失败，TokenHub 会回退到配置的本地目录；若本地回退也失败，刷新请求会返回错误，并继续使用最后一次有效快照。刷新响应会用 `upstream-provider-catalog` 或 `local-provider-catalog` 标明实际采用的来源。
+
+## Codex OAuth Token 续租
+
+对于已启用且保存了刷新 Token 的 OpenAI Codex Subscription 账号，TokenHub 会在后端启动时检查一次，之后每分钟检查一次。只有访问 Token 将在五分钟内过期时才会续租。数据库凭证租约保证集群部署中同一个账号只会由一个实例续租。在「Provider 渠道 > 高级 > 订阅额度」中，管理员可以点击「续租 Token」手动续租单个账号。手动续租用于故障恢复，不要重复点击：上游可能在续租响应中轮换刷新 Token，TokenHub 会自动保存返回的新值。如果 OpenAI 返回刷新 Token 已失效，TokenHub 会把账号标记为需要重新授权，停止后续定时续租，并向管理员显示重新授权提示。
 
 ### Kronk 本地推理
 
@@ -79,7 +101,6 @@ TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中�
 模型选择器通过 `GET /v1/models` 发现实时库存，并完整保留 Kronk 模型 ID 中的 `/`、`:` 和量化后缀。引入选中的库存后，在「模型目录」中创建对外标准模型名，再到「路由策略」将其映射到 Kronk 模型 ID。重复引入保持幂等。后续模型发现成功时，已从 Kronk 移除的模型会被标记为不可用，但不会删除其库存或路由；发现失败不会改写现有配置。
 
 Kronk 路由支持 OpenAI-compatible Chat Completions、Responses 和 Embeddings，包括 SSE 流式输出。TokenHub 继续执行客户端认证、项目隔离、配额、审计、路由与故障转移策略；不会把调用方的 `Authorization` 请求头转发给 Kronk，也不会在管理响应、审计载荷、日志或上游错误响应中暴露保存的 Kronk token。
-
 ## Claude Code 归因块处理
 
 Claude Code 可能在 Anthropic Messages 请求的 `system` 数组开头插入归因文本块。该块包含可能随请求变化的客户端元数据，可能导致第三方上游无法复用原本稳定的提示词前缀。
@@ -306,6 +327,8 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 相关端点包括 `GET/POST /api/admin/billing/reconciliation-rules`、`GET/PATCH /api/admin/billing/reconciliation-rules/{id}`、`POST /api/admin/billing/reconciliation-rules/{id}/run`、`GET /api/admin/billing/reconciliations`、`GET /api/admin/billing/reconciliations/{id}`，以及 `{id}/lock`、`{id}/recalculate` 和 `{id}/export` 操作。这些端点仅允许平台管理员访问。
 
+`audit_retention` 网关设置仅接受 `1d` 至 `3650d` 的 `Nd` 格式。集群每个 UTC 小时分批删除超过保留期的请求和响应正文。请求日志元数据、用量分析数据、后台审计事件和告警事件不受该设置影响。
+
 ## 安全检查清单
 
 | 控制项 | 要求 |
@@ -323,6 +346,12 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 新增身份源包含三个必填步骤：选择身份源、填写连接方式、配置登录入口与首次登录授权。连接方式步骤会展示所选身份源的官方配置文档，可据此创建应用并获取相应凭据。通用 OIDC/OAuth2 模板则会提示查阅实际身份平台的应用注册文档，并提供相应协议参考。在第三步，已预置完整端点的模板可选择「跳过并完成」；如果模板缺少必要端点，高级设置会变为必填。也可主动进入高级设置，覆盖端点、Scope 和 Claim 默认值。编辑已有身份源时仍会在同一页展示完整表单。
 
 请使用 TokenHub 后端公开地址和回调路径 `/api/admin/auth/oauth/callback`。Callback URL 可留空，让系统按后端请求 Host 自动生成；如果显式填写，完整 URL 必须与身份平台中登记的回调地址完全一致。
+
+管理员 OAuth 登录完成时，重定向 URL 不会携带管理员会话 Token。TokenHub 只向控制台返回短时、单次使用的 code；控制台完成一次交换后，仅在当前浏览器标签页保留得到的会话。刷新该标签页仍会保持登录；关闭标签页后需要重新登录。
+
+身份源 Client Secret 与通知渠道敏感字段（包括 Webhook URL、SMTP 密码、Bot Token、签名密钥和 Access Token）在管理 API 响应和 CSV 导出中始终以掩码展示，并在审计快照中脱敏。告警投递输出不会暴露包含凭据的完整 URL：URL 目标只保留 scheme 和 host，路径、query 以及错误文本中匹配到的凭据都会被掩码；该规则同样覆盖告警投递 CSV 导出和投递审计快照。
+
+更新身份源或通知渠道时，空字符串、掩码 `********`、`••••••••` 或 `[redacted]` 都表示“保留已存储的 Secret”。只有发送 JSON `null` 才会显式清空 Secret。清空通知渠道 Secret 时，还会一并删除相关别名，例如 `url` / `webhook_url`、`smtp_password` / `password`，以及当前渠道对应的 Token 或 Secret 别名。只有平台管理员可以新增、修改或删除身份源；安全管理员只能读取已掩码的配置。
 
 | 平台 | 应用侧必填配置 | TokenHub 处理方式 |
 | --- | --- | --- |

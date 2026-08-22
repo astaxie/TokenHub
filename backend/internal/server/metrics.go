@@ -355,7 +355,7 @@ func (m *GatewayMetrics) ObserveRateLimitHit(keyID string, limit string, scope s
 func minuteLimitMetricScope(scope string) string {
 	scope = strings.ToLower(strings.TrimSpace(scope))
 	switch scope {
-	case "api_key", "global", "project", "team":
+	case "api_key", "global", "project", "team", "user":
 		return scope
 	default:
 		return "api_key"

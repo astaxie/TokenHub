@@ -40,7 +40,7 @@ func strictProviderUpstreamRedirect(req *http.Request, via []*http.Request) erro
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after 10 redirects")
 	}
-	if err := validateProviderUpstreamBaseURL(req.URL, nil, false); err != nil {
+	if err := validateProviderUpstreamURLSyntax(req.URL); err != nil {
 		return err
 	}
 	if len(via) == 0 || via[0] == nil || via[0].URL == nil {

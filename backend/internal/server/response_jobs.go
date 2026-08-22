@@ -410,9 +410,9 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 	}
 	call.Stream = false
 	job.RequestID = call.RequestID
-	// The admitted call context is cancelled if the API-key concurrency lease can
-	// no longer be renewed. All expensive work and the provider invocation must
-	// inherit it, otherwise another replica could admit overlapping work after the
+	// The admitted call context is cancelled if either concurrency lease can no
+	// longer be renewed. All expensive work and the provider invocation must
+	// inherit it, otherwise another replica could admit overlapping work after a
 	// lease expires. Cleanup is safe after normal finalization and essential on
 	// every early-return path before durable settlement.
 	defer s.store.ReleaseResponseJobAdmission(call.RequestID)

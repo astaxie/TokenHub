@@ -177,6 +177,7 @@ func TestPriceUsageIsIdempotent(t *testing.T) {
 		{name: "cached", usage: Usage{PromptTokens: 1000, CachedInputTokens: 400, CompletionTokens: 500}},
 		{name: "cached above prompt", usage: Usage{PromptTokens: 100, CachedInputTokens: 900, CompletionTokens: 5}},
 		{name: "already totalled", usage: Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}},
+		{name: "negative upstream counts", usage: Usage{PromptTokens: -400, CachedInputTokens: 25, CompletionTokens: -50, TotalTokens: -450}},
 		{name: "empty", usage: Usage{}},
 	}
 	for _, testCase := range cases {

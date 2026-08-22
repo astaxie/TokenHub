@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -348,6 +351,120 @@ func TestSSRFGuardedDialContextDialsValidatedAddress(t *testing.T) {
 	conn.Close()
 }
 
+// TestSSRFGuardedProviderTransportPoolsIdleConnections covers the gateway
+// connection-pool sizing. A burst of concurrent requests to one upstream must
+// leave every connection in the idle pool, so the requests behind it reuse
+// them instead of paying a fresh TCP and TLS handshake; the standard library
+// default of two idle connections per host would discard the rest.
+func TestSSRFGuardedProviderTransportPoolsIdleConnections(t *testing.T) {
+	const parallel = 8
+
+	transport := ssrfGuardedProviderTransport(nil)
+	if transport.DialContext == nil {
+		t.Fatal("expected guarded transport to install a DialContext")
+	}
+	if transport.MaxIdleConnsPerHost != 64 {
+		t.Fatalf("expected 64 idle connections per host, got %d", transport.MaxIdleConnsPerHost)
+	}
+	if transport.MaxIdleConns != 256 {
+		t.Fatalf("expected a 256 connection idle pool, got %d", transport.MaxIdleConns)
+	}
+
+	// The burst handler holds every request until all of them have arrived, so
+	// the transport has to open one connection per request.
+	arrived := make(chan struct{}, parallel)
+	release := make(chan struct{})
+	var connections atomic.Int32
+	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/burst" {
+			arrived <- struct{}{}
+			<-release
+		}
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte("ok"))
+	}))
+	upstream.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			connections.Add(1)
+		}
+	}
+	upstream.Start()
+	defer upstream.Close()
+	// Registered after Close so it runs first: a failed burst must not leave
+	// handlers blocked, which would hang the server shutdown.
+	var releaseOnce sync.Once
+	releaseBurst := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseBurst()
+
+	// PutIdleConn reports per connection whether the transport kept it for
+	// reuse; under the default limit the surplus connections would report
+	// "too many idle connections for host" instead.
+	pooled := make(chan error, parallel)
+	trace := &httptrace.ClientTrace{PutIdleConn: func(err error) { pooled <- err }}
+	// The timeout bounds Do and the body read together, so a stalled request
+	// fails the test instead of hanging the package on the burst collection.
+	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+
+	burst := make(chan error, parallel)
+	for i := 0; i < parallel; i++ {
+		go func() {
+			request, err := http.NewRequestWithContext(httptrace.WithClientTrace(context.Background(), trace), http.MethodGet, upstream.URL+"/burst", nil)
+			if err != nil {
+				burst <- err
+				return
+			}
+			response, err := client.Do(request)
+			if err == nil {
+				_, _ = io.Copy(io.Discard, response.Body)
+				err = response.Body.Close()
+			}
+			burst <- err
+		}()
+	}
+	for i := 0; i < parallel; i++ {
+		select {
+		case <-arrived:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timed out waiting for the concurrent burst, %d of %d requests arrived", i, parallel)
+		}
+	}
+	releaseBurst()
+	for i := 0; i < parallel; i++ {
+		if err := <-burst; err != nil {
+			t.Fatalf("burst request failed: %v", err)
+		}
+	}
+	if got := connections.Load(); got != parallel {
+		t.Fatalf("expected the burst to open %d connections, got %d", parallel, got)
+	}
+
+	// Draining a response returns its connection to the idle pool, so
+	// collecting every callback both asserts the pooling and synchronizes the
+	// reuse round below.
+	for i := 0; i < parallel; i++ {
+		select {
+		case err := <-pooled:
+			if err != nil {
+				t.Fatalf("expected every burst connection to stay pooled, got %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timed out waiting for idle connections, only %d of %d were pooled", i, parallel)
+		}
+	}
+
+	for i := 0; i < parallel; i++ {
+		response, err := client.Get(upstream.URL + "/reuse")
+		if err != nil {
+			t.Fatalf("reuse request %d failed: %v", i, err)
+		}
+		_, _ = io.Copy(io.Discard, response.Body)
+		_ = response.Body.Close()
+	}
+	if got := connections.Load(); got != parallel {
+		t.Fatalf("expected the reuse round to open no new connections, got %d in total", got)
+	}
+}
+
 func mustParseCIDRs(t *testing.T, cidrs ...string) []*net.IPNet {
 	t.Helper()
 	blocks := make([]*net.IPNet, 0, len(cidrs))
@@ -584,6 +701,70 @@ func TestAdminPatchProviderRejectsSSRFBaseURL(t *testing.T) {
 	}
 }
 
+func TestAdminProviderURLValidationIgnoresAmbientProxy(t *testing.T) {
+	for _, proxyVariables := range []struct {
+		name  string
+		http  string
+		https string
+	}{
+		{name: "uppercase", http: "HTTP_PROXY", https: "HTTPS_PROXY"},
+		{name: "lowercase", http: "http_proxy", https: "https_proxy"},
+	} {
+		t.Run(proxyVariables.name, func(t *testing.T) {
+			for _, variable := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"} {
+				t.Setenv(variable, "")
+			}
+			t.Setenv(proxyVariables.http, "http://proxy.example:3128")
+			t.Setenv(proxyVariables.https, "http://proxy.example:3128")
+
+			store := NewMemoryStore()
+			if err := SeedDemoData(store); err != nil {
+				t.Fatal(err)
+			}
+			app := New(store).Handler()
+
+			for _, test := range []struct {
+				name      string
+				baseURL   string
+				errorCode string
+			}{
+				{name: "metadata", baseURL: "http://169.254.169.254/latest/meta-data", errorCode: "provider_base_url_not_allowed"},
+				{name: "public HTTP", baseURL: "http://api.example.com/v1", errorCode: "provider_base_url_insecure_scheme"},
+			} {
+				response := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+					"name":     "Ambient proxy " + test.name,
+					"type":     ProviderOpenAICompatible,
+					"base_url": test.baseURL,
+				}, "")
+				if response.Code != http.StatusBadRequest || !strings.Contains(response.Body, test.errorCode) {
+					t.Fatalf("create with %s accepted %s: %d %s", proxyVariables.name, test.baseURL, response.Code, response.Body)
+				}
+			}
+
+			created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+				"name":     "Ambient proxy patch target",
+				"type":     ProviderOpenAICompatible,
+				"base_url": "https://api.example.com/v1",
+			}, "")
+			if created.Code != http.StatusCreated {
+				t.Fatalf("create patch target with %s: %d %s", proxyVariables.name, created.Code, created.Body)
+			}
+			var payload struct {
+				Provider Provider `json:"provider"`
+			}
+			if err := json.Unmarshal([]byte(created.Body), &payload); err != nil {
+				t.Fatal(err)
+			}
+			patched := doJSON(t, app, http.MethodPatch, "/api/admin/providers/"+payload.Provider.ID, map[string]any{
+				"base_url": "http://169.254.169.254/latest/meta-data",
+			}, "")
+			if patched.Code != http.StatusBadRequest || !strings.Contains(patched.Body, "provider_base_url_not_allowed") {
+				t.Fatalf("patch with %s accepted metadata URL: %d %s", proxyVariables.name, patched.Code, patched.Body)
+			}
+		})
+	}
+}
+
 // TestAdminCreateProviderAllowsAllowlistedPrivateLiteral covers the operator
 // workflow for in-house model servers: with the range configured, a literal
 // private IP saves successfully.
@@ -611,13 +792,25 @@ func TestAdminCreateProviderAllowsAllowlistedPrivateLiteral(t *testing.T) {
 func TestUpstreamClientsGuardInferenceDial(t *testing.T) {
 	client, streamClient, _ := newUpstreamClients(Config{})
 	for name, candidate := range map[string]*http.Client{"non-streaming": client, "streaming": streamClient} {
-		policy, ok := candidate.Transport.(*providerUpstreamPolicyTransport)
-		if !ok {
-			t.Fatalf("expected %s client to validate each request before sending it", name)
+		proxying, ok := candidate.Transport.(*providerEnvironmentProxyTransport)
+		if !ok || proxying.selectProxy == nil {
+			t.Fatalf("expected %s client to honor the operator forward proxy", name)
 		}
-		transport, ok := policy.next.(*http.Transport)
-		if !ok || transport.DialContext == nil {
-			t.Fatalf("expected %s client to install a guarded DialContext", name)
+		policy, ok := proxying.direct.(*providerUpstreamPolicyTransport)
+		if !ok {
+			t.Fatalf("expected %s direct path to validate each request before sending it", name)
+		}
+		var transport *http.Transport
+		switch guarded := policy.next.(type) {
+		case *providerUpstreamTransportPool:
+			transport = guarded.current
+		case *http.Transport:
+			transport = guarded
+		default:
+			t.Fatalf("expected %s direct path to use a guarded transport, got %T", name, guarded)
+		}
+		if transport == nil || transport.DialContext == nil {
+			t.Fatalf("expected %s direct client path to install a guarded DialContext", name)
 		}
 		if candidate.CheckRedirect == nil {
 			t.Fatalf("expected %s client to enforce the strict redirect policy", name)
@@ -642,8 +835,12 @@ func TestUpstreamClientsGuardInferenceDial(t *testing.T) {
 		_ = listener.Close()
 	}
 	server := New(NewMemoryStore())
-	if _, ok := server.codexSubscription.Client.Transport.(*providerUpstreamPolicyTransport); !ok {
-		t.Fatal("expected Codex subscription client to validate each request before sending it")
+	proxying, ok := server.codexSubscription.Client.Transport.(*providerEnvironmentProxyTransport)
+	if !ok {
+		t.Fatal("expected Codex subscription client to honor the operator forward proxy")
+	}
+	if _, ok := proxying.direct.(*providerUpstreamPolicyTransport); !ok {
+		t.Fatal("expected Codex subscription direct path to validate each request before sending it")
 	}
 }
 
@@ -723,6 +920,65 @@ func TestProviderResourceBaseURLSSRFGuard(t *testing.T) {
 		}
 	})
 
+	for _, proxyVariables := range []struct {
+		name  string
+		http  string
+		https string
+	}{
+		{name: "uppercase ambient proxy", http: "HTTP_PROXY", https: "HTTPS_PROXY"},
+		{name: "lowercase ambient proxy", http: "http_proxy", https: "https_proxy"},
+	} {
+		t.Run(proxyVariables.name, func(t *testing.T) {
+			for _, variable := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"} {
+				t.Setenv(variable, "")
+			}
+			t.Setenv(proxyVariables.http, "http://proxy.example:3128")
+			t.Setenv(proxyVariables.https, "http://proxy.example:3128")
+
+			store, provider := newStore(t)
+			server := New(store)
+			t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
+			app := server.Handler()
+
+			created := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+				"provider_id": provider.ID, "name": "Rejected metadata create",
+				"resource_type": ProviderResourceAPIKey, "base_url": "http://169.254.169.254/latest/meta-data",
+			}, "")
+			if created.Code != http.StatusBadRequest || !strings.Contains(created.Body, "provider_base_url_not_allowed") {
+				t.Fatalf("ambient proxy relaxed resource create validation: %d %s", created.Code, created.Body)
+			}
+
+			resource, err := store.AddProviderResource(ProviderResource{
+				ProviderID: provider.ID, Name: "Valid patch target", ResourceType: ProviderResourceAPIKey,
+				BaseURL: "https://resource.example.com/v1", Status: StatusActive, Healthy: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			patched := doJSON(t, app, http.MethodPatch, "/api/admin/provider-resources/"+resource.ID, map[string]any{
+				"base_url": "http://169.254.169.254/latest/meta-data",
+			}, "")
+			if patched.Code != http.StatusBadRequest || !strings.Contains(patched.Body, "provider_base_url_not_allowed") {
+				t.Fatalf("ambient proxy relaxed resource patch validation: %d %s", patched.Code, patched.Body)
+			}
+
+			imported := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/import", map[string]any{
+				"resources": []map[string]any{{
+					"provider_id": provider.ID, "name": "Rejected metadata import",
+					"resource_type": ProviderResourceAPIKey, "base_url": "http://169.254.169.254/latest/meta-data",
+				}},
+			}, "")
+			if imported.Code != http.StatusMultiStatus || !strings.Contains(imported.Body, `"success":0`) || !strings.Contains(imported.Body, `"failed":1`) {
+				t.Fatalf("ambient proxy relaxed resource import validation: %d %s", imported.Code, imported.Body)
+			}
+			for _, item := range store.ListProviderResources() {
+				if item.Name == "Rejected metadata import" {
+					t.Fatalf("rejected resource import was persisted: %+v", item)
+				}
+			}
+		})
+	}
+
 	t.Run("allowlisted private literal is accepted", func(t *testing.T) {
 		t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS", "192.168.0.0/16")
 		store, provider := newStore(t)
@@ -771,7 +1027,7 @@ func TestDialGuardedUpstreamFallbackAfterSlowLookup(t *testing.T) {
 	}
 
 	started := time.Now()
-	conn, err := dialGuardedUpstream(context.Background(), "tcp", "provider.example:443", nil, budget, lookup, dial)
+	conn, err := dialGuardedUpstream(context.Background(), "tcp", "provider.example:443", nil, nil, budget, lookup, dial)
 	if err != nil {
 		t.Fatalf("expected fallback to reach the healthy candidate, got %v (dialed: %v)", err, dialed)
 	}

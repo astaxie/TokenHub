@@ -57,7 +57,7 @@ func canAdmin(role string, resource string, method string) bool {
 		if write {
 			return resource == "alert" || resource == "security" || resource == "audit" || resource == "admin_audit" || resource == "approval"
 		}
-		return resource == "overview" || resource == "usage" || resource == "audit" || resource == "admin_audit" || resource == "alert" || resource == "security" || resource == "approval"
+		return resource == "overview" || resource == "usage" || resource == "audit" || resource == "admin_audit" || resource == "alert" || resource == "security" || resource == "identity_provider" || resource == "approval"
 	case "team_leader":
 		if resource == "backup" {
 			return false
@@ -267,12 +267,6 @@ func (s *Server) linkProjectQuotaPolicy(quota AdminResource, payload map[string]
 		DefaultQuotaRef: quota.ID,
 	})
 	return err
-}
-
-func (s *Server) usageSummaryForUser(user AdminUser) map[string]any {
-	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
-	logs := s.filterRequestLogsForUser(user, s.store.ListRequestLogs())
-	return summarizeUsage(records, logs)
 }
 
 func (s *Server) usageBreakdownForUser(user AdminUser) map[string]any {
@@ -660,19 +654,21 @@ func (s *Server) canManageAPIKey(user AdminUser, keyID string) bool {
 	if isPlatformAdminRole(role) {
 		return true
 	}
-	for _, key := range s.store.ListAPIKeys() {
-		if key.ID == keyID {
-			return s.canAccessAPIKey(user, key)
-		}
+	key, ok := s.store.GetAPIKey(keyID)
+	if !ok {
+		return false
 	}
-	return false
+	project, ok := s.store.GetProject(key.ProjectID)
+	projects := map[string]Project{}
+	if ok {
+		projects[project.ID] = project
+	}
+	return canManageAPIKeyWithProjects(user, key, projects, s.store.ListResources("project-members"), s.activeTeamIDSet())
 }
 
 func (s *Server) findAPIKey(keyID string) (APIKey, error) {
-	for _, key := range s.store.ListAPIKeys() {
-		if key.ID == keyID {
-			return key, nil
-		}
+	if key, ok := s.store.GetAPIKey(keyID); ok {
+		return key, nil
 	}
 	return APIKey{}, NewHTTPError(404, "api_key_not_found", "API key not found")
 }
@@ -739,6 +735,17 @@ func canAccessAPIKeyWithProjects(user AdminUser, key APIKey, projects map[string
 		return true
 	}
 	if strings.TrimSpace(key.OwnerUserID) == "" && key.Metadata != nil && key.Metadata["created_by"] == user.ID {
+		return true
+	}
+	project, ok := projects[key.ProjectID]
+	if !ok {
+		return false
+	}
+	return projectAccessRoleRank(projectAccessRole(user, project, memberships, activeTeams)) >= projectAccessRoleRank("maintainer")
+}
+
+func canManageAPIKeyWithProjects(user AdminUser, key APIKey, projects map[string]Project, memberships []AdminResource, activeTeams map[string]bool) bool {
+	if key.Metadata != nil && strings.TrimSpace(key.Metadata["created_by"]) == user.ID {
 		return true
 	}
 	project, ok := projects[key.ProjectID]
@@ -884,6 +891,15 @@ func (s *Server) filterResourcesForUser(user AdminUser, kind string, resources [
 		}
 		return out
 	}
+	if role == "user" && kind == "teams" {
+		out := make([]AdminResource, 0, len(resources))
+		for _, item := range resources {
+			if item.Status == StatusActive && userHasTeam(user, item.ID) {
+				out = append(out, item)
+			}
+		}
+		return out
+	}
 	if role != "team_leader" {
 		return nil
 	}
@@ -948,6 +964,9 @@ func (s *Server) filterQuotaPoliciesForTeamLeader(user AdminUser, resources []Ad
 			visible = visibleProjects[scopeID]
 		case "team":
 			visible = scopeID == user.TeamID
+		case "user":
+			target, ok := s.findAdminUser(scopeID)
+			visible = ok && userHasTeam(target, user.TeamID)
 		case "cost_center", "cost-center":
 			visible = costCenters[normalizeScopeValue(scopeID)]
 		default:
@@ -1018,6 +1037,9 @@ func (s *Server) canAccessQuotaPolicy(user AdminUser, item AdminResource) bool {
 		return s.visibleProjectIDSet(user)[scopeID]
 	case "team":
 		return scopeID == user.TeamID
+	case "user":
+		target, ok := s.findAdminUser(scopeID)
+		return ok && userHasTeam(target, user.TeamID)
 	case "cost_center", "cost-center":
 		return s.teamCostCenterSet(user.TeamID)[normalizeScopeValue(scopeID)]
 	}
@@ -1036,9 +1058,58 @@ func (s *Server) validateScopedResourceMutation(user AdminUser, kind string, res
 	if kind == "project-members" {
 		return s.validateProjectMemberMutation(user, resourceID, req)
 	}
+	var quotaFields map[string]any
 	if kind == "quota-policies" {
 		if err := validateQuotaPolicyMinuteLimits(req.Fields); err != nil {
 			return err
+		}
+		fields := req.Fields
+		if resourceID != "" {
+			existing, err := s.findResource(kind, resourceID)
+			if err != nil {
+				return err
+			}
+			if fields == nil {
+				fields = existing.Fields
+			} else {
+				mergedFields := make(map[string]any, len(existing.Fields)+len(fields))
+				for key, value := range existing.Fields {
+					mergedFields[key] = value
+				}
+				for key, value := range fields {
+					mergedFields[key] = value
+				}
+				fields = mergedFields
+			}
+		}
+		quotaFields = fields
+		scope := strings.ToLower(strings.TrimSpace(firstStringField(fields, "scope", "scope_type")))
+		if scope == "user" {
+			scopeID := strings.TrimSpace(stringField(fields, "scope_id"))
+			if scopeID == "" {
+				return NewHTTPError(http.StatusBadRequest, "invalid_quota_policy_scope", "User quota policies require a user scope_id")
+			}
+			target, ok := s.findAdminUser(scopeID)
+			if !ok {
+				return NewHTTPError(http.StatusNotFound, "admin_user_not_found", "Quota policy user not found")
+			}
+			resultingStatus := StatusActive
+			if resourceID != "" {
+				existing, err := s.findResource(kind, resourceID)
+				if err != nil {
+					return err
+				}
+				resultingStatus = existing.Status
+			}
+			if req.Status != "" {
+				resultingStatus = req.Status
+			}
+			if target.Status != StatusActive && !strings.EqualFold(strings.TrimSpace(resultingStatus), StatusDisabled) {
+				return NewHTTPError(http.StatusBadRequest, "invalid_quota_policy_scope", "User quota policies require an active user")
+			}
+			if normalizeAdminRole(user.Role) == "team_leader" && !userHasTeam(target, user.TeamID) {
+				return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Team leader can only manage quotas for users in own team")
+			}
 		}
 	}
 	if normalizeAdminRole(user.Role) != "team_leader" || kind != "quota-policies" {
@@ -1056,7 +1127,12 @@ func (s *Server) validateScopedResourceMutation(user AdminUser, kind string, res
 			return nil
 		}
 	}
-	if !s.quotaPolicyReferencesManageableProject(user, req) {
+	if strings.EqualFold(strings.TrimSpace(firstStringField(quotaFields, "scope", "scope_type")), "user") {
+		return nil
+	}
+	validationReq := req
+	validationReq.Fields = quotaFields
+	if !s.quotaPolicyReferencesManageableProject(user, validationReq) {
 		return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Quota policy must belong to a manageable project")
 	}
 	return nil
@@ -1250,7 +1326,7 @@ func adminResourcePermission(path string) string {
 		return "security"
 	}
 	if strings.Contains(path, "/identity-providers") {
-		return "security"
+		return "identity_provider"
 	}
 	if strings.Contains(path, "/alert-rules") {
 		return "alert"
@@ -1263,7 +1339,10 @@ func adminResourcePermission(path string) string {
 		strings.Contains(path, "/approval-flows") || strings.Contains(path, "/reports") {
 		return "usage"
 	}
-	if strings.Contains(path, "/teams") || strings.Contains(path, "/role-configs") {
+	if strings.Contains(path, "/teams") {
+		return "project"
+	}
+	if strings.Contains(path, "/role-configs") {
 		return "identity"
 	}
 	if strings.Contains(path, "/monitors") || strings.Contains(path, "/proxies") || strings.Contains(path, "/settings") {

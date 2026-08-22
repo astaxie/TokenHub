@@ -22,6 +22,10 @@ export function tx(value: string | undefined | null) {
   return translations[activeLanguage][value] ?? translateGeneratedText(value, activeLanguage) ?? value;
 }
 
+export function formatTranslationTemplate(template: string, values: Record<string, string>) {
+  return Object.entries(values).reduce((message, [key, value]) => message.split(`{${key}}`).join(value), template);
+}
+
 // Localize the browser's native constraint-validation bubble (e.g. the required-field
 // message) so it follows the app language instead of the browser locale.
 export function handleRequiredFieldInvalid(event: {
@@ -112,26 +116,26 @@ export function languageLocale() {
   return "zh-CN";
 }
 
-function localeNumber(value: number) {
+export function formatLocaleNumber(value: number) {
   return new Intl.NumberFormat(languageLocale()).format(value);
 }
 
 export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaUnit: string, enPluralUnit = `${enUnit}s`) {
-  const formatted = localeNumber(count);
+  const formatted = formatLocaleNumber(count);
   if (activeLanguage === "en") return `${formatted} ${count === 1 ? enUnit : enPluralUnit}`;
   if (activeLanguage === "ja") return `${formatted} ${jaUnit}`;
   return `${formatted} ${zhUnit}`;
 }
 
 export function guardrailDetectionItemName(index: number) {
-  const formatted = localeNumber(index);
+  const formatted = formatLocaleNumber(index);
   if (activeLanguage === "en") return `Detection item ${formatted}`;
   if (activeLanguage === "ja") return `検出項目 ${formatted}`;
   return `检测项 ${formatted}`;
 }
 
 export function millisecondsText(value: number) {
-  const formatted = localeNumber(value);
+  const formatted = formatLocaleNumber(value);
   if (activeLanguage === "en") return `${formatted} ms`;
   if (activeLanguage === "ja") return `${formatted} ミリ秒`;
   return `${formatted} 毫秒`;
@@ -189,9 +193,9 @@ export function providerSaveMessage(updated: boolean, accountResourceCreated: bo
 }
 
 export function countWithLabel(count: number, label: string) {
-  if (activeLanguage === "en") return `${localeNumber(count)} ${tx(label)}`;
-  if (activeLanguage === "ja") return `${localeNumber(count)} ${tx(label)}`;
-  return `${localeNumber(count)} ${label}`;
+  if (activeLanguage === "en") return `${formatLocaleNumber(count)} ${tx(label)}`;
+  if (activeLanguage === "ja") return `${formatLocaleNumber(count)} ${tx(label)}`;
+  return `${formatLocaleNumber(count)} ${label}`;
 }
 
 export function selectedModelsText(count: number) {
@@ -241,16 +245,16 @@ export function deleteConfirmMessage(name: string) {
 }
 
 export function bulkDeleteConfirmMessage(count: number) {
-  if (activeLanguage === "en") return `After deleting ${localeNumber(count)} selected records, the current in-memory data will be removed immediately.`;
-  if (activeLanguage === "ja") return `選択した ${localeNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
-  return `删除选中的 ${localeNumber(count)} 条记录后，当前内存数据会立即移除。`;
+  if (activeLanguage === "en") return `After deleting ${formatLocaleNumber(count)} selected records, the current in-memory data will be removed immediately.`;
+  if (activeLanguage === "ja") return `選択した ${formatLocaleNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
+  return `删除选中的 ${formatLocaleNumber(count)} 条记录后，当前内存数据会立即移除。`;
 }
 
 export function routeAttemptCountText(count: number) {
   if (count > 1) {
-    if (activeLanguage === "en") return `${localeNumber(count)} attempts, with fallback`;
-    if (activeLanguage === "ja") return `${localeNumber(count)} 回、fallback 含む`;
-    return `${localeNumber(count)} 次，含 fallback`;
+    if (activeLanguage === "en") return `${formatLocaleNumber(count)} attempts, with fallback`;
+    if (activeLanguage === "ja") return `${formatLocaleNumber(count)} 回、fallback 含む`;
+    return `${formatLocaleNumber(count)} 次，含 fallback`;
   }
   return countWithUnit(count, "次", "attempt", "回");
 }

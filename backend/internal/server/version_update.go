@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,10 +14,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
+
+	"tokenhub/backend/internal/dbschema"
 )
 
 const (
@@ -259,7 +263,261 @@ func (s *versionService) applyNativeRelease(ctx context.Context, release githubR
 	if err := s.installNativeBundle(extracted, version); err != nil {
 		return err
 	}
+	// The managed-upgrade contract in docs/database-evolution.md requires the
+	// target release's own binary to run its startup-compatible preparation
+	// and verification against the current database, so a database the target
+	// cannot serve is never
+	// activated. The managed upgrade never runs contracts; the upgrade state
+	// records that so the post-restart auto-rollback gate stays closed.
+	targetBinary := filepath.Join(root, "releases", version, "bin", "tokenhub")
+	if err := s.runTargetDatabasePreflight(ctx, targetBinary, version); err != nil {
+		return err
+	}
+	if err := s.recordUpgrade(s.currentVersion, version); err != nil {
+		return err
+	}
 	return s.activateNativeRelease(version)
+}
+
+// runTargetDatabasePreflight runs the freshly installed target release binary
+// against the current database before activation. `db prepare` runs the same
+// serialized adoption and expand flow as startup, but without publishing a
+// serving heartbeat. This lets a target release safely adopt a supported
+// pre-ledger database instead of demanding that it be started before
+// activation. `db verify` runs afterwards — semantic verification compares
+// the live schema against the target's frozen reference, so it can only pass
+// once preparation is complete. Expands remain in the database if the upgrade
+// is later rolled back (there is no automatic backup restore).
+func (s *versionService) runTargetDatabasePreflight(ctx context.Context, binary, version string) error {
+	if s.databaseURL == "" {
+		return errors.New("database URL is not configured; cannot preflight the target release")
+	}
+	for _, args := range [][]string{{"db", "prepare"}, {"db", "verify"}} {
+		command := exec.CommandContext(ctx, binary, args...)
+		command.Env = append(os.Environ(), "TOKENHUB_DATABASE_URL="+s.databaseURL)
+		output, err := command.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("target v%s preflight `tokenhub %s` failed: %w\n%s", version, strings.Join(args, " "), err, output)
+		}
+	}
+	return nil
+}
+
+// upgradeState is the on-disk record of a pending managed upgrade. It exists
+// between activation and the first successful boot of the target release and
+// drives the one-shot auto-rollback. BootFailed marks that the
+// target release's previous boot started but never completed its schema flow.
+type upgradeState struct {
+	PreviousVersion string `json:"previous_version"`
+	TargetVersion   string `json:"target_version"`
+	ContractRan     bool   `json:"contract_ran"`
+	BootFailed      bool   `json:"boot_failed"`
+}
+
+func (s *versionService) upgradeStatePath() (string, error) {
+	root, err := s.nativeInstallRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, ".upgrade-state.json"), nil
+}
+
+func (s *versionService) recordUpgrade(previousVersion, targetVersion string) error {
+	path, err := s.upgradeStatePath()
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(upgradeState{PreviousVersion: previousVersion, TargetVersion: targetVersion, ContractRan: false, BootFailed: false})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, raw, 0o600)
+}
+
+func (s *versionService) upgradeState() (upgradeState, bool, error) {
+	path, err := s.upgradeStatePath()
+	if err != nil {
+		return upgradeState{}, false, err
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return upgradeState{}, false, nil
+		}
+		return upgradeState{}, false, err
+	}
+	var state upgradeState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return upgradeState{}, false, fmt.Errorf("parse upgrade state: %w", err)
+	}
+	return state, true, nil
+}
+
+// markUpgradeBootStarted flags the in-progress boot of the target release so
+// a crash during its schema flow triggers the auto-rollback on the next boot.
+func (s *versionService) markUpgradeBootStarted() error {
+	path, err := s.upgradeStatePath()
+	if err != nil {
+		return err
+	}
+	state, ok, err := s.upgradeState()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	state.BootFailed = true
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, raw, 0o600)
+}
+
+// settleUpgrade removes the upgrade state so a later boot does not attempt
+// the auto-rollback a second time (at most one automatic
+// re-activation per upgrade).
+func (s *versionService) settleUpgrade() error {
+	path, err := s.upgradeStatePath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// activeNativeVersion resolves the release the install root currently points
+// at, or reports false when the installation is not managed or unreadable.
+func (s *versionService) activeNativeVersion() (string, bool) {
+	if !s.supportsManagedUpdates() {
+		return "", false
+	}
+	root, err := s.nativeInstallRoot()
+	if err != nil {
+		return "", false
+	}
+	activePath, err := filepath.EvalSymlinks(filepath.Join(root, "current"))
+	if err != nil {
+		return "", false
+	}
+	versionData, err := os.ReadFile(filepath.Join(activePath, "VERSION"))
+	if err != nil {
+		return "", false
+	}
+	version, _, ok := parseSemanticVersion(strings.TrimSpace(string(versionData)))
+	return version, ok
+}
+
+// startupGuardNewService is a seam for tests to inject a versionService whose
+// restart signal does not terminate the test process.
+var startupGuardNewService = newVersionService
+
+// RunStartupGuard runs before any database schema flow on a managed native
+// install. After a managed upgrade activated a release, the first
+// boot marks the boot as in progress; if that boot crashes inside the schema
+// flow, the next boot re-activates the previous release once — provided the
+// upgrade ran no contract and the previous release's verified compatibility
+// record covers the current database state — and signals a restart. At most
+// one automatic re-activation happens per upgrade; an incompatible or missing
+// previous release leaves the state for operator recovery instead of cycling
+// releases. Non-managed installations are a no-op.
+func RunStartupGuard(ctx context.Context, config Config) error {
+	versions := startupGuardNewService(config)
+	if !versions.supportsManagedUpdates() {
+		return nil
+	}
+	state, ok, err := versions.upgradeState()
+	if err != nil {
+		return fmt.Errorf("read upgrade state: %w", err)
+	}
+	if !ok {
+		return nil
+	}
+	// The active release is not the target this state recorded (the operator
+	// restarted into the previous release, or a newer upgrade superseded it);
+	// leave the state in place — the target's first boot has not happened.
+	if active, activeOK := versions.activeNativeVersion(); !activeOK || active != state.TargetVersion {
+		return nil
+	}
+	if !state.BootFailed {
+		// First boot of the target: mark it in progress so a crash during the
+		// schema flow triggers the rollback on the next boot.
+		return versions.markUpgradeBootStarted()
+	}
+	// The target's previous boot failed. Re-activate the previous release at
+	// most once: settle before switching so a second failed boot cannot cycle.
+	_ = versions.settleUpgrade()
+	if state.ContractRan {
+		log.Printf("[tokenhub] auto-rollback: upgrade ran a contract; manual recovery required")
+		return nil
+	}
+	if !versions.installedNativeReleaseValid(state.PreviousVersion) {
+		log.Printf("[tokenhub] auto-rollback: previous release v%s is not installed; manual recovery required", state.PreviousVersion)
+		return nil
+	}
+	compatible, reason := upgradeRollbackCompatibility(ctx, versions, config, state.PreviousVersion)
+	if !compatible {
+		log.Printf("[tokenhub] auto-rollback refused: %s", reason)
+		return nil
+	}
+	if err := versions.activateNativeRelease(state.PreviousVersion); err != nil {
+		return fmt.Errorf("auto-rollback to v%s failed: %w", state.PreviousVersion, err)
+	}
+	log.Printf("[tokenhub] auto-rollback to v%s after failed boot; restarting", state.PreviousVersion)
+	return versions.restartProcess()
+}
+
+// RecordStartupGuardSuccess settles a pending upgrade once the target release
+// completed its database schema flow, so a healthy first boot ends the
+// auto-rollback protocol.
+func RecordStartupGuardSuccess(config Config) error {
+	versions := startupGuardNewService(config)
+	if !versions.supportsManagedUpdates() {
+		return nil
+	}
+	return versions.settleUpgrade()
+}
+
+// upgradeRollbackCompatibility reports whether the previous release can serve
+// the current database state, read directly from the ledger before the store
+// opens (the guard runs ahead of the schema flow). A dirty ledger or a state
+// version outside the release's verified range refuses the rollback.
+func upgradeRollbackCompatibility(ctx context.Context, versions *versionService, config Config, previousVersion string) (bool, string) {
+	canonical, _, ok := parseSemanticVersion(previousVersion)
+	if !ok {
+		return false, "previous release is not a semantic version"
+	}
+	manifest, known := legacyReleaseCompatibility[canonical]
+	if !known {
+		return false, fmt.Sprintf("release %s carries no verified compatibility record", canonical)
+	}
+	if config.DatabaseURL == "" {
+		return false, "database URL is not configured"
+	}
+	driver, db, err := OpenRawDatabase(config.DatabaseURL)
+	if err != nil {
+		return false, fmt.Sprintf("open database for auto-rollback check: %v", err)
+	}
+	defer db.Close()
+	runner, err := dbschema.NewRunner(db, dbschema.Dialect(driver), nil)
+	if err != nil {
+		return false, fmt.Sprintf("migration runner: %v", err)
+	}
+	status, err := runner.Status(ctx)
+	if err != nil {
+		return false, fmt.Sprintf("migration ledger unreadable: %v", err)
+	}
+	if status.Dirty {
+		return false, fmt.Sprintf("database evolution state is dirty at version %d", status.DirtyVersion)
+	}
+	if status.CurrentVersion > manifest.MaxCompatible || status.CurrentVersion < manifest.MinCompatible {
+		return false, fmt.Sprintf("database state version %d is outside release %s compatibility range [%d, %d]",
+			status.CurrentVersion, canonical, manifest.MinCompatible, manifest.MaxCompatible)
+	}
+	return true, ""
 }
 
 func (s *versionService) nativeInstallRoot() (string, error) {
@@ -705,6 +963,20 @@ func (s *Server) handleAdminSystemRollback(w http.ResponseWriter, r *http.Reques
 
 	ctx, cancel := nativeOperationContext(r.Context())
 	defer cancel()
+	// Refuse before touching releases or the network when the current
+	// database state is not one the target release can safely run on.
+	if compatibility := s.rollbackCompatibility(ctx, request.Version); compatibility.Compatibility != rollbackCompatible {
+		status := http.StatusConflict
+		code := "rollback_incompatible"
+		if compatibility.Compatibility == rollbackUnknown {
+			status = http.StatusUnprocessableEntity
+			code = "rollback_compatibility_unknown"
+		}
+		message := fmt.Sprintf("Rollback to %s refused: %s", compatibility.Release, compatibility.Reason)
+		s.recordSystemVersionAudit(r, actor, "rollback", request.Version, "failed", message)
+		writeError(w, r, NewHTTPError(status, code, message))
+		return
+	}
 	version, err := s.versions.rollbackNativeRelease(ctx, request.Version)
 	if err != nil {
 		s.recordSystemVersionAudit(r, actor, "rollback", request.Version, "failed", err.Error())

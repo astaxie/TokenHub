@@ -204,7 +204,7 @@ func (s *Server) handleAdminOpenAIAccountOAuthGenerateAuthURL(w http.ResponseWri
 		writeError(w, r, err)
 		return
 	}
-	returnURL := safeOAuthReturnURL(req.ReturnURL, r)
+	returnURL := s.safeOAuthReturnURL(req.ReturnURL, r)
 	state, err := randomHex(32)
 	if err != nil {
 		writeError(w, r, err)
@@ -249,11 +249,7 @@ func (s *Server) handleAdminOpenAIAccountOAuthGenerateAuthURL(w http.ResponseWri
 	})
 }
 
-func (s *Server) handleOpenAIAccountOAuthCallback(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
+func (s *Server) handleOpenAIAccountOAuthCallbackGet(w http.ResponseWriter, r *http.Request) {
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
 	session, ok, err := s.store.GetProviderAccountOAuthSessionByState(state)
 	if err != nil {
@@ -319,7 +315,7 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 	if strings.TrimSpace(req.RedirectURI) != "" {
 		redirectURI = strings.TrimSpace(req.RedirectURI)
 	}
-	token, err := exchangeOpenAIAccountOAuthCode(r.Context(), code, session.CodeVerifier, redirectURI, session.ClientID)
+	token, err := exchangeOpenAIAccountOAuthCode(r.Context(), code, session.CodeVerifier, redirectURI, session.ClientID, s.upstreamClient)
 	if err != nil {
 		// Preserve retryability when the token endpoint fails before consuming
 		// the authorization code. Concurrent exchanges are still serialized by
@@ -377,7 +373,7 @@ func buildOpenAIAccountOAuthAuthorizeURL(state, codeChallenge, redirectURI strin
 	return target.String(), nil
 }
 
-func exchangeOpenAIAccountOAuthCode(ctx context.Context, code, codeVerifier, redirectURI, clientID string) (oauthTokenResponse, error) {
+func exchangeOpenAIAccountOAuthCode(ctx context.Context, code, codeVerifier, redirectURI, clientID string, clients ...*http.Client) (oauthTokenResponse, error) {
 	clientID = firstNonEmpty(clientID, openAIAccountOAuthClientID)
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
@@ -385,7 +381,7 @@ func exchangeOpenAIAccountOAuthCode(ctx context.Context, code, codeVerifier, red
 	form.Set("code", strings.TrimSpace(code))
 	form.Set("redirect_uri", strings.TrimSpace(redirectURI))
 	form.Set("code_verifier", strings.TrimSpace(codeVerifier))
-	token, err := requestOpenAIAccountOAuthToken(ctx, form)
+	token, err := requestOpenAIAccountOAuthToken(ctx, form, clients...)
 	if err != nil {
 		return oauthTokenResponse{}, err
 	}
@@ -395,7 +391,7 @@ func exchangeOpenAIAccountOAuthCode(ctx context.Context, code, codeVerifier, red
 	return token, nil
 }
 
-func refreshOpenAIAccountOAuthCredentials(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+func refreshOpenAIAccountOAuthCredentials(ctx context.Context, current ProviderResourceCredentials, clients ...*http.Client) (ProviderResourceCredentials, error) {
 	refreshToken := strings.TrimSpace(current.RefreshToken)
 	if refreshToken == "" {
 		return current, NewHTTPError(400, "provider_resource_refresh_token_missing", "Provider resource does not have a refresh token")
@@ -406,8 +402,11 @@ func refreshOpenAIAccountOAuthCredentials(ctx context.Context, current ProviderR
 	form.Set("refresh_token", refreshToken)
 	form.Set("client_id", clientID)
 	form.Set("scope", openAIAccountOAuthRefreshScope)
-	token, err := requestOpenAIAccountOAuthToken(ctx, form)
+	token, err := requestOpenAIAccountOAuthToken(ctx, form, clients...)
 	if err != nil {
+		if isOpenAIAccountOAuthReauthorizationRequired(err) {
+			return current, NewHTTPError(http.StatusConflict, "provider_resource_reauthorization_required", "OpenAI/Codex account session has ended. Reauthorize the account.")
+		}
 		return current, err
 	}
 	if strings.TrimSpace(token.AccessToken) == "" {
@@ -421,7 +420,15 @@ func refreshOpenAIAccountOAuthCredentials(ctx context.Context, current ProviderR
 	return creds, nil
 }
 
-func requestOpenAIAccountOAuthToken(ctx context.Context, form url.Values) (oauthTokenResponse, error) {
+func isOpenAIAccountOAuthReauthorizationRequired(err error) bool {
+	httpErr := AsHTTPError(err)
+	if httpErr == nil {
+		return false
+	}
+	return httpErr.Code == "oauth_refresh_token_invalidated" || (httpErr.Code == "oauth_token_failed" && strings.Contains(strings.ToLower(httpErr.Message), "refresh_token_invalidated"))
+}
+
+func requestOpenAIAccountOAuthToken(ctx context.Context, form url.Values, clients ...*http.Client) (oauthTokenResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIAccountOAuthTokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return oauthTokenResponse{}, err
@@ -429,13 +436,23 @@ func requestOpenAIAccountOAuthToken(ctx context.Context, form url.Values) (oauth
 	req.Header.Set("accept", "application/json")
 	req.Header.Set("content-type", "application/x-www-form-urlencoded")
 	req.Header.Set("user-agent", "codex-cli/0.91.0")
-	resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(req)
+	client := &http.Client{Timeout: 120 * time.Second}
+	if len(clients) > 0 && clients[0] != nil {
+		client = clients[0]
+	}
+	resp, err := client.Do(req)
 	if err != nil {
+		if providerErrorDisposition(err) == ProviderErrorEgress {
+			return oauthTokenResponse{}, err
+		}
 		return oauthTokenResponse{}, NewHTTPError(502, "oauth_token_failed", fmt.Sprintf("OAuth token request failed: %v", err))
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if oauthTokenEndpointErrorCode(body) == "refresh_token_invalidated" {
+			return oauthTokenResponse{}, NewHTTPError(502, "oauth_refresh_token_invalidated", fmt.Sprintf("OAuth token endpoint returned %d", resp.StatusCode))
+		}
 		detail := sanitizeOAuthErrorDetail(body)
 		if detail != "" {
 			return oauthTokenResponse{}, NewHTTPError(502, "oauth_token_failed", fmt.Sprintf("OAuth token endpoint returned %d: %s", resp.StatusCode, detail))
@@ -447,6 +464,26 @@ func requestOpenAIAccountOAuthToken(ctx context.Context, form url.Values) (oauth
 		return oauthTokenResponse{}, err
 	}
 	return token, nil
+}
+
+func oauthTokenEndpointErrorCode(body []byte) string {
+	var response struct {
+		Code  string          `json:"code"`
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return ""
+	}
+	if code := strings.ToLower(strings.TrimSpace(response.Code)); code != "" {
+		return code
+	}
+	var nested struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(response.Error, &nested); err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(nested.Code))
 }
 
 func openAIAccountOAuthTokenInfoFromResponse(token oauthTokenResponse, clientID string, current ProviderResourceCredentials) providerAccountOAuthTokenInfo {

@@ -1,6 +1,7 @@
 import { type AppData, type Model, type ModelRoute } from "../core/types";
 import { modelCategory } from "./catalog";
 import { findProvider, modelIsInDirectory, modelRoutesFor } from "./entities";
+import { modelDisplayName } from "./model-display-name";
 
 export type ModelPublicationState = "published" | "draft" | "disabled";
 export type ModelRuntimeState = "healthy" | "degraded" | "unavailable" | "unmapped";
@@ -53,6 +54,7 @@ export function filterExternalModels(
 export function modelDirectorySearchText(model: Model, routes: ModelRoute[], data: AppData) {
   return [
     model.name,
+    modelDisplayName(model.metadata, ""),
     model.id,
     model.family,
     model.modality,

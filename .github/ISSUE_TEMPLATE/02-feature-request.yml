@@ -1,0 +1,67 @@
+name: Feature request
+description: Propose an improvement that solves a concrete TokenHub use case.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write the issue title and all explanatory text in English. Search existing issues before submitting a new request.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Select the area most closely related to the request.
+      options:
+        - OpenAI-compatible API
+        - Anthropic Messages API
+        - Authentication and API keys
+        - Provider and model routing
+        - Admin console
+        - Persistence and migrations
+        - Deployment and configuration
+        - SDKs and integrations
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the limitation or user need without assuming a particular solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or interface that would address the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe existing workarounds or other approaches that were considered.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add examples, related issues, diagrams, or compatibility considerations.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I searched open and closed issues for related requests.
+          required: true
+        - label: The issue title and all explanatory text are written in English.
+          required: true
+        - label: I removed or redacted all credentials and other secrets.
+          required: true

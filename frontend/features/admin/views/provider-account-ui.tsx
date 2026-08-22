@@ -4,6 +4,8 @@ import type { ProviderResource } from "../core/types";
 import { copyText } from "../domain/clipboard";
 import { tx } from "../i18n/runtime";
 
+export { ProviderAccountTokenRenewal } from "./provider-account-token-renewal";
+
 export type ProviderAccountOAuthAction = "copy" | "open";
 
 export async function launchProviderAccountAuthorization(action: ProviderAccountOAuthAction, authURL: string) {

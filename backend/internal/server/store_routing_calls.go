@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -148,6 +149,11 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 		updated = model
 		return nil
 	})
+	if err == nil {
+		// An update can rename the model, so both the old and the new name are
+		// wrong in the snapshot until it reloads.
+		s.modelLabels.invalidate()
+	}
 	return updated, err
 }
 
@@ -155,7 +161,7 @@ func (s *GormStore) DeleteModel(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var model Model
 		if err := tx.First(&model, "name = ?", name).Error; err != nil {
 			return notFound(err, "model_not_found", "Model not found")
@@ -165,6 +171,10 @@ func (s *GormStore) DeleteModel(name string) error {
 		}
 		return tx.Delete(&model).Error
 	})
+	if err == nil {
+		s.modelLabels.invalidate()
+	}
+	return err
 }
 
 func (s *GormStore) ListRoutes() []ModelRoute {
@@ -300,72 +310,6 @@ func (s *GormStore) SelectRoute(modelName string) (RouteSelection, error) {
 	return routes[0], nil
 }
 
-func (s *GormStore) SelectRouteCandidates(modelName string) ([]RouteSelection, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var routes []ModelRoute
-	if err := s.db.Where("model_name = ? AND status = ?", modelName, StatusActive).
-		Order("priority asc, weight desc, created_at asc").
-		Find(&routes).Error; err != nil {
-		return nil, err
-	}
-	now := time.Now().UTC()
-	selections := make([]RouteSelection, 0, len(routes))
-	for _, route := range routes {
-		var provider Provider
-		if err := s.db.First(&provider, "id = ?", route.ProviderID).Error; err != nil {
-			continue
-		}
-		if provider.Status != StatusActive || !provider.Healthy {
-			continue
-		}
-		if route.ProviderResourceID != "" {
-			var resource ProviderResource
-			if err := s.db.First(&resource, "id = ? AND provider_id = ?", route.ProviderResourceID, provider.ID).Error; err != nil {
-				continue
-			}
-			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
-				continue
-			}
-			selections = append(selections, s.routeSelection(provider, &resource, route))
-			continue
-		}
-
-		var resources []ProviderResource
-		// Unhealthy resources whose cooldown has lapsed are admitted as half-open
-		// candidates. Admission still gates them to a single trial (see
-		// CheckProviderResourceCapacity); this query only makes them reachable, which
-		// is what lets a parked resource ever be retried.
-		query := s.db.Where("provider_id = ? AND status = ? AND (healthy = ? OR cooldown_until <= ?)",
-			provider.ID, StatusActive, true, now)
-		if strings.TrimSpace(route.ResourceGroup) != "" {
-			query = query.Where("\"group\" = ?", strings.TrimSpace(route.ResourceGroup))
-		}
-		if err := query.Order("priority asc, weight desc, created_at asc").
-			Find(&resources).Error; err != nil {
-			return nil, err
-		}
-		if len(resources) == 0 {
-			selections = append(selections, s.routeSelection(provider, nil, route))
-			continue
-		}
-		for _, resource := range resources {
-			resourceRoute := route
-			resourceRoute.ProviderResourceID = resource.ID
-			if resource.Weight > 0 {
-				resourceRoute.Weight = resource.Weight
-			}
-			selections = append(selections, s.routeSelection(provider, &resource, resourceRoute))
-		}
-	}
-	s.attachRouteRuntimeStats(selections, now)
-	if len(selections) == 0 {
-		return nil, ErrProviderMissing
-	}
-	return selections, nil
-}
-
 type routeRuntimeStatsRow struct {
 	RouteID            string
 	ProviderResourceID string
@@ -374,7 +318,7 @@ type routeRuntimeStatsRow struct {
 	LatencyMS          float64
 }
 
-func (s *GormStore) attachRouteRuntimeStats(selections []RouteSelection, now time.Time) {
+func (s *GormStore) attachRouteRuntimeStats(db *gorm.DB, selections []RouteSelection, now time.Time) error {
 	routeIDs := make([]string, 0, len(selections))
 	seen := map[string]bool{}
 	for _, selection := range selections {
@@ -385,11 +329,21 @@ func (s *GormStore) attachRouteRuntimeStats(selections []RouteSelection, now tim
 		routeIDs = append(routeIDs, selection.Route.ID)
 	}
 	if len(routeIDs) == 0 {
-		return
+		return nil
+	}
+
+	const (
+		createSavepoint   = "SAVEPOINT route_candidate_runtime_stats"
+		rollbackSavepoint = "ROLLBACK TO SAVEPOINT route_candidate_runtime_stats"
+	)
+	if s.dbDriver == "postgres" {
+		if err := db.Exec(createSavepoint).Error; err != nil {
+			return fmt.Errorf("create adaptive routing stats savepoint: %w", err)
+		}
 	}
 
 	var rows []routeRuntimeStatsRow
-	err := s.db.Model(&RouteAttemptLog{}).
+	err := db.Model(&RouteAttemptLog{}).
 		Select(`route_id, provider_resource_id, COUNT(*) AS samples,
 			SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) AS successes,
 			COALESCE(AVG(CASE WHEN status_code >= 200 AND status_code < 400 THEN latency_ms ELSE NULL END), 0) AS latency_ms`).
@@ -397,8 +351,13 @@ func (s *GormStore) attachRouteRuntimeStats(selections []RouteSelection, now tim
 		Group("route_id, provider_resource_id").
 		Scan(&rows).Error
 	if err != nil {
+		if s.dbDriver == "postgres" {
+			if rollbackErr := db.Exec(rollbackSavepoint).Error; rollbackErr != nil {
+				return fmt.Errorf("load adaptive routing observations: %v; rollback savepoint: %w", err, rollbackErr)
+			}
+		}
 		log.Printf("[tokenhub] failed to load adaptive routing observations: %v", err)
-		return
+		return nil
 	}
 	stats := make(map[string]RouteRuntimeStats, len(rows))
 	for _, row := range rows {
@@ -416,6 +375,7 @@ func (s *GormStore) attachRouteRuntimeStats(selections []RouteSelection, now tim
 		selection := &selections[index]
 		selection.Runtime = stats[routeRuntimeStatsKey(selection.Route.ID, routeResourceID(*selection))]
 	}
+	return nil
 }
 
 func routeRuntimeStatsKey(routeID string, resourceID string) string {
@@ -448,36 +408,48 @@ func (s *GormStore) routeSelection(provider Provider, resource *ProviderResource
 	}
 }
 
+// MarkRouteUsed refreshes the route's display-only last_used_at column. The
+// write is throttled to one per lastUsedThrottleWindow per route, and the store
+// mutex is only taken when a write actually happens.
 func (s *GormStore) MarkRouteUsed(routeID string) {
 	if routeID == "" {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	now := time.Now().UTC()
-	_ = s.db.Model(&ModelRoute{}).Where("id = ?", routeID).Update("last_used_at", now).Error
+	if err := s.lastUsed.mark(lastUsedRouteKey(routeID), func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		// Sampled under the mutex so the stored timestamp is when the write
+		// happened, not when the request queued for the lock.
+		return s.db.Model(&ModelRoute{}).Where("id = ?", routeID).Update("last_used_at", time.Now().UTC()).Error
+	}); err != nil {
+		log.Printf("[tokenhub] failed to record route last_used_at route=%s: %v", routeID, err)
+	}
 }
 
+// MarkProviderResourceUsed refreshes the resource's display-only last_used_at
+// column. It still bumps updated_at with it, so throttling coarsens both columns
+// to lastUsedThrottleWindow resolution for use-driven touches; every other write
+// path sets updated_at exactly as before.
 func (s *GormStore) MarkProviderResourceUsed(resourceID string) {
 	if resourceID == "" {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	now := time.Now().UTC()
-	_ = s.db.Model(&ProviderResource{}).
-		Where("id = ?", resourceID).
-		Updates(map[string]any{"last_used_at": now, "updated_at": now}).Error
+	if err := s.lastUsed.mark(lastUsedResourceKey(resourceID), func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		now := time.Now().UTC()
+		return s.db.Model(&ProviderResource{}).
+			Where("id = ?", resourceID).
+			Updates(map[string]any{"last_used_at": now, "updated_at": now}).Error
+	}); err != nil {
+		log.Printf("[tokenhub] failed to record provider resource last_used_at resource=%s: %v", resourceID, err)
+	}
 }
 
 func (s *GormStore) StartCall(ctx context.Context, project Project, key APIKey, modelName string, tokenReservation int64) (CallContext, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	var admission callAdmissionResult
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -496,11 +468,11 @@ func pruneAPIKeyMinuteBuckets(tx *gorm.DB, keyID string, now time.Time) error {
 	return tx.Where("key_id = ? AND scope = ? AND bucket < ?", keyID, "minute", cutoff).Delete(&QuotaBucket{}).Error
 }
 
-func (s *GormStore) consumeAPIKeyMinuteRequest(tx *gorm.DB, keyID string, limits QuotaLimits, scopes MinuteLimitScopes, tokenReservation int64, now time.Time) (QuotaCounter, error) {
+func (s *GormStore) consumeAPIKeyMinuteRequest(tx *gorm.DB, keyID string, limits QuotaLimits, scopes MinuteLimitScopes, tokenReservation int64, now time.Time, attributedUserIDs ...string) (QuotaCounter, error) {
 	if limits.RateLimitRPM <= 0 && limits.TokenLimitTPM <= 0 {
 		return QuotaCounter{}, nil
 	}
-	bucket, err := s.quotaBucketForUpdate(tx, keyID, "minute", minuteBucket(now))
+	bucket, err := s.quotaBucketForUpdate(tx, keyID, "minute", minuteBucket(now), attributedUserIDs...)
 	if err != nil {
 		return QuotaCounter{}, err
 	}
@@ -509,6 +481,7 @@ func (s *GormStore) consumeAPIKeyMinuteRequest(tx *gorm.DB, keyID string, limits
 		return QuotaCounter{}, apiKeyRateLimitError(
 			"api_key_rpm_exceeded",
 			"API key requests per minute limit exceeded",
+			scopes.RPM,
 			limits,
 			bucket.QuotaCounter,
 			now,
@@ -520,6 +493,7 @@ func (s *GormStore) consumeAPIKeyMinuteRequest(tx *gorm.DB, keyID string, limits
 		return QuotaCounter{}, apiKeyRateLimitError(
 			"api_key_tpm_exceeded",
 			"API key tokens per minute limit exceeded",
+			scopes.TPM,
 			limits,
 			bucket.QuotaCounter,
 			now,
@@ -537,11 +511,12 @@ func (s *GormStore) consumeAPIKeyMinuteRequest(tx *gorm.DB, keyID string, limits
 	return bucket.QuotaCounter, nil
 }
 
-func apiKeyRateLimitError(code string, message string, limits QuotaLimits, counter QuotaCounter, now time.Time) error {
+func apiKeyRateLimitError(code string, message string, scope string, limits QuotaLimits, counter QuotaCounter, now time.Time) error {
 	return &HTTPError{
 		Status:  http.StatusTooManyRequests,
 		Code:    code,
 		Message: message,
+		Details: map[string]string{"scope": normalizedQuotaPolicyScope(scope)},
 		Headers: apiKeyRateLimitHeaders(limits, counter, now, true),
 	}
 }
@@ -571,45 +546,122 @@ func apiKeyRateLimitHeaders(limits QuotaLimits, counter QuotaCounter, now time.T
 	return headers
 }
 
+func combinedRateLimitHeaders(primaryLimits QuotaLimits, primaryCounter QuotaCounter, secondaryLimits QuotaLimits, secondaryCounter QuotaCounter, now time.Time, retry bool) map[string]string {
+	requestLimit := strictInt64(primaryLimits.RateLimitRPM, secondaryLimits.RateLimitRPM)
+	tokenLimit := strictInt64(primaryLimits.TokenLimitTPM, secondaryLimits.TokenLimitTPM)
+	if requestLimit <= 0 && tokenLimit <= 0 {
+		return nil
+	}
+	resetSeconds := int64(now.Truncate(time.Minute).Add(time.Minute).Sub(now).Seconds())
+	if resetSeconds < 1 {
+		resetSeconds = 1
+	}
+	headers := map[string]string{}
+	if requestLimit > 0 {
+		remaining := combinedMinuteRemaining(primaryLimits.RateLimitRPM, primaryCounter.Requests, secondaryLimits.RateLimitRPM, secondaryCounter.Requests)
+		headers["X-RateLimit-Limit-Requests"] = strconv.FormatInt(requestLimit, 10)
+		headers["X-RateLimit-Remaining-Requests"] = strconv.FormatInt(remaining, 10)
+		headers["X-RateLimit-Reset-Requests"] = strconv.FormatInt(resetSeconds, 10)
+	}
+	if tokenLimit > 0 {
+		remaining := combinedMinuteRemaining(primaryLimits.TokenLimitTPM, primaryCounter.TotalTokens, secondaryLimits.TokenLimitTPM, secondaryCounter.TotalTokens)
+		headers["X-RateLimit-Limit-Tokens"] = strconv.FormatInt(tokenLimit, 10)
+		headers["X-RateLimit-Remaining-Tokens"] = strconv.FormatInt(remaining, 10)
+		headers["X-RateLimit-Reset-Tokens"] = strconv.FormatInt(resetSeconds, 10)
+	}
+	if retry {
+		headers["Retry-After"] = strconv.FormatInt(resetSeconds, 10)
+	}
+	return headers
+}
+
+func combinedMinuteRemaining(primaryLimit int64, primaryUsed int64, secondaryLimit int64, secondaryUsed int64) int64 {
+	remaining := int64(-1)
+	for _, item := range [][2]int64{{primaryLimit, primaryUsed}, {secondaryLimit, secondaryUsed}} {
+		value, used := item[0], item[1]
+		if value <= 0 {
+			continue
+		}
+		candidate := maxInt64(value-maxInt64(used, 0), 0)
+		if remaining < 0 || candidate < remaining {
+			remaining = candidate
+		}
+	}
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usage, statusCode int, errorCode string, clientIP string, userAgent string) {
 	// Measured here rather than inside the deferred observation, so latency reflects
-	// what the client waited for and excludes the persistence and lock time that
-	// follows. FinishCall is invoked after the last streamed byte is written. The
+	// what the client waited for and excludes the persistence time that follows.
+	// FinishCall is invoked after the last streamed byte is written. The
 	// same value is threaded into the transaction below so the persisted latency
 	// and the reported metric describe the same interval.
 	elapsed := call.elapsed()
-	_ = s.stopInFlightLeaseHeartbeat(call.RequestID)
-	// priceUsage is pure, so it runs outside the lock and its result is final here.
+	_ = s.stopRequestConcurrencyHeartbeats(call.RequestID)
+	// priceUsage is pure, so it runs before the transaction and its result is final here.
 	usage = priceUsage(call.Model, usage)
 	usage.ProviderCostUSD = s.providerCostUSD(route, usage)
-	// Registered before the lock is taken, so LIFO ordering runs it *after* the
-	// unlock: reporting metrics must not extend how long this request holds the
-	// store-wide mutex. Deferring also means the request is still counted when the
-	// transaction below fails or panics — losing persistence must not also lose the
+	// Registered before persistence starts so reporting runs after the transaction
+	// and its fallback cleanup. Deferring also means the request is still counted
+	// when persistence fails or panics — losing persistence must not also lose the
 	// observation that the request happened.
 	defer s.observeGatewayCall(call, route, usage, statusCode, errorCode, elapsed)
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	now := time.Now().UTC()
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		return s.finishCallTransaction(tx, call, route, usage, statusCode, errorCode, clientIP, userAgent, now, elapsed)
 	})
 	if err != nil {
 		log.Printf("[tokenhub] failed to finish call request=%s: %v", call.RequestID, err)
-		if releaseErr := s.db.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error; releaseErr != nil {
-			log.Printf("[tokenhub] failed to release API key concurrency lease request=%s: %v", call.RequestID, releaseErr)
+		if releaseErr := s.deleteRequestConcurrencyLeases(s.db, call.RequestID); releaseErr != nil {
+			log.Printf("[tokenhub] failed to release request concurrency leases request=%s: %v", call.RequestID, releaseErr)
 		}
 	}
 }
 
 func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route RouteSelection, usage Usage, statusCode int, errorCode string, clientIP string, userAgent string, now time.Time, elapsed time.Duration) error {
+	attributedUserID := strings.TrimSpace(call.AttributedUserID)
+	if attributedUserID == "" {
+		attributedUserID = usageAttributionUserID(call.Key, call.Project)
+	}
+	if call.RequestID != "" {
+		if err := s.lockScopeForUpdate(tx, "request_settlement", call.RequestID); err != nil {
+			return err
+		}
+		var existing int64
+		if err := tx.Model(&RequestLog{}).Where("request_id = ?", call.RequestID).Count(&existing).Error; err != nil {
+			return err
+		}
+		if existing > 0 {
+			return s.deleteRequestConcurrencyLeases(tx, call.RequestID)
+		}
+	}
 	if call.Key.ID != "" {
 		if err := s.lockScopeForUpdate(tx, "api_key", call.Key.ID); err != nil {
 			return err
 		}
 	}
-	var key APIKey
-	if err := tx.First(&key, "id = ?", call.Key.ID).Error; err == nil {
+	if call.Project.ID != "" {
+		if err := s.lockScopeForSharedRead(tx, "project", call.Project.ID); err != nil {
+			return err
+		}
+	}
+	if call.UserQuotaEnabled {
+		if err := s.lockScopeForUpdate(tx, "user_quota", call.UserQuotaID); err != nil {
+			return err
+		}
+	}
+	if call.Key.ID != "" {
+		var liveKey APIKey
+		liveKeyExists := true
+		if err := tx.First(&liveKey, "id = ?", call.Key.ID).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			liveKeyExists = false
+		}
 		providerTokens := meteredTokens(usage)
 		actualTokens := usage.RateLimitTokens
 		if actualTokens <= 0 {
@@ -618,14 +670,32 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 		if call.StreamOutputCommitted && providerTokens == 0 && actualTokens < call.ReservedTokens {
 			actualTokens = call.ReservedTokens
 		}
+		quotaUsage := usage
+		quotaUsage.TotalTokens = actualTokens
 		if err := s.reconcileAPIKeyMinuteTokens(tx, call, actualTokens); err != nil {
 			return err
 		}
-		dayCounter, err := s.quotaBucketForUpdate(tx, key.ID, "day", dayBucket(now))
+		if call.UserQuotaEnabled {
+			if err := s.reconcileQuotaMinuteTokens(tx, call.UserQuotaID, call.UserTokenLimitBucket, call.ReservedTokens, actualTokens, attributedUserID); err != nil {
+				return err
+			}
+		}
+		// Admission counted this request on the buckets derived from
+		// call.StartedAt, the database clock reading StartCall took. Deriving
+		// them from the completion clock instead would post the tokens and cost
+		// to a different period whenever the two disagree across a day or month
+		// boundary — the request would be counted in one period and charged to
+		// another, leaving the first under-enforced. The response job rollback
+		// already settles against its own admission reading for the same reason.
+		admittedAt := call.StartedAt
+		if admittedAt.IsZero() {
+			admittedAt = now
+		}
+		dayCounter, err := s.quotaBucketForUpdate(tx, call.Key.ID, "day", dayBucket(admittedAt))
 		if err != nil {
 			return err
 		}
-		monthCounter, err := s.quotaBucketForUpdate(tx, key.ID, "month", monthBucket(now))
+		monthCounter, err := s.quotaBucketForUpdate(tx, call.Key.ID, "month", monthBucket(admittedAt))
 		if err != nil {
 			return err
 		}
@@ -637,8 +707,44 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 		if err := tx.Save(&monthCounter).Error; err != nil {
 			return err
 		}
-		if err := raiseQuotaAlerts(tx, key, &dayCounter.QuotaCounter, &monthCounter.QuotaCounter); err != nil {
-			return err
+		for _, period := range []struct {
+			scope  string
+			bucket string
+		}{
+			{scope: "day", bucket: dayBucket(admittedAt)},
+			{scope: "month", bucket: monthBucket(admittedAt)},
+		} {
+			if err := s.addAttributedQuotaUsage(tx, call.Key.ID, period.scope, period.bucket, attributedUserID, quotaUsage); err != nil {
+				return err
+			}
+		}
+		if liveKeyExists {
+			if err := raiseQuotaAlerts(tx, liveKey, &dayCounter.QuotaCounter, &monthCounter.QuotaCounter); err != nil {
+				return err
+			}
+		}
+		if call.UserQuotaEnabled {
+			userDayCounter, err := s.quotaBucketForUpdate(tx, call.UserQuotaID, "day", dayBucket(admittedAt), attributedUserID)
+			if err != nil {
+				return err
+			}
+			userMonthCounter, err := s.quotaBucketForUpdate(tx, call.UserQuotaID, "month", monthBucket(admittedAt), attributedUserID)
+			if err != nil {
+				return err
+			}
+			refundQuotaReservation(&userDayCounter.QuotaCounter, call.ReservedTokens)
+			refundQuotaReservation(&userMonthCounter.QuotaCounter, call.ReservedTokens)
+			addUsage(&userDayCounter.QuotaCounter, quotaUsage)
+			addUsage(&userMonthCounter.QuotaCounter, quotaUsage)
+			if err := tx.Save(&userDayCounter).Error; err != nil {
+				return err
+			}
+			if err := tx.Save(&userMonthCounter).Error; err != nil {
+				return err
+			}
+			if err := raiseUserQuotaAlerts(tx, call.Project.ID, &userDayCounter.QuotaCounter, &userMonthCounter.QuotaCounter, call.UserQuotaLimits); err != nil {
+				return err
+			}
 		}
 	}
 	if usage.TotalTokens > 0 || usage.CostUSD > 0 {
@@ -651,7 +757,7 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 		RequestID:             call.RequestID,
 		ProjectID:             call.Project.ID,
 		APIKeyID:              call.Key.ID,
-		AttributedUserID:      usageAttributionUserID(call.Key, call.Project),
+		AttributedUserID:      attributedUserID,
 		ModelName:             call.Model.Name,
 		ProviderID:            route.Provider.ID,
 		ProviderResourceID:    routeResourceID(route),
@@ -714,19 +820,46 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 			return err
 		}
 	}
-	return tx.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error
+	return s.deleteRequestConcurrencyLeases(tx, call.RequestID)
 }
 
-func (s *GormStore) reconcileAPIKeyMinuteTokens(tx *gorm.DB, call CallContext, actualTokens int64) error {
-	if call.TokenLimitBucket == "" || call.ReservedTokens == 0 && actualTokens == 0 {
+// addAttributedQuotaUsage keeps per-owner history separate from the canonical
+// API-key counter. The canonical row enforces key-wide limits; this row is the
+// immutable attribution used by aggregate user quota reporting.
+func (s *GormStore) addAttributedQuotaUsage(tx *gorm.DB, keyID, scope, bucket, userID string, usage Usage) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" || strings.HasPrefix(keyID, "user:") {
 		return nil
 	}
-	bucket, err := s.quotaBucketForUpdate(tx, call.Key.ID, "minute", call.TokenLimitBucket)
+	item, err := s.quotaBucketForUpdate(tx, keyID, scope, bucket, userID)
+	if err != nil {
+		return err
+	}
+	item.Requests++
+	addUsage(&item.QuotaCounter, usage)
+	return tx.Save(&item).Error
+}
+
+func (s *GormStore) reconcileAPIKeyMinuteTokens(tx *gorm.DB, call CallContext, actualTokens int64, attributedUserIDs ...string) error {
+	return s.reconcileQuotaMinuteTokens(
+		tx,
+		call.Key.ID,
+		call.TokenLimitBucket,
+		call.ReservedTokens,
+		actualTokens,
+	)
+}
+
+func (s *GormStore) reconcileQuotaMinuteTokens(tx *gorm.DB, bucketID string, bucketName string, reservedTokens int64, actualTokens int64, attributedUserIDs ...string) error {
+	if bucketName == "" || reservedTokens == 0 && actualTokens == 0 {
+		return nil
+	}
+	bucket, err := s.quotaBucketForUpdate(tx, bucketID, "minute", bucketName, attributedUserIDs...)
 	if err != nil {
 		return err
 	}
 	actualTokens = maxInt64(actualTokens, 0)
-	reservedTokens := maxInt64(call.ReservedTokens, 0)
+	reservedTokens = maxInt64(reservedTokens, 0)
 	if actualTokens >= reservedTokens {
 		bucket.TotalTokens = saturatingAddNonNegative(bucket.TotalTokens, actualTokens-reservedTokens)
 	} else {
@@ -747,12 +880,16 @@ func (s *GormStore) RecordPlaygroundRequest(call CallContext, route RouteSelecti
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	attributedUserID := strings.TrimSpace(call.AttributedUserID)
+	if attributedUserID == "" {
+		attributedUserID = usageAttributionUserID(call.Key, call.Project)
+	}
 	_ = s.db.Create(&RequestLog{
 		ID:                    NewID("log"),
 		RequestID:             call.RequestID,
 		ProjectID:             call.Project.ID,
 		APIKeyID:              call.Key.ID,
-		AttributedUserID:      usageAttributionUserID(call.Key, call.Project),
+		AttributedUserID:      attributedUserID,
 		ModelName:             call.Model.Name,
 		ProviderID:            route.Provider.ID,
 		ProviderResourceID:    routeResourceID(route),
@@ -874,16 +1011,38 @@ func gatewayAttemptSamples(attempts []RouteAttempt) []GatewayAttemptSample {
 
 // knownModelLabel keeps a model name as a label only when the catalog knows it,
 // bounding the label to configured models instead of arbitrary client input.
+// The catalog is read through a short-lived snapshot, because the caller is the
+// rejection path: a client looping over invented model names would otherwise make
+// the cheapest outcome in the gateway pay for a query every time.
 func (s *GormStore) knownModelLabel(modelName string) string {
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" || s.metrics == nil {
 		return ""
 	}
+	if known, resolved := s.modelLabels.lookup(modelName, time.Now, s.loadModelNames); resolved {
+		if known {
+			return modelName
+		}
+		return "unknown"
+	}
+	// Reached only by a store built without a label cache. A cache that exists
+	// answers for itself even while its refresh is failing, so this stays off the
+	// path a failing database would otherwise be dragged down.
 	var count int64
 	if err := s.db.Model(&Model{}).Where("name = ?", modelName).Limit(1).Count(&count).Error; err != nil || count == 0 {
 		return "unknown"
 	}
 	return modelName
+}
+
+// loadModelNames reads only the catalog's name column, which is all a label bound
+// needs to know.
+func (s *GormStore) loadModelNames() ([]string, error) {
+	var names []string
+	if err := s.db.Model(&Model{}).Pluck("name", &names).Error; err != nil {
+		return nil, err
+	}
+	return names, nil
 }
 
 func (s *GormStore) RecordRequestPayload(requestID string, requestBody string, requestTruncated bool, responseBody string, responseTruncated bool) {
@@ -901,7 +1060,91 @@ func (s *GormStore) RecordRequestPayload(requestID string, requestBody string, r
 	}).Error
 }
 
+func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {
+	if job.AdmittedAt == nil {
+		return nil
+	}
+	attributedUserID := strings.TrimSpace(job.AttributedUserID)
+	if err := s.lockScopeForUpdate(tx, "api_key", job.APIKeyID); err != nil {
+		return err
+	}
+	admittedAt := *job.AdmittedAt
+	if job.MinuteRequestHeld {
+		bucket, err := s.quotaBucketForUpdate(tx, job.APIKeyID, "minute", minuteBucket(admittedAt))
+		if err != nil {
+			return err
+		}
+		if bucket.Requests > 0 {
+			bucket.Requests--
+		}
+		if err := tx.Save(&bucket).Error; err != nil {
+			return err
+		}
+	}
+	if err := s.reconcileQuotaMinuteTokens(tx, job.APIKeyID, job.TokenLimitBucket, job.ReservedTokens, 0); err != nil {
+		return err
+	}
+
+	userQuotaID := userQuotaBucketKey(attributedUserID)
+	if job.UserQuotaEnabled {
+		if err := s.lockScopeForUpdate(tx, "user_quota", userQuotaID); err != nil {
+			return err
+		}
+		if job.UserMinuteRequestHeld {
+			bucket, err := s.quotaBucketForUpdate(tx, userQuotaID, "minute", minuteBucket(admittedAt), attributedUserID)
+			if err != nil {
+				return err
+			}
+			if bucket.Requests > 0 {
+				bucket.Requests--
+			}
+			if err := tx.Save(&bucket).Error; err != nil {
+				return err
+			}
+		}
+		if err := s.reconcileQuotaMinuteTokens(tx, userQuotaID, job.UserTokenLimitBucket, job.ReservedTokens, 0, attributedUserID); err != nil {
+			return err
+		}
+	}
+
+	for _, period := range []string{"day", "month"} {
+		bucketName := dayBucket(admittedAt)
+		if period == "month" {
+			bucketName = monthBucket(admittedAt)
+		}
+		bucket, err := s.quotaBucketForUpdate(tx, job.APIKeyID, period, bucketName)
+		if err != nil {
+			return err
+		}
+		if bucket.Requests > 0 {
+			bucket.Requests--
+		}
+		if err := tx.Save(&bucket).Error; err != nil {
+			return err
+		}
+		if !job.UserQuotaEnabled {
+			continue
+		}
+		userBucket, err := s.quotaBucketForUpdate(tx, userQuotaID, period, bucketName, attributedUserID)
+		if err != nil {
+			return err
+		}
+		if userBucket.Requests > 0 {
+			userBucket.Requests--
+		}
+		refundQuotaReservation(&userBucket.QuotaCounter, job.ReservedTokens)
+		if err := tx.Save(&userBucket).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *GormStore) CreateImageJob(job ImageJob, prompt string) (ImageJob, error) {
+	return s.createImageJob(s.db, job, prompt)
+}
+
+func (s *GormStore) createImageJob(tx *gorm.DB, job ImageJob, prompt string) (ImageJob, error) {
 	if strings.TrimSpace(job.ID) == "" {
 		job.ID = NewID("imgjob")
 	}
@@ -913,10 +1156,36 @@ func (s *GormStore) CreateImageJob(job ImageJob, prompt string) (ImageJob, error
 	}
 	job.PromptCiphertext = s.encryptSecret(prompt)
 	job.Prompt = prompt
-	if err := s.db.Create(&job).Error; err != nil {
+	if err := tx.Create(&job).Error; err != nil {
 		return ImageJob{}, err
 	}
 	return job, nil
+}
+
+// CreateImageJobWithAdmission commits quota admission, concurrency leases and
+// the durable image job row in one transaction. A crash cannot leave an
+// admission reservation without a job that recovery can inspect.
+func (s *GormStore) CreateImageJobWithAdmission(ctx context.Context, project Project, key APIKey, modelName string, tokenReservation int64, job ImageJob, prompt string) (ImageJob, CallContext, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var admission callAdmissionResult
+	var persisted ImageJob
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		admission, err = s.admitCallTransaction(ctx, tx, key, modelName, tokenReservation, NewID("req"))
+		if err != nil {
+			return err
+		}
+		job.RequestID = admission.call.RequestID
+		job.AttributedUserID = admission.call.AttributedUserID
+		persisted, err = s.createImageJob(tx, imageJobWithAdmission(job, admission.call), prompt)
+		return err
+	})
+	if err != nil {
+		return ImageJob{}, CallContext{}, err
+	}
+	return persisted, s.startAdmittedCallHeartbeat(ctx, admission), nil
 }
 
 func (s *GormStore) ClaimImageJob(id string) (ImageJob, bool, error) {
@@ -964,6 +1233,41 @@ func (s *GormStore) ListImageJobs(limit int) []ImageJob {
 	return jobs
 }
 
+type ImageJobAuditQuery struct {
+	Limit      int
+	Global     bool
+	ProjectIDs []string
+	APIKeyIDs  []string
+}
+
+func (s *GormStore) ListImageJobsForAudit(query ImageJobAuditQuery) []ImageJob {
+	if query.Limit <= 0 || query.Limit > 1000 {
+		query.Limit = 200
+	}
+	db := s.db
+	if !query.Global {
+		switch {
+		case len(query.ProjectIDs) > 0 && len(query.APIKeyIDs) > 0:
+			db = db.Where("project_id IN ? OR api_key_id IN ?", query.ProjectIDs, query.APIKeyIDs)
+		case len(query.ProjectIDs) > 0:
+			db = db.Where("project_id IN ?", query.ProjectIDs)
+		case len(query.APIKeyIDs) > 0:
+			db = db.Where("api_key_id IN ?", query.APIKeyIDs)
+		default:
+			return []ImageJob{}
+		}
+	}
+	var jobs []ImageJob
+	if err := db.Order("created_at desc").Limit(query.Limit).Find(&jobs).Error; err != nil {
+		return nil
+	}
+	for index := range jobs {
+		jobs[index].Prompt = s.decryptSecret(jobs[index].PromptCiphertext)
+		jobs[index].RevisedPrompt = s.decryptSecret(jobs[index].RevisedPromptCiphertext)
+	}
+	return jobs
+}
+
 func (s *GormStore) FailUnfinishedImageJobs(code string, message string) ([]ImageJob, error) {
 	now := time.Now().UTC()
 	var jobs []ImageJob
@@ -986,10 +1290,13 @@ func (s *GormStore) FailUnfinishedImageJobs(code string, message string) ([]Imag
 			return err
 		}
 		for _, job := range jobs {
+			if err := s.rollbackImageJobAdmission(tx, job); err != nil {
+				return err
+			}
 			if strings.TrimSpace(job.RequestID) == "" {
 				continue
 			}
-			if err := tx.Delete(&InFlightLease{}, "id = ?", job.RequestID).Error; err != nil {
+			if err := s.deleteRequestConcurrencyLeases(tx, job.RequestID); err != nil {
 				return err
 			}
 			var count int64
@@ -1039,7 +1346,7 @@ func (s *GormStore) UpdateImageJob(job ImageJob, revisedPrompt string) error {
 
 func (s *GormStore) CompleteImageJob(call CallContext, job ImageJob, revisedPrompt string, asset ImageAsset, route RouteSelection, usage Usage, clientIP string, userAgent string) error {
 	elapsed := call.elapsed()
-	_ = s.stopInFlightLeaseHeartbeat(call.RequestID)
+	_ = s.stopRequestConcurrencyHeartbeats(call.RequestID)
 	usage = priceUsage(call.Model, usage)
 	usage.ProviderCostUSD = s.providerCostUSD(route, usage)
 
@@ -1091,25 +1398,21 @@ func (s *GormStore) CompleteImageJob(call CallContext, job ImageJob, revisedProm
 			if result.RowsAffected != 1 {
 				return fmt.Errorf("image job %s is not running", job.ID)
 			}
-			if route.Route.ID != "" {
-				if err := tx.Model(&ModelRoute{}).Where("id = ?", route.Route.ID).Update("last_used_at", now).Error; err != nil {
-					return err
-				}
-			}
-			if resourceID := routeResourceID(route); resourceID != "" {
-				if err := tx.Model(&ProviderResource{}).Where("id = ?", resourceID).
-					Updates(map[string]any{"last_used_at": now, "updated_at": now}).Error; err != nil {
-					return err
-				}
-			}
 			return nil
 		})
 	}()
 	if err != nil {
-		if releaseErr := s.db.Delete(&InFlightLease{}, "id = ?", call.RequestID).Error; releaseErr != nil {
-			log.Printf("[tokenhub] failed to release API key concurrency lease request=%s: %v", call.RequestID, releaseErr)
+		if releaseErr := s.deleteRequestConcurrencyLeases(s.db, call.RequestID); releaseErr != nil {
+			log.Printf("[tokenhub] failed to release request concurrency leases request=%s: %v", call.RequestID, releaseErr)
 		}
 	} else {
+		// The route and resource marks used to run inside the completion
+		// transaction. They are display-only and throttled now, so they run
+		// afterwards instead: the transaction stays focused on the state a
+		// caller can observe, and the marks take the store mutex themselves —
+		// which is why they must run after the closure above released it.
+		s.MarkRouteUsed(route.Route.ID)
+		s.MarkProviderResourceUsed(routeResourceID(route))
 		s.observeGatewayCall(call, route, usage, http.StatusOK, "", elapsed)
 	}
 	return err

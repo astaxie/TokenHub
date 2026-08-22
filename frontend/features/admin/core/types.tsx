@@ -60,6 +60,7 @@ export type APIKey = {
   expires_at?: string;
   rotated_from_id?: string;
   grace_until?: string;
+  created_at?: string;
   last_used_at?: string;
   metadata?: Record<string, string>;
 };
@@ -70,6 +71,27 @@ export type DatabaseStatus = {
   connection_ok: boolean;
   postgres_version?: string;
   database_url?: string;
+};
+
+// Read-only database evolution state served by /api/admin/system/schema-status.
+// reason_code is the stable machine identifier for localized rendering;
+// reason is the English diagnostic for logs and API clients, never localized UI.
+export type SchemaEvolutionStatus = {
+  ready: boolean;
+  reason?: string;
+  reason_code?: string;
+  schema_version: number;
+  dirty_version?: number;
+  pending_expand?: Array<{ version: number; name: string }>;
+  pending_contract?: Array<{ version: number; name: string }>;
+  blocking_backfills_pending?: string[];
+  backfills?: Array<{ id: string; mode: string; state: string; remaining: number }>;
+  instances?: Array<{ instance_id: string; release: string; last_seen: string }>;
+  compatibility?: {
+    target: number;
+    min_compatible: number;
+    max_compatible: number;
+  };
 };
 
 export type Provider = {
@@ -569,6 +591,10 @@ export type AdminResource = {
   description?: string;
   status: string;
   fields?: Record<string, unknown>;
+  current_usage?: {
+    daily: { requests: number; total_tokens: number; cost_usd: number };
+    monthly: { requests: number; total_tokens: number; cost_usd: number };
+  };
   created_at?: string;
   updated_at?: string;
 };
@@ -804,6 +830,7 @@ export type UsageBreakdown = {
   providers: UsageBreakdownRow[];
   provider_resources: UsageBreakdownRow[];
   cost_centers: UsageBreakdownRow[];
+  api_keys?: UsageBreakdownRow[];
 };
 
 export type UsagePoint = {
@@ -814,6 +841,78 @@ export type UsagePoint = {
   output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+};
+
+export type UsageDaily = {
+  timezone: string;
+  date: string;
+  window_start: string;
+  window_end: string;
+  summary: Summary;
+  breakdown: UsageBreakdown;
+};
+
+export type APIKeyUsageMetrics = {
+  request_count: number;
+  error_count: number;
+  average_latency_ms: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  cache_write_input_tokens: number;
+  input_audio_tokens: number;
+  output_tokens: number;
+  reasoning_output_tokens: number;
+  output_audio_tokens: number;
+  accepted_prediction_tokens: number;
+  rejected_prediction_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+};
+
+export type APIKeyUsagePoint = APIKeyUsageMetrics & { date: string };
+
+export type APIKeyUsageBreakdownRow = APIKeyUsageMetrics & {
+  id: string;
+  resource_id?: string;
+  status_code?: number;
+  error_code?: string;
+  last_occurred_at?: string;
+};
+
+export type APIKeyQuotaLimits = {
+  rate_limit_rpm: number;
+  token_limit_tpm: number;
+  daily_requests: number;
+  monthly_requests: number;
+  daily_tokens: number;
+  monthly_tokens: number;
+  daily_cost_usd: number;
+  monthly_cost_usd: number;
+  max_concurrency: number;
+};
+
+export type APIKeyQuotaCounter = {
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+export type APIKeyUsageResponse = {
+  key: APIKey;
+  range: { from: string; to: string };
+  generated_at: string;
+  summary: APIKeyUsageMetrics;
+  quota: {
+    effective_limits: APIKeyQuotaLimits;
+    day: { bucket: string; usage: APIKeyQuotaCounter };
+    month: { bucket: string; usage: APIKeyQuotaCounter };
+  };
+  timeseries: APIKeyUsagePoint[];
+  models: APIKeyUsageBreakdownRow[];
+  errors: APIKeyUsageBreakdownRow[];
+  providers?: APIKeyUsageBreakdownRow[];
 };
 
 export type ViewKey =
@@ -843,7 +942,6 @@ export type ViewKey =
   | "notification-channels"
   | "alert-deliveries"
   | "security-policies"
-  | "proxies"
   | "sqlite-backups"
   | "database-status"
   | "announcements"
@@ -877,7 +975,6 @@ export const viewRoutes: Record<ViewKey, string> = {
   "notification-channels": "/notification-channels",
   "alert-deliveries": "/alert-deliveries",
   "security-policies": "/security-policies",
-  proxies: "/proxies",
   "sqlite-backups": "/sqlite-backups",
   "database-status": "/database-status",
   announcements: "/announcements",
@@ -958,7 +1055,8 @@ export type ResourceConfig<T> = {
   create?: (ctx: ApiContext, values: Record<string, string>, data?: AppData) => Promise<void>;
   update?: (ctx: ApiContext, item: T, values: Record<string, string>) => Promise<void>;
   remove?: (ctx: ApiContext, item: T) => Promise<void>;
-  canRemove?: (item: T, currentUser: AdminUser | null) => boolean;
+  canUpdate?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
+  canRemove?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
   actions?: ResourceAction<T>[];
   toolbarActions?: ToolbarAction[];
   toForm?: (item: T) => Record<string, string>;
@@ -967,7 +1065,8 @@ export type ResourceConfig<T> = {
 export type ResourceAction<T> = {
   label: string;
   title?: string;
-  visible?: (item: T) => boolean;
+  visible?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
+  href?: (item: T) => string;
   navigate?: (item: T) => ViewKey;
   run?: (ctx: ApiContext, item: T) => Promise<void>;
   modal?: (item: T, data: AppData) => ModalState<any>;
@@ -1006,6 +1105,7 @@ export type AppData = {
   sqliteBackups: SQLiteBackup[];
   users: AdminUser[];
   breakdown: UsageBreakdown;
+  dailyUsage: UsageDaily;
   timeseries: UsagePoint[];
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];

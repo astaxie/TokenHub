@@ -283,7 +283,7 @@ func TestAnthropicMessagesConvertsOpenAIStreamingTextAndToolCall(t *testing.T) {
 		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_stream\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_read\",\"type\":\"function\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"file_path\\\":\"}}]},\"finish_reason\":null}]}\n\n")
 		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_stream\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"README.md\\\"}\"}}]},\"finish_reason\":null}]}\n\n")
 		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_stream\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n")
-		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":90,\"completion_tokens\":12,\"total_tokens\":102}}\n\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":90,\"completion_tokens\":12,\"total_tokens\":102,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
@@ -319,8 +319,13 @@ func TestAnthropicMessagesConvertsOpenAIStreamingTextAndToolCall(t *testing.T) {
 			t.Fatalf("stream is missing %q:\n%s", expected, body)
 		}
 	}
+	events := parsePlaygroundSSE(t, body)
+	finalUsage, _ := findPlaygroundSSEEvent(t, events, "message_delta").Data["usage"].(map[string]any)
+	if finalUsage["input_tokens"] != float64(10) || finalUsage["cache_read_input_tokens"] != float64(80) || finalUsage["cache_creation_input_tokens"] != float64(0) || finalUsage["output_tokens"] != float64(12) {
+		t.Fatalf("expected authoritative Anthropic cache usage in the final event, got %#v", finalUsage)
+	}
 	records := store.ListUsageRecords()
-	if len(records) != 1 || records[0].TotalTokens != 102 {
+	if len(records) != 1 || records[0].InputTokens != 90 || records[0].CachedInputTokens != 80 || records[0].OutputTokens != 12 || records[0].TotalTokens != 102 {
 		t.Fatalf("unexpected streaming usage records: %+v", records)
 	}
 }

@@ -336,11 +336,11 @@ func (s *GormStore) decryptBillingCredentials(ciphertext string) (map[string]str
 
 func (s *GormStore) encryptSecretStrict(plaintext string) (string, error) {
 	if strings.TrimSpace(plaintext) == "" || strings.HasPrefix(plaintext, "enc:v1:") {
-		return "", errors.New("billing protected value must be non-empty plaintext")
+		return "", errors.New("protected value must be non-empty plaintext")
 	}
 	ciphertext := s.encryptSecret(plaintext)
 	if ciphertext == plaintext || !strings.HasPrefix(ciphertext, "enc:v1:") {
-		return "", errors.New("billing protected value encryption failed")
+		return "", errors.New("protected value encryption failed")
 	}
 	return ciphertext, nil
 }

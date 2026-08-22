@@ -158,6 +158,29 @@ func TestProductionConfigAcceptsStrongCredentials(t *testing.T) {
 	}
 }
 
+func TestProductionConfigAcceptsDisabledOptionalBootstrapCredentials(t *testing.T) {
+	config := Config{
+		Environment: "production",
+		SecretKey:   strings.Repeat("s", 32),
+	}
+	if err := config.ValidateForStartup(); err != nil {
+		t.Fatalf("expected optional bootstrap credentials to be disabled: %v", err)
+	}
+}
+
+func TestProductionConfigRejectsWeakEnabledOptionalCredentials(t *testing.T) {
+	config := Config{
+		Environment:            "production",
+		AdminToken:             "short-token",
+		BootstrapAdminPassword: "short",
+		SecretKey:              strings.Repeat("s", 32),
+	}
+	err := config.ValidateForStartup()
+	if err == nil || !strings.Contains(err.Error(), "TOKENHUB_ADMIN_TOKEN") || !strings.Contains(err.Error(), "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD") {
+		t.Fatalf("expected enabled weak credentials to be rejected: %v", err)
+	}
+}
+
 func TestDevelopmentConfigKeepsLocalDefaults(t *testing.T) {
 	config := Config{
 		Environment:            "dev",

@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -96,6 +97,9 @@ func (s *GormStore) UpdateProject(id string, patch Project) (Project, error) {
 	var project Project
 	nextTeamID := strings.TrimSpace(patch.TeamID)
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "project", id); err != nil {
+			return err
+		}
 		var nextTeam AdminResource
 		if nextTeamID != "" {
 			var err error
@@ -158,6 +162,9 @@ func (s *GormStore) DeleteProject(id string) error {
 	defer s.mu.Unlock()
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "project", id); err != nil {
+			return err
+		}
 		var project Project
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, "id = ?", id).Error; err != nil {
 			return notFound(err, "project_not_found", "Project not found")
@@ -179,9 +186,6 @@ func (s *GormStore) DeleteProject(id string) error {
 		}
 		if len(keyIDs) > 0 {
 			if err := tx.Where("scope_type = ? AND scope_id IN ?", "api_key", keyIDs).Delete(&InFlightLease{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Where("key_id IN ?", keyIDs).Delete(&QuotaBucket{}).Error; err != nil {
 				return err
 			}
 			if err := tx.Where("id IN ?", keyIDs).Delete(&APIKey{}).Error; err != nil {
@@ -501,66 +505,81 @@ func (s *GormStore) ListAPIKeys() []APIKey {
 	return publicKeys(items)
 }
 
+func (s *GormStore) GetAPIKey(id string) (APIKey, bool) {
+	var key APIKey
+	if err := s.db.First(&key, "id = ?", id).Error; err != nil {
+		return APIKey{}, false
+	}
+	hydrateAPIKey(&key)
+	return publicKey(key), true
+}
+
 func (s *GormStore) UpdateAPIKey(id string, patch APIKey) (APIKey, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var key APIKey
-	if err := s.db.First(&key, "id = ?", id).Error; err != nil {
-		return APIKey{}, notFound(err, "api_key_not_found", "API key not found")
-	}
-	hydrateAPIKey(&key)
-	if err := validateAPIKeyMinuteLimits(patch.RateLimitRPM, patch.TokenLimitTPM); err != nil {
-		return APIKey{}, err
-	}
-	if patch.Name != "" {
-		key.Name = patch.Name
-	}
-	if patch.Group != "" {
-		key.Group = patch.Group
-	}
-	if patch.OwnerUserID != "" {
-		key.OwnerUserID = patch.OwnerUserID
-	}
-	if patch.Status != "" {
-		key.Status = patch.Status
-	}
-	if patch.Allowed != nil {
-		mode, allowed, err := normalizeModelAccess(patch.ModelAccessMode, patch.Allowed)
-		if err != nil {
-			return APIKey{}, err
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "api_key", id); err != nil {
+			return err
 		}
-		if strings.TrimSpace(patch.ModelAccessMode) != "" {
-			if err := validateConfiguredModels(s.db, allowed); err != nil {
-				return APIKey{}, err
+		if err := tx.First(&key, "id = ?", id).Error; err != nil {
+			return notFound(err, "api_key_not_found", "API key not found")
+		}
+		if err := validateAPIKeyMinuteLimits(patch.RateLimitRPM, patch.TokenLimitTPM); err != nil {
+			return err
+		}
+		hydrateAPIKey(&key)
+		if patch.Name != "" {
+			key.Name = patch.Name
+		}
+		if patch.Group != "" {
+			key.Group = patch.Group
+		}
+		if patch.OwnerUserID != "" {
+			key.OwnerUserID = patch.OwnerUserID
+		}
+		if patch.Status != "" {
+			key.Status = patch.Status
+		}
+		if patch.Allowed != nil {
+			mode, allowed, err := normalizeModelAccess(patch.ModelAccessMode, patch.Allowed)
+			if err != nil {
+				return err
 			}
+			if strings.TrimSpace(patch.ModelAccessMode) != "" {
+				if err := validateConfiguredModels(tx, allowed); err != nil {
+					return err
+				}
+			}
+			key.ModelAccessMode, key.Allowed = mode, allowed
+			key.AllowedModels = AllowedModelSet(allowed)
+		} else if patch.ModelAccessMode != "" {
+			mode, allowed, err := normalizeModelAccess(patch.ModelAccessMode, key.Allowed)
+			if err != nil {
+				return err
+			}
+			key.ModelAccessMode, key.Allowed = mode, allowed
+			key.AllowedModels = AllowedModelSet(allowed)
 		}
-		key.ModelAccessMode, key.Allowed = mode, allowed
-		key.AllowedModels = AllowedModelSet(allowed)
-	} else if patch.ModelAccessMode != "" {
-		mode, allowed, err := normalizeModelAccess(patch.ModelAccessMode, key.Allowed)
-		if err != nil {
-			return APIKey{}, err
+		if patch.IPAllowlist != nil {
+			key.IPAllowlist = patch.IPAllowlist
 		}
-		key.ModelAccessMode, key.Allowed = mode, allowed
-		key.AllowedModels = AllowedModelSet(allowed)
-	}
-	if patch.IPAllowlist != nil {
-		key.IPAllowlist = patch.IPAllowlist
-	}
-	if patch.LimitsSet || patch.Limits != (QuotaLimits{}) {
-		key.Limits = patch.Limits
-	}
-	if patch.RateLimitSet || patch.RateLimitRPM != nil {
-		key.RateLimitRPM = patch.RateLimitRPM
-	}
-	if patch.TokenLimitSet || patch.TokenLimitTPM != nil {
-		key.TokenLimitTPM = patch.TokenLimitTPM
-	}
-	if patch.ExpiresAt != nil {
-		key.ExpiresAt = patch.ExpiresAt
-	}
-	if err := s.db.Save(&key).Error; err != nil {
+		if patch.LimitsSet || patch.Limits != (QuotaLimits{}) {
+			key.Limits = patch.Limits
+		}
+		if patch.RateLimitSet || patch.RateLimitRPM != nil {
+			key.RateLimitRPM = patch.RateLimitRPM
+		}
+		if patch.TokenLimitSet || patch.TokenLimitTPM != nil {
+			key.TokenLimitTPM = patch.TokenLimitTPM
+		}
+		if patch.ExpiresAt != nil {
+			key.ExpiresAt = patch.ExpiresAt
+		}
+		return tx.Omit("LastUsedAt").Save(&key).Error
+	})
+	if err != nil {
 		return APIKey{}, err
 	}
 	return publicKey(key), nil
@@ -591,37 +610,41 @@ func (s *GormStore) RotateAPIKey(id string, graceUntil *time.Time) (APIKey, stri
 	defer s.mu.Unlock()
 
 	var oldKey APIKey
-	if err := s.db.First(&oldKey, "id = ?", id).Error; err != nil {
-		return APIKey{}, "", notFound(err, "api_key_not_found", "API key not found")
-	}
-	hydrateAPIKey(&oldKey)
-	now := time.Now().UTC()
+	var newKey APIKey
 	newSecret := s.generateAPIKeySecret()
 	prefix, suffix := PrefixSuffix(newSecret)
-	newKey := oldKey
-	newKey.ID = NewID("key")
-	newKey.KeyHash = HashSecret(newSecret)
-	newKey.KeyPrefix = prefix
-	newKey.KeySuffix = suffix
-	newKey.RotatedFromID = oldKey.ID
-	newKey.GraceUntil = nil
-	newKey.CreatedAt = now
-	newKey.LastUsedAt = nil
-	newKey.Status = StatusActive
-	if newKey.Metadata == nil {
-		newKey.Metadata = map[string]string{}
-	}
-	newKey.Metadata["rotated_from"] = oldKey.ID
-
-	if graceUntil != nil {
-		oldKey.GraceUntil = graceUntil
-		oldKey.Status = StatusActive
-	} else {
-		oldKey.Status = StatusRevoked
-		oldKey.GraceUntil = &now
-	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&oldKey).Error; err != nil {
+		if err := s.lockScopeForUpdate(tx, "api_key", id); err != nil {
+			return err
+		}
+		if err := tx.First(&oldKey, "id = ?", id).Error; err != nil {
+			return notFound(err, "api_key_not_found", "API key not found")
+		}
+		hydrateAPIKey(&oldKey)
+		now := time.Now().UTC()
+		newKey = oldKey
+		newKey.ID = NewID("key")
+		newKey.KeyHash = HashSecret(newSecret)
+		newKey.KeyPrefix = prefix
+		newKey.KeySuffix = suffix
+		newKey.RotatedFromID = oldKey.ID
+		newKey.GraceUntil = nil
+		newKey.CreatedAt = now
+		newKey.LastUsedAt = nil
+		newKey.Status = StatusActive
+		if newKey.Metadata == nil {
+			newKey.Metadata = map[string]string{}
+		}
+		newKey.Metadata["rotated_from"] = oldKey.ID
+
+		if graceUntil != nil {
+			oldKey.GraceUntil = graceUntil
+			oldKey.Status = StatusActive
+		} else {
+			oldKey.Status = StatusRevoked
+			oldKey.GraceUntil = &now
+		}
+		if err := tx.Omit("LastUsedAt").Save(&oldKey).Error; err != nil {
 			return err
 		}
 		if err := tx.Create(&newKey).Error; err != nil {
@@ -659,12 +682,12 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 	defer s.mu.Unlock()
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "api_key", id); err != nil {
+			return err
+		}
 		var key APIKey
 		if err := tx.First(&key, "id = ?", id).Error; err != nil {
 			return notFound(err, "api_key_not_found", "API key not found")
-		}
-		if err := tx.Where("key_id = ?", id).Delete(&QuotaBucket{}).Error; err != nil {
-			return err
 		}
 		if err := tx.Where("scope_type = ? AND scope_id = ?", "api_key", id).Delete(&InFlightLease{}).Error; err != nil {
 			return err
@@ -674,33 +697,45 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 }
 
 func (s *GormStore) ValidateAPIKey(rawSecret string, clientIP string) (Project, APIKey, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	var key APIKey
-	if err := s.db.First(&key, "key_hash = ?", HashSecret(rawSecret)).Error; err != nil {
-		return Project{}, APIKey{}, ErrInvalidAPIKey
-	}
-	hydrateAPIKey(&key)
-	if key.Status == StatusDisabled || key.Status == StatusRevoked {
-		if !(key.Status == StatusRevoked && key.GraceUntil != nil && time.Now().UTC().Before(*key.GraceUntil)) {
-			return Project{}, APIKey{}, ErrAPIKeyDisabled
-		}
-	}
-	if len(key.IPAllowlist) > 0 && !ipAllowed(clientIP, key.IPAllowlist) {
-		return Project{}, APIKey{}, ErrAPIKeyDisabled
-	}
-	if key.ExpiresAt != nil && time.Now().UTC().After(*key.ExpiresAt) {
-		return Project{}, APIKey{}, ErrAPIKeyExpired
-	}
 	var project Project
-	if err := s.db.First(&project, "id = ?", key.ProjectID).Error; err != nil || project.Status != StatusActive {
-		return Project{}, APIKey{}, ErrAPIKeyDisabled
+	err := s.withReadSnapshot(func(tx *gorm.DB) error {
+		if err := tx.First(&key, "key_hash = ?", HashSecret(rawSecret)).Error; err != nil {
+			return ErrInvalidAPIKey
+		}
+		hydrateAPIKey(&key)
+		now := time.Now().UTC()
+		if key.Status == StatusDisabled || key.Status == StatusRevoked {
+			if !(key.Status == StatusRevoked && key.GraceUntil != nil && now.Before(*key.GraceUntil)) {
+				return ErrAPIKeyDisabled
+			}
+		}
+		if len(key.IPAllowlist) > 0 && !ipAllowed(clientIP, key.IPAllowlist) {
+			return ErrAPIKeyDisabled
+		}
+		if key.ExpiresAt != nil && now.After(*key.ExpiresAt) {
+			return ErrAPIKeyExpired
+		}
+		if err := tx.First(&project, "id = ?", key.ProjectID).Error; err != nil || project.Status != StatusActive {
+			return ErrAPIKeyDisabled
+		}
+		return nil
+	})
+	if err != nil {
+		return Project{}, APIKey{}, err
 	}
 	now := time.Now().UTC()
+	// The returned copy always reports this request. Callers read it as "the key
+	// was just used" and never write it back, so it stays exact even though the
+	// persisted column is throttled and may trail it by up to one window.
 	key.LastUsedAt = &now
-	if err := s.db.Model(&key).Update("last_used_at", now).Error; err != nil {
-		return Project{}, APIKey{}, err
+	if err := s.lastUsed.mark(lastUsedAPIKeyKey(key.ID), func() error {
+		return s.db.Model(&APIKey{}).Where("id = ?", key.ID).Update("last_used_at", now).Error
+	}); err != nil {
+		// last_used_at is display-only, so a failed write must not reject an
+		// otherwise valid key. The failed-at state suppresses repeated attempts
+		// and logs until the failure backoff expires.
+		log.Printf("[tokenhub] failed to record api key last_used_at key=%s: %v", key.ID, err)
 	}
 	return project, publicKey(key), nil
 }

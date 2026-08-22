@@ -23,6 +23,8 @@ type Server struct {
 	providerCatalog     *providerCatalogService
 	billing             *BillingService
 	reconciliation      *ReconciliationService
+	credentialRefresh   *ProviderCredentialRefreshService
+	payloadRetention    *requestPayloadRetentionService
 	mux                 *http.ServeMux
 	config              Config
 	metrics             *GatewayMetrics
@@ -43,8 +45,13 @@ type Server struct {
 	responseWorkerStop  sync.Once
 	responseWorkerGroup sync.WaitGroup
 	responseInstanceID  string
+	stopHeartbeat       func()
 	versions            *versionService
 	guardrailEngine     *guardrails.Engine
+	upstreamClient      *http.Client
+	syntheticDNSPolicy  *providerSyntheticDNSPolicy
+	providerProxyPolicy *providerProxyPolicy
+	syntheticDNSSetting sync.Mutex
 }
 
 func New(store Store) *Server {
@@ -92,7 +99,18 @@ func NewWithConfig(store Store, config Config) *Server {
 	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
 	responseContext, responseCancel := context.WithCancel(context.Background())
-	client, streamClient, streamIdleTimeout := newUpstreamClients(config)
+	syntheticDNSPolicy := newProviderSyntheticDNSPolicy(store)
+	providerProxyPolicy := newProviderProxyPolicy(store)
+	client, streamClient, streamIdleTimeout := newUpstreamClientsWithPolicies(config, syntheticDNSPolicy, providerProxyPolicy)
+	catalogClient := &http.Client{
+		Transport:     client.Transport,
+		CheckRedirect: strictProviderUpstreamRedirect,
+		Timeout:       providerCatalogUpstreamTimeout,
+	}
+	if gormStore, ok := store.(*GormStore); ok {
+		gormStore.providerUpstreamClient = client
+		gormStore.providerProxyPolicy = providerProxyPolicy
+	}
 	allowedProviderUpstreams := allowedProviderUpstreamCIDRs()
 	openai := OpenAICompatibleAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout}
 	kronk := KronkAdapter{OpenAICompatibleAdapter: openai}
@@ -104,7 +122,7 @@ func NewWithConfig(store Store, config Config) *Server {
 			// credential-bearing responses/compact/probe/image calls into
 			// the internal network. No Client.Timeout: streaming stays
 			// bounded by StreamIdleTimeout, exactly as before.
-			Transport:     guardProviderUpstreamRequests(ssrfGuardedProviderTransport(allowedProviderUpstreams), allowedProviderUpstreams),
+			Transport:     rotatingProviderUpstreamTransport(allowedProviderUpstreams, syntheticDNSPolicy, providerProxyPolicy, nil),
 			CheckRedirect: strictProviderUpstreamRedirect,
 		},
 		StreamIdleTimeout:  streamIdleTimeout,
@@ -137,11 +155,13 @@ func NewWithConfig(store Store, config Config) *Server {
 	s := &Server{
 		store:              store,
 		adapterRegistry:    registry,
-		integrations:       NewIntegrationService(store, registry),
+		integrations:       NewIntegrationService(store, registry, client),
 		codexSubscription:  codexSubscription,
-		providerCatalog:    newProviderCatalogService(store, config.ProviderCatalogFile),
+		providerCatalog:    newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient),
 		billing:            newBillingService(store),
 		reconciliation:     newReconciliationService(store),
+		credentialRefresh:  newProviderCredentialRefreshService(store),
+		payloadRetention:   newRequestPayloadRetentionService(store),
 		mux:                http.NewServeMux(),
 		config:             config,
 		imageStorageDir:    config.ImageStorageDir,
@@ -159,14 +179,21 @@ func NewWithConfig(store Store, config Config) *Server {
 			Model:   config.GuardrailModelName,
 			Timeout: time.Duration(config.GuardrailModelTimeoutSeconds) * time.Second,
 		})),
+		upstreamClient:      client,
+		syntheticDNSPolicy:  syntheticDNSPolicy,
+		providerProxyPolicy: providerProxyPolicy,
 	}
 	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
 		log.Printf("[tokenhub] failed to mark unfinished image jobs after startup: %v", err)
 	} else if len(jobs) > 0 {
 		log.Printf("[tokenhub] marked %d unfinished image jobs as failed after startup", len(jobs))
 	}
+	if gormStore, ok := store.(*GormStore); ok {
+		s.stopHeartbeat = gormStore.StartInstanceHeartbeat(config.AppVersion)
+	}
 	backfillProviderModelsFromRoutes(store)
 	backfillExternalModelRolesFromRoutes(store)
+	backfillCodexImageRoutes(store)
 	if config.MetricsEnabled {
 		s.metrics = NewGatewayMetrics(config.MetricsProjectLabel)
 		// Assert against the narrow MetricsSink interface rather than *GormStore, and
@@ -206,6 +233,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.Ping(ctx); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unavailable", "service": "tokenhub-backend"})
 		return
+	}
+	// Readiness reflects the database evolution state: a dirty or unverifiable
+	// migration ledger and incomplete blocking backfills keep the instance out
+	// of rotation; pending online backfills do not.
+	if evolution, ok := s.store.(interface {
+		DatabaseEvolutionStatus(ctx context.Context) DatabaseEvolutionStatus
+	}); ok {
+		if state := evolution.DatabaseEvolutionStatus(ctx); !state.Ready {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"status":  "unavailable",
+				"service": "tokenhub-backend",
+				"reason":  state.Reason,
+			})
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "tokenhub-backend"})
 }

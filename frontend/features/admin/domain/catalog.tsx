@@ -3,7 +3,7 @@ import { providerRoutesFor, stringifyValue } from "./entities";
 import { formatMoney } from "./formatting";
 import { compactList } from "./labels";
 import { tx } from "../i18n/runtime";
-import { modelCategoryLabels, preferredModelCategories } from "../shared/ui";
+import { modelCategoryLabels, preferredModelCategories } from "./model-categories";
 
 export function emptyData(): AppData {
   return {
@@ -23,6 +23,7 @@ export function emptyData(): AppData {
     sqliteBackups: [],
     users: [],
     breakdown: { projects: [], models: [], members: [], providers: [], provider_resources: [], cost_centers: [] },
+    dailyUsage: emptyDailyUsage(),
     timeseries: [],
     resources: {},
     providerCatalog: [],
@@ -48,6 +49,17 @@ export function emptySummary(): Summary {
     route_count: 0,
     active_route_count: 0,
     user_count: 0,
+  };
+}
+
+export function emptyDailyUsage() {
+  return {
+    timezone: "UTC",
+    date: "",
+    window_start: "",
+    window_end: "",
+    summary: emptySummary(),
+    breakdown: { projects: [], models: [], members: [], providers: [], provider_resources: [], cost_centers: [], api_keys: [] },
   };
 }
 

@@ -1,13 +1,19 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -117,6 +123,7 @@ func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	writeProviderCatalogFixture(t, catalogFile)
 
 	service := newProviderCatalogService(store, catalogFile)
+	service.upstreamURL = ""
 	summaries, source, err := service.List(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
@@ -144,6 +151,158 @@ func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	}
 	if source != "local-provider-catalog" || !providerCatalogContains(persisted, "fresh-provider") {
 		t.Fatalf("expected persisted local catalog, source=%q entries=%+v", source, persisted)
+	}
+}
+
+func TestProviderCatalogServiceRefreshesFromUpstream(t *testing.T) {
+	store := NewMemoryStore()
+	localCatalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")
+	writeProviderCatalogFixture(t, localCatalogFile)
+
+	upstreamCatalogFile := filepath.Join(t.TempDir(), "upstream-provider-catalog.json")
+	writeProviderCatalogFixture(t, upstreamCatalogFile)
+	replaceProviderCatalogFixtureURL(t, upstreamCatalogFile, "fresh-provider", "https://upstream-provider.example/v1")
+	upstreamCatalog, err := os.ReadFile(upstreamCatalogFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstreamCatalog = append(upstreamCatalog, bytes.Repeat([]byte(" "), 6<<20-len(upstreamCatalog))...)
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(upstreamCatalog)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newProviderCatalogService(store, localCatalogFile)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	summaries, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 1 || source != providerCatalogUpstreamSource || !providerCatalogContains(summaries, "fresh-provider") {
+		t.Fatalf("unexpected upstream refresh: requests=%d source=%q entries=%+v", requests.Load(), source, summaries)
+	}
+
+	entry, source, ok, err := service.Get(context.Background(), "fresh-provider", false)
+	if err != nil || !ok {
+		t.Fatalf("expected upstream provider entry, ok=%v err=%v", ok, err)
+	}
+	if source != providerCatalogUpstreamSource || entry.Source != providerCatalogUpstreamSource ||
+		entry.BaseURL != "https://upstream-provider.example/v1" || entry.Models[0].Metadata["source"] != providerCatalogUpstreamSource {
+		t.Fatalf("unexpected upstream provider entry: source=%q entry=%+v", source, entry)
+	}
+}
+
+func TestProviderCatalogServiceRefreshFallsBackToLocalCatalog(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	replaceProviderCatalogFixtureURL(t, catalogFile, "fresh-provider", "https://local-fallback.example/v1")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newProviderCatalogService(store, catalogFile)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	_, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, storedSource, ok, err := service.Get(context.Background(), "fresh-provider", false)
+	if err != nil || !ok || source != providerCatalogLocalSource || storedSource != providerCatalogLocalSource ||
+		entry.BaseURL != "https://local-fallback.example/v1" {
+		t.Fatalf("expected local fallback, refresh_source=%q stored_source=%q entry=%+v ok=%v err=%v", source, storedSource, entry, ok, err)
+	}
+}
+
+func TestProviderCatalogServiceRefreshRejectsIncompleteUpstreamCatalog(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"providers": map[string]any{
+				"openai": map[string]any{
+					"name":   "OpenAI",
+					"models": []map[string]any{{"id": "gpt-test"}},
+				},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newProviderCatalogService(store, catalogFile)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	entries, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != providerCatalogLocalSource || !providerCatalogContains(entries, "fresh-provider") {
+		t.Fatalf("expected validated local fallback, source=%q entries=%+v", source, entries)
+	}
+}
+
+func TestProviderCatalogServiceRefreshStopsWhenContextIsCanceledBeforeFallback(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	service := newProviderCatalogService(store, catalogFile)
+	previous, originalSource, _, err := service.loadStored(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leaseLost := errors.New("provider catalog lease lost")
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(leaseLost)
+	_, source, err := service.refreshLocked(ctx, previous)
+	if !errors.Is(err, leaseLost) || source != providerCatalogUpstreamSource {
+		t.Fatalf("expected canceled upstream refresh, source=%q err=%v", source, err)
+	}
+	_, storedSource, _, found, err := store.LoadProviderCatalogSnapshot(false)
+	if err != nil || !found || storedSource != originalSource {
+		t.Fatalf("canceled refresh changed snapshot: original=%q stored=%q found=%v err=%v", originalSource, storedSource, found, err)
+	}
+}
+
+func TestProviderCatalogServiceRefreshRechecksContextBeforeUpstreamSave(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	content, err := os.ReadFile(catalogFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := newProviderCatalogService(store, catalogFile)
+	previous, originalSource, _, err := service.loadStored(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	service.upstreamURL = "https://catalog.example/provider-catalog.json"
+	service.upstreamClient = providerCatalogHTTPClientFunc(func(req *http.Request) (*http.Response, error) {
+		cancel()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(content)),
+			Request:    req,
+		}, nil
+	})
+	_, source, err := service.refreshLocked(ctx, previous)
+	if !errors.Is(err, context.Canceled) || source != providerCatalogUpstreamSource {
+		t.Fatalf("expected cancellation before upstream save, source=%q err=%v", source, err)
+	}
+	_, storedSource, _, found, err := store.LoadProviderCatalogSnapshot(false)
+	if err != nil || !found || storedSource != originalSource {
+		t.Fatalf("canceled refresh changed snapshot: original=%q stored=%q found=%v err=%v", originalSource, storedSource, found, err)
 	}
 }
 
@@ -194,7 +353,9 @@ func TestProviderCatalogServiceInitializeRetainsLocalSnapshotWhenFileIsMissing(t
 	store := NewMemoryStore()
 	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
 	writeProviderCatalogFixture(t, catalogFile)
-	if _, _, err := newProviderCatalogService(store, catalogFile).List(context.Background(), true); err != nil {
+	seedService := newProviderCatalogService(store, catalogFile)
+	seedService.upstreamURL = ""
+	if _, _, err := seedService.List(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -329,6 +490,12 @@ func providerCatalogContains(entries []ProviderCatalogEntry, id string) bool {
 		}
 	}
 	return false
+}
+
+type providerCatalogHTTPClientFunc func(*http.Request) (*http.Response, error)
+
+func (fn providerCatalogHTTPClientFunc) Do(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }
 
 type providerCatalogConcurrentInitializeStore struct {

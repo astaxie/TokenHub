@@ -117,7 +117,7 @@ Provider 类型与主要能力如下：
 
 ## 模型请求链路
 
-`Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
+`Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。唯一的窄例外是订阅制虚拟模型 `codex-gpt-image-2`：它的路由必须指向 OpenAI Codex Provider，并固定使用上游模型 `gpt-image-2`；这是执行能力，不属于聊天模型库存。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
 
 ```mermaid
 sequenceDiagram
@@ -155,10 +155,10 @@ sequenceDiagram
 ## 鉴权、网络与健康检查
 
 - 业务调用使用项目 API Key：后端校验摘要、状态、项目状态、过期时间、模型范围、IP 白名单、配额和并发。
-- 管理调用使用管理员登录生成的会话 Token，或受控运维场景中的 `TOKENHUB_ADMIN_TOKEN`。初始 `admin` 用户由 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` 创建。
-- 非开发环境启动时，后端会拒绝占位值、少于 32 字节的 Admin Token 或后端密钥，以及少于 12 字节的初始管理员密码。
-- `TOKENHUB_TRUSTED_PROXY_CIDRS` 限定哪些代理可提供 `X-Forwarded-For`；`TOKENHUB_CORS_ALLOWED_ORIGINS` 限定允许携带浏览器凭证的 Origin。反向代理部署必须正确配置这两项。
-- `/livez` 只用于进程存活探针；`/readyz` 以及兼容的 `/healthz` 会检查数据库可用性，数据库不可用时返回 `503`。
+- 管理调用使用管理员登录生成的会话 Token，或可选的 `TOKENHUB_ADMIN_TOKEN`。配置 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` 时，初始 `admin` 用户使用该密码；未配置时由 TokenHub 自动生成，首次成功登录或重置密码后会删除可查询的密文副本。
+- 非开发环境会禁用可选引导凭据的已知占位值，并拒绝其他非空弱值。`TOKENHUB_SECRET_KEY` 仍为必填项；仅全新文件型 SQLite 数据库可以在数据库旁生成持久密钥文件，已有数据库不会自动生成替代密钥。
+- `TOKENHUB_TRUSTED_PROXY_CIDRS` 限定哪些代理可提供 `X-Forwarded-For`、`X-Forwarded-Host` 和 `X-Forwarded-Proto`，可信代理必须覆盖这些请求头；`TOKENHUB_CORS_ALLOWED_ORIGINS` 限定允许携带浏览器凭证的 Origin。反向代理部署必须正确配置这两项。
+- `/livez` 只用于进程存活探针；`/readyz` 以及兼容的 `/healthz` 会检查数据库可用性与数据库演进状态：数据库不可用、迁移处于脏状态、账本校验失败，或阻塞型数据回填未完成时返回 `503`。待执行的在线回填不影响就绪状态。启动配置不安全时，也只有 `/livez` 保持正常，所有就绪探针和业务接口都会返回 `503`，直至修正配置并重启进程。
 
 Provider API Key、Provider Resource 凭证、账单连接器凭证、原始账单快照和持久化后台 Responses 载荷写入数据库前使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密。项目 API Key 不保存原文，只保存 SHA-256 摘要以及用于展示的前缀和后缀。所有副本必须共享稳定的 `TOKENHUB_SECRET_KEY`，否则既有凭证和会话相关数据无法可靠使用。
 

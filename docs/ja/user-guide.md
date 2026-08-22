@@ -23,6 +23,12 @@ Language: [English](../user-guide.md) | [简体中文](../zh-CN/user-guide.md) |
 4. モデル ID を選び、`POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses`、`POST /v1/embeddings` を呼び出します。
 5. **Usage Analytics** と **Request Logs** でリクエスト、Token、コスト、エラーを確認します。
 
+## 1 つの API Key の利用量を確認する
+
+**Key Management** で対象 Key の **Usage** を選ぶと、専用の利用量ページが開きます。リクエスト数、成功率、レイテンシ、詳細な Token 分類、クライアント向け推定コスト、モデル別・エラー別内訳、ページング対応のリクエスト明細を確認できます。期間は直近 7 日、30 日、90 日、または最大 366 日のカスタム UTC 範囲から選択できます。
+
+クォータ欄では、Key、Project、Team、グローバルの各クォータポリシーを統合した実効上限と、現在の UTC 日次・月次カウンターを比較します。集計対象は選択した保存済み Key ID だけです。ローテーション前後の Key は関連情報として表示されますが、利用量には合算されません。監査スナップショットが有効な場合も、リクエスト内容には既存のマスキングと切り詰め規則が適用され、完全な API Key が返ることはありません。
+
 ## Playground でモデルをテストする
 
 コンソールの **Model Playground** を開くと、API スクリプトを作成せずに利用可能な chat model をテストできます。各レスポンスには streaming / buffered mode、計測可能な場合の TTFT、出力スループット、総所要時間、コンテキスト全体の input tokens、output tokens、推定コスト、ローカル完了時刻、Request ID が表示されます。レスポンスを展開すると、実レスポンスの詳細を確認できます。Provider と route の内部情報は routing-read 権限を持つロールだけに表示されます。
@@ -151,10 +157,11 @@ Anthropic と Gemini では、複数ステップのツール呼び出しにお�
 | --- | --- |
 | `message.reasoning_content` | Anthropic の `thinking` テキスト、Gemini の thought パート、Codex の推論サマリー |
 | `message.reasoning_signature` | Anthropic の `thinking.signature`、Codex の暗号化推論 |
+| `message.reasoning_details` | ツール呼び出し ID に紐づく Codex の暗号化推論 |
 | `message.redacted_reasoning_content` | Anthropic の `redacted_thinking.data` |
 | `message.tool_calls[].thought_signature` | Gemini の `thoughtSignature` |
 
-次のリクエストの assistant メッセージでこれらのフィールドをそのまま返すと、推論の連続性が保たれます。これらを無視するクライアントでも動作します。TokenHub はプロバイダーが拒否する署名を送り返すのではなく、推論ブロックを省略します。署名には発行元プロバイダーの識別子が付与され、別のプロバイダーへ送られることはありません。
+次のリクエストの assistant メッセージでこれらのフィールドをそのまま返すと、推論の連続性が保たれます。`reasoning_details` では項目全体と `id` を維持してください。TokenHub は、その ID が同じ assistant メッセージ内のツール呼び出しと一致する場合にのみ受け付けます。これらを無視するクライアントでも動作します。TokenHub はプロバイダーが拒否する署名を送り返すのではなく、推論ブロックを省略します。署名には発行元プロバイダーの識別子が付与され、別のプロバイダーへ送られることはありません。
 
 ## Anthropic Messages と Claude Code
 
@@ -230,9 +237,9 @@ Gemini CLI は TokenHub の Gemini ネイティブ `v1beta` API に直接接続�
 
 画像ジョブの既定の実行タイムアウトは 5 分で、`TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` で変更できます。
 
-TokenHub はアカウントの実際の呼び出し結果から画像生成機能を記録します。対応確認済みのアカウントを優先し、`403` を返したアカウントは一時的に除外します。未確認のアカウントは初回利用時の検出対象として残ります。`TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（既定 24 時間）の経過後、非対応アカウントはモデル検出とルーティングの対象に戻り、次の実リクエストで低頻度に再試行されます。回復確認のための画像をバックグラウンドで自動生成することはありません。
+管理者は **Provider チャネル** でこの機能を設定します。OpenAI Codex Provider を開き、**モデル** タブで **Codex サブスクリプション画像生成** を選択します。有効なアカウントを選ぶと、TokenHub はクォータ消費の警告を表示し、その実アカウントへ低品質の `gpt-image-2` リクエストを 1 回送信します。空でない有効な画像を受信した場合に限り、アカウントを対応済みとして記録し、Provider ルートを作成または再有効化します。`403` は非対応として記録され、認証情報が期限切れの場合は再認証が必要です。レート制限、タイムアウト、一時的な上流障害では以前の機能判定を上書きせず、ダイアログから再試行できます。このテストは少量のサブスクリプションクォータを消費し、バックグラウンドでは自動実行されません。
 
-正常な接続済み Codex アカウントのうち、少なくとも1つが画像生成対応済み、または低頻度の再試行期間に入った場合、`codex-gpt-image-2` が `GET /v1/models` に表示されます。これはサブスクリプション型の仮想モデルであり、通常の Provider モデルルートは不要です。上記の Codex クライアント互換マッピングを除き、別の `gpt-image-2` モデルは OpenAI API Provider を使用し、Codex サブスクリプション枠を消費しません。
+このチェック項目は、`codex-gpt-image-2` から OpenAI Codex Provider の上流モデル `gpt-image-2` への有効なルートを冪等に管理します。アップグレード時には、既に対応確認済みの有効なアカウントに対して不足するルートを 1 回だけ補完します。選択を解除すると一致するルートを無効化しますが、アカウントの機能判定は保持します。起動時の補完処理は、明示的に無効化されたルートを再有効化せず、移行済みとして記録された後に削除されたルートも再作成しません。管理者は明示的に再テストして有効化できます。優先度、重み、プロジェクト範囲、指定リソース、リソースグループの詳細設定は引き続きルーティング画面で編集できます。有効なルートがある場合、対応確認済みアカウントが優先され、`403` を返したアカウントは一時的に除外されます。`TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（既定 24 時間）の経過後、次の実リクエストで低頻度に再試行できます。初回テストが失敗してルートが作成されなかった場合は、管理者が手動で再試行する必要があります。利用可能なルートとアカウントが存在する場合にのみ、`codex-gpt-image-2` が `GET /v1/models` に表示されます。上記の Codex クライアント互換マッピングを除き、別の `gpt-image-2` モデルは OpenAI API Provider を使用し、Codex サブスクリプション枠を消費しません。
 
 ## SDK 設定
 

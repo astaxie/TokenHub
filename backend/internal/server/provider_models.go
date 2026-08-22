@@ -76,7 +76,35 @@ func (s *Server) handleAdminProviderModelImport(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusCreated, result)
 }
 
+type adminProviderModelItemHandler func(http.ResponseWriter, *http.Request, AdminUser, string)
+
+func (s *Server) handleAdminProviderModelItemRoute(w http.ResponseWriter, r *http.Request, serve adminProviderModelItemHandler) {
+	user, ok := s.requireAdmin(w, r, "provider", r.Method)
+	if !ok {
+		return
+	}
+	id := strings.Trim(r.PathValue("provider_model_id"), "/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "not_found", "Not found"))
+		return
+	}
+	serve(w, r, user, id)
+}
+
+func (s *Server) handleAdminProviderModelPatch(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminProviderModelItemRoute(w, r, s.serveAdminProviderModelPatch)
+}
+
+func (s *Server) handleAdminProviderModelDelete(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminProviderModelItemRoute(w, r, s.serveAdminProviderModelDelete)
+}
+
 func (s *Server) handleAdminProviderModelItem(w http.ResponseWriter, r *http.Request) {
+	parts := splitEscapedAdminPath(r.URL.EscapedPath(), "/api/admin/provider-models/")
+	if !strings.HasSuffix(r.URL.EscapedPath(), "/") && len(parts) == 1 && parts[0] == "import" {
+		s.adminMethodNotAllowed("model", http.MethodPost)(w, r)
+		return
+	}
 	user, ok := s.requireAdmin(w, r, "provider", r.Method)
 	if !ok {
 		return
@@ -88,54 +116,62 @@ func (s *Server) handleAdminProviderModelItem(w http.ResponseWriter, r *http.Req
 	}
 	switch r.Method {
 	case http.MethodPatch:
-		var patch providerModelPatchRequest
-		if err := s.decodeJSON(w, r, &patch); err != nil {
-			if costErr := providerModelCostDecodeError(err); costErr != nil {
-				writeError(w, r, costErr)
-				return
-			}
-			writeError(w, r, err)
-			return
-		}
-		var current ProviderModel
-		found := false
-		for _, model := range s.store.ListProviderModels() {
-			if model.ID == id {
-				current = model
-				found = true
-				break
-			}
-		}
-		if !found {
-			writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_model_not_found", "Provider model not found"))
-			return
-		}
-		req := patch.withCurrentCosts(current)
-		if err := validateProviderModelCosts(req); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		model, err := s.store.UpdateProviderModel(id, req)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "update", "provider_model", id, "", model)
-		writeJSON(w, http.StatusOK, model)
+		s.serveAdminProviderModelPatch(w, r, user, id)
 	case http.MethodDelete:
-		if providerModelHasRoutes(id, s.store.ListProviderModels(), s.store.ListRoutes()) {
-			writeError(w, r, NewHTTPError(http.StatusConflict, "provider_model_in_use", "Provider model is still used by a model route"))
-			return
-		}
-		if err := s.store.DeleteProviderModel(id); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		s.recordAdminAudit(r, user, "delete", "provider_model", id, "", nil)
-		w.WriteHeader(http.StatusNoContent)
+		s.serveAdminProviderModelDelete(w, r, user, id)
 	default:
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPatch+", "+http.MethodDelete)(w, r)
 	}
+}
+
+func (s *Server) serveAdminProviderModelPatch(w http.ResponseWriter, r *http.Request, user AdminUser, id string) {
+	var patch providerModelPatchRequest
+	if err := s.decodeJSON(w, r, &patch); err != nil {
+		if costErr := providerModelCostDecodeError(err); costErr != nil {
+			writeError(w, r, costErr)
+			return
+		}
+		writeError(w, r, err)
+		return
+	}
+	var current ProviderModel
+	found := false
+	for _, model := range s.store.ListProviderModels() {
+		if model.ID == id {
+			current = model
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_model_not_found", "Provider model not found"))
+		return
+	}
+	req := patch.withCurrentCosts(current)
+	if err := validateProviderModelCosts(req); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	model, err := s.store.UpdateProviderModel(id, req)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "update", "provider_model", id, "", model)
+	writeJSON(w, http.StatusOK, model)
+}
+
+func (s *Server) serveAdminProviderModelDelete(w http.ResponseWriter, r *http.Request, user AdminUser, id string) {
+	if providerModelHasRoutes(id, s.store.ListProviderModels(), s.store.ListRoutes()) {
+		writeError(w, r, NewHTTPError(http.StatusConflict, "provider_model_in_use", "Provider model is still used by a model route"))
+		return
+	}
+	if err := s.store.DeleteProviderModel(id); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "delete", "provider_model", id, "", nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) importProviderModels(req ProviderModelImportRequest) (ProviderModelImportResult, error) {
