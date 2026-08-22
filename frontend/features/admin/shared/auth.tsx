@@ -1,4 +1,4 @@
-import { Box, Check, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, Pause, Play, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
+import { BarChart3, Check, CreditCard, Database, Eye, EyeOff, Fingerprint, Home, KeyRound, LockKeyhole, Moon, ReceiptText, Route, Settings, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { savePendingOAuthLogin } from "../core/session";
 import { type LoginIdentityProvider, viewRoutes } from "../core/types";
@@ -6,7 +6,7 @@ import { stringifyValue } from "../domain/entities";
 import { identityProviderIconLabel } from "../domain/labels";
 import { buildOAuthLoginStartURL, createOAuthLoginPKCE } from "../domain/oauth-login";
 import { LanguageSelect } from "../i18n/language-switcher";
-import { activeLanguage, type AppLanguage, tx } from "../i18n/runtime";
+import { activeLanguage, type AppLanguage, languageLocale, tx } from "../i18n/runtime";
 
 export const identityProviderIconOptions = [
   "auto",
@@ -568,7 +568,7 @@ export function LoginView({
   const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [heroPaused, setHeroPaused] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [ssoLoading, setSSOLoading] = useState(false);
   const [ssoError, setSSOError] = useState("");
   const ssoStarting = useRef(false);
@@ -583,9 +583,32 @@ export function LoginView({
     identityProviders.length > 1 ? "multi" : "",
     identityProviders.length > 1 ? `count-${Math.min(identityProviders.length, 3)}` : "",
   ].filter(Boolean).join(" ");
+  const locale = languageLocale();
+  const numberFormatter = new Intl.NumberFormat(locale);
+  const currencyFormatter = new Intl.NumberFormat(locale, { currency: "CNY", style: "currency" });
+  const percentFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 1, minimumFractionDigits: 1, style: "percent" });
+  const headline = tx("统一管理企业 AI Token");
+  const featureCards = [
+    { title: tx("智能路由"), detail: tx("选对模型，效果更优"), className: "route", icon: <Route size={31} strokeWidth={2.25} /> },
+    { title: tx("权限管控"), detail: tx("精细分配，安全可控"), className: "shield", icon: <ShieldCheck size={32} strokeWidth={2.15} /> },
+    { title: tx("成本优化"), detail: tx("缓存加速，节省开支"), className: "cost", icon: <Database size={31} strokeWidth={2.2} /> },
+    { title: tx("对账透明"), detail: tx("账单核对，清晰准确"), className: "ledger", icon: <ReceiptText size={31} strokeWidth={2.2} /> },
+  ];
+  const metricCards = [
+    { label: tx("调用次数"), value: numberFormatter.format(23142), className: "blue" },
+    { label: tx("消耗 Token"), value: numberFormatter.format(12600000), className: "green" },
+    { label: tx("预计成本"), value: currencyFormatter.format(3245.3), className: "violet" },
+    { label: tx("节省金额"), value: currencyFormatter.format(1246.7), className: "orange" },
+  ];
+  const modelShareRows = [
+    ["GPT-4o", 0.342],
+    ["Claude-3.5", 0.281],
+    ["DeepSeek-V3", 0.203],
+    [tx("其他"), 0.174],
+  ] as const;
 
   return (
-    <main className="login-shell" data-theme={theme}>
+    <main className="login-shell login-home-shell" data-theme={theme}>
       <LoginUtilityActions
         language={language}
         theme={theme}
@@ -593,7 +616,7 @@ export function LoginView({
         onThemeToggle={onThemeToggle}
       />
       <section className="login-stage">
-        <aside className={`login-hero-panel${heroPaused ? " is-paused" : ""}`} aria-label="TokenHub">
+        <aside className="login-hero-panel" aria-label="TokenHub">
           <div className="login-brand-lockup">
             <span className="login-brand-mark" aria-hidden="true">
               <img src="/brand/tokenhub-logo.png" alt="" />
@@ -604,69 +627,108 @@ export function LoginView({
             </span>
           </div>
 
-          <div className="login-route-scene" aria-hidden="true">
-            <svg className="login-route-svg" viewBox="0 0 460 240">
-              <path className="login-route-line inbound" d="M 96 130 H 168" pathLength="1" />
-              <path className="login-route-line outbound top" d="M 296 130 H 334 V 72 H 372" pathLength="1" />
-              <path className="login-route-line outbound middle" d="M 296 130 H 372" pathLength="1" />
-              <path className="login-route-line outbound bottom" d="M 296 130 H 334 V 188 H 372" pathLength="1" />
-            </svg>
-
-            <div className="login-route-user">
-              <span className="login-route-icon"><UserRound size={19} strokeWidth={1.8} /></span>
-              <strong>{tx("用户")}</strong>
-              <small>{tx("发起 API 请求")}</small>
-            </div>
-
-            <span className="login-route-label request-label">{tx("携带 API Key")}</span>
-            <span className="login-route-packet inbound-packet"><KeyRound size={10} strokeWidth={2.5} /></span>
-
-            <div className="login-route-auth">
-              <span className="login-route-icon auth"><KeyRound size={21} strokeWidth={2} /></span>
-              <strong>API Key</strong>
-              <small>{tx("验证身份与权限")}</small>
-              <span className="login-route-auth-status"><Check size={12} strokeWidth={2.7} />{tx("鉴权通过")}</span>
-            </div>
-
-            <span className="login-route-label access-label">{tx("允许访问")}</span>
-            <span className="login-route-packet route-one" />
-            <span className="login-route-packet route-two" />
-            <span className="login-route-packet route-three" />
-
-            <div className="login-route-models">
-              {["A", "B", "C"].map((model, index) => (
-                <div className={`login-route-model model-${index + 1}`} key={model}>
-                  <span><Box size={15} strokeWidth={1.8} /></span>
-                  <strong>{tx(`模型 ${model}`)}</strong>
-                </div>
+          <div className="login-hero-copy">
+            <h1>
+              {headline.split("AI").map((part, index, parts) => (
+                <span className={index === parts.length - 1 ? undefined : "login-headline-part"} key={`${part}-${index}`}>
+                  {part}
+                  {index === parts.length - 1 ? null : <span className="login-headline-ai">AI</span>}
+                </span>
               ))}
-            </div>
+            </h1>
+            <p>
+              <strong>{tx("更可控")}</strong>
+              <span>·</span>
+              <strong>{tx("更节省")}</strong>
+              <span>·</span>
+              <strong>{tx("更透明")}</strong>
+            </p>
           </div>
 
-          <button
-            aria-label={tx(heroPaused ? "播放动画" : "暂停动画")}
-            aria-pressed={heroPaused}
-            className="login-motion-toggle"
-            onClick={() => setHeroPaused((current) => !current)}
-            title={tx(heroPaused ? "播放动画" : "暂停动画")}
-            type="button"
-          >
-            {heroPaused ? <Play size={14} /> : <Pause size={14} />}
-          </button>
+          <div className="login-feature-grid" aria-hidden="true">
+            {featureCards.map((card) => (
+              <div className="login-feature-card" key={card.title}>
+                <span className={`login-feature-icon ${card.className}`}>{card.icon}</span>
+                <strong>{card.title}</strong>
+                <small>{card.detail}</small>
+              </div>
+            ))}
+          </div>
+
+          <div className="login-dashboard-scene" aria-hidden="true">
+            <div className="login-dashboard-sidebar">
+              <img src="/brand/tokenhub-logo.png" alt="" />
+              <span className="active"><Home size={17} /></span>
+              <span><BarChart3 size={16} /></span>
+              <span><Users size={16} /></span>
+              <span><CreditCard size={16} /></span>
+              <span><Settings size={16} /></span>
+            </div>
+            <div className="login-dashboard-panel">
+              <div className="login-dashboard-head">
+                <strong>{tx("今日概览")}</strong>
+                <span>{tx("全部应用")}</span>
+              </div>
+              <div className="login-metric-grid">
+                {metricCards.map((card) => (
+                  <div className={`login-metric-card ${card.className}`} key={card.label}>
+                    <small>{card.label}</small>
+                    <strong>{card.value}</strong>
+                    <span className="login-sparkline" />
+                  </div>
+                ))}
+              </div>
+              <div className="login-dashboard-bottom">
+                <div className="login-donut-card">
+                  <strong>{tx("模型调用分布")}</strong>
+                  <span className="login-donut" />
+                  <div className="login-donut-legend">
+                    {modelShareRows.map(([label, share]) => (
+                      <span key={label}>
+                        {label} <b>{percentFormatter.format(share)}</b>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="login-trend-card">
+                  <div>
+                    <strong>{tx("成本趋势")}</strong>
+                    <span>{tx("近 7 天")}</span>
+                  </div>
+                  <span className="login-trend-line" />
+                </div>
+              </div>
+            </div>
+            <span className="login-floating-node small" />
+            <span className="login-floating-node large">
+              <img src="/brand/tokenhub-logo.png" alt="" />
+            </span>
+          </div>
         </aside>
 
         <form className="login-card" onSubmit={submit}>
           <div className="login-card-head">
-            <h1>{tx("登录控制台")}</h1>
+            <h1>{tx("欢迎回来")}</h1>
+            <p>{tx("登录 TokenHub 控制台")}</p>
           </div>
           <label className="field">
             <span>{tx("账号 / 邮箱")}</span>
-            <input value={identity} onChange={(event) => setIdentity(event.target.value)} required />
+            <span className="login-input-field">
+              <UserRound aria-hidden="true" size={18} />
+              <input
+                placeholder={tx("请输入账号或邮箱")}
+                value={identity}
+                onChange={(event) => setIdentity(event.target.value)}
+                required
+              />
+            </span>
           </label>
           <label className="field">
             <span>{tx("密码")}</span>
             <span className="password-field">
+              <LockKeyhole aria-hidden="true" className="password-leading-icon" size={18} />
               <input
+                placeholder={tx("请输入密码")}
                 value={password}
                 type={passwordVisible ? "text" : "password"}
                 onChange={(event) => setPassword(event.target.value)}
@@ -683,25 +745,29 @@ export function LoginView({
             </span>
           </label>
           <div className="login-helper-row">
-            <span>
-              <span className="login-checkmark">
+            <label className="login-keep-control">
+              <input
+                checked={keepSignedIn}
+                onChange={(event) => setKeepSignedIn(event.target.checked)}
+                type="checkbox"
+              />
+              <span className="login-checkmark" aria-hidden="true">
                 <Check size={13} />
               </span>
-              {tx("保持登录")}
-            </span>
+              {tx("保持登录状态")}
+            </label>
             <button type="button">{tx("忘记密码？")}</button>
           </div>
           {error || ssoError ? <div className="login-error">{error || ssoError}</div> : null}
           <button className="button login-submit" disabled={loading} type="submit">
             {loading ? tx("登录中") : tx("登录控制台")}
           </button>
+          <div className="login-divider" aria-hidden="true">
+            <span />
+            <small>{tx("或")}</small>
+            <span />
+          </div>
           {identityProviders.length > 0 ? (
-            <>
-              <div className="login-divider" aria-hidden="true">
-                <span />
-                <small>{tx("或")}</small>
-                <span />
-              </div>
               <div className={ssoListClassName}>
                 {identityProviders.map((provider) => {
                   const displayName = loginIdentityProviderDisplayName(provider);
@@ -733,14 +799,20 @@ export function LoginView({
                     >
                       <LoginIdentityProviderIcon provider={provider} />
                       <span className="login-sso-label">
-                        {identityProviders.length > 1 ? displayName : `${tx("使用")} ${displayName} ${tx("登录")}`}
+                        {identityProviders.length > 1 ? displayName : tx("SSO 企业单点登录")}
                       </span>
                     </a>
                   );
                 })}
               </div>
-            </>
-          ) : null}
+          ) : (
+            <button className="login-sso-button" disabled type="button">
+              <span className="login-sso-icon sso" aria-hidden="true">
+                <ShieldCheck size={15} />
+              </span>
+              <span className="login-sso-label">{tx("SSO 企业单点登录")}</span>
+            </button>
+          )}
         </form>
       </section>
     </main>
