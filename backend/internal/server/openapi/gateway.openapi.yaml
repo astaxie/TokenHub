@@ -382,13 +382,13 @@ paths:
         "401":
           $ref: "#/components/responses/AnthropicUnauthorized"
         "403":
-          $ref: "#/components/responses/ModelNotAllowed"
+          $ref: "#/components/responses/AnthropicModelNotAllowed"
         "429":
           $ref: "#/components/responses/AnthropicQuotaExceeded"
         "501":
-          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+          $ref: "#/components/responses/AnthropicProviderCapabilityNotSupported"
         "502":
-          $ref: "#/components/responses/ProviderError"
+          $ref: "#/components/responses/AnthropicProviderError"
   /v1/messages/count_tokens:
     post:
       operationId: countAnthropicMessageTokens
@@ -1160,6 +1160,42 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/AnthropicErrorResponse"
+    AnthropicProviderCapabilityNotSupported:
+      description: Anthropic-compatible provider capability error.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AnthropicErrorResponse"
+          examples:
+            unsupportedCapability:
+              value:
+                type: error
+                error:
+                  type: api_error
+                  message: No route supports this operation
+                  code: provider_capability_not_supported
+                request_id: req_example
+    AnthropicProviderError:
+      description: Anthropic-compatible upstream provider error.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AnthropicErrorResponse"
+          examples:
+            upstreamError:
+              value:
+                type: error
+                error:
+                  type: api_error
+                  message: Upstream provider error
+                  code: provider_error
+                request_id: req_example
   schemas:
     ErrorResponse:
       type: object
