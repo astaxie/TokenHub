@@ -215,7 +215,7 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
                     setQuery(event.target.value);
                     setRequestPage(1);
                   }}
-                  placeholder={tx("搜索请求 ID、模型、Provider、状态码")}
+                  placeholder={tx("搜索请求 ID、API Key、模型、Provider、状态码")}
                 />
               </label>
               <div className="request-filter-tabs" role="tablist" aria-label={tx("请求状态筛选")}>

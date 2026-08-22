@@ -129,8 +129,8 @@ func applyRequestLogKeyword(db *gorm.DB, keyword string) *gorm.DB {
 		"provider_model",
 		"error_code",
 	}
-	conditions := make([]string, 0, len(columns)+3)
-	args := make([]any, 0, len(columns)+3)
+	conditions := make([]string, 0, len(columns)+4)
+	args := make([]any, 0, len(columns)+4)
 	for _, column := range columns {
 		conditions = append(conditions, "LOWER(COALESCE("+column+", '')) LIKE ? ESCAPE '!'")
 		args = append(args, pattern)
@@ -138,9 +138,10 @@ func applyRequestLogKeyword(db *gorm.DB, keyword string) *gorm.DB {
 	conditions = append(conditions,
 		"LOWER(CAST(status_code AS TEXT)) LIKE ? ESCAPE '!'",
 		"EXISTS (SELECT 1 FROM projects WHERE projects.id = request_logs.project_id AND LOWER(COALESCE(projects.name, '')) LIKE ? ESCAPE '!')",
+		"EXISTS (SELECT 1 FROM api_keys WHERE api_keys.id = request_logs.api_key_id AND LOWER(COALESCE(api_keys.name, '')) LIKE ? ESCAPE '!')",
 		"EXISTS (SELECT 1 FROM providers WHERE providers.id = request_logs.provider_id AND LOWER(COALESCE(providers.name, '')) LIKE ? ESCAPE '!')",
 	)
-	args = append(args, pattern, pattern, pattern)
+	args = append(args, pattern, pattern, pattern, pattern)
 	return db.Where("("+strings.Join(conditions, " OR ")+")", args...)
 }
 

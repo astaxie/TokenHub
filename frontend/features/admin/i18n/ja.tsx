@@ -538,7 +538,7 @@ export const jaTranslations: Record<string, string> = {
     "日志类型": "ログ種別",
     "请求状态筛选": "リクエスト状態フィルタ",
     "搜索请求历史": "リクエスト履歴を検索",
-    "搜索请求 ID、模型、Provider、状态码": "リクエスト ID、モデル、Provider、状態コードを検索",
+    "搜索请求 ID、API Key、模型、Provider、状态码": "リクエスト ID、API Key、モデル、Provider、状態コードを検索",
     "全部": "すべて",
     "图像": "画像",
     "视频": "動画",
