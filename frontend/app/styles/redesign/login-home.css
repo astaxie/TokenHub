@@ -223,384 +223,16 @@
   box-shadow: 0 28px 58px rgba(56, 103, 202, 0.14);
 }
 
-.login-home-shell .login-dashboard-sidebar {
+.login-home-shell .login-dashboard-image {
   position: absolute;
-  left: 14px;
-  bottom: 52px;
-  z-index: 3;
-  width: 74px;
-  height: 408px;
-  border-radius: 24px 0 0 0;
-  display: grid;
-  grid-template-rows: repeat(5, 38px) 1fr;
-  justify-items: center;
-  gap: 8px;
-  padding: 72px 0 20px;
-  background: linear-gradient(180deg, #1f3974, #172b60);
-  box-shadow: 0 24px 44px rgba(28, 55, 118, 0.24);
-}
-
-.login-home-shell .login-dashboard-sidebar span {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  color: rgba(210, 224, 255, 0.76);
-}
-
-.login-home-shell .login-dashboard-sidebar span.active {
-  color: #ffffff;
-  background: #3478f6;
-  box-shadow: 0 12px 24px rgba(52, 120, 246, 0.36);
-}
-
-.login-home-shell .login-dashboard-sidebar span::before,
-.login-home-shell .login-dashboard-sidebar span::after {
-  content: "";
-  position: absolute;
-  display: block;
-  border-radius: 999px;
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-home::before {
-  width: 15px;
-  height: 12px;
-  border: 2px solid currentColor;
-  border-top: 0;
-  border-radius: 3px;
-  transform: translateY(2px);
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-home::after {
-  width: 13px;
-  height: 13px;
-  border-top: 2px solid currentColor;
-  border-left: 2px solid currentColor;
-  border-radius: 2px 0 0 0;
-  transform: translateY(-3px) rotate(45deg);
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-chart::before {
-  width: 3px;
-  height: 15px;
-  background: currentColor;
-  box-shadow: -7px 5px 0 currentColor, 7px -3px 0 currentColor;
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-team::before {
-  width: 6px;
-  height: 6px;
-  background: currentColor;
-  box-shadow: -7px 1px 0 currentColor, 7px 1px 0 currentColor;
-  transform: translateY(-5px);
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-team::after {
-  width: 22px;
-  height: 9px;
-  border: 2px solid currentColor;
-  border-top: 0;
-  border-radius: 0 0 10px 10px;
-  transform: translateY(7px);
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-card::before {
-  width: 18px;
-  height: 13px;
-  border: 2px solid currentColor;
-  border-radius: 3px;
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-card::after {
-  width: 14px;
-  height: 2px;
-  background: currentColor;
-  transform: translateY(-3px);
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-gear::before {
-  width: 16px;
-  height: 16px;
-  border: 3px dotted currentColor;
-  border-radius: 50%;
-}
-
-.login-home-shell .login-dashboard-sidebar .nav-gear::after {
-  width: 5px;
-  height: 5px;
-  background: currentColor;
-}
-
-.login-home-shell .login-dashboard-panel {
-  position: absolute;
-  left: 88px;
-  right: 78px;
-  bottom: 44px;
+  left: 0;
+  bottom: 0;
   z-index: 4;
-  min-height: 386px;
-  border: 1px solid rgba(214, 225, 246, 0.86);
-  border-radius: 22px;
-  padding: 22px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(244, 248, 255, 0.7)),
-    rgba(255, 255, 255, 0.64);
-  box-shadow: 0 28px 54px rgba(48, 87, 158, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(20px);
-}
-
-.login-home-shell .login-dashboard-logo {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(202, 216, 244, 0.84);
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 12px 24px rgba(58, 99, 190, 0.1);
-}
-
-.login-home-shell .login-dashboard-logo img {
-  width: 28px;
-  height: 28px;
-}
-
-.login-home-shell .login-dashboard-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-right: 54px;
-  margin-bottom: 16px;
-}
-
-.login-home-shell .login-dashboard-head strong,
-.login-home-shell .login-donut-card strong,
-.login-home-shell .login-trend-card strong {
-  color: #17294f;
-  font-size: 13px;
-  font-weight: 820;
-}
-
-.login-home-shell .login-dashboard-filter,
-.login-home-shell .login-trend-card span {
-  border: 1px solid rgba(211, 222, 242, 0.86);
-  border-radius: 10px;
-  padding: 7px 12px;
-  color: #52627e;
-  background: rgba(255, 255, 255, 0.7);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.login-home-shell .login-metric-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.login-home-shell .login-metric-card {
-  min-height: 128px;
-  border: 1px solid rgba(229, 235, 248, 0.82);
-  border-radius: 12px;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  padding: 18px 14px 12px;
-  background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 14px 28px rgba(44, 70, 118, 0.07);
-}
-
-.login-home-shell .login-metric-card small {
-  color: #748199;
-  font-size: 10.5px;
-  font-weight: 680;
-}
-
-.login-home-shell .login-metric-card strong {
-  color: #122042;
-  font-size: clamp(16px, 1.5vw, 20px);
-  font-weight: 820;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.login-home-shell .login-sparkline,
-.login-home-shell .login-trend-line {
-  position: relative;
-  display: block;
-  overflow: hidden;
-}
-
-.login-home-shell .login-sparkline {
-  height: 42px;
-  margin-top: 4px;
-  background:
-    linear-gradient(var(--spark-color), var(--spark-color)) 12% 68% / 22% 4px no-repeat,
-    linear-gradient(var(--spark-color), var(--spark-color)) 38% 45% / 24% 4px no-repeat,
-    linear-gradient(var(--spark-color), var(--spark-color)) 65% 58% / 27% 4px no-repeat,
-    linear-gradient(var(--spark-color), var(--spark-color)) 93% 32% / 24% 4px no-repeat,
-    linear-gradient(180deg, color-mix(in srgb, var(--spark-color) 18%, transparent), transparent 78%);
-  clip-path: polygon(0 76%, 14% 70%, 26% 49%, 40% 58%, 52% 42%, 66% 55%, 79% 29%, 100% 20%, 100% 100%, 0 100%);
-}
-
-.login-home-shell .login-metric-card.blue {
-  --spark-color: #3478f6;
-}
-
-.login-home-shell .login-metric-card.green {
-  --spark-color: #36c6a4;
-}
-
-.login-home-shell .login-metric-card.violet {
-  --spark-color: #7d61f2;
-}
-
-.login-home-shell .login-metric-card.orange {
-  --spark-color: #ff7d46;
-}
-
-.login-home-shell .login-dashboard-bottom {
-  display: grid;
-  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1fr);
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.login-home-shell .login-donut-card,
-.login-home-shell .login-trend-card {
-  min-height: 156px;
-  border: 1px solid rgba(229, 235, 248, 0.82);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 14px 28px rgba(44, 70, 118, 0.07);
-}
-
-.login-home-shell .login-donut-card {
-  display: grid;
-  grid-template-columns: 116px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-}
-
-.login-home-shell .login-donut-card strong {
-  grid-column: 1 / -1;
-}
-
-.login-home-shell .login-donut {
-  width: 106px;
-  height: 106px;
-  border-radius: 50%;
-  background: conic-gradient(#446df5 0 34%, #6f83ff 34% 62%, #42c6a8 62% 83%, #80d6df 83% 100%);
-  box-shadow: inset 0 0 0 28px rgba(255, 255, 255, 0.96), 0 14px 24px rgba(55, 101, 210, 0.14);
-}
-
-.login-home-shell .login-donut-legend {
-  display: grid;
-  gap: 9px;
-  color: #5d6b84;
-  font-size: 10px;
-  font-weight: 680;
-}
-
-.login-home-shell .login-donut-legend span {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.login-home-shell .login-donut-legend span::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-top: 3px;
-  background: #446df5;
-}
-
-.login-home-shell .login-donut-legend span:nth-child(2)::before {
-  background: #6f83ff;
-}
-
-.login-home-shell .login-donut-legend span:nth-child(3)::before {
-  background: #42c6a8;
-}
-
-.login-home-shell .login-donut-legend span:nth-child(4)::before {
-  background: #80d6df;
-}
-
-.login-home-shell .login-donut-legend b {
-  color: #4f5d76;
-  font-weight: 760;
-}
-
-.login-home-shell .login-trend-card {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-}
-
-.login-home-shell .login-trend-card > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.login-home-shell .login-trend-line {
-  min-height: 100px;
-  background:
-    linear-gradient(rgba(71, 108, 185, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(71, 108, 185, 0.05) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(52, 120, 246, 0.16), rgba(52, 120, 246, 0.02));
-  background-size: 32px 24px, 32px 24px, 100% 100%;
-  clip-path: polygon(0 74%, 11% 56%, 21% 62%, 32% 42%, 44% 56%, 54% 47%, 64% 21%, 75% 24%, 83% 49%, 100% 34%, 100% 100%, 0 100%);
-}
-
-.login-home-shell .login-trend-line::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-bottom: 4px solid #3478f6;
-  border-radius: 0 0 18px 18px;
-  clip-path: polygon(0 74%, 11% 56%, 21% 62%, 32% 42%, 44% 56%, 54% 47%, 64% 21%, 75% 24%, 83% 49%, 100% 34%, 100% 42%, 83% 57%, 75% 32%, 64% 29%, 54% 55%, 44% 64%, 32% 50%, 21% 70%, 11% 64%, 0 82%);
-}
-
-.login-home-shell .login-floating-node {
-  position: absolute;
-  z-index: 5;
-  border: 1px solid rgba(174, 199, 255, 0.48);
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, rgba(170, 199, 255, 0.74), rgba(89, 133, 242, 0.72));
-  box-shadow: 0 24px 46px rgba(63, 107, 211, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.58);
-  backdrop-filter: blur(16px);
-}
-
-.login-home-shell .login-floating-node.small {
-  left: -18px;
-  bottom: 38px;
-  width: 92px;
-  height: 92px;
-  border-radius: 20px;
-}
-
-.login-home-shell .login-floating-node.small::before {
-  content: "";
-  width: 48px;
-  height: 48px;
-  background:
-    radial-gradient(circle at 50% 16%, #ffffff 0 5px, transparent 6px),
-    radial-gradient(circle at 16% 82%, #ffffff 0 5px, transparent 6px),
-    radial-gradient(circle at 84% 82%, #ffffff 0 5px, transparent 6px),
-    linear-gradient(#ffffff, #ffffff) 50% 22% / 4px 30px no-repeat,
-    linear-gradient(55deg, transparent 44%, #ffffff 45% 55%, transparent 56%),
-    linear-gradient(-55deg, transparent 44%, #ffffff 45% 55%, transparent 56%);
-  opacity: 0.56;
+  width: min(760px, 100%);
+  aspect-ratio: 760 / 460;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 24px 44px rgba(44, 80, 150, 0.12));
 }
 
 .login-home-shell .login-card {
@@ -851,29 +483,17 @@
     margin-top: 28px;
   }
 
-  .login-home-shell .login-dashboard-sidebar,
-  .login-home-shell .login-floating-node,
   .login-home-shell .login-dashboard-scene::before,
   .login-home-shell .login-dashboard-scene::after {
     display: none;
   }
 
-  .login-home-shell .login-dashboard-panel {
+  .login-home-shell .login-dashboard-image {
     position: relative;
     left: auto;
-    right: auto;
     bottom: auto;
-    min-height: auto;
-  }
-
-  .login-home-shell .login-metric-grid,
-  .login-home-shell .login-dashboard-bottom {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .login-home-shell .login-donut-card,
-  .login-home-shell .login-trend-card {
-    grid-column: 1 / -1;
+    display: block;
+    width: 100%;
   }
 
   .login-home-shell .login-card {
@@ -887,18 +507,8 @@
     padding: 16px;
   }
 
-  .login-home-shell .login-feature-grid,
-  .login-home-shell .login-metric-grid {
+  .login-home-shell .login-feature-grid {
     grid-template-columns: 1fr;
-  }
-
-  .login-home-shell .login-donut-card {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-
-  .login-home-shell .login-donut-card strong {
-    justify-self: start;
   }
 
   .login-home-shell .login-card .login-input-field input,
@@ -922,9 +532,6 @@
 .login-home-shell[data-theme="dark"] .login-brand-copy strong,
 .login-home-shell[data-theme="dark"] .login-hero-copy h1,
 .login-home-shell[data-theme="dark"] .login-feature-card strong,
-.login-home-shell[data-theme="dark"] .login-dashboard-head strong,
-.login-home-shell[data-theme="dark"] .login-donut-card strong,
-.login-home-shell[data-theme="dark"] .login-trend-card strong,
 .login-home-shell[data-theme="dark"] .login-card-head h1 {
   color: #f3f7ff;
 }
@@ -938,18 +545,12 @@
 }
 
 .login-home-shell[data-theme="dark"] .login-feature-card,
-.login-home-shell[data-theme="dark"] .login-dashboard-panel,
-.login-home-shell[data-theme="dark"] .login-metric-card,
-.login-home-shell[data-theme="dark"] .login-donut-card,
-.login-home-shell[data-theme="dark"] .login-trend-card,
 .login-home-shell[data-theme="dark"] .login-card {
   border-color: rgba(96, 112, 142, 0.48);
   background: rgba(17, 27, 43, 0.78);
   box-shadow: 0 28px 64px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.login-home-shell[data-theme="dark"] .login-metric-card strong,
-.login-home-shell[data-theme="dark"] .login-donut-legend b,
 .login-home-shell[data-theme="dark"] .login-sso-button {
   color: #edf4ff;
 }

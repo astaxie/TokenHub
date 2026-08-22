@@ -6,7 +6,7 @@ import { stringifyValue } from "../domain/entities";
 import { identityProviderIconLabel } from "../domain/labels";
 import { buildOAuthLoginStartURL, createOAuthLoginPKCE } from "../domain/oauth-login";
 import { LanguageSelect } from "../i18n/language-switcher";
-import { activeLanguage, type AppLanguage, languageLocale, tx } from "../i18n/runtime";
+import { activeLanguage, type AppLanguage, tx } from "../i18n/runtime";
 
 export const identityProviderIconOptions = [
   "auto",
@@ -583,29 +583,14 @@ export function LoginView({
     identityProviders.length > 1 ? "multi" : "",
     identityProviders.length > 1 ? `count-${Math.min(identityProviders.length, 3)}` : "",
   ].filter(Boolean).join(" ");
-  const locale = languageLocale();
-  const numberFormatter = new Intl.NumberFormat(locale);
-  const currencyFormatter = new Intl.NumberFormat(locale, { currency: "CNY", style: "currency" });
-  const percentFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 1, minimumFractionDigits: 1, style: "percent" });
   const headline = tx("统一管理企业 AI Token");
+  const dashboardPreviewSrc = language === "zh-CN" ? "/brand/login-dashboard-zh.png" : "/brand/login-dashboard-en.png";
   const featureCards = [
     { title: tx("智能路由"), detail: tx("选对模型，效果更优"), className: "route", icon: <Route size={31} strokeWidth={2.25} /> },
     { title: tx("权限管控"), detail: tx("精细分配，安全可控"), className: "shield", icon: <ShieldCheck size={32} strokeWidth={2.15} /> },
     { title: tx("成本优化"), detail: tx("缓存加速，节省开支"), className: "cost", icon: <Database size={31} strokeWidth={2.2} /> },
     { title: tx("对账透明"), detail: tx("账单核对，清晰准确"), className: "ledger", icon: <ReceiptText size={31} strokeWidth={2.2} /> },
   ];
-  const metricCards = [
-    { label: tx("调用次数"), value: numberFormatter.format(23142), className: "blue" },
-    { label: tx("消耗 Token"), value: numberFormatter.format(12600000), className: "green" },
-    { label: tx("预计成本"), value: currencyFormatter.format(3245.3), className: "violet" },
-    { label: tx("节省金额"), value: currencyFormatter.format(1246.7), className: "orange" },
-  ];
-  const modelShareRows = [
-    ["GPT-4o", 0.342],
-    ["Claude-3.5", 0.281],
-    ["DeepSeek-V3", 0.203],
-    [tx("其他"), 0.174],
-  ] as const;
 
   return (
     <main className="login-shell login-home-shell" data-theme={theme}>
@@ -656,52 +641,7 @@ export function LoginView({
           </div>
 
           <div className="login-dashboard-scene" aria-hidden="true">
-            <div className="login-dashboard-sidebar">
-              <span className="active nav-home" />
-              <span className="nav-chart" />
-              <span className="nav-team" />
-              <span className="nav-card" />
-              <span className="nav-gear" />
-            </div>
-            <div className="login-dashboard-panel">
-              <span className="login-dashboard-logo">
-                <img src="/brand/tokenhub-logo.png" alt="" />
-              </span>
-              <div className="login-dashboard-head">
-                <strong>{tx("今日概览")}</strong>
-                <span className="login-dashboard-filter">{tx("全部应用")}</span>
-              </div>
-              <div className="login-metric-grid">
-                {metricCards.map((card) => (
-                  <div className={`login-metric-card ${card.className}`} key={card.label}>
-                    <small>{card.label}</small>
-                    <strong>{card.value}</strong>
-                    <span className="login-sparkline" />
-                  </div>
-                ))}
-              </div>
-              <div className="login-dashboard-bottom">
-                <div className="login-donut-card">
-                  <strong>{tx("模型调用分布")}</strong>
-                  <span className="login-donut" />
-                  <div className="login-donut-legend">
-                    {modelShareRows.map(([label, share]) => (
-                      <span key={label}>
-                        {label} <b>{percentFormatter.format(share)}</b>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="login-trend-card">
-                  <div>
-                    <strong>{tx("成本趋势")}</strong>
-                    <span>{tx("近 7 天")}</span>
-                  </div>
-                  <span className="login-trend-line" />
-                </div>
-              </div>
-            </div>
-            <span className="login-floating-node small" />
+            <img className="login-dashboard-image" src={dashboardPreviewSrc} alt="" />
           </div>
         </aside>
 
