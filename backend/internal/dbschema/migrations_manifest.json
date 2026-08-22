@@ -1,8 +1,27 @@
 {
   "schema_version": 1,
   "baselines": {
-    "postgres": "5c45c167f5e1da10111d4723983fc22b592905ce06a153d8b784601c67fa4630",
-    "sqlite": "27c05e35075a61ba38f6b69dd73584c994dcf84f791566ed990952af82e58917"
+    "postgres": "a939977b7ce3068dc6fd5ed6b30eb8c492a51f28250238a425191265173c5935",
+    "sqlite": "cc7c37894c1dc937ac258155b0bd32dd1b08ce87cc743093e8f7bde53c54f2fe"
   },
-  "migrations": []
+  "migrations": [
+    {
+      "version": 2,
+      "name": "add-granular-billing-columns-sqlite",
+      "phase": "expand",
+      "dialect": "sqlite",
+      "checksum": "tokenhub-schema-granular-billing-sqlite-v1",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 50
+    },
+    {
+      "version": 3,
+      "name": "add-granular-billing-columns-postgres",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "5f48b7b59084c2a12f8f743d06c52cc9f14299679f07fb7ac09820ca694c937c",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 50
+    }
+  ]
 }

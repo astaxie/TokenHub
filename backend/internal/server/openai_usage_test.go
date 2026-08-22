@@ -17,6 +17,7 @@ func TestOpenAIChatUsageObjectIncludesStandardDetailsAndLegacyAliases(t *testing
 		input["audio_tokens"] != usage.InputAudioTokens {
 		t.Fatalf("Chat input details = %#v", input)
 	}
+	assertNoOpenAIDurationCacheWriteDetails(t, input)
 	assertOpenAIOutputDetails(t, usageMapField(t, result, "completion_tokens_details"), usage)
 	assertLegacyUsageAliases(t, result, usage)
 }
@@ -38,6 +39,7 @@ func TestOpenAIResponsesUsageObjectIncludesStandardDetailsAndLegacyAliases(t *te
 		input["audio_tokens"] != usage.InputAudioTokens {
 		t.Fatalf("Responses input details = %#v", input)
 	}
+	assertNoOpenAIDurationCacheWriteDetails(t, input)
 	assertOpenAIOutputDetails(t, usageMapField(t, result, "output_tokens_details"), usage)
 	assertLegacyUsageAliases(t, result, usage)
 }
@@ -65,6 +67,8 @@ func completeOpenAIUsageFixture() Usage {
 		PromptTokens:             100,
 		CachedInputTokens:        60,
 		CacheWriteInputTokens:    10,
+		CacheWrite5mInputTokens:  4,
+		CacheWrite1hInputTokens:  6,
 		InputAudioTokens:         5,
 		CompletionTokens:         40,
 		ReasoningOutputTokens:    20,
@@ -99,6 +103,16 @@ func assertOpenAIOutputDetails(t *testing.T, details map[string]any, usage Usage
 	}
 }
 
+func assertNoOpenAIDurationCacheWriteDetails(t *testing.T, details map[string]any) {
+	t.Helper()
+	if _, exists := details["cache_write_5m_tokens"]; exists {
+		t.Fatalf("OpenAI-compatible details exposed TokenHub cache-write duration field: %#v", details)
+	}
+	if _, exists := details["cache_write_1h_tokens"]; exists {
+		t.Fatalf("OpenAI-compatible details exposed TokenHub cache-write duration field: %#v", details)
+	}
+}
+
 func assertLegacyUsageAliases(t *testing.T, result map[string]any, usage Usage) {
 	t.Helper()
 	if result["cached_input_tokens"] != usage.CachedInputTokens ||
@@ -110,5 +124,11 @@ func assertLegacyUsageAliases(t *testing.T, result map[string]any, usage Usage) 
 		result["model_etag"] != usage.ModelETag ||
 		result["transport"] != usage.Transport {
 		t.Fatalf("legacy aliases = %#v", result)
+	}
+	if _, exists := result["cache_write_5m_input_tokens"]; exists {
+		t.Fatalf("legacy aliases exposed duration cache-write field: %#v", result)
+	}
+	if _, exists := result["cache_write_1h_input_tokens"]; exists {
+		t.Fatalf("legacy aliases exposed duration cache-write field: %#v", result)
 	}
 }

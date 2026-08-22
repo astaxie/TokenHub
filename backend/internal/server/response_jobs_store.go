@@ -378,14 +378,19 @@ func (s *GormStore) AdmitResponseJob(ctx context.Context, id string, owner strin
 				"admitted_at":              admission.call.StartedAt,
 				"user_quota_enabled":       admission.call.UserQuotaEnabled,
 				"user_minute_request_held": admission.call.UserMinuteRequestHeld,
+				"redis_billing_admitted":   admission.call.RedisBillingAdmitted,
+				"redis_key_lease_held":     admission.call.RedisKeyLeaseHeld,
+				"redis_user_lease_held":    admission.call.RedisUserLeaseHeld,
 				"attributed_user_id":       admission.call.AttributedUserID,
 			}).Error
 	})
 	s.mu.Unlock()
 	if err == gorm.ErrRecordNotFound {
+		s.rollbackRedisBilling("response job admission", admission.call)
 		return CallContext{}, false, nil
 	}
 	if err != nil {
+		s.rollbackRedisBilling("response job admission", admission.call)
 		return CallContext{}, retained, err
 	}
 	return s.startAdmittedCallHeartbeat(ctx, admission), true, nil
@@ -441,6 +446,9 @@ func (s *GormStore) ShutdownResponseJob(id string, owner string, epoch int64, re
 					"user_quota_enabled":       false,
 					"user_minute_request_held": false,
 					"user_token_limit_bucket":  "",
+					"redis_billing_admitted":   false,
+					"redis_key_lease_held":     false,
+					"redis_user_lease_held":    false,
 					"reserved_tokens":          0,
 					"admitted_at":              nil,
 					"lease_owner":              "",
@@ -528,6 +536,9 @@ func (s *GormStore) ShutdownResponseJob(id string, owner string, epoch int64, re
 				"user_quota_enabled":       false,
 				"user_minute_request_held": false,
 				"user_token_limit_bucket":  "",
+				"redis_billing_admitted":   false,
+				"redis_key_lease_held":     false,
+				"redis_user_lease_held":    false,
 				"reserved_tokens":          0,
 				"admitted_at":              nil,
 				"lease_owner":              "",
@@ -560,7 +571,9 @@ func (s *GormStore) rollbackResponseJobAdmission(tx *gorm.DB, job ResponseJob) e
 	if err := s.lockScopeForUpdate(tx, "api_key", job.APIKeyID); err != nil {
 		return err
 	}
-	if job.MinuteRequestHeld {
+	if job.RedisBillingAdmitted {
+		s.rollbackRedisBilling("response job", responseJobAdmissionCall(job))
+	} else if job.MinuteRequestHeld {
 		bucket, err := s.quotaBucketForUpdate(tx, job.APIKeyID, "minute", minuteBucket(*job.AdmittedAt))
 		if err != nil {
 			return err
@@ -572,19 +585,21 @@ func (s *GormStore) rollbackResponseJobAdmission(tx *gorm.DB, job ResponseJob) e
 			return err
 		}
 	}
-	if err := s.reconcileAPIKeyMinuteTokens(tx, CallContext{
-		Key:              APIKey{ID: job.APIKeyID},
-		TokenLimitBucket: job.TokenLimitBucket,
-		ReservedTokens:   job.ReservedTokens,
-	}, 0, job.AttributedUserID); err != nil {
-		return err
+	if !job.RedisBillingAdmitted {
+		if err := s.reconcileAPIKeyMinuteTokens(tx, CallContext{
+			Key:              APIKey{ID: job.APIKeyID},
+			TokenLimitBucket: job.TokenLimitBucket,
+			ReservedTokens:   job.ReservedTokens,
+		}, 0, job.AttributedUserID); err != nil {
+			return err
+		}
 	}
 	userQuotaID := userQuotaBucketKey(job.AttributedUserID)
 	if job.UserQuotaEnabled {
 		if err := s.lockScopeForUpdate(tx, "user_quota", userQuotaID); err != nil {
 			return err
 		}
-		if job.UserMinuteRequestHeld {
+		if !job.RedisBillingAdmitted && job.UserMinuteRequestHeld {
 			userMinuteBucket, err := s.quotaBucketForUpdate(tx, userQuotaID, "minute", minuteBucket(*job.AdmittedAt), job.AttributedUserID)
 			if err != nil {
 				return err
@@ -596,8 +611,10 @@ func (s *GormStore) rollbackResponseJobAdmission(tx *gorm.DB, job ResponseJob) e
 				return err
 			}
 		}
-		if err := s.reconcileQuotaMinuteTokens(tx, userQuotaID, job.UserTokenLimitBucket, job.ReservedTokens, 0, job.AttributedUserID); err != nil {
-			return err
+		if !job.RedisBillingAdmitted {
+			if err := s.reconcileQuotaMinuteTokens(tx, userQuotaID, job.UserTokenLimitBucket, job.ReservedTokens, 0, job.AttributedUserID); err != nil {
+				return err
+			}
 		}
 	}
 	for _, period := range []struct {
@@ -743,8 +760,8 @@ func (s *GormStore) FinalizeResponseJob(call CallContext, id string, owner strin
 	}
 	elapsed := call.elapsed()
 	_ = s.stopRequestConcurrencyHeartbeats(call.RequestID)
-	usage = priceUsage(call.Model, usage)
-	usage.ProviderCostUSD = s.providerCostUSD(route, usage)
+	usage = priceUsageAt(call.Model, usage, call.StartedAt)
+	usage.ProviderCostUSD = s.providerCostUSDAt(route, usage, call.StartedAt)
 
 	var job ResponseJob
 	var settled bool
@@ -852,11 +869,14 @@ func (s *GormStore) FinalizeResponseJob(call CallContext, id string, owner strin
 	})
 	s.mu.Unlock()
 	if err == gorm.ErrRecordNotFound {
+		s.rollbackRedisBilling("response job", call)
 		return job, false, nil
 	}
 	if err != nil {
+		s.rollbackRedisBilling("response job", call)
 		return ResponseJob{}, false, err
 	}
+	s.settleRedisBilling("response job", call, quotaActualTokens(call, usage))
 	if settled && call.RequestID != "" && observedCompletion {
 		s.observeGatewayCall(call, route, usage, statusCode, errorCode, elapsed)
 	}
@@ -902,20 +922,26 @@ func (s *GormStore) refundUndispatchedResponseJobReservation(tx *gorm.DB, job Re
 	if job.Phase != responseJobPhaseAdmitted || job.ReservedTokens <= 0 {
 		return nil
 	}
-	if err := s.reconcileAPIKeyMinuteTokens(tx, CallContext{
-		Key:              APIKey{ID: job.APIKeyID},
-		TokenLimitBucket: job.TokenLimitBucket,
-		ReservedTokens:   job.ReservedTokens,
-	}, 0, job.AttributedUserID); err != nil {
-		return err
+	if job.RedisBillingAdmitted {
+		s.settleRedisBilling("undispatched response job", responseJobAdmissionCall(job), 0)
+	} else {
+		if err := s.reconcileAPIKeyMinuteTokens(tx, CallContext{
+			Key:              APIKey{ID: job.APIKeyID},
+			TokenLimitBucket: job.TokenLimitBucket,
+			ReservedTokens:   job.ReservedTokens,
+		}, 0, job.AttributedUserID); err != nil {
+			return err
+		}
 	}
 	if job.UserQuotaEnabled {
 		userQuotaID := userQuotaBucketKey(job.AttributedUserID)
 		if err := s.lockScopeForUpdate(tx, "user_quota", userQuotaID); err != nil {
 			return err
 		}
-		if err := s.reconcileQuotaMinuteTokens(tx, userQuotaID, job.UserTokenLimitBucket, job.ReservedTokens, 0, job.AttributedUserID); err != nil {
-			return err
+		if !job.RedisBillingAdmitted {
+			if err := s.reconcileQuotaMinuteTokens(tx, userQuotaID, job.UserTokenLimitBucket, job.ReservedTokens, 0, job.AttributedUserID); err != nil {
+				return err
+			}
 		}
 		if job.AdmittedAt != nil {
 			for _, period := range []struct {
@@ -937,6 +963,29 @@ func (s *GormStore) refundUndispatchedResponseJobReservation(tx *gorm.DB, job Re
 		}
 	}
 	return nil
+}
+
+func responseJobAdmissionCall(job ResponseJob) CallContext {
+	startedAt := time.Time{}
+	if job.AdmittedAt != nil {
+		startedAt = *job.AdmittedAt
+	}
+	return CallContext{
+		RequestID:             job.RequestID,
+		Key:                   APIKey{ID: job.APIKeyID},
+		StartedAt:             startedAt,
+		TokenLimitBucket:      job.TokenLimitBucket,
+		MinuteRequestHeld:     job.MinuteRequestHeld,
+		ReservedTokens:        job.ReservedTokens,
+		UserQuotaID:           userQuotaBucketKey(job.AttributedUserID),
+		UserQuotaEnabled:      job.UserQuotaEnabled,
+		UserMinuteRequestHeld: job.UserMinuteRequestHeld,
+		UserTokenLimitBucket:  job.UserTokenLimitBucket,
+		AttributedUserID:      job.AttributedUserID,
+		RedisBillingAdmitted:  job.RedisBillingAdmitted,
+		RedisKeyLeaseHeld:     job.RedisKeyLeaseHeld,
+		RedisUserLeaseHeld:    job.RedisUserLeaseHeld,
+	}
 }
 
 func (s *GormStore) RecoverResponseJobs(resultTTL time.Duration) (int64, int64, int64, error) {
@@ -972,6 +1021,9 @@ func (s *GormStore) RecoverResponseJobs(resultTTL time.Duration) (int64, int64, 
 						"user_quota_enabled":       false,
 						"user_minute_request_held": false,
 						"user_token_limit_bucket":  "",
+						"redis_billing_admitted":   false,
+						"redis_key_lease_held":     false,
+						"redis_user_lease_held":    false,
 						"reserved_tokens":          0,
 						"admitted_at":              nil,
 						"lease_owner":              "",
@@ -1016,6 +1068,9 @@ func (s *GormStore) RecoverResponseJobs(resultTTL time.Duration) (int64, int64, 
 						"user_quota_enabled":       false,
 						"user_minute_request_held": false,
 						"user_token_limit_bucket":  "",
+						"redis_billing_admitted":   false,
+						"redis_key_lease_held":     false,
+						"redis_user_lease_held":    false,
 						"reserved_tokens":          0,
 						"admitted_at":              nil,
 						"lease_owner":              "",
@@ -1051,6 +1106,9 @@ func (s *GormStore) RecoverResponseJobs(resultTTL time.Duration) (int64, int64, 
 					"user_quota_enabled":       false,
 					"user_minute_request_held": false,
 					"user_token_limit_bucket":  "",
+					"redis_billing_admitted":   false,
+					"redis_key_lease_held":     false,
+					"redis_user_lease_held":    false,
 					"reserved_tokens":          0,
 					"admitted_at":              nil,
 					"lease_owner":              "",

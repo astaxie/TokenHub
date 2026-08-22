@@ -628,6 +628,9 @@ func openAIAccountQuotaResetDo(client *http.Client, req *http.Request) (*http.Re
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return nil, egressErr
+		}
 		if req.Method == http.MethodPost {
 			status := http.StatusBadGateway
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(req.Context().Err(), context.DeadlineExceeded) {

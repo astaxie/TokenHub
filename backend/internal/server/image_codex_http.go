@@ -225,6 +225,9 @@ func (a CodexSubscriptionAdapter) imageWithCredentials(
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return codexSubscriptionImageResponse{}, nil, egressErr
+		}
 		return codexSubscriptionImageResponse{}, nil, &ProviderInvocationError{
 			Err:         NewHTTPError(http.StatusBadGateway, "codex_image_request_failed", fmt.Sprintf("Codex image request failed: %v", err)),
 			Disposition: ProviderErrorTransientSame,

@@ -29,16 +29,20 @@ type providerCatalogService struct {
 	upstreamClient providerCatalogHTTPClient
 }
 
-func newProviderCatalogService(store Store, catalogFile string) *providerCatalogService {
+func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
 	catalogFile = strings.TrimSpace(catalogFile)
 	if catalogFile == "" {
 		catalogFile = defaultProviderCatalogFile()
+	}
+	upstreamClient := providerCatalogHTTPClient(&http.Client{Timeout: providerCatalogUpstreamTimeout})
+	if len(clients) > 0 && clients[0] != nil {
+		upstreamClient = clients[0]
 	}
 	return &providerCatalogService{
 		store:          store,
 		catalogFile:    catalogFile,
 		upstreamURL:    providerCatalogUpstreamURL,
-		upstreamClient: &http.Client{Timeout: providerCatalogUpstreamTimeout},
+		upstreamClient: upstreamClient,
 	}
 }
 
@@ -336,22 +340,30 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 		}
 	}
 	model := ProviderCatalogModel{
-		ID:                     id,
-		Name:                   name,
-		DisplayName:            displayName,
-		CanonicalName:          canonicalName,
-		Category:               inferModelCategory(id, displayName),
-		Family:                 firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
-		Type:                   modelType,
-		ContextWindow:          int64(catalogNumberField(limit, "context")),
-		MaxOutputTokens:        int64(catalogNumberField(limit, "output")),
-		InputPriceUSDPer1M:     catalogNumberField(cost, "input"),
-		CacheReadPriceUSDPer1M: catalogNumberField(cost, "cache_read"),
-		OutputPriceUSDPer1M:    catalogNumberField(cost, "output"),
-		InputModalities:        catalogStringSliceField(modalities, "input"),
-		OutputModalities:       catalogStringSliceField(modalities, "output"),
-		LastUpdated:            catalogStringField(raw, "last_updated"),
-		Metadata:               metadata,
+		ID:                        id,
+		Name:                      name,
+		DisplayName:               displayName,
+		CanonicalName:             canonicalName,
+		Category:                  inferModelCategory(id, displayName),
+		Family:                    firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
+		Type:                      modelType,
+		ContextWindow:             int64(catalogNumberField(limit, "context")),
+		MaxOutputTokens:           int64(catalogNumberField(limit, "output")),
+		InputPriceUSDPer1M:        catalogNumberField(cost, "input"),
+		CacheReadPriceUSDPer1M:    catalogNumberField(cost, "cache_read"),
+		CacheWritePriceUSDPer1M:   catalogNumberField(cost, "cache_write"),
+		CacheWrite5mPriceUSDPer1M: catalogNumberField(cost, "cache_write_5m"),
+		CacheWrite1hPriceUSDPer1M: catalogNumberField(cost, "cache_write_1h"),
+		OutputPriceUSDPer1M:       catalogNumberField(cost, "output"),
+		CacheWritePriceConfiguration: CacheWritePriceConfiguration{
+			CacheWritePriceConfigured:   catalogNumberFieldConfigured(cost, "cache_write"),
+			CacheWrite5mPriceConfigured: catalogNumberFieldConfigured(cost, "cache_write_5m"),
+			CacheWrite1hPriceConfigured: catalogNumberFieldConfigured(cost, "cache_write_1h"),
+		},
+		InputModalities:  catalogStringSliceField(modalities, "input"),
+		OutputModalities: catalogStringSliceField(modalities, "output"),
+		LastUpdated:      catalogStringField(raw, "last_updated"),
+		Metadata:         metadata,
 	}
 	model.Capabilities = catalogModelCapabilities(raw, model)
 	model.SupportedParameters = catalogModelParameters(raw, model)
@@ -572,6 +584,9 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	if baseURL == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to load upstream models")
 	}
+	if err := ValidateProviderUpstreamBaseURL(baseURL); err != nil {
+		return ProviderCatalogEntry{}, err
+	}
 	providerType := strings.ToLower(strings.TrimSpace(req.Type))
 	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
 	if providerType == ProviderAnthropic {
@@ -581,7 +596,7 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
 	}
-	if err := validateProviderUpstreamBaseURL(endpoint, allowedProviderUpstreamCIDRs(), providerUpstreamLoopbackAllowed()); err != nil {
+	if err := validateProviderUpstreamURLSyntax(endpoint); err != nil {
 		return ProviderCatalogEntry{}, err
 	}
 	client = ssrfGuardedProviderClient(client)
@@ -620,6 +635,9 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	applyProviderHeaders(httpReq.Header, headers)
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return ProviderCatalogEntry{}, egressErr
+		}
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to request upstream models")
 	}
 	defer resp.Body.Close()
@@ -1049,6 +1067,18 @@ func catalogNumberField(raw map[string]any, key string) float64 {
 		return parsed
 	default:
 		return 0
+	}
+}
+
+func catalogNumberFieldConfigured(raw map[string]any, key string) bool {
+	if raw == nil {
+		return false
+	}
+	switch raw[key].(type) {
+	case float64, int, json.Number:
+		return true
+	default:
+		return false
 	}
 }
 

@@ -310,7 +310,7 @@ func (s *Server) handleAdminPlaygroundChatStream(w http.ResponseWriter, r *http.
 
 	result, route, usage, attempts, streamErr := s.executeRoutedPlaygroundStream(r, routed, req, events)
 	completedAt := time.Now().UTC()
-	usage = priceUsage(routed.Call.Model, usage)
+	usage = priceUsageAt(routed.Call.Model, usage, routed.Call.StartedAt)
 	if streamErr != nil {
 		s.finishFailedPlaygroundStream(r, user, routed, req, requestAuditPayload, result, route, usage, attempts, completedAt, events, streamErr)
 		return

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"log"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -19,8 +21,15 @@ type callAdmissionResult struct {
 // inside the caller's transaction. Durable background jobs use this helper in
 // the same transaction that records their admitted phase, closing the crash
 // window between consuming quota and persisting the request ID.
-func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key APIKey, modelName string, tokenReservation int64, requestID string) (callAdmissionResult, error) {
-	var admission callAdmissionResult
+func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key APIKey, modelName string, tokenReservation int64, requestID string) (admission callAdmissionResult, err error) {
+	redisAdmitted := false
+	defer func() {
+		if err != nil && redisAdmitted {
+			if rollbackErr := s.billingRedis.rollback(ctx, admission.call); rollbackErr != nil {
+				log.Printf("[tokenhub] failed to rollback Redis billing admission request=%s: %v", requestID, rollbackErr)
+			}
+		}
+	}()
 	if err := s.lockScopeForUpdate(tx, "api_key", key.ID); err != nil {
 		return admission, err
 	}
@@ -96,16 +105,19 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 		return admission, err
 	}
 	measuredAt := time.Now()
-	if err := pruneAPIKeyMinuteBuckets(tx, privateKey.ID, now); err != nil {
-		return admission, err
-	}
 	attributedUserID := usageAttributionUserID(privateKey, privateProject)
-	minuteCounter, err := s.consumeAPIKeyMinuteRequest(tx, privateKey.ID, effectiveLimits, minuteLimitScopes, tokenReservation, now)
-	if err != nil {
-		return admission, err
-	}
+	minuteCounter := QuotaCounter{}
 	userMinuteCounter := QuotaCounter{}
 	userQuotaID := ""
+	if s.billingRedis == nil {
+		if err := pruneAPIKeyMinuteBuckets(tx, privateKey.ID, now); err != nil {
+			return admission, err
+		}
+		minuteCounter, err = s.consumeAPIKeyMinuteRequest(tx, privateKey.ID, effectiveLimits, minuteLimitScopes, tokenReservation, now)
+		if err != nil {
+			return admission, err
+		}
+	}
 	if userPolicy.Enabled() {
 		userQuotaID = userQuotaBucketKey(userPolicy.UserID)
 		if err := s.lockScopeForUpdate(tx, "user_quota", userQuotaID); err != nil {
@@ -121,15 +133,17 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 		if userPolicy.Limits.TokenLimitTPM > 0 {
 			userMinuteScopes.TPM = "user"
 		}
-		userMinuteCounter, err = s.consumeAPIKeyMinuteRequest(tx, userQuotaID, userPolicy.Limits, userMinuteScopes, tokenReservation, now, userPolicy.UserID)
-		if err != nil {
-			httpErr := AsHTTPError(err)
-			if httpErr.Code == "api_key_rpm_exceeded" || httpErr.Code == "api_key_tpm_exceeded" {
-				quotaErr := scopedHTTPError(ErrQuotaExceeded, "user")
-				quotaErr.Headers = httpErr.Headers
-				return admission, quotaErr
+		if s.billingRedis == nil {
+			userMinuteCounter, err = s.consumeAPIKeyMinuteRequest(tx, userQuotaID, userPolicy.Limits, userMinuteScopes, tokenReservation, now, userPolicy.UserID)
+			if err != nil {
+				httpErr := AsHTTPError(err)
+				if httpErr.Code == "api_key_rpm_exceeded" || httpErr.Code == "api_key_tpm_exceeded" {
+					quotaErr := scopedHTTPError(ErrQuotaExceeded, "user")
+					quotaErr.Headers = httpErr.Headers
+					return admission, quotaErr
+				}
+				return admission, err
 			}
-			return admission, err
 		}
 	}
 	dayCounter, err := s.quotaBucketForUpdate(tx, privateKey.ID, "day", dayBucket(now))
@@ -162,7 +176,7 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 	if err != nil {
 		return admission, err
 	}
-	if effectiveLimits.MaxConcurrency > 0 {
+	if s.billingRedis == nil && effectiveLimits.MaxConcurrency > 0 {
 		confirmedFor, err := s.acquireInFlightLease(tx, "api_key", privateKey.ID, effectiveLimits.MaxConcurrency, requestID)
 		if err != nil {
 			return admission, err
@@ -170,7 +184,7 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 		admission.leaseConfirmedFor = confirmedFor
 		admission.leaseAcquired = true
 	}
-	if userPolicy.Enabled() && userPolicy.Limits.MaxConcurrency > 0 {
+	if s.billingRedis == nil && userPolicy.Enabled() && userPolicy.Limits.MaxConcurrency > 0 {
 		confirmedFor, err := s.acquireInFlightLease(tx, "user", userPolicy.UserID, userPolicy.Limits.MaxConcurrency, userConcurrencyLeaseID(requestID))
 		if err != nil {
 			if AsHTTPError(err).Code == ErrRateLimitExceeded.Code {
@@ -194,6 +208,54 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 	if err := s.checkRuntimeBudget(tx, privateProject, now); err != nil {
 		return admission, err
 	}
+	admission.call = CallContext{
+		RequestID:             requestID,
+		Project:               privateProject,
+		Key:                   publicKey(privateKey),
+		Model:                 model,
+		StartedAt:             now,
+		measuredAt:            measuredAt,
+		requestContext:        ctx,
+		UserQuotaID:           userQuotaID,
+		UserQuotaEnabled:      userPolicy.Enabled(),
+		UserMinuteRequestHeld: userPolicy.Enabled() && userPolicy.Limits.RateLimitRPM > 0,
+		UserQuotaLimits:       userPolicy.Limits,
+		AttributedUserID:      attributedUserID,
+		RedisKeyLeaseHeld:     s.billingRedis != nil && effectiveLimits.MaxConcurrency > 0,
+		RedisUserLeaseHeld:    s.billingRedis != nil && userPolicy.Enabled() && userPolicy.Limits.MaxConcurrency > 0,
+	}
+	if effectiveLimits.RateLimitRPM > 0 {
+		admission.call.MinuteRequestHeld = true
+	}
+	if effectiveLimits.TokenLimitTPM > 0 {
+		admission.call.TokenLimitBucket = minuteBucket(now)
+	}
+	if userPolicy.Enabled() && userPolicy.Limits.TokenLimitTPM > 0 {
+		admission.call.UserTokenLimitBucket = minuteBucket(now)
+	}
+	if effectiveLimits.TokenLimitTPM > 0 || userPolicy.Enabled() {
+		admission.call.ReservedTokens = maxInt64(tokenReservation, 0)
+	}
+	if s.billingRedis != nil {
+		redisCounters, redisErr := s.billingRedis.admit(ctx, redisBillingAdmitParams{
+			requestID:        requestID,
+			keyID:            privateKey.ID,
+			userID:           userPolicy.UserID,
+			minuteBucket:     minuteBucket(now),
+			keyLimits:        effectiveLimits,
+			userLimits:       userPolicy.Limits,
+			minuteScopes:     minuteLimitScopes,
+			tokenReservation: tokenReservation,
+			now:              now,
+		})
+		if redisErr != nil {
+			return admission, redisErr
+		}
+		redisAdmitted = true
+		admission.call.RedisBillingAdmitted = true
+		minuteCounter = redisCounters.keyCounter
+		userMinuteCounter = redisCounters.userCounter
+	}
 	dayCounter.Requests++
 	monthCounter.Requests++
 	if err := tx.Save(&dayCounter).Error; err != nil {
@@ -215,21 +277,7 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 			return admission, err
 		}
 	}
-	admission.call = CallContext{
-		RequestID:             requestID,
-		Project:               privateProject,
-		Key:                   publicKey(privateKey),
-		Model:                 model,
-		StartedAt:             now,
-		measuredAt:            measuredAt,
-		RateLimitHeaders:      apiKeyRateLimitHeaders(effectiveLimits, minuteCounter, now, false),
-		requestContext:        ctx,
-		UserQuotaID:           userQuotaID,
-		UserQuotaEnabled:      userPolicy.Enabled(),
-		UserMinuteRequestHeld: userPolicy.Enabled() && userPolicy.Limits.RateLimitRPM > 0,
-		UserQuotaLimits:       userPolicy.Limits,
-		AttributedUserID:      attributedUserID,
-	}
+	admission.call.RateLimitHeaders = apiKeyRateLimitHeaders(effectiveLimits, minuteCounter, now, false)
 	if userPolicy.Enabled() {
 		admission.call.RateLimitHeaders = combinedRateLimitHeaders(effectiveLimits, minuteCounter, userPolicy.Limits, userMinuteCounter, now, false)
 	}
@@ -250,6 +298,15 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 
 func (s *GormStore) startAdmittedCallHeartbeat(ctx context.Context, admission callAdmissionResult) CallContext {
 	call := admission.call
+	if call.RedisBillingAdmitted {
+		if call.RedisKeyLeaseHeld {
+			call.requestContext = s.startRedisBillingLeaseHeartbeat(ctx, "api_key", call.Key.ID, call.RequestID)
+		}
+		if call.RedisUserLeaseHeld {
+			call.requestContext = s.startRedisBillingLeaseHeartbeat(call.requestContext, "user", call.AttributedUserID, userConcurrencyLeaseID(call.RequestID))
+		}
+		return call
+	}
 	if admission.leaseAcquired {
 		call.requestContext = s.startInFlightLeaseHeartbeat(ctx, call.RequestID, admission.leaseConfirmedFor)
 	}
@@ -257,4 +314,21 @@ func (s *GormStore) startAdmittedCallHeartbeat(ctx context.Context, admission ca
 		call.requestContext = s.startInFlightLeaseHeartbeat(call.requestContext, userConcurrencyLeaseID(call.RequestID), admission.userLeaseConfirmedFor)
 	}
 	return call
+}
+
+func (s *GormStore) startRedisBillingLeaseHeartbeat(parent context.Context, scopeType string, scopeID string, leaseID string) context.Context {
+	if s.billingRedis == nil || strings.TrimSpace(leaseID) == "" {
+		return parent
+	}
+	ttl := effectiveLeaseTTL(s.inFlightLeaseTTL, 300*time.Second)
+	heartbeat := startLeaseHeartbeat(parent, ttl, ttl, func(attemptCtx context.Context) (time.Duration, bool, error) {
+		return s.billingRedis.renewLease(attemptCtx, scopeType, scopeID, leaseID)
+	})
+	if previous, loaded := s.leaseHeartbeats.LoadOrStore(leaseID, heartbeat); loaded {
+		if previousHeartbeat, ok := previous.(*leaseHeartbeat); ok {
+			_ = stopLeaseHeartbeat(previousHeartbeat)
+		}
+		s.leaseHeartbeats.Store(leaseID, heartbeat)
+	}
+	return heartbeat.ctx
 }

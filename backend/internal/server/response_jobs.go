@@ -639,7 +639,7 @@ func (s *Server) finalizeResponseJob(job ResponseJob, owner string, call CallCon
 	completion := GatewayCallCompletion{
 		Call:         call,
 		Route:        route,
-		Usage:        priceUsage(call.Model, usage),
+		Usage:        priceUsageAt(call.Model, usage, call.StartedAt),
 		Attempts:     safeAttempts,
 		StatusCode:   statusCode,
 		ErrorCode:    errorCode,

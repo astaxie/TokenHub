@@ -1,5 +1,6 @@
 import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type ProviderCatalogModel, routeViews, type ViewKey } from "../core/types";
 import { modelCategory } from "./catalog";
+import { configuredPriceFormValue } from "./configured-pricing";
 import { modelDisplayName } from "./model-display-name";
 import { codexImageCapableResources, findProvider, findProviderResource, isCodexSubscriptionImageModel, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
@@ -155,6 +156,10 @@ func main() {
 export function apiGatewayBaseURL(baseURL: string) {
   const trimmed = (baseURL || "http://localhost:8080").replace(/\/+$/, "");
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+}
+
+export function apiReferenceURL(baseURL: string) {
+  return apiGatewayBaseURL(baseURL).replace(/\/v1$/, "/docs");
 }
 
 export function activeRouteCount(modelName: string, data: AppData) {
@@ -393,6 +398,10 @@ export function modelToForm(item: Model) {
     cache_read_price_usd_per_1m: item.cache_read_price_usd_per_1m
       ? String(item.cache_read_price_usd_per_1m)
       : "",
+    cache_write_price_usd_per_1m: configuredPriceFormValue(item.cache_write_price_usd_per_1m, item.cache_write_price_configured),
+    cache_write_5m_price_usd_per_1m: configuredPriceFormValue(item.cache_write_5m_price_usd_per_1m, item.cache_write_5m_price_configured),
+    cache_write_1h_price_usd_per_1m: configuredPriceFormValue(item.cache_write_1h_price_usd_per_1m, item.cache_write_1h_price_configured),
+    pricing_periods: item.pricing_periods?.length ? JSON.stringify(item.pricing_periods, null, 2) : "",
     capabilities: (item.capabilities ?? []).join(", "),
     supported_parameters: (item.supported_parameters ?? []).join(", "),
     input_modalities: (item.input_modalities ?? []).join(", "),

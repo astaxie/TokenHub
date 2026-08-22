@@ -110,9 +110,9 @@ func mergeAnthropicStreamUsage(current Usage, raw map[string]any) Usage {
 	if snapshot.PromptTokens > 0 || snapshot.CachedInputTokens > 0 || snapshot.CacheWriteInputTokens > 0 {
 		current.PromptTokens = snapshot.PromptTokens
 		current.CachedInputTokens = snapshot.CachedInputTokens
-		// CacheWriteInputTokens is knowingly left unmerged here. This path has
-		// never reported it, and starting to would change billed usage, which is
-		// a behavior change rather than part of consolidating the parsing.
+		current.CacheWriteInputTokens = snapshot.CacheWriteInputTokens
+		current.CacheWrite5mInputTokens = snapshot.CacheWrite5mInputTokens
+		current.CacheWrite1hInputTokens = snapshot.CacheWrite1hInputTokens
 	}
 	if snapshot.CompletionTokens > 0 {
 		current.CompletionTokens = snapshot.CompletionTokens

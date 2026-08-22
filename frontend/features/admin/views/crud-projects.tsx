@@ -418,7 +418,7 @@ export function ProviderChannelTable({
                 <td>
                   <div className="row-actions provider-channel-actions">
                     {(config.actions ?? [])
-                      .filter((action) => action.visible?.(row.provider) ?? true)
+                      .filter((action) => action.visible?.(row.provider, currentUser, data) ?? true)
                       .map((action) => (
                         <button
                           className="text-button"
@@ -430,12 +430,12 @@ export function ProviderChannelTable({
                           {tx(action.label)}
                         </button>
                       ))}
-                    {config.update ? (
+                    {config.update && (config.canUpdate?.(row.provider, currentUser, data) ?? true) ? (
                       <button className="text-button" onClick={() => onEdit(row.provider)} type="button">
                         {tx("编辑")}
                       </button>
                     ) : null}
-                    {config.remove && (config.canRemove?.(row.provider, currentUser) ?? true) ? (
+                    {config.remove && (config.canRemove?.(row.provider, currentUser, data) ?? true) ? (
                       <button className="danger-button" onClick={() => onDelete(row.provider)} title={tx("删除")} type="button">
                         <Trash2 size={15} />
                       </button>

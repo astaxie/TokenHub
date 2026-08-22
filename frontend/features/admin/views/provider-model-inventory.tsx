@@ -3,6 +3,7 @@
 import { Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type ApiContext, type ProviderModel } from "../core/types";
+import { configuredPriceFormValue } from "../domain/configured-pricing";
 import { tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
@@ -10,6 +11,9 @@ import { StatusPill } from "../shared/ui";
 type CostDraft = {
   input: string;
   cache: string;
+  cacheWrite: string;
+  cacheWrite5m: string;
+  cacheWrite1h: string;
   output: string;
 };
 
@@ -17,6 +21,9 @@ function costDraft(model: ProviderModel): CostDraft {
   return {
     input: String(model.input_price_usd_per_1m ?? 0),
     cache: String(model.cache_read_price_usd_per_1m ?? 0),
+    cacheWrite: configuredPriceFormValue(model.cache_write_price_usd_per_1m, model.cache_write_price_configured),
+    cacheWrite5m: configuredPriceFormValue(model.cache_write_5m_price_usd_per_1m, model.cache_write_5m_price_configured),
+    cacheWrite1h: configuredPriceFormValue(model.cache_write_1h_price_usd_per_1m, model.cache_write_1h_price_configured),
     output: String(model.output_price_usd_per_1m ?? 0),
   };
 }
@@ -48,6 +55,9 @@ export function ProviderModelInventory({
     const costs = {
       input: draft.input.trim() === "" ? 0 : Number(draft.input),
       cache: draft.cache.trim() === "" ? 0 : Number(draft.cache),
+      cacheWrite: draft.cacheWrite.trim() === "" ? 0 : Number(draft.cacheWrite),
+      cacheWrite5m: draft.cacheWrite5m.trim() === "" ? 0 : Number(draft.cacheWrite5m),
+      cacheWrite1h: draft.cacheWrite1h.trim() === "" ? 0 : Number(draft.cacheWrite1h),
       output: draft.output.trim() === "" ? 0 : Number(draft.output),
     };
     if (Object.values(costs).some((cost) => !Number.isFinite(cost) || cost < 0)) {
@@ -64,6 +74,12 @@ export function ProviderModelInventory({
         body: JSON.stringify({
           input_price_usd_per_1m: costs.input,
           cache_read_price_usd_per_1m: costs.cache,
+          cache_write_price_usd_per_1m: costs.cacheWrite,
+          cache_write_price_configured: draft.cacheWrite.trim() !== "",
+          cache_write_5m_price_usd_per_1m: costs.cacheWrite5m,
+          cache_write_5m_price_configured: draft.cacheWrite5m.trim() !== "",
+          cache_write_1h_price_usd_per_1m: costs.cacheWrite1h,
+          cache_write_1h_price_configured: draft.cacheWrite1h.trim() !== "",
           output_price_usd_per_1m: costs.output,
         }),
       });
@@ -104,6 +120,9 @@ export function ProviderModelInventory({
               <th>{tx("上游模型")}</th>
               <th>{tx("输入成本 USD/1M")}</th>
               <th>{tx("缓存读成本 USD/1M")}</th>
+              <th>{tx("缓存写成本 USD/1M")}</th>
+              <th>{tx("5 分钟缓存写成本 USD/1M")}</th>
+              <th>{tx("1 小时缓存写成本 USD/1M")}</th>
               <th>{tx("输出成本 USD/1M")}</th>
               <th>{tx("状态")}</th>
               <th>{tx("操作")}</th>
@@ -115,7 +134,7 @@ export function ProviderModelInventory({
               return (
                 <tr key={model.id}>
                   <td><strong>{model.display_name || model.upstream_model}</strong><span>{model.upstream_model}</span></td>
-                  {(["input", "cache", "output"] as const).map((key) => (
+                  {(["input", "cache", "cacheWrite", "cacheWrite5m", "cacheWrite1h", "output"] as const).map((key) => (
                     <td key={key}>
                       <input min="0" onChange={(event) => update(model.id, key, event.target.value)} step="0.000001" type="number" value={draft[key]} />
                     </td>

@@ -181,6 +181,14 @@ func (s *GormStore) decryptSecret(secret string) string {
 	return string(plaintext)
 }
 
+func (s *GormStore) protectAdminResourceSecret(secret string) (string, error) {
+	return s.encryptSecretStrict(secret)
+}
+
+func (s *GormStore) revealAdminResourceSecret(secret string) string {
+	return s.decryptSecret(secret)
+}
+
 func secretKeyBytes(secret string) []byte {
 	sum := sha256.Sum256([]byte(secret))
 	return sum[:]

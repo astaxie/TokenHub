@@ -595,7 +595,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	usage = priceUsage(routed.Call.Model, usage)
+	usage = priceUsageAt(routed.Call.Model, usage, routed.Call.StartedAt)
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Kind:            CompletionKindPlayground,
 		Call:            routed.Call,
@@ -711,7 +711,7 @@ func executeRoutedWithStore[T any](
 				// Priced per attempt so a failover reports what each candidate cost
 				// rather than attributing the whole request to the winner. Tokens
 				// burned by an attempt that later failed were still billed.
-				Usage:     priceUsage(routed.Call.Model, usage),
+				Usage:     priceUsageAt(routed.Call.Model, usage, routed.Call.StartedAt),
 				StartedAt: attemptStartedAt.UTC(),
 				EndedAt:   attemptEndedAt.UTC(),
 			})
@@ -1322,7 +1322,7 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 		return false
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted, ProviderErrorEgress:
 		return false
 	case ProviderErrorTransientSame:
 		return !routeIsBound

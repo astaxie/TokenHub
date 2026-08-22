@@ -5,6 +5,7 @@ import { apiKeyUsageTranslations } from "./api-key-usage";
 import { auditFilterTranslations } from "./audit-filters";
 import { dbEvolutionTranslations } from "./db-evolution";
 import { modelGovernanceTranslations } from "./model-governance";
+import { gatewayDocsTranslations } from "./gateway-docs";
 import { playgroundTranslations } from "./playground";
 import { providerConnectionTranslations } from "./provider-connection";
 import { providerMonitoringTranslations } from "./provider-monitoring";
@@ -17,6 +18,6 @@ import { notificationTranslations } from "./notifications";
 import syntheticDNSTranslations from "./synthetic-dns";
 
 export const translations: Record<"en" | "ja", Record<string, string>> = {
-  en: { ...enTranslations, ...adminWorkflowTranslations.en, ...apiKeyUsageTranslations.en, ...auditFilterTranslations.en, ...dbEvolutionTranslations.en, ...routingTranslations.en, ...codexImageTranslations.en, ...scopedRoutingPolicyTranslations.en, ...modelGovernanceTranslations.en, ...providerConnectionTranslations.en, ...providerMonitoringTranslations.en, ...usageTranslations.en, ...playgroundTranslations.en, ...securityTranslations.en, ...notificationTranslations.en, ...syntheticDNSTranslations.en },
-  ja: { ...jaTranslations, ...adminWorkflowTranslations.ja, ...apiKeyUsageTranslations.ja, ...auditFilterTranslations.ja, ...dbEvolutionTranslations.ja, ...routingTranslations.ja, ...codexImageTranslations.ja, ...scopedRoutingPolicyTranslations.ja, ...modelGovernanceTranslations.ja, ...providerConnectionTranslations.ja, ...providerMonitoringTranslations.ja, ...usageTranslations.ja, ...playgroundTranslations.ja, ...securityTranslations.ja, ...notificationTranslations.ja, ...syntheticDNSTranslations.ja },
+  en: { ...enTranslations, ...adminWorkflowTranslations.en, ...apiKeyUsageTranslations.en, ...auditFilterTranslations.en, ...dbEvolutionTranslations.en, ...routingTranslations.en, ...codexImageTranslations.en, ...scopedRoutingPolicyTranslations.en, ...modelGovernanceTranslations.en, ...gatewayDocsTranslations.en, ...providerConnectionTranslations.en, ...providerMonitoringTranslations.en, ...usageTranslations.en, ...playgroundTranslations.en, ...securityTranslations.en, ...notificationTranslations.en, ...syntheticDNSTranslations.en },
+  ja: { ...jaTranslations, ...adminWorkflowTranslations.ja, ...apiKeyUsageTranslations.ja, ...auditFilterTranslations.ja, ...dbEvolutionTranslations.ja, ...routingTranslations.ja, ...codexImageTranslations.ja, ...scopedRoutingPolicyTranslations.ja, ...modelGovernanceTranslations.ja, ...gatewayDocsTranslations.ja, ...providerConnectionTranslations.ja, ...providerMonitoringTranslations.ja, ...usageTranslations.ja, ...playgroundTranslations.ja, ...securityTranslations.ja, ...notificationTranslations.ja, ...syntheticDNSTranslations.ja },
 };

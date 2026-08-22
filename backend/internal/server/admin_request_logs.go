@@ -79,11 +79,12 @@ func (s *Server) requestLogQueryForUser(user AdminUser, r *http.Request) (Reques
 	}
 	apiKeyID := strings.TrimSpace(r.URL.Query().Get("api_key_id"))
 	if apiKeyID != "" {
-		if !s.canManageAPIKey(user, apiKeyID) {
-			return RequestLogQuery{}, NewHTTPError(http.StatusForbidden, "api_key_forbidden", "API key is not available for this user")
-		}
-		if _, err := s.findAPIKey(apiKeyID); err != nil {
+		key, err := s.findAPIKey(apiKeyID)
+		if err != nil {
 			return RequestLogQuery{}, err
+		}
+		if !s.canAccessAPIKey(user, key) {
+			return RequestLogQuery{}, NewHTTPError(http.StatusForbidden, "api_key_forbidden", "API key is not available for this user")
 		}
 		query.Global = false
 		query.ProjectIDs = nil

@@ -947,6 +947,16 @@ func usageFromMap(body map[string]any) Usage {
 			usageMap["total_cached_tokens"],
 		)),
 		CacheWriteInputTokens: int64FromAny(firstNonNil(usageMap["cache_write_input_tokens"], inputDetails["cache_write_tokens"])),
+		CacheWrite5mInputTokens: int64FromAny(firstNonNil(
+			usageMap["cache_write_5m_input_tokens"],
+			inputDetails["cache_write_5m_tokens"],
+			inputDetails["ephemeral_5m_input_tokens"],
+		)),
+		CacheWrite1hInputTokens: int64FromAny(firstNonNil(
+			usageMap["cache_write_1h_input_tokens"],
+			inputDetails["cache_write_1h_tokens"],
+			inputDetails["ephemeral_1h_input_tokens"],
+		)),
 		InputAudioTokens:      int64FromAny(firstNonNil(inputDetails["audio_tokens"], usageMap["input_audio_tokens"])),
 		CompletionTokens:      int64FromAny(firstNonNil(usageMap["completion_tokens"], usageMap["output_tokens"])),
 		ReasoningOutputTokens: int64FromAny(firstNonNil(usageMap["reasoning_output_tokens"], outputDetails["reasoning_tokens"])),

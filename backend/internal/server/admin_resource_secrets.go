@@ -1,6 +1,9 @@
 package server
 
-import "strings"
+import (
+	"net/http"
+	"strings"
+)
 
 const adminResourceSecretASCIIMask = "********"
 
@@ -22,6 +25,58 @@ var sensitiveAdminResourceFields = map[string]map[string]bool{
 		"webhook_url":           true,
 		"whatsapp_access_token": true,
 	},
+	"settings": {
+		"provider_proxy_password": true,
+	},
+}
+
+type adminResourceSecretCodec interface {
+	protectAdminResourceSecret(string) (string, error)
+	revealAdminResourceSecret(string) string
+}
+
+func protectAdminResourceSecretsForStorage(store Store, kind string, fields map[string]any) (map[string]any, error) {
+	sensitive := sensitiveAdminResourceFields[kind]
+	if len(sensitive) == 0 || fields == nil {
+		return fields, nil
+	}
+	codec, codecAvailable := store.(adminResourceSecretCodec)
+	needsProtection := false
+	for key, value := range fields {
+		secret, ok := value.(string)
+		if !sensitive[strings.ToLower(strings.TrimSpace(key))] || !ok || strings.TrimSpace(secret) == "" {
+			continue
+		}
+		if !strings.HasPrefix(secret, "enc:v1:") || !codecAvailable || codec.revealAdminResourceSecret(secret) == "" {
+			needsProtection = true
+			break
+		}
+	}
+	if !needsProtection {
+		return fields, nil
+	}
+	if !codecAvailable {
+		return nil, NewHTTPError(http.StatusInternalServerError, "admin_resource_secret_protection_unavailable", "Sensitive resource storage is unavailable")
+	}
+	protected := cloneAdminResourceFields(fields)
+	for key, value := range fields {
+		if !sensitive[strings.ToLower(strings.TrimSpace(key))] {
+			continue
+		}
+		secret, ok := value.(string)
+		if !ok || strings.TrimSpace(secret) == "" {
+			continue
+		}
+		if strings.HasPrefix(secret, "enc:v1:") && codec.revealAdminResourceSecret(secret) != "" {
+			continue
+		}
+		protectedSecret, err := codec.protectAdminResourceSecret(secret)
+		if err != nil {
+			return nil, NewHTTPError(http.StatusInternalServerError, "admin_resource_secret_protection_failed", "Sensitive resource could not be protected")
+		}
+		protected[key] = protectedSecret
+	}
+	return protected, nil
 }
 
 func redactAdminResourcesForResponse(kind string, resources []AdminResource) []AdminResource {

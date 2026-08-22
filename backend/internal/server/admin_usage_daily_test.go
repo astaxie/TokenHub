@@ -282,6 +282,17 @@ func TestUsageDailyIncludesProviderBreakdownsForPlatformAdmin(t *testing.T) {
 
 func TestGatewaySettingsRejectInvalidDashboardTimezone(t *testing.T) {
 	store := NewMemoryStore()
+	store.CreateResource("settings", AdminResource{
+		ID:     gatewaySettingsID,
+		Name:   "Gateway settings",
+		Status: StatusActive,
+		Fields: map[string]any{
+			dashboardTimezoneField:        "UTC",
+			syntheticDNSEnabledField:      false,
+			syntheticDNSCIDRsField:        defaultSyntheticDNSCIDRs,
+			syntheticDNSAllowPrivateField: false,
+		},
+	})
 	setting := AdminResource{
 		ID:     gatewaySettingsID,
 		Name:   "Gateway settings",

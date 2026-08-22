@@ -13,24 +13,70 @@ const (
 
 type providerModelPatchRequest struct {
 	ProviderModel
-	InputPriceUSDPer1M     *float64 `json:"input_price_usd_per_1m"`
-	CacheReadPriceUSDPer1M *float64 `json:"cache_read_price_usd_per_1m"`
-	OutputPriceUSDPer1M    *float64 `json:"output_price_usd_per_1m"`
+	InputPriceUSDPer1M          *float64 `json:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M      *float64 `json:"cache_read_price_usd_per_1m"`
+	CacheWritePriceUSDPer1M     *float64 `json:"cache_write_price_usd_per_1m"`
+	CacheWritePriceConfigured   *bool    `json:"cache_write_price_configured"`
+	CacheWrite5mPriceUSDPer1M   *float64 `json:"cache_write_5m_price_usd_per_1m"`
+	CacheWrite5mPriceConfigured *bool    `json:"cache_write_5m_price_configured"`
+	CacheWrite1hPriceUSDPer1M   *float64 `json:"cache_write_1h_price_usd_per_1m"`
+	CacheWrite1hPriceConfigured *bool    `json:"cache_write_1h_price_configured"`
+	OutputPriceUSDPer1M         *float64 `json:"output_price_usd_per_1m"`
 }
 
 func (patch providerModelPatchRequest) withCurrentCosts(current ProviderModel) ProviderModel {
 	model := patch.ProviderModel
 	model.InputPriceUSDPer1M = current.InputPriceUSDPer1M
 	model.CacheReadPriceUSDPer1M = current.CacheReadPriceUSDPer1M
+	model.CacheWritePriceUSDPer1M = current.CacheWritePriceUSDPer1M
+	model.CacheWritePriceConfigured = current.CacheWritePriceConfigured
+	model.CacheWrite5mPriceUSDPer1M = current.CacheWrite5mPriceUSDPer1M
+	model.CacheWrite5mPriceConfigured = current.CacheWrite5mPriceConfigured
+	model.CacheWrite1hPriceUSDPer1M = current.CacheWrite1hPriceUSDPer1M
+	model.CacheWrite1hPriceConfigured = current.CacheWrite1hPriceConfigured
 	model.OutputPriceUSDPer1M = current.OutputPriceUSDPer1M
+	model.PricingPeriods = current.PricingPeriods
 	if patch.InputPriceUSDPer1M != nil {
 		model.InputPriceUSDPer1M = *patch.InputPriceUSDPer1M
 	}
 	if patch.CacheReadPriceUSDPer1M != nil {
 		model.CacheReadPriceUSDPer1M = *patch.CacheReadPriceUSDPer1M
 	}
+	if patch.CacheWritePriceUSDPer1M != nil {
+		model.CacheWritePriceUSDPer1M = *patch.CacheWritePriceUSDPer1M
+		model.CacheWritePriceConfigured = true
+	}
+	if patch.CacheWritePriceConfigured != nil {
+		model.CacheWritePriceConfigured = *patch.CacheWritePriceConfigured
+		if !*patch.CacheWritePriceConfigured && patch.CacheWritePriceUSDPer1M == nil {
+			model.CacheWritePriceUSDPer1M = 0
+		}
+	}
+	if patch.CacheWrite5mPriceUSDPer1M != nil {
+		model.CacheWrite5mPriceUSDPer1M = *patch.CacheWrite5mPriceUSDPer1M
+		model.CacheWrite5mPriceConfigured = true
+	}
+	if patch.CacheWrite5mPriceConfigured != nil {
+		model.CacheWrite5mPriceConfigured = *patch.CacheWrite5mPriceConfigured
+		if !*patch.CacheWrite5mPriceConfigured && patch.CacheWrite5mPriceUSDPer1M == nil {
+			model.CacheWrite5mPriceUSDPer1M = 0
+		}
+	}
+	if patch.CacheWrite1hPriceUSDPer1M != nil {
+		model.CacheWrite1hPriceUSDPer1M = *patch.CacheWrite1hPriceUSDPer1M
+		model.CacheWrite1hPriceConfigured = true
+	}
+	if patch.CacheWrite1hPriceConfigured != nil {
+		model.CacheWrite1hPriceConfigured = *patch.CacheWrite1hPriceConfigured
+		if !*patch.CacheWrite1hPriceConfigured && patch.CacheWrite1hPriceUSDPer1M == nil {
+			model.CacheWrite1hPriceUSDPer1M = 0
+		}
+	}
 	if patch.OutputPriceUSDPer1M != nil {
 		model.OutputPriceUSDPer1M = *patch.OutputPriceUSDPer1M
+	}
+	if patch.ProviderModel.PricingPeriods != nil {
+		model.PricingPeriods = patch.ProviderModel.PricingPeriods
 	}
 	return model
 }
@@ -222,25 +268,34 @@ func (s *Server) importProviderModels(req ProviderModelImportRequest) (ProviderM
 func providerModelFromCatalog(providerID string, model ProviderCatalogModel) ProviderModel {
 	now := time.Now().UTC()
 	return ProviderModel{
-		ProviderID:             providerID,
-		UpstreamModel:          model.ID,
-		DisplayName:            firstNonEmpty(model.DisplayName, model.Name, model.ID),
-		CanonicalName:          firstNonEmpty(model.CanonicalName, canonicalModelName(model.ID, model.DisplayName)),
-		Category:               standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName))),
-		Family:                 firstNonEmpty(model.Family, inferModelFamily(model.ID)),
-		Modality:               firstNonEmpty(model.Type, normalizeModelModality(model.ID)),
-		ContextWindow:          model.ContextWindow,
-		InputPriceUSDPer1M:     model.InputPriceUSDPer1M,
-		CacheReadPriceUSDPer1M: model.CacheReadPriceUSDPer1M,
-		OutputPriceUSDPer1M:    model.OutputPriceUSDPer1M,
-		InputModalities:        append([]string(nil), model.InputModalities...),
-		OutputModalities:       append([]string(nil), model.OutputModalities...),
-		Capabilities:           append([]string(nil), model.Capabilities...),
-		SupportedParameters:    append([]string(nil), model.SupportedParameters...),
-		Metadata:               cloneStringMap(model.Metadata),
-		Source:                 firstNonEmpty(model.Metadata["source"], "provider-catalog"),
-		Status:                 StatusActive,
-		LastSeenAt:             &now,
+		ProviderID:                providerID,
+		UpstreamModel:             model.ID,
+		DisplayName:               firstNonEmpty(model.DisplayName, model.Name, model.ID),
+		CanonicalName:             firstNonEmpty(model.CanonicalName, canonicalModelName(model.ID, model.DisplayName)),
+		Category:                  standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName))),
+		Family:                    firstNonEmpty(model.Family, inferModelFamily(model.ID)),
+		Modality:                  firstNonEmpty(model.Type, normalizeModelModality(model.ID)),
+		ContextWindow:             model.ContextWindow,
+		InputPriceUSDPer1M:        model.InputPriceUSDPer1M,
+		CacheReadPriceUSDPer1M:    model.CacheReadPriceUSDPer1M,
+		CacheWritePriceUSDPer1M:   model.CacheWritePriceUSDPer1M,
+		CacheWrite5mPriceUSDPer1M: model.CacheWrite5mPriceUSDPer1M,
+		CacheWrite1hPriceUSDPer1M: model.CacheWrite1hPriceUSDPer1M,
+		OutputPriceUSDPer1M:       model.OutputPriceUSDPer1M,
+		CacheWritePriceConfiguration: CacheWritePriceConfiguration{
+			CacheWritePriceConfigured:   model.CacheWritePriceConfigured || model.CacheWritePriceUSDPer1M != 0,
+			CacheWrite5mPriceConfigured: model.CacheWrite5mPriceConfigured || model.CacheWrite5mPriceUSDPer1M != 0,
+			CacheWrite1hPriceConfigured: model.CacheWrite1hPriceConfigured || model.CacheWrite1hPriceUSDPer1M != 0,
+		},
+		PricingPeriods:      append([]ModelPricingPeriod(nil), model.PricingPeriods...),
+		InputModalities:     append([]string(nil), model.InputModalities...),
+		OutputModalities:    append([]string(nil), model.OutputModalities...),
+		Capabilities:        append([]string(nil), model.Capabilities...),
+		SupportedParameters: append([]string(nil), model.SupportedParameters...),
+		Metadata:            cloneStringMap(model.Metadata),
+		Source:              firstNonEmpty(model.Metadata["source"], "provider-catalog"),
+		Status:              StatusActive,
+		LastSeenAt:          &now,
 	}
 }
 
@@ -349,7 +404,14 @@ func providerModelFromRoute(route ModelRoute, models []Model) ProviderModel {
 		providerModel.ContextWindow = model.ContextWindow
 		providerModel.InputPriceUSDPer1M = model.InputPriceUSDPer1M
 		providerModel.CacheReadPriceUSDPer1M = model.CacheReadPriceUSDPer1M
+		providerModel.CacheWritePriceUSDPer1M = model.CacheWritePriceUSDPer1M
+		providerModel.CacheWritePriceConfigured = model.CacheWritePriceConfigured
+		providerModel.CacheWrite5mPriceUSDPer1M = model.CacheWrite5mPriceUSDPer1M
+		providerModel.CacheWrite5mPriceConfigured = model.CacheWrite5mPriceConfigured
+		providerModel.CacheWrite1hPriceUSDPer1M = model.CacheWrite1hPriceUSDPer1M
+		providerModel.CacheWrite1hPriceConfigured = model.CacheWrite1hPriceConfigured
 		providerModel.OutputPriceUSDPer1M = model.OutputPriceUSDPer1M
+		providerModel.PricingPeriods = append([]ModelPricingPeriod(nil), model.PricingPeriods...)
 		providerModel.InputModalities = append([]string(nil), model.InputModalities...)
 		providerModel.OutputModalities = append([]string(nil), model.OutputModalities...)
 		providerModel.Capabilities = append([]string(nil), model.Capabilities...)

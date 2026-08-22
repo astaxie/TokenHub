@@ -177,10 +177,11 @@ func TestDBStatusMethodRoutePreservesRBAC(t *testing.T) {
 	assertAllowHeader(t, response, "")
 }
 
-func TestSystemRollbackMethodRoutePreservesRequestAndAudit(t *testing.T) {
-	// The rollback target must carry a verified database compatibility record
-	// (v0.4.0 for the bridge release); records for other legacy versions do
-	// not exist, so the compatibility preflight would refuse them.
+func TestSystemRollbackMethodRouteRecordsCompatibilityFailure(t *testing.T) {
+	// The rollback target carries a verified legacy compatibility record, but
+	// the current expanded schema is outside its supported database range. The
+	// route must still preserve request parsing, compatibility preflight, and
+	// audit recording.
 	root := prepareNativeInstallRoot(t, "0.4.1", map[string]string{"0.4.0": "previous"})
 	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unexpected release lookup", http.StatusInternalServerError)
@@ -201,21 +202,9 @@ func TestSystemRollbackMethodRoutePreservesRequestAndAudit(t *testing.T) {
 	response := methodRoutingJSONRequest(t, app.Handler(), http.MethodPost, "/api/admin/system/rollback", map[string]any{
 		"version": "0.4.0",
 	}, "system-rollback-routing-token")
-	if response.Code != http.StatusOK {
-		t.Fatalf("POST rollback: expected 200, got %d: %s", response.Code, response.Body.String())
-	}
-	var payload struct {
-		NeedRestart   bool   `json:"need_restart"`
-		TargetVersion string `json:"target_version"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		t.Fatal(err)
-	}
-	if !payload.NeedRestart || payload.TargetVersion != "0.4.0" {
-		t.Fatalf("POST rollback: unexpected response: %#v", payload)
-	}
-	assertNativeCurrentVersion(t, root, "0.4.0")
-	assertSystemVersionAudit(t, store, "rollback", "success", "0.4.0")
+	assertJSONError(t, response, http.StatusConflict, "rollback_incompatible")
+	assertNativeCurrentVersion(t, root, "0.4.1")
+	assertSystemVersionAudit(t, store, "rollback", "failed", "0.4.0")
 }
 
 func TestMetricsMethodRoutePreservesDisabledState(t *testing.T) {

@@ -8,8 +8,12 @@ export type ReferenceModelTemplate = {
   context_window?: number;
   input_price_usd_per_1m?: number;
   cache_read_price_usd_per_1m?: number;
+  cache_write_price_usd_per_1m?: number;
+  cache_write_5m_price_usd_per_1m?: number;
+  cache_write_1h_price_usd_per_1m?: number;
   output_price_usd_per_1m?: number;
   embedding_price_usd_per_1m?: number;
+  pricing_periods?: unknown[];
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
@@ -53,8 +57,12 @@ export function externalModelTemplateValues(model: ReferenceModelTemplate): Reco
     context_window: formNumber(model.context_window),
     input_price_usd_per_1m: formNumber(model.input_price_usd_per_1m),
     cache_read_price_usd_per_1m: formNumber(model.cache_read_price_usd_per_1m),
+    cache_write_price_usd_per_1m: formNumber(model.cache_write_price_usd_per_1m),
+    cache_write_5m_price_usd_per_1m: formNumber(model.cache_write_5m_price_usd_per_1m),
+    cache_write_1h_price_usd_per_1m: formNumber(model.cache_write_1h_price_usd_per_1m),
     output_price_usd_per_1m: formNumber(model.output_price_usd_per_1m),
     embedding_price_usd_per_1m: formNumber(model.embedding_price_usd_per_1m),
+    pricing_periods: model.pricing_periods?.length ? JSON.stringify(model.pricing_periods, null, 2) : "",
     capabilities: (model.capabilities ?? []).join(", "),
     supported_parameters: (model.supported_parameters ?? []).join(", "),
     input_modalities: (model.input_modalities?.length ? model.input_modalities : ["text"]).join(", "),

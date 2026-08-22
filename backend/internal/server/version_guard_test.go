@@ -98,7 +98,7 @@ func TestUpgradeStateRoundTrip(t *testing.T) {
 	}
 }
 
-func TestRunStartupGuardReactivatesPreviousOnFailedBoot(t *testing.T) {
+func TestRunStartupGuardRefusesPreviousOutsideCompatibilityRange(t *testing.T) {
 	root := t.TempDir()
 	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "guard.db")
 	// Opening the store once adopts the database with a clean ledger.
@@ -123,14 +123,14 @@ func TestRunStartupGuardReactivatesPreviousOnFailedBoot(t *testing.T) {
 		t.Fatalf("RunStartupGuard: %v", err)
 	}
 	active, ok := versions.activeNativeVersion()
-	if !ok || active != "0.4.0" {
-		t.Fatalf("expected previous release 0.4.0 re-activated, active=%q ok=%t", active, ok)
+	if !ok || active != "0.6.0" {
+		t.Fatalf("expected target release 0.6.0 to remain active, active=%q ok=%t", active, ok)
 	}
-	if !restartCalled {
-		t.Fatal("expected restart after auto-rollback")
+	if restartCalled {
+		t.Fatal("refused rollback must not restart")
 	}
 	if _, ok, _ := versions.upgradeState(); ok {
-		t.Fatal("expected upgrade state settled after auto-rollback")
+		t.Fatal("refused rollback must settle the state so it never retries")
 	}
 }
 
@@ -169,7 +169,7 @@ func TestRunStartupGuardRefusesIncompatiblePrevious(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A dirty ledger makes every rollback incompatible.
-	if err := store.db.Exec("INSERT INTO schema_migrations (version, name, phase, checksum, dirty) VALUES (2, 'dirty', 'expand', 'abc', 1)").Error; err != nil {
+	if err := store.db.Exec("UPDATE schema_migrations SET checksum = 'abc', dirty = 1 WHERE version = ?", CurrentCompatibilityManifest().TargetVersion).Error; err != nil {
 		t.Fatal(err)
 	}
 	writeFakeNativeBundle(t, root, "0.4.0")

@@ -2,6 +2,7 @@ import { ChevronDown, Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type AdminResource, type APIKey, type AppData, type FieldConfig, type Project, type ResourceAction, type ResourceConfig } from "../core/types";
+import { apiKeyCanManage } from "../domain/api-key-management-authz";
 import { apiKeyOwnerSelectOptions, apiKeyOwnerUserID, costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
 import { apiGatewayBaseURL } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
@@ -212,6 +213,8 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     create: async () => undefined,
     update: (ctx, item, values) => adminMutate(ctx, `/api/admin/api-keys/${item.id}`, "PATCH", keyPatchPayload(values)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/api-keys/${item.id}`),
+    canUpdate: (item, currentUser, data) => apiKeyCanManage(data, item, currentUser),
+    canRemove: (item, currentUser, data) => apiKeyCanManage(data, item, currentUser),
     actions: [
       {
         label: "用量",
@@ -221,6 +224,7 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       {
         label: "轮换",
         title: "生成新 Key，并立即吊销旧 Key",
+        visible: (item, currentUser, data) => apiKeyCanManage(data, item, currentUser),
         run: async (ctx, item) => {
           const resp = await adminFetch(ctx, `/api/admin/api-keys/${item.id}/rotate`, {
             method: "POST",

@@ -484,6 +484,9 @@ func imageJobWithAdmission(job ImageJob, call CallContext) ImageJob {
 	job.UserQuotaEnabled = call.UserQuotaEnabled
 	job.UserMinuteRequestHeld = call.UserMinuteRequestHeld
 	job.UserTokenLimitBucket = call.UserTokenLimitBucket
+	job.RedisBillingAdmitted = call.RedisBillingAdmitted
+	job.RedisKeyLeaseHeld = call.RedisKeyLeaseHeld
+	job.RedisUserLeaseHeld = call.RedisUserLeaseHeld
 	job.ReservedTokens = call.ReservedTokens
 	if !call.StartedAt.IsZero() {
 		admittedAt := call.StartedAt
@@ -756,6 +759,9 @@ func (s *Server) failImageJob(job ImageJob, code string, message string) {
 	job.ErrorCode = firstNonEmpty(strings.TrimSpace(code), "image_generation_failed")
 	job.ErrorMessage = strings.TrimSpace(message)
 	job.CompletedAt = &now
+	job.RedisBillingAdmitted = false
+	job.RedisKeyLeaseHeld = false
+	job.RedisUserLeaseHeld = false
 	_ = s.store.UpdateImageJob(job, "")
 }
 

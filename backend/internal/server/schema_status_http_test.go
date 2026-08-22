@@ -46,10 +46,10 @@ func TestAdminSchemaStatusEndpoint(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
-	if !payload.Ready || payload.SchemaVersion != 1 {
-		t.Fatalf("expected ready baseline status, got %+v", payload)
+	if !payload.Ready || payload.SchemaVersion != 2 {
+		t.Fatalf("expected ready expanded status, got %+v", payload)
 	}
-	if payload.Compatibility.TargetVersion != 1 || payload.Compatibility.MinCompatible != 1 || payload.Compatibility.MaxCompatible != 1 {
+	if payload.Compatibility.TargetVersion != 2 || payload.Compatibility.MinCompatible != 1 || payload.Compatibility.MaxCompatible != 2 {
 		t.Fatalf("unexpected compatibility manifest: %+v", payload.Compatibility)
 	}
 	if len(payload.Instances) != 1 || payload.Instances[0]["release"] != "v0.5.0-schema-test" {
@@ -64,8 +64,9 @@ func TestAnnotateRollbackCompatibility(t *testing.T) {
 		{Version: "0.3.0"},
 	}
 	server.annotateRollbackCompatibility(context.Background(), versions)
-	if versions[0].Compatibility != rollbackCompatible {
-		t.Fatalf("expected v0.4.0 compatible, got %+v", versions[0])
+	if versions[0].Compatibility != rollbackIncompatible ||
+		versions[0].CompatibilityReasonCode != "database_version_outside_range" {
+		t.Fatalf("expected v0.4.0 incompatible, got %+v", versions[0])
 	}
 	if versions[1].Compatibility != rollbackUnknown || versions[1].CompatibilityReason == "" ||
 		versions[1].CompatibilityReasonCode != "compatibility_record_missing" ||

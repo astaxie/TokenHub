@@ -100,7 +100,7 @@ func TestCommandsOnAdoptedDatabase(t *testing.T) {
 	}
 
 	code, output := runCLI(t, "status")
-	if code != 0 || !strings.Contains(output, "baseline recorded:   true") || !strings.Contains(output, "current version:     1") {
+	if code != 0 || !strings.Contains(output, "baseline recorded:   true") || !strings.Contains(output, "current version:     2") {
 		t.Fatalf("status on adopted database: code=%d output=%q", code, output)
 	}
 	code, output = runCLI(t, "verify")

@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -48,6 +49,55 @@ func (e *routeCandidateBatchLookupError) Unwrap() error {
 	return e.err
 }
 
+type providerResourceAvailability struct {
+	required  bool
+	missing   bool
+	disabled  bool
+	unhealthy bool
+	cooling   bool
+}
+
+func (availability *providerResourceAvailability) observeMissing(provider Provider) {
+	if provider.Type != ProviderOpenAICodex {
+		return
+	}
+	availability.required = true
+	availability.missing = true
+}
+
+func (availability *providerResourceAvailability) observeUnavailable(provider Provider, resource ProviderResource, now time.Time) {
+	if provider.Type != ProviderOpenAICodex {
+		return
+	}
+	availability.required = true
+	switch {
+	case resource.Status != StatusActive:
+		availability.disabled = true
+	case !resource.Healthy && resource.CooldownUntil != nil && now.Before(*resource.CooldownUntil):
+		availability.cooling = true
+	case !resource.Healthy:
+		availability.unhealthy = true
+	}
+}
+
+func (availability providerResourceAvailability) err() error {
+	if !availability.required {
+		return nil
+	}
+	switch {
+	case availability.cooling:
+		return NewHTTPError(http.StatusTooManyRequests, "provider_resource_cooling_down", "Provider resource is cooling down")
+	case availability.unhealthy:
+		return NewHTTPError(http.StatusServiceUnavailable, "provider_resource_unhealthy", "Provider resource is unhealthy")
+	case availability.disabled:
+		return NewHTTPError(http.StatusServiceUnavailable, "provider_resource_disabled", "Provider resource is disabled")
+	case availability.missing:
+		return NewHTTPError(http.StatusBadRequest, "provider_resource_missing", "Codex Subscription resource is missing")
+	default:
+		return nil
+	}
+}
+
 func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.Time) ([]RouteSelection, error) {
 	var routes []ModelRoute
 	if err := db.Where("model_name = ? AND status = ?", modelName, StatusActive).
@@ -65,12 +115,13 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 	if err != nil {
 		return nil, &routeCandidateBatchLookupError{target: "provider resources", err: err}
 	}
-	implicitResources, err := loadRouteCandidateResourcesByProvider(db, implicitProviderIDs, now)
+	implicitResources, err := loadRouteCandidateResourcesByProvider(db, implicitProviderIDs)
 	if err != nil {
 		return nil, err
 	}
 
 	selections := make([]RouteSelection, 0, len(routes))
+	var availability providerResourceAvailability
 	for _, route := range routes {
 		provider, ok := providers[route.ProviderID]
 		if !ok || provider.Status != StatusActive || !provider.Healthy {
@@ -78,7 +129,12 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 		}
 		if route.ProviderResourceID != "" {
 			resource, ok := explicitResources[route.ProviderResourceID]
-			if !ok || resource.ProviderID != provider.ID || resource.Status != StatusActive || !halfOpenEligible(resource, now) {
+			if !ok || resource.ProviderID != provider.ID {
+				availability.observeMissing(provider)
+				continue
+			}
+			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
+				availability.observeUnavailable(provider, resource, now)
 				continue
 			}
 			selections = append(selections, s.routeSelection(provider, &resource, route))
@@ -87,20 +143,37 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 
 		group := strings.TrimSpace(route.ResourceGroup)
 		matched := false
+		eligible := false
 		for _, resource := range implicitResources[provider.ID] {
 			if group != "" && resource.Group != group {
 				continue
 			}
 			matched = true
+			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
+				availability.observeUnavailable(provider, resource, now)
+				continue
+			}
 			resourceRoute := route
 			resourceRoute.ProviderResourceID = resource.ID
 			if resource.Weight > 0 {
 				resourceRoute.Weight = resource.Weight
 			}
 			selections = append(selections, s.routeSelection(provider, &resource, resourceRoute))
+			eligible = true
 		}
-		if !matched {
-			selections = append(selections, s.routeSelection(provider, nil, route))
+		if !eligible {
+			if provider.Type == ProviderOpenAICodex {
+				if !matched {
+					availability.observeMissing(provider)
+				}
+			} else {
+				selections = append(selections, s.routeSelection(provider, nil, route))
+			}
+		}
+	}
+	if len(selections) == 0 {
+		if err := availability.err(); err != nil {
+			return nil, err
 		}
 	}
 	if err := s.attachRouteRuntimeStats(db, selections, now); err != nil {
@@ -118,6 +191,7 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 	}
 
 	selections := make([]RouteSelection, 0, len(routes))
+	var availability providerResourceAvailability
 	for _, route := range routes {
 		var provider Provider
 		found, err := s.bestEffortRouteCandidateLookup(db, func() error {
@@ -137,7 +211,12 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 			if err != nil {
 				return nil, err
 			}
-			if !found || resource.Status != StatusActive || !halfOpenEligible(resource, now) {
+			if !found {
+				availability.observeMissing(provider)
+				continue
+			}
+			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
+				availability.observeUnavailable(provider, resource, now)
 				continue
 			}
 			selections = append(selections, s.routeSelection(provider, &resource, route))
@@ -145,25 +224,40 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 		}
 
 		var resources []ProviderResource
-		query := db.Where("provider_id = ? AND status = ? AND (healthy = ? OR cooldown_until <= ?)",
-			provider.ID, StatusActive, true, now)
+		query := db.Where("provider_id = ?", provider.ID)
 		if group := strings.TrimSpace(route.ResourceGroup); group != "" {
 			query = query.Where("\"group\" = ?", group)
 		}
 		if err := query.Order("priority asc, weight desc, created_at asc, id asc").Find(&resources).Error; err != nil {
 			return nil, err
 		}
-		if len(resources) == 0 {
-			selections = append(selections, s.routeSelection(provider, nil, route))
-			continue
-		}
+		eligible := false
 		for _, resource := range resources {
+			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
+				availability.observeUnavailable(provider, resource, now)
+				continue
+			}
 			resourceRoute := route
 			resourceRoute.ProviderResourceID = resource.ID
 			if resource.Weight > 0 {
 				resourceRoute.Weight = resource.Weight
 			}
 			selections = append(selections, s.routeSelection(provider, &resource, resourceRoute))
+			eligible = true
+		}
+		if !eligible {
+			if provider.Type == ProviderOpenAICodex {
+				if len(resources) == 0 {
+					availability.observeMissing(provider)
+				}
+			} else {
+				selections = append(selections, s.routeSelection(provider, nil, route))
+			}
+		}
+	}
+	if len(selections) == 0 {
+		if err := availability.err(); err != nil {
+			return nil, err
 		}
 	}
 	if err := s.attachRouteRuntimeStats(db, selections, now); err != nil {
@@ -256,12 +350,11 @@ func loadRouteCandidateResourcesByID(db *gorm.DB, ids []string) (map[string]Prov
 	return resources, err
 }
 
-func loadRouteCandidateResourcesByProvider(db *gorm.DB, providerIDs []string, now time.Time) (map[string][]ProviderResource, error) {
+func loadRouteCandidateResourcesByProvider(db *gorm.DB, providerIDs []string) (map[string][]ProviderResource, error) {
 	resources := make(map[string][]ProviderResource, len(providerIDs))
 	err := eachRouteCandidateBatch(providerIDs, func(batch []string) error {
 		var items []ProviderResource
-		if err := db.Where("provider_id IN ? AND status = ? AND (healthy = ? OR cooldown_until <= ?)",
-			batch, StatusActive, true, now).
+		if err := db.Where("provider_id IN ?", batch).
 			Order("priority asc, weight desc, created_at asc, id asc").
 			Find(&items).Error; err != nil {
 			return err

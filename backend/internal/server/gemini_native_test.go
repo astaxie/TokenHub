@@ -172,6 +172,28 @@ func TestGeminiNativeModelsAndCountTokensUseGoogleAPIKeyHeader(t *testing.T) {
 	if models.Code != http.StatusOK || !strings.Contains(models.Body, `"name":"models/gpt-5.5"`) {
 		t.Fatalf("models failed: %d %s", models.Code, models.Body)
 	}
+	var modelList struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal([]byte(models.Body), &modelList); err != nil {
+		t.Fatalf("decode Gemini model discovery: %v", err)
+	}
+	if len(modelList.Models) != 1 {
+		t.Fatalf("Gemini model discovery returned %d models, want 1: %s", len(modelList.Models), models.Body)
+	}
+	methods := map[string]bool{}
+	for _, method := range geminiTestSlice(t, modelList.Models[0]["supportedGenerationMethods"], "supportedGenerationMethods") {
+		name, ok := method.(string)
+		if !ok {
+			t.Fatalf("supportedGenerationMethods contains non-string value: %#v", method)
+		}
+		methods[name] = true
+	}
+	for _, method := range []string{"generateContent", "streamGenerateContent", "countTokens"} {
+		if !methods[method] {
+			t.Fatalf("Gemini model discovery missing %q in supportedGenerationMethods: %s", method, models.Body)
+		}
+	}
 	if strings.Contains(models.Body, "chat-only-model") {
 		t.Fatalf("Gemini catalog advertised a model without a compatible Codex Responses route: %s", models.Body)
 	}

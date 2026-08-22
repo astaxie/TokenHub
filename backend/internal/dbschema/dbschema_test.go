@@ -488,6 +488,19 @@ func TestNormalizeMigrationsFillsPhaseBudgets(t *testing.T) {
 	}
 
 	if _, err := NormalizeMigrations([]Migration{
+		{Version: 2, Name: "duplicate-a", Statements: []string{"SELECT 1"}},
+		{Version: 2, Name: "duplicate-b", Statements: []string{"SELECT 2"}},
+	}); err == nil {
+		t.Fatal("expected duplicate migration version to be rejected")
+	}
+	if _, err := NormalizeMigrations([]Migration{
+		{Version: 2, Name: "sqlite", Dialect: DialectSQLite, Statements: []string{"SELECT 1"}},
+		{Version: 2, Name: "postgres", Dialect: DialectPostgres, Statements: []string{"SELECT 2"}},
+	}); err == nil {
+		t.Fatal("expected duplicate dialect-specific migration version to be rejected")
+	}
+
+	if _, err := NormalizeMigrations([]Migration{
 		{Version: 2, Name: "negative-budget", Statements: []string{"CREATE TABLE x (id INTEGER PRIMARY KEY)"}, StatementBudget: -1},
 	}); err == nil {
 		t.Fatal("expected negative statement budget to be rejected")

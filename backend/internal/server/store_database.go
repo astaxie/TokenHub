@@ -228,13 +228,10 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 	}
 
 	legacySchemaFlow := func(context.Context) error {
-		// The frozen legacy flow follows the live model set. Once versioned
-		// migrations exist, running it would apply their model changes ahead
-		// of the migration chain and then re-apply them as migrations; refuse
-		// instead and let the migration-chain design take over.
-		if len(SchemaMigrationRegistry()) > 0 {
-			return fmt.Errorf("legacy adoption is a bridge-release operation; this release carries versioned migrations and requires a database adopted by the bridge release first")
-		}
+		// The frozen legacy flow follows the live model set. Versioned expand
+		// migrations that overlap it must therefore be idempotent: legacy
+		// adoption completes the semantic baseline first, then the ledger records
+		// the matching expand version without changing already-created columns.
 		return migrateSchemaObjects(db, driver)
 	}
 	legacyDataBackfills := func() error {
@@ -302,6 +299,11 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		return nil, err
 	}
 
+	billingRedis, err := newRedisBillingCoordinator(context.Background(), config.BillingRedisURL, time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300))*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
 	return &GormStore{
 		db:                   db,
 		analyticsDB:          analyticsDB,
@@ -321,6 +323,7 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		inFlightLeaseTTL:     time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300)) * time.Second,
 		clusterLockTTL:       time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
 		imageCapabilityRetry: time.Duration(defaultInt(config.ImageCapabilityRetrySecs, 86400)) * time.Second,
+		billingRedis:         billingRedis,
 	}, nil
 }
 
@@ -967,6 +970,7 @@ func schemaModels() []any {
 		&adminOAuthFlowRecord{},
 		&adminOAuthExchangeRecord{},
 		&AdminPasswordResetToken{},
+		&BootstrapCredential{},
 		&SQLiteBackupRecord{},
 	}
 }

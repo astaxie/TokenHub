@@ -61,8 +61,11 @@ func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 				"output_tokens": float64(40),
 				"total_tokens":  float64(140),
 				"input_tokens_details": map[string]any{
-					"cached_tokens": float64(40),
-					"audio_tokens":  float64(5),
+					"cached_tokens":         float64(40),
+					"cache_write_tokens":    float64(7),
+					"cache_write_5m_tokens": float64(2),
+					"cache_write_1h_tokens": float64(5),
+					"audio_tokens":          float64(5),
 				},
 				"output_tokens_details": map[string]any{
 					"reasoning_tokens":           float64(10),
@@ -74,6 +77,9 @@ func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 			want: Usage{
 				PromptTokens:             100,
 				CachedInputTokens:        40,
+				CacheWriteInputTokens:    7,
+				CacheWrite5mInputTokens:  2,
+				CacheWrite1hInputTokens:  5,
 				InputAudioTokens:         5,
 				CompletionTokens:         40,
 				ReasoningOutputTokens:    10,

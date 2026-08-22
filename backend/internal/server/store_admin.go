@@ -418,6 +418,11 @@ func updateAdminUser(db *gorm.DB, id string, patch AdminUser, password string) (
 	if err := db.Save(&user).Error; err != nil {
 		return AdminUser{}, err
 	}
+	if password != "" {
+		if err := deleteInitialAdminPassword(db, user.ID); err != nil {
+			return AdminUser{}, err
+		}
+	}
 	return publicAdminUser(user), nil
 }
 
@@ -547,7 +552,10 @@ func (s *GormStore) resetAdminUserPassword(token string, password string, passwo
 		if err := tx.Save(&user).Error; err != nil {
 			return err
 		}
-		return tx.Where("user_id = ?", user.ID).Delete(&AdminSession{}).Error
+		if err := tx.Where("user_id = ?", user.ID).Delete(&AdminSession{}).Error; err != nil {
+			return err
+		}
+		return deleteInitialAdminPassword(tx, user.ID)
 	}); err != nil {
 		return AdminUser{}, err
 	}
@@ -590,7 +598,10 @@ func (s *GormStore) AuthenticateAdminUser(identity string, password string, ttl 
 		if err := tx.Save(&user).Error; err != nil {
 			return err
 		}
-		return tx.Create(&session).Error
+		if err := tx.Create(&session).Error; err != nil {
+			return err
+		}
+		return deleteInitialAdminPassword(tx, user.ID)
 	})
 	if err != nil {
 		return AdminUser{}, AdminSession{}, err
@@ -622,7 +633,10 @@ func (s *GormStore) CreateAdminSession(userID string, ttl time.Duration) (AdminU
 		if err := tx.Save(&user).Error; err != nil {
 			return err
 		}
-		return tx.Create(&session).Error
+		if err := tx.Create(&session).Error; err != nil {
+			return err
+		}
+		return deleteInitialAdminPassword(tx, user.ID)
 	})
 	if err != nil {
 		return AdminUser{}, AdminSession{}, err

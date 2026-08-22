@@ -20,14 +20,14 @@ func TestRollbackCompatibilityPreflight(t *testing.T) {
 	server := NewWithConfig(store, Config{AdminToken: "rollback-test-token"})
 	ctx := context.Background()
 
-	if verdict := server.rollbackCompatibility(ctx, "v0.4.0"); verdict.Compatibility != rollbackCompatible {
-		t.Fatalf("expected v0.4.0 compatible on baseline database, got %+v", verdict)
+	if verdict := server.rollbackCompatibility(ctx, "v0.4.0"); verdict.Compatibility != rollbackIncompatible {
+		t.Fatalf("expected v0.4.0 incompatible on expanded database, got %+v", verdict)
 	}
-	if verdict := server.rollbackCompatibility(ctx, "0.4.0"); verdict.Compatibility != rollbackCompatible {
+	if verdict := server.rollbackCompatibility(ctx, "0.4.0"); verdict.Compatibility != rollbackIncompatible {
 		t.Fatalf("expected canonicalization of 0.4.0, got %+v", verdict)
 	}
-	if verdict := server.rollbackCompatibility(ctx, "0.5.0"); verdict.Compatibility != rollbackCompatible {
-		t.Fatalf("expected v0.5.0 compatible on baseline database (fixture-verified), got %+v", verdict)
+	if verdict := server.rollbackCompatibility(ctx, "0.5.0"); verdict.Compatibility != rollbackIncompatible {
+		t.Fatalf("expected v0.5.0 incompatible on expanded database, got %+v", verdict)
 	}
 	unknown := server.rollbackCompatibility(ctx, "0.3.0")
 	if unknown.Compatibility != rollbackUnknown || unknown.ReasonCode != "compatibility_record_missing" ||
@@ -69,10 +69,10 @@ func TestRollbackHandlerRefusesUnknownCompatibility(t *testing.T) {
 	}
 }
 
-func TestRollbackCompatibilityOnMemoryStore(t *testing.T) {
+func TestRollbackCompatibilityOnMemoryStoreUsesExpandedSchema(t *testing.T) {
 	server := New(NewMemoryStore())
 	verdict := server.rollbackCompatibility(context.Background(), "v0.4.0")
-	if verdict.Compatibility != rollbackCompatible {
-		t.Fatalf("stores without evolution state have no schema constraints, got %+v", verdict)
+	if verdict.Compatibility != rollbackIncompatible {
+		t.Fatalf("memory store uses the current expanded schema state, got %+v", verdict)
 	}
 }

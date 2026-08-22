@@ -21,6 +21,8 @@ func enrichRequestLogWithUsageRecord(log *RequestLog, record UsageRecord) {
 	log.InputTokens += record.InputTokens
 	log.CachedInputTokens += record.CachedInputTokens
 	log.CacheWriteTokens += record.CacheWriteTokens
+	log.CacheWrite5mTokens += record.CacheWrite5mTokens
+	log.CacheWrite1hTokens += record.CacheWrite1hTokens
 	log.InputAudioTokens += record.InputAudioTokens
 	log.OutputTokens += record.OutputTokens
 	log.ReasoningTokens += record.ReasoningTokens
@@ -28,6 +30,10 @@ func enrichRequestLogWithUsageRecord(log *RequestLog, record UsageRecord) {
 	log.AcceptedPredictionTokens += record.AcceptedPredictionTokens
 	log.RejectedPredictionTokens += record.RejectedPredictionTokens
 	log.TotalTokens += record.TotalTokens
+	log.InputCostUSD += record.InputCostUSD
+	log.CacheReadCostUSD += record.CacheReadCostUSD
+	log.CacheWriteCostUSD += record.CacheWriteCostUSD
+	log.OutputCostUSD += record.OutputCostUSD
 	log.EstimatedCostUSD += record.CostUSD
 	log.ProviderCostUSD += record.ProviderCostUSD
 	log.UsageRecordCount++

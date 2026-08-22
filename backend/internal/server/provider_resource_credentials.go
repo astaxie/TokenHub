@@ -338,7 +338,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		}
 		s.mu.Unlock()
 
-		refreshed, err := refreshOpenAIAccountOAuthCredentials(leaseCtx, creds)
+		refreshed, err := refreshOpenAIAccountOAuthCredentials(leaseCtx, creds, s.providerUpstreamClient)
 		if err != nil {
 			if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code == "provider_resource_reauthorization_required" {
 				persistErr := s.withClusterLease(leaseCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {

@@ -25,13 +25,13 @@ func (s *Server) handleAdminAPIKeyUsageGet(w http.ResponseWriter, r *http.Reques
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "not_found", "Not found"))
 		return
 	}
-	if !s.canManageAPIKey(user, keyID) {
-		writeError(w, r, NewHTTPError(http.StatusForbidden, "api_key_forbidden", "API key is not available for this user"))
-		return
-	}
 	key, err := s.findAPIKey(keyID)
 	if err != nil {
 		writeError(w, r, err)
+		return
+	}
+	if !s.canAccessAPIKey(user, key) {
+		writeError(w, r, NewHTTPError(http.StatusForbidden, "api_key_forbidden", "API key is not available for this user"))
 		return
 	}
 	project, ok := s.store.GetProject(key.ProjectID)

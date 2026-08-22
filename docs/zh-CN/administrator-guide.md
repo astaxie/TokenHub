@@ -76,6 +76,8 @@ RPM 在调用 Provider 前扣减。TPM 同时按请求的预估输入量和最�
 
 超过限制时返回 HTTP 429，错误码为 `api_key_rpm_exceeded` 或 `api_key_tpm_exceeded`，并附带 `Retry-After` 以及对应的 `X-RateLimit-Limit-*`、`X-RateLimit-Remaining-*` 和 `X-RateLimit-Reset-*` 响应头。分钟桶保存在数据库中；PostgreSQL 会在多个 TokenHub 实例之间共享强制状态，SQLite 保持其受支持的单后端运行方式。指标只暴露短哈希形式的 Key 引用，绝不会包含完整 API Key。
 
+高并发部署可以配置 `TOKENHUB_BILLING_REDIS_URL`。设置后，TokenHub 会把高写入的准入路径放到 Redis：API Key 与用户维度的每分钟 RPM/TPM 预留，以及 API Key 与用户维度的并发租约。数据库仍是持久账本，负责日/月计数、用量记录、请求日志、审计轨迹和结算幂等。配置了 Redis 端点时，服务启动必须能连接它；留空则继续使用数据库准入路径。Docker Compose 部署可以追加 `deploy/docker-compose.redis.yml`，由同一个 Compose 项目运行可选 Redis 组件。
+
 ## 用户聚合额度
 
 平台管理员和团队负责人都可在「成本治理 > 额度策略」中选择 `user` 作用域，并把有效用户 ID 填入 `scope_id`，以配置用户聚合限额。团队负责人只能管理自己团队内用户的策略；平台管理员可以管理任意启用用户。用户选择器会按当前管理员权限列出可用用户，策略表会显示当前日用量和月用量。用户策略支持完整额度字段：RPM、TPM、日/月请求数、日/月 Token、日/月成本和最大并发。
@@ -299,7 +301,11 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 ## Prompt Cache 计价
 
-模型目录支持按每百万 Token 配置可选的缓存读取价格。配置后，命中缓存的输入 Token 按该价格估算成本；留空时，DeepSeek V4 Pro 按标准输入价的约 0.83% 估算，其他 DeepSeek 模型按 2% 估算，其余非 Embedding 模型按 10% 估算。模型定价表会标记估算值，并在悬停时说明采用的比例。
+模型目录支持按每百万 Token 配置可选的缓存读取价和缓存写入价。未配置缓存写入价时，TokenHub 会按普通输入价计算缓存写入 Token，以保持历史估算兼容。若 Provider 区分缓存创建时长，还可以配置 `cache_write_5m_price_usd_per_1m` 和 `cache_write_1h_price_usd_per_1m`；剩余缓存写入 Token 使用通用缓存写入价。缓存读取价留空时，DeepSeek V4 Pro 按标准输入价的约 0.83% 估算，其他 DeepSeek 模型按 2% 估算，其余非 Embedding 模型按 10% 估算。模型定价表会标记估算值，并在悬停时说明采用的比例。
+
+用量记录会在总 `estimated_cost_usd` 之外暴露 `input_cost_usd`、`cache_read_cost_usd`、`cache_write_cost_usd` 和 `output_cost_usd`，方便报表审计最终费用如何由 Provider usage 组成。
+
+模型记录和 Provider 模型库存也支持 `pricing_periods`：一个按时间段覆盖价格的 JSON 数组。每个时间段可以包含 IANA `timezone`、`HH:MM` 格式的本地 `start_time` 和 `end_time`、可选的 RFC 3339 `effective_from` 和 `effective_until`，以及输入或输出价格字段。TokenHub 按请求开始时间选择价格，首个匹配的时间段生效；时间窗口可以跨午夜。
 
 ## 目录元数据恢复
 

@@ -43,6 +43,10 @@ func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute) (Mod
 }
 
 func createModelRecord(db *gorm.DB, model Model) (Model, error) {
+	if err := validateModelPricingPeriods(model.PricingPeriods); err != nil {
+		return Model{}, err
+	}
+	normalizeModelCacheWriteConfiguration(&model)
 	var existing Model
 	if err := db.First(&existing, "name = ?", model.Name).Error; err == nil &&
 		existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal &&
@@ -54,6 +58,12 @@ func createModelRecord(db *gorm.DB, model Model) (Model, error) {
 
 	if model.Modality == "embedding" {
 		model.CacheReadPriceUSDPer1M = 0
+		model.CacheWritePriceUSDPer1M = 0
+		model.CacheWritePriceConfigured = false
+		model.CacheWrite5mPriceUSDPer1M = 0
+		model.CacheWrite5mPriceConfigured = false
+		model.CacheWrite1hPriceUSDPer1M = 0
+		model.CacheWrite1hPriceConfigured = false
 	}
 	if model.ID == "" {
 		model.ID = model.Name

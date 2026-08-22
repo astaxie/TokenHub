@@ -152,10 +152,10 @@ Project and API-key model access is an explicit least-privilege layer before rou
 ## Security, Health, and Data Boundaries
 
 - Project API keys are validated for hash, status, project state, expiration, model scope, IP allowlist, quota, and concurrency.
-- Admin calls use a login session token or `TOKENHUB_ADMIN_TOKEN`; the initial `admin` account is created from `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`.
-- Non-development startup rejects placeholder values, Admin Tokens or backend secrets under 32 bytes, and bootstrap passwords under 12 bytes.
+- Admin calls use a login session token or an optional `TOKENHUB_ADMIN_TOKEN`. The initial `admin` account uses `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` when configured; otherwise TokenHub generates a password whose encrypted retrievable copy is deleted after first login or reset.
+- Non-development startup disables known placeholders for optional bootstrap credentials and rejects other weak non-empty values. `TOKENHUB_SECRET_KEY` stays mandatory, except that a brand-new file-backed SQLite database receives a persistent key file beside the database. Existing databases never receive a replacement key automatically.
 - `TOKENHUB_TRUSTED_PROXY_CIDRS` defines which proxies may supply `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`; trusted proxies must overwrite those headers. `TOKENHUB_CORS_ALLOWED_ORIGINS` controls credentialed browser origins.
-- `/livez` is a process liveness probe. `/readyz` and compatibility `/healthz` check database availability and the database evolution state: they return `503` when the database is unavailable, a migration is dirty or the ledger fails verification, or a blocking data backfill is incomplete. Pending online backfills keep the instance ready.
+- `/livez` is a process liveness probe. `/readyz` and compatibility `/healthz` check database availability and the database evolution state: they return `503` when the database is unavailable, a migration is dirty or the ledger fails verification, or a blocking data backfill is incomplete. Pending online backfills keep the instance ready. Unsafe startup configuration also keeps only `/livez` healthy while all readiness and application routes return `503` until configuration is corrected and the process restarts.
 
 Provider credentials, billing connector credentials, raw billing snapshots, and persistent background Responses payloads are AES-GCM encrypted from `TOKENHUB_SECRET_KEY`; project API keys retain only a SHA-256 digest plus display prefix and suffix. Every replica must use the same stable secret.
 

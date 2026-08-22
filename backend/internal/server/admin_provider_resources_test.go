@@ -828,9 +828,19 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if cleared.Code != http.StatusOK || !strings.Contains(cleared.Body, `"success":1`) {
 		t.Fatalf("clear error failed: %d %s", cleared.Code, cleared.Body)
 	}
+	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_disabled" {
+		t.Fatalf("clear_error must not reactivate a disabled resource, got %v", err)
+	}
+	enabled := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
+		"action": "enable",
+		"ids":    []string{resource.ID},
+	}, "")
+	if enabled.Code != http.StatusOK || !strings.Contains(enabled.Body, `"success":1`) {
+		t.Fatalf("enable failed: %d %s", enabled.Code, enabled.Body)
+	}
 	leaseID, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID)
 	if err != nil {
-		t.Fatalf("capacity should be available after clear_error: %v", err)
+		t.Fatalf("capacity should be available after enable: %v", err)
 	}
 	store.FinishProviderResourceAttempt(context.Background(), resource.ID, leaseID, AttemptSucceeded, Usage{TotalTokens: 5})
 	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_rpm_exceeded" {

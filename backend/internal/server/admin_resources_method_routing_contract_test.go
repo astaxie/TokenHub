@@ -44,6 +44,11 @@ func TestAdminResourceMethodRoutesPreserveAuthorizationOrder(t *testing.T) {
 		})
 		t.Run(route.name+"/ordinary_user", func(t *testing.T) {
 			response := methodRoutingRequest(app, route.wrongMethod, route.path, userSession.Token)
+			if route.name == "item" {
+				assertJSONError(t, response, http.StatusMethodNotAllowed, "method_not_allowed")
+				assertAllowHeader(t, response, route.allow)
+				return
+			}
 			assertJSONError(t, response, http.StatusForbidden, "admin_forbidden")
 			assertAllowHeader(t, response, "")
 		})

@@ -109,6 +109,9 @@ func (a CodexSubscriptionAdapter) compactOnce(ctx context.Context, endpoint stri
 	}
 	response, err := client.Do(request)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return nil, Usage{}, egressErr
+		}
 		return nil, Usage{}, &ProviderInvocationError{
 			Err:         NewHTTPError(http.StatusBadGateway, "codex_compact_request_failed", fmt.Sprintf("Codex compact request failed: %v", err)),
 			Disposition: ProviderErrorTransientSame,

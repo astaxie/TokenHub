@@ -61,7 +61,7 @@ func (pool *providerUpstreamTransportPool) rotate(snapshot providerSyntheticDNSS
 	}
 }
 
-func rotatingProviderUpstreamTransport(allowedPrivate []*net.IPNet, policy *providerSyntheticDNSPolicy, configure func(*http.Transport)) http.RoundTripper {
+func rotatingProviderUpstreamTransport(allowedPrivate []*net.IPNet, policy *providerSyntheticDNSPolicy, proxyPolicy *providerProxyPolicy, configure func(*http.Transport)) http.RoundTripper {
 	factory := func(snapshot providerSyntheticDNSSnapshot) *http.Transport {
 		transport := ssrfGuardedProviderTransport(allowedPrivate, snapshot)
 		if configure != nil {
@@ -69,8 +69,16 @@ func rotatingProviderUpstreamTransport(allowedPrivate []*net.IPNet, policy *prov
 		}
 		return transport
 	}
+	var direct http.RoundTripper
 	if policy == nil {
-		return factory(providerSyntheticDNSSnapshot{})
+		direct = factory(providerSyntheticDNSSnapshot{})
+	} else {
+		direct = newProviderUpstreamTransportPool(policy, factory)
 	}
-	return newProviderUpstreamTransportPool(policy, factory)
+	direct = guardProviderUpstreamRequests(direct, allowedPrivate)
+	transport := providerTransportWithEnvironmentProxy(direct, configure, proxyPolicy)
+	if proxying, ok := transport.(*providerEnvironmentProxyTransport); ok {
+		proxying.syntheticDNS = policy
+	}
+	return transport
 }

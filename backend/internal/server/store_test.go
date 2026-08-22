@@ -33,6 +33,143 @@ func TestPriceUsageAppliesConfiguredCacheReadPrice(t *testing.T) {
 	}
 }
 
+func TestPriceUsageAppliesConfiguredCacheWritePrices(t *testing.T) {
+	model := Model{
+		Modality:                  "chat",
+		InputPriceUSDPer1M:        2,
+		CacheReadPriceUSDPer1M:    0.5,
+		CacheWritePriceUSDPer1M:   2.4,
+		CacheWrite5mPriceUSDPer1M: 2.5,
+		CacheWrite1hPriceUSDPer1M: 3,
+		OutputPriceUSDPer1M:       8,
+		CacheWritePriceConfiguration: CacheWritePriceConfiguration{
+			CacheWritePriceConfigured:   true,
+			CacheWrite5mPriceConfigured: true,
+			CacheWrite1hPriceConfigured: true,
+		},
+	}
+	usage := priceUsage(model, Usage{
+		PromptTokens:            1000,
+		CachedInputTokens:       200,
+		CacheWriteInputTokens:   300,
+		CacheWrite5mInputTokens: 100,
+		CacheWrite1hInputTokens: 50,
+		CompletionTokens:        100,
+	})
+
+	want := (500*2.0 + 200*0.5 + 150*2.4 + 100*2.5 + 50*3.0 + 100*8.0) / 1_000_000
+	if math.Abs(usage.CostUSD-want) > 1e-12 {
+		t.Fatalf("cost = %.12f, want %.12f", usage.CostUSD, want)
+	}
+	if math.Abs(usage.InputCostUSD-0.001) > 1e-12 ||
+		math.Abs(usage.CacheReadCostUSD-0.0001) > 1e-12 ||
+		math.Abs(usage.CacheWriteCostUSD-0.00076) > 1e-12 ||
+		math.Abs(usage.OutputCostUSD-0.0008) > 1e-12 {
+		t.Fatalf("component costs = input %.12f cache-read %.12f cache-write %.12f output %.12f",
+			usage.InputCostUSD, usage.CacheReadCostUSD, usage.CacheWriteCostUSD, usage.OutputCostUSD)
+	}
+}
+
+func TestPriceUsageFallsBackToInputPriceForCacheWrites(t *testing.T) {
+	model := Model{
+		Modality:            "chat",
+		InputPriceUSDPer1M:  2,
+		OutputPriceUSDPer1M: 8,
+	}
+	usage := priceUsage(model, Usage{
+		PromptTokens:          1000,
+		CacheWriteInputTokens: 300,
+		CompletionTokens:      100,
+	})
+
+	want := (1000*2.0 + 100*8.0) / 1_000_000
+	if math.Abs(usage.CostUSD-want) > 1e-12 {
+		t.Fatalf("cost = %.12f, want %.12f", usage.CostUSD, want)
+	}
+	if math.Abs(usage.InputCostUSD-0.0014) > 1e-12 ||
+		math.Abs(usage.CacheWriteCostUSD-0.0006) > 1e-12 ||
+		math.Abs(usage.OutputCostUSD-0.0008) > 1e-12 {
+		t.Fatalf("fallback component costs = input %.12f cache-write %.12f output %.12f",
+			usage.InputCostUSD, usage.CacheWriteCostUSD, usage.OutputCostUSD)
+	}
+}
+
+func TestPriceUsageAllowsConfiguredFreeCacheWrites(t *testing.T) {
+	model := Model{
+		Modality:           "chat",
+		InputPriceUSDPer1M: 2,
+		CacheWritePriceConfiguration: CacheWritePriceConfiguration{
+			CacheWritePriceConfigured:   true,
+			CacheWrite5mPriceConfigured: true,
+			CacheWrite1hPriceConfigured: true,
+		},
+		OutputPriceUSDPer1M: 8,
+	}
+	usage := priceUsage(model, Usage{
+		PromptTokens:            1000,
+		CacheWriteInputTokens:   300,
+		CacheWrite5mInputTokens: 100,
+		CacheWrite1hInputTokens: 50,
+		CompletionTokens:        100,
+	})
+
+	want := (700*2.0 + 100*8.0) / 1_000_000
+	if math.Abs(usage.CostUSD-want) > 1e-12 {
+		t.Fatalf("cost = %.12f, want %.12f", usage.CostUSD, want)
+	}
+	if usage.CacheWriteCostUSD != 0 {
+		t.Fatalf("cache write cost = %.12f, want 0", usage.CacheWriteCostUSD)
+	}
+}
+
+func TestPriceUsageUsesPricingPeriodAtRequestStart(t *testing.T) {
+	peakInput, peakOutput := 4.0, 10.0
+	model := Model{
+		Modality:            "chat",
+		InputPriceUSDPer1M:  2,
+		OutputPriceUSDPer1M: 8,
+		PricingPeriods: []ModelPricingPeriod{{
+			Name:                "peak",
+			Timezone:            "UTC",
+			StartTime:           "01:00",
+			EndTime:             "04:00",
+			InputPriceUSDPer1M:  &peakInput,
+			OutputPriceUSDPer1M: &peakOutput,
+		}},
+	}
+	startedAt := time.Date(2026, 8, 22, 2, 30, 0, 0, time.UTC)
+	usage := priceUsageAt(model, Usage{PromptTokens: 1_000_000, CompletionTokens: 1_000_000}, startedAt)
+
+	if math.Abs(usage.CostUSD-14) > 1e-12 {
+		t.Fatalf("period cost = %.12f, want 14", usage.CostUSD)
+	}
+	if math.Abs(usage.InputCostUSD-4) > 1e-12 || math.Abs(usage.OutputCostUSD-10) > 1e-12 {
+		t.Fatalf("period component costs = input %.12f output %.12f", usage.InputCostUSD, usage.OutputCostUSD)
+	}
+	offPeak := priceUsageAt(model, Usage{PromptTokens: 1_000_000, CompletionTokens: 1_000_000}, startedAt.Add(4*time.Hour))
+	if math.Abs(offPeak.CostUSD-10) > 1e-12 {
+		t.Fatalf("off-peak cost = %.12f, want 10", offPeak.CostUSD)
+	}
+}
+
+func TestValidateModelPricingPeriodsRejectsInvalidConfiguration(t *testing.T) {
+	negativePrice := -0.1
+	nanPrice := math.NaN()
+	invalidPeriods := [][]ModelPricingPeriod{
+		{{Timezone: "Mars/Olympus", StartTime: "00:00", EndTime: "01:00"}},
+		{{Timezone: "UTC", StartTime: "0:00", EndTime: "01:00"}},
+		{{Timezone: "UTC", StartTime: "00:00"}},
+		{{EffectiveFrom: "tomorrow"}},
+		{{InputPriceUSDPer1M: &negativePrice}},
+		{{OutputPriceUSDPer1M: &nanPrice}},
+	}
+	for _, periods := range invalidPeriods {
+		if err := validateModelPricingPeriods(periods); err == nil || AsHTTPError(err).Code != "invalid_model_pricing_period" {
+			t.Fatalf("validateModelPricingPeriods(%+v) = %v, want invalid_model_pricing_period", periods, err)
+		}
+	}
+}
+
 // TestPriceUsageClampsNegativeUpstreamUsage guards the quota ledger against
 // upstreams that report negative counts: priceUsage is the single choke point
 // before addUsage, so anything negative surviving it would shrink the day and

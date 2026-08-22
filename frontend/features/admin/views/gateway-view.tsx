@@ -2,8 +2,8 @@ import { FileText, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { appRole } from "../core/navigation";
 import { type AdminUser, type ApiContext, type AppData, type AppRole, type Model } from "../core/types";
-import { activeRouteCount, apiGatewayBaseURL, playgroundModels } from "../domain/formatting";
-import { type AppLanguage, languageOptions } from "../i18n/runtime";
+import { activeRouteCount, apiGatewayBaseURL, apiReferenceURL, playgroundModels } from "../domain/formatting";
+import { type AppLanguage, languageOptions, tx } from "../i18n/runtime";
 import { SimpleTable } from "../shared/ui";
 import { gatewayEnglishDocs } from "./gateway-docs-en";
 import { gatewayJapaneseDocs } from "./gateway-docs-ja";
@@ -62,11 +62,12 @@ function GatewayDocsView({
   role: AppRole;
 }) {
   const baseURL = apiGatewayBaseURL(api.baseURL);
+  const referenceURL = apiReferenceURL(api.baseURL);
   const activeRoutes = data.routes.filter((route) => route.status === "active").length;
   const callableModels = playgroundModels(data);
   const sampleModel = callableModels.find((model) => activeRouteCount(model.name, data) > 0)?.name ?? callableModels[0]?.name ?? "gpt-4.1-mini";
   const keyHint = data.keys[0] ? `${data.keys[0].key_prefix}...${data.keys[0].key_suffix}` : "YOUR_TOKENHUB_API_KEY";
-  const docBundle = gatewayDocBundle({ language, baseURL, keyHint, sampleModel, activeRoutes, data, callableModels, role });
+  const docBundle = gatewayDocBundle({ language, baseURL, referenceURL, keyHint, sampleModel, activeRoutes, data, callableModels, role });
   const [activeDocID, setActiveDocID] = useState(docBundle.defaultDocID ?? "quickstart");
   const allDocs = docBundle.groups.flatMap((group) => group.items);
   const activeDoc = allDocs.find((item) => item.id === activeDocID) ?? allDocs[0]!;
@@ -106,6 +107,7 @@ function GatewayDocsView({
 
           <section className="api-doc-quick-grid" aria-label={docBundle.quickInfoLabel}>
             <GatewayCopyCard label={docBundle.quickCards.baseURL} value={baseURL} />
+            <GatewayCopyCard label={tx("完整 API 参考")} value={referenceURL} href={referenceURL} />
             <GatewayCopyCard label={docBundle.quickCards.authorization} value={`Bearer ${keyHint}`} />
             <GatewayCopyCard label={docBundle.quickCards.sampleModel} value={sampleModel} />
             <article className="gateway-copy-card api-doc-config-card">
@@ -319,6 +321,7 @@ export function GatewayDocTitle({ doc }: { doc: GatewayDocItem }) {
 export function gatewayDocBundle({
   language,
   baseURL,
+  referenceURL,
   keyHint,
   sampleModel,
   activeRoutes,
@@ -328,6 +331,7 @@ export function gatewayDocBundle({
 }: {
   language: AppLanguage;
   baseURL: string;
+  referenceURL: string;
   keyHint: string;
   sampleModel: string;
   activeRoutes: number;
@@ -359,6 +363,7 @@ export function gatewayDocBundle({
 
   const commonEN = gatewayEnglishDocs({
     baseURL,
+    referenceURL,
     keyHint,
     authHeader,
     sampleModel,
@@ -377,6 +382,7 @@ export function gatewayDocBundle({
       language,
       role,
       baseURL,
+      referenceURL,
       keyHint,
       authHeader,
       sampleModel,
@@ -398,6 +404,7 @@ export function gatewayDocBundle({
 
 export type GatewayDocStats = {
   baseURL: string;
+  referenceURL: string;
   keyHint: string;
   authHeader: string;
   sampleModel: string;

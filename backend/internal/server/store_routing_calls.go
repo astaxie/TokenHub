@@ -108,12 +108,8 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 		if patch.ContextWindow != 0 {
 			model.ContextWindow = patch.ContextWindow
 		}
-		model.InputPriceUSDPer1M = patch.InputPriceUSDPer1M
-		model.CacheReadPriceUSDPer1M = patch.CacheReadPriceUSDPer1M
-		model.OutputPriceUSDPer1M = patch.OutputPriceUSDPer1M
-		model.EmbeddingPriceUSDPer1M = patch.EmbeddingPriceUSDPer1M
-		if model.Modality == "embedding" {
-			model.CacheReadPriceUSDPer1M = 0
+		if err := applyModelPricingPatch(&model, patch); err != nil {
+			return err
 		}
 		if patch.InputModalities != nil {
 			model.InputModalities = patch.InputModalities
@@ -458,6 +454,7 @@ func (s *GormStore) StartCall(ctx context.Context, project Project, key APIKey, 
 		return err
 	})
 	if err != nil {
+		s.rollbackRedisBilling("request admission", admission.call)
 		return CallContext{}, err
 	}
 	return s.startAdmittedCallHeartbeat(ctx, admission), nil
@@ -602,8 +599,8 @@ func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usa
 	elapsed := call.elapsed()
 	_ = s.stopRequestConcurrencyHeartbeats(call.RequestID)
 	// priceUsage is pure, so it runs before the transaction and its result is final here.
-	usage = priceUsage(call.Model, usage)
-	usage.ProviderCostUSD = s.providerCostUSD(route, usage)
+	usage = priceUsageAt(call.Model, usage, call.StartedAt)
+	usage.ProviderCostUSD = s.providerCostUSDAt(route, usage, call.StartedAt)
 	// Registered before persistence starts so reporting runs after the transaction
 	// and its fallback cleanup. Deferring also means the request is still counted
 	// when persistence fails or panics — losing persistence must not also lose the
@@ -615,9 +612,12 @@ func (s *GormStore) FinishCall(call CallContext, route RouteSelection, usage Usa
 	})
 	if err != nil {
 		log.Printf("[tokenhub] failed to finish call request=%s: %v", call.RequestID, err)
+		s.rollbackRedisBilling("request", call)
 		if releaseErr := s.deleteRequestConcurrencyLeases(s.db, call.RequestID); releaseErr != nil {
 			log.Printf("[tokenhub] failed to release request concurrency leases request=%s: %v", call.RequestID, releaseErr)
 		}
+	} else {
+		s.settleRedisBilling("request", call, quotaActualTokens(call, usage))
 	}
 }
 
@@ -672,10 +672,12 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 		}
 		quotaUsage := usage
 		quotaUsage.TotalTokens = actualTokens
-		if err := s.reconcileAPIKeyMinuteTokens(tx, call, actualTokens); err != nil {
-			return err
+		if !call.RedisBillingAdmitted {
+			if err := s.reconcileAPIKeyMinuteTokens(tx, call, actualTokens); err != nil {
+				return err
+			}
 		}
-		if call.UserQuotaEnabled {
+		if call.UserQuotaEnabled && !call.RedisBillingAdmitted {
 			if err := s.reconcileQuotaMinuteTokens(tx, call.UserQuotaID, call.UserTokenLimitBucket, call.ReservedTokens, actualTokens, attributedUserID); err != nil {
 				return err
 			}
@@ -1061,7 +1063,9 @@ func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {
 		return err
 	}
 	admittedAt := *job.AdmittedAt
-	if job.MinuteRequestHeld {
+	if job.RedisBillingAdmitted {
+		s.rollbackRedisBilling("image job", imageJobAdmissionCall(job))
+	} else if job.MinuteRequestHeld {
 		bucket, err := s.quotaBucketForUpdate(tx, job.APIKeyID, "minute", minuteBucket(admittedAt))
 		if err != nil {
 			return err
@@ -1073,8 +1077,10 @@ func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {
 			return err
 		}
 	}
-	if err := s.reconcileQuotaMinuteTokens(tx, job.APIKeyID, job.TokenLimitBucket, job.ReservedTokens, 0); err != nil {
-		return err
+	if !job.RedisBillingAdmitted {
+		if err := s.reconcileQuotaMinuteTokens(tx, job.APIKeyID, job.TokenLimitBucket, job.ReservedTokens, 0); err != nil {
+			return err
+		}
 	}
 
 	userQuotaID := userQuotaBucketKey(attributedUserID)
@@ -1082,7 +1088,7 @@ func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {
 		if err := s.lockScopeForUpdate(tx, "user_quota", userQuotaID); err != nil {
 			return err
 		}
-		if job.UserMinuteRequestHeld {
+		if !job.RedisBillingAdmitted && job.UserMinuteRequestHeld {
 			bucket, err := s.quotaBucketForUpdate(tx, userQuotaID, "minute", minuteBucket(admittedAt), attributedUserID)
 			if err != nil {
 				return err
@@ -1094,8 +1100,10 @@ func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {
 				return err
 			}
 		}
-		if err := s.reconcileQuotaMinuteTokens(tx, userQuotaID, job.UserTokenLimitBucket, job.ReservedTokens, 0, attributedUserID); err != nil {
-			return err
+		if !job.RedisBillingAdmitted {
+			if err := s.reconcileQuotaMinuteTokens(tx, userQuotaID, job.UserTokenLimitBucket, job.ReservedTokens, 0, attributedUserID); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1175,6 +1183,7 @@ func (s *GormStore) CreateImageJobWithAdmission(ctx context.Context, project Pro
 		return err
 	})
 	if err != nil {
+		s.rollbackRedisBilling("image job admission", admission.call)
 		return ImageJob{}, CallContext{}, err
 	}
 	return persisted, s.startAdmittedCallHeartbeat(ctx, admission), nil
@@ -1339,8 +1348,8 @@ func (s *GormStore) UpdateImageJob(job ImageJob, revisedPrompt string) error {
 func (s *GormStore) CompleteImageJob(call CallContext, job ImageJob, revisedPrompt string, asset ImageAsset, route RouteSelection, usage Usage, clientIP string, userAgent string) error {
 	elapsed := call.elapsed()
 	_ = s.stopRequestConcurrencyHeartbeats(call.RequestID)
-	usage = priceUsage(call.Model, usage)
-	usage.ProviderCostUSD = s.providerCostUSD(route, usage)
+	usage = priceUsageAt(call.Model, usage, call.StartedAt)
+	usage.ProviderCostUSD = s.providerCostUSDAt(route, usage, call.StartedAt)
 
 	now := time.Now().UTC()
 	if job.CompletedAt == nil {
@@ -1394,10 +1403,12 @@ func (s *GormStore) CompleteImageJob(call CallContext, job ImageJob, revisedProm
 		})
 	}()
 	if err != nil {
+		s.rollbackRedisBilling("image request", call)
 		if releaseErr := s.deleteRequestConcurrencyLeases(s.db, call.RequestID); releaseErr != nil {
 			log.Printf("[tokenhub] failed to release request concurrency leases request=%s: %v", call.RequestID, releaseErr)
 		}
 	} else {
+		s.settleRedisBilling("image request", call, quotaActualTokens(call, usage))
 		// The route and resource marks used to run inside the completion
 		// transaction. They are display-only and throttled now, so they run
 		// afterwards instead: the transaction stays focused on the state a

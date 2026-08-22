@@ -35,20 +35,11 @@ import (
 // internal network or onto a loopback service, even when the operator
 // allowlists private ranges or runs a local provider.
 func validateProviderUpstreamBaseURL(endpoint *url.URL, allowedPrivate []*net.IPNet, allowLocalhost bool) error {
-	if endpoint == nil {
-		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
+	if err := validateProviderUpstreamURLSyntax(endpoint); err != nil {
+		return err
 	}
 	scheme := strings.ToLower(strings.TrimSpace(endpoint.Scheme))
-	if scheme != "https" && scheme != "http" {
-		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid_scheme", "Base URL must use http or https")
-	}
-	if endpoint.User != nil {
-		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL must not embed credentials")
-	}
 	host := endpoint.Hostname()
-	if host == "" {
-		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
-	}
 	plaintextAllowed := false
 	if isLocalProviderHostname(host) {
 		if !allowLocalhost {
@@ -64,6 +55,24 @@ func validateProviderUpstreamBaseURL(endpoint *url.URL, allowedPrivate []*net.IP
 	}
 	if scheme == "http" && !plaintextAllowed {
 		return NewHTTPError(http.StatusBadRequest, "provider_base_url_insecure_scheme", "Public provider base URLs must use https")
+	}
+	return nil
+}
+
+func validateProviderUpstreamURLSyntax(endpoint *url.URL) error {
+	if endpoint == nil {
+		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
+	}
+	scheme := strings.ToLower(strings.TrimSpace(endpoint.Scheme))
+	if scheme != "https" && scheme != "http" {
+		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid_scheme", "Base URL must use http or https")
+	}
+	if endpoint.User != nil {
+		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL must not embed credentials")
+	}
+	host := endpoint.Hostname()
+	if host == "" {
+		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
 	}
 	return nil
 }
@@ -277,7 +286,14 @@ func ssrfGuardedProviderClient(client *http.Client) *http.Client {
 		CheckRedirect: strictProviderUpstreamRedirect,
 	}
 	if client == nil || client == http.DefaultClient {
-		guard.Transport = guardProviderUpstreamRequests(ssrfGuardedProviderTransport(allowedPrivate), allowedPrivate)
+		direct := guardProviderUpstreamRequests(ssrfGuardedProviderTransport(allowedPrivate), allowedPrivate)
+		guard.Transport = providerTransportWithEnvironmentProxy(direct, nil)
+		return guard
+	}
+	if _, ok := client.Transport.(interface{ providerEgressTransport() }); ok {
+		guard.Transport = client.Transport
+		guard.Timeout = client.Timeout
+		guard.Jar = client.Jar
 		return guard
 	}
 	// Custom client (tests): preserve its Transport and timeouts underneath the
@@ -476,10 +492,10 @@ func raceValidatedUpstreamCandidates(ctx context.Context, network, port string, 
 // separately configured synthetic-DNS policy, which is intended for Fake-IP
 // pools intercepted by a transparent proxy.
 //
-// Proxying is disabled on purpose: with an HTTP(S)_PROXY configured, DialContext
-// would receive the proxy address and the guard would validate the proxy rather
-// than the request target, letting the proxy's own DNS resolution bypass the
-// check. Provider catalog fetches therefore always connect directly.
+// This low-level transport is direct-only. A separate wrapper selects the
+// operator-configured HTTP(S) proxy before reaching it; keeping the connection
+// pools separate prevents this guarded DialContext from mistaking the proxy
+// address for the provider target.
 //
 // The idle pool is sized for a gateway workload: unlike a general-purpose
 // client, this transport fans a large amount of concurrent traffic out over a

@@ -106,7 +106,7 @@ func TestReadinessGatesOnEvolutionState(t *testing.T) {
 		t.Fatalf("expected ready on adopted database, got %d %s", recorder.Code, recorder.Body.String())
 	}
 	status := store.DatabaseEvolutionStatus(context.Background())
-	if !status.Ready || status.SchemaVersion != dbschema.BaselineVersion {
+	if !status.Ready || status.SchemaVersion != CurrentCompatibilityManifest().TargetVersion {
 		t.Fatalf("unexpected evolution status: %+v", status)
 	}
 

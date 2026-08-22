@@ -76,6 +76,8 @@ RPM は Provider 呼び出し前に消費されます。TPM も同じ時点で�
 
 上限超過時は HTTP 429 と `api_key_rpm_exceeded` または `api_key_tpm_exceeded` を返し、`Retry-After` と、対応する `X-RateLimit-Limit-*`、`X-RateLimit-Remaining-*`、`X-RateLimit-Reset-*` ヘッダーを付与します。分単位バケットはデータベースに保存されます。PostgreSQL は複数の TokenHub インスタンス間で強制状態を共有し、SQLite はサポート対象の単一バックエンド動作を維持します。メトリクスには短いハッシュ化済み Key 参照だけが含まれ、完全な API Key は公開されません。
 
+高同時実行のデプロイでは `TOKENHUB_BILLING_REDIS_URL` を設定できます。設定すると、TokenHub は書き込み頻度の高い admission 経路を Redis で処理します。対象は API Key とユーザー単位の分単位 RPM/TPM 予約、および API Key とユーザー単位の同時実行リースです。日次・月次カウンター、利用量レコード、リクエストログ、監査履歴、精算の冪等性については、データベースが引き続き永続的な課金台帳です。Redis エンドポイントを設定した場合、起動時に接続できる必要があります。空欄にするとデータベース-backed admission 経路を使用します。Docker Compose デプロイでは `deploy/docker-compose.redis.yml` を追加して、同じ Compose プロジェクトで任意の Redis コンポーネントを実行できます。
+
 ## ユーザー集約クォータ
 
 プラットフォーム管理者とチームリーダーは **コストガバナンス > クォータポリシー** でスコープに `user` を選び、有効なユーザー ID を `scope_id` に指定して、ユーザー集約上限を設定できます。チームリーダーが管理できるのは自分のチームに所属するユーザーのポリシーだけで、プラットフォーム管理者は任意の有効ユーザーを管理できます。ユーザーセレクターには現在の管理者が利用できるユーザーが表示され、ポリシーテーブルには現在の日次・月次使用量が表示されます。ユーザーポリシーは RPM、TPM、日次・月次のリクエスト数、Token、コスト、最大同時実行数という全クォータ項目をサポートします。
@@ -299,7 +301,11 @@ TOKENHUB_TRACING_HEADERS="Authorization=Basic $(printf '%s' 'pk-lf-...:sk-lf-...
 
 ## Prompt Cache の料金
 
-モデルカタログでは、100 万 Token あたりのキャッシュ読み取り単価を任意で設定できます。設定した場合、キャッシュにヒットした入力 Token の推定コストにはその単価を使用します。空欄の場合、DeepSeek V4 Pro は標準入力単価の約 0.83%、その他の DeepSeek モデルは 2%、残りの Embedding 以外のモデルは 10% で推定します。モデル料金表では推定値を示し、ホバー時に適用した比率を説明します。
+モデルカタログでは、100 万 Token あたりのキャッシュ読み取り単価とキャッシュ書き込み単価を任意で設定できます。キャッシュ書き込み価格が未設定の場合、TokenHub は従来の推定と互換にするため通常の入力価格で cache-write tokens を請求します。Provider がキャッシュ作成時間を区別する場合は、`cache_write_5m_price_usd_per_1m` と `cache_write_1h_price_usd_per_1m` も使用できます。残りの cache-write tokens には汎用キャッシュ書き込み価格を使います。キャッシュ読み取り価格が空欄の場合、DeepSeek V4 Pro は標準入力単価の約 0.83%、その他の DeepSeek モデルは 2%、残りの Embedding 以外のモデルは 10% で推定します。モデル料金表では推定値を示し、ホバー時に適用した比率を説明します。
+
+使用量レコードは合計の `estimated_cost_usd` に加えて、`input_cost_usd`、`cache_read_cost_usd`、`cache_write_cost_usd`、`output_cost_usd` を公開します。これにより、Provider usage から最終請求額がどのように組み立てられたかをレポートで監査できます。
+
+モデルレコードと Provider モデルインベントリは `pricing_periods` も受け付けます。これは時間帯別の価格上書きを並べた JSON 配列です。各期間には IANA `timezone`、`HH:MM` 形式のローカル `start_time` と `end_time`、任意の RFC 3339 `effective_from` と `effective_until`、および入力または出力価格フィールドを含められます。価格はリクエスト開始時刻で選択され、最初に一致した期間が有効です。時間帯は日付をまたぐこともできます。
 
 ## カタログメタデータの復元
 

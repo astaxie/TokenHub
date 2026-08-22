@@ -654,12 +654,16 @@ func (s *Server) canManageAPIKey(user AdminUser, keyID string) bool {
 	if isPlatformAdminRole(role) {
 		return true
 	}
-	for _, key := range s.store.ListAPIKeys() {
-		if key.ID == keyID {
-			return s.canAccessAPIKey(user, key)
-		}
+	key, ok := s.store.GetAPIKey(keyID)
+	if !ok {
+		return false
 	}
-	return false
+	project, ok := s.store.GetProject(key.ProjectID)
+	projects := map[string]Project{}
+	if ok {
+		projects[project.ID] = project
+	}
+	return canManageAPIKeyWithProjects(user, key, projects, s.store.ListResources("project-members"), s.activeTeamIDSet())
 }
 
 func (s *Server) findAPIKey(keyID string) (APIKey, error) {
@@ -731,6 +735,17 @@ func canAccessAPIKeyWithProjects(user AdminUser, key APIKey, projects map[string
 		return true
 	}
 	if strings.TrimSpace(key.OwnerUserID) == "" && key.Metadata != nil && key.Metadata["created_by"] == user.ID {
+		return true
+	}
+	project, ok := projects[key.ProjectID]
+	if !ok {
+		return false
+	}
+	return projectAccessRoleRank(projectAccessRole(user, project, memberships, activeTeams)) >= projectAccessRoleRank("maintainer")
+}
+
+func canManageAPIKeyWithProjects(user AdminUser, key APIKey, projects map[string]Project, memberships []AdminResource, activeTeams map[string]bool) bool {
+	if key.Metadata != nil && strings.TrimSpace(key.Metadata["created_by"]) == user.ID {
 		return true
 	}
 	project, ok := projects[key.ProjectID]
@@ -871,6 +886,15 @@ func (s *Server) filterResourcesForUser(user AdminUser, kind string, resources [
 		out := make([]AdminResource, 0, len(resources))
 		for _, item := range resources {
 			if item.Status == StatusActive && strings.TrimSpace(stringField(item.Fields, "user_id")) == user.ID {
+				out = append(out, item)
+			}
+		}
+		return out
+	}
+	if role == "user" && kind == "teams" {
+		out := make([]AdminResource, 0, len(resources))
+		for _, item := range resources {
+			if item.Status == StatusActive && userHasTeam(user, item.ID) {
 				out = append(out, item)
 			}
 		}
@@ -1315,7 +1339,10 @@ func adminResourcePermission(path string) string {
 		strings.Contains(path, "/approval-flows") || strings.Contains(path, "/reports") {
 		return "usage"
 	}
-	if strings.Contains(path, "/teams") || strings.Contains(path, "/role-configs") {
+	if strings.Contains(path, "/teams") {
+		return "project"
+	}
+	if strings.Contains(path, "/role-configs") {
 		return "identity"
 	}
 	if strings.Contains(path, "/monitors") || strings.Contains(path, "/proxies") || strings.Contains(path, "/settings") {

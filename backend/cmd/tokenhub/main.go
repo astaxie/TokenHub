@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -22,6 +24,12 @@ var (
 
 func main() {
 	loadDotEnv()
+	if len(os.Args) == 2 && os.Args[1] == "initial-admin-password" {
+		if err := printInitialAdminPassword(os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	if len(os.Args) > 1 && os.Args[1] == "db" {
 		dbcli.AppRelease = buildVersion
@@ -36,8 +44,17 @@ func main() {
 	if runtimeDeploymentType := os.Getenv("TOKENHUB_DEPLOYMENT_TYPE"); runtimeDeploymentType != "" {
 		config.DeploymentType = runtimeDeploymentType
 	}
-	if err := config.ValidateForStartup(); err != nil {
-		log.Fatal(err)
+	prepared, err := config.PrepareForStartup()
+	if err == nil {
+		config = prepared
+		err = config.ValidateForStartup()
+	}
+	if err != nil {
+		log.Printf("[tokenhub] startup blocked by configuration: %v", err)
+		if serveErr := serveStartupBlocked(addr, config.GracefulShutdownSeconds); serveErr != nil {
+			log.Fatal(serveErr)
+		}
+		return
 	}
 
 	// The managed-upgrade contract in docs/database-evolution.md keeps the
@@ -115,6 +132,69 @@ func main() {
 	if err := <-serveErr; err != nil && err != http.ErrServerClosed {
 		log.Printf("tokenhub server stopped with error: %v", err)
 	}
+}
+
+func printInitialAdminPassword(output io.Writer) error {
+	config, err := server.ConfigFromEnv().PrepareForStartup()
+	if err != nil {
+		return err
+	}
+	if err := config.ValidateForStartup(); err != nil {
+		return err
+	}
+	store, err := server.OpenStoreForMaintenance(config.DatabaseURL, config)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+	password, available, err := store.InitialAdminPassword()
+	if err != nil {
+		return err
+	}
+	if !available {
+		return fmt.Errorf("generated initial admin password is not available")
+	}
+	_, err = fmt.Fprintln(output, password)
+	return err
+}
+
+func serveStartupBlocked(addr string, gracefulShutdownSeconds int) error {
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           server.NewStartupBlockedHandler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	log.Printf("tokenhub backend listening on %s in configuration-required mode", addr)
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- srv.ListenAndServe()
+	}()
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	select {
+	case err := <-serveErr:
+		if err != nil && err != http.ErrServerClosed {
+			return err
+		}
+		return nil
+	case <-signalCtx.Done():
+	}
+
+	shutdownTimeout := time.Duration(gracefulShutdownSeconds) * time.Second
+	if shutdownTimeout <= 0 {
+		shutdownTimeout = 150 * time.Second
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		_ = srv.Close()
+		return err
+	}
+	if err := <-serveErr; err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
 
 // loadDotEnv loads the .env file into environment variables from common locations.

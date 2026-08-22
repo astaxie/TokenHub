@@ -195,6 +195,9 @@ func fetchOpenAIAccountQuotaWithClient(ctx context.Context, client *http.Client,
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return OpenAIAccountQuota{}, 0, egressErr
+		}
 		return OpenAIAccountQuota{}, 0, NewHTTPError(http.StatusBadGateway, "openai_quota_request_failed", fmt.Sprintf("OpenAI quota request failed: %v", err))
 	}
 	defer resp.Body.Close()

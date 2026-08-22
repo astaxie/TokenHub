@@ -331,3 +331,193 @@ func TestSelectRouteCandidatesIgnoresOptionalRuntimeStatsErrors(t *testing.T) {
 		t.Fatalf("candidates after optional runtime stats failure = %+v", candidates)
 	}
 }
+
+func TestSelectCodexRouteCandidatesDistinguishesResourceAvailability(t *testing.T) {
+	now := time.Now().UTC()
+	for _, binding := range []string{"explicit", "implicit"} {
+		for _, test := range []struct {
+			name          string
+			resource      *ProviderResource
+			wantCode      string
+			wantCandidate bool
+		}{
+			{name: "missing", wantCode: "provider_resource_missing"},
+			{name: "disabled", resource: &ProviderResource{Status: StatusDisabled, Healthy: false}, wantCode: "provider_resource_disabled"},
+			{name: "unhealthy", resource: &ProviderResource{Status: StatusActive, Healthy: false}, wantCode: "provider_resource_unhealthy"},
+			{name: "cooling down", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(time.Minute))}, wantCode: "provider_resource_cooling_down"},
+			{name: "expired cooldown", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(-time.Minute))}, wantCandidate: true},
+			{name: "healthy", resource: &ProviderResource{Status: StatusActive, Healthy: true}, wantCandidate: true},
+		} {
+			t.Run(binding+"/"+test.name, func(t *testing.T) {
+				store := NewMemoryStore()
+				modelName := "codex-resource-availability"
+				store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+				provider := store.AddProvider(Provider{
+					ID: "prv_codex_resource_availability", Name: "Codex resource availability",
+					Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+				})
+				resourceID := "rsrc_codex_resource_availability"
+				if test.resource != nil {
+					resource := *test.resource
+					resource.ID = resourceID
+					resource.ProviderID = provider.ID
+					resource.Name = "Codex account"
+					resource.ResourceType = ProviderResourceOpenAISubscription
+					if err := store.db.Create(&resource).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				route := ModelRoute{
+					ID: "route_codex_resource_availability", ModelName: modelName,
+					ProviderID: provider.ID, ProviderModel: modelName,
+					Status: StatusActive, Priority: 1, Weight: 100,
+				}
+				if binding == "explicit" {
+					route.ProviderResourceID = resourceID
+				}
+				store.AddRoute(route)
+
+				candidates, err := store.SelectRouteCandidates(modelName)
+				if test.wantCandidate {
+					if err != nil || len(candidates) != 1 || routeResourceID(candidates[0]) != resourceID {
+						t.Fatalf("eligible resource candidates=%+v err=%v", candidates, err)
+					}
+					return
+				}
+				httpErr := AsHTTPError(err)
+				if httpErr == nil || httpErr.Code != test.wantCode {
+					t.Fatalf("availability error=%+v want code=%q candidates=%+v", httpErr, test.wantCode, candidates)
+				}
+				if len(candidates) != 0 {
+					t.Fatalf("unavailable resource returned candidates: %+v", candidates)
+				}
+			})
+		}
+	}
+}
+
+func TestProviderLevelRouteKeepsResourceOptional(t *testing.T) {
+	now := time.Now().UTC()
+	for _, test := range []struct {
+		name         string
+		resource     *ProviderResource
+		wantResource bool
+	}{
+		{name: "no resource"},
+		{name: "disabled resource", resource: &ProviderResource{Status: StatusDisabled, Healthy: false}},
+		{name: "unhealthy resource", resource: &ProviderResource{Status: StatusActive, Healthy: false}},
+		{name: "cooling resource", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(time.Minute))}},
+		{name: "expired cooldown resource", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(-time.Minute))}, wantResource: true},
+		{name: "healthy resource", resource: &ProviderResource{Status: StatusActive, Healthy: true}, wantResource: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := NewMemoryStore()
+			modelName := "provider-level-resource-optional"
+			store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+			provider := store.AddProvider(Provider{
+				ID: "prv_provider_level_resource_optional", Name: "Provider-level credentials",
+				Type: ProviderOpenAICompatible, Status: StatusActive, Healthy: true,
+			})
+			if test.resource != nil {
+				resource := *test.resource
+				resource.ID = "rsrc_provider_level_resource_optional"
+				resource.ProviderID = provider.ID
+				resource.Name = "Optional resource"
+				resource.ResourceType = ProviderResourceAPIKey
+				if err := store.db.Create(&resource).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			store.AddRoute(ModelRoute{
+				ID: "route_provider_level_resource_optional", ModelName: modelName,
+				ProviderID: provider.ID, ProviderModel: modelName,
+				Status: StatusActive, Priority: 1, Weight: 100,
+			})
+
+			candidates, err := store.SelectRouteCandidates(modelName)
+			if err != nil || len(candidates) != 1 {
+				t.Fatalf("provider-level candidates=%+v err=%v", candidates, err)
+			}
+			if test.wantResource {
+				if routeResourceID(candidates[0]) != "rsrc_provider_level_resource_optional" {
+					t.Fatalf("eligible optional resource was not selected: %+v", candidates[0])
+				}
+			} else if candidates[0].Resource != nil {
+				t.Fatalf("unavailable optional resource blocked provider-level fallback: %+v", candidates[0])
+			}
+		})
+	}
+}
+
+func TestProviderLevelFallbackSurvivesBatchLookupFallback(t *testing.T) {
+	store := NewMemoryStore()
+	modelName := "provider-level-batch-fallback"
+	store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID: "prv_provider_level_batch_fallback", Name: "Provider-level batch fallback",
+		Type: ProviderOpenAICompatible, Status: StatusActive, Healthy: true,
+	})
+	if err := store.db.Create(&ProviderResource{
+		ID: "rsrc_provider_level_batch_fallback", ProviderID: provider.ID, Name: "Disabled optional resource",
+		ResourceType: ProviderResourceAPIKey, Status: StatusDisabled, Healthy: false,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	store.AddRoute(ModelRoute{
+		ID: "route_provider_level_batch_fallback", ModelName: modelName,
+		ProviderID: provider.ID, ProviderModel: modelName,
+		Status: StatusActive, Priority: 1, Weight: 100,
+	})
+
+	attempts := 0
+	callbackName := "test:provider-level-batch-fallback"
+	if err := store.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Schema != nil && tx.Statement.Schema.Table == "providers" {
+			attempts++
+			if attempts == 1 {
+				_ = tx.AddError(errors.New("force individual candidate lookup"))
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := store.db.Callback().Query().Remove(callbackName); err != nil {
+			t.Errorf("remove query callback: %v", err)
+		}
+	}()
+
+	candidates, err := store.SelectRouteCandidates(modelName)
+	if err != nil || len(candidates) != 1 || candidates[0].Resource != nil {
+		t.Fatalf("individual provider-level fallback candidates=%+v err=%v", candidates, err)
+	}
+	if attempts != 2 {
+		t.Fatalf("provider lookup attempts=%d want batch plus individual", attempts)
+	}
+}
+
+func TestProviderResourceCapacityRejectsResourceDisabledAfterSelection(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_disable_after_selection", Name: "Disable after selection",
+		Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+	})
+	resource := ProviderResource{
+		ID: "rsrc_disable_after_selection", ProviderID: provider.ID, Name: "Disable after selection",
+		ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
+	}
+	if err := store.db.Create(&resource).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Model(&ProviderResource{}).Where("id = ?", resource.ID).Update("status", StatusDisabled).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := store.CheckProviderResourceCapacity(t.Context(), resource.ID); AsHTTPError(err).Code != "provider_resource_disabled" {
+		t.Fatalf("disabled resource capacity error=%v", err)
+	}
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
+}

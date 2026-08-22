@@ -1072,13 +1072,19 @@ func (s *GormStore) CheckProviderResourceCapacity(ctx context.Context, resourceI
 		if err != nil {
 			return err
 		}
+		if resource.Status != StatusActive {
+			return NewHTTPError(http.StatusServiceUnavailable, "provider_resource_disabled", "Provider resource is disabled")
+		}
 		if !resource.Healthy {
 			// Half-open admission. The resource is parked; the trial is claimed by
 			// pushing cooldown_until into the future, which both rejects every
 			// concurrent request below and pre-arms the next window if this trial
 			// fails. The UPDATE is guarded by the deadline it read, so across
 			// replicas exactly one caller can win.
-			if resource.CooldownUntil == nil || now.Before(*resource.CooldownUntil) {
+			if resource.CooldownUntil == nil {
+				return NewHTTPError(http.StatusServiceUnavailable, "provider_resource_unhealthy", "Provider resource is unhealthy")
+			}
+			if now.Before(*resource.CooldownUntil) {
 				return NewHTTPError(http.StatusTooManyRequests, "provider_resource_cooling_down", "Provider resource is cooling down")
 			}
 			nextDeadline := now.Add(s.cooldownWindow(resource.FailureCount))

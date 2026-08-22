@@ -155,6 +155,9 @@ func (a CodexSubscriptionAdapter) modelsWithCredentials(ctx context.Context, cre
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return ProviderCatalogEntry{}, 0, egressErr
+		}
 		return ProviderCatalogEntry{}, 0, NewHTTPError(http.StatusBadGateway, "codex_models_request_failed", fmt.Sprintf("Codex models request failed: %v", err))
 	}
 	defer resp.Body.Close()

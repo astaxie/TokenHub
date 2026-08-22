@@ -340,24 +340,25 @@ func NewRunner(db *sql.DB, dialect Dialect, migrations []Migration, opts ...Opti
 }
 
 // NormalizeMigrations validates and canonicalizes a migration registry:
-// unique positive versions above the baseline, a recognized phase and
-// dialect, exactly one of Statements or Go, and positive lock and statement
-// budgets. Undeclared budgets are filled from the phase defaults so the
-// release manifest always carries concrete values.
+// unique positive versions above the baseline, a
+// recognized phase and dialect, exactly one of Statements or Go, and positive
+// lock and statement budgets. Undeclared budgets are filled from the phase
+// defaults so the release manifest always carries concrete values.
 func NormalizeMigrations(migrations []Migration) ([]Migration, error) {
 	registry := make([]Migration, len(migrations))
 	copy(registry, migrations)
-	sort.Slice(registry, func(i, j int) bool { return registry[i].Version < registry[j].Version })
+	sort.Slice(registry, func(i, j int) bool {
+		if registry[i].Version != registry[j].Version {
+			return registry[i].Version < registry[j].Version
+		}
+		return registry[i].Dialect < registry[j].Dialect
+	})
 	seen := make(map[int64]bool, len(registry))
 	for i := range registry {
 		m := &registry[i]
 		if m.Version <= BaselineVersion {
 			return nil, fmt.Errorf("migration %q: version %d is reserved or invalid (must be > %d)", m.Name, m.Version, BaselineVersion)
 		}
-		if seen[m.Version] {
-			return nil, fmt.Errorf("duplicate migration version %d", m.Version)
-		}
-		seen[m.Version] = true
 		if m.Name == "" {
 			return nil, fmt.Errorf("migration version %d: empty name", m.Version)
 		}
@@ -373,6 +374,10 @@ func NormalizeMigrations(migrations []Migration) ([]Migration, error) {
 		default:
 			return nil, fmt.Errorf("migration %q: invalid dialect %q", m.Name, m.Dialect)
 		}
+		if seen[m.Version] {
+			return nil, fmt.Errorf("duplicate migration version %d", m.Version)
+		}
+		seen[m.Version] = true
 		hasSQL, hasGo := len(m.Statements) > 0, m.Go != nil
 		switch {
 		case hasSQL && hasGo:
@@ -480,6 +485,9 @@ func (r *Runner) Verify(ctx context.Context) error {
 func (r *Runner) verifyApplied(applied []Applied) error {
 	registryByVer := make(map[int64]Migration, len(r.registry))
 	for _, m := range r.registry {
+		if !m.appliesTo(r.dialect) {
+			continue
+		}
 		registryByVer[m.Version] = m
 	}
 	for _, row := range applied {

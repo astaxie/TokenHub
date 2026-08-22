@@ -77,6 +77,7 @@ func TestConfigParsesClusterCoordinationSettings(t *testing.T) {
 	t.Setenv("TOKENHUB_CORS_ALLOWED_ORIGINS", "https://console.example.com,https://admin.example.com")
 	t.Setenv("TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS", "45")
 	t.Setenv("TOKENHUB_CLUSTER_LOCK_TTL_SECONDS", "60")
+	t.Setenv("TOKENHUB_BILLING_REDIS_URL", "redis://redis.example.test:6379/2")
 	t.Setenv("TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS", "90")
 
 	config := ConfigFromEnv()
@@ -85,6 +86,9 @@ func TestConfigParsesClusterCoordinationSettings(t *testing.T) {
 	}
 	if config.InFlightLeaseTTLSeconds != 45 || config.ClusterLockTTLSeconds != 60 || config.GracefulShutdownSeconds != 90 {
 		t.Fatalf("unexpected cluster settings: %+v", config)
+	}
+	if config.BillingRedisURL != "redis://redis.example.test:6379/2" {
+		t.Fatalf("unexpected Redis billing URL: %+v", config)
 	}
 }
 
@@ -155,6 +159,29 @@ func TestProductionConfigAcceptsStrongCredentials(t *testing.T) {
 	}
 	if err := config.ValidateForStartup(); err != nil {
 		t.Fatalf("expected strong production credentials to pass: %v", err)
+	}
+}
+
+func TestProductionConfigAcceptsDisabledOptionalBootstrapCredentials(t *testing.T) {
+	config := Config{
+		Environment: "production",
+		SecretKey:   strings.Repeat("s", 32),
+	}
+	if err := config.ValidateForStartup(); err != nil {
+		t.Fatalf("expected optional bootstrap credentials to be disabled: %v", err)
+	}
+}
+
+func TestProductionConfigRejectsWeakEnabledOptionalCredentials(t *testing.T) {
+	config := Config{
+		Environment:            "production",
+		AdminToken:             "short-token",
+		BootstrapAdminPassword: "short",
+		SecretKey:              strings.Repeat("s", 32),
+	}
+	err := config.ValidateForStartup()
+	if err == nil || !strings.Contains(err.Error(), "TOKENHUB_ADMIN_TOKEN") || !strings.Contains(err.Error(), "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD") {
+		t.Fatalf("expected enabled weak credentials to be rejected: %v", err)
 	}
 }
 

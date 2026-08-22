@@ -554,6 +554,10 @@ func scopedHTTPError(base *HTTPError, scope string) *HTTPError {
 }
 
 func priceUsage(model Model, usage Usage) Usage {
+	return priceUsageAt(model, usage, time.Now().UTC())
+}
+
+func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 	// Upstream-reported usage is untrusted: the provider parsers preserve the
 	// sign of whatever the upstream sent, and a negative count would flow into
 	// addUsage and shrink the day/month quota counters, letting a key keep
@@ -565,16 +569,24 @@ func priceUsage(model Model, usage Usage) Usage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = saturatingAddNonNegative(usage.PromptTokens, usage.CompletionTokens)
 	}
-	usage.CachedInputTokens = minInt64(maxInt64(usage.CachedInputTokens, 0), usage.PromptTokens)
+	usage = clampBillableInputTokens(usage)
 	if usage.CostUSD == 0 {
+		model = modelPriceAt(model, requestStartedAt)
 		if model.Modality == "embedding" && model.EmbeddingPriceUSDPer1M > 0 {
-			usage.CostUSD = float64(usage.TotalTokens) * model.EmbeddingPriceUSDPer1M / 1_000_000
+			usage.InputCostUSD = float64(usage.TotalTokens) * model.EmbeddingPriceUSDPer1M / 1_000_000
+			usage.CostUSD = usage.InputCostUSD
 		} else {
-			uncachedInputTokens := usage.PromptTokens - usage.CachedInputTokens
+			cacheWrite5mTokens, cacheWrite1hTokens, cacheWriteOtherTokens := cacheWriteTokenParts(usage)
+			uncachedInputTokens := maxInt64(usage.PromptTokens-usage.CachedInputTokens-usage.CacheWriteInputTokens, 0)
 			cacheReadPrice := effectiveCacheReadPriceUSDPer1M(model)
-			usage.CostUSD = float64(uncachedInputTokens)*model.InputPriceUSDPer1M/1_000_000 +
-				float64(usage.CachedInputTokens)*cacheReadPrice/1_000_000 +
-				float64(usage.CompletionTokens)*model.OutputPriceUSDPer1M/1_000_000
+			cacheWritePrice := effectiveCacheWritePriceUSDPer1M(model)
+			usage.InputCostUSD = float64(uncachedInputTokens) * model.InputPriceUSDPer1M / 1_000_000
+			usage.CacheReadCostUSD = float64(usage.CachedInputTokens) * cacheReadPrice / 1_000_000
+			usage.CacheWriteCostUSD = float64(cacheWriteOtherTokens)*cacheWritePrice/1_000_000 +
+				float64(cacheWrite5mTokens)*effectiveCacheWrite5mPriceUSDPer1M(model)/1_000_000 +
+				float64(cacheWrite1hTokens)*effectiveCacheWrite1hPriceUSDPer1M(model)/1_000_000
+			usage.OutputCostUSD = float64(usage.CompletionTokens) * model.OutputPriceUSDPer1M / 1_000_000
+			usage.CostUSD = usage.InputCostUSD + usage.CacheReadCostUSD + usage.CacheWriteCostUSD + usage.OutputCostUSD
 		}
 	}
 	return usage

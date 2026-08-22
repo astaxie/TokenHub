@@ -18,14 +18,14 @@ type CompatibilityManifest struct {
 	MaxCompatible int64 `json:"max_compatible"`
 }
 
-// CurrentCompatibilityManifest is this release's declaration. The bridge
-// release establishes the adoption baseline and supports no other state;
-// later releases widen the range as they ship expand migrations.
+// CurrentCompatibilityManifest is this release's declaration. This release
+// establishes the granular billing expand migration and can run from the
+// adoption baseline through the expanded state.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: dbschema.BaselineVersion,
+		TargetVersion: 2,
 		MinCompatible: dbschema.BaselineVersion,
-		MaxCompatible: dbschema.BaselineVersion,
+		MaxCompatible: 2,
 	}
 }
 

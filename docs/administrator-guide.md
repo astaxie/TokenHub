@@ -76,6 +76,8 @@ RPM is consumed before a Provider is invoked. TPM is reserved at the same point 
 
 An exceeded limit returns HTTP 429 with `api_key_rpm_exceeded` or `api_key_tpm_exceeded`, plus `Retry-After` and the relevant `X-RateLimit-Limit-*`, `X-RateLimit-Remaining-*`, and `X-RateLimit-Reset-*` headers. Minute buckets are database-backed. PostgreSQL shares enforcement across TokenHub instances; SQLite retains its supported single-backend behavior. Metrics expose only a short hashed Key reference, never the complete API Key.
 
+For high-concurrency deployments, operators may configure `TOKENHUB_BILLING_REDIS_URL`. When set, TokenHub uses Redis for the high-write admission path: per-minute API Key and user RPM/TPM reservations plus API Key and user concurrency leases. The database remains the durable billing ledger for day and month counters, usage records, request logs, audit trails, and settlement idempotency. A configured Redis endpoint is required at startup; leave the variable empty to keep the database-backed admission path. Docker Compose deployments can add `deploy/docker-compose.redis.yml` to run an optional Redis component managed by the same Compose project.
+
 ## Aggregate User Quotas
 
 Platform administrators and team leaders configure aggregate user limits under **Cost Governance > Quota Policies** by selecting `user` as the scope and an active user ID as `scope_id`. A team leader may manage policies only for users in the leader's own teams; platform administrators may manage any active user. The user selector lists the users available to the current administrator, and the policy table shows current daily and monthly consumption. User policies support the complete quota surface: RPM, TPM, daily and monthly requests, tokens and cost, plus maximum concurrency.
@@ -300,7 +302,11 @@ Export never delays a request. Completions are queued and turned into spans on a
 
 ## Prompt Cache Pricing
 
-The model catalog accepts an optional cache read price in USD per 1 million tokens. When it is configured, cached input tokens use that price in estimated costs. When it is left blank, TokenHub estimates the cache read price at about 0.83% of the standard input price for DeepSeek V4 Pro, 2% for other DeepSeek models, and 10% for other non-embedding models. The model pricing table marks estimated values and explains the applied ratio on hover.
+The model catalog accepts optional cache-read and cache-write prices in USD per 1 million tokens. When cache-write pricing is not configured, TokenHub bills cache-write tokens at the normal input price to preserve legacy estimates. Providers that distinguish cache creation duration can also use `cache_write_5m_price_usd_per_1m` and `cache_write_1h_price_usd_per_1m`; remaining cache-write tokens use the generic cache-write price. When cache-read pricing is left blank, TokenHub estimates it at about 0.83% of the standard input price for DeepSeek V4 Pro, 2% for other DeepSeek models, and 10% for other non-embedding models. The model pricing table marks estimated values and explains the applied ratio on hover.
+
+Usage records expose `input_cost_usd`, `cache_read_cost_usd`, `cache_write_cost_usd`, and `output_cost_usd` alongside the total `estimated_cost_usd`, so reports can audit how the final charge was assembled from provider usage.
+
+Model records and Provider model inventory also accept `pricing_periods`: a JSON array of time-based price overrides. Each period may include an IANA `timezone`, local `start_time` and `end_time` in `HH:MM`, optional RFC 3339 `effective_from` and `effective_until`, and input or output price fields. Pricing is selected from the request start time and the first matching period wins; windows may cross midnight.
 
 ## Catalog Metadata Recovery
 

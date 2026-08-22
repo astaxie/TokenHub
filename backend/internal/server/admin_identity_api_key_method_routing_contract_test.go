@@ -560,7 +560,12 @@ func newAdminIdentityAPIKeyMethodRoutingServer(t *testing.T) (*GormStore, *Serve
 	ordinary, ordinaryToken := createAdminIdentityAPIKeyMethodSession(t, store, AdminUser{Username: "ordinary-method-user", Email: "ordinary-method-user@tokenhub.local", Role: "user", Status: StatusActive})
 	_, teamLeaderToken := createAdminIdentityAPIKeyMethodSession(t, store, AdminUser{Username: "leader-method-user", Email: "leader-method-user@tokenhub.local", Role: "team_leader", TeamID: "team_platform", Status: StatusActive})
 	_, securityToken := createAdminIdentityAPIKeyMethodSession(t, store, AdminUser{Username: "security-method-user", Email: "security-method-user@tokenhub.local", Role: "security_admin", Status: StatusActive})
-	key, _, err := store.CreateAPIKey(defaultProjectID, APIKey{Name: "Owned Method Routing Key", OwnerUserID: ordinary.ID, Status: StatusActive}, "thk_owned_method_routing")
+	key, _, err := store.CreateAPIKey(defaultProjectID, APIKey{
+		Name:        "Owned Method Routing Key",
+		OwnerUserID: ordinary.ID,
+		Status:      StatusActive,
+		Metadata:    map[string]string{"created_by": ordinary.ID},
+	}, "thk_owned_method_routing")
 	if err != nil {
 		t.Fatal(err)
 	}

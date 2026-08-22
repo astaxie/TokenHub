@@ -114,7 +114,6 @@ export const adminNavGroups: NavGroup[] = [
     title: "安全运维",
     items: [
       { view: "security-policies", label: "安全策略", icon: ShieldCheck },
-      { view: "proxies", label: "代理出口", icon: Server },
       { view: "sqlite-backups", label: "数据备份", icon: Database },
       { view: "database-status", label: "数据库状态", icon: Database },
       { view: "announcements", label: "公告通知", icon: Bell },
