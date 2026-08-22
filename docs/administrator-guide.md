@@ -372,8 +372,9 @@ with TLS from the first byte. The channel keeps the other standard fields
 `email_to`).
 
 In the admin console's email channel form, the **SMTP encryption** selector
-offers `starttls` (default, port 587) and `ssl` (implicit TLS, port 465);
-it writes the `smtp_encryption` field on create and update.
+offers `auto` (opportunistic STARTTLS, legacy default), `starttls` (require
+STARTTLS, refuse to send when unsupported, port 587), and `ssl` (implicit TLS
+from the first byte, port 465); new channels default to `starttls`.
 
 ## Screenshot
 
