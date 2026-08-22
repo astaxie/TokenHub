@@ -334,10 +334,27 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireResponseRef(t, document, "/v1/messages", "post", "403", "#/components/responses/AnthropicModelNotAllowed")
 	requireResponseRef(t, document, "/v1/messages", "post", "501", "#/components/responses/AnthropicProviderCapabilityNotSupported")
 	requireResponseRef(t, document, "/v1/messages", "post", "502", "#/components/responses/AnthropicProviderError")
+	requireOperationParameter(t, document, "/v1/messages", "post", "header", "anthropic-version")
+	requireOperationParameter(t, document, "/v1/messages", "post", "header", "anthropic-beta")
+	requireArrayItemsRef(t, document, "AnthropicMessagesRequest", "messages", "#/components/schemas/AnthropicMessage")
+	requireSchemaEnum(t, document, "AnthropicMessage", "role", []string{"user", "assistant", "system"})
+	requireSchemaDescriptionContains(t, document, "AnthropicMessage", "mid-conversation-system-2026-04-07")
 	requireRequestSchemaRef(t, document, "/v1/messages/count_tokens", "post", "#/components/schemas/AnthropicCountTokensRequest")
 	requireSchemaRequired(t, document, "AnthropicCountTokensRequest", []string{"model", "messages"})
 	requireResponseRef(t, document, "/v1/messages/count_tokens", "post", "400", "#/components/responses/AnthropicBadRequest")
 	requireResponseRef(t, document, "/v1/messages/count_tokens", "post", "403", "#/components/responses/AnthropicModelNotAllowed")
+	requireOperationParameter(t, document, "/v1/messages/count_tokens", "post", "header", "anthropic-version")
+	requireOperationParameter(t, document, "/v1/messages/count_tokens", "post", "header", "anthropic-beta")
+	requireArrayItemsRef(t, document, "AnthropicCountTokensRequest", "messages", "#/components/schemas/AnthropicMessage")
+	requireSchemaProperty(t, document, "ResponsesRequest", "max_output_tokens")
+	requireSchemaProperty(t, document, "ResponsesRequest", "temperature")
+	requireSchemaProperty(t, document, "ResponsesRequest", "instructions")
+	requireSchemaProperty(t, document, "ResponsesRequest", "store")
+	requireSchemaProperty(t, document, "ResponsesRequest", "reasoning")
+	requireSchemaProperty(t, document, "ResponsesRequest", "service_tier")
+	requireOneOfContainsRef(t, document, "ResponsesRequest", "input", "#/components/schemas/ResponseInputItem")
+	requireArrayItemsRef(t, document, "ResponsesResponse", "output", "#/components/schemas/ResponseOutputItem")
+	requireArrayItemsRef(t, document, "ChatCompletionResponse", "choices", "#/components/schemas/ChatCompletionChoice")
 }
 
 func assertNonGatewayRoutesStayOutOfPublicGatewaySpec(t *testing.T, document map[string]any) {
@@ -795,6 +812,45 @@ func requireSchemaProperty(t *testing.T, document map[string]any, schemaName str
 	}
 }
 
+func requireSchemaDescriptionContains(t *testing.T, document map[string]any, schemaName string, want string) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
+	if description, _ := schema["description"].(string); !strings.Contains(description, want) {
+		t.Fatalf("schema %s description must contain %q, got %q", schemaName, want, description)
+	}
+}
+
+func requireArrayItemsRef(t *testing.T, document map[string]any, schemaName string, property string, want string) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
+	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
+	propertySchema := asMap(t, properties[property], "components.schemas."+schemaName+".properties."+property)
+	if got := asMap(t, propertySchema["items"], "items")["$ref"]; got != want {
+		t.Fatalf("schema %s property %s items ref=%v, want %s", schemaName, property, got, want)
+	}
+}
+
+func requireOneOfContainsRef(t *testing.T, document map[string]any, schemaName string, property string, want string) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
+	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
+	propertySchema := asMap(t, properties[property], "components.schemas."+schemaName+".properties."+property)
+	for _, rawOption := range asSlice(t, propertySchema["oneOf"], "oneOf") {
+		option := asMap(t, rawOption, "oneOf option")
+		if got := option["$ref"]; got == want {
+			return
+		}
+		if option["type"] != "array" {
+			continue
+		}
+		items := asMap(t, option["items"], "array option items")
+		if got := items["$ref"]; got == want {
+			return
+		}
+	}
+	t.Fatalf("schema %s property %s oneOf must contain ref %s", schemaName, property, want)
+}
+
 func requireSchemaRequired(t *testing.T, document map[string]any, schemaName string, want []string) {
 	t.Helper()
 	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
@@ -944,6 +1000,15 @@ func asMap(t *testing.T, value any, label string) map[string]any {
 		t.Fatalf("%s is not an object", label)
 	}
 	return object
+}
+
+func asSlice(t *testing.T, value any, label string) []any {
+	t.Helper()
+	items, ok := value.([]any)
+	if !ok {
+		t.Fatalf("%s is not an array", label)
+	}
+	return items
 }
 
 func jsonRoundTrip(t *testing.T, value any) any {

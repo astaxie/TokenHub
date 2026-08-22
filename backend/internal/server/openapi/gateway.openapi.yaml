@@ -335,6 +335,9 @@ paths:
         Anthropic-compatible clients may send the TokenHub project API key in `x-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
       requestBody:
         required: true
         content:
@@ -397,6 +400,9 @@ paths:
       description: Counts tokens for an Anthropic-compatible Messages request without invoking generation. Anthropic-compatible clients may send the TokenHub project API key in `x-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
       requestBody:
         required: true
         content:
@@ -926,6 +932,33 @@ components:
       examples:
         asset:
           value: imgasset_123
+    AnthropicVersion:
+      name: anthropic-version
+      in: header
+      required: false
+      description: >-
+        Anthropic protocol version sent by native Anthropic clients. TokenHub
+        forwards this header to native Anthropic routes when present; provider
+        defaults apply when it is omitted.
+      schema:
+        type: string
+      examples:
+        default:
+          value: "2023-06-01"
+    AnthropicBeta:
+      name: anthropic-beta
+      in: header
+      required: false
+      description: >-
+        Comma-separated Anthropic beta feature names. Include
+        `mid-conversation-system-2026-04-07` when a message item uses
+        `role: system`; without that beta, TokenHub accepts only `user` and
+        `assistant` message roles.
+      schema:
+        type: string
+      examples:
+        midConversationSystem:
+          value: "mid-conversation-system-2026-04-07"
     PreferRespondAsync:
       name: Prefer
       in: header
@@ -1291,10 +1324,46 @@ components:
             $ref: "#/components/schemas/ChatMessage"
         stream:
           type: boolean
+        stream_options:
+          $ref: "#/components/schemas/ChatStreamOptions"
         temperature:
           type: number
         max_tokens:
           type: integer
+        top_p:
+          type: number
+        presence_penalty:
+          type: number
+        frequency_penalty:
+          type: number
+        min_p:
+          type: number
+        top_k:
+          type: integer
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatTool"
+        tool_choice:
+          $ref: "#/components/schemas/ChatToolChoice"
+        parallel_tool_calls:
+          type: boolean
+        response_format:
+          $ref: "#/components/schemas/ChatResponseFormat"
+        reasoning_effort:
+          type: string
+          enum: [minimal, low, medium, high, xhigh]
+        metadata:
+          type: object
+          additionalProperties: true
+        prompt_cache_key: {}
+        user: {}
     ChatMessage:
       type: object
       required: [role, content]
@@ -1306,10 +1375,142 @@ components:
         content:
           oneOf:
             - type: string
+            - type: "null"
             - type: array
               items:
-                type: object
-                additionalProperties: true
+                $ref: "#/components/schemas/ChatContentPart"
+        name:
+          type: string
+        tool_call_id:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatToolCall"
+        reasoning_content:
+          type: string
+        reasoning_signature:
+          type: string
+        redacted_reasoning_content:
+          type: string
+    ChatContentPart:
+      oneOf:
+        - $ref: "#/components/schemas/ChatTextContentPart"
+        - $ref: "#/components/schemas/ChatImageURLContentPart"
+        - $ref: "#/components/schemas/ResponseInputImagePart"
+    ChatTextContentPart:
+      type: object
+      required: [type, text]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          enum: [text, input_text, output_text]
+        text:
+          type: string
+    ChatImageURLContentPart:
+      type: object
+      required: [type, image_url]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: image_url
+        image_url:
+          oneOf:
+            - type: string
+            - type: object
+              required: [url]
+              additionalProperties: true
+              properties:
+                url:
+                  type: string
+                detail:
+                  type: string
+    ChatTool:
+      type: object
+      required: [type, function]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: function
+        function:
+          $ref: "#/components/schemas/FunctionDefinition"
+    FunctionDefinition:
+      type: object
+      required: [name]
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+    ChatToolChoice:
+      oneOf:
+        - type: string
+          enum: [none, auto, required]
+        - type: object
+          required: [type, function]
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+              const: function
+            function:
+              type: object
+              required: [name]
+              additionalProperties: true
+              properties:
+                name:
+                  type: string
+    ChatToolCall:
+      type: object
+      required: [id, type, function]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          const: function
+        function:
+          type: object
+          required: [name, arguments]
+          additionalProperties: true
+          properties:
+            name:
+              type: string
+            arguments:
+              type: string
+    ChatResponseFormat:
+      oneOf:
+        - type: object
+          required: [type]
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+              enum: [text, json_object]
+        - type: object
+          required: [type, json_schema]
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+              const: json_schema
+            json_schema:
+              type: object
+              additionalProperties: true
+    ChatStreamOptions:
+      type: object
+      additionalProperties: true
+      properties:
+        include_usage:
+          type: boolean
     ChatCompletionResponse:
       type: object
       additionalProperties: true
@@ -1323,10 +1524,67 @@ components:
         choices:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/ChatCompletionChoice"
         usage:
           $ref: "#/components/schemas/Usage"
+    ChatCompletionChoice:
+      type: object
+      required: [index]
+      additionalProperties: true
+      properties:
+        index:
+          type: integer
+        message:
+          $ref: "#/components/schemas/ChatCompletionMessage"
+        delta:
+          $ref: "#/components/schemas/ChatCompletionDelta"
+        finish_reason:
+          oneOf:
+            - type: string
+              enum: [stop, length, tool_calls, content_filter]
+            - type: "null"
+        logprobs:
+          nullable: true
+    ChatCompletionMessage:
+      type: object
+      required: [role]
+      additionalProperties: true
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          oneOf:
+            - type: string
+            - type: "null"
+        reasoning_content:
+          type: string
+        reasoning_signature:
+          type: string
+        reasoning_details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        tool_calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatToolCall"
+    ChatCompletionDelta:
+      type: object
+      additionalProperties: true
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: string
+        reasoning_content:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatToolCall"
     ResponsesRequest:
       type: object
       required: [model, input]
@@ -1334,16 +1592,236 @@ components:
       properties:
         model:
           type: string
-        input: {}
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: "#/components/schemas/ResponseInputItem"
         stream:
           type: boolean
         background:
           type: boolean
+        max_output_tokens:
+          type: integer
+        temperature:
+          type: number
+        instructions:
+          type: string
+        store:
+          type: boolean
+        reasoning:
+          $ref: "#/components/schemas/ResponsesReasoning"
+        service_tier:
+          type: string
         previous_response_id:
           type: string
         metadata:
           type: object
           additionalProperties: true
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResponseTool"
+        tool_choice:
+          $ref: "#/components/schemas/ResponseToolChoice"
+        parallel_tool_calls:
+          type: boolean
+        include:
+          type: array
+          items:
+            type: string
+        text:
+          $ref: "#/components/schemas/ResponseTextConfig"
+        prompt_cache_key:
+          type: string
+        user: {}
+    ResponsesReasoning:
+      type: object
+      additionalProperties: true
+      properties:
+        effort:
+          type: string
+          enum: [minimal, low, medium, high, xhigh]
+        mode:
+          type: string
+        context:
+          type: string
+        summary:
+          type: string
+    ResponseInputItem:
+      oneOf:
+        - $ref: "#/components/schemas/ResponseInputMessage"
+        - $ref: "#/components/schemas/ResponseFunctionCallOutput"
+        - $ref: "#/components/schemas/ResponseFunctionCall"
+        - $ref: "#/components/schemas/ResponseReasoningItem"
+    ResponseInputMessage:
+      type: object
+      required: [type, role, content]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: message
+        role:
+          type: string
+          enum: [user, assistant, developer, system]
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: "#/components/schemas/ResponseContentPart"
+    ResponseContentPart:
+      oneOf:
+        - $ref: "#/components/schemas/ResponseInputTextPart"
+        - $ref: "#/components/schemas/ResponseOutputTextPart"
+        - $ref: "#/components/schemas/ResponseInputImagePart"
+        - $ref: "#/components/schemas/ResponseRefusalPart"
+    ResponseInputTextPart:
+      type: object
+      required: [type, text]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: input_text
+        text:
+          type: string
+    ResponseOutputTextPart:
+      type: object
+      required: [type, text]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: output_text
+        text:
+          type: string
+    ResponseInputImagePart:
+      type: object
+      required: [type]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: input_image
+        image_url:
+          type: string
+        file_id:
+          type: string
+        detail:
+          type: string
+    ResponseRefusalPart:
+      type: object
+      required: [type, refusal]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: refusal
+        refusal:
+          type: string
+    ResponseFunctionCallOutput:
+      type: object
+      required: [type, call_id, output]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: function_call_output
+        call_id:
+          type: string
+        output:
+          type: string
+    ResponseFunctionCall:
+      type: object
+      required: [type, call_id, name, arguments]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: function_call
+        id:
+          type: string
+        call_id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: string
+        status:
+          type: string
+    ResponseReasoningItem:
+      type: object
+      required: [type]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: reasoning
+        summary:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        encrypted_content:
+          type: string
+    ResponseTool:
+      type: object
+      required: [type, name]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: function
+        name:
+          type: string
+        description:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+        strict:
+          type: boolean
+    ResponseToolChoice:
+      oneOf:
+        - type: string
+          enum: [none, auto, required]
+        - type: object
+          required: [type, name]
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+              const: function
+            name:
+              type: string
+    ResponseTextConfig:
+      type: object
+      additionalProperties: true
+      properties:
+        format:
+          oneOf:
+            - type: object
+              required: [type]
+              additionalProperties: true
+              properties:
+                type:
+                  type: string
+                  enum: [text, json_object]
+            - type: object
+              required: [type, schema]
+              additionalProperties: true
+              properties:
+                type:
+                  type: string
+                  const: json_schema
+                name:
+                  type: string
+                schema:
+                  type: object
+                  additionalProperties: true
     ResponsesResponse:
       type: object
       additionalProperties: true
@@ -1357,10 +1835,33 @@ components:
         output:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/ResponseOutputItem"
         usage:
           $ref: "#/components/schemas/Usage"
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/ErrorObject"
+            - type: "null"
+    ResponseOutputItem:
+      oneOf:
+        - $ref: "#/components/schemas/ResponseOutputMessage"
+        - $ref: "#/components/schemas/ResponseFunctionCall"
+        - $ref: "#/components/schemas/ResponseReasoningItem"
+    ResponseOutputMessage:
+      type: object
+      required: [type, role, content]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: message
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResponseContentPart"
     ResponseJob:
       type: object
       required: [id, status]
@@ -1384,8 +1885,7 @@ components:
         output:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/ResponseOutputItem"
         completed_at:
           type: integer
         usage:
@@ -1398,6 +1898,11 @@ components:
       type: object
       required: [model, messages, max_tokens]
       additionalProperties: true
+      description: >-
+        Anthropic-compatible Messages request. Message roles are `user` and
+        `assistant` by default. A mid-conversation message with `role: system`
+        is accepted only when the `anthropic-beta` header includes
+        `mid-conversation-system-2026-04-07`.
       properties:
         model:
           type: string
@@ -1410,16 +1915,34 @@ components:
             - type: string
             - type: array
               items:
-                type: object
-                additionalProperties: true
+                $ref: "#/components/schemas/AnthropicTextBlock"
         messages:
           type: array
           items:
-            $ref: "#/components/schemas/ChatMessage"
+            $ref: "#/components/schemas/AnthropicMessage"
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnthropicTool"
+        tool_choice:
+          $ref: "#/components/schemas/AnthropicToolChoice"
+        temperature:
+          type: number
+        top_p:
+          type: number
+        thinking:
+          type: object
+          additionalProperties: true
+        service_tier:
+          type: string
     AnthropicCountTokensRequest:
       type: object
       required: [model, messages]
       additionalProperties: true
+      description: >-
+        Anthropic-compatible token counting request. A message with `role:
+        system` requires `anthropic-beta:
+        mid-conversation-system-2026-04-07`, matching `/v1/messages`.
       properties:
         model:
           type: string
@@ -1428,12 +1951,162 @@ components:
             - type: string
             - type: array
               items:
-                type: object
-                additionalProperties: true
+                $ref: "#/components/schemas/AnthropicTextBlock"
         messages:
           type: array
           items:
-            $ref: "#/components/schemas/ChatMessage"
+            $ref: "#/components/schemas/AnthropicMessage"
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnthropicTool"
+        tool_choice:
+          $ref: "#/components/schemas/AnthropicToolChoice"
+        thinking:
+          type: object
+          additionalProperties: true
+    AnthropicMessage:
+      type: object
+      required: [role, content]
+      additionalProperties: true
+      description: >-
+        `user` and `assistant` are accepted by default. `system` is accepted
+        only when `anthropic-beta` includes
+        `mid-conversation-system-2026-04-07`.
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+          description: >-
+            `system` is accepted only when `anthropic-beta` includes
+            `mid-conversation-system-2026-04-07`; otherwise use `user` or
+            `assistant`.
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: "#/components/schemas/AnthropicContentBlock"
+    AnthropicContentBlock:
+      oneOf:
+        - $ref: "#/components/schemas/AnthropicTextBlock"
+        - $ref: "#/components/schemas/AnthropicImageBlock"
+        - $ref: "#/components/schemas/AnthropicToolUseBlock"
+        - $ref: "#/components/schemas/AnthropicToolResultBlock"
+        - $ref: "#/components/schemas/AnthropicThinkingBlock"
+        - $ref: "#/components/schemas/AnthropicRedactedThinkingBlock"
+    AnthropicTextBlock:
+      type: object
+      required: [type, text]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: text
+        text:
+          type: string
+    AnthropicImageBlock:
+      type: object
+      required: [type, source]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: image
+        source:
+          type: object
+          additionalProperties: true
+    AnthropicToolUseBlock:
+      type: object
+      required: [type, id, name]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: tool_use
+        id:
+          type: string
+        name:
+          type: string
+        input:
+          type: object
+          additionalProperties: true
+    AnthropicToolResultBlock:
+      type: object
+      required: [type, tool_use_id, content]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: tool_result
+        tool_use_id:
+          type: string
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                oneOf:
+                  - $ref: "#/components/schemas/AnthropicTextBlock"
+                  - $ref: "#/components/schemas/AnthropicImageBlock"
+        is_error:
+          type: boolean
+    AnthropicThinkingBlock:
+      type: object
+      required: [type, thinking, signature]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: thinking
+        thinking:
+          type: string
+        signature:
+          type: string
+    AnthropicRedactedThinkingBlock:
+      type: object
+      required: [type]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: redacted_thinking
+        data:
+          type: string
+    AnthropicTool:
+      type: object
+      required: [name, input_schema]
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        input_schema:
+          type: object
+          additionalProperties: true
+    AnthropicToolChoice:
+      oneOf:
+        - type: object
+          required: [type]
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+              enum: [auto, any, none]
+            disable_parallel_tool_use:
+              type: boolean
+        - type: object
+          required: [type, name]
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+              const: tool
+            name:
+              type: string
+            disable_parallel_tool_use:
+              type: boolean
     AnthropicMessageResponse:
       type: object
       additionalProperties: true
@@ -1447,8 +2120,7 @@ components:
         content:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/AnthropicContentBlock"
         usage:
           $ref: "#/components/schemas/Usage"
     AnthropicTokenCount:
