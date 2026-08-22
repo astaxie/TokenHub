@@ -17,8 +17,6 @@ servers:
     description: Replaced at runtime with TOKENHUB_PUBLIC_BASE_URL or the current request origin.
 security:
   - TokenHubProjectKey: []
-  - TokenHubXAPIKey: []
-  - TokenHubGoogleAPIKey: []
 tags:
   - name: Models
     description: Discover models available to the supplied project API key.
@@ -335,6 +333,9 @@ paths:
         Anthropic-compatible clients may send the TokenHub project API key in `x-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      security:
+        - TokenHubProjectKey: []
+        - TokenHubXAPIKey: []
       parameters:
         - $ref: "#/components/parameters/AnthropicVersion"
         - $ref: "#/components/parameters/AnthropicBeta"
@@ -400,6 +401,9 @@ paths:
       description: Counts tokens for an Anthropic-compatible Messages request without invoking generation. Anthropic-compatible clients may send the TokenHub project API key in `x-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      security:
+        - TokenHubProjectKey: []
+        - TokenHubXAPIKey: []
       parameters:
         - $ref: "#/components/parameters/AnthropicVersion"
         - $ref: "#/components/parameters/AnthropicBeta"
@@ -707,6 +711,9 @@ paths:
       description: Returns Gemini-compatible models available to the supplied project API key. Gemini-compatible clients may send the key in `x-goog-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      security:
+        - TokenHubProjectKey: []
+        - TokenHubGoogleAPIKey: []
       responses:
         "200":
           description: Gemini model list.
@@ -724,6 +731,9 @@ paths:
       description: Returns Gemini-compatible model metadata. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      security:
+        - TokenHubProjectKey: []
+        - TokenHubGoogleAPIKey: []
       parameters:
         - $ref: "#/components/parameters/ModelPath"
       responses:
@@ -745,6 +755,9 @@ paths:
       description: Native Gemini `generateContent` route translated through TokenHub routing and authentication. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      security:
+        - TokenHubProjectKey: []
+        - TokenHubGoogleAPIKey: []
       parameters:
         - $ref: "#/components/parameters/ModelPath"
       requestBody:
@@ -795,6 +808,9 @@ paths:
       description: Native Gemini streaming route. Use `?alt=sse` for SSE framing. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      security:
+        - TokenHubProjectKey: []
+        - TokenHubGoogleAPIKey: []
       parameters:
         - $ref: "#/components/parameters/ModelPath"
         - name: alt
@@ -854,6 +870,9 @@ paths:
       description: Native Gemini token-counting route translated through TokenHub authentication. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
+      security:
+        - TokenHubProjectKey: []
+        - TokenHubGoogleAPIKey: []
       parameters:
         - $ref: "#/components/parameters/ModelPath"
       requestBody:
@@ -1358,7 +1377,7 @@ components:
           $ref: "#/components/schemas/ChatResponseFormat"
         reasoning_effort:
           type: string
-          enum: [minimal, low, medium, high, xhigh, max]
+          enum: [none, minimal, low, medium, high, xhigh, max]
         metadata:
           type: object
           additionalProperties: true
@@ -1486,6 +1505,26 @@ components:
               type: string
             arguments:
               type: string
+    ChatToolCallDelta:
+      type: object
+      required: [index]
+      additionalProperties: true
+      properties:
+        index:
+          type: integer
+        id:
+          type: string
+        type:
+          type: string
+          const: function
+        function:
+          type: object
+          additionalProperties: true
+          properties:
+            name:
+              type: string
+            arguments:
+              type: string
     ChatResponseFormat:
       oneOf:
         - type: object
@@ -1541,7 +1580,7 @@ components:
         finish_reason:
           oneOf:
             - type: string
-              enum: [stop, length, tool_calls, content_filter]
+              enum: [stop, length, tool_calls, function_call, content_filter]
             - type: "null"
         logprobs:
           nullable: true
@@ -1584,7 +1623,7 @@ components:
         tool_calls:
           type: array
           items:
-            $ref: "#/components/schemas/ChatToolCall"
+            $ref: "#/components/schemas/ChatToolCallDelta"
     ResponsesRequest:
       type: object
       required: [model, input]
@@ -1642,7 +1681,7 @@ components:
       properties:
         effort:
           type: string
-          enum: [minimal, low, medium, high, xhigh, max]
+          enum: [none, minimal, low, medium, high, xhigh, max]
         mode:
           type: string
         context:

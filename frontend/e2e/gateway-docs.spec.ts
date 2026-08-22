@@ -63,6 +63,8 @@ test("gateway OpenAPI docs render as self-hosted Swagger UI", async ({ page }) =
   expect(modelsRequest.headers().authorization).toMatch(/^Bearer sk_/);
   expect(modelsResponse.status()).toBe(200);
   await expect(modelsOperation.locator(".responses-wrapper")).toContainText("200");
+  await expect(page.locator("body")).not.toContainText(projectKey);
+  await expect(page.locator("body")).toContainText("<redacted>");
 
   await expectOperationCannotExecute(page, "/v1/image-assets/{asset_id}/content", "/v1/image-assets/imgasset_unsafe/content");
 

@@ -315,8 +315,37 @@ const gatewayDocsHTML = `<!doctype html>
       });
     }
 
-    const authInputObserver = new MutationObserver(hardenSwaggerAuthInputs);
-    authInputObserver.observe(document.body, { childList: true, subtree: true });
+    const tokenhubSecretHeaderPattern = /\b(Authorization|x-api-key|x-goog-api-key)(\s*:\s*)(Bearer\s+)?[^\s'"\\]+/gi;
+
+    function redactSwaggerSecretText(value) {
+      return value.replace(tokenhubSecretHeaderPattern, (_match, name, separator, prefix) => {
+        return name + separator + (prefix || "") + "<redacted>";
+      });
+    }
+
+    function redactSwaggerExecutionSecrets(root) {
+      const scope = root instanceof Element ? root : document.body;
+      scope.querySelectorAll("pre, code, .curl-command, .request-url, .request-headers, .microlight").forEach((node) => {
+        tokenhubSecretHeaderPattern.lastIndex = 0;
+        if (!node.textContent || !tokenhubSecretHeaderPattern.test(node.textContent)) return;
+        tokenhubSecretHeaderPattern.lastIndex = 0;
+        node.textContent = redactSwaggerSecretText(node.textContent);
+      });
+      tokenhubSecretHeaderPattern.lastIndex = 0;
+    }
+
+    const authInputObserver = new MutationObserver((mutations) => {
+      hardenSwaggerAuthInputs();
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof Element) redactSwaggerExecutionSecrets(node);
+        });
+        if (mutation.type === "characterData" && mutation.target.parentElement) {
+          redactSwaggerExecutionSecrets(mutation.target.parentElement);
+        }
+      }
+    });
+    authInputObserver.observe(document.body, { childList: true, characterData: true, subtree: true });
 
     fetch(openAPIURL, { credentials: "same-origin" })
       .then((response) => response.json())
@@ -337,7 +366,10 @@ const gatewayDocsHTML = `<!doctype html>
           supportedSubmitMethods: ["get", "post"],
           plugins: [tokenHubTryItPolicyPlugin],
           requestInterceptor: tokenHubRequestInterceptor,
-          onComplete: hardenSwaggerAuthInputs,
+          onComplete: () => {
+            hardenSwaggerAuthInputs();
+            redactSwaggerExecutionSecrets(document.body);
+          },
           tagsSorter: "alpha",
           operationsSorter: "alpha"
         });

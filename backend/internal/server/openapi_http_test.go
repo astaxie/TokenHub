@@ -62,6 +62,8 @@ func TestOpenAPIEndpointsServeRuntimeServerAndSelfHostedDocs(t *testing.T) {
 		"persistAuthorization: false",
 		"requestSnippetsEnabled: false",
 		"showMutatedRequest: false",
+		"redactSwaggerExecutionSecrets",
+		"<redacted>",
 		"validatorUrl: null",
 		"data-tokenhub-secret",
 		`input.type = "password"`,
@@ -337,6 +339,7 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireOperationParameter(t, document, "/v1/messages", "post", "header", "anthropic-version")
 	requireOperationParameter(t, document, "/v1/messages", "post", "header", "anthropic-beta")
 	requireArrayItemsRef(t, document, "AnthropicMessagesRequest", "messages", "#/components/schemas/AnthropicMessage")
+	requireOperationSecuritySchemes(t, document, "/v1/messages", "post", []string{"TokenHubProjectKey", "TokenHubXAPIKey"})
 	requireSchemaEnum(t, document, "AnthropicMessage", "role", []string{"user", "assistant", "system"})
 	requireSchemaDescriptionContains(t, document, "AnthropicMessage", "mid-conversation-system-2026-04-07")
 	requireRequestSchemaRef(t, document, "/v1/messages/count_tokens", "post", "#/components/schemas/AnthropicCountTokensRequest")
@@ -346,8 +349,13 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireOperationParameter(t, document, "/v1/messages/count_tokens", "post", "header", "anthropic-version")
 	requireOperationParameter(t, document, "/v1/messages/count_tokens", "post", "header", "anthropic-beta")
 	requireArrayItemsRef(t, document, "AnthropicCountTokensRequest", "messages", "#/components/schemas/AnthropicMessage")
+	requireOperationSecuritySchemes(t, document, "/v1/messages/count_tokens", "post", []string{"TokenHubProjectKey", "TokenHubXAPIKey"})
 	requireSchemaRequired(t, document, "ChatMessage", []string{"role"})
-	requireSchemaEnum(t, document, "ChatCompletionRequest", "reasoning_effort", []string{"minimal", "low", "medium", "high", "xhigh", "max"})
+	requireSchemaEnum(t, document, "ChatCompletionRequest", "reasoning_effort", []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"})
+	requireArrayItemsRef(t, document, "ChatCompletionMessage", "tool_calls", "#/components/schemas/ChatToolCall")
+	requireArrayItemsRef(t, document, "ChatCompletionDelta", "tool_calls", "#/components/schemas/ChatToolCallDelta")
+	requireSchemaRequired(t, document, "ChatToolCallDelta", []string{"index"})
+	requireSchemaPropertyOneOfEnum(t, document, "ChatCompletionChoice", "finish_reason", []string{"stop", "length", "tool_calls", "function_call", "content_filter"})
 	requireSchemaProperty(t, document, "ResponsesRequest", "max_output_tokens")
 	requireSchemaProperty(t, document, "ResponsesRequest", "temperature")
 	requireSchemaProperty(t, document, "ResponsesRequest", "instructions")
@@ -355,11 +363,13 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireSchemaProperty(t, document, "ResponsesRequest", "reasoning")
 	requireSchemaProperty(t, document, "ResponsesRequest", "service_tier")
 	requireOneOfContainsRef(t, document, "ResponsesRequest", "input", "#/components/schemas/ResponseInputItem")
-	requireSchemaEnum(t, document, "ResponsesReasoning", "effort", []string{"minimal", "low", "medium", "high", "xhigh", "max"})
+	requireSchemaEnum(t, document, "ResponsesReasoning", "effort", []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"})
 	requireSchemaRequired(t, document, "ResponseTool", []string{"type"})
 	requireSchemaPropertyNoConst(t, document, "ResponseTool", "type")
 	requireArrayItemsRef(t, document, "ResponsesResponse", "output", "#/components/schemas/ResponseOutputItem")
 	requireArrayItemsRef(t, document, "ChatCompletionResponse", "choices", "#/components/schemas/ChatCompletionChoice")
+	requireOperationSecuritySchemes(t, document, "/v1/chat/completions", "post", []string{"TokenHubProjectKey"})
+	requireOperationSecuritySchemes(t, document, "/v1beta/models/{model}:generateContent", "post", []string{"TokenHubProjectKey", "TokenHubGoogleAPIKey"})
 }
 
 func assertNonGatewayRoutesStayOutOfPublicGatewaySpec(t *testing.T, document map[string]any) {
@@ -390,18 +400,8 @@ func assertGatewaySecuritySchemes(t *testing.T, document map[string]any) {
 	if !ok {
 		t.Fatal("missing global security requirements")
 	}
-	for _, name := range []string{"TokenHubProjectKey", "TokenHubXAPIKey", "TokenHubGoogleAPIKey"} {
-		found := false
-		for _, rawRequirement := range security {
-			requirement := asMap(t, rawRequirement, "security requirement")
-			if _, ok := requirement[name]; ok {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("global security requirements missing %s option", name)
-		}
+	if got := securityRequirementNames(t, security, "global security"); strings.Join(got, ",") != "TokenHubProjectKey" {
+		t.Fatalf("global security requirements=%v, want TokenHubProjectKey only", got)
 	}
 	responses := asMap(t, components["responses"], "components.responses")
 	for name, rawResponse := range responses {
@@ -827,6 +827,30 @@ func requireSchemaPropertyNoConst(t *testing.T, document map[string]any, schemaN
 	}
 }
 
+func requireSchemaPropertyOneOfEnum(t *testing.T, document map[string]any, schemaName string, property string, want []string) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
+	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
+	propertySchema := asMap(t, properties[property], "components.schemas."+schemaName+".properties."+property)
+	for _, rawOption := range asSlice(t, propertySchema["oneOf"], "oneOf") {
+		option := asMap(t, rawOption, "oneOf option")
+		rawEnum, ok := option["enum"].([]any)
+		if !ok {
+			continue
+		}
+		got := make([]string, 0, len(rawEnum))
+		for _, raw := range rawEnum {
+			value, _ := raw.(string)
+			got = append(got, value)
+		}
+		if strings.Join(got, ",") == strings.Join(want, ",") {
+			return
+		}
+		t.Fatalf("schema %s property %s enum=%v, want %v", schemaName, property, got, want)
+	}
+	t.Fatalf("schema %s property %s oneOf must contain a string enum", schemaName, property)
+}
+
 func requireSchemaDescriptionContains(t *testing.T, document map[string]any, schemaName string, want string) {
 	t.Helper()
 	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
@@ -912,6 +936,33 @@ func requireOperationSecurityEmpty(t *testing.T, document map[string]any, path s
 	if !ok || len(security) != 0 {
 		t.Fatalf("%s %s must override global security with an empty security array", strings.ToUpper(method), path)
 	}
+}
+
+func requireOperationSecuritySchemes(t *testing.T, document map[string]any, path string, method string, want []string) {
+	t.Helper()
+	operation := openAPIOperation(t, document, path, method)
+	rawSecurity, ok := operation["security"].([]any)
+	if !ok {
+		rawSecurity = asSlice(t, document["security"], "global security")
+	}
+	got := securityRequirementNames(t, rawSecurity, strings.ToUpper(method)+" "+path+" security")
+	sort.Strings(want)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("%s %s security schemes=%v, want %v", strings.ToUpper(method), path, got, want)
+	}
+}
+
+func securityRequirementNames(t *testing.T, security []any, label string) []string {
+	t.Helper()
+	names := make([]string, 0, len(security))
+	for _, rawRequirement := range security {
+		requirement := asMap(t, rawRequirement, label+" requirement")
+		for name := range requirement {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func requireNoResponseContentType(t *testing.T, document map[string]any, path string, method string, status string, mediaType string) {
