@@ -28,3 +28,11 @@ test("the bundled proxy overwrites forwarded headers in every upstream location"
   assert.doesNotMatch(config, /\$proxy_add_x_forwarded_for/);
   assert.doesNotMatch(config, /\$http_x_forwarded_/i);
 });
+
+test("the bundled proxy routes gateway documentation endpoints to the backend", () => {
+  const backendLocation = locationBody(/location ~ \^\/[\s\S]*?\{([\s\S]*?)\n    \}/);
+  assert.match(config, /docs/);
+  assert.match(config, /openapi\\\.json/);
+  assert.match(config, /openapi\\\.yaml/);
+  assert.match(backendLocation, /proxy_pass \$tokenhub_backend;/);
+});

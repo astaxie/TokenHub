@@ -15,7 +15,7 @@ export function apiMethodClass(method?: string) {
   return normalized || "muted";
 }
 
-export function GatewayCopyCard({ label, value }: { label: string; value: string }) {
+export function GatewayCopyCard({ label, value, href }: { label: string; value: string; href?: string }) {
   const [copied, setCopied] = useState(false);
   async function copyValue() {
     const success = await copyText(value);
@@ -25,7 +25,15 @@ export function GatewayCopyCard({ label, value }: { label: string; value: string
   return (
     <article className="gateway-copy-card">
       <span>{label}</span>
-      <strong>{value}</strong>
+      {href ? (
+        <strong>
+          <a href={href} target="_blank" rel="noreferrer">
+            {value}
+          </a>
+        </strong>
+      ) : (
+        <strong>{value}</strong>
+      )}
       <button className="icon-button subtle" onClick={() => void copyValue()} type="button" title={tx("复制")}>
         {copied ? <Check size={15} /> : <Copy size={15} />}
       </button>

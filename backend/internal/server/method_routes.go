@@ -12,6 +12,11 @@ type methodRoute struct {
 
 type methodNotAllowedFactory func(allowedMethods string) http.HandlerFunc
 
+type gatewayOperation struct {
+	Method string
+	Path   string
+}
+
 // registerSingleMethodRoute must only be called once for a path. Multi-method
 // resources need one shared fallback with the complete Allow value.
 func (s *Server) registerSingleMethodRoute(method string, pattern string, handler http.HandlerFunc, methodNotAllowed http.HandlerFunc) {
@@ -20,6 +25,11 @@ func (s *Server) registerSingleMethodRoute(method string, pattern string, handle
 		s.mux.HandleFunc(http.MethodHead+" "+pattern, methodNotAllowed)
 	}
 	s.mux.HandleFunc(pattern, methodNotAllowed)
+}
+
+func (s *Server) registerPublicSingleMethodRoute(method string, pattern string, handler http.HandlerFunc, methodNotAllowed http.HandlerFunc) {
+	s.registerSingleMethodRoute(method, pattern, handler, methodNotAllowed)
+	s.registerPublicGatewayOperation(method, pattern)
 }
 
 // registerMethodRoutes registers every allowed method for one path and one
@@ -59,10 +69,41 @@ func (s *Server) registerDynamicGETRoute(pattern string, handler http.HandlerFun
 	})
 }
 
+func (s *Server) registerPublicDynamicGETRoute(pattern string, handler http.HandlerFunc, headFallback http.HandlerFunc) {
+	s.registerDynamicGETRoute(pattern, handler, headFallback)
+	s.registerPublicGatewayOperation(http.MethodGet, pattern)
+}
+
 // registerDynamicMethodRoute registers one non-GET method-specific part of a
 // dynamic route. The route family handles other methods through its subtree.
 func (s *Server) registerDynamicMethodRoute(method string, pattern string, handler http.HandlerFunc) {
 	s.mux.HandleFunc(method+" "+pattern, handler)
+}
+
+func (s *Server) registerPublicDynamicMethodRoute(method string, pattern string, handler http.HandlerFunc) {
+	s.registerDynamicMethodRoute(method, pattern, handler)
+	s.registerPublicGatewayOperation(method, pattern)
+}
+
+func (s *Server) registerPublicDirectMethodRoute(method string, pattern string, handler http.HandlerFunc) {
+	s.mux.HandleFunc(method+" "+pattern, handler)
+	s.registerPublicGatewayOperation(method, pattern)
+}
+
+func (s *Server) registerPublicGatewayOperation(method string, pattern string) {
+	if s.publicGatewayOperations == nil {
+		s.publicGatewayOperations = make(map[gatewayOperation]bool)
+	}
+	s.publicGatewayOperations[gatewayOperation{
+		Method: strings.ToUpper(method),
+		Path:   normalizePublicGatewayOperationPattern(pattern),
+	}] = true
+}
+
+func normalizePublicGatewayOperationPattern(pattern string) string {
+	pattern = strings.TrimSuffix(pattern, "/{$}")
+	pattern = strings.ReplaceAll(pattern, "{model...}", "{model}")
+	return pattern
 }
 
 func jsonMethodNotAllowed(allowedMethod string) http.HandlerFunc {
