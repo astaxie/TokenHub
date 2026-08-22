@@ -552,11 +552,23 @@ export function notificationChannelPayload(values: Record<string, string>, exist
   const whatsappAccessToken = values.access_token || stringifyValue(existing?.fields?.access_token || existing?.fields?.whatsapp_access_token || existing?.fields?.secret);
   let fields: Record<string, unknown>;
   if (type === "email") {
+    // Persist smtp_encryption only when the channel already has an explicit
+    // value, or the user picked something other than the displayed default.
+    // Legacy channels created before the field existed have no value and rely
+    // on the backend's opportunistic STARTTLS; writing "starttls" here would
+    // silently upgrade them to the fail-closed mode on the next unrelated edit.
+    const existingEncryption = stringifyValue(existing?.fields?.smtp_encryption);
+    let smtpEncryption: string | undefined;
+    if (existingEncryption) {
+      smtpEncryption = values.smtp_encryption;
+    } else if (values.smtp_encryption && values.smtp_encryption !== "starttls") {
+      smtpEncryption = values.smtp_encryption;
+    }
     fields = {
       type,
       smtp_host: values.smtp_host,
       smtp_port: numberOr(values.smtp_port, 587),
-      smtp_encryption: values.smtp_encryption,
+      ...(smtpEncryption === undefined ? {} : { smtp_encryption: smtpEncryption }),
       smtp_username: values.smtp_username,
       smtp_password: smtpPassword,
       smtp_from: values.smtp_from,

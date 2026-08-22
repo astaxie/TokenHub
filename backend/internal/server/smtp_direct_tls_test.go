@@ -203,22 +203,54 @@ func TestDirectTLSSMTPDialHonorsContextCancellation(t *testing.T) {
 
 // Explicitly requested STARTTLS must fail closed when the server does not
 // advertise the extension: downgrading to plaintext would transmit the alert
-// or password-reset body in the clear. The plain serveTestSMTPConnection helper
-// never advertises STARTTLS, so no MAIL FROM or message body may be sent.
+// or password-reset body in the clear. The fake server records every command
+// it receives, so the assertion can prove no MAIL FROM (and therefore no DATA
+// body) is sent before the explicit STARTTLS failure.
 func TestExplicitStartTLSFailsClosedWhenExtensionAbsent(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = listener.Close() })
-	messages := make(chan string, 10)
+	commands := make(chan string, 16)
 	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		reader := bufio.NewReader(conn)
+		writer := bufio.NewWriter(conn)
+		write := func(response string) bool {
+			if _, err := writer.WriteString(response + "\r\n"); err != nil {
+				return false
+			}
+			return writer.Flush() == nil
+		}
+		if !write("220 localhost ESMTP") {
+			return
+		}
 		for {
-			conn, err := listener.Accept()
+			line, err := reader.ReadString('\n')
 			if err != nil {
 				return
 			}
-			go serveTestSMTPConnection(conn, messages)
+			command := strings.TrimRight(line, "\r\n")
+			commands <- command
+			switch {
+			case strings.HasPrefix(command, "EHLO "), strings.HasPrefix(command, "HELO "):
+				// No STARTTLS advertised.
+				if !write("250 localhost") {
+					return
+				}
+			case command == "QUIT":
+				_ = write("221 bye")
+				return
+			default:
+				if !write("250 ok") {
+					return
+				}
+			}
 		}
 	}()
 
@@ -245,10 +277,15 @@ func TestExplicitStartTLSFailsClosedWhenExtensionAbsent(t *testing.T) {
 	if !strings.Contains(err.Error(), "STARTTLS") {
 		t.Fatalf("expected a STARTTLS error, got %v", err)
 	}
-	select {
-	case message := <-messages:
-		t.Fatalf("no message body may be sent over plaintext, got %q", message)
-	default:
+	for {
+		select {
+		case command := <-commands:
+			if strings.HasPrefix(command, "MAIL") {
+				t.Fatalf("no MAIL FROM may be sent when explicit STARTTLS is unavailable, got %q", command)
+			}
+		default:
+			return
+		}
 	}
 }
 
