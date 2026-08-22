@@ -689,6 +689,11 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 			if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
 				return err
 			}
+		} else if strings.EqualFold(strings.TrimSpace(firstStringField(fields, "smtp_encryption")), "starttls") {
+			// Explicitly requested STARTTLS must not downgrade to plaintext:
+			// the server does not advertise the extension. Legacy channels
+			// without smtp_encryption keep the opportunistic STARTTLS path.
+			return fmt.Errorf("SMTP server does not advertise STARTTLS but smtp_encryption is set to starttls")
 		}
 	}
 	username := strings.TrimSpace(firstStringField(fields, "smtp_username", "username"))

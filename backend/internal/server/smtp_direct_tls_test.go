@@ -201,6 +201,57 @@ func TestDirectTLSSMTPDialHonorsContextCancellation(t *testing.T) {
 	}
 }
 
+// Explicitly requested STARTTLS must fail closed when the server does not
+// advertise the extension: downgrading to plaintext would transmit the alert
+// or password-reset body in the clear. The plain serveTestSMTPConnection helper
+// never advertises STARTTLS, so no MAIL FROM or message body may be sent.
+func TestExplicitStartTLSFailsClosedWhenExtensionAbsent(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	messages := make(chan string, 10)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go serveTestSMTPConnection(conn, messages)
+		}
+	}()
+
+	host, portText, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := map[string]any{
+		"smtp_host":       host,
+		"smtp_port":       port,
+		"smtp_encryption": "starttls",
+		"smtp_username":   "tokenhub",
+		"smtp_password":   "secret",
+		"smtp_from":       "tokenhub@example.com",
+	}
+	err = sendEmail(context.Background(), fields, []string{"ops@example.com"}, []byte("alert body"), nil)
+	if err == nil {
+		t.Fatal("expected sendEmail to fail closed when STARTTLS is required but not advertised")
+	}
+	if !strings.Contains(err.Error(), "STARTTLS") {
+		t.Fatalf("expected a STARTTLS error, got %v", err)
+	}
+	select {
+	case message := <-messages:
+		t.Fatalf("no message body may be sent over plaintext, got %q", message)
+	default:
+	}
+}
+
 // serveDirectTLSSMTPConnection handles one implicit-TLS SMTP session on top of
 // an already-established TLS connection. Unlike the plain serveTestSMTPConnection
 // helper it answers AUTH with 235 so the full authenticated path is exercised.
