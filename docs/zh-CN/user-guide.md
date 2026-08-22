@@ -233,7 +233,7 @@ Gemini CLI 可以直接连接 TokenHub 的 Gemini 原生 `v1beta` 接口，并�
 
 `POST /v1/images/generations` 接受 OpenAI 兼容的 `model`、`prompt`、`quality`、`size`、`n` 和 `response_format` 字段。请使用对外虚拟模型 `model: "codex-gpt-image-2"` 与 `n: 1`。`gpt-image-2` 通常仍是独立的标准 API 模型；作为一个窄兼容例外，TokenHub 会把带 Codex `originator` 或 `x-codex-image-turn-id` 请求头的生图请求映射为 `codex-gpt-image-2` 并返回 `b64_json`，API Key 必须允许 `codex-gpt-image-2`。添加 `Prefer: respond-async` 可先获得图片任务，再轮询 `GET /v1/image-jobs/{id}`。
 
-`POST /v1/images/edits` 通过 multipart 的 `image` 或 `image[]` 接收参考图。`gpt-image-2` 可把单个 `mask` 转发给 OpenAI API；Codex 订阅账号暂不支持遮罩编辑。TokenHub 不安装或启动 Codex CLI，而是直接请求 Codex 订阅 Images 接口；提示词在数据库中加密保存，输入图与输出图保留在服务器上，下载 URL 签名有效期为 24 小时。URL 过期后文件仍会保留，再次查询任务即可获得新 URL。被选中的 Codex 账号必须具备生图权限。
+`POST /v1/images/edits` 默认通过 multipart 的 `image` 或 `image[]` 接收参考图。只有原生 Codex 客户端可以例外：带非空 `x-codex-image-turn-id` 请求头，或带以 `codex` 开头的 `originator` 请求头时，可使用 `application/json`，并在 `images[].image_url` 中传入 Base64 Data URL（例如 `data:image/png;base64,...`）。该 JSON 路径会将 `gpt-image-2` 映射为 `codex-gpt-image-2`，且固定返回 `b64_json`；最多 16 张输入图，解码后单图最多 50 MB，整个 JSON 请求最多 128 MB。其他客户端仍必须使用 multipart。`gpt-image-2` 可把单个 `mask` 转发给 OpenAI API；Codex 订阅账号暂不支持遮罩编辑。TokenHub 不安装或启动 Codex CLI，而是直接请求 Codex 订阅 Images 接口；提示词在数据库中加密保存，输入图与输出图保留在服务器上，下载 URL 签名有效期为 24 小时。URL 过期后文件仍会保留，再次查询任务即可获得新 URL。被选中的 Codex 账号必须具备生图权限。
 
 生图任务默认最多执行 5 分钟，可通过 `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` 调整。
 
