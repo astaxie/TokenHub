@@ -18,6 +18,7 @@ const (
 	SyncFailed    = "failed"
 
 	StatusActive = "active"
+	StatusDisabled = "disabled"
 )
 
 // Connector is the persisted configuration for one external billing source.

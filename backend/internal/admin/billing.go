@@ -2,9 +2,7 @@ package admin
 
 import (
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"tokenhub/backend/internal/billing"
@@ -156,9 +154,9 @@ func (h *BillingHandler) CreateConnector(w http.ResponseWriter, r *http.Request,
 		h.transport.WriteError(w, r, h.transport.NewError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
 		return
 	}
-	connector, err := connectorFromRequest(request, h.transport.NewError)
+	connector, err := billing.NormalizeConnector(connectorInputFromRequest(request))
 	if err != nil {
-		h.transport.WriteError(w, r, err)
+		h.transport.WriteError(w, r, h.transport.MapError(err))
 		return
 	}
 	created, err := h.repository.CreateBillingConnector(connector)
@@ -195,9 +193,9 @@ func (h *BillingHandler) PatchConnector(w http.ResponseWriter, r *http.Request, 
 		h.transport.WriteError(w, r, h.transport.NewError(http.StatusBadRequest, "invalid_billing_connector", "Invalid billing connector payload"))
 		return
 	}
-	patch, err := connectorPatch(request, before, h.transport.NewError)
+	patch, err := billing.NormalizeConnectorPatch(connectorPatchInputFromRequest(request), before)
 	if err != nil {
-		h.transport.WriteError(w, r, err)
+		h.transport.WriteError(w, r, h.transport.MapError(err))
 		return
 	}
 	updated, err := h.repository.UpdateBillingConnector(connectorID, patch)
@@ -282,100 +280,18 @@ func (h *BillingHandler) audit(r *http.Request, actor BillingActor, event Billin
 	}
 }
 
-func connectorFromRequest(request billingConnectorRequest, newError func(int, string, string) error) (billing.Connector, error) {
-	connector := billing.Connector{
-		Name: strings.TrimSpace(request.Name), Type: strings.ToLower(strings.TrimSpace(request.Type)),
-		BaseURL: strings.TrimRight(strings.TrimSpace(request.BaseURL), "/"), Status: strings.ToLower(strings.TrimSpace(request.Status)),
+func connectorInputFromRequest(request billingConnectorRequest) billing.ConnectorInput {
+	return billing.ConnectorInput{
+		Name: request.Name, Type: request.Type, BaseURL: request.BaseURL, Status: request.Status,
 		ScheduleIntervalMinutes: request.ScheduleIntervalMinutes, Config: request.Config, Credentials: request.Credentials,
 	}
-	if connector.Status == "" {
-		connector.Status = billing.StatusActive
-	}
-	return connector, validateConnector(connector, newError)
 }
 
-func connectorPatch(request billingConnectorPatchRequest, before billing.Connector, newError func(int, string, string) error) (billing.Connector, error) {
-	patch := billing.Connector{ScheduleIntervalMinutes: -1}
-	candidate := before
-	if request.Name != nil {
-		patch.Name = strings.TrimSpace(*request.Name)
-		candidate.Name = patch.Name
+func connectorPatchInputFromRequest(request billingConnectorPatchRequest) billing.ConnectorPatchInput {
+	return billing.ConnectorPatchInput{
+		Name: request.Name, BaseURL: request.BaseURL, Status: request.Status,
+		ScheduleIntervalMinutes: request.ScheduleIntervalMinutes, Config: request.Config, Credentials: request.Credentials,
 	}
-	if request.BaseURL != nil {
-		patch.BaseURL = strings.TrimRight(strings.TrimSpace(*request.BaseURL), "/")
-		candidate.BaseURL = patch.BaseURL
-	}
-	if request.Status != nil {
-		patch.Status = strings.ToLower(strings.TrimSpace(*request.Status))
-		candidate.Status = patch.Status
-	}
-	if request.ScheduleIntervalMinutes != nil {
-		patch.ScheduleIntervalMinutes = *request.ScheduleIntervalMinutes
-		candidate.ScheduleIntervalMinutes = patch.ScheduleIntervalMinutes
-	}
-	if request.Config != nil {
-		patch.Config = request.Config
-		candidate.Config = request.Config
-	}
-	if request.Credentials != nil {
-		patch.Credentials = request.Credentials
-	}
-	return patch, validateConnector(candidate, newError)
-}
-
-func validateConnector(connector billing.Connector, newError func(int, string, string) error) error {
-	if connector.Name == "" || connector.BaseURL == "" {
-		return newError(http.StatusBadRequest, "invalid_billing_connector", "name and base_url are required")
-	}
-	switch connector.Type {
-	case billing.ConnectorAliyun, billing.ConnectorNewAPI, billing.ConnectorOneAPI:
-	default:
-		return newError(http.StatusBadRequest, "invalid_billing_connector_type", "type must be aliyun, newapi, or oneapi")
-	}
-	if connector.Status != billing.StatusActive && connector.Status != "disabled" {
-		return newError(http.StatusBadRequest, "invalid_billing_connector_status", "status must be active or disabled")
-	}
-	if connector.ScheduleIntervalMinutes < 0 {
-		return newError(http.StatusBadRequest, "invalid_billing_schedule", "schedule_interval_minutes cannot be negative")
-	}
-	baseURL, err := url.Parse(connector.BaseURL)
-	if err != nil || (baseURL.Scheme != "http" && baseURL.Scheme != "https") || baseURL.Host == "" || baseURL.User != nil || baseURL.RawQuery != "" || baseURL.Fragment != "" {
-		return newError(http.StatusBadRequest, "invalid_billing_base_url", "base_url must be an HTTP(S) URL without credentials, query parameters, or fragments")
-	}
-	allowed := allowedConfig(connector.Type)
-	for key := range connector.Config {
-		if _, ok := allowed[key]; !ok {
-			return newError(http.StatusBadRequest, "invalid_billing_config", "Billing connector config contains an unsupported field")
-		}
-	}
-	if endpoint := strings.TrimSpace(connector.Config["endpoint"]); endpoint != "" {
-		if parsed, parseErr := url.Parse(endpoint); parseErr != nil || parsed.IsAbs() || parsed.Host != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-			return newError(http.StatusBadRequest, "invalid_billing_endpoint", "Billing connector endpoint is invalid")
-		}
-	}
-	if connector.Type == billing.ConnectorNewAPI {
-		userID, parseErr := strconv.ParseInt(strings.TrimSpace(connector.Config["user_id"]), 10, 64)
-		if parseErr != nil || userID <= 0 {
-			return newError(http.StatusBadRequest, "invalid_billing_config", "NewAPI user_id must be a positive integer")
-		}
-	}
-	return nil
-}
-
-func allowedConfig(connectorType string) map[string]struct{} {
-	allowed := map[string]struct{}{"currency": {}, "max_retries": {}, "page_size": {}, "provider_id": {}, "provider_resource_id": {}, "rate_limit_per_second": {}, "retry_base_ms": {}}
-	switch connectorType {
-	case billing.ConnectorAliyun:
-		allowed["product_code"] = struct{}{}
-		allowed["source_timezone"] = struct{}{}
-	case billing.ConnectorNewAPI:
-		allowed["quota_per_unit"] = struct{}{}
-		allowed["user_id"] = struct{}{}
-	case billing.ConnectorOneAPI:
-		allowed["endpoint"] = struct{}{}
-		allowed["quota_per_unit"] = struct{}{}
-	}
-	return allowed
 }
 
 func listLimit(r *http.Request) int {
