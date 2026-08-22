@@ -3,6 +3,7 @@ package server
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -135,6 +136,7 @@ func TestGatewayOpenAPISpecIsValidAndCoversPublicGatewayRoutes(t *testing.T) {
 		t.Fatalf("openapi version=%v", got)
 	}
 	assertOpenAPI31SchemaValid(t, document)
+	assertNoOpenAPI30Nullable(t, document)
 	assertGatewaySecuritySchemes(t, document)
 	assertUniqueOperationIDs(t, document)
 	assertLocalRefsResolve(t, document)
@@ -208,6 +210,31 @@ func assertOpenAPI31SchemaValid(t *testing.T, document map[string]any) {
 	if err := compiled.Validate(jsonRoundTrip(t, document)); err != nil {
 		t.Fatalf("openapi 3.1 schema validation: %v", err)
 	}
+}
+
+func assertNoOpenAPI30Nullable(t *testing.T, document map[string]any) {
+	t.Helper()
+	var visit func(any, string)
+	visit = func(value any, path string) {
+		switch typed := value.(type) {
+		case map[string]any:
+			if _, ok := typed["nullable"]; ok {
+				t.Fatalf("OpenAPI 3.1 schema must not use nullable at %s", path)
+			}
+			for key, nested := range typed {
+				nextPath := path + "/" + key
+				if path == "" {
+					nextPath = key
+				}
+				visit(nested, nextPath)
+			}
+		case []any:
+			for index, nested := range typed {
+				visit(nested, fmt.Sprintf("%s/%d", path, index))
+			}
+		}
+	}
+	visit(document, "")
 }
 
 func assertMediaTypeExamplesValidate(t *testing.T, document map[string]any) {
@@ -422,6 +449,7 @@ func assertGatewaySecuritySchemes(t *testing.T, document map[string]any) {
 	}
 	requireSchemaProperty(t, document, "ErrorResponse", "request_id")
 	requireSchemaProperty(t, document, "AnthropicErrorResponse", "request_id")
+	requireAnthropicErrorFields(t, document)
 	modelNotAllowed := asMap(t, responses["ModelNotAllowed"], "components.responses.ModelNotAllowed")
 	content := asMap(t, modelNotAllowed["content"], "ModelNotAllowed.content")
 	jsonContent := asMap(t, content["application/json"], "ModelNotAllowed application/json")
@@ -827,6 +855,25 @@ func requireSchemaPropertyNoConst(t *testing.T, document map[string]any, schemaN
 	}
 }
 
+func requireAnthropicErrorFields(t *testing.T, document map[string]any) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/AnthropicErrorResponse"), "components.schemas.AnthropicErrorResponse")
+	properties := asMap(t, schema["properties"], "components.schemas.AnthropicErrorResponse.properties")
+	errorSchema := asMap(t, properties["error"], "components.schemas.AnthropicErrorResponse.properties.error")
+	required := asStringSet(t, errorSchema["required"], "components.schemas.AnthropicErrorResponse.properties.error.required")
+	for _, field := range []string{"type", "message", "code"} {
+		if !required[field] {
+			t.Fatalf("AnthropicErrorResponse.error must require %s", field)
+		}
+	}
+	errorProperties := asMap(t, errorSchema["properties"], "components.schemas.AnthropicErrorResponse.properties.error.properties")
+	for _, field := range []string{"type", "message", "code", "details"} {
+		if _, ok := errorProperties[field]; !ok {
+			t.Fatalf("AnthropicErrorResponse.error must document %s", field)
+		}
+	}
+}
+
 func requireSchemaPropertyOneOfEnum(t *testing.T, document map[string]any, schemaName string, property string, want []string) {
 	t.Helper()
 	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
@@ -1075,6 +1122,19 @@ func asSlice(t *testing.T, value any, label string) []any {
 		t.Fatalf("%s is not an array", label)
 	}
 	return items
+}
+
+func asStringSet(t *testing.T, value any, label string) map[string]bool {
+	t.Helper()
+	result := make(map[string]bool)
+	for _, raw := range asSlice(t, value, label) {
+		field, ok := raw.(string)
+		if !ok {
+			t.Fatalf("%s contains non-string value %v", label, raw)
+		}
+		result[field] = true
+	}
+	return result
 }
 
 func jsonRoundTrip(t *testing.T, value any) any {

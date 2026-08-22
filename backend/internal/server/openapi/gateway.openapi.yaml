@@ -1269,8 +1269,7 @@ components:
         type:
           type: string
         param:
-          type: string
-          nullable: true
+          type: [string, "null"]
     AnthropicErrorResponse:
       type: object
       required: [type, error, request_id]
@@ -1280,12 +1279,15 @@ components:
           const: error
         error:
           type: object
-          required: [type, message]
+          required: [type, message, code]
           properties:
             type:
               type: string
             message:
               type: string
+            code:
+              type: string
+            details: {}
         request_id:
           type: string
     Usage:
@@ -1583,7 +1585,8 @@ components:
               enum: [stop, length, tool_calls, function_call, content_filter]
             - type: "null"
         logprobs:
-          nullable: true
+          type: ["object", "null"]
+          additionalProperties: true
     ChatCompletionMessage:
       type: object
       required: [role]
