@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
@@ -374,7 +375,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	if delivery.Channel == "email" {
-		if err := sendEmailAlert(ctx, channel, alert); err != nil {
+		if err := sendEmailAlert(ctx, channel, alert, s.smtpRootCAs); err != nil {
 			delivery.Status = "failed"
 			delivery.Error = err.Error()
 		}
@@ -634,17 +635,17 @@ func notificationChannelRequestTarget(channel AdminResource) (string, error) {
 	}
 }
 
-func sendEmailAlert(ctx context.Context, channel AdminResource, alert AlertEvent) error {
+func sendEmailAlert(ctx context.Context, channel AdminResource, alert AlertEvent, rootCAs *x509.CertPool) error {
 	fields := channel.Fields
 	from := strings.TrimSpace(firstStringField(fields, "smtp_from", "from_email", "from"))
 	recipients := splitNotificationRecipients(firstStringField(fields, "email_to", "recipients", "to"))
 	if len(recipients) == 0 {
 		return fmt.Errorf("email_to is required")
 	}
-	return sendEmail(ctx, fields, recipients, emailAlertMessage(from, recipients, alert))
+	return sendEmail(ctx, fields, recipients, emailAlertMessage(from, recipients, alert), rootCAs)
 }
 
-func sendEmail(ctx context.Context, fields map[string]any, recipients []string, message []byte) error {
+func sendEmail(ctx context.Context, fields map[string]any, recipients []string, message []byte, rootCAs *x509.CertPool) error {
 	host := strings.TrimSpace(stringField(fields, "smtp_host"))
 	if host == "" {
 		return fmt.Errorf("smtp_host is required")
@@ -659,7 +660,17 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	}
 	addr := net.JoinHostPort(host, strconv.FormatInt(port, 10))
 	dialer := net.Dialer{Timeout: 5 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	directTLS := directSMTPTLSEnabled(fields)
+	var conn net.Conn
+	var err error
+	if directTLS {
+		tlsDialer := tls.Dialer{NetDialer: &dialer, Config: &tls.Config{
+			ServerName: host, MinVersion: tls.VersionTLS12, RootCAs: rootCAs,
+		}}
+		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
+	} else {
+		conn, err = dialer.DialContext(ctx, "tcp", addr)
+	}
 	if err != nil {
 		return err
 	}
@@ -673,9 +684,16 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	// The static type is *smtp.Client, so the io.Closer exemption does not apply.
 	defer client.Close() //nolint:errcheck // delivery result comes from Quit
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
-			return err
+	if !directTLS {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+				return err
+			}
+		} else if strings.EqualFold(strings.TrimSpace(firstStringField(fields, "smtp_encryption")), "starttls") {
+			// Explicitly requested STARTTLS must not downgrade to plaintext:
+			// the server does not advertise the extension. Legacy channels
+			// without smtp_encryption keep the opportunistic STARTTLS path.
+			return fmt.Errorf("SMTP server does not advertise STARTTLS but smtp_encryption is set to starttls")
 		}
 	}
 	username := strings.TrimSpace(firstStringField(fields, "smtp_username", "username"))
@@ -705,6 +723,14 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 		return err
 	}
 	return client.Quit()
+}
+
+func directSMTPTLSEnabled(fields map[string]any) bool {
+	switch strings.ToLower(strings.TrimSpace(firstStringField(fields, "smtp_encryption"))) {
+	case "ssl", "tls", "smtps", "implicit":
+		return true
+	}
+	return false
 }
 
 func splitNotificationRecipients(value string) []string {
@@ -759,7 +785,7 @@ func (s *Server) sendAdminPasswordResetEmail(r *http.Request, channel AdminResou
 		return err
 	}
 	resetLink := s.adminPasswordResetLink(r, plainToken)
-	return sendEmail(r.Context(), channel.Fields, []string{user.Email}, passwordResetEmailMessage(channel.Fields, []string{user.Email}, user, resetLink, token.ExpiresAt))
+	return sendEmail(r.Context(), channel.Fields, []string{user.Email}, passwordResetEmailMessage(channel.Fields, []string{user.Email}, user, resetLink, token.ExpiresAt), s.smtpRootCAs)
 }
 
 func (s *Server) adminPasswordResetLink(r *http.Request, token string) string {
