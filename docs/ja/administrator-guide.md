@@ -236,6 +236,8 @@ TokenHub は `GET /metrics` で Prometheus メトリクスを公開できます�
 | `tokenhub_gateway_attempt_duration_seconds` | histogram | 呼び出された（invoked）1 試行の全所要時間。試行全体を囲む測定で、上流トランスポート・ストリーム変換・クライアントへの書き込みを含みます。ストリーミング呼び出しでは遅いクライアントの背圧を含むため、ゲートウェイのオーバーヘッドは `overhead_seconds` に別途報告されます。容量スキップ候補は含みません。 |
 | `tokenhub_gateway_routed_requests_total` | counter | 候補を 1 回以上試行した論理リクエスト数。フェイルオーバー深度比率の試行分母です。`provider_type` ラベルは最後に試行した候補です。Provider をまたぐフェイルオーバーでは、深度比率は `provider_type` ではなく `model` で集約してください。 |
 | `tokenhub_gateway_overhead_seconds` | histogram | ゲートウェイ自身のオーバーヘッドの近似値：エンドツーエンド所要時間から invoked な試行の所要時間合計を差し引き、負値は 0 にクリップします。ルーティングに受理されたものの試行前に失敗したリクエストは、その全所要時間をオーバーヘッドとして計上します。画像ジョブの所要時間にはキューの待機が含まれるため、画像のオーバーヘッドは上限値です。 |
+| `tokenhub_gateway_time_to_first_byte_seconds` | histogram | ストリーミングリクエストのクライアント体感・最初のバイトまでのレイテンシ。ローカル受理参照点から測定するため、フェイルオーバー再試行時間も含みます。空 body の 200 レスポンスはストリーム終了時に最初のバイトを記録します。 |
+| `tokenhub_gateway_stream_interruptions_total` | counter | 最初のバイト書き込み後に失敗したストリーミングリクエスト。`error_code` は最終的に分類されたエラーコードです。上流の HTTP レベル障害はそのコードを保持し、トランスポートレベルの障害とクライアント切断はどちらも `internal_error` に集約されます。 |
 | `tokenhub_gateway_requests_in_flight` | gauge | 処理中のモデル API リクエスト数。管理トラフィックとスクレイプは含みません。 |
 | `tokenhub_gateway_tokens_total` | counter | 種別ごとの Token：`prompt`、`completion`、`cached`、`cache_write`、`reasoning`。 |
 | `tokenhub_gateway_cost_usd_total` | counter | Model Directory 価格による統一外部請求見積もり。Provider 実コストは権限付きリクエスト監査にのみ保持され、このメトリクスには含まれません。 |

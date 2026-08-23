@@ -251,6 +251,13 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		s.store.MarkRouteUsed(route.Route.ID)
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
+	// StreamOutputCommitted stays unwired: it would keep the full TPM
+	// reservation on an interrupted stream with no provider token usage
+	// (store_routing_calls.go), changing quota behavior beyond this
+	// observability-only change. FirstByteAt and StreamFailed only label
+	// observability output, so wiring them is safe.
+	routed.Call.FirstByteAt = tracker.firstByteTime(streamErr == nil)
+	routed.Call.StreamFailed = streamErr != nil && tracker.Wrote()
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,
