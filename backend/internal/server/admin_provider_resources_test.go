@@ -584,7 +584,7 @@ func TestOpenAIProviderAccountOAuthCallbackSurfacesDatabaseFailure(t *testing.T)
 }
 
 type oauthRestoreFailureStore struct {
-	Store
+	*GormStore
 	saveCalls int
 }
 
@@ -593,7 +593,7 @@ func (s *oauthRestoreFailureStore) SaveProviderAccountOAuthSession(session provi
 	if s.saveCalls > 1 {
 		return errors.New("restore failed")
 	}
-	return s.Store.SaveProviderAccountOAuthSession(session)
+	return s.GormStore.SaveProviderAccountOAuthSession(session)
 }
 
 func TestOpenAIProviderAccountOAuthExchangeSurfacesSessionRestoreFailure(t *testing.T) {
@@ -606,7 +606,7 @@ func TestOpenAIProviderAccountOAuthExchangeSurfacesSessionRestoreFailure(t *test
 	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
 
 	baseStore := NewMemoryStore()
-	store := &oauthRestoreFailureStore{Store: baseStore}
+	store := &oauthRestoreFailureStore{GormStore: baseStore}
 	app := New(store).Handler()
 	generated := doJSON(t, app, http.MethodPost, "/api/admin/provider-account-oauth/openai/generate-auth-url", map[string]any{
 		"return_url": "http://localhost:3001/providers",

@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"tokenhub/backend/internal/billing"
+	billingpersistence "tokenhub/backend/internal/billing/persistence"
 	"tokenhub/backend/internal/guardrails"
 
 	"gorm.io/gorm"
@@ -109,7 +111,6 @@ type ProviderObservation struct {
 }
 
 type Store interface {
-	BillingStore
 	ReconciliationStore
 	CreateProject(project Project) Project
 	CreateProjectChecked(project Project) (Project, error)
@@ -310,7 +311,21 @@ type GormStore struct {
 	clusterLockTTL       time.Duration
 	imageCapabilityRetry time.Duration
 	billingRedis         *redisBillingCoordinator
+	billingRepository    billing.Repository
+	billingPersistence   *billingpersistence.Store
 }
+
+// BillingRepositoryForComposition is deliberately outside Store. Only the
+// composition root may obtain the full billing repository; domain consumers
+// receive narrower ports below.
+func (s *GormStore) BillingRepositoryForComposition() billing.Repository {
+	return s.billingRepository
+}
+
+func (s *GormStore) BillingReaderForComposition() ReconciliationBillingReader {
+	return s.billingPersistence
+}
+
 type leaseHeartbeat struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc

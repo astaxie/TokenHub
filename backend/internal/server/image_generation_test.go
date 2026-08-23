@@ -467,7 +467,7 @@ func TestCodexImageForbiddenMarksResourceUnsupportedAndAllowsFailover(t *testing
 }
 
 type imageStartRejectStore struct {
-	Store
+	*GormStore
 }
 
 func (s imageStartRejectStore) StartCall(context.Context, Project, APIKey, string, int64) (CallContext, error) {
@@ -489,7 +489,7 @@ func TestImageAuthorizationHappensBeforeJobOrAssetPersistence(t *testing.T) {
 		ModelName: "gpt-5.6-luna", ProviderID: provider.ID, ProviderModel: "gpt-5.6-luna",
 		Priority: 1, Weight: 100, Status: StatusActive,
 	})
-	wrapped := imageStartRejectStore{Store: store}
+	wrapped := imageStartRejectStore{GormStore: store}
 	server := NewWithConfig(wrapped, Config{
 		AdminToken:      "test-admin-token",
 		SecretKey:       "image-preauthorization-secret",

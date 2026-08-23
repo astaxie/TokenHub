@@ -7,13 +7,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"tokenhub/backend/internal/billing/persistence"
 )
 
 func TestReconciliationScopesUsageToBillingConnectorProvider(t *testing.T) {
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_scope")
 	connector.Config = map[string]string{"provider_id": "provider-a"}
-	if err := store.db.Save(&connector).Error; err != nil {
+	if _, err := store.BillingRepository().UpdateBillingConnector(connector.ID, connector); err != nil {
 		t.Fatal(err)
 	}
 	periodStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -40,7 +42,7 @@ func TestReconciliationRequiresExplicitConnectorScope(t *testing.T) {
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_missing_scope")
 	connector.Config = map[string]string{}
-	if err := store.db.Save(&connector).Error; err != nil {
+	if _, err := store.BillingRepository().UpdateBillingConnector(connector.ID, connector); err != nil {
 		t.Fatal(err)
 	}
 	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/billing/reconciliation-rules", map[string]any{
@@ -56,7 +58,7 @@ func TestReconciliationKeepsScopedUsageWhenBillingPeriodIsEmpty(t *testing.T) {
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_empty_billing")
 	connector.Config = map[string]string{"provider_id": "provider-a"}
-	if err := store.db.Save(&connector).Error; err != nil {
+	if _, err := store.BillingRepository().UpdateBillingConnector(connector.ID, connector); err != nil {
 		t.Fatal(err)
 	}
 	periodStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -76,7 +78,7 @@ func TestReconciliationSnapshotsScopeForMigrationAndRecalculation(t *testing.T) 
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_snapshot")
 	connector.Config = map[string]string{"provider_id": "provider-a", "provider_resource_id": "resource-a"}
-	if err := store.db.Save(&connector).Error; err != nil {
+	if _, err := store.BillingRepository().UpdateBillingConnector(connector.ID, connector); err != nil {
 		t.Fatal(err)
 	}
 	periodStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -124,7 +126,7 @@ func TestReconciliationSnapshotsScopeForMigrationAndRecalculation(t *testing.T) 
 		storedRun.RuleHash != storedRule.RuleHash || storedRun.TokenHubRecordCount != 1 {
 		t.Fatalf("run did not persist the migrated rule snapshot: rule=%#v run=%#v", storedRule, storedRun)
 	}
-	if err := store.db.Delete(&BillingConnector{}, "id = ?", connector.ID).Error; err != nil {
+	if err := store.db.Delete(&persistence.ConnectorRow{}, "id = ?", connector.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 	response := doJSON(t, app, http.MethodPost, "/api/admin/billing/reconciliations/"+run.ID+"/recalculate", map[string]any{}, "")
@@ -155,7 +157,7 @@ func TestReconciliationAPIRedactsResourceAccountIdentifiers(t *testing.T) {
 	tokenHubAccount := "tokenhub-account-must-stay-secret"
 	secrets := []string{resourceScope, billingAccount, tokenHubAccount}
 	connector.Config = map[string]string{"provider_id": "provider-redaction", "provider_resource_id": resourceScope}
-	if err := store.db.Save(&connector).Error; err != nil {
+	if _, err := store.BillingRepository().UpdateBillingConnector(connector.ID, connector); err != nil {
 		t.Fatal(err)
 	}
 	app := New(store).Handler()
@@ -278,8 +280,12 @@ func TestReconciliationAccumulatesSubMicroAmountsBeforeRounding(t *testing.T) {
 func TestNewAPIBillingConnectorRejectsDetailReconciliation(t *testing.T) {
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_newapi")
-	connector.Type = BillingConnectorNewAPI
-	if err := store.db.Save(&connector).Error; err != nil {
+	var row persistence.ConnectorRow
+	if err := store.db.First(&row, "id = ?", connector.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	row.Type = BillingConnectorNewAPI
+	if err := store.db.Save(&row).Error; err != nil {
 		t.Fatal(err)
 	}
 	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/billing/reconciliation-rules", map[string]any{
@@ -316,7 +322,7 @@ func TestFailedRecalculationPreservesSuccessfulRunAndAuditsFailure(t *testing.T)
 	rule := createReconciliationReviewRule(t, app, connector.ID, ReconciliationGranularityDay, []string{"model", "currency"})
 	run := runReconciliationTestRule(t, app, rule.ID, periodStart, periodStart.Add(24*time.Hour))
 	before := getReconciliationTestDetail(t, app, run.ID)
-	if err := store.db.Model(&BillingRecord{}).Where("id = ?", "bill_recalculate").Update("net_amount", "not-a-decimal").Error; err != nil {
+	if err := store.db.Model(&persistence.RecordRow{}).Where("id = ?", "bill_recalculate").Update("net_amount", "not-a-decimal").Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -342,7 +348,7 @@ func TestReconciliationFailureAuditPaginationAndRedaction(t *testing.T) {
 	sensitiveSource := "sensitive-billing-account"
 	sensitiveTarget := "sensitive-tokenhub-resource"
 	connector.Config["provider_resource_id"] = sensitiveTarget
-	if err := store.db.Save(&connector).Error; err != nil {
+	if _, err := store.BillingRepository().UpdateBillingConnector(connector.ID, connector); err != nil {
 		t.Fatal(err)
 	}
 	created := doJSON(t, app, http.MethodPost, "/api/admin/billing/reconciliation-rules", map[string]any{

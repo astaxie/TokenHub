@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"tokenhub/backend/internal/billing/persistence"
 )
 
 func TestReconciliationRunClassifiesLocksAndExportsSafely(t *testing.T) {
@@ -210,7 +212,7 @@ func TestDetailReconciliationMapsDimensionsAndMatchesPeriodBoundariesOneToOne(t 
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_mapping")
 	connector.Config = map[string]string{"provider_id": "provider-local", "provider_resource_id": "resource-local"}
-	if err := store.db.Save(&connector).Error; err != nil {
+	if _, err := store.BillingRepository().UpdateBillingConnector(connector.ID, connector); err != nil {
 		t.Fatal(err)
 	}
 	periodStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -274,7 +276,7 @@ func TestDetailReconciliationMapsDimensionsAndMatchesPeriodBoundariesOneToOne(t 
 func TestScheduledReconciliationRespectsBillingDelay(t *testing.T) {
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_scheduled")
-	service := newReconciliationService(store)
+	service := newReconciliationService(store, store.BillingReaderForComposition())
 	rule, err := service.CreateRule(ReconciliationRuleRequest{
 		Name: "Scheduled daily reconciliation", ConnectorID: connector.ID, Granularity: ReconciliationGranularityDay,
 		MatchDimensions: []string{"model", "currency"}, BillingDelayMinutes: 120, ScheduleIntervalMinutes: 30, Timezone: "Asia/Shanghai",
@@ -311,10 +313,11 @@ func TestScheduledReconciliationRespectsBillingDelay(t *testing.T) {
 func createReconciliationTestConnector(t *testing.T, store *GormStore, id string) BillingConnector {
 	t.Helper()
 	connector := BillingConnector{ID: id, Name: id, Type: BillingConnectorOneAPI, BaseURL: "https://billing.example.test", Status: StatusActive, Config: map[string]string{"provider_id": BillingConnectorOneAPI}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
-	if err := store.db.Create(&connector).Error; err != nil {
+	created, err := store.BillingRepository().CreateBillingConnector(connector)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return connector
+	return created
 }
 
 func createReconciliationBillingRecords(t *testing.T, store *GormStore, records []BillingRecord) {
@@ -334,7 +337,11 @@ func createReconciliationBillingRecords(t *testing.T, store *GormStore, records 
 		}
 		records[index].UpdatedAt = records[index].CreatedAt
 	}
-	if err := store.db.Create(&records).Error; err != nil {
+	rows := make([]persistence.RecordRow, len(records))
+	for index, record := range records {
+		rows[index] = persistence.RecordRowFromDomain(record)
+	}
+	if err := store.db.Create(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 }
