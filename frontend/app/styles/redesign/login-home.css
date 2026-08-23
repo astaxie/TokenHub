@@ -276,6 +276,10 @@
   bottom: -72px;
 }
 
+.login-home-shell:has(.login-sso-list) .login-dashboard-scene {
+  bottom: 0;
+}
+
 .login-home-shell .login-card {
   position: relative;
   width: 100%;
