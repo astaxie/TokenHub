@@ -1,6 +1,6 @@
 .login-home-shell.login-shell {
   place-items: stretch;
-  padding: clamp(28px, 3.6vw, 48px);
+  padding: clamp(28px, 4vw, 64px);
   background:
     radial-gradient(880px 430px at 76% 34%, rgba(255, 255, 255, 0.8), transparent 76%),
     radial-gradient(780px 340px at 25% 76%, rgba(202, 221, 255, 0.56), transparent 74%),
@@ -20,19 +20,19 @@
 .login-home-shell .login-stage {
   position: relative;
   z-index: 1;
-  width: min(1436px, 100%);
-  min-height: min(840px, calc(100dvh - clamp(56px, 7.2vw, 96px)));
+  width: min(1160px, 100%);
+  min-height: min(680px, calc(100dvh - clamp(96px, 10vw, 144px)));
   margin: auto;
   border: 0;
-  grid-template-columns: minmax(620px, 1fr) minmax(420px, 536px);
-  gap: clamp(52px, 7vw, 112px);
+  grid-template-columns: minmax(500px, 1fr) minmax(372px, 440px);
+  gap: clamp(42px, 4.8vw, 64px);
   overflow: visible;
   background: transparent;
   box-shadow: none;
 }
 
 .login-home-shell .login-hero-panel {
-  min-height: 760px;
+  min-height: 640px;
   border-right: 0;
   display: block;
   overflow: visible;
@@ -40,9 +40,12 @@
 }
 
 .login-home-shell .login-utility-actions {
-  left: clamp(28px, 3.6vw, 48px);
-  right: clamp(28px, 3.6vw, 48px);
+  left: 50%;
+  right: auto;
+  width: min(1160px, calc(100% - clamp(56px, 8vw, 128px)));
   justify-content: space-between;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  translate: -50% 0;
 }
 
 .login-home-shell .login-brand-lockup {
@@ -54,8 +57,8 @@
 }
 
 .login-home-shell .login-brand-mark {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
 }
 
 .login-home-shell .login-brand-copy {
@@ -64,22 +67,29 @@
 
 .login-home-shell .login-brand-copy strong {
   color: #14213d;
-  font-size: 30px;
+  font-size: 27px;
   line-height: 0.94;
-  font-weight: 830;
+  font-weight: 780;
 }
 
 .login-home-shell .login-brand-copy small {
   color: #2d3b56;
   font-size: 13px;
-  font-weight: 640;
+  font-weight: 680;
   line-height: 1;
   text-transform: none;
 }
 
+.login-home-shell .login-utility-actions .login-language-select .language-select-trigger {
+  color: #2d3b56;
+  font-size: 13px;
+  font-weight: 680;
+  font-family: inherit;
+}
+
 .login-home-shell .login-hero-copy {
   position: absolute;
-  top: 94px;
+  top: 76px;
   left: 50%;
   width: min(880px, calc(100% + 88px));
   translate: -50% 0;
@@ -89,7 +99,7 @@
 .login-home-shell .login-hero-copy h1 {
   margin: 0;
   color: #12234b;
-  font-size: clamp(34px, 2.8vw, 42px);
+  font-size: clamp(31px, 2.35vw, 38px);
   font-weight: 860;
   line-height: 1.08;
   letter-spacing: 0;
@@ -110,13 +120,13 @@
 }
 
 .login-home-shell .login-hero-copy p {
-  margin: 20px 0 0;
+  margin: 16px 0 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 22px;
   color: #505d75;
-  font-size: clamp(18px, 1.8vw, 26px);
+  font-size: clamp(16px, 1.35vw, 21px);
   font-weight: 790;
   line-height: 1;
 }
@@ -128,23 +138,23 @@
 
 .login-home-shell .login-feature-grid {
   position: absolute;
-  top: 238px;
+  top: 194px;
   left: 0;
-  right: 32px;
+  right: 20px;
   display: grid;
   grid-template-columns: repeat(4, minmax(132px, 1fr));
-  gap: 24px;
+  gap: 18px;
 }
 
 .login-home-shell .login-feature-card {
-  min-height: 182px;
+  min-height: 148px;
   border: 1px solid rgba(222, 231, 244, 0.86);
   border-radius: 14px;
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 11px;
-  padding: 18px 14px;
+  gap: 10px;
+  padding: 16px 12px;
   background:
     radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.72) 62%, rgba(248, 251, 255, 0.62)),
     rgba(255, 255, 255, 0.72);
@@ -153,9 +163,9 @@
 }
 
 .login-home-shell .login-feature-icon {
-  width: 66px;
-  height: 66px;
-  border-radius: 18px;
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
   display: grid;
   place-items: center;
   color: #ffffff;
@@ -183,24 +193,24 @@
 
 .login-home-shell .login-feature-card strong {
   color: #102248;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 820;
   line-height: 1;
 }
 
 .login-home-shell .login-feature-card small {
   color: #5f6f8b;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 630;
   line-height: 1.25;
 }
 
 .login-home-shell .login-dashboard-scene {
   position: absolute;
-  left: 26px;
+  left: 14px;
   right: 0;
-  bottom: -66px;
-  height: 438px;
+  bottom: -34px;
+  height: 352px;
 }
 
 .login-home-shell .login-dashboard-scene::before,
@@ -235,7 +245,7 @@
   left: 0;
   bottom: 0;
   z-index: 4;
-  width: min(760px, 100%);
+  width: min(600px, 100%);
   aspect-ratio: 760 / 460;
   height: auto;
   object-fit: contain;
@@ -245,8 +255,8 @@
 .login-home-shell .login-card {
   position: relative;
   width: 100%;
-  min-height: 818px;
-  padding: 78px 64px;
+  min-height: 660px;
+  padding: 58px 50px;
   border: 1px solid rgba(221, 230, 244, 0.8);
   border-radius: 34px;
   align-self: center;
@@ -437,8 +447,10 @@
     top: auto;
     left: auto;
     right: auto;
+    width: auto;
     justify-content: space-between;
     margin-bottom: 18px;
+    translate: none;
   }
 
   .login-home-shell .login-stage {
