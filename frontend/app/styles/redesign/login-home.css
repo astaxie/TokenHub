@@ -597,6 +597,10 @@
   color: #aab8cf;
 }
 
+.login-home-shell[data-theme="dark"] .login-card .field > span:first-child {
+  color: #f8fbff;
+}
+
 .login-home-shell[data-theme="dark"] .login-feature-card,
 .login-home-shell[data-theme="dark"] .login-card {
   border-color: rgba(96, 112, 142, 0.48);
@@ -613,4 +617,28 @@
 .login-home-shell[data-theme="dark"] .login-sso-button {
   border-color: #31405a;
   background: rgba(13, 20, 33, 0.82);
+}
+
+.login-home-shell[data-theme="dark"] .login-card .login-input-field input,
+.login-home-shell[data-theme="dark"] .login-card .password-field input {
+  caret-color: #f8fbff;
+  color: #f8fbff;
+  -webkit-text-fill-color: #f8fbff;
+}
+
+.login-home-shell[data-theme="dark"] .login-card .login-input-field input::placeholder,
+.login-home-shell[data-theme="dark"] .login-card .password-field input::placeholder {
+  color: #7f8da7;
+}
+
+.login-home-shell[data-theme="dark"] .login-input-field > svg,
+.login-home-shell[data-theme="dark"] .password-leading-icon,
+.login-home-shell[data-theme="dark"] .password-toggle {
+  color: #9bacca;
+}
+
+.login-home-shell[data-theme="dark"] .login-card .login-input-field input:-webkit-autofill,
+.login-home-shell[data-theme="dark"] .login-card .password-field input:-webkit-autofill {
+  box-shadow: inset 0 0 0 999px rgba(13, 20, 33, 0.82);
+  -webkit-text-fill-color: #f8fbff;
 }
