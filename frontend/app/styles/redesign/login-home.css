@@ -265,6 +265,11 @@
   filter: drop-shadow(0 24px 44px rgba(44, 80, 150, 0.12));
 }
 
+.login-home-shell[data-theme="dark"] .login-dashboard-image {
+  filter: drop-shadow(0 26px 48px rgba(10, 132, 255, 0.12));
+  mix-blend-mode: screen;
+}
+
 :lang(en) .login-home-shell .login-feature-grid,
 :lang(ja) .login-home-shell .login-feature-grid {
   right: 0;

@@ -599,7 +599,12 @@ export function LoginView({
     identityProviders.length > 1 ? `count-${Math.min(identityProviders.length, 3)}` : "",
   ].filter(Boolean).join(" ");
   const headline = tx("统一管理企业 AI Token");
-  const dashboardPreviewSrc = language === "zh-CN" ? "/brand/login-dashboard-zh.png" : "/brand/login-dashboard-en.png";
+  const dashboardPreviewSrc =
+    theme === "dark"
+      ? "/brand/login-dashboard-dark.png"
+      : language === "zh-CN"
+        ? "/brand/login-dashboard-zh.png"
+        : "/brand/login-dashboard-en.png";
   const featureCards = [
     { title: tx("智能路由"), detail: tx("选对模型，效果更优"), className: "route", icon: <Route size={31} strokeWidth={2.25} /> },
     { title: tx("权限管控"), detail: tx("精细分配，安全可控"), className: "shield", icon: <ShieldCheck size={32} strokeWidth={2.15} /> },
