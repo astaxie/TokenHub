@@ -252,6 +252,15 @@
   filter: drop-shadow(0 24px 44px rgba(44, 80, 150, 0.12));
 }
 
+:lang(en) .login-home-shell .login-feature-grid {
+  right: 0;
+  gap: 14px;
+}
+
+:lang(en) .login-home-shell .login-dashboard-scene {
+  bottom: -72px;
+}
+
 .login-home-shell .login-card {
   position: relative;
   width: 100%;
