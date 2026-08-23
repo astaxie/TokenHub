@@ -147,6 +147,8 @@
 }
 
 .login-home-shell .login-feature-card {
+  width: 100%;
+  box-sizing: border-box;
   min-height: 148px;
   border: 1px solid rgba(222, 231, 244, 0.86);
   border-radius: 14px;
@@ -155,6 +157,7 @@
   align-content: center;
   gap: 10px;
   padding: 16px 12px;
+  text-align: center;
   background:
     radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.72) 62%, rgba(248, 251, 255, 0.62)),
     rgba(255, 255, 255, 0.72);
@@ -192,17 +195,27 @@
 }
 
 .login-home-shell .login-feature-card strong {
+  display: block;
+  max-width: 100%;
   color: #102248;
   font-size: 16px;
   font-weight: 820;
   line-height: 1;
+  overflow-wrap: break-word;
+  text-align: center;
+  text-wrap: balance;
 }
 
 .login-home-shell .login-feature-card small {
+  display: block;
+  max-width: 100%;
   color: #5f6f8b;
   font-size: 12px;
   font-weight: 630;
   line-height: 1.25;
+  overflow-wrap: break-word;
+  text-align: center;
+  text-wrap: balance;
 }
 
 .login-home-shell .login-dashboard-scene {
@@ -252,12 +265,14 @@
   filter: drop-shadow(0 24px 44px rgba(44, 80, 150, 0.12));
 }
 
-:lang(en) .login-home-shell .login-feature-grid {
+:lang(en) .login-home-shell .login-feature-grid,
+:lang(ja) .login-home-shell .login-feature-grid {
   right: 0;
   gap: 14px;
 }
 
-:lang(en) .login-home-shell .login-dashboard-scene {
+:lang(en) .login-home-shell .login-dashboard-scene,
+:lang(ja) .login-home-shell .login-dashboard-scene {
   bottom: -72px;
 }
 
