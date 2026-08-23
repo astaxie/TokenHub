@@ -585,10 +585,19 @@ export function notificationChannelPayload(values: Record<string, string>, exist
   const whatsappAccessToken = values.access_token || stringifyValue(existing?.fields?.access_token || existing?.fields?.whatsapp_access_token || existing?.fields?.secret);
   let fields: Record<string, unknown>;
   if (type === "email") {
+    // "auto" is the legacy/opportunistic STARTTLS mode: the field is left unset
+    // so the backend keeps the previous behavior. "starttls" persists an
+    // explicit fail-closed mode, and "ssl" persists direct TLS. New channels
+    // default to "starttls" (explicit, safe) via notificationChannelDefaults.
+    let smtpEncryption: string | undefined;
+    if (values.smtp_encryption && values.smtp_encryption !== "auto") {
+      smtpEncryption = values.smtp_encryption;
+    }
     fields = {
       type,
       smtp_host: values.smtp_host,
       smtp_port: numberOr(values.smtp_port, 587),
+      ...(smtpEncryption === undefined ? {} : { smtp_encryption: smtpEncryption }),
       smtp_username: values.smtp_username,
       smtp_password: smtpPassword,
       smtp_from: values.smtp_from,
@@ -642,6 +651,7 @@ export function notificationChannelDefaults(type: string) {
     whatsapp_api_version: "v20.0",
     smtp_host: "smtp.example.com",
     smtp_port: "587",
+    smtp_encryption: "starttls",
     smtp_username: "tokenhub@example.com",
     smtp_password: "",
     smtp_from: "tokenhub@example.com",
