@@ -2,7 +2,7 @@ export const loginHomeTranslations: Record<"en" | "ja", Record<string, string>> 
   en: {
     "欢迎回来": "Welcome back",
     "登录 TokenHub 控制台": "Sign in to the TokenHub console",
-    "统一管理企业 AI Token": "Centrally manage enterprise AI Token",
+    "统一管理企业 AI Token": "Enterprise AI Token Control Platform",
     "更可控": "More controllable",
     "更节省": "More efficient",
     "更透明": "More transparent",
