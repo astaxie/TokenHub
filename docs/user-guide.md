@@ -231,6 +231,23 @@ Prometheus exposes `tokenhub_gateway_response_jobs_queued`, `tokenhub_gateway_re
 
 Gemini CLI can connect directly to TokenHub's native Gemini `v1beta` surface and use a GPT model routed to an OpenAI Codex Subscription account. Set `GEMINI_API_KEY` to a TokenHub project key, `GOOGLE_GEMINI_BASE_URL` to the TokenHub host without `/v1beta`, and select the routed GPT model. CCswitch is not required. See [Use Codex Subscription GPT from Gemini CLI](gemini-cli-codex-subscription.md) for isolated and project-local configuration, supported endpoints, verification, and limitations.
 
+## Codex Voice proxy (experimental)
+
+TokenHub can proxy the product-internal Codex Full Voice transport for clients that already implement its WebRTC and sideband protocols. This is not the public OpenAI Realtime API and does not add standalone speech-to-text, translation, or text-to-speech endpoints.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /v1/live` | Create a Codex Voice WebRTC call; forward the original body and default missing `intent` / `architecture` to `quicksilver` / `avas`. |
+| `POST /v1/realtime/calls` | Create the same Codex Voice call through the V1 compatibility path. This is not the complete public Realtime call API. |
+| `GET /v1/live/{call_id}` | Attach the V3 Frameless sideband WebSocket. |
+| `GET /v1/realtime?call_id={call_id}` | Attach the V1 sideband WebSocket. |
+
+All four endpoints require a TokenHub project API key. The same key that created the call must attach its sideband. TokenHub selects the first usable active Codex Subscription resource by Provider priority, Resource priority, weight, and stable ID, refreshes its OAuth credential, and persistently binds the returned call ID to that resource for one hour. The WebRTC media path is negotiated by the client and OpenAI; TokenHub proxies call bootstrap and sideband, not RTP media. Both call-create paths map to the ChatGPT Codex product backend; the overlapping `/v1/realtime/calls` name does not expose the complete public Realtime API.
+
+Voice routes forward bounded, unknown end-to-end headers so new experimental protocol headers can work without a TokenHub release. TokenHub always removes the caller's authentication, account, cookie, forwarding-identity, internal `X-TokenHub-*`, host, and hop-by-hop headers, then supplies the selected Codex OAuth token and account ID. Client values for headers such as `OpenAI-Alpha`, `x-oai-attestation`, `Originator`, and future protocol headers are otherwise preserved. TokenHub never creates an attestation.
+
+These experimental endpoints are account-level rather than model-catalog routes: they authenticate the project key but do not apply per-model allowlists, token quota accounting, cost records, or model-route failover. Use a dedicated project key when that boundary matters. A successful proxy cannot grant Voice entitlement. Upstream authorization and experimental session parameters are validated independently, so `403 Voice session access denied` can indicate account or workspace access restrictions, or an unsupported model and voice combination; diagnose it against the exact request and current Codex contract.
+
 ## Codex subscription image generation
 
 `POST /v1/images/generations` accepts the OpenAI-compatible `model`, `prompt`, `quality`, `size`, `n`, and `response_format` fields. Use the public virtual model `model: "codex-gpt-image-2"` and `n: 1`. `gpt-image-2` normally remains a separate standard API model. As a narrow compatibility exception, TokenHub maps a generation request marked by a Codex `originator` or `x-codex-image-turn-id` header to `codex-gpt-image-2` and returns `b64_json`; the API key must allow `codex-gpt-image-2`. Add `Prefer: respond-async` to receive an image job, then poll `GET /v1/image-jobs/{id}`.

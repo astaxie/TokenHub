@@ -21,6 +21,9 @@ const (
 	AdapterCapabilityCompact        AdapterCapability = "responses_compact"
 	AdapterCapabilityWebSocket      AdapterCapability = "responses_websocket"
 	AdapterCapabilityImageGenerate  AdapterCapability = "image_generation"
+	// AdapterCapabilityCodexVoice indicates that an adapter can proxy the Codex
+	// product Voice bootstrap and sideband, not the public OpenAI Realtime API.
+	AdapterCapabilityCodexVoice AdapterCapability = "codex_voice"
 )
 
 type AdapterDescriptor struct {
