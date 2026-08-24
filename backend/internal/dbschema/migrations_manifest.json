@@ -12,7 +12,7 @@
       "dialect": "sqlite",
       "checksum": "tokenhub-schema-granular-billing-sqlite-v1",
       "lock_timeout_seconds": 30,
-      "statement_budget": 50
+      "statement_budget": 60
     },
     {
       "version": 3,

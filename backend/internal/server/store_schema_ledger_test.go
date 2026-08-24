@@ -45,3 +45,19 @@ func TestSchemaLedgerBaselineAdoptedAndVerified(t *testing.T) {
 		t.Fatalf("expected checksum_mismatch refusal, got %v", err)
 	}
 }
+
+func TestSQLiteGranularBillingMigrationBudgetCoversColumnProbes(t *testing.T) {
+	const granularBillingColumns = 26
+	const minimumOperations = granularBillingColumns * 2 // PRAGMA probe plus ALTER TABLE per column.
+
+	for _, migration := range SchemaMigrationRegistry() {
+		if migration.Name != "add-granular-billing-columns-sqlite" {
+			continue
+		}
+		if migration.StatementBudget < minimumOperations {
+			t.Fatalf("sqlite granular billing migration statement budget = %d, want at least %d", migration.StatementBudget, minimumOperations)
+		}
+		return
+	}
+	t.Fatal("sqlite granular billing migration was not registered")
+}
