@@ -561,7 +561,7 @@ export function EditModal<T>({
             />
           ))}
           {state.config.view === "settings" && values.provider_egress_mode === "configured_proxy" ? (
-            <div className="inline-notice">
+            <div className="inline-notice settings-proxy-test">
               <label className="field">
                 <span>{tx("测试目标 Provider")}</span>
                 <select value={proxyTestProviderID} onChange={(event) => setProxyTestProviderID(event.target.value)}>
