@@ -302,6 +302,7 @@ export function gatewayEnglishLLMUsageDocs(stats: GatewayDocStats, role: AppRole
                 ["model", "string", "Yes", `A model ID from /v1/models, for example ${stats.sampleModel}.`],
                 ["messages", "array", "Yes", "Conversation messages with system, user, or assistant roles."],
                 ["max_tokens", "integer", "No", "Maximum generated tokens."],
+                ["max_completion_tokens", "integer", "No", "OpenAI-compatible maximum generated tokens; if both token-limit fields are present, TokenHub uses the larger value."],
                 ["temperature", "number", "No", "Sampling temperature."],
                 ["reasoning_effort", "string", "No", "Reasoning effort; omitted when the selected route cannot represent it."],
                 ["stream", "boolean", "No", "When true, returns Server-Sent Events ending with data: [DONE]."],

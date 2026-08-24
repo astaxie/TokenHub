@@ -1351,6 +1351,8 @@ components:
           type: number
         max_tokens:
           type: integer
+        max_completion_tokens:
+          type: integer
         top_p:
           type: number
         presence_penalty:

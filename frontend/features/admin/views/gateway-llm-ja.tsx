@@ -175,6 +175,7 @@ export function gatewayJapaneseLLMUsageDocs(stats: GatewayDocStats, role: AppRol
                 ["model", "string", "はい", `/v1/models のモデル ID。例: ${stats.sampleModel}`],
                 ["messages", "array", "はい", "system、user、assistant のメッセージ配列。"],
                 ["max_tokens", "integer", "いいえ", "最大生成 tokens。"],
+                ["max_completion_tokens", "integer", "いいえ", "OpenAI 互換の最大生成 tokens。両方の出力トークン上限フィールドがある場合、TokenHub は大きい値を使用します。"],
                 ["temperature", "number", "いいえ", "サンプリング温度。"],
                 ["reasoning_effort", "string", "いいえ", "推論強度。選択されたルートが対応しない場合は省略します。"],
                 ["stream", "boolean", "いいえ", "true の場合は SSE で返し、data: [DONE] で終了します。"],

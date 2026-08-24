@@ -101,6 +101,7 @@ Common request fields:
 | `model` | Yes | Must be available in `GET /v1/models` |
 | `messages` | Yes | `system`, `user`, and `assistant` message list |
 | `max_tokens` | No | Maximum generated tokens |
+| `max_completion_tokens` | No | OpenAI-compatible maximum generated tokens; when both token-limit fields are present, TokenHub uses the larger value |
 | `temperature` | No | Sampling temperature |
 | `reasoning_effort` | No | Reasoning effort for models and routes that support it |
 | `stream` | No | `true` returns Server-Sent Events |
