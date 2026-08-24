@@ -11,7 +11,7 @@ import {
 import { consumePasswordResetTokenFromURL } from "../domain/password-reset";
 
 export type { ProviderAccountOAuthGenerateResponse, ProviderAccountOAuthResult } from "./session-oauth";
-export { parseProviderAccountOAuthResult } from "./session-oauth";
+export { parseProviderAccountOAuthResult, firstParam } from "./session-oauth";
 
 export type SavedSession = StoredAdminSession<AdminUser>;
 
