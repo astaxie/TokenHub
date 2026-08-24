@@ -845,6 +845,13 @@ func TestTokenReservationUsesExplicitMaximumOrSafeDefault(t *testing.T) {
 	if got := requestTokenReservation(compatible); got != 23 {
 		t.Fatalf("compatible maximum reservation = %d, want 23", got)
 	}
+	var overlapping ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{"max_tokens":17,"max_completion_tokens":23}`), &overlapping); err != nil {
+		t.Fatal(err)
+	}
+	if got := chatMaximumOutputTokens(overlapping); got != 23 {
+		t.Fatalf("overlapping maximum = %d, want 23", got)
+	}
 }
 
 func TestMeteredTokensDoesNotDoubleCountUsageDetails(t *testing.T) {

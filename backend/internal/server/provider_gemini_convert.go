@@ -32,8 +32,8 @@ func buildGeminiRequest(providerModel string, req ChatCompletionRequest) (map[st
 	}
 
 	generationConfig := map[string]any{}
-	if req.MaxTokens > 0 {
-		generationConfig["maxOutputTokens"] = req.MaxTokens
+	if maxTokens := req.requestedMaxTokens(); maxTokens > 0 {
+		generationConfig["maxOutputTokens"] = maxTokens
 	}
 	if req.Temperature != nil {
 		generationConfig["temperature"] = *req.Temperature
