@@ -216,6 +216,7 @@ export function fieldValueLabel(fieldKey: string, value: unknown): string {
   }
   if (normalizedKey === "schedule" || normalizedKey === "period") return enumValueLabel(text);
   if (normalizedKey === "enforcement") return budgetEnforcementLabel(text);
+  if (normalizedKey === "input_modalities" || normalizedKey === "output_modalities") return enumValueLabel(text);
   if (normalizedKey === "type" || normalizedKey === "notify_mode" || normalizedKey === "protocol" || normalizedKey === "target_type" || normalizedKey === "resource_type" || normalizedKey === "modality") {
     return enumValueLabel(text);
   }
