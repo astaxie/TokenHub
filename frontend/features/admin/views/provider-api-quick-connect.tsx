@@ -262,7 +262,7 @@ export function ProviderAPIQuickConnect({
             <>
               <div className="provider-quick-model-summary">
                 <strong>{tx("模型列表")}</strong>
-                <span>{selectedModelCount}/{modelCount} {tx("待引入")}</span>
+                <span>{modelsError ? tx("加载失败") : modelsLoading ? tx("加载中") : `${selectedModelCount}/${modelCount} ${tx("待引入")}`}</span>
               </div>
               <div className="provider-quick-model-tools">
                 <div className="provider-template-search provider-quick-model-search">

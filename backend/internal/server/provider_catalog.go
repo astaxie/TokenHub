@@ -647,7 +647,7 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 				Type: ProviderKronk, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
 			})
 		}
-		return ProviderCatalogEntry{}, NewHTTPError(statusForProvider(resp.StatusCode), "provider_models_upstream_error", resp.Status)
+		return ProviderCatalogEntry{}, providerModelsUpstreamError(resp.StatusCode)
 	}
 	var payload map[string]any
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 5<<20)).Decode(&payload); err != nil {
@@ -671,6 +671,17 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		Source:         "custom-upstream",
 		Models:         models,
 	}, nil
+}
+
+func providerModelsUpstreamError(status int) *HTTPError {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return NewHTTPError(statusForProvider(status), "provider_models_authentication_failed", "Upstream rejected the Provider credentials")
+	case http.StatusTooManyRequests:
+		return NewHTTPError(statusForProvider(status), "provider_models_rate_limited", "Upstream model catalog request was rate limited")
+	default:
+		return NewHTTPError(statusForProvider(status), "provider_models_upstream_error", "Upstream model catalog request failed")
+	}
 }
 
 func customProviderModelsFromPayload(payload map[string]any) []ProviderCatalogModel {
