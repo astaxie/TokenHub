@@ -174,6 +174,7 @@ func TestAdminProviderMethodRoutesReachCatalogHandlers(t *testing.T) {
 		"/api/admin/provider-catalog/openai",
 		"/api/admin/provider-catalog/custom",
 		"/api/admin/provider-catalog/kronk",
+		"/api/admin/provider-catalog/" + xaiGrokProviderCatalogID,
 		"/api/admin/providers",
 	} {
 		response := methodRoutingRequest(app, http.MethodGet, path, adminToken)
@@ -634,6 +635,7 @@ func adminProviderMethodRoutes() []adminProviderMethodRoute {
 		{name: "codex_catalog", path: "/api/admin/provider-catalog/" + codexProviderCatalogID, wrongMethod: http.MethodDelete, allow: "GET, POST"},
 		{name: "custom_catalog", path: "/api/admin/provider-catalog/custom", wrongMethod: http.MethodDelete, allow: "GET, POST"},
 		{name: "kronk_catalog", path: "/api/admin/provider-catalog/kronk", wrongMethod: http.MethodDelete, allow: "GET, POST"},
+		{name: "xai_grok_catalog", path: "/api/admin/provider-catalog/" + xaiGrokProviderCatalogID, wrongMethod: http.MethodDelete, allow: "GET, POST"},
 		{name: "provider_collection", path: "/api/admin/providers", wrongMethod: http.MethodPut, allow: "GET, POST"},
 		{name: "provider_monitoring", path: "/api/admin/providers/monitoring", wrongMethod: http.MethodPost, allow: http.MethodGet},
 		{name: "test_connection", path: "/api/admin/providers/test-connection", wrongMethod: http.MethodGet, allow: http.MethodPost},

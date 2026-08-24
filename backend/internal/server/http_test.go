@@ -541,6 +541,7 @@ func TestBootstrapSeedsStandardModelCatalog(t *testing.T) {
 		"baidu/ernie-4.5-vl-424b-a47b":       "ernie",
 		"qwen/qwen3-235b-a22b-instruct-2507": "qwen",
 		"grok-4-fast-reasoning":              "grok",
+		"grok-4.5":                           "grok",
 	} {
 		model, ok := byName[name]
 		if !ok {

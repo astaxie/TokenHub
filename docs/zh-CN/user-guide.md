@@ -149,6 +149,8 @@ Chat Completions 请求路由到原生 Anthropic 或 Gemini 供应商时，会�
 
 Chat Completions 路由到 Codex Subscription 账号时，内部使用 Responses 协议，并提供相同的文本、图片、函数工具、并行工具、推理连续性和流式能力。
 
+Chat Completions 和 Responses 路由到 Super Grok 订阅账号时，同样在内部使用 Responses 协议。本版本的 Super Grok 路由不提供生图、Compact、WebSocket，以及 Gemini / Anthropic 原生接口。Grok CLI 只能通过独立的 `GROK_HOME` 指向 TokenHub，不要覆盖 `~/.grok`。详见 [通过 TokenHub 使用 Super Grok 订阅](super-grok-subscription.md)。
+
 Codex 订阅上游不接受客户端的采样、输出 Token 上限和停止条件字段。TokenHub 会在兼容端点接收这些字段，但不会将它们转发给订阅上游，因此 Codex 路由无法保证执行 `max_tokens`、`max_completion_tokens`、`temperature`、`top_p` 和停止条件。业务必须严格执行这些控制项时，请使用标准 API Provider。
 
 ### 推理连续性

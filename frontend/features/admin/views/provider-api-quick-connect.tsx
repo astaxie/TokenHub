@@ -337,7 +337,7 @@ export function ProviderAPIQuickConnect({
             </label>
           </div>
           <ProviderCustomHeaders
-            disabled={values.type === "azure_openai" || values.type === "openai_codex"}
+            disabled={values.type === "azure_openai" || values.type === "openai_codex" || values.type === "xai_grok"}
             onChange={(value) => onUpdate("custom_headers", value)}
             value={values.custom_headers ?? "[]"}
           />

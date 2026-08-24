@@ -312,7 +312,7 @@ func validateProviderHeaderSupport(providerType string, headers map[string]strin
 		return nil
 	}
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case ProviderAzureOpenAI, ProviderOpenAICodex:
+	case ProviderAzureOpenAI, ProviderOpenAICodex, ProviderXAIGrok:
 		return NewHTTPError(http.StatusBadRequest, "provider_headers_unsupported", "This Provider adapter manages its own client identity and does not support custom request headers")
 	default:
 		return nil

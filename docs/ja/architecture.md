@@ -21,7 +21,7 @@ flowchart TB
         modelApi["モデル API\n/v1/*"]
         governance["認証とガバナンス\nKey、RBAC、クォータ、並行数、IP 許可リスト"]
         routing["ルーティング\n候補、戦略、重み、フェイルオーバー、アフィニティ"]
-        adapters["アダプターレジストリ\n汎用 Provider / OpenAI Codex"]
+        adapters["アダプターレジストリ\n汎用 Provider / OpenAI Codex / Super Grok"]
         operations["運用と可観測性\n利用量、監査、アラート、ヘルスチェック"]
         store["GORM Store"]
 
@@ -45,6 +45,7 @@ flowchart TB
         anthropic["Anthropic"]
         gemini["Gemini"]
         codex["OpenAI Codex Subscription"]
+        grok["Super Grok Subscription"]
     end
 
     admin --> ingress --> frontend
@@ -55,6 +56,7 @@ flowchart TB
     adapters --> anthropic
     adapters --> gemini
     adapters --> codex
+    adapters --> grok
     store --> sqlite
     store --> postgres
     catalog --> store
@@ -99,7 +101,7 @@ flowchart LR
 | HTTP サーバー | `backend/internal/server/http.go` | API、認証、ルーティング呼び出し、レスポンス、ヘルスエンドポイント |
 | ルーティング | `backend/internal/server/http.go` | 優先度、リソース優先度、戦略、重み、アフィニティによる候補の順序付け |
 | アダプターレジストリと統合サービス | `adapter_registry.go`、`integration_service.go` | Provider 能力の宣言と Provider/リソースのプローブ |
-| Provider アダプター | `providers.go`、`provider_account_codex.go` | プロトコル変換、Codex Subscription の OAuth、更新、セッションアフィニティ |
+| Provider アダプター | `providers.go`、`provider_account_codex.go`、`provider_account_xai.go` | プロトコル変換、Codex と Super Grok サブスクリプションの OAuth、更新、セッションアフィニティ |
 | Store | `store.go` | GORM、クォータ、認証情報暗号化、SQLite バックアップ、PostgreSQL リース、クラスタロック |
 
 | Provider 型 | アダプターと能力 |
@@ -110,6 +112,7 @@ flowchart LR
 | `anthropic` | Chat、ストリーミング Chat、プローブ |
 | `gemini` | Chat、ストリーミング Chat、Embeddings、プローブ |
 | `openai_codex` | OpenAI Codex Subscription：Responses、ストリーミング Responses、モデル、クォータ、OAuth、セッションアフィニティ、Compact |
+| `xai_grok` | Super Grok サブスクリプション：Responses、ストリーミング Responses、静的モデル、OAuth デバイスログイン、セッションアフィニティ |
 | `mock` | ローカル検証とテスト用の内蔵アダプター |
 
 ## モデルリクエスト経路

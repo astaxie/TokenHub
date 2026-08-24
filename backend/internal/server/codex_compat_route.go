@@ -83,7 +83,7 @@ func (s *Server) executeChatRoute(
 	req ChatCompletionRequest,
 	headers http.Header,
 ) (any, Usage, error) {
-	if route.Provider.Type != ProviderOpenAICodex {
+	if !s.usesResponsesChatBridge(route.Provider.Type) {
 		adapter, err := s.adapterForRoute(route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -116,7 +116,7 @@ func (s *Server) streamChatRoute(
 	headers http.Header,
 	writer io.Writer,
 ) (Usage, error) {
-	if route.Provider.Type == ProviderOpenAICodex {
+	if s.usesResponsesChatBridge(route.Provider.Type) {
 		return s.streamCodexAsChat(ctx, route, req, headers, writer)
 	}
 	adapter, err := s.adapterForRoute(route)
@@ -126,15 +126,15 @@ func (s *Server) streamChatRoute(
 	return adapter.ChatStream(ctx, route.Provider, route.ProviderModel, req, writer)
 }
 
-func compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {
-	if !routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
+func compatibleChatRoutes(s *Server, routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {
+	if !routesContainResponsesChatBridge(s, routed.Routes) {
 		return routed, nil
 	}
 	if _, err := chatToCodexResponsesRequest(req); err != nil {
 		compatible := routed
 		compatible.Routes = make([]RouteSelection, 0, len(routed.Routes))
 		for _, route := range routed.Routes {
-			if route.Provider.Type != ProviderOpenAICodex {
+			if !s.usesResponsesChatBridge(route.Provider.Type) {
 				compatible.Routes = append(compatible.Routes, route)
 			}
 		}
@@ -144,6 +144,36 @@ func compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedC
 		return compatible, nil
 	}
 	return routed, nil
+}
+
+func (s *Server) usesResponsesChatBridge(providerType string) bool {
+	if s == nil || s.adapterRegistry == nil {
+		return providerType == ProviderOpenAICodex
+	}
+	descriptor, ok := s.adapterRegistry.Describe(providerType)
+	if !ok {
+		return false
+	}
+	return adapterSupports(descriptor, AdapterCapabilityResponses) && !adapterSupports(descriptor, AdapterCapabilityChat)
+}
+
+func routesContainResponsesChatBridge(s *Server, routes []RouteSelection) bool {
+	for _, route := range routes {
+		if s.usesResponsesChatBridge(route.Provider.Type) {
+			return true
+		}
+	}
+	return false
+}
+
+func subscriptionSessionAdapterType(routes []RouteSelection) string {
+	if routesContainAdapterType(routes, ProviderOpenAICodex) {
+		return ProviderOpenAICodex
+	}
+	if routesContainAdapterType(routes, ProviderXAIGrok) {
+		return ProviderXAIGrok
+	}
+	return ""
 }
 
 func (s *Server) anthropicGatewayAffinity(
@@ -167,8 +197,13 @@ func (s *Server) chatGatewayAffinity(
 	routes []RouteSelection,
 ) (*RequestAffinity, error) {
 	identifier, scope := chatCompletionSessionIdentifier(headers, request)
-	if scope == sessionScopeSession && routesContainAdapterType(routes, ProviderOpenAICodex) {
-		return resolveCodexBridgeAffinity(s.config.SecretKey, apiKeyID, codexBridgeProtocolChat, identifier)
+	if scope == sessionScopeSession {
+		if routesContainAdapterType(routes, ProviderOpenAICodex) {
+			return resolveCodexBridgeAffinity(s.config.SecretKey, apiKeyID, codexBridgeProtocolChat, identifier)
+		}
+		if routesContainAdapterType(routes, ProviderXAIGrok) {
+			return resolveSubscriptionBridgeAffinity(s.config.SecretKey, apiKeyID, codexBridgeProtocolChat, identifier, ProviderXAIGrok)
+		}
 	}
 	return s.chatCacheLocalityAffinity(apiKeyID, headers, request)
 }
@@ -179,6 +214,16 @@ func resolveCodexBridgeAffinity(
 	protocol string,
 	identifier string,
 ) (*RequestAffinity, error) {
+	return resolveSubscriptionBridgeAffinity(secret, apiKeyID, protocol, identifier, ProviderOpenAICodex)
+}
+
+func resolveSubscriptionBridgeAffinity(
+	secret string,
+	apiKeyID string,
+	protocol string,
+	identifier string,
+	adapterType string,
+) (*RequestAffinity, error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
 		return nil, nil
@@ -187,7 +232,7 @@ func resolveCodexBridgeAffinity(
 		return nil, err
 	}
 	return &RequestAffinity{
-		AdapterType: ProviderOpenAICodex,
+		AdapterType: adapterType,
 		Kind:        AffinityKindCodexSession,
 		KeyHash:     deriveSessionAffinityKey(secret, apiKeyID, protocol+"\x00"+identifier),
 	}, nil

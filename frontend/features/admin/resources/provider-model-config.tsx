@@ -72,12 +72,12 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
   return [
     { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true, readOnlyOnEdit: Boolean(provider) },
     { key: "name", label: "名称", required: true },
-    { key: "resource_type", label: "账号类型", type: "select", options: ["openai_subscription", "api_key"], required: true },
+    { key: "resource_type", label: "账号类型", type: "select", options: ["openai_subscription", "xai_subscription", "api_key"], required: true },
     { key: "auth_type", label: "认证方式", type: "select", options: ["oauth", "personal_access_token", "api_key"], visible: openAIAccountFieldVisible },
     { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "OpenAI subscription / Codex OAuth access token 或 PAT；保存后不会再次显示。" },
     { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
     { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: openAIAccountFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
-    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values) => values.resource_type !== "openai_subscription", help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
+    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values) => values.resource_type !== "openai_subscription" && values.resource_type !== "xai_subscription", help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
     { key: "account_email", label: "账号邮箱", autoComplete: "off", visible: openAIAccountFieldVisible },
     { key: "account_id", label: "账号 ID", autoComplete: "off", visible: openAIAccountFieldVisible },
     { key: "organization_id", label: "组织 ID", autoComplete: "off", visible: openAIAccountFieldVisible },
@@ -131,7 +131,7 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
       {
         label: "续租 Token",
         title: "使用保存的 refresh token 续租账号访问 Token",
-        visible: (item) => item.resource_type === "openai_subscription" && item.credential_summary?.has_refresh_token === "true",
+        visible: (item) => (item.resource_type === "openai_subscription" || item.resource_type === "xai_subscription") && item.credential_summary?.has_refresh_token === "true",
         run: (ctx, item) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}/refresh-token`, "POST", {}),
         doneMessage: (item) => formatTranslationTemplate(tx("{name} Token 已续租"), { name: item.name }),
       },
@@ -141,7 +141,7 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
 }
 
 export function openAIAccountFieldVisible(values: Record<string, string>) {
-  return values.resource_type === "openai_subscription";
+  return values.resource_type === "openai_subscription" || values.resource_type === "xai_subscription";
 }
 
 export function providerCreateAccountResourceFields() {
@@ -210,7 +210,7 @@ export function providerResourceDefaults(provider: Provider) {
 }
 
 export function assertProviderAccountResourceReady(values: Record<string, string>) {
-  if (values.resource_type === "openai_subscription") {
+  if (values.resource_type === "openai_subscription" || values.resource_type === "xai_subscription") {
     if (values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim()) return;
     throw new Error(tx("请先完成账号授权回填，或在高级选项中手动粘贴 Token。"));
   }

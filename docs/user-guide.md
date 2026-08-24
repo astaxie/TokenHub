@@ -149,6 +149,8 @@ Streaming forwards upstream events as they arrive, so time to first token reflec
 
 Chat Completions routed to a Codex Subscription account use the Responses protocol internally and provide the same text, image, function-tool, parallel-tool, reasoning-continuation, and streaming behavior.
 
+Chat Completions and Responses routed to a Super Grok subscription account also use the Responses protocol internally. Image generation, Compact, WebSocket, and native Gemini or Anthropic surfaces are not available on Super Grok routes in this release. Point Grok CLI at TokenHub only from an isolated `GROK_HOME`; do not overwrite `~/.grok`. See [Use Super Grok Subscription from TokenHub](super-grok-subscription.md).
+
 The Codex subscription upstream does not accept client sampling, output-token-limit, or stop-sequence fields. TokenHub accepts those fields at the compatibility endpoint but omits them from the subscription request, so `max_tokens`, `max_completion_tokens`, `temperature`, `top_p`, and stop conditions are not enforced on Codex-backed routes. Use a standard API Provider when those controls are contractual.
 
 ### Reasoning continuation

@@ -23,6 +23,7 @@ TokenHub documentation is organized around the three roles used in enterprise To
 | [Image Generation Guide](user-guide.md#codex-subscription-image-generation) | Application developers using image models | Generate and edit images, run asynchronous jobs, and distinguish Codex subscription capacity from OpenAI API usage |
 | [Connect Codex to TokenHub: Profile Quick Setup](codex-tokenhub-profile-quick-start.md) | Codex users who only need an isolated profile | Create the profile, set the key, validate the connection, and recover |
 | [Connect Codex to TokenHub: Four Configuration Methods and Recovery](codex-tokenhub-configuration.md) | Codex users and developers comparing integration methods | Configure TokenHub through a profile, process-local override, global CLI settings, or the desktop app |
+| [Use Super Grok Subscription from TokenHub](super-grok-subscription.md) | Administrators connecting Super Grok / Grok CLI accounts | Authorize a Super Grok account, import subscription models, call `/v1`, or point Grok CLI at TokenHub from an isolated `GROK_HOME` |
 
 ## Shared English Sample Data
 

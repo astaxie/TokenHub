@@ -21,7 +21,7 @@ flowchart TB
         modelApi["Model API\n/v1/*"]
         governance["Access and governance\nKeys, RBAC, quotas, concurrency, IP allowlists"]
         routing["Routing\ncandidates, strategy, weight, failover, affinity"]
-        adapters["Adapter registry\ngeneral providers and OpenAI Codex"]
+        adapters["Adapter registry\ngeneral providers, OpenAI Codex, Super Grok"]
         operations["Operations and observability\nusage, audit, alerts, health"]
         store["GORM Store"]
 
@@ -45,6 +45,7 @@ flowchart TB
         anthropic["Anthropic"]
         gemini["Gemini"]
         codex["OpenAI Codex Subscription"]
+        grok["Super Grok Subscription"]
     end
 
     admin --> ingress --> frontend
@@ -55,6 +56,7 @@ flowchart TB
     adapters --> anthropic
     adapters --> gemini
     adapters --> codex
+    adapters --> grok
     store --> sqlite
     store --> postgres
     catalog --> store
@@ -99,7 +101,7 @@ The default image uses the model catalog bundled at build time so the executable
 | HTTP server | `backend/internal/server/http.go` | APIs, authentication, routed calls, responses, and health endpoints |
 | Routing | `backend/internal/server/http.go` | Candidate ordering by priority, resource priority, strategy, weight, and affinity |
 | Adapter registry and integration service | `adapter_registry.go`, `integration_service.go` | Declares provider capabilities and runs provider/resource probes |
-| Provider adapters | `providers.go`, `provider_account_codex.go` | Protocol translation; Codex subscription OAuth, refresh, and session affinity |
+| Provider adapters | `providers.go`, `provider_account_codex.go`, `provider_account_xai.go` | Protocol translation; Codex and Super Grok subscription OAuth, refresh, and session affinity |
 | Store | `store.go` | GORM access, quotas, credential encryption, SQLite backups, PostgreSQL leases, and cluster locks |
 
 | Provider type | Adapter and capabilities |
@@ -110,6 +112,7 @@ The default image uses the model catalog bundled at build time so the executable
 | `anthropic` | Chat, streaming Chat, and probes |
 | `gemini` | Chat, streaming Chat, Embeddings, and probes |
 | `openai_codex` | OpenAI Codex Subscription: Responses, streaming Responses, models, quota, OAuth, session affinity, and Compact |
+| `xai_grok` | Super Grok subscription: Responses, streaming Responses, static models, OAuth device login, and session affinity |
 | `mock` | Built-in adapter for local verification and tests |
 
 ## Model Request Flow

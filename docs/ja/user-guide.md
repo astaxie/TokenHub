@@ -149,6 +149,8 @@ Responses の推論強度は OpenAI 互換、Anthropic、Gemini の各ルート�
 
 Codex Subscription アカウントへルーティングされる Chat Completions は内部で Responses プロトコルを使用し、同等のテキスト、画像、関数ツール、並列ツール、推論継続、ストリーミング機能を提供します。
 
+Super Grok サブスクリプションアカウントへルーティングされる Chat Completions と Responses も内部で Responses プロトコルを使用します。このリリースの Super Grok ルートでは、画像生成、Compact、WebSocket、Gemini / Anthropic ネイティブ面は利用できません。Grok CLI から TokenHub を使う場合は独立した `GROK_HOME` だけを使い、`~/.grok` を上書きしないでください。詳細は [TokenHub から Super Grok サブスクリプションを使う](super-grok-subscription.md) を参照してください。
+
 Codex サブスクリプションの上流は、クライアントのサンプリング、出力トークン上限、停止条件フィールドを受け付けません。TokenHub の互換エンドポイントはこれらのフィールドを受理しますが、サブスクリプション要求からは除外するため、Codex ルートでは `max_tokens`、`max_completion_tokens`、`temperature`、`top_p`、停止条件は強制されません。これらの制御が契約上必要な場合は、標準 API Provider を使用してください。
 
 ### 推論の継続

@@ -92,6 +92,10 @@ Provider を呼び出す前に、ユーザーのリクエスト数と推定 Toke
 
 TokenHub は、最後に正常に読み込んだ Provider カタログをデータベースに保存します。バックエンドの起動時には毎回、設定済みのローカル `provider-catalog.json` を検証して読み込み、データベースのスナップショットをアトミックに置き換えます。通常の **Provider Channels** リクエストはデータベースのスナップショットだけを読み取ります。管理者が明示的に更新すると、最新の `PublicProviderConf` カタログをダウンロードして同じ完全性検証を行い、検証に成功した場合だけスナップショットをアトミックに置き換えます。上流リクエストまたは検証に失敗した場合は、設定済みのローカルカタログへフォールバックします。ローカルへのフォールバックにも失敗した場合、更新リクエストはエラーを返し、最後に有効だったスナップショットを引き続き使用します。更新レスポンスでは、実際に採用したソースを `upstream-provider-catalog` または `local-provider-catalog` として示します。
 
+## Super Grok サブスクリプション
+
+管理者は Super Grok / Grok CLI アカウントを `xai_grok` Provider として接続できます。認可は Codex の localhost コールバックではなく、xAI のデバイスコードです。TokenHub はチャットを `https://cli-chat-proxy.grok.com/v1` へ送り、Grok CLI の識別ヘッダーを付けます。公式 xAI API Key はこれまでどおり `openai_compatible` に置きます。手順、対応エンドポイント、制限、および呼び出し側が独立した Grok CLI home を使う方法は [TokenHub から Super Grok サブスクリプションを使う](super-grok-subscription.md) を参照してください。
+
 ## Codex OAuth Token の更新
 
 保存済みの refresh token を持つ有効な OpenAI Codex Subscription アカウントでは、TokenHub はバックエンド起動時に一度、その後は毎分認証情報を確認します。Access Token の有効期限が五分以内の場合にだけ更新します。データベースの認証情報 Lease により、クラスタ構成でも同じアカウントを更新するインスタンスは一つだけです。**Provider Channels > Advanced > Subscription quota** の **Token を更新** では、管理者が一つのアカウントを手動更新できます。手動更新は復旧用途にとどめ、繰り返しクリックしないでください。上流は更新レスポンスで refresh token をローテーションする場合がありますが、TokenHub は返却された新しい値を自動保存します。OpenAI が無効化された refresh token を返した場合、TokenHub はアカウントを再認可が必要な状態にし、定期更新を停止して、管理者に再認可の案内を表示します。

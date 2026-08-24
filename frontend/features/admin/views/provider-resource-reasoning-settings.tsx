@@ -127,7 +127,7 @@ export function ProviderResourceReasoningSettings({
                 </div>
               ) : null}
               <ProviderCustomHeaders
-                disabled={providerType === "azure_openai" || providerType === "openai_codex"}
+                disabled={providerType === "azure_openai" || providerType === "openai_codex" || providerType === "xai_grok"}
                 inheritedValue={providerHeadersFormValue(provider.headers, provider.sensitive_headers)}
                 onChange={(value) => update(resource.id, "custom_headers", value)}
                 validationErrors={resource.header_validation_errors}

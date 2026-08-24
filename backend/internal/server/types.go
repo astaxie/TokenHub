@@ -35,9 +35,11 @@ const (
 	ProviderAnthropic        = "anthropic"
 	ProviderGemini           = "gemini"
 	ProviderKronk            = "kronk"
+	ProviderXAIGrok          = "xai_grok"
 
 	ProviderResourceAPIKey             = "api_key"
 	ProviderResourceOpenAISubscription = "openai_subscription"
+	ProviderResourceXAISubscription    = "xai_subscription"
 
 	DefaultAPIKeyPrefix       = "sk_"
 	DefaultAPIKeyRandomLength = 48

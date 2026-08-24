@@ -23,6 +23,7 @@ TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默�
 | [Codex 生图 API 调用与测试指南](codex-image-generation-api.md) | 使用生图模型的应用开发者 | 调用文生图与图片编辑、轮询异步任务，并区分 Codex 订阅额度与 OpenAI API 用量 |
 | [Codex 接入 TokenHub：Profile 快速配置](codex-tokenhub-profile-quick-start.md) | 仅需使用独立 Profile 的 Codex 用户 | 快速完成配置文件创建、Key 设置、启动验证和恢复 |
 | [Codex 接入 TokenHub：四种配置方式与恢复指南](codex-tokenhub-configuration.md) | 需要比较不同接入方式的 Codex 用户和项目开发者 | 使用 Profile、进程级临时配置、CLI 全局配置或桌面端配置 TokenHub |
+| [通过 TokenHub 使用 Super Grok 订阅](super-grok-subscription.md) | 接入 Super Grok / Grok CLI 账号的管理员 | 授权 Super Grok 账号、引入订阅模型、通过 `/v1` 调用，或用独立 `GROK_HOME` 把 Grok CLI 指向 TokenHub |
 
 ## 共享英文样例数据
 
