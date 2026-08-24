@@ -3,6 +3,317 @@
 # Source updated_at: 2026-07-08T06:38:13.852Z.
 version: 1
 models:
+  - name: "step-3.7-flash"
+    title: "Step 3.7 Flash"
+    description: "StepFun's flagship multimodal reasoning model for agents, coding, image understanding, and video understanding. It supports a 256K-token context window, tool calling, and low, medium, or high reasoning effort."
+    category: "stepfun"
+    family: "step"
+    modality: "chat"
+    context_window: 256000
+    input_price_usd_per_1m: 0.185
+    cache_read_price_usd_per_1m: 0.037
+    output_price_usd_per_1m: 1.11
+    input_modalities: ["text", "image", "video"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "video_input", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools", "reasoning", "image_input", "video_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_catalog_updated_at: "2026-08-23T16:15:52.898Z"
+      provider_model_id: "step-3.7-flash"
+      provider_model_name: "Step 3.7 Flash"
+      endpoints: "chat/completions,anthropic"
+      features: "function-calling,reasoning,multimodal"
+      max_output_tokens: "256000"
+      release_date: "2026-05-29"
+      tool_call: "true"
+      vision: "true"
+      video_input: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "low,medium,high"
+  - name: "step-3.5-flash-2603"
+    title: "Step 3.5 Flash 2603"
+    description: "StepFun's agent-optimized Step 3.5 Flash variant with improved token efficiency, faster reasoning, reliable tool calling, and low or high reasoning effort."
+    category: "stepfun"
+    family: "step"
+    modality: "chat"
+    context_window: 256000
+    input_price_usd_per_1m: 0.1
+    cache_read_price_usd_per_1m: 0.02
+    output_price_usd_per_1m: 0.3
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_catalog_updated_at: "2026-08-23T16:15:52.898Z"
+      provider_model_id: "step-3.5-flash-2603"
+      provider_model_name: "Step 3.5 Flash 2603"
+      endpoints: "chat/completions,anthropic"
+      features: "function-calling,reasoning"
+      max_output_tokens: "256000"
+      release_date: "2026-04-02"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "low,high"
+  - name: "step-3.5-flash"
+    title: "Step 3.5 Flash"
+    description: "StepFun's flagship language reasoning model for agents, software engineering, deep research, and reliable tool use with a 256K-token context window."
+    category: "stepfun"
+    family: "step"
+    modality: "chat"
+    context_window: 256000
+    input_price_usd_per_1m: 0.1
+    cache_read_price_usd_per_1m: 0.02
+    output_price_usd_per_1m: 0.3
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_catalog_updated_at: "2026-08-23T16:15:52.898Z"
+      provider_model_id: "step-3.5-flash"
+      provider_model_name: "Step 3.5 Flash"
+      endpoints: "chat/completions,anthropic"
+      features: "function-calling,reasoning"
+      max_output_tokens: "256000"
+      release_date: "2026-01-29"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_supported: "false"
+  - name: "stepaudio-2.5-realtime"
+    title: "StepAudio 2.5 Realtime"
+    description: "StepFun's real-time speech-to-speech model with bidirectional audio over WebSocket and customizable voice personas."
+    category: "stepfun"
+    family: "step"
+    modality: "audio"
+    input_price_usd_per_1m: 1.37
+    cache_read_price_usd_per_1m: 0.27
+    output_price_usd_per_1m: 9.59
+    input_modalities: ["text", "audio"]
+    output_modalities: ["text", "audio"]
+    capabilities: ["audio", "realtime", "tools"]
+    supported_parameters: ["tools", "audio_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun-plan"
+      provider_model_id: "stepaudio-2.5-realtime"
+      provider_model_name: "StepAudio 2.5 Realtime"
+      endpoints: "realtime"
+      features: "speech-to-speech,realtime,function-calling"
+      pricing_currency: "CNY"
+      pricing_unit: "1m-tokens"
+      tool_call: "true"
+      reasoning_supported: "false"
+  - name: "stepaudio-2.5-chat"
+    title: "StepAudio 2.5 Chat"
+    description: "StepFun's turn-based conversational audio model with audio or text input and streaming text output through Chat Completions."
+    category: "stepfun"
+    family: "step"
+    modality: "audio"
+    input_price_usd_per_1m: 1.37
+    cache_read_price_usd_per_1m: 0.27
+    output_price_usd_per_1m: 3.42
+    input_modalities: ["text", "audio"]
+    output_modalities: ["text"]
+    capabilities: ["audio", "chat"]
+    supported_parameters: ["temperature", "audio_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun-plan"
+      provider_model_id: "stepaudio-2.5-chat"
+      provider_model_name: "StepAudio 2.5 Chat"
+      endpoints: "chat/completions"
+      features: "audio-input,streaming-text"
+      pricing_currency: "CNY"
+      pricing_unit: "1m-tokens"
+      tool_call: "false"
+      reasoning_supported: "false"
+  - name: "stepaudio-2.5-tts"
+    title: "StepAudio 2.5 TTS"
+    description: "StepFun's contextual text-to-speech model with natural-language control over emotion, persona, and delivery."
+    category: "stepfun"
+    family: "step"
+    modality: "audio"
+    input_modalities: ["text"]
+    output_modalities: ["audio"]
+    capabilities: ["audio", "text_to_speech"]
+    supported_parameters: ["instruction"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_model_id: "stepaudio-2.5-tts"
+      provider_model_name: "StepAudio 2.5 TTS"
+      endpoints: "audio/speech,realtime/audio"
+      features: "text-to-speech,voice-cloning"
+      max_input_characters: "1000"
+      price_cny: "5.8"
+      pricing_unit: "10k-characters"
+      tool_call: "false"
+      reasoning_supported: "false"
+  - name: "stepaudio-2.5-asr"
+    title: "StepAudio 2.5 ASR"
+    description: "StepFun's automatic speech recognition model for streaming and near-real-time transcription."
+    category: "stepfun"
+    family: "step"
+    modality: "audio"
+    input_modalities: ["audio"]
+    output_modalities: ["text"]
+    capabilities: ["audio", "speech_to_text"]
+    supported_parameters: ["audio_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_model_id: "stepaudio-2.5-asr"
+      provider_model_name: "StepAudio 2.5 ASR"
+      endpoints: "audio/transcriptions"
+      features: "speech-to-text,streaming-transcription"
+      price_cny: "0.15"
+      pricing_unit: "hour"
+      tool_call: "false"
+      reasoning_supported: "false"
+  - name: "step-tts-2"
+    title: "Step TTS 2"
+    description: "StepFun's text-to-speech model for controllable voice generation and voice cloning."
+    category: "stepfun"
+    family: "step"
+    modality: "audio"
+    input_modalities: ["text"]
+    output_modalities: ["audio"]
+    capabilities: ["audio", "text_to_speech"]
+    supported_parameters: []
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_model_id: "step-tts-2"
+      provider_model_name: "Step TTS 2"
+      endpoints: "audio/speech,realtime/audio"
+      features: "text-to-speech,voice-cloning"
+      price_cny: "2.8"
+      pricing_unit: "10k-characters"
+      tool_call: "false"
+      reasoning_supported: "false"
+  - name: "step-router-v1"
+    title: "Step Router V1"
+    description: "Step Plan's smart router, which selects DeepSeek V4 Pro or Step 3.5 Flash according to task complexity."
+    category: "stepfun"
+    family: "step"
+    modality: "chat"
+    context_window: 384000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools"]
+    supported_parameters: ["temperature", "tools"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun-plan"
+      provider_model_id: "step-router-v1"
+      provider_model_name: "Step Router V1"
+      endpoints: "chat/completions,anthropic"
+      features: "smart-routing,function-calling,reasoning"
+      max_output_tokens: "384000"
+      billing_mode: "subscription"
+      tool_call: "true"
+      reasoning_supported: "true"
+      reasoning_effort_supported: "false"
+  - name: "step-image-edit-2"
+    title: "Step Image Edit 2"
+    description: "StepFun's lightweight model for text-to-image generation and reference-image editing."
+    category: "stepfun"
+    family: "step"
+    modality: "image"
+    input_modalities: ["text", "image"]
+    output_modalities: ["image"]
+    capabilities: ["image", "image_edit", "vision"]
+    supported_parameters: ["image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun-plan"
+      provider_model_id: "step-image-edit-2"
+      provider_model_name: "Step Image Edit 2"
+      endpoints: "images/generations,images/edits"
+      features: "text-to-image,image-edit"
+      max_prompt_characters: "512"
+      max_input_image_size: "4096x4096"
+      price_cny: "0.02"
+      pricing_unit: "image"
+      tool_call: "false"
+      vision: "true"
+      reasoning_supported: "false"
+  - name: "step-2-16k"
+    title: "Step 2 (16K)"
+    description: "StepFun's trillion-parameter general-purpose text model for planning, extraction, recommendations, and conversational applications."
+    category: "stepfun"
+    family: "step"
+    modality: "chat"
+    context_window: 16384
+    input_price_usd_per_1m: 5.21
+    cache_read_price_usd_per_1m: 1.04
+    output_price_usd_per_1m: 16.44
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "tools"]
+    supported_parameters: ["temperature", "tools"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_catalog_updated_at: "2026-08-23T16:15:52.898Z"
+      provider_model_id: "step-2-16k"
+      provider_model_name: "Step 2 (16K)"
+      endpoints: "chat/completions"
+      features: "function-calling"
+      max_output_tokens: "8192"
+      release_date: "2025-01-01"
+      tool_call: "true"
+      vision: "false"
+  - name: "step-1-32k"
+    title: "Step 1 (32K)"
+    description: "StepFun's classic general-purpose text model for dialogue orchestration, customer support, rewriting, classification, and information extraction."
+    category: "stepfun"
+    family: "step"
+    modality: "chat"
+    context_window: 32768
+    input_price_usd_per_1m: 2.05
+    cache_read_price_usd_per_1m: 0.41
+    output_price_usd_per_1m: 9.59
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "tools"]
+    supported_parameters: ["temperature", "tools"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "stepfun-api"
+      provider_catalog_id: "stepfun"
+      provider_catalog_updated_at: "2026-08-23T16:15:52.898Z"
+      provider_model_id: "step-1-32k"
+      provider_model_name: "Step 1 (32K)"
+      endpoints: "chat/completions"
+      features: "function-calling"
+      max_output_tokens: "32768"
+      release_date: "2025-01-01"
+      tool_call: "true"
+      vision: "false"
   - name: "claude-fable-5"
     description: "Most intelligent model for building agents and coding"
     category: "claude"

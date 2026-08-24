@@ -11,6 +11,17 @@ export type PlaygroundUsageMetrics = {
   estimated_cost_usd?: number;
 };
 
+const fallbackPlaygroundReasoningEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+export function playgroundReasoningEfforts(model?: { metadata?: Record<string, string> }) {
+  if (model?.metadata?.reasoning_effort_supported?.trim().toLowerCase() === "false") return [];
+  const declared = model?.metadata?.reasoning_effort_options
+    ?.split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return declared?.length ? [...new Set(declared)] : fallbackPlaygroundReasoningEfforts;
+}
+
 export function playgroundMaxTokenLimit(maxOutputTokens: unknown, contextWindow: unknown) {
   const declared = Number(maxOutputTokens);
   const context = Number(contextWindow);

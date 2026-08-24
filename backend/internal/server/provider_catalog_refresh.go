@@ -17,6 +17,15 @@ const (
 	providerCatalogMaxBytes        = 16 << 20
 )
 
+// These entries are reviewed against first-party documentation and must not be
+// replaced by an older upstream snapshot during an explicit catalog refresh.
+var curatedLocalProviderCatalogs = map[string]bool{
+	"stepfun":        true,
+	"stepfun-global": true,
+	"stepfun-plan":   true,
+	"stepfun-ai":     true,
+}
+
 type providerCatalogHTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
@@ -26,6 +35,14 @@ type providerCatalogHTTPClient interface {
 // the catalog shipped with TokenHub.
 func (s *providerCatalogService) refreshLocked(ctx context.Context, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, string, error) {
 	entries, upstreamErr := s.loadUpstreamProviderCatalog(ctx)
+	if upstreamErr == nil {
+		localEntries, localErr := loadLocalProviderCatalog(s.catalogFile)
+		if localErr != nil {
+			upstreamErr = fmt.Errorf("load curated local provider catalogs: %w", localErr)
+		} else {
+			entries = mergeCuratedProviderCatalogEntries(entries, localEntries)
+		}
+	}
 	if upstreamErr == nil {
 		entries, upstreamErr = prepareProviderCatalogRefresh(entries, previous)
 	}
@@ -56,6 +73,32 @@ func (s *providerCatalogService) refreshLocked(ctx context.Context, previous []P
 		return nil, providerCatalogLocalSource, err
 	}
 	return cloneCatalogEntries(entries, false), providerCatalogLocalSource, nil
+}
+
+func mergeCuratedProviderCatalogEntries(upstream []ProviderCatalogEntry, local []ProviderCatalogEntry) []ProviderCatalogEntry {
+	localByID := make(map[string]ProviderCatalogEntry, len(curatedLocalProviderCatalogs))
+	for _, entry := range local {
+		if curatedLocalProviderCatalogs[entry.ID] {
+			localByID[entry.ID] = entry
+		}
+	}
+
+	merged := make([]ProviderCatalogEntry, 0, len(upstream)+len(localByID))
+	for _, entry := range upstream {
+		if replacement, ok := localByID[entry.ID]; ok {
+			merged = append(merged, replacement)
+			delete(localByID, entry.ID)
+			continue
+		}
+		merged = append(merged, entry)
+	}
+	for _, entry := range local {
+		if replacement, ok := localByID[entry.ID]; ok {
+			merged = append(merged, replacement)
+			delete(localByID, entry.ID)
+		}
+	}
+	return merged
 }
 
 func (s *providerCatalogService) loadUpstreamProviderCatalog(ctx context.Context) ([]ProviderCatalogEntry, error) {

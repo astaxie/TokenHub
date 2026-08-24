@@ -196,6 +196,32 @@ func TestProviderCatalogServiceRefreshesFromUpstream(t *testing.T) {
 	}
 }
 
+func TestMergeCuratedProviderCatalogEntriesPreservesReviewedLocalProviders(t *testing.T) {
+	upstream := []ProviderCatalogEntry{
+		{ID: "stepfun", BaseURL: "https://stale.example/v1"},
+		{ID: "upstream-only", BaseURL: "https://upstream.example/v1"},
+	}
+	local := []ProviderCatalogEntry{
+		{ID: "stepfun", BaseURL: "https://api.stepfun.com/v1"},
+		{ID: "stepfun-plan", BaseURL: "https://api.stepfun.com/step_plan/v1"},
+		{ID: "local-only", BaseURL: "https://local.example/v1"},
+	}
+
+	merged := mergeCuratedProviderCatalogEntries(upstream, local)
+	byID := make(map[string]ProviderCatalogEntry, len(merged))
+	for _, entry := range merged {
+		byID[entry.ID] = entry
+	}
+	if len(merged) != 3 || byID["stepfun"].BaseURL != "https://api.stepfun.com/v1" ||
+		byID["stepfun-plan"].BaseURL != "https://api.stepfun.com/step_plan/v1" ||
+		byID["upstream-only"].BaseURL != "https://upstream.example/v1" {
+		t.Fatalf("unexpected merged catalog: %+v", merged)
+	}
+	if _, ok := byID["local-only"]; ok {
+		t.Fatalf("unreviewed local provider must not override upstream catalog: %+v", merged)
+	}
+}
+
 func TestProviderCatalogServiceRefreshFallsBackToLocalCatalog(t *testing.T) {
 	store := NewMemoryStore()
 	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")

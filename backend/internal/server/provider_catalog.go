@@ -322,7 +322,7 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	metadata := map[string]string{
 		"source": "local-provider-catalog",
 	}
-	for _, key := range []string{"knowledge", "release_date", "last_updated"} {
+	for _, key := range []string{"knowledge", "release_date", "last_updated", "endpoints", "billing_mode", "pricing_unit"} {
 		if value := catalogStringField(raw, key); value != "" {
 			metadata[key] = value
 		}
@@ -885,7 +885,7 @@ func inferModelCategory(id string, displayName string) string {
 		return "baichuan"
 	case strings.Contains(normalized, "minimax") || strings.Contains(normalized, "hailuo"):
 		return "minimax"
-	case strings.Contains(normalized, "step-"):
+	case strings.Contains(normalized, "step-") || strings.Contains(normalized, "stepaudio"):
 		return "stepfun"
 	case strings.Contains(normalized, "wanx"):
 		return "wanx"

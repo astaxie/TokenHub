@@ -135,9 +135,11 @@ TokenHub 将模型生命周期拆成三个独立的管理区域：
 
 各区域的职责仍然分开：先添加 Provider 并引入库存；然后从内置参考目录挑选模型，创建它的对外契约、选择至少一条初始 Provider 线路并设置统一对外价格。所选模板会带出模型名、能力、上下文和建议价格，保存前均可调整。创建后，映射的新增、修改和删除只在 Routing Policies 中进行。模型目录只保留只读的上游摘要，行内入口会打开 Routing Policies 并筛选当前对外模型；Provider 渠道列表的“配置路由”会进入完整的 Routing Policies 页面，以便新增映射。例如，可以向客户端开放 `DeepSeek`，但将它路由到 `OpenAI Production / gpt-4.5`。同一个 Provider 模型可以支持多个对外别名，一个对外模型也可以路由到多个 Provider。
 
+内置 StepFun 渠道会严格区分普通 API 与 Step Plan 凭据：`StepFun (China)` 和 `StepFun (Global)` 使用按量付费的 `/v1` 地址；`StepFun Step Plan (China)` 和 `StepFun Step Plan (Global)` 使用订阅专用的 `/step_plan/v1` 地址。普通 API 与 Step Plan 的 Key 和 Base URL 不能混用，请选择与 Key 所属环境一致的渠道。
+
 Provider 模型价格代表真实上游成本，用于内部审计；模型目录价格代表统一对外收费，用于客户计费估算、额度计算、指标和用量报表。路由只选择上游实现，不会改变对外价格。
 
-当 Provider 渠道、模型目录或路由策略还没有配置数据时，控制台会展示同一套三步引导：引入 Provider 库存、从内置的 178 个模型中创建对外模型、再配置路由。主操作按钮始终指向最早尚未完成的前置步骤，避免管理员进入当前还无法完成的表单。
+当 Provider 渠道、模型目录或路由策略还没有配置数据时，控制台会展示同一套三步引导：引入 Provider 库存、从内置模型目录中创建对外模型、再配置路由。主操作按钮始终指向最早尚未完成的前置步骤，避免管理员进入当前还无法完成的表单。
 
 「发布状态」与「运行健康」相互独立。模型要出现在 `GET /v1/models` 中，必须同时满足：对外 `Model` 已启用、至少有一条已启用 `ModelRoute`，且在 API Key 配置了模型白名单时获得授权。Provider 或 Provider Resource 短时不健康不会改变该列表，只会影响当前请求能否成功，并在目录和路由诊断中单独展示。下线对外模型会将它从 `GET /v1/models` 移除，但保留映射，便于之后重新发布。
 

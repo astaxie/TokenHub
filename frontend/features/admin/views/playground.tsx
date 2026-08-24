@@ -49,6 +49,7 @@ import {
   clampPlaygroundMaxTokens,
   hasPlaygroundUsage,
   playgroundMaxTokenLimit,
+  playgroundReasoningEfforts,
   selectPlaygroundCandidateBranch,
 } from "../domain/playground-logic";
 import { playgroundMissingStreamBodyCode, streamPlaygroundChat } from "../resources/playground-stream";
@@ -289,7 +290,9 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
   const outputPrice = selectedModel?.output_price_usd_per_1m ?? 0;
   const supportedParameters = new Set(selectedModel?.supported_parameters ?? []);
   const supports = (parameter: string) => supportedParameters.has(parameter);
-  const supportsReasoningEffort = supports("reasoning") || supports("reasoning_effort") || Boolean(selectedModel?.capabilities?.includes("reasoning"));
+  const exposesReasoning = supports("reasoning") || supports("reasoning_effort") || Boolean(selectedModel?.capabilities?.includes("reasoning"));
+  const reasoningEfforts = useMemo(() => exposesReasoning ? playgroundReasoningEfforts(selectedModel) : [], [exposesReasoning, selectedModel]);
+  const supportsReasoningEffort = reasoningEfforts.length > 0;
   const advancedParameterCount = ["top_p", "presence_penalty", "frequency_penalty", "min_p", "top_k"].filter((parameter) => supports(parameter)).length;
   const lastCandidate = turns.at(-1) ? selectedCandidate(turns.at(-1)!) : undefined;
   const lastResult = lastCandidate?.result;
@@ -339,6 +342,10 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     if (String(clamped) !== maxTokens) setMaxTokens(String(clamped));
   }, [maxTokenLimit, maxTokens]);
 
+  useEffect(() => {
+    if (reasoningEffort && !reasoningEfforts.includes(reasoningEffort)) setReasoningEffort("");
+  }, [reasoningEffort, reasoningEfforts]);
+
   useEffect(() => () => {
     activeRequestRef.current?.abort();
     imageUploadGenerationRef.current += 1;
@@ -384,7 +391,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
     if (supports("frequency_penalty")) payload.frequency_penalty = numericParameter(frequencyPenalty);
     if (supports("min_p")) payload.min_p = numericParameter(minP);
     if (supports("top_k")) payload.top_k = Math.round(numericParameter(topK) ?? 0);
-    if (supportsReasoningEffort && reasoningEffort) payload.reasoning_effort = reasoningEffort;
+    if (reasoningEfforts.includes(reasoningEffort)) payload.reasoning_effort = reasoningEffort;
     if (supports("response_format") && responseFormat !== "text") payload.response_format = { type: responseFormat };
     return payload;
   }
@@ -659,7 +666,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
               <span>{tx("推理强度")}</span>
               <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)}>
                 <option value="">{tx("模型默认")}</option>
-                {['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((effort) => <option key={effort} value={effort}>{effort}</option>)}
+                {reasoningEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}
               </select>
             </label>
           ) : null}

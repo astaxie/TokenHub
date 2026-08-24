@@ -7,6 +7,7 @@ const {
   clampPlaygroundMaxTokens,
   hasPlaygroundUsage,
   playgroundMaxTokenLimit,
+  playgroundReasoningEfforts,
   selectPlaygroundCandidateBranch,
 } = await importTypeScript(new URL("./playground-logic.ts", import.meta.url));
 const {
@@ -22,6 +23,12 @@ test("playground max tokens honor model limits", () => {
   assert.equal(playgroundMaxTokenLimit(undefined, 8192), 8192);
   assert.equal(clampPlaygroundMaxTokens(4096, 2048), 2048);
   assert.equal(clampPlaygroundMaxTokens(undefined, 1024), 1024);
+});
+
+test("playground reasoning efforts honor model metadata", () => {
+  assert.deepEqual(playgroundReasoningEfforts({ metadata: { reasoning_effort_options: "low, high,low" } }), ["low", "high"]);
+  assert.deepEqual(playgroundReasoningEfforts({ metadata: { reasoning_effort_supported: "false" } }), []);
+  assert.deepEqual(playgroundReasoningEfforts({}), ["none", "minimal", "low", "medium", "high", "xhigh", "max"]);
 });
 
 test("unknown usage is not presented as zero usage", () => {
