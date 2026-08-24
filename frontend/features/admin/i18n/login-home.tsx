@@ -2,7 +2,7 @@ export const loginHomeTranslations: Record<"en" | "ja", Record<string, string>> 
   en: {
     "欢迎回来": "Welcome back",
     "登录 TokenHub 控制台": "Sign in to the TokenHub console",
-    "统一管理企业 AI Token": "Enterprise AI Token Control Platform",
+    "统一管理企业 {ai} Token": "Enterprise {ai} Token Control Platform",
     "更可控": "More controllable",
     "更节省": "More efficient",
     "更透明": "More transparent",
@@ -26,13 +26,12 @@ export const loginHomeTranslations: Record<"en" | "ja", Record<string, string>> 
     "近 7 天": "Last 7 days",
     "请输入账号或邮箱": "Enter account or email",
     "请输入密码": "Enter password",
-    "保持登录状态": "Keep me signed in",
     "SSO 企业单点登录": "Enterprise SSO",
   },
   ja: {
     "欢迎回来": "おかえりなさい",
     "登录 TokenHub 控制台": "TokenHub コンソールにログイン",
-    "统一管理企业 AI Token": "企業の AI Token を一元管理",
+    "统一管理企业 {ai} Token": "企業の {ai} Token 管理",
     "更可控": "より制御しやすく",
     "更节省": "より節約",
     "更透明": "より透明",
@@ -56,7 +55,6 @@ export const loginHomeTranslations: Record<"en" | "ja", Record<string, string>> 
     "近 7 天": "直近 7 日",
     "请输入账号或邮箱": "アカウントまたはメールを入力",
     "请输入密码": "パスワードを入力",
-    "保持登录状态": "ログイン状態を保持",
     "SSO 企业单点登录": "企業 SSO",
   },
 };

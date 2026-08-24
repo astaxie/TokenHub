@@ -26,6 +26,7 @@ describe("LoginView", () => {
     await user.click(screen.getByRole("button", { name: "登录控制台" }));
 
     expect(onLogin).toHaveBeenCalledWith("admin@example.com", "correct-horse");
+    expect(screen.queryByText("保持登录状态")).not.toBeInTheDocument();
   });
 
   it("hides SSO actions when no identity providers are configured", () => {
@@ -54,6 +55,7 @@ describe("LoginView", () => {
 
     expect(screen.getByText("login 401")).toHaveAttribute("class", "login-error");
     const sso = screen.getByRole("link", { name: "使用 Company Google 登录" });
+    expect(sso).toHaveTextContent("Company Google");
     expect(sso).toHaveAttribute("href", expect.stringContaining("/api/admin/auth/oauth/start"));
     expect(sso).toHaveAttribute("href", expect.stringContaining("id=idp_google"));
   });

@@ -99,6 +99,10 @@
 .login-home-shell .login-hero-copy h1 {
   margin: 0;
   color: #12234b;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35em;
   font-size: clamp(31px, 2.35vw, 38px);
   font-weight: 860;
   line-height: 1.08;
@@ -109,10 +113,6 @@
 .login-home-shell .login-hero-copy h1 .login-headline-ai,
 .login-home-shell .login-hero-copy p strong:first-child {
   color: #2f6df3;
-}
-
-.login-home-shell .login-hero-copy h1 .login-headline-part {
-  color: inherit;
 }
 
 .login-home-shell .login-hero-copy h1 .login-headline-ai {
@@ -372,40 +372,10 @@
 }
 
 .login-home-shell .login-helper-row {
-  margin: 8px 0 36px;
-}
-
-.login-home-shell .login-keep-control {
-  position: relative;
-  color: #243655;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 15px;
-  font-weight: 590;
-  cursor: pointer;
-}
-
-.login-home-shell .login-keep-control input {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.login-home-shell .login-keep-control input:not(:checked) + .login-checkmark {
-  background: #ffffff;
-  color: transparent;
-  box-shadow: inset 0 0 0 1px #c9d5e8;
-}
-
-.login-home-shell .login-checkmark {
-  width: 21px;
-  height: 21px;
-  border-radius: 6px;
-  background: #3478f6;
-  box-shadow: 0 8px 18px rgba(52, 120, 246, 0.2);
+  justify-content: space-between;
+  margin: 8px 0 36px;
 }
 
 .login-home-shell .login-helper-row button {
@@ -512,6 +482,7 @@
   }
 
   .login-home-shell .login-hero-copy h1 {
+    flex-wrap: wrap;
     white-space: normal;
   }
 
@@ -597,8 +568,7 @@
 .login-home-shell[data-theme="dark"] .login-brand-copy small,
 .login-home-shell[data-theme="dark"] .login-hero-copy p,
 .login-home-shell[data-theme="dark"] .login-feature-card small,
-.login-home-shell[data-theme="dark"] .login-card-head p,
-.login-home-shell[data-theme="dark"] .login-keep-control {
+.login-home-shell[data-theme="dark"] .login-card-head p {
   color: #aab8cf;
 }
 

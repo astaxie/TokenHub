@@ -1,4 +1,4 @@
-import { Check, Database, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, ReceiptText, Route, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
+import { Database, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, ReceiptText, Route, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { savePendingOAuthLogin } from "../core/session";
 import { type LoginIdentityProvider, viewRoutes } from "../core/types";
@@ -583,7 +583,6 @@ export function LoginView({
   const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [ssoLoading, setSSOLoading] = useState(false);
   const [ssoError, setSSOError] = useState("");
   const ssoStarting = useRef(false);
@@ -598,7 +597,7 @@ export function LoginView({
     identityProviders.length > 1 ? "multi" : "",
     identityProviders.length > 1 ? `count-${Math.min(identityProviders.length, 3)}` : "",
   ].filter(Boolean).join(" ");
-  const headline = tx("统一管理企业 AI Token");
+  const headlineParts = tx("统一管理企业 {ai} Token").split("{ai}");
   const dashboardPreviewSrc =
     theme === "dark"
       ? "/brand/login-dashboard-dark.png"
@@ -625,12 +624,9 @@ export function LoginView({
         <aside className="login-hero-panel" aria-label="TokenHub">
           <div className="login-hero-copy">
             <h1>
-              {headline.split("AI").map((part, index, parts) => (
-                <span className={index === parts.length - 1 ? undefined : "login-headline-part"} key={`${part}-${index}`}>
-                  {part}
-                  {index === parts.length - 1 ? null : <span className="login-headline-ai">AI</span>}
-                </span>
-              ))}
+              <span>{headlineParts[0]}</span>
+              <span className="login-headline-ai">AI</span>
+              <span>{headlineParts.slice(1).join("{ai}")}</span>
             </h1>
             <p>
               <strong>{tx("更可控")}</strong>
@@ -695,17 +691,7 @@ export function LoginView({
             </span>
           </label>
           <div className="login-helper-row">
-            <label className="login-keep-control">
-              <input
-                checked={keepSignedIn}
-                onChange={(event) => setKeepSignedIn(event.target.checked)}
-                type="checkbox"
-              />
-              <span className="login-checkmark" aria-hidden="true">
-                <Check size={13} />
-              </span>
-              {tx("保持登录状态")}
-            </label>
+            <span />
             <button type="button">{tx("忘记密码？")}</button>
           </div>
           {error || ssoError ? <div className="login-error">{error || ssoError}</div> : null}
@@ -750,7 +736,7 @@ export function LoginView({
                     >
                       <LoginIdentityProviderIcon provider={provider} />
                       <span className="login-sso-label">
-                        {identityProviders.length > 1 ? displayName : tx("SSO 企业单点登录")}
+                        {displayName}
                       </span>
                     </a>
                   );
