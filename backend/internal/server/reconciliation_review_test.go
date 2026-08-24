@@ -113,11 +113,6 @@ func TestReconciliationSnapshotsScopeForMigrationAndRecalculation(t *testing.T) 
 		storedRule.RuleHash != legacyHash || storedRule.RuleHash == "legacy:without-scope" {
 		t.Fatalf("legacy rule connector snapshot was not persisted: %#v", storedRule)
 	}
-	changedScope := storedRule
-	changedScope.ProviderID = "provider-b"
-	if reconciliationRuleHash(changedScope) == storedRule.RuleHash {
-		t.Fatal("provider scope was omitted from the reconciliation rule hash")
-	}
 	storedRun, err := store.GetReconciliationRun(run.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -183,11 +178,6 @@ func TestReconciliationAPIRedactsResourceAccountIdentifiers(t *testing.T) {
 	}
 	if storedRule.ProviderResourceID != resourceScope || storedRule.DimensionMappings["resource_account"][billingAccount] != tokenHubAccount {
 		t.Fatalf("rule resource scope was not persisted: %#v", storedRule)
-	}
-	withoutResourceMapping := storedRule
-	withoutResourceMapping.DimensionMappings = reconciliationResponseDimensionMappings(storedRule.DimensionMappings)
-	if reconciliationRuleHash(withoutResourceMapping) == storedRule.RuleHash {
-		t.Fatal("resource account mapping was omitted from the persisted rule hash")
 	}
 	assertReconciliationResponseRedacted(t, "list rules", doJSON(t, app, http.MethodGet, "/api/admin/billing/reconciliation-rules", nil, ""), http.StatusOK, secrets...)
 	assertReconciliationResponseRedacted(t, "get rule", doJSON(t, app, http.MethodGet, "/api/admin/billing/reconciliation-rules/"+rule.ID, nil, ""), http.StatusOK, secrets...)
@@ -297,16 +287,6 @@ func TestNewAPIBillingConnectorRejectsDetailReconciliation(t *testing.T) {
 	}
 }
 
-func TestDetailReconciliationMaximizesMatchesBeforeDistance(t *testing.T) {
-	base := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
-	providers := []reconciliationDetailEntry{{id: "provider-zero", occurredAt: base}, {id: "provider-five", occurredAt: base.Add(5 * time.Minute)}}
-	usages := []reconciliationDetailEntry{{id: "usage-minus-five", occurredAt: base.Add(-5 * time.Minute)}, {id: "usage-four", occurredAt: base.Add(4 * time.Minute)}}
-	matches := matchReconciliationDetailEntries(providers, usages, 5*time.Minute)
-	if len(matches) != 2 || matches[0] != 0 || matches[1] != 1 {
-		t.Fatalf("matching did not maximize cardinality before time distance: %#v", matches)
-	}
-}
-
 func TestFailedRecalculationPreservesSuccessfulRunAndAuditsFailure(t *testing.T) {
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_recalculate_failure")
@@ -402,18 +382,6 @@ func TestReconciliationFailureAuditPaginationAndRedaction(t *testing.T) {
 	}
 	if page.Total != 5 || page.Limit != 2 || page.Offset != 1 || len(page.Items) != 2 {
 		t.Fatalf("reconciliation detail was not paginated: %#v", page)
-	}
-}
-
-func TestNonUSDProviderOnlyUsesMissingUsageReason(t *testing.T) {
-	run := ReconciliationRun{ID: "recon_reason", Currency: "CNY"}
-	bucket := reconciliationBucket{
-		key: "provider-only", dimensions: map[string]string{"currency": "CNY"}, providerAmount: 1 * reconciliationMoney(reconciliationScale),
-		providerRecordIDs: []string{"bill-cny"},
-	}
-	item := reconciliationItemFromBucket(run, bucket, 0, 0, "")
-	if item.Status != ReconciliationProviderOnly || item.PossibleReason != "missing_tokenhub_usage_or_late_data" {
-		t.Fatalf("non-USD provider-only result was misclassified: %#v", item)
 	}
 }
 

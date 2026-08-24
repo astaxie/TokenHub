@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"tokenhub/backend/internal/billing"
+	"tokenhub/backend/internal/reconciliation"
 )
 
 type BillingConnector = billing.Connector
@@ -16,29 +17,20 @@ const (
 )
 
 const (
-	ReconciliationGranularityDetail = "detail"
-	ReconciliationGranularityHour   = "hour"
-	ReconciliationGranularityDay    = "day"
-	ReconciliationGranularityMonth  = "month"
+	ReconciliationGranularityDetail = reconciliation.GranularityDetail
+	ReconciliationGranularityHour   = reconciliation.GranularityHour
+	ReconciliationGranularityDay    = reconciliation.GranularityDay
+	ReconciliationGranularityMonth  = reconciliation.GranularityMonth
 
-	ReconciliationMatched        = "matched"
-	ReconciliationProviderOnly   = "provider_only"
-	ReconciliationTokenHubOnly   = "tokenhub_only"
-	ReconciliationAmountMismatch = "amount_mismatch"
+	ReconciliationMatched        = reconciliation.Matched
+	ReconciliationProviderOnly   = reconciliation.ProviderOnly
+	ReconciliationTokenHubOnly   = reconciliation.TokenHubOnly
+	ReconciliationAmountMismatch = reconciliation.AmountMismatch
 
-	ReconciliationRunRunning   = "running"
-	ReconciliationRunSucceeded = "succeeded"
-	ReconciliationRunFailed    = "failed"
+	ReconciliationRunRunning   = reconciliation.RunRunning
+	ReconciliationRunSucceeded = reconciliation.RunSucceeded
+	ReconciliationRunFailed    = reconciliation.RunFailed
 )
-
-var reconciliationDimensions = map[string]struct{}{
-	"request_id":       {},
-	"provider":         {},
-	"resource_account": {},
-	"model":            {},
-	"project":          {},
-	"currency":         {},
-}
 
 // ReconciliationRule is the mutable, scheduled configuration used to compare
 // one external billing source with TokenHub usage. Every run copies the rule
@@ -195,7 +187,7 @@ type ReconciliationStore interface {
 	ListReconciliationRules() []ReconciliationRule
 	GetReconciliationRule(id string) (ReconciliationRule, error)
 	UpdateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error)
-	BackfillReconciliationRuleConnectorSnapshot(id string, connectorType string, providerID string, providerResourceID string) (ReconciliationRule, error)
+	BackfillReconciliationRuleConnectorSnapshot(rule ReconciliationRule) (ReconciliationRule, error)
 	ListDueReconciliationRules(now time.Time, limit int) []ReconciliationRule
 	ListReconciliationUsages(from time.Time, to time.Time, window time.Duration) ([]UsageRecord, error)
 	SaveReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)

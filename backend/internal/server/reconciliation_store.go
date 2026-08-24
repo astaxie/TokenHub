@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"tokenhub/backend/internal/reconciliation"
 )
 
 func (s *GormStore) CreateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error) {
@@ -22,7 +24,7 @@ func (s *GormStore) CreateReconciliationRule(rule ReconciliationRule) (Reconcili
 		rule.CreatedAt = now
 	}
 	rule.UpdatedAt = now
-	rule.NextRunAt = nextReconciliationRunAt(rule, now)
+	rule = serverReconciliationRule(reconciliation.ApplyRuleSchedule(domainReconciliationRule(rule), nil, now))
 	if err := s.db.Create(&rule).Error; err != nil {
 		return ReconciliationRule{}, writeConflict(err, "reconciliation_rule_conflict", "Reconciliation rule already exists")
 	}
@@ -53,51 +55,36 @@ func (s *GormStore) UpdateReconciliationRule(rule ReconciliationRule) (Reconcili
 	rule.CreatedAt = existing.CreatedAt
 	rule.LastRunAt = existing.LastRunAt
 	rule.UpdatedAt = time.Now().UTC()
-	if rule.ScheduleIntervalMinutes <= 0 || rule.Status != StatusActive {
-		rule.NextRunAt = nil
-	} else if existing.ScheduleIntervalMinutes != rule.ScheduleIntervalMinutes || existing.Status != rule.Status || existing.NextRunAt == nil {
-		rule.NextRunAt = nextReconciliationRunAt(rule, rule.UpdatedAt)
-	} else {
-		rule.NextRunAt = existing.NextRunAt
-	}
+	domainExisting := domainReconciliationRule(existing)
+	rule = serverReconciliationRule(reconciliation.ApplyRuleSchedule(domainReconciliationRule(rule), &domainExisting, rule.UpdatedAt))
 	if err := s.db.Save(&rule).Error; err != nil {
 		return ReconciliationRule{}, err
 	}
 	return rule, nil
 }
 
-func (s *GormStore) BackfillReconciliationRuleConnectorSnapshot(id string, connectorType string, providerID string, providerResourceID string) (ReconciliationRule, error) {
+func (s *GormStore) BackfillReconciliationRuleConnectorSnapshot(rule ReconciliationRule) (ReconciliationRule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var rule ReconciliationRule
-	if err := s.db.First(&rule, "id = ?", strings.TrimSpace(id)).Error; err != nil {
+	rule.UpdatedAt = time.Now().UTC()
+	result := s.db.Model(&ReconciliationRule{}).
+		Where("id = ? AND (COALESCE(TRIM(connector_type), '') = '' OR COALESCE(TRIM(provider_id), '') = '')", strings.TrimSpace(rule.ID)).
+		Updates(map[string]any{
+			"connector_type":       rule.ConnectorType,
+			"provider_id":          rule.ProviderID,
+			"provider_resource_id": rule.ProviderResourceID,
+			"version":              rule.Version,
+			"rule_hash":            rule.RuleHash,
+			"updated_at":           rule.UpdatedAt,
+		})
+	if result.Error != nil {
+		return ReconciliationRule{}, result.Error
+	}
+	var stored ReconciliationRule
+	if err := s.db.First(&stored, "id = ?", strings.TrimSpace(rule.ID)).Error; err != nil {
 		return ReconciliationRule{}, notFound(err, "reconciliation_rule_not_found", "Reconciliation rule not found")
 	}
-	if strings.TrimSpace(rule.ConnectorType) != "" && normalizeReconciliationScope(rule.ProviderID) != "" {
-		return rule, validateReconciliationConnectorSnapshot(rule.Granularity, rule.ConnectorType, rule.ProviderID)
-	}
-	rule.ConnectorType = strings.ToLower(strings.TrimSpace(connectorType))
-	rule.ProviderID = normalizeReconciliationScope(providerID)
-	rule.ProviderResourceID = normalizeReconciliationScope(providerResourceID)
-	if err := validateReconciliationConnectorSnapshot(rule.Granularity, rule.ConnectorType, rule.ProviderID); err != nil {
-		return ReconciliationRule{}, err
-	}
-	if rule.Version <= 0 {
-		rule.Version = 1
-	} else {
-		rule.Version++
-	}
-	rule.RuleHash = reconciliationRuleHash(rule)
-	rule.UpdatedAt = time.Now().UTC()
-	err := s.db.Model(&ReconciliationRule{}).Where("id = ?", rule.ID).Updates(map[string]any{
-		"connector_type":       rule.ConnectorType,
-		"provider_id":          rule.ProviderID,
-		"provider_resource_id": rule.ProviderResourceID,
-		"version":              rule.Version,
-		"rule_hash":            rule.RuleHash,
-		"updated_at":           rule.UpdatedAt,
-	}).Error
-	return rule, err
+	return stored, nil
 }
 
 func (s *GormStore) ListDueReconciliationRules(now time.Time, limit int) []ReconciliationRule {
@@ -150,8 +137,8 @@ func (s *GormStore) ReplaceReconciliationRun(run ReconciliationRun, items []Reco
 		if err := tx.First(&existing, "id = ?", run.ID).Error; err != nil {
 			return notFound(err, "reconciliation_run_not_found", "Reconciliation run not found")
 		}
-		if existing.LockedAt != nil {
-			return NewHTTPError(409, "reconciliation_run_locked", "Locked reconciliation runs cannot be recalculated")
+		if err := reconciliation.ValidateRunReplacement(domainReconciliationRun(existing)); err != nil {
+			return reconciliationHTTPError(err)
 		}
 		run.LockedAt = nil
 		run.LockedBy = ""
@@ -234,6 +221,17 @@ func maskReconciliationItems(items []ReconciliationItem) {
 	}
 }
 
+func maskReconciliationIdentifier(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 4 {
+		return "****"
+	}
+	return value[:2] + "****" + value[len(value)-2:]
+}
+
 func (s *GormStore) LockReconciliationRun(id string, actor string) (ReconciliationRun, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -241,15 +239,14 @@ func (s *GormStore) LockReconciliationRun(id string, actor string) (Reconciliati
 	if err := s.db.First(&run, "id = ?", strings.TrimSpace(id)).Error; err != nil {
 		return ReconciliationRun{}, notFound(err, "reconciliation_run_not_found", "Reconciliation run not found")
 	}
-	if run.Status != ReconciliationRunSucceeded {
-		return ReconciliationRun{}, NewHTTPError(409, "reconciliation_run_not_complete", "Only successful reconciliation runs can be locked")
+	prepared, changed, err := reconciliation.PrepareRunLock(domainReconciliationRun(run), actor, time.Now().UTC())
+	if err != nil {
+		return ReconciliationRun{}, reconciliationHTTPError(err)
 	}
-	if run.LockedAt != nil {
+	run = serverReconciliationRun(prepared)
+	if !changed {
 		return run, nil
 	}
-	now := time.Now().UTC()
-	run.LockedAt = &now
-	run.LockedBy = strings.TrimSpace(actor)
 	return run, s.db.Save(&run).Error
 }
 
@@ -271,14 +268,6 @@ func (s *GormStore) RecordScheduledReconciliationAudit(run ReconciliationRun) {
 	})
 }
 
-func nextReconciliationRunAt(rule ReconciliationRule, now time.Time) *time.Time {
-	if rule.Status != StatusActive || rule.ScheduleIntervalMinutes <= 0 {
-		return nil
-	}
-	next := now.UTC().Add(time.Duration(rule.ScheduleIntervalMinutes) * time.Minute)
-	return &next
-}
-
 func updateReconciliationRuleAfterRun(tx *gorm.DB, run ReconciliationRun) error {
 	var rule ReconciliationRule
 	if err := tx.First(&rule, "id = ?", run.RuleID).Error; err != nil {
@@ -287,14 +276,7 @@ func updateReconciliationRuleAfterRun(tx *gorm.DB, run ReconciliationRun) error 
 		}
 		return err
 	}
-	finishedAt := run.StartedAt
-	if run.FinishedAt != nil {
-		finishedAt = *run.FinishedAt
-	}
-	rule.LastRunAt = &finishedAt
-	if run.Trigger == "scheduled" {
-		rule.NextRunAt = nextReconciliationRunAt(rule, finishedAt)
-	}
+	rule = serverReconciliationRule(reconciliation.ApplyRunCompletion(domainReconciliationRule(rule), domainReconciliationRun(run)))
 	return tx.Model(&ReconciliationRule{}).Where("id = ?", rule.ID).Updates(map[string]any{
 		"last_run_at": rule.LastRunAt,
 		"next_run_at": rule.NextRunAt,
