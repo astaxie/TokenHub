@@ -170,9 +170,12 @@ func TestAdminOAuthLoginCreatesSession(t *testing.T) {
 			"team_claim":     "department",
 		},
 	})
-	app := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "test-secret"}).Handler()
+	app := NewWithConfig(store, Config{
+		AdminToken: "dev_admin_token", SecretKey: "test-secret",
+		CORSAllowedOrigins: []string{"http://localhost:3001"},
+	}).Handler()
 
-	startReq := httptest.NewRequest(http.MethodGet, "/api/admin/auth/oauth/start?id=idp_gitlab&return_url=http%3A%2F%2Flocalhost%3A3001%2Foverview", nil)
+	startReq := httptest.NewRequest(http.MethodGet, adminOAuthStartURLForTest(t, "/api/admin/auth/oauth/start?id=idp_gitlab&return_url=http%3A%2F%2Flocalhost%3A3001%2Foverview"), nil)
 	startReq.Host = "127.0.0.1:8080"
 	startResp := httptest.NewRecorder()
 	app.ServeHTTP(startResp, startReq)
@@ -197,6 +200,7 @@ func TestAdminOAuthLoginCreatesSession(t *testing.T) {
 
 	callbackReq := httptest.NewRequest(http.MethodGet, "/api/admin/auth/oauth/callback?code=oauth-code&state="+url.QueryEscape(authorizeQuery.Get("state")), nil)
 	callbackReq.Host = "localhost:8080"
+	callbackReq.AddCookie(requireResponseCookieWithPrefix(t, startResp, adminOAuthStateCookiePrefix))
 	callbackResp := httptest.NewRecorder()
 	app.ServeHTTP(callbackResp, callbackReq)
 	if callbackResp.Code != http.StatusFound {
@@ -212,15 +216,19 @@ func TestAdminOAuthLoginCreatesSession(t *testing.T) {
 	if returnLocation.String() == "" || returnLocation.Scheme != "http" || returnLocation.Host != "localhost:3001" || returnLocation.Path != "/overview" {
 		t.Fatalf("unexpected return location: %s", returnLocation.String())
 	}
+	if returnLocation.Query().Has("oauth_token") || returnLocation.Query().Has("oauth_code") || strings.Contains(returnLocation.String(), "oauth_token=") {
+		t.Fatalf("OAuth callback leaked a credential in the query: %s", returnLocation.String())
+	}
 	returnParams, err := url.ParseQuery(returnLocation.Fragment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionToken := returnParams.Get("oauth_token")
-	if sessionToken == "" || returnParams.Get("oauth_expires_at") == "" {
-		t.Fatalf("missing oauth session fragment: %s", returnLocation.Fragment)
+	exchangeCode := returnParams.Get("oauth_code")
+	if exchangeCode == "" {
+		t.Fatalf("missing OAuth exchange code fragment: %s", returnLocation.Fragment)
 	}
-	me := doJSON(t, app, http.MethodGet, "/api/admin/auth/me", nil, sessionToken)
+	session := exchangeAdminOAuthCodeForTest(t, app, exchangeCode, testAdminOAuthCodeVerifier)
+	me := doJSON(t, app, http.MethodGet, "/api/admin/auth/me", nil, session.Token)
 	if me.Code != http.StatusOK || !strings.Contains(me.Body, `"email":"gitlab.user@example.test"`) || !strings.Contains(me.Body, `"role":"user"`) {
 		t.Fatalf("unexpected me response: %d %s", me.Code, me.Body)
 	}

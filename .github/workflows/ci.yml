@@ -64,6 +64,310 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Migration manifest is current
+        run: |
+          set -euo pipefail
+          go run ./cmd/manifestgen
+          if ! git diff --exit-code --quiet -- internal/dbschema/migrations_manifest.json; then
+            echo "Embedded migration manifest is stale (see docs/database-evolution.md)." >&2
+            echo "Run: go run ./cmd/manifestgen" >&2
+            exit 1
+          fi
+
+  backend-postgres:
+    name: Backend PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: tokenhub_e2e
+          POSTGRES_USER: tokenhub
+          POSTGRES_PASSWORD: tokenhub-e2e-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tokenhub -d tokenhub_e2e"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Test PostgreSQL migrations and multi-instance behavior
+        env:
+          TEST_POSTGRES_URL: postgresql://tokenhub:tokenhub-e2e-password@localhost:5432/tokenhub_e2e?sslmode=disable
+        run: |
+          go test -tags=integration ./internal/server -run '^(TestMultiInstancePostgresE2E|TestPostgresBaselineSQLIsCurrent|TestPostgresFreshStoreAdoptsFromBaselineSQL|TestPostgresStartupSchemaLockWaitHonorsContext|TestQuotaBucketMigrationPostgresAddsAttributionColumnBeforeBackfill|TestUserQuotaIsAtomicAcrossPostgresInstances)$' -count=1 -v
+          go test -tags=integration ./internal/dbschema -run '^TestPostgres' -count=1 -v
+
+      - name: Check out previous release tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.4.0
+          path: n1
+          persist-credentials: false
+
+      - name: Build N-1 binaries
+        run: |
+          go build -o "$RUNNER_TEMP/current-tokenhub" ./cmd/tokenhub
+          go build -o "$RUNNER_TEMP/n1check" ./cmd/n1check
+          (cd ../n1/backend && go build -o "$RUNNER_TEMP/n1-tokenhub" ./cmd/tokenhub)
+
+      - name: Run the PostgreSQL N-1 contract
+        env:
+          TOKENHUB_ADMIN_TOKEN: n1-contract-token
+          N1_PG_URL: postgresql://tokenhub:tokenhub-e2e-password@localhost:5432/tokenhub_n1?sslmode=disable
+        run: |
+          set -euo pipefail
+          docker exec "${{ job.services.postgres.id }}" createdb -U tokenhub tokenhub_n1
+          boot_and_wait() {
+            bin="$1"; port="$2"; probe="$3"; log="$4"
+            TOKENHUB_HTTP_ADDR="127.0.0.1:${port}" TOKENHUB_DATABASE_URL="${N1_PG_URL}" "$bin" >"$log" 2>&1 &
+            pid=$!
+            for _ in $(seq 1 90); do
+              curl -fsS "http://127.0.0.1:${port}${probe}" >/dev/null 2>&1 && { kill "$pid"; wait "$pid" 2>/dev/null || true; return 0; }
+              kill -0 "$pid" 2>/dev/null || { echo "process died; log follows"; cat "$log"; return 1; }
+              sleep 1
+            done
+            echo "timeout waiting for port ${port}; log follows"; cat "$log"; kill "$pid" 2>/dev/null || true; return 1
+          }
+          boot_keep() {
+            bin="$1"; port="$2"; probe="$3"; log="$4"
+            TOKENHUB_HTTP_ADDR="127.0.0.1:${port}" TOKENHUB_DATABASE_URL="${N1_PG_URL}" "$bin" >"$log" 2>&1 &
+            pid=$!
+            for _ in $(seq 1 90); do
+              curl -fsS "http://127.0.0.1:${port}${probe}" >/dev/null 2>&1 && { echo "$pid"; return 0; }
+              kill -0 "$pid" 2>/dev/null || { echo "process died; log follows"; cat "$log"; return 1; }
+              sleep 1
+            done
+            echo "timeout waiting for port ${port}; log follows"; cat "$log"; kill "$pid" 2>/dev/null || true; return 1
+          }
+          run_crud_contract() {
+            base="$1"
+            auth="Authorization: Bearer ${TOKENHUB_ADMIN_TOKEN}"
+            ct="Content-Type: application/json"
+            curl -fsS -H "$auth" "${base}/api/admin/auth/me" >/dev/null
+            project="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d '{"name":"n1-contract-project","status":"active","team_id":"team_platform"}' \
+              "${base}/api/admin/projects")"
+            project_id="$(printf '%s' "$project" | jq -r '.id')"
+            [ -n "$project_id" ] && [ "$project_id" != "null" ]
+            keyresp="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d '{"name":"n1-contract-key"}' \
+              "${base}/api/admin/projects/${project_id}/keys")"
+            key="$(printf '%s' "$keyresp" | jq -r '.api_key')"
+            [ -n "$key" ] && [ "$key" != "null" ]
+            provider="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d '{"type":"mock","name":"n1-mock","status":"active","create_routes":false}' \
+              "${base}/api/admin/providers")"
+            provider_id="$(printf '%s' "$provider" | jq -r '.provider.id')"
+            [ -n "$provider_id" ] && [ "$provider_id" != "null" ]
+            imported="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d "{\"provider_id\":\"${provider_id}\",\"publish\":true,\"models\":[{\"id\":\"n1-upstream\",\"name\":\"n1-upstream\"}]}" \
+              "${base}/api/admin/provider-models/import")"
+            [ "$(printf '%s' "$imported" | jq -r '.created_routes')" = "1" ]
+            gateway="$(curl -fsS -X POST -H "Authorization: Bearer ${key}" -H "$ct" \
+              -d '{"model":"n1-upstream","messages":[{"role":"user","content":"hello from n1"}]}' \
+              "${base}/v1/chat/completions")"
+            printf '%s' "$gateway" | grep -q '"content":"Echo: hello from n1"'
+            curl -fsS -H "$auth" "${base}/api/admin/audit/events" | jq -e '.data | length >= 1' >/dev/null
+            echo "PostgreSQL N-1 CRUD contract passed"
+          }
+          verify_current_reads() {
+            base="$1"
+            auth="Authorization: Bearer ${TOKENHUB_ADMIN_TOKEN}"
+            curl -fsS -H "$auth" "${base}/api/admin/projects" | jq -e '.data[] | select(.name == "n1-contract-project")' >/dev/null
+            curl -fsS -H "$auth" "${base}/api/admin/models" | jq -e '.data[] | select(.name == "n1-upstream")' >/dev/null
+            echo "current release reads v0.4.0 PostgreSQL writes"
+          }
+          # The previous release creates the legacy PostgreSQL database, and
+          # the immutable N-1 schema fixture pins its shape as required by
+          # docs/database-evolution.md.
+          boot_and_wait "$RUNNER_TEMP/n1-tokenhub" 18581 /healthz "$RUNNER_TEMP/pg-n1-a.log"
+          "$RUNNER_TEMP/n1check" "${N1_PG_URL}"
+          # The current release adopts it and reports full readiness.
+          boot_and_wait "$RUNNER_TEMP/current-tokenhub" 18582 /readyz "$RUNNER_TEMP/pg-cur-b.log"
+          TOKENHUB_DATABASE_URL="${N1_PG_URL}" "$RUNNER_TEMP/current-tokenhub" db verify
+          # The previous release boots again on the adopted database and runs
+          # the CRUD contract through its own API.
+          crud_pid="$(boot_keep "$RUNNER_TEMP/n1-tokenhub" 18583 /healthz "$RUNNER_TEMP/pg-n1-c.log")"
+          run_crud_contract "http://127.0.0.1:18583"
+          kill "$crud_pid"; wait "$crud_pid" 2>/dev/null || true
+          # The current release returns and reads every write the old release
+          # made on the adopted PostgreSQL database.
+          cur_pid="$(boot_keep "$RUNNER_TEMP/current-tokenhub" 18584 /readyz "$RUNNER_TEMP/pg-cur-e.log")"
+          verify_current_reads "http://127.0.0.1:18584"
+          kill "$cur_pid"; wait "$cur_pid" 2>/dev/null || true
+
+  backend-db-n1:
+    name: Backend database N-1 contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check out previous release tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.4.0
+          path: n1
+          persist-credentials: false
+
+      - name: Check out v0.5.0 release tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.5.0
+          path: n15
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build release binaries
+        run: |
+          (cd backend && go build -o "$RUNNER_TEMP/current-tokenhub" ./cmd/tokenhub)
+          (cd backend && go build -o "$RUNNER_TEMP/n1check" ./cmd/n1check)
+          (cd n1/backend && go build -o "$RUNNER_TEMP/n1-tokenhub" ./cmd/tokenhub)
+          (cd n15/backend && go build -o "$RUNNER_TEMP/n15-tokenhub" ./cmd/tokenhub)
+
+      - name: Run the N-1 two-way compatibility contract
+        env:
+          TOKENHUB_ADMIN_TOKEN: n1-contract-token
+          N1_DATABASE: ${{ runner.temp }}/n1-contract.db
+        run: |
+          set -euo pipefail
+          # Boot a binary against a database and wait for a probe; kills the
+          # process once the probe succeeds.
+          boot_and_wait() {
+            bin="$1"; port="$2"; probe="$3"; log="$4"; dburl="$5"
+            TOKENHUB_HTTP_ADDR="127.0.0.1:${port}" TOKENHUB_DATABASE_URL="${dburl}" "$bin" >"$log" 2>&1 &
+            pid=$!
+            for _ in $(seq 1 60); do
+              curl -fsS "http://127.0.0.1:${port}${probe}" >/dev/null 2>&1 && { kill "$pid"; wait "$pid" 2>/dev/null || true; return 0; }
+              kill -0 "$pid" 2>/dev/null || { echo "process died; log follows"; cat "$log"; return 1; }
+              sleep 1
+            done
+            echo "timeout waiting for port ${port}; log follows"; cat "$log"; kill "$pid" 2>/dev/null || true; return 1
+          }
+          # Boot a binary and leave it running; prints the pid.
+          boot_keep() {
+            bin="$1"; port="$2"; probe="$3"; log="$4"; dburl="$5"
+            TOKENHUB_HTTP_ADDR="127.0.0.1:${port}" TOKENHUB_DATABASE_URL="${dburl}" "$bin" >"$log" 2>&1 &
+            pid=$!
+            for _ in $(seq 1 60); do
+              curl -fsS "http://127.0.0.1:${port}${probe}" >/dev/null 2>&1 && { echo "$pid"; return 0; }
+              kill -0 "$pid" 2>/dev/null || { echo "process died; log follows"; cat "$log"; return 1; }
+              sleep 1
+            done
+            echo "timeout waiting for port ${port}; log follows"; cat "$log"; kill "$pid" 2>/dev/null || true; return 1
+          }
+          # The N-1 CRUD contract in docs/database-evolution.md: the old binary must complete
+          # auth, project & team, API key, provider, model & route, one gateway
+          # request, and audit writes against the adopted database.
+          run_crud_contract() {
+            base="$1"
+            auth="Authorization: Bearer ${TOKENHUB_ADMIN_TOKEN}"
+            ct="Content-Type: application/json"
+            curl -fsS -H "$auth" "${base}/api/admin/auth/me" >/dev/null
+            project="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d '{"name":"n1-contract-project","status":"active","team_id":"team_platform"}' \
+              "${base}/api/admin/projects")"
+            project_id="$(printf '%s' "$project" | jq -r '.id')"
+            [ -n "$project_id" ] && [ "$project_id" != "null" ]
+            keyresp="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d '{"name":"n1-contract-key"}' \
+              "${base}/api/admin/projects/${project_id}/keys")"
+            key="$(printf '%s' "$keyresp" | jq -r '.api_key')"
+            [ -n "$key" ] && [ "$key" != "null" ]
+            provider="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d '{"type":"mock","name":"n1-mock","status":"active","create_routes":false}' \
+              "${base}/api/admin/providers")"
+            provider_id="$(printf '%s' "$provider" | jq -r '.provider.id')"
+            [ -n "$provider_id" ] && [ "$provider_id" != "null" ]
+            imported="$(curl -fsS -X POST -H "$auth" -H "$ct" \
+              -d "{\"provider_id\":\"${provider_id}\",\"publish\":true,\"models\":[{\"id\":\"n1-upstream\",\"name\":\"n1-upstream\"}]}" \
+              "${base}/api/admin/provider-models/import")"
+            [ "$(printf '%s' "$imported" | jq -r '.created_routes')" = "1" ]
+            gateway="$(curl -fsS -X POST -H "Authorization: Bearer ${key}" -H "$ct" \
+              -d '{"model":"n1-upstream","messages":[{"role":"user","content":"hello from n1"}]}' \
+              "${base}/v1/chat/completions")"
+            printf '%s' "$gateway" | grep -q '"content":"Echo: hello from n1"'
+            audits="$(curl -fsS -H "$auth" "${base}/api/admin/audit/events")"
+            [ "$(printf '%s' "$audits" | jq '.data | length')" -ge 1 ]
+            echo "N-1 CRUD contract passed"
+          }
+          # The current release must read every write the old release made.
+          verify_current_reads() {
+            base="$1"
+            auth="Authorization: Bearer ${TOKENHUB_ADMIN_TOKEN}"
+            curl -fsS -H "$auth" "${base}/api/admin/projects" | jq -e '.data[] | select(.name == "n1-contract-project")' >/dev/null
+            curl -fsS -H "$auth" "${base}/api/admin/providers" | jq -e '.data[] | select(.name == "n1-mock")' >/dev/null
+            curl -fsS -H "$auth" "${base}/api/admin/models" | jq -e '.data[] | select(.name == "n1-upstream")' >/dev/null
+            echo "current release reads v0.4.0 writes"
+          }
+
+          # Leg 1: v0.4.0 (previous stable) creates the legacy database; its
+          # health endpoint is a plain connectivity probe.
+          boot_and_wait "$RUNNER_TEMP/n1-tokenhub" 18081 /healthz "$RUNNER_TEMP/n1-a.log" "sqlite://${N1_DATABASE}"
+          # The immutable N-1 schema fixture pins the legacy shape before the
+          # current release adopts it, as specified in docs/database-evolution.md.
+          "$RUNNER_TEMP/n1check" "sqlite://${N1_DATABASE}"
+          # The current release adopts it and must report full readiness, not
+          # just liveness: /readyz fails on dirty or unverifiable state.
+          boot_and_wait "$RUNNER_TEMP/current-tokenhub" 18082 /readyz "$RUNNER_TEMP/cur-b.log" "sqlite://${N1_DATABASE}"
+          TOKENHUB_DATABASE_URL="sqlite://${N1_DATABASE}" "$RUNNER_TEMP/current-tokenhub" db verify
+          # The previous release boots again on the adopted database (rollback
+          # window) and runs the CRUD contract through its own API.
+          crud_pid="$(boot_keep "$RUNNER_TEMP/n1-tokenhub" 18083 /healthz "$RUNNER_TEMP/n1-c.log" "sqlite://${N1_DATABASE}")"
+          run_crud_contract "http://127.0.0.1:18083"
+          kill "$crud_pid"; wait "$crud_pid" 2>/dev/null || true
+          # The current release returns to the same database and must read
+          # every write the old release made.
+          cur_pid="$(boot_keep "$RUNNER_TEMP/current-tokenhub" 18084 /readyz "$RUNNER_TEMP/cur-e.log" "sqlite://${N1_DATABASE}")"
+          verify_current_reads "http://127.0.0.1:18084"
+          kill "$cur_pid"; wait "$cur_pid" 2>/dev/null || true
+          TOKENHUB_DATABASE_URL="sqlite://${N1_DATABASE}" "$RUNNER_TEMP/current-tokenhub" db status
+
+          # Leg 2: v0.5.0 is the other pre-ledger stable release; legacy
+          # adoption must be validated with its real fixture too, as specified
+          # in docs/database-evolution.md.
+          N15_DATABASE="${{ runner.temp }}/n15-contract.db"
+          boot_and_wait "$RUNNER_TEMP/n15-tokenhub" 18091 /healthz "$RUNNER_TEMP/n15-a.log" "sqlite://${N15_DATABASE}"
+          # Pin the v0.5.0 legacy shape before the current release adopts it;
+          # the v0.4.0 fixture alone is too loose for this leg because v0.5.0
+          # added tables and columns it would not notice.
+          "$RUNNER_TEMP/n1check" -fixture v050 "sqlite://${N15_DATABASE}"
+          # Exercise the managed-upgrade preflight path directly: the target
+          # binary must adopt the real pre-ledger v0.5.0 shape before it is
+          # activated, without requiring a target server start first.
+          TOKENHUB_DATABASE_URL="sqlite://${N15_DATABASE}" "$RUNNER_TEMP/current-tokenhub" db prepare
+          TOKENHUB_DATABASE_URL="sqlite://${N15_DATABASE}" "$RUNNER_TEMP/current-tokenhub" db verify
+          boot_and_wait "$RUNNER_TEMP/current-tokenhub" 18092 /readyz "$RUNNER_TEMP/cur-f.log" "sqlite://${N15_DATABASE}"
+          TOKENHUB_DATABASE_URL="sqlite://${N15_DATABASE}" "$RUNNER_TEMP/current-tokenhub" db verify
+          boot_and_wait "$RUNNER_TEMP/n15-tokenhub" 18093 /healthz "$RUNNER_TEMP/n15-d.log" "sqlite://${N15_DATABASE}"
+          boot_and_wait "$RUNNER_TEMP/current-tokenhub" 18094 /readyz "$RUNNER_TEMP/cur-g.log" "sqlite://${N15_DATABASE}"
+          echo "v0.5.0 adoption contract passed"
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -87,8 +391,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build
@@ -99,6 +409,54 @@ jobs:
       # a check would fail on every run, including on a clean main. AGENTS.md's rule
       # against committing that flip stays a review-time concern; it cannot be
       # distinguished from CI simply having built in production mode.
+
+  frontend-browser-smoke:
+    name: Frontend browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Chrome
+        run: google-chrome --version
+
+      - name: Run browser smoke tests
+        env:
+          TOKENHUB_E2E_BROWSER_CHANNEL: chrome
+        run: npm run test:e2e
+
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-browser-smoke
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
   deployment:
     name: Deployment
@@ -139,10 +497,31 @@ jobs:
           deploy/container/tokenhub-entrypoint_test.sh
 
       - name: Render Compose configurations
+        env:
+          TOKENHUB_MAX_JSON_REQUEST_BYTES: "1234567"
+          TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES: "4567890"
         run: |
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config >/dev/null
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.postgres.yml config >/dev/null
-          docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config >/dev/null
+          set -euo pipefail
+
+          render_and_assert_limits() {
+            local compose_file="$1"
+            local rendered
+            rendered="$(docker compose --env-file deploy/.env.example -f "$compose_file" config)"
+            grep -Fq 'TOKENHUB_MAX_JSON_REQUEST_BYTES: "1234567"' <<<"$rendered"
+            grep -Fq 'TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES: "4567890"' <<<"$rendered"
+          }
+
+          render_and_assert_limits deploy/docker-compose.yml
+          render_and_assert_limits deploy/docker-compose.postgres.yml
+          render_and_assert_limits deploy/docker-compose.remote-postgres.yml
+
+          remote_rendered="$(docker compose --env-file deploy/.env.example -f deploy/docker-compose.remote-postgres.yml config)"
+          grep -Fq 'target: /etc/nginx/templates/default.conf.template' <<<"$remote_rendered"
+          # The load balancer's client_max_body_size uses an nginx-format variable
+          # (default 32m), kept separate from the backend's byte-format limits so a
+          # value like 32mb never renders as invalid nginx syntax.
+          grep -Fq 'TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE: 32m' <<<"$remote_rendered"
+
           docker compose --env-file deploy/.env.example \
             -f deploy/docker-compose.yml \
             -f deploy/docker-compose.model-catalog.yml \
@@ -199,9 +578,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # A single stable check for branch protection to require. Without it, protecting
-    # four separately named jobs means editing the rule every time a job is added.
+    # separately named jobs means editing the rule every time a job is added.
     needs:
       - backend
+      - backend-postgres
+      - backend-db-n1
       - frontend
       - deployment
       - repo-gates
@@ -209,7 +590,7 @@ jobs:
     steps:
       - name: Verify every job succeeded
         env:
-          EXPECTED_JOBS: 4
+          EXPECTED_JOBS: 6
         run: |
           set -euo pipefail
           results='${{ join(needs.*.result, ' ') }}'

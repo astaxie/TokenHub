@@ -108,7 +108,7 @@ Provider 类型与主要能力如下：
 | Provider 类型 | 适配器与能力 |
 | --- | --- |
 | `openai`、`openai_compatible`、`qwen`、`local` | OpenAI 兼容；Chat、流式 Chat、Responses、Embeddings、探测 |
-| `deepseek` | OpenAI 兼容；Chat、流式 Chat、Embeddings、探测。Responses 与流式 Responses 按模型声明，当前仅对 `deepseek-v4-flash` 开放 |
+| `deepseek` | OpenAI 兼容；Chat、流式 Chat、Embeddings、探测。Responses 与流式 Responses 按模型声明，对 `deepseek-v4-flash` 和 `deepseek-v4-pro` 开放 |
 | `azure_openai` | Chat、流式 Chat、Embeddings、探测 |
 | `anthropic` | Chat、流式 Chat、探测 |
 | `gemini` | Chat、流式 Chat、Embeddings、探测 |
@@ -117,7 +117,7 @@ Provider 类型与主要能力如下：
 
 ## 模型请求链路
 
-`Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
+`Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。唯一的窄例外是订阅制虚拟模型 `codex-gpt-image-2`：它的路由必须指向 OpenAI Codex Provider，并固定使用上游模型 `gpt-image-2`；这是执行能力，不属于聊天模型库存。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
 
 ```mermaid
 sequenceDiagram
@@ -130,6 +130,8 @@ sequenceDiagram
     C->>G: Bearer 项目 API Key + 模型请求
     G->>S: 校验 Key、项目、到期时间、IP 白名单
     G->>G: 对项目与 API Key 模型权限取交集
+    G->>S: 以一致性快照读取适用的内容安全策略
+    G->>G: 检测、审计、脱敏或阻断用户可见请求文本
     G->>S: 检查配额与并发租约，创建调用上下文
     G->>S: 查询活跃且健康的 Provider / Resource / Route
     G->>G: 解析 API Key、项目或全局策略，筛选候选路由
@@ -146,17 +148,19 @@ sequenceDiagram
 
 路由筛选会跳过非活跃或不健康的 Provider、Provider Resource 和 Route，但有一个例外：冷却期已过的资源会作为半开候选重新进入候选池。第一个选中它的请求通过把冷却截止时间向后推进来占用这次试探，因此并发请求仍会被拒绝，而试探失败时下一个（更长的）冷却窗口已经就位。只有该次试探自身成功才会关闭熔断器并自动恢复资源，无需管理员介入——熔断触发时已经在途的请求无法把资源救活；反复失败则按指数退避加长窗口，上限为 `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`。被管理员禁用的资源永远不会被重新纳入。非流式调用依次尝试候选路由。已开始输出的流无法安全切换到另一条上游路由；Responses 流式仅选择声明 `response_stream` 能力的适配器。对于 `openai_codex` 路由，系统可根据请求与 Key 派生会话亲和键，并持久化资源绑定以保持会话连续性。
 
+对于设置 `background: true` 的 `POST /v1/responses`，同步请求链路会在认证和持久化提交后结束。每个副本即使在启动时队列为空，也会持续轮询持久化队列。Worker 领取任务并重新验证原始授权后，会在同一个数据库事务中提交 admitted 阶段、请求 ID、配额计数、Token 预留与并发租约，再进入相同的 Guardrail、路由、Provider、计量、审计和链路追踪流程。租约代次用于隔离过期 Worker。PostgreSQL 多实例通过行锁和 `SKIP LOCKED` 领取任务；SQLite 在受支持的单后端部署中通过原子操作领取。准入前的租约丢失可安全重放；准入后的租约丢失会进入明确终态，避免重复请求 Provider，尚未分发的 Token 预留会在恢复时退还。
+
 项目与 API Key 的模型访问是路由选择前的显式最小权限层：限制列表互相取交集，限制且空列表禁止全部模型，而旧记录的空模式仍保持继承。作用域路由策略以 `routing-policies` 种类的可审计 `AdminResource` 记录保存。运行时按 API Key → 项目 → 全局的严格优先级最多选择一个绑定，然后将其 Provider、资源、模型、标签、地域和环境约束与路由项目作用域取交集。已停用、冲突或候选为空的高优先级绑定会安全拒绝。策略覆盖、亲和、半开恢复和故障转移只在筛选后的候选中运行。有效策略 ID、作用域与优先级会复制到请求审计记录。
 
 ## 鉴权、网络与健康检查
 
 - 业务调用使用项目 API Key：后端校验摘要、状态、项目状态、过期时间、模型范围、IP 白名单、配额和并发。
-- 管理调用使用管理员登录生成的会话 Token，或受控运维场景中的 `TOKENHUB_ADMIN_TOKEN`。初始 `admin` 用户由 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` 创建。
-- 非开发环境启动时，后端会拒绝占位值、少于 32 字节的 Admin Token 或后端密钥，以及少于 12 字节的初始管理员密码。
-- `TOKENHUB_TRUSTED_PROXY_CIDRS` 限定哪些代理可提供 `X-Forwarded-For`；`TOKENHUB_CORS_ALLOWED_ORIGINS` 限定允许携带浏览器凭证的 Origin。反向代理部署必须正确配置这两项。
-- `/livez` 只用于进程存活探针；`/readyz` 以及兼容的 `/healthz` 会检查数据库可用性，数据库不可用时返回 `503`。
+- 管理调用使用管理员登录生成的会话 Token，或可选的 `TOKENHUB_ADMIN_TOKEN`。配置 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` 时，初始 `admin` 用户使用该密码；未配置时由 TokenHub 自动生成，首次成功登录或重置密码后会删除可查询的密文副本。
+- 非开发环境会禁用可选引导凭据的已知占位值，并拒绝其他非空弱值。`TOKENHUB_SECRET_KEY` 仍为必填项；仅全新文件型 SQLite 数据库可以在数据库旁生成持久密钥文件，已有数据库不会自动生成替代密钥。
+- `TOKENHUB_TRUSTED_PROXY_CIDRS` 限定哪些代理可提供 `X-Forwarded-For`、`X-Forwarded-Host` 和 `X-Forwarded-Proto`，可信代理必须覆盖这些请求头；`TOKENHUB_CORS_ALLOWED_ORIGINS` 限定允许携带浏览器凭证的 Origin。反向代理部署必须正确配置这两项。
+- `/livez` 只用于进程存活探针；`/readyz` 以及兼容的 `/healthz` 会检查数据库可用性与数据库演进状态：数据库不可用、迁移处于脏状态、账本校验失败，或阻塞型数据回填未完成时返回 `503`。待执行的在线回填不影响就绪状态。启动配置不安全时，也只有 `/livez` 保持正常，所有就绪探针和业务接口都会返回 `503`，直至修正配置并重启进程。
 
-Provider API Key、Provider Resource 凭证、账单连接器凭证和原始账单快照写入数据库前使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密。项目 API Key 不保存原文，只保存 SHA-256 摘要以及用于展示的前缀和后缀。所有副本必须共享稳定的 `TOKENHUB_SECRET_KEY`，否则既有凭证和会话相关数据无法可靠使用。
+Provider API Key、Provider Resource 凭证、账单连接器凭证、原始账单快照和持久化后台 Responses 载荷写入数据库前使用 `TOKENHUB_SECRET_KEY` 派生的 AES-GCM 密钥加密。项目 API Key 不保存原文，只保存 SHA-256 摘要以及用于展示的前缀和后缀。所有副本必须共享稳定的 `TOKENHUB_SECRET_KEY`，否则既有凭证和会话相关数据无法可靠使用。
 
 ## 数据与运行边界
 
@@ -164,14 +168,16 @@ Provider API Key、Provider Resource 凭证、账单连接器凭证和原始账�
 | --- | --- | --- |
 | 租户与凭证 | `Project`、`APIKey`、`AdminUser`、`AdminSession` | 项目归属、调用权限与管理会话 |
 | 路由配置 | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute`、`AdminResource (routing-policies)` | 上游渠道、资源池、上游模型库存、对外模型、路由规则和作用域策略绑定 |
+| 内容安全 | `guardrails.Policy`、`guardrails.DetectionItem`、`guardrails.Binding` | 按项目执行请求检测，保存检测器配置、动作和策略绑定 |
 | 治理与计量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | 配额、Token 与成本计量、跨副本并发控制 |
 | 外部账单 | `BillingConnector`、`BillingRecord`、`BillingRawSnapshot`、`BillingSyncRun` | 云厂商账单采集、规范化、同步断点和运行历史 |
 | 多实例协调 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | 配置同步、集群操作与 Codex 会话资源绑定 |
+| 后台 Responses | `ResponseJob`、`ResponseJobEvent` | 加密请求与结果保留、带隔离的执行状态、取消、过期和状态转换审计 |
 | 可观测性 | `RequestLog`、`RequestPayloadLog`、`RouteAttemptLog`、`ProviderObservation`、`AuditEvent` | 请求追踪、载荷审计、路由尝试、Provider 观测与管理审计 |
 
 SQLite 使用单连接和 5 秒 `busy_timeout`，适合单实例；不得让多个后端实例共享 SQLite 文件。PostgreSQL 支持连接池、迁移咨询锁、请求并发租约和集群锁，供多实例共享状态。内置备份 API 仅适用于 SQLite；PostgreSQL 应使用数据库平台的备份与恢复机制，例如 `pg_dump` 和 `pg_restore`。
 
-当前部署不依赖 Redis、消息队列或服务网格。请求与响应载荷可用于审计，生产环境应结合保留策略、最小权限、磁盘加密和备份访问控制评估隐私风险。
+当前部署不依赖 Redis、消息队列或服务网格。同步请求与响应载荷可用于审计，生产环境应结合保留策略、最小权限、磁盘加密和备份访问控制评估隐私风险。持久化后台 Responses 不会写入明文载荷审计或链路追踪导出，其内容只保留在受 TTL 约束的加密任务记录中。
 
 ## 相关文档
 

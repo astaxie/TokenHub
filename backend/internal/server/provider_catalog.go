@@ -23,16 +23,27 @@ const (
 )
 
 type providerCatalogService struct {
-	store       Store
-	catalogFile string
+	store          Store
+	catalogFile    string
+	upstreamURL    string
+	upstreamClient providerCatalogHTTPClient
 }
 
-func newProviderCatalogService(store Store, catalogFile string) *providerCatalogService {
+func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
 	catalogFile = strings.TrimSpace(catalogFile)
 	if catalogFile == "" {
 		catalogFile = defaultProviderCatalogFile()
 	}
-	return &providerCatalogService{store: store, catalogFile: catalogFile}
+	upstreamClient := providerCatalogHTTPClient(&http.Client{Timeout: providerCatalogUpstreamTimeout})
+	if len(clients) > 0 && clients[0] != nil {
+		upstreamClient = clients[0]
+	}
+	return &providerCatalogService{
+		store:          store,
+		catalogFile:    catalogFile,
+		upstreamURL:    providerCatalogUpstreamURL,
+		upstreamClient: upstreamClient,
+	}
 }
 
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
@@ -141,19 +152,22 @@ func seedBuiltinProviderCatalog(store Store) error {
 }
 
 func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogEntry, string, error) {
-	var refreshed []ProviderCatalogEntry
-	err := s.store.RunClusterOperation(ctx, "provider-catalog-reload", func(context.Context) error {
+	var (
+		refreshed []ProviderCatalogEntry
+		source    = providerCatalogLocalSource
+	)
+	err := s.store.RunClusterOperation(ctx, "provider-catalog-reload", func(operationCtx context.Context) error {
 		previous, _, _, err := s.loadStored(false)
 		if err != nil {
 			return err
 		}
-		refreshed, err = s.reloadLocked(previous)
+		refreshed, source, err = s.refreshLocked(operationCtx, previous)
 		return err
 	})
 	if err != nil {
-		return nil, "local-provider-catalog", err
+		return nil, source, err
 	}
-	return refreshed, "local-provider-catalog", nil
+	return refreshed, source, nil
 }
 
 // reloadLocked refreshes the snapshot while provider-catalog-reload is held.
@@ -162,6 +176,17 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 	if err != nil {
 		return nil, err
 	}
+	entries, err = prepareProviderCatalogRefresh(entries, previous)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogLocalSource, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	return cloneCatalogEntries(entries, false), nil
+}
+
+func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
 	if err := validateProviderCatalogRefresh(entries, previous); err != nil {
 		return nil, err
 	}
@@ -173,10 +198,7 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 	}
 	entries = append(filtered, customProviderCatalogEntry())
 	sortCatalogEntries(entries)
-	if err := s.store.SaveProviderCatalogSnapshot(entries, "local-provider-catalog", time.Now().UTC()); err != nil {
-		return nil, err
-	}
-	return cloneCatalogEntries(entries, false), nil
+	return entries, nil
 }
 
 func validateProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) error {
@@ -219,20 +241,35 @@ func loadLocalProviderCatalog(catalogFile string) ([]ProviderCatalogEntry, error
 	if err != nil {
 		return nil, fmt.Errorf("read provider catalog %s: %w", catalogFile, err)
 	}
+	entries, err := parseProviderCatalog(content, providerCatalogLocalSource)
+	if err != nil {
+		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
+	}
+	return entries, nil
+}
+
+func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry, error) {
 	var payload struct {
 		Providers map[string]map[string]any `json:"providers"`
 	}
 	if err := json.Unmarshal(content, &payload); err != nil {
-		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
+		return nil, err
 	}
 	if len(payload.Providers) == 0 {
-		return nil, fmt.Errorf("provider catalog %s has no providers", catalogFile)
+		return nil, fmt.Errorf("provider catalog has no providers")
 	}
 	entries := make([]ProviderCatalogEntry, 0, len(payload.Providers))
 	for id, raw := range payload.Providers {
 		entry := normalizeProviderCatalogEntry(id, raw)
 		if entry.ID == "" || entry.Name == "" {
 			continue
+		}
+		entry.Source = source
+		for index := range entry.Models {
+			if entry.Models[index].Metadata == nil {
+				entry.Models[index].Metadata = map[string]string{}
+			}
+			entry.Models[index].Metadata["source"] = source
 		}
 		entries = append(entries, entry)
 	}
@@ -290,23 +327,43 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 			metadata[key] = value
 		}
 	}
+	if rawOptions, ok := raw["reasoning_options"].([]any); ok {
+		for _, rawOption := range rawOptions {
+			option, ok := rawOption.(map[string]any)
+			if !ok || !strings.EqualFold(catalogStringField(option, "type"), "effort") {
+				continue
+			}
+			if values := catalogOrderedStringSliceField(option, "values"); len(values) > 0 {
+				metadata["reasoning_effort_options"] = strings.Join(values, ",")
+			}
+			break
+		}
+	}
 	model := ProviderCatalogModel{
-		ID:                     id,
-		Name:                   name,
-		DisplayName:            displayName,
-		CanonicalName:          canonicalName,
-		Category:               inferModelCategory(id, displayName),
-		Family:                 firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
-		Type:                   modelType,
-		ContextWindow:          int64(catalogNumberField(limit, "context")),
-		MaxOutputTokens:        int64(catalogNumberField(limit, "output")),
-		InputPriceUSDPer1M:     catalogNumberField(cost, "input"),
-		CacheReadPriceUSDPer1M: catalogNumberField(cost, "cache_read"),
-		OutputPriceUSDPer1M:    catalogNumberField(cost, "output"),
-		InputModalities:        catalogStringSliceField(modalities, "input"),
-		OutputModalities:       catalogStringSliceField(modalities, "output"),
-		LastUpdated:            catalogStringField(raw, "last_updated"),
-		Metadata:               metadata,
+		ID:                        id,
+		Name:                      name,
+		DisplayName:               displayName,
+		CanonicalName:             canonicalName,
+		Category:                  inferModelCategory(id, displayName),
+		Family:                    firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
+		Type:                      modelType,
+		ContextWindow:             int64(catalogNumberField(limit, "context")),
+		MaxOutputTokens:           int64(catalogNumberField(limit, "output")),
+		InputPriceUSDPer1M:        catalogNumberField(cost, "input"),
+		CacheReadPriceUSDPer1M:    catalogNumberField(cost, "cache_read"),
+		CacheWritePriceUSDPer1M:   catalogNumberField(cost, "cache_write"),
+		CacheWrite5mPriceUSDPer1M: catalogNumberField(cost, "cache_write_5m"),
+		CacheWrite1hPriceUSDPer1M: catalogNumberField(cost, "cache_write_1h"),
+		OutputPriceUSDPer1M:       catalogNumberField(cost, "output"),
+		CacheWritePriceConfiguration: CacheWritePriceConfiguration{
+			CacheWritePriceConfigured:   catalogNumberFieldConfigured(cost, "cache_write"),
+			CacheWrite5mPriceConfigured: catalogNumberFieldConfigured(cost, "cache_write_5m"),
+			CacheWrite1hPriceConfigured: catalogNumberFieldConfigured(cost, "cache_write_1h"),
+		},
+		InputModalities:  catalogStringSliceField(modalities, "input"),
+		OutputModalities: catalogStringSliceField(modalities, "output"),
+		LastUpdated:      catalogStringField(raw, "last_updated"),
+		Metadata:         metadata,
 	}
 	model.Capabilities = catalogModelCapabilities(raw, model)
 	model.SupportedParameters = catalogModelParameters(raw, model)
@@ -385,6 +442,7 @@ func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
 		builtinCatalogEntry("qwen", "Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://help.aliyun.com/zh/model-studio", []string{"qwen-max", "qwen-plus"}),
 		{ID: "siliconflow", Name: "SiliconFlow", DisplayName: "SiliconFlow", Type: ProviderOpenAICompatible, BaseURL: "https://api.siliconflow.cn/v1", DocURL: "https://cloud.siliconflow.com/models", Source: "builtin"},
 		{ID: "ollama", Name: "Ollama", DisplayName: "Ollama", Type: "local", BaseURL: "http://127.0.0.1:11434/v1", DocURL: "https://ollama.com", Source: "builtin"},
+		kronkCatalogEntry(),
 		customProviderCatalogEntry(),
 	}
 	if includeModels {
@@ -416,6 +474,11 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 				"source":                   "builtin",
 				"upstream_source":          "deepseek-api",
 				"endpoints":                "responses,chat/completions,anthropic",
+				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
+				"top_logprobs_range":       "0,20",
+				"responses_stateful":       "false",
+				"prompt_cache_mode":        "automatic",
+				"custom_tool_names":        "apply_patch",
 				"reasoning_effort_options": "low,high,max",
 				"reasoning_default":        "true",
 				"tool_call":                "true",
@@ -431,7 +494,12 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 			model.Metadata = map[string]string{
 				"source":                   "builtin",
 				"upstream_source":          "deepseek-api",
-				"endpoints":                "chat/completions,anthropic",
+				"endpoints":                "responses,chat/completions,anthropic",
+				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
+				"top_logprobs_range":       "0,20",
+				"responses_stateful":       "false",
+				"prompt_cache_mode":        "automatic",
+				"custom_tool_names":        "apply_patch",
 				"reasoning_effort_options": "low,high,max",
 				"reasoning_default":        "true",
 				"tool_call":                "true",
@@ -443,7 +511,7 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 		model.InputModalities = []string{"text"}
 		model.OutputModalities = []string{"text"}
 		model.Capabilities = []string{"chat", "reasoning", "tools", "structured_outputs"}
-		model.SupportedParameters = []string{"temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"}
+		model.SupportedParameters = []string{"temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"}
 	}
 	return entry
 }
@@ -509,30 +577,76 @@ func customProviderCatalogEntry() ProviderCatalogEntry {
 }
 
 func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client, req ProviderCreateRequest) (ProviderCatalogEntry, error) {
+	if err := validateProviderHeaderSupport(req.Type, req.Headers); err != nil {
+		return ProviderCatalogEntry{}, err
+	}
 	baseURL := strings.TrimSpace(req.BaseURL)
 	if baseURL == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to load upstream models")
 	}
-	endpoint, err := url.Parse(strings.TrimRight(baseURL, "/") + "/models")
+	if err := ValidateProviderUpstreamBaseURL(baseURL); err != nil {
+		return ProviderCatalogEntry{}, err
+	}
+	providerType := strings.ToLower(strings.TrimSpace(req.Type))
+	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
+	if providerType == ProviderAnthropic {
+		modelsURL = anthropicEndpointURL(baseURL, "/v1/models")
+	}
+	endpoint, err := url.Parse(modelsURL)
 	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
 	}
-	if client == nil {
-		client = http.DefaultClient
+	if err := validateProviderUpstreamURLSyntax(endpoint); err != nil {
+		return ProviderCatalogEntry{}, err
 	}
+	client = ssrfGuardedProviderClient(client)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to create upstream models request")
 	}
-	if apiKey := strings.TrimSpace(req.APIKey); apiKey != "" {
+	apiKey := strings.TrimSpace(req.APIKey)
+	if providerType == ProviderGemini {
+		if apiKey != "" {
+			query := endpoint.Query()
+			query.Set("key", apiKey)
+			endpoint.RawQuery = query.Encode()
+			httpReq.URL = endpoint
+		}
+	} else if providerType == ProviderAnthropic {
+		if apiKey != "" {
+			provider := Provider{Type: providerType, APIKey: apiKey, Options: req.Options}
+			if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
+				return ProviderCatalogEntry{}, err
+			}
+			applyAnthropicProviderAuth(httpReq, provider)
+		}
+		version := strings.TrimSpace(req.Options["anthropic_version"])
+		if version == "" {
+			version = "2023-06-01"
+		}
+		httpReq.Header.Set("anthropic-version", version)
+	} else if apiKey != "" {
 		httpReq.Header.Set("authorization", "Bearer "+apiKey)
 	}
+	headers, err := normalizeProviderHeaders(req.Headers)
+	if err != nil {
+		return ProviderCatalogEntry{}, err
+	}
+	applyProviderHeaders(httpReq.Header, headers)
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return ProviderCatalogEntry{}, egressErr
+		}
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to request upstream models")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		if providerType == ProviderKronk {
+			return ProviderCatalogEntry{}, checkProviderResponseForProvider(resp, Provider{
+				Type: ProviderKronk, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
+			})
+		}
 		return ProviderCatalogEntry{}, NewHTTPError(statusForProvider(resp.StatusCode), "provider_models_upstream_error", resp.Status)
 	}
 	var payload map[string]any
@@ -654,12 +768,13 @@ func sortCatalogEntries(entries []ProviderCatalogEntry) {
 
 func inferProviderType(id string, baseURL string) string {
 	normalized := strings.ToLower(id)
+	normalizedBaseURL := strings.ToLower(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
 	switch {
 	case normalized == "openai":
 		return ProviderOpenAI
 	case strings.Contains(normalized, "azure"):
 		return ProviderAzureOpenAI
-	case strings.Contains(normalized, "anthropic"):
+	case strings.Contains(normalized, "anthropic") || strings.Contains(normalizedBaseURL, "/anthropic/") || strings.HasSuffix(normalizedBaseURL, "/anthropic"):
 		return ProviderAnthropic
 	case normalized == "google" || strings.Contains(normalized, "gemini"):
 		return ProviderGemini
@@ -669,6 +784,8 @@ func inferProviderType(id string, baseURL string) string {
 		return "qwen"
 	case strings.Contains(normalized, "ollama") || strings.Contains(normalized, "lmstudio") || strings.Contains(normalized, "local"):
 		return "local"
+	case strings.Contains(normalized, "kronk"):
+		return ProviderKronk
 	default:
 		return ProviderOpenAICompatible
 	}
@@ -687,6 +804,8 @@ func normalizeProviderBaseURL(id string, raw string) string {
 		return firstNonEmpty(raw, "http://127.0.0.1:11434/v1")
 	case "lmstudio":
 		return firstNonEmpty(raw, "http://127.0.0.1:1234/v1")
+	case ProviderKronk:
+		return firstNonEmpty(raw, kronkDefaultBaseURL)
 	default:
 		return normalizeOpenAICompatibleBaseURL(id, raw)
 	}
@@ -951,6 +1070,18 @@ func catalogNumberField(raw map[string]any, key string) float64 {
 	}
 }
 
+func catalogNumberFieldConfigured(raw map[string]any, key string) bool {
+	if raw == nil {
+		return false
+	}
+	switch raw[key].(type) {
+	case float64, int, json.Number:
+		return true
+	default:
+		return false
+	}
+}
+
 func catalogBoolField(raw map[string]any, key string) bool {
 	if raw == nil {
 		return false
@@ -996,6 +1127,37 @@ func catalogStringSliceField(raw map[string]any, key string) []string {
 	default:
 		return nil
 	}
+}
+
+func catalogOrderedStringSliceField(raw map[string]any, key string) []string {
+	if raw == nil {
+		return nil
+	}
+	var values []string
+	switch typed := raw[key].(type) {
+	case []string:
+		values = typed
+	case []any:
+		values = make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				values = append(values, text)
+			}
+		}
+	case string:
+		values = []string{typed}
+	}
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" || seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+		result = append(result, normalized)
+	}
+	return result
 }
 
 func catalogUniqueStrings(values []string) []string {

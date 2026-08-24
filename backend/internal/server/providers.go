@@ -66,7 +66,7 @@ func (a MockAdapter) Chat(ctx context.Context, provider Provider, providerModel 
 				"finish_reason": "stop",
 			},
 		},
-		"usage": usage,
+		"usage": openAIChatUsageObject(usage),
 	}, usage, nil
 }
 
@@ -133,7 +133,7 @@ func (a MockAdapter) Responses(ctx context.Context, provider Provider, providerM
 				},
 			},
 		},
-		"usage": usage,
+		"usage": openAIResponsesUsageObject(usage),
 	}, usage, nil
 }
 
@@ -164,7 +164,7 @@ func (a MockAdapter) Embeddings(ctx context.Context, provider Provider, provider
 // turn. DeepSeek does and needs it for multi-turn reasoning; for everyone else
 // the field is a TokenHub-local extension and is stripped.
 func preservesReasoningContent(provider Provider) bool {
-	return provider.Type == "deepseek"
+	return providerPreservesReasoningContent(provider)
 }
 
 // dropsReasoningContent is the Azure policy: reasoning_content never reaches a
@@ -225,7 +225,7 @@ func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider,
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsage(w, resp.Body)
+	return copyOpenAIStreamAndUsageForProvider(w, resp.Body, provider)
 }
 
 func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -262,7 +262,7 @@ func (c openAICompatibleCore) doRaw(ctx context.Context, provider Provider, meth
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -280,9 +280,7 @@ func openAICompatibleRequest(ctx context.Context, provider Provider, method stri
 		req.Header.Set("authorization", "Bearer "+provider.APIKey)
 	}
 	applyOpenAICompatibleAccountHeaders(req, provider)
-	for key, value := range provider.Headers {
-		req.Header.Set(key, value)
-	}
+	applyProviderHeaders(req.Header, provider.Headers)
 	return req, nil
 }
 
@@ -428,6 +426,51 @@ type AnthropicAdapter struct {
 	StreamIdleTimeout time.Duration
 }
 
+const (
+	anthropicAuthTypeOption = "anthropic_auth_type"
+	anthropicAuthTypeAPIKey = "x-api-key"
+	anthropicAuthTypeBearer = "bearer"
+)
+
+func configureAnthropicProviderAuth(provider *Provider, requested string) error {
+	if provider == nil || provider.Type != ProviderAnthropic {
+		return nil
+	}
+	if provider.Options == nil {
+		provider.Options = map[string]string{}
+	}
+	authType := strings.ToLower(strings.TrimSpace(requested))
+	if authType == "" {
+		authType = strings.ToLower(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]))
+	}
+	if authType == "" {
+		return nil
+	}
+	if authType != anthropicAuthTypeAPIKey && authType != anthropicAuthTypeBearer {
+		return NewHTTPError(
+			http.StatusBadRequest,
+			"provider_anthropic_auth_type_invalid",
+			"Anthropic authentication type must be x-api-key or bearer",
+		)
+	}
+	provider.Options[anthropicAuthTypeOption] = authType
+	return nil
+}
+
+func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
+	if req == nil {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]), anthropicAuthTypeBearer) {
+		req.Header.Del("x-api-key")
+		req.Header.Set("authorization", "Bearer "+provider.APIKey)
+		return
+	}
+	// Preserve the existing Anthropic behavior when no option is configured.
+	req.Header.Del("authorization")
+	req.Header.Set("x-api-key", provider.APIKey)
+}
+
 func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
 	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
 	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
@@ -465,7 +508,7 @@ func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, pro
 	}
 	defer resp.Body.Close()
 	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
-	return streamAnthropicChat(resp.Body, encoder)
+	return streamAnthropicChatForProvider(resp.Body, encoder, provider)
 }
 
 func (a AnthropicAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -507,7 +550,7 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.BaseURL, "/")+endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicEndpointURL(provider.BaseURL, endpoint), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -516,13 +559,14 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 		version = "2023-06-01"
 	}
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", provider.APIKey)
+	applyAnthropicProviderAuth(req, provider)
 	req.Header.Set("anthropic-version", version)
+	applyProviderHeaders(req.Header, provider.Headers)
 	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -564,7 +608,7 @@ func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, provid
 	}
 	defer resp.Body.Close()
 	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
-	return streamGeminiChat(resp.Body, encoder)
+	return streamGeminiChatForProvider(resp.Body, encoder, provider)
 }
 
 func (a GeminiAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -649,11 +693,12 @@ func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model strin
 		return nil, err
 	}
 	req.Header.Set("content-type", "application/json")
+	applyProviderHeaders(req.Header, provider.Headers)
 	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -902,6 +947,16 @@ func usageFromMap(body map[string]any) Usage {
 			usageMap["total_cached_tokens"],
 		)),
 		CacheWriteInputTokens: int64FromAny(firstNonNil(usageMap["cache_write_input_tokens"], inputDetails["cache_write_tokens"])),
+		CacheWrite5mInputTokens: int64FromAny(firstNonNil(
+			usageMap["cache_write_5m_input_tokens"],
+			inputDetails["cache_write_5m_tokens"],
+			inputDetails["ephemeral_5m_input_tokens"],
+		)),
+		CacheWrite1hInputTokens: int64FromAny(firstNonNil(
+			usageMap["cache_write_1h_input_tokens"],
+			inputDetails["cache_write_1h_tokens"],
+			inputDetails["ephemeral_1h_input_tokens"],
+		)),
 		InputAudioTokens:      int64FromAny(firstNonNil(inputDetails["audio_tokens"], usageMap["input_audio_tokens"])),
 		CompletionTokens:      int64FromAny(firstNonNil(usageMap["completion_tokens"], usageMap["output_tokens"])),
 		ReasoningOutputTokens: int64FromAny(firstNonNil(usageMap["reasoning_output_tokens"], outputDetails["reasoning_tokens"])),
@@ -939,6 +994,10 @@ func includeOpenAIStreamUsage(req ChatCompletionRequest) ChatCompletionRequest {
 // sseDecoder, which bounds a single event; the frame's raw bytes are what reach
 // the client, so the provider's framing survives the round trip untouched.
 func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
+	return copyOpenAIStreamAndUsageForProvider(w, body, Provider{})
+}
+
+func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider Provider) (Usage, error) {
 	events := newSSEDecoder(body)
 	var usage Usage
 	for {
@@ -949,38 +1008,221 @@ func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
 		if err != nil {
 			// A stream that fails mid-frame has already put those bytes on the
 			// wire; the client is owed them before the failure surfaces.
-			if pending := events.Pending(); len(pending) > 0 {
-				if _, writeErr := w.Write(pending); writeErr != nil {
+			if pending := events.PendingEvent(); len(pending.Raw) > 0 {
+				if _, writeErr := w.Write(redactProviderStreamEventSecrets(pending, provider)); writeErr != nil {
 					return usage, writeErr
 				}
 			}
 			return usage, err
 		}
-		if _, err := w.Write(event.Raw); err != nil {
+		// A token stream is mostly frames that are neither an error nor a usage
+		// report, so both questions are answered from a single decode of the
+		// payload rather than one full map decode each.
+		probe := probeProviderStreamEvent(event.Data)
+		output := event.Raw
+		if sseEventNameIsError(event.Event) || probe.isError() {
+			output = redactProviderStreamEventSecrets(event, provider)
+		}
+		if _, err := w.Write(output); err != nil {
 			return usage, err
 		}
 		if flusher, ok := w.(streamFlusher); ok {
 			flusher.Flush()
 		}
-		if parsed, ok := usageFromServerSentEvent(event); ok {
+		if parsed, ok := usageFromProbedFrame(event, probe); ok {
 			usage = parsed
 		}
+		if failure, ok := openAIErrorFrame(event, provider); ok {
+			// The provider's terminal error frame is already on the wire (it is a
+			// data frame the client is owed), so surface the classified error
+			// instead of recording the stream as a silent success.
+			return usage, failure
+		}
 	}
+}
+
+// openAIErrorFrame detects a terminal error carried inside a 200 SSE response
+// (`data: {"error": {...}}`). The frame itself is forwarded to the client; the
+// returned error classifies the stream as failed so the gateway records the
+// interruption instead of a successful stream.
+func openAIErrorFrame(frame serverSentEvent, provider Provider) (error, bool) {
+	// Classify against the redacted payload: the message also reaches
+	// RouteAttempt.Error and the audit log, so a provider error echoing an API
+	// key or sensitive header value must not survive into either.
+	var payload map[string]any
+	if err := json.Unmarshal(redactProviderErrorSecrets([]byte(frame.Data), provider), &payload); err != nil {
+		return nil, false
+	}
+	raw, ok := payload["error"]
+	if !ok || raw == nil {
+		// The key may be present with a null value; only a non-nil error object
+		// is a terminal failure, matching providerStreamEventIsError semantics.
+		return nil, false
+	}
+	errorType, message := "api_error", "OpenAI provider stream error"
+	if errorObj, ok := raw.(map[string]any); ok {
+		if value, ok := errorObj["type"].(string); ok && value != "" {
+			errorType = value
+		}
+		if value, ok := errorObj["message"].(string); ok && value != "" {
+			message = value
+		}
+	}
+	return NewHTTPError(openAIErrorStatus(errorType), "provider_stream_error", message), true
+}
+
+// openAIErrorStatus maps an OpenAI error type to the HTTP status the gateway
+// reports for it. Unrecognized types are upstream failures, so they surface as
+// gateway errors rather than client errors.
+func openAIErrorStatus(errorType string) int {
+	switch errorType {
+	case "rate_limit_error":
+		return http.StatusTooManyRequests
+	case "authentication_error":
+		return http.StatusUnauthorized
+	case "permission_error":
+		return http.StatusForbidden
+	case "invalid_request_error", "context_length_exceeded", "request_too_large":
+		return http.StatusBadRequest
+	case "not_found_error":
+		return http.StatusNotFound
+	case "server_error", "server_overloaded":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusBadGateway
+	}
+}
+
+// providerStreamEventProbe is one SSE payload decoded down to its top-level
+// keys and no further, so a single decode answers both the error check and the
+// usage read.
+//
+// Leaving the values raw is what makes that safe: a field carrying an
+// unexpected JSON type cannot fail the decode and take the other field's answer
+// with it, which is the same independence the old per-key type assertions on
+// map[string]any had. A map rather than a struct is deliberate too —
+// encoding/json matches struct fields case-insensitively, so a frame could hide
+// its "error" behind a later "ERROR" key and be forwarded to the client without
+// redaction. Map keys match exactly, the way the old lookups did.
+type providerStreamEventProbe map[string]json.RawMessage
+
+// probeProviderStreamEvent decodes one SSE payload's top-level keys. A payload
+// that carries no JSON object — empty, [DONE], malformed, or a non-object —
+// probes as nil, which reports neither an error nor usage.
+func probeProviderStreamEvent(data string) providerStreamEventProbe {
+	payload := strings.TrimSpace(data)
+	if payload == "" || payload == "[DONE]" {
+		return nil
+	}
+	var probe providerStreamEventProbe
+	if json.Unmarshal([]byte(payload), &probe) != nil {
+		return nil
+	}
+	return probe
+}
+
+func (probe providerStreamEventProbe) isError() bool {
+	if sseEventTypeIsError(probe["type"]) {
+		return true
+	}
+	if jsonRawIsPresent(probe["error"]) {
+		return true
+	}
+	// Only an object can carry a nested error; anything else failed the old
+	// map[string]any assertion and was read as no error.
+	response := jsonRawValue(probe["response"])
+	if len(response) == 0 || response[0] != '{' {
+		return false
+	}
+	var nested providerStreamEventProbe
+	return json.Unmarshal(response, &nested) == nil && jsonRawIsPresent(nested["error"])
+}
+
+// usage decodes the frame's usage object. Only an object counts, and an empty
+// one counts as no usage, matching what the old map assertion accepted.
+func (probe providerStreamEventProbe) usage() (Usage, bool) {
+	value := jsonRawValue(probe["usage"])
+	if len(value) == 0 || value[0] != '{' {
+		return Usage{}, false
+	}
+	var usageMap map[string]any
+	if json.Unmarshal(value, &usageMap) != nil || len(usageMap) == 0 {
+		return Usage{}, false
+	}
+	// usageFromMap only ever reads body["usage"], so handing it the decoded
+	// usage object under that one key is the same call the whole-payload map
+	// used to make.
+	return usageFromMap(map[string]any{"usage": usageMap}), true
+}
+
+func sseEventNameIsError(name string) bool {
+	eventName := strings.ToLower(strings.TrimSpace(name))
+	return eventName == "error" || strings.HasSuffix(eventName, ".failed")
+}
+
+// sseEventTypeIsError reads the payload's "type" field. The value is only read
+// when it is a JSON string, because the old code reached it through a string
+// type assertion that failed for every other JSON type.
+func sseEventTypeIsError(raw json.RawMessage) bool {
+	value := jsonRawValue(raw)
+	if len(value) < 2 || value[0] != '"' {
+		return false
+	}
+	quoted := value[1 : len(value)-1]
+	eventType := string(quoted)
+	if bytes.IndexByte(quoted, '\\') >= 0 {
+		// An escaped name has to be unquoted before it can be compared, but
+		// every frame a stream actually carries names a plain type, so the
+		// decode stays off the common path.
+		if json.Unmarshal(value, &eventType) != nil {
+			return false
+		}
+	}
+	trimmed := strings.TrimSpace(eventType)
+	return strings.EqualFold(trimmed, "error") || strings.HasSuffix(strings.ToLower(trimmed), ".failed")
+}
+
+// jsonRawValue strips the JSON whitespace that can surround a raw value so its
+// first byte identifies its type.
+func jsonRawValue(raw json.RawMessage) []byte {
+	return bytes.Trim(raw, " \t\r\n")
+}
+
+// jsonRawIsPresent reports whether a field was present and is not JSON null,
+// which is what "the key exists and its value is not nil" meant when these
+// payloads were decoded into a map[string]any.
+func jsonRawIsPresent(raw json.RawMessage) bool {
+	value := jsonRawValue(raw)
+	return len(value) > 0 && !bytes.Equal(value, []byte("null"))
+}
+
+func providerStreamEventIsError(event serverSentEvent) bool {
+	return sseEventNameIsError(event.Event) || probeProviderStreamEvent(event.Data).isError()
 }
 
 // usageFromServerSentEvent reads usage out of one frame. A frame it cannot parse
 // is reported as carrying no usage rather than as an error: this is a
 // pass-through, and the client is owed the frame either way.
 func usageFromServerSentEvent(frame serverSentEvent) (Usage, bool) {
+	return usageFromProbedFrame(frame, probeProviderStreamEvent(frame.Data))
+}
+
+// usageFromProbedFrame reads usage from a frame whose payload has already been
+// probed, so the streaming path pays for one decode instead of two.
+//
+// A payload spanning more than one line is handed back to the parsing the probe
+// replaced. Some OpenAI-compatible servers separate chunks with a single
+// newline rather than the blank line SSE requires, which leaves every payload
+// joined into one frame; scanning the joined segments keeps usage — and so
+// billing — working for those upstreams instead of silently recording zero. But
+// which segment wins depends on which segments parse at all, so that whole
+// decision is left with the parser that has always made it.
+func usageFromProbedFrame(frame serverSentEvent, probe providerStreamEventProbe) (Usage, bool) {
+	if !strings.Contains(frame.Data, "\n") {
+		return probe.usage()
+	}
 	if usage, ok := usageFromSSEPayload(frame.Data); ok {
 		return usage, true
-	}
-	// Some OpenAI-compatible servers separate chunks with a single newline
-	// rather than the blank line SSE requires, which leaves every payload joined
-	// into one frame. Scanning the joined segments keeps usage — and so billing —
-	// working for those upstreams instead of silently recording zero.
-	if !strings.Contains(frame.Data, "\n") {
-		return Usage{}, false
 	}
 	var (
 		usage Usage
@@ -994,6 +1236,12 @@ func usageFromServerSentEvent(frame serverSentEvent) (Usage, bool) {
 	return usage, found
 }
 
+// usageFromSSEPayload reads usage out of a multi-line payload or one of its
+// newline-separated segments. It keeps the whole-payload decode the probe
+// replaced, on purpose: a segment carrying a number no float64 can hold has
+// never parsed here, and that is part of which segment wins. Only a frame whose
+// data spans more than one line reaches it, so the frames a token stream is
+// actually made of never pay for it.
 func usageFromSSEPayload(data string) (Usage, bool) {
 	payload := strings.TrimSpace(data)
 	if payload == "" || payload == "[DONE]" {
@@ -1024,7 +1272,7 @@ func responseObject(model string, text string, usage Usage) map[string]any {
 				"content": []map[string]any{{"type": "output_text", "text": text}},
 			},
 		},
-		"usage": usage,
+		"usage": openAIResponsesUsageObject(usage),
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -130,7 +131,9 @@ func SeedDemoDataWithConfig(store Store, config Config) error {
 		Status:             StatusActive,
 	})
 
-	seedAdminResources(store)
+	if err := seedAdminResources(store); err != nil {
+		return err
+	}
 
 	if err := seedMockData(store); err != nil {
 		return err
@@ -144,8 +147,24 @@ func BootstrapBaseData(store Store) error {
 }
 
 func BootstrapBaseDataWithConfig(store Store, config Config) error {
-	seedDefaultOrgResources(store)
-	if _, err := store.CreateAdminUser(AdminUser{
+	if err := seedDefaultOrgResources(store); err != nil {
+		return err
+	}
+	if err := seedBootstrapAdmin(store, config.BootstrapAdminPassword); err != nil {
+		return err
+	}
+	seedDefaultProject(store)
+	if err := seedBuiltinProviderCatalog(store); err != nil {
+		return err
+	}
+	if err := seedDefaultModelCatalog(store, config.ModelCatalogFile); err != nil {
+		return err
+	}
+	return nil
+}
+
+func seedBootstrapAdmin(store Store, password string) error {
+	admin := AdminUser{
 		ID:       "usr_admin",
 		Username: "admin",
 		Name:     "Platform Admin",
@@ -153,17 +172,17 @@ func BootstrapBaseDataWithConfig(store Store, config Config) error {
 		Role:     "admin",
 		TeamID:   "team_platform",
 		Status:   StatusActive,
-	}, config.BootstrapAdminPassword); err != nil {
-		if AsHTTPError(err).Code != "admin_user_conflict" {
-			return err
+	}
+	retainInitialPassword := false
+	if strings.TrimSpace(password) == "" {
+		var err error
+		password, err = randomHex(24)
+		if err != nil {
+			return fmt.Errorf("generate initial admin password: %w", err)
 		}
+		retainInitialPassword = true
 	}
-	seedDefaultProject(store)
-	if err := seedBuiltinProviderCatalog(store); err != nil {
-		return err
-	}
-	pruneProviderImportedModelCatalog(store)
-	if err := seedDefaultModelCatalog(store, config.ModelCatalogFile); err != nil {
+	if _, _, err := store.CreateBootstrapAdmin(admin, password, retainInitialPassword); err != nil {
 		return err
 	}
 	return nil
@@ -183,26 +202,37 @@ func seedDefaultProject(store Store) {
 	})
 }
 
-func pruneProviderImportedModelCatalog(store Store) {
-	for _, model := range store.ListModels() {
-		if model.Metadata != nil && model.Metadata["source"] == "public-provider-conf" {
-			_ = store.DeleteModel(model.Name)
-		}
-	}
-}
-
 func seedDefaultModelCatalog(store Store, catalogFile string) error {
 	models, err := defaultModelCatalog(catalogFile)
 	if err != nil {
 		return err
 	}
+	existingByName := make(map[string]Model)
+	for _, model := range store.ListModels() {
+		existingByName[model.Name] = model
+	}
 	for _, model := range models {
-		store.AddModel(model)
+		if existing, ok := existingByName[model.Name]; ok {
+			model.InputPriceUSDPer1M = existing.InputPriceUSDPer1M
+			model.CacheReadPriceUSDPer1M = existing.CacheReadPriceUSDPer1M
+			model.CacheWritePriceUSDPer1M = existing.CacheWritePriceUSDPer1M
+			model.CacheWritePriceConfigured = existing.CacheWritePriceConfigured
+			model.CacheWrite5mPriceUSDPer1M = existing.CacheWrite5mPriceUSDPer1M
+			model.CacheWrite5mPriceConfigured = existing.CacheWrite5mPriceConfigured
+			model.CacheWrite1hPriceUSDPer1M = existing.CacheWrite1hPriceUSDPer1M
+			model.CacheWrite1hPriceConfigured = existing.CacheWrite1hPriceConfigured
+			model.OutputPriceUSDPer1M = existing.OutputPriceUSDPer1M
+			model.EmbeddingPriceUSDPer1M = existing.EmbeddingPriceUSDPer1M
+			model.PricingPeriods = append([]ModelPricingPeriod(nil), existing.PricingPeriods...)
+		}
+		if _, err := store.CreateModelWithRoutes(model, nil); err != nil {
+			return fmt.Errorf("seed catalog model %q: %w", model.Name, err)
+		}
 	}
 	return nil
 }
 
-func seedDefaultOrgResources(store Store) {
+func seedDefaultOrgResources(store Store) error {
 	seedResourceIfMissing(store, "teams", AdminResource{
 		ID:          "team_platform",
 		Name:        "Platform Engineering Team",
@@ -236,19 +266,32 @@ func seedDefaultOrgResources(store Store) {
 			"error_passthrough": "sanitized",
 		},
 	})
-	seedResourceIfMissing(store, "settings", AdminResource{
+	if err := seedResourceIfMissingChecked(store, "settings", AdminResource{
 		ID:          "cfg_gateway",
 		Name:        "Gateway Base Settings",
 		Description: "Public model API address, request timeout, and audit retention period.",
 		Status:      StatusActive,
 		Fields: map[string]any{
-			"public_base_url":       "http://localhost:8080",
-			"default_timeout":       "120s",
-			"audit_retention":       "180d",
-			"api_key_prefix":        DefaultAPIKeyPrefix,
-			"api_key_random_length": DefaultAPIKeyRandomLength,
+			"public_base_url":             "http://localhost:8080",
+			"default_timeout":             "120s",
+			"audit_retention":             "180d",
+			"dashboard_timezone":          "UTC",
+			"api_key_prefix":              DefaultAPIKeyPrefix,
+			"api_key_random_length":       DefaultAPIKeyRandomLength,
+			syntheticDNSEnabledField:      false,
+			syntheticDNSCIDRsField:        defaultSyntheticDNSCIDRs,
+			syntheticDNSAllowPrivateField: false,
+			providerEgressModeField:       providerEgressModeEnvironment,
 		},
-	})
+	}); err != nil {
+		return fmt.Errorf("seed gateway settings: %w", err)
+	}
+	if err := ensureProviderSyntheticDNSSettings(store); err != nil {
+		return err
+	}
+	if err := ensureProviderProxySettings(store); err != nil {
+		return err
+	}
 	seedResourceIfMissing(store, "identity-providers", AdminResource{
 		ID:          "idp_oidc_template",
 		Name:        "Enterprise OIDC/OAuth Identity Source",
@@ -270,6 +313,7 @@ func seedDefaultOrgResources(store Store) {
 		},
 	})
 	seedDefaultRoleConfigs(store)
+	return nil
 }
 
 func seedDefaultRoleConfigs(store Store) {
@@ -325,8 +369,24 @@ func seedResourceIfMissing(store Store, kind string, resource AdminResource) {
 	store.CreateResource(kind, resource)
 }
 
-func seedAdminResources(store Store) {
-	seedDefaultOrgResources(store)
+func seedResourceIfMissingChecked(store Store, kind string, resource AdminResource) error {
+	resources, err := store.ListResourcesChecked(kind)
+	if err != nil {
+		return err
+	}
+	for _, existing := range resources {
+		if existing.ID == resource.ID {
+			return nil
+		}
+	}
+	_, err = store.CreateResourceChecked(kind, resource)
+	return err
+}
+
+func seedAdminResources(store Store) error {
+	if err := seedDefaultOrgResources(store); err != nil {
+		return err
+	}
 	store.CreateResource("monitors", AdminResource{
 		ID:          "mon_gateway",
 		Name:        "Core Chat Model Heartbeat",
@@ -340,17 +400,6 @@ func seedAdminResources(store Store) {
 			"last_result":      "ok",
 		},
 	})
-	store.CreateResource("proxies", AdminResource{
-		ID:          "prx_direct",
-		Name:        "Direct Egress",
-		Description: "Default egress without a proxy.",
-		Status:      StatusActive,
-		Fields: map[string]any{
-			"protocol": "direct",
-			"host":     "-",
-			"port":     0,
-		},
-	})
 	store.CreateResource("announcements", AdminResource{
 		ID:          "ann_mvp",
 		Name:        "Internal Rollout Notice",
@@ -359,19 +408,6 @@ func seedAdminResources(store Store) {
 		Fields: map[string]any{
 			"notify_mode": "silent",
 			"target":      "all_admins",
-		},
-	})
-	store.CreateResource("settings", AdminResource{
-		ID:          "cfg_gateway",
-		Name:        "Gateway Base Settings",
-		Description: "Default OpenAI-compatible gateway configuration.",
-		Status:      StatusActive,
-		Fields: map[string]any{
-			"public_base_url":       "http://localhost:8080",
-			"default_timeout":       "120s",
-			"audit_retention":       "180d",
-			"api_key_prefix":        DefaultAPIKeyPrefix,
-			"api_key_random_length": DefaultAPIKeyRandomLength,
 		},
 	})
 	store.CreateResource("security-policies", AdminResource{
@@ -461,6 +497,7 @@ func seedAdminResources(store Store) {
 			"recipients": "finance@example.com",
 		},
 	})
+	return nil
 }
 
 func seedMockData(store Store) error {
@@ -663,19 +700,6 @@ func seedMockResources(store Store) {
 			},
 		})
 	}
-	for i := 1; i <= 60; i++ {
-		store.CreateResource("proxies", AdminResource{
-			ID:          fmt.Sprintf("prx_mock_%02d", i),
-			Name:        fmt.Sprintf("Mock Proxy Egress %02d", i),
-			Description: fmt.Sprintf("Egress policy for the %s region.", mockRegion(i)),
-			Status:      activeEvery(i, 20),
-			Fields: map[string]any{
-				"protocol": proxyProtocol(i),
-				"host":     fmt.Sprintf("proxy-%02d.internal", i),
-				"port":     8000 + i,
-			},
-		})
-	}
 	for i := 1; i <= 45; i++ {
 		store.CreateResource("announcements", AdminResource{
 			ID:          fmt.Sprintf("ann_mock_%02d", i),
@@ -847,11 +871,6 @@ func monitorResult(index int) string {
 		return "failed"
 	}
 	return "ok"
-}
-
-func proxyProtocol(index int) string {
-	protocols := []string{"direct", "http", "https", "socks5"}
-	return protocols[(index-1)%len(protocols)]
 }
 
 func mockNotifyMode(index int) string {

@@ -1,0 +1,61 @@
+name: Question or support request
+description: Ask about configuring, integrating, or operating TokenHub.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write the issue title and all explanatory text in English. Check the documentation and existing issues before submitting a question.
+
+        Never include API keys, provider credentials, tokens, cookies, or other secrets.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area
+      options:
+        - API integration
+        - Authentication and API keys
+        - Provider and model configuration
+        - Admin console
+        - Deployment and operations
+        - Data and migrations
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: State the question and the intended outcome clearly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: List the documentation, configuration, commands, or approaches already checked.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Relevant environment or configuration
+      description: Provide only the minimum redacted details needed to understand the question.
+      render: shell
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I checked the documentation and searched existing issues.
+          required: true
+        - label: The issue title and all explanatory text are written in English.
+          required: true
+        - label: I removed or redacted all credentials and other secrets.
+          required: true

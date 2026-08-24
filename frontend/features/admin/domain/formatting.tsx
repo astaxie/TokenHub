@@ -1,8 +1,10 @@
 import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type ProviderCatalogModel, routeViews, type ViewKey } from "../core/types";
 import { modelCategory } from "./catalog";
+import { configuredPriceFormValue } from "./configured-pricing";
+import { modelDisplayName } from "./model-display-name";
 import { codexImageCapableResources, findProvider, findProviderResource, isCodexSubscriptionImageModel, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
-import { tx } from "../i18n/runtime";
-import { preferredModelCategories } from "../shared/ui";
+import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
+import { preferredModelCategories } from "./model-categories";
 
 export function initialView(): ViewKey {
   if (typeof window === "undefined") return "overview";
@@ -12,7 +14,18 @@ export function initialView(): ViewKey {
 export function viewFromPath(pathname: string): ViewKey {
   const normalized = pathname.replace(/^\/+|\/+$/g, "");
   if (!normalized) return "overview";
+  if (apiKeyUsageIDFromPath(pathname)) return "api-keys";
   return routeViews[normalized] ?? "overview";
+}
+
+export function apiKeyUsageIDFromPath(pathname: string) {
+  const match = pathname.match(/^\/api-keys\/([^/]+)\/usage\/?$/);
+  if (!match?.[1]) return "";
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return "";
+  }
 }
 
 export function playgroundModels(data: AppData, sortByRoutes = data.routes.length > 0) {
@@ -31,11 +44,24 @@ export const apiExampleLanguages: Array<{ key: ApiExampleLanguage; label: string
   { key: "go", label: "Go" },
 ];
 
-export function apiExampleScripts(baseURL: string, modelName: string): Record<ApiExampleLanguage, string> {
+export function apiExampleScripts(baseURL: string, modelName: string, supportsImages = false): Record<ApiExampleLanguage, string> {
   const normalizedBaseURL = apiGatewayBaseURL(baseURL);
   const model = modelName || "gpt-4.1-mini";
   const systemPrompt = tx("你是企业内部 AI 助手。");
   const prompt = tx("请用三句话介绍 TokenHub。");
+  const imagePrompt = tx("请描述这张图片。");
+  const pythonUserMessage = supportsImages
+    ? `{"role": "user", "content": [
+            {"type": "text", "text": "${imagePrompt}"},
+            {"type": "image_url", "image_url": {"url": "https://example.com/campus.jpg"}},
+        ]}`
+    : `{"role": "user", "content": "${prompt}"}`;
+  const typescriptUserMessage = supportsImages
+    ? `{ role: "user", content: [
+      { type: "text", text: "${imagePrompt}" },
+      { type: "image_url", image_url: { url: "https://example.com/campus.jpg" } },
+    ] }`
+    : `{ role: "user", content: "${prompt}" }`;
   return {
     python: `from openai import OpenAI
 
@@ -48,7 +74,7 @@ response = client.chat.completions.create(
     model="${model}",
     messages=[
         {"role": "system", "content": "${systemPrompt}"},
-        {"role": "user", "content": "${prompt}"},
+        ${pythonUserMessage},
     ],
     temperature=0.7,
 )
@@ -65,7 +91,7 @@ const response = await client.chat.completions.create({
   model: "${model}",
   messages: [
     { role: "system", content: "${systemPrompt}" },
-    { role: "user", content: "${prompt}" },
+    ${typescriptUserMessage},
   ],
   temperature: 0.7,
 });
@@ -132,9 +158,11 @@ export function apiGatewayBaseURL(baseURL: string) {
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
+export function apiReferenceURL(baseURL: string) {
+  return apiGatewayBaseURL(baseURL).replace(/\/v1$/, "/docs");
+}
+
 export function activeRouteCount(modelName: string, data: AppData) {
-  const model = data.models.find((candidate) => candidate.name === modelName);
-  if (isCodexSubscriptionImageModel(model)) return codexImageCapableResources(data).length;
   return data.routes.filter((route) => route.model_name === modelName && route.status === "active").length;
 }
 
@@ -152,7 +180,9 @@ export type ModelAvailabilitySummary = {
 export function modelAvailabilitySummary(model: Model, data: AppData, readOnly = false): ModelAvailabilitySummary {
   const routes = modelRoutesFor(model, data);
   const activeRoutes = routes.filter((route) => route.status === "active");
-  const healthyRoutes = activeRoutes.filter((route) => routeHasHealthyTarget(route, data));
+  const healthyRoutes = activeRoutes.filter((route) => isCodexSubscriptionImageModel(model)
+    ? codexImageRouteHasHealthyTarget(route, data)
+    : routeHasHealthyTarget(route, data));
   if (model.status !== "active") {
     return {
       tone: "blocked",
@@ -161,29 +191,6 @@ export function modelAvailabilitySummary(model: Model, data: AppData, readOnly =
       totalRoutes: routes.length,
       activeRoutes: activeRoutes.length,
       healthyRoutes: healthyRoutes.length,
-    };
-  }
-  if (isCodexSubscriptionImageModel(model)) {
-    const capableAccounts = codexImageCapableResources(data);
-    if (readOnly || capableAccounts.length > 0) {
-      return {
-        tone: "ready",
-        label: "可调用",
-        detail: readOnly
-          ? "通过 Codex 订阅账号池直接提供图片生成和参考图编辑，无需 Codex CLI。"
-          : "已确认支持生图的 Codex 账号池可用。",
-        totalRoutes: capableAccounts.length,
-        activeRoutes: capableAccounts.length,
-        healthyRoutes: capableAccounts.length,
-      };
-    }
-    return {
-      tone: "blocked",
-      label: "暂无可生图账号",
-      detail: "需要至少一个健康启用且已确认支持生图的 Codex 订阅账号。",
-      totalRoutes: 0,
-      activeRoutes: 0,
-      healthyRoutes: 0,
     };
   }
   if (readOnly && routes.length === 0) {
@@ -252,6 +259,15 @@ export function routeHasHealthyTarget(route: ModelRoute, data: AppData) {
   }
   return true;
 }
+
+function codexImageRouteHasHealthyTarget(route: ModelRoute, data: AppData) {
+  const capableResources = codexImageCapableResources(data).filter((resource) => resource.provider_id === route.provider_id);
+  if (route.provider_resource_id) {
+    return capableResources.some((resource) => resource.id === route.provider_resource_id);
+  }
+  const group = stringifyValue(route.resource_group);
+  return capableResources.some((resource) => !group || resource.group === group);
+}
 export function keyWizardModelOptions(data: AppData) {
   const activeChatModels = playgroundModels(data, data.routes.length > 0);
   const routed = activeChatModels.filter((model) => data.routes.length === 0 || activeRouteCount(model.name, data) > 0);
@@ -283,7 +299,32 @@ export async function readAPIError(resp: Response) {
   if (code === "provider_not_configured") return "命中的 Provider 尚未配置 Base URL 或凭证。";
   if (code === "provider_resource_concurrency_exceeded") return "Provider 资源并发已满，请稍后再试。";
   if (code === "provider_resource_cooling_down") return "Provider 资源处于冷却中，请检查资源健康状态。";
+  if (code === "guardrail_blocked") {
+    const categories: string[] = Array.isArray(payload?.error?.details?.categories) ? payload.error.details.categories.filter((category: unknown): category is string => typeof category === "string") : [];
+    const labels: string[] = Array.from(new Set<string>(categories.map(guardrailCategoryLabel)));
+    const rawMatches: unknown[] = Array.isArray(payload?.error?.details?.policy_matches) ? payload.error.details.policy_matches : [];
+    const policyLabels = Array.from(new Set(rawMatches.map(guardrailPolicyMatchLabel).filter((label): label is string => Boolean(label)))).slice(0, 3);
+    const requestID = typeof payload?.request_id === "string" ? payload.request_id.trim() : "";
+    return guardrailBlockedDiagnostic(labels.map((label) => tx(label)), policyLabels, requestID);
+  }
   return `${message} (${code})`;
+}
+
+function guardrailPolicyMatchLabel(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+  const match = value as Record<string, unknown>;
+  const policyName = typeof match.policy_name === "string" ? match.policy_name.trim() : "";
+  const itemName = typeof match.detection_item_name === "string" ? match.detection_item_name.trim() : "";
+  return [policyName, itemName].filter(Boolean).join(" / ");
+}
+
+function guardrailCategoryLabel(category: string) {
+  const labels: Record<string, string> = {
+    credential: "云凭据与访问密钥", email: "邮箱地址", phone: "手机号码", cn_id_card: "中国身份证号",
+    bank_card: "银行卡号", person_name: "姓名", address: "地址", birth_date: "出生日期",
+    pattern: "关键词或正则匹配", unsafe: "模型判定为不安全", controversial: "模型判定为争议内容",
+  };
+  return labels[category] ?? category;
 }
 
 export function extractAssistantText(payload: PlaygroundChatPayload) {
@@ -313,7 +354,7 @@ export function stringifyChatContent(content: unknown): string {
 }
 
 export function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US").format(value || 0);
+  return new Intl.NumberFormat(languageLocale()).format(value || 0);
 }
 
 export function compactNumber(value: number) {
@@ -353,9 +394,14 @@ export function formatModelPrice(model: ProviderCatalogModel) {
 export function modelToForm(item: Model) {
   return {
     ...stringifyForm(item),
+    display_name: modelDisplayName(item.metadata, ""),
     cache_read_price_usd_per_1m: item.cache_read_price_usd_per_1m
       ? String(item.cache_read_price_usd_per_1m)
       : "",
+    cache_write_price_usd_per_1m: configuredPriceFormValue(item.cache_write_price_usd_per_1m, item.cache_write_price_configured),
+    cache_write_5m_price_usd_per_1m: configuredPriceFormValue(item.cache_write_5m_price_usd_per_1m, item.cache_write_5m_price_configured),
+    cache_write_1h_price_usd_per_1m: configuredPriceFormValue(item.cache_write_1h_price_usd_per_1m, item.cache_write_1h_price_configured),
+    pricing_periods: item.pricing_periods?.length ? JSON.stringify(item.pricing_periods, null, 2) : "",
     capabilities: (item.capabilities ?? []).join(", "),
     supported_parameters: (item.supported_parameters ?? []).join(", "),
     input_modalities: (item.input_modalities ?? []).join(", "),
@@ -363,16 +409,18 @@ export function modelToForm(item: Model) {
   };
 }
 
-export function formatBytes(value: number) {
-  if (!value) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let size = value;
+const byteUnits = ["B", "KB", "MB", "GB"] as const;
+
+export function formatBytes(value: number, locale = languageLocale()) {
+  let size = Number.isFinite(value) && value > 0 ? value : 0;
   let index = 0;
-  while (size >= 1024 && index < units.length - 1) {
+  while (size >= 1024 && index < byteUnits.length - 1) {
     size /= 1024;
     index += 1;
   }
-  return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
+  const fractionDigits = index === 0 ? 0 : 2;
+  const formatter = new Intl.NumberFormat(locale, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+  return `${formatter.format(size)} ${byteUnits[index]}`;
 }
 
 export function routeStrategyLabel(value?: string) {
@@ -389,5 +437,7 @@ export function routeStrategyLabel(value?: string) {
 
 export function formatTime(value: string) {
   if (!value) return "-";
-  return new Date(value).toLocaleString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "medium" }).format(date);
 }

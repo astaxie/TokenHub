@@ -437,7 +437,7 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 			"message":       message,
 			"finish_reason": mapped,
 		}},
-		"usage": usage,
+		"usage": openAIChatUsageObject(usage),
 	}, nil
 }
 

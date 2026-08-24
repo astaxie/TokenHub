@@ -60,6 +60,7 @@ export type APIKey = {
   expires_at?: string;
   rotated_from_id?: string;
   grace_until?: string;
+  created_at?: string;
   last_used_at?: string;
   metadata?: Record<string, string>;
 };
@@ -72,6 +73,27 @@ export type DatabaseStatus = {
   database_url?: string;
 };
 
+// Read-only database evolution state served by /api/admin/system/schema-status.
+// reason_code is the stable machine identifier for localized rendering;
+// reason is the English diagnostic for logs and API clients, never localized UI.
+export type SchemaEvolutionStatus = {
+  ready: boolean;
+  reason?: string;
+  reason_code?: string;
+  schema_version: number;
+  dirty_version?: number;
+  pending_expand?: Array<{ version: number; name: string }>;
+  pending_contract?: Array<{ version: number; name: string }>;
+  blocking_backfills_pending?: string[];
+  backfills?: Array<{ id: string; mode: string; state: string; remaining: number }>;
+  instances?: Array<{ instance_id: string; release: string; last_seen: string }>;
+  compatibility?: {
+    target: number;
+    min_compatible: number;
+    max_compatible: number;
+  };
+};
+
 export type Provider = {
   id: string;
   name: string;
@@ -80,6 +102,9 @@ export type Provider = {
   status: string;
   healthy: boolean;
   priority: number;
+  headers?: Record<string, string>;
+  sensitive_headers?: string[];
+  header_validation_errors?: string[];
   options?: Record<string, string>;
 };
 
@@ -142,6 +167,101 @@ export type BillingSyncRun = {
 	error_message?: string;
 	started_at: string;
 	finished_at?: string;
+};
+
+export type ReconciliationRule = {
+	id: string;
+	name: string;
+	connector_id: string;
+	connector_type: string;
+	provider_id: string;
+	status: string;
+	granularity: "detail" | "hour" | "day" | "month";
+	match_dimensions: string[];
+	dimension_mappings?: Record<string, Record<string, string>>;
+	amount_tolerance: string;
+	ratio_tolerance: string;
+	usd_exchange_rate: string;
+	time_window_minutes: number;
+	billing_delay_minutes: number;
+	schedule_interval_minutes: number;
+	timezone: string;
+	currency?: string;
+	version: number;
+	rule_hash: string;
+	last_run_at?: string;
+	next_run_at?: string;
+	created_at: string;
+	updated_at: string;
+};
+
+export type ReconciliationRun = {
+	id: string;
+	rule_id: string;
+	connector_id: string;
+	connector_type: string;
+	provider_id: string;
+	trigger: string;
+	status: string;
+	period_start: string;
+	period_end: string;
+	granularity: string;
+	match_dimensions: string[];
+	dimension_mappings?: Record<string, Record<string, string>>;
+	amount_tolerance: string;
+	ratio_tolerance: string;
+	usd_exchange_rate: string;
+	time_window_minutes: number;
+	billing_delay_minutes: number;
+	timezone: string;
+	currency?: string;
+	rule_version: number;
+	rule_hash: string;
+	input_hash: string;
+	provider_record_count: number;
+	tokenhub_record_count: number;
+	matched_count: number;
+	provider_only_count: number;
+	tokenhub_only_count: number;
+	amount_mismatch_count: number;
+	provider_amount: string;
+	tokenhub_amount: string;
+	difference_amount: string;
+	created_by: string;
+	started_at: string;
+	finished_at?: string;
+	locked_at?: string;
+	locked_by?: string;
+};
+
+export type ReconciliationItem = {
+	id: string;
+	run_id: string;
+	match_key: string;
+	status: "matched" | "provider_only" | "tokenhub_only" | "amount_mismatch";
+	bucket_start: string;
+	bucket_end: string;
+	request_id?: string;
+	provider?: string;
+	resource_account?: string;
+	model?: string;
+	project?: string;
+	currency: string;
+	provider_amount: string;
+	tokenhub_amount: string;
+	difference_amount: string;
+	difference_ratio: string;
+	possible_reason: string;
+	provider_record_ids: string[];
+	tokenhub_record_ids: string[];
+};
+
+export type ReconciliationDetail = {
+	run: ReconciliationRun;
+	items: ReconciliationItem[];
+	total: number;
+	limit: number;
+	offset: number;
 };
 
 export type AdapterDescriptor = {
@@ -226,7 +346,14 @@ export type ProviderCatalogModel = {
   max_output_tokens?: number;
   input_price_usd_per_1m?: number;
   cache_read_price_usd_per_1m?: number;
+  cache_write_price_usd_per_1m?: number;
+  cache_write_price_configured?: boolean;
+  cache_write_5m_price_usd_per_1m?: number;
+  cache_write_5m_price_configured?: boolean;
+  cache_write_1h_price_usd_per_1m?: number;
+  cache_write_1h_price_configured?: boolean;
   output_price_usd_per_1m?: number;
+  pricing_periods?: ModelPricingPeriod[];
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
@@ -261,7 +388,14 @@ export type ProviderModel = {
   context_window?: number;
   input_price_usd_per_1m?: number;
   cache_read_price_usd_per_1m?: number;
+  cache_write_price_usd_per_1m?: number;
+  cache_write_price_configured?: boolean;
+  cache_write_5m_price_usd_per_1m?: number;
+  cache_write_5m_price_configured?: boolean;
+  cache_write_1h_price_usd_per_1m?: number;
+  cache_write_1h_price_configured?: boolean;
   output_price_usd_per_1m?: number;
+  pricing_periods?: ModelPricingPeriod[];
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
@@ -290,6 +424,9 @@ export type ProviderResource = {
   rate_limit_rpm?: number;
   token_limit_tpm?: number;
   max_concurrency?: number;
+  headers?: Record<string, string>;
+  sensitive_headers?: string[];
+  header_validation_errors?: string[];
   options?: Record<string, string>;
   credential_summary?: Record<string, string>;
   failure_count?: number;
@@ -298,6 +435,17 @@ export type ProviderResource = {
   last_checked_at?: string;
   created_at?: string;
   updated_at?: string;
+};
+
+export type ModelPricingPeriod = {
+  name?: string;
+  timezone?: string;
+  start_time?: string;
+  end_time?: string;
+  effective_from?: string;
+  effective_until?: string;
+  input_price_usd_per_1m?: number;
+  output_price_usd_per_1m?: number;
 };
 
 export type Model = {
@@ -310,8 +458,15 @@ export type Model = {
   status: string;
   input_price_usd_per_1m?: number;
   cache_read_price_usd_per_1m?: number;
+  cache_write_price_usd_per_1m?: number;
+  cache_write_price_configured?: boolean;
+  cache_write_5m_price_usd_per_1m?: number;
+  cache_write_5m_price_configured?: boolean;
+  cache_write_1h_price_usd_per_1m?: number;
+  cache_write_1h_price_configured?: boolean;
   output_price_usd_per_1m?: number;
   embedding_price_usd_per_1m?: number;
+  pricing_periods?: ModelPricingPeriod[];
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
@@ -468,6 +623,10 @@ export type AdminResource = {
   description?: string;
   status: string;
   fields?: Record<string, unknown>;
+  current_usage?: {
+    daily: { requests: number; total_tokens: number; cost_usd: number };
+    monthly: { requests: number; total_tokens: number; cost_usd: number };
+  };
   created_at?: string;
   updated_at?: string;
 };
@@ -585,9 +744,33 @@ export type RequestLog = {
   accepted_prediction_tokens?: number;
   rejected_prediction_tokens?: number;
   total_tokens?: number;
+  input_cost_usd?: number;
+  cache_read_cost_usd?: number;
+  cache_write_cost_usd?: number;
+  output_cost_usd?: number;
   estimated_cost_usd?: number;
   provider_cost_usd?: number;
   usage_record_count?: number;
+};
+
+export type RequestLogPagination = {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+};
+
+export type RequestLogSummary = {
+  all: number;
+  ok: number;
+  error: number;
+  average_latency_ms: number;
+};
+
+export type RequestLogPage = {
+  data: RequestLog[];
+  pagination: RequestLogPagination;
+  summary: RequestLogSummary;
 };
 
 export type UsageRecord = {
@@ -609,6 +792,10 @@ export type UsageRecord = {
   accepted_prediction_tokens?: number;
   rejected_prediction_tokens?: number;
   total_tokens: number;
+  input_cost_usd?: number;
+  cache_read_cost_usd?: number;
+  cache_write_cost_usd?: number;
+  output_cost_usd?: number;
   estimated_cost_usd: number;
   provider_cost_usd?: number;
   created_at: string;
@@ -683,6 +870,7 @@ export type UsageBreakdown = {
   providers: UsageBreakdownRow[];
   provider_resources: UsageBreakdownRow[];
   cost_centers: UsageBreakdownRow[];
+  api_keys?: UsageBreakdownRow[];
 };
 
 export type UsagePoint = {
@@ -693,6 +881,78 @@ export type UsagePoint = {
   output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+};
+
+export type UsageDaily = {
+  timezone: string;
+  date: string;
+  window_start: string;
+  window_end: string;
+  summary: Summary;
+  breakdown: UsageBreakdown;
+};
+
+export type APIKeyUsageMetrics = {
+  request_count: number;
+  error_count: number;
+  average_latency_ms: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  cache_write_input_tokens: number;
+  input_audio_tokens: number;
+  output_tokens: number;
+  reasoning_output_tokens: number;
+  output_audio_tokens: number;
+  accepted_prediction_tokens: number;
+  rejected_prediction_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+};
+
+export type APIKeyUsagePoint = APIKeyUsageMetrics & { date: string };
+
+export type APIKeyUsageBreakdownRow = APIKeyUsageMetrics & {
+  id: string;
+  resource_id?: string;
+  status_code?: number;
+  error_code?: string;
+  last_occurred_at?: string;
+};
+
+export type APIKeyQuotaLimits = {
+  rate_limit_rpm: number;
+  token_limit_tpm: number;
+  daily_requests: number;
+  monthly_requests: number;
+  daily_tokens: number;
+  monthly_tokens: number;
+  daily_cost_usd: number;
+  monthly_cost_usd: number;
+  max_concurrency: number;
+};
+
+export type APIKeyQuotaCounter = {
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+export type APIKeyUsageResponse = {
+  key: APIKey;
+  range: { from: string; to: string };
+  generated_at: string;
+  summary: APIKeyUsageMetrics;
+  quota: {
+    effective_limits: APIKeyQuotaLimits;
+    day: { bucket: string; usage: APIKeyQuotaCounter };
+    month: { bucket: string; usage: APIKeyQuotaCounter };
+  };
+  timeseries: APIKeyUsagePoint[];
+  models: APIKeyUsageBreakdownRow[];
+  errors: APIKeyUsageBreakdownRow[];
+  providers?: APIKeyUsageBreakdownRow[];
 };
 
 export type ViewKey =
@@ -722,7 +982,6 @@ export type ViewKey =
   | "notification-channels"
   | "alert-deliveries"
   | "security-policies"
-  | "proxies"
   | "sqlite-backups"
   | "database-status"
   | "announcements"
@@ -756,7 +1015,6 @@ export const viewRoutes: Record<ViewKey, string> = {
   "notification-channels": "/notification-channels",
   "alert-deliveries": "/alert-deliveries",
   "security-policies": "/security-policies",
-  proxies: "/proxies",
   "sqlite-backups": "/sqlite-backups",
   "database-status": "/database-status",
   announcements: "/announcements",
@@ -797,7 +1055,7 @@ export type TopSearchItem = {
   keywords: string;
 };
 
-export type FieldType = "text" | "number" | "password" | "textarea" | "select" | "multi-select" | "tags" | "boolean";
+export type FieldType = "text" | "number" | "password" | "textarea" | "select" | "multi-select" | "tag-select" | "tags" | "boolean";
 
 export type FieldConfig = {
   key: string;
@@ -837,7 +1095,8 @@ export type ResourceConfig<T> = {
   create?: (ctx: ApiContext, values: Record<string, string>, data?: AppData) => Promise<void>;
   update?: (ctx: ApiContext, item: T, values: Record<string, string>) => Promise<void>;
   remove?: (ctx: ApiContext, item: T) => Promise<void>;
-  canRemove?: (item: T, currentUser: AdminUser | null) => boolean;
+  canUpdate?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
+  canRemove?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
   actions?: ResourceAction<T>[];
   toolbarActions?: ToolbarAction[];
   toForm?: (item: T) => Record<string, string>;
@@ -846,7 +1105,8 @@ export type ResourceConfig<T> = {
 export type ResourceAction<T> = {
   label: string;
   title?: string;
-  visible?: (item: T) => boolean;
+  visible?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
+  href?: (item: T) => string;
   navigate?: (item: T) => ViewKey;
   run?: (ctx: ApiContext, item: T) => Promise<void>;
   modal?: (item: T, data: AppData) => ModalState<any>;
@@ -885,6 +1145,7 @@ export type AppData = {
   sqliteBackups: SQLiteBackup[];
   users: AdminUser[];
   breakdown: UsageBreakdown;
+  dailyUsage: UsageDaily;
   timeseries: UsagePoint[];
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];
@@ -892,6 +1153,8 @@ export type AppData = {
 	billingConnectors: BillingConnector[];
 	billingRecords: BillingRecord[];
 	billingSyncRuns: BillingSyncRun[];
+	reconciliationRules: ReconciliationRule[];
+	reconciliationRuns: ReconciliationRun[];
 };
 
 export type ApiContext = {

@@ -29,7 +29,8 @@ cp deploy/.env.example deploy/.env
 ```bash
 POSTGRES_PASSWORD=your-secure-password
 TOKENHUB_SECRET_KEY=your-secret-key
-TOKENHUB_ADMIN_TOKEN=your-admin-token
+# Optional: TOKENHUB_ADMIN_TOKEN=your-admin-token
+# Optional: TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=your-initial-password
 ```
 
 3. **Start the services**
@@ -46,9 +47,9 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.postgres.yml up -
 
 Default administrator account:
 - Username: `admin`
-- Password: `admin123456`
+- Password: the configured `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`. If it is omitted, retrieve the generated value with `tokenhub initial-admin-password` inside a backend container.
 
-**⚠️ Change the default password immediately!**
+Change the initial password after signing in. PostgreSQL deployments must always provide the same stable `TOKENHUB_SECRET_KEY` to every replica; TokenHub does not generate that shared key.
 
 ### Manual PostgreSQL Installation
 

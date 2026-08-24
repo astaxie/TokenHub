@@ -22,6 +22,16 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const unattributedQuotaUserID = "__tokenhub_unattributed__"
+
+func quotaAttributionKey(userID string) string {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return unattributedQuotaUserID
+	}
+	return userID
+}
+
 func (s *GormStore) CreateSQLiteBackup(createdBy string, expireDays int) (SQLiteBackupRecord, error) {
 	if s.IsPostgreSQL() {
 		return s.CreatePostgreSQLBackup(createdBy, expireDays)
@@ -300,7 +310,7 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 	publishedModelNames := make([]string, 0, len(routes)+1)
 	seenModelNames := map[string]bool{}
 	for _, route := range routes {
-		if seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) {
+		if route.ModelName == codexImageModelName || seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) {
 			continue
 		}
 		selections := []RouteSelection{{Provider: Provider{ID: route.ProviderID}, ProviderModel: route.ProviderModel, Route: route}}
@@ -341,23 +351,35 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 }
 
 func (s *GormStore) codexImageAllowedByPolicyLocked(project Project, key APIKey, policy *ScopedRoutingPolicy) bool {
-	var providers []Provider
-	if err := s.db.Where("type = ? AND status = ? AND healthy = ?", ProviderOpenAICodex, StatusActive, true).Find(&providers).Error; err != nil {
+	var routes []ModelRoute
+	if err := s.db.Where("model_name = ? AND provider_model = ? AND status = ?", codexImageModelName, codexImageUpstreamModel, StatusActive).Find(&routes).Error; err != nil {
 		return false
 	}
-	for _, provider := range providers {
+	for _, configuredRoute := range routes {
+		var provider Provider
+		if err := s.db.Where("id = ? AND type = ? AND status = ? AND healthy = ?", configuredRoute.ProviderID, ProviderOpenAICodex, StatusActive, true).First(&provider).Error; err != nil {
+			continue
+		}
 		var resources []ProviderResource
-		if err := s.db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true).Find(&resources).Error; err != nil {
+		query := s.db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true)
+		if configuredRoute.ProviderResourceID != "" {
+			query = query.Where("id = ?", configuredRoute.ProviderResourceID)
+		} else if strings.TrimSpace(configuredRoute.ResourceGroup) != "" {
+			query = query.Where("\"group\" = ?", strings.TrimSpace(configuredRoute.ResourceGroup))
+		}
+		if err := query.Find(&resources).Error; err != nil {
 			continue
 		}
 		for index := range resources {
 			resource := &resources[index]
-			if !s.codexImageResourceAvailable(*resource) {
+			if !isOpenAIAccountResource(resource.ResourceType) || !s.codexImageResourceAvailable(*resource) {
 				continue
 			}
+			resourceRoute := configuredRoute
+			resourceRoute.ProviderResourceID = resource.ID
 			route := RouteSelection{
 				Provider: provider, Resource: resource, ProviderModel: codexImageUpstreamModel,
-				Route: ModelRoute{ProviderID: provider.ID, ProviderResourceID: resource.ID, ModelName: codexImageModelName},
+				Route: resourceRoute,
 			}
 			call := CallContext{Project: project, Key: key, Model: Model{Name: codexImageModelName}}
 			if len(routingPolicyCandidateReasons(call, route, policy)) == 0 {
@@ -380,8 +402,33 @@ func (s *GormStore) codexImageResourceAvailable(resource ProviderResource) bool 
 	}
 }
 
-func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string) (QuotaBucket, error) {
-	seed := QuotaBucket{KeyID: keyID, Scope: scope, Bucket: bucket}
+func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string, attributedUserIDs ...string) (QuotaBucket, error) {
+	attributedUserID := ""
+	if len(attributedUserIDs) > 0 {
+		attributedUserID = strings.TrimSpace(attributedUserIDs[0])
+	}
+	attributedUserID = quotaAttributionKey(attributedUserID)
+	if attributedUserID == unattributedQuotaUserID {
+		var canonicalCount int64
+		if err := tx.Model(&QuotaBucket{}).
+			Where("key_id = ? AND scope = ? AND bucket = ? AND attributed_user_id = ?", keyID, scope, bucket, unattributedQuotaUserID).
+			Count(&canonicalCount).Error; err != nil {
+			return QuotaBucket{}, err
+		}
+		if canonicalCount == 0 {
+			if err := tx.Model(&QuotaBucket{}).
+				Where("key_id = ? AND scope = ? AND bucket = ? AND (attributed_user_id IS NULL OR attributed_user_id = '')", keyID, scope, bucket).
+				Update("attributed_user_id", unattributedQuotaUserID).Error; err != nil {
+				return QuotaBucket{}, err
+			}
+		}
+	}
+	seed := QuotaBucket{
+		KeyID:            keyID,
+		Scope:            scope,
+		Bucket:           bucket,
+		AttributedUserID: attributedUserID,
+	}
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
 		return QuotaBucket{}, err
 	}
@@ -390,26 +437,156 @@ func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket strin
 		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
 	var item QuotaBucket
-	if err := query.First(&item, "key_id = ? AND scope = ? AND bucket = ?", keyID, scope, bucket).Error; err != nil {
+	if err := query.First(&item, "key_id = ? AND scope = ? AND bucket = ? AND attributed_user_id = ?", keyID, scope, bucket, attributedUserID).Error; err != nil {
 		return QuotaBucket{}, err
+	}
+	if item.AttributedUserID == "" {
+		item.AttributedUserID = unattributedQuotaUserID
+		if err := tx.Model(&QuotaBucket{}).Where("key_id = ? AND scope = ? AND bucket = ? AND (attributed_user_id IS NULL OR attributed_user_id = '')", keyID, scope, bucket).Update("attributed_user_id", unattributedQuotaUserID).Error; err != nil {
+			return QuotaBucket{}, err
+		}
 	}
 	return item, nil
 }
 
+func userQuotaBucketKey(userID string) string {
+	return "user:" + strings.TrimSpace(userID)
+}
+
+func (s *GormStore) GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPolicyUsage, bool, error) {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	scopeID = strings.TrimSpace(scopeID)
+	bucketID := ""
+	switch scope {
+	case "user":
+		bucketID = userQuotaBucketKey(scopeID)
+	case "api_key", "key":
+		bucketID = scopeID
+	default:
+		return QuotaPolicyUsage{}, false, nil
+	}
+	if scopeID == "" {
+		return QuotaPolicyUsage{}, false, nil
+	}
+	now, err := s.databaseNow(s.db)
+	if err != nil {
+		return QuotaPolicyUsage{}, false, err
+	}
+	usage := QuotaPolicyUsage{}
+	lookupAttribution := unattributedQuotaUserID
+	if scope == "user" {
+		lookupAttribution = scopeID
+	}
+	for _, period := range []struct {
+		scope   string
+		bucket  string
+		counter *QuotaCounter
+	}{
+		{scope: "day", bucket: dayBucket(now), counter: &usage.Daily},
+		{scope: "month", bucket: monthBucket(now), counter: &usage.Monthly},
+	} {
+		var item QuotaBucket
+		attributionQuery := "attributed_user_id = ?"
+		attributionArgs := []any{lookupAttribution}
+		if scope == "user" {
+			attributionQuery = "attributed_user_id IN (?, '')"
+			attributionArgs = append(attributionArgs, lookupAttribution)
+		}
+		queryArgs := append([]any{bucketID, period.scope, period.bucket}, attributionArgs...)
+		err := s.db.Where("key_id = ? AND scope = ? AND bucket = ? AND "+attributionQuery, queryArgs...).First(&item).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return QuotaPolicyUsage{}, false, err
+		}
+		if err == nil {
+			*period.counter = item.QuotaCounter
+		}
+		if scope == "user" {
+			aggregated, err := s.aggregateUserQuotaCounter(s.db, scopeID, period.scope, period.bucket)
+			if err != nil {
+				return QuotaPolicyUsage{}, false, err
+			}
+			mergeQuotaCounterMax(period.counter, aggregated)
+		}
+	}
+	return usage, true, nil
+}
+
+func (s *GormStore) aggregateUserQuotaCounter(tx *gorm.DB, userID string, scope string, bucket string) (QuotaCounter, error) {
+	var aggregate QuotaCounter
+	err := tx.Table("quota_buckets AS qb").
+		Select("COALESCE(SUM(qb.requests), 0) AS requests, COALESCE(SUM(qb.prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(qb.completion_tokens), 0) AS completion_tokens, COALESCE(SUM(qb.total_tokens), 0) AS total_tokens, COALESCE(SUM(qb.cost_usd), 0) AS cost_usd").
+		Where("qb.scope = ? AND qb.bucket = ?", scope, bucket).
+		Where("qb.key_id NOT LIKE ?", "user:%").
+		Where("qb.attributed_user_id = ?", strings.TrimSpace(userID)).
+		Scan(&aggregate).Error
+	return aggregate, err
+}
+
+func mergeQuotaCounterMax(target *QuotaCounter, source QuotaCounter) {
+	if source.Requests > target.Requests {
+		target.Requests = source.Requests
+	}
+	if source.PromptTokens > target.PromptTokens {
+		target.PromptTokens = source.PromptTokens
+	}
+	if source.CompletionTokens > target.CompletionTokens {
+		target.CompletionTokens = source.CompletionTokens
+	}
+	if source.TotalTokens > target.TotalTokens {
+		target.TotalTokens = source.TotalTokens
+	}
+	if source.CostUSD > target.CostUSD {
+		target.CostUSD = source.CostUSD
+	}
+}
+
+func quotaExceededError(scope string) *HTTPError {
+	return scopedHTTPError(ErrQuotaExceeded, scope)
+}
+
+func scopedHTTPError(base *HTTPError, scope string) *HTTPError {
+	return &HTTPError{
+		Status:  base.Status,
+		Code:    base.Code,
+		Message: base.Message,
+		Details: map[string]string{"scope": normalizedQuotaPolicyScope(scope)},
+	}
+}
+
 func priceUsage(model Model, usage Usage) Usage {
+	return priceUsageAt(model, usage, time.Now().UTC())
+}
+
+func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
+	// Upstream-reported usage is untrusted: the provider parsers preserve the
+	// sign of whatever the upstream sent, and a negative count would flow into
+	// addUsage and shrink the day/month quota counters, letting a key keep
+	// spending past its configured limits. Clamping PromptTokens first also
+	// keeps the CachedInputTokens clamp below from going negative again.
+	usage.PromptTokens = maxInt64(usage.PromptTokens, 0)
+	usage.CompletionTokens = maxInt64(usage.CompletionTokens, 0)
+	usage.TotalTokens = maxInt64(usage.TotalTokens, 0)
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = saturatingAddNonNegative(usage.PromptTokens, usage.CompletionTokens)
 	}
-	usage.CachedInputTokens = minInt64(maxInt64(usage.CachedInputTokens, 0), usage.PromptTokens)
+	usage = clampBillableInputTokens(usage)
 	if usage.CostUSD == 0 {
+		model = modelPriceAt(model, requestStartedAt)
 		if model.Modality == "embedding" && model.EmbeddingPriceUSDPer1M > 0 {
-			usage.CostUSD = float64(usage.TotalTokens) * model.EmbeddingPriceUSDPer1M / 1_000_000
+			usage.InputCostUSD = float64(usage.TotalTokens) * model.EmbeddingPriceUSDPer1M / 1_000_000
+			usage.CostUSD = usage.InputCostUSD
 		} else {
-			uncachedInputTokens := usage.PromptTokens - usage.CachedInputTokens
+			cacheWrite5mTokens, cacheWrite1hTokens, cacheWriteOtherTokens := cacheWriteTokenParts(usage)
+			uncachedInputTokens := maxInt64(usage.PromptTokens-usage.CachedInputTokens-usage.CacheWriteInputTokens, 0)
 			cacheReadPrice := effectiveCacheReadPriceUSDPer1M(model)
-			usage.CostUSD = float64(uncachedInputTokens)*model.InputPriceUSDPer1M/1_000_000 +
-				float64(usage.CachedInputTokens)*cacheReadPrice/1_000_000 +
-				float64(usage.CompletionTokens)*model.OutputPriceUSDPer1M/1_000_000
+			cacheWritePrice := effectiveCacheWritePriceUSDPer1M(model)
+			usage.InputCostUSD = float64(uncachedInputTokens) * model.InputPriceUSDPer1M / 1_000_000
+			usage.CacheReadCostUSD = float64(usage.CachedInputTokens) * cacheReadPrice / 1_000_000
+			usage.CacheWriteCostUSD = float64(cacheWriteOtherTokens)*cacheWritePrice/1_000_000 +
+				float64(cacheWrite5mTokens)*effectiveCacheWrite5mPriceUSDPer1M(model)/1_000_000 +
+				float64(cacheWrite1hTokens)*effectiveCacheWrite1hPriceUSDPer1M(model)/1_000_000
+			usage.OutputCostUSD = float64(usage.CompletionTokens) * model.OutputPriceUSDPer1M / 1_000_000
+			usage.CostUSD = usage.InputCostUSD + usage.CacheReadCostUSD + usage.CacheWriteCostUSD + usage.OutputCostUSD
 		}
 	}
 	return usage
@@ -494,19 +671,68 @@ func raiseQuotaAlerts(tx *gorm.DB, key APIKey, dayCounter, monthCounter *QuotaCo
 	return nil
 }
 
-type MinuteLimitScopes struct {
-	RPM string
-	TPM string
+func raiseUserQuotaAlerts(tx *gorm.DB, resourceID string, dayCounter, monthCounter *QuotaCounter, limits QuotaLimits) error {
+	checks := []struct {
+		limit   float64
+		current float64
+		code    string
+		message string
+	}{
+		{float64(limits.DailyTokens), float64(dayCounter.TotalTokens), "daily_tokens_near_limit", "Daily token quota is near or above limit"},
+		{float64(limits.MonthlyTokens), float64(monthCounter.TotalTokens), "monthly_tokens_near_limit", "Monthly token quota is near or above limit"},
+		{limits.DailyCostUSD, dayCounter.CostUSD, "daily_cost_near_limit", "Daily cost quota is near or above limit"},
+		{limits.MonthlyCostUSD, monthCounter.CostUSD, "monthly_cost_near_limit", "Monthly cost quota is near or above limit"},
+	}
+	for _, check := range checks {
+		if check.limit <= 0 || check.current < check.limit {
+			continue
+		}
+		if err := tx.Create(&AlertEvent{
+			ID:         NewID("alt"),
+			ScopeType:  "user",
+			ScopeID:    "aggregate",
+			Severity:   "warning",
+			Code:       check.code,
+			Message:    check.message,
+			ResourceID: resourceID,
+			CreatedAt:  time.Now().UTC(),
+		}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func quotaPolicyLimits(tx *gorm.DB, project Project, key APIKey) (QuotaLimits, MinuteLimitScopes, error) {
+type MinuteLimitScopes struct {
+	RPM             string
+	TPM             string
+	DailyRequests   string
+	MonthlyRequests string
+	DailyTokens     string
+	MonthlyTokens   string
+	DailyCostUSD    string
+	MonthlyCostUSD  string
+}
+
+type UserQuotaPolicy struct {
+	UserID string
+	Limits QuotaLimits
+}
+
+func (p UserQuotaPolicy) Enabled() bool {
+	return strings.TrimSpace(p.UserID) != "" && p.Limits != (QuotaLimits{})
+}
+
+func quotaPolicyLimits(tx *gorm.DB, project Project, key APIKey) (QuotaLimits, MinuteLimitScopes, UserQuotaPolicy, error) {
 	var resources []AdminResource
 	if err := tx.Where("kind = ? AND status = ?", "quota-policies", StatusActive).
 		Order("created_at asc, id asc").Find(&resources).Error; err != nil {
-		return QuotaLimits{}, MinuteLimitScopes{}, err
+		return QuotaLimits{}, MinuteLimitScopes{}, UserQuotaPolicy{}, err
 	}
 	var limits QuotaLimits
 	var scopes MinuteLimitScopes
+	var userPolicy UserQuotaPolicy
+	attributedUserID := usageAttributionUserID(key, project)
 	for _, resource := range resources {
 		scope := strings.ToLower(strings.TrimSpace(stringField(resource.Fields, "scope")))
 		if scope == "" {
@@ -527,15 +753,74 @@ func quotaPolicyLimits(tx *gorm.DB, project Project, key APIKey) (QuotaLimits, M
 			MonthlyCostUSD:  float64Field(resource.Fields, "monthly_cost_usd"),
 			MaxConcurrency:  int64Field(resource.Fields, "max_concurrency"),
 		}
-		if strictLimitChanged(limits.RateLimitRPM, candidate.RateLimitRPM) {
-			scopes.RPM = normalizedQuotaPolicyScope(scope)
+		if scope == "user" {
+			if scopeID == attributedUserID {
+				userPolicy.UserID = attributedUserID
+				userPolicy.Limits = mergeQuotaLimits(userPolicy.Limits, candidate)
+			}
+			// User-scoped limits are enforced against the aggregate user buckets
+			// below. They must not also become per-key limits.
+			continue
 		}
-		if strictLimitChanged(limits.TokenLimitTPM, candidate.TokenLimitTPM) {
-			scopes.TPM = normalizedQuotaPolicyScope(scope)
-		}
+		updateQuotaLimitScopes(&scopes, limits, candidate, scope)
 		limits = mergeQuotaLimits(limits, candidate)
 	}
-	return limits, scopes, nil
+	return limits, scopes, userPolicy, nil
+}
+
+func updateQuotaLimitScopes(scopes *MinuteLimitScopes, current QuotaLimits, candidate QuotaLimits, scope string) {
+	normalizedScope := normalizedQuotaPolicyScope(scope)
+	if strictLimitChanged(current.RateLimitRPM, candidate.RateLimitRPM) {
+		scopes.RPM = normalizedScope
+	}
+	if strictLimitChanged(current.TokenLimitTPM, candidate.TokenLimitTPM) {
+		scopes.TPM = normalizedScope
+	}
+	if strictLimitChanged(current.DailyRequests, candidate.DailyRequests) {
+		scopes.DailyRequests = normalizedScope
+	}
+	if strictLimitChanged(current.MonthlyRequests, candidate.MonthlyRequests) {
+		scopes.MonthlyRequests = normalizedScope
+	}
+	if strictLimitChanged(current.DailyTokens, candidate.DailyTokens) {
+		scopes.DailyTokens = normalizedScope
+	}
+	if strictLimitChanged(current.MonthlyTokens, candidate.MonthlyTokens) {
+		scopes.MonthlyTokens = normalizedScope
+	}
+	if current.DailyCostUSD <= 0 && candidate.DailyCostUSD > 0 || candidate.DailyCostUSD > 0 && candidate.DailyCostUSD < current.DailyCostUSD {
+		scopes.DailyCostUSD = normalizedScope
+	}
+	if current.MonthlyCostUSD <= 0 && candidate.MonthlyCostUSD > 0 || candidate.MonthlyCostUSD > 0 && candidate.MonthlyCostUSD < current.MonthlyCostUSD {
+		scopes.MonthlyCostUSD = normalizedScope
+	}
+}
+
+func fillMissingKeyQuotaLimitScopes(scopes *MinuteLimitScopes, limits QuotaLimits) {
+	if limits.RateLimitRPM > 0 && scopes.RPM == "" {
+		scopes.RPM = "api_key"
+	}
+	if limits.TokenLimitTPM > 0 && scopes.TPM == "" {
+		scopes.TPM = "api_key"
+	}
+	if limits.DailyRequests > 0 && scopes.DailyRequests == "" {
+		scopes.DailyRequests = "api_key"
+	}
+	if limits.MonthlyRequests > 0 && scopes.MonthlyRequests == "" {
+		scopes.MonthlyRequests = "api_key"
+	}
+	if limits.DailyTokens > 0 && scopes.DailyTokens == "" {
+		scopes.DailyTokens = "api_key"
+	}
+	if limits.MonthlyTokens > 0 && scopes.MonthlyTokens == "" {
+		scopes.MonthlyTokens = "api_key"
+	}
+	if limits.DailyCostUSD > 0 && scopes.DailyCostUSD == "" {
+		scopes.DailyCostUSD = "api_key"
+	}
+	if limits.MonthlyCostUSD > 0 && scopes.MonthlyCostUSD == "" {
+		scopes.MonthlyCostUSD = "api_key"
+	}
 }
 
 func validateQuotaPolicyMinuteLimits(fields map[string]any) error {
@@ -582,6 +867,8 @@ func normalizedQuotaPolicyScope(scope string) string {
 		return "team"
 	case "api_key", "key":
 		return "api_key"
+	case "user":
+		return "user"
 	default:
 		return "global"
 	}
@@ -598,24 +885,131 @@ func quotaPolicyApplies(scope string, scopeID string, project Project, key APIKe
 		return scopeID == "" || scopeID == key.ID
 	case "team":
 		return scopeID == "" || scopeID == project.TeamID
+	case "user":
+		return scopeID != "" && scopeID == usageAttributionUserID(key, project)
 	default:
 		return false
 	}
 }
 
-func (s *GormStore) checkRuntimeBudget(tx *gorm.DB, project Project) error {
-	now := time.Now().UTC()
+// runtimeBudgetCandidate is an active budget that can still block the current
+// call: enforced, covering the current period, and carrying a positive amount.
+type runtimeBudgetCandidate struct {
+	scope   string
+	scopeID string
+	amount  float64
+}
+
+// runtimeBudgetScopes records which scope totals the applicable budgets read, so
+// the aggregation only loads the data those budgets actually need.
+type runtimeBudgetScopes struct {
+	global     bool
+	team       bool
+	costCenter bool
+}
+
+// runtimeBudgetTotals holds the current period's spend per budget scope. Every
+// value is derived from one aggregate query, so admission issues a constant
+// number of statements no matter how many budgets or usage records exist.
+type runtimeBudgetTotals struct {
+	global     float64
+	project    float64
+	team       float64
+	costCenter float64
+}
+
+func (t runtimeBudgetTotals) forScope(scope string) float64 {
+	switch scope {
+	case "project":
+		return t.project
+	case "team":
+		return t.team
+	case "cost_center", "cost-center":
+		return t.costCenter
+	case "global", "organization":
+		return t.global
+	default:
+		return 0
+	}
+}
+
+// projectPeriodCost is one row of the per-project spend aggregate.
+type projectPeriodCost struct {
+	ProjectID string
+	Total     float64
+}
+
+// checkRuntimeBudget rejects the call when an enforced budget covering this
+// project is already spent. It filters budgets in two phases so a deployment
+// without matching budgets never reads the usage tables: the candidate pass
+// needs the budget rows alone, and the cost center, project, and usage lookups
+// only happen once a candidate is known to apply.
+//
+// The caller supplies now so budget enforcement resolves its period from the
+// same database clock reading that admission uses for the quota buckets. A
+// local reading would place the two on different months whenever the database
+// and this host disagree across a period boundary.
+func (s *GormStore) checkRuntimeBudget(tx *gorm.DB, project Project, now time.Time) error {
+	now = now.UTC()
 	period := now.Format("2006-01")
-	costCenter := s.costCenterForProjectWithDB(tx, project)
 	var budgets []AdminResource
 	if err := tx.Where("kind = ? AND status = ?", "budgets", StatusActive).Find(&budgets).Error; err != nil {
 		return err
 	}
-	for _, budget := range budgets {
-		if !budgetEnforced(budget) {
+	candidates, hasCostCenterScope := runtimeBudgetCandidates(budgets, now, period)
+	if len(candidates) == 0 {
+		return nil
+	}
+	// The cost center only decides whether cost center scoped budgets apply, so
+	// deployments without one never read teams or quota policies here.
+	costCenter := ""
+	var teamsByID, quotasByID map[string]AdminResource
+	if hasCostCenterScope {
+		var err error
+		teamsByID, quotasByID, err = loadCostCenterResources(tx)
+		if err != nil {
+			return err
+		}
+		costCenter = costCenterForProject(project, teamsByID, quotasByID)
+	}
+	applicable := make([]runtimeBudgetCandidate, 0, len(candidates))
+	var scopes runtimeBudgetScopes
+	for _, candidate := range candidates {
+		if !budgetScopeAppliesToProject(candidate.scope, candidate.scopeID, project, costCenter) {
 			continue
 		}
-		if !budgetAppliesToProject(budget, project, costCenter) {
+		applicable = append(applicable, candidate)
+		switch candidate.scope {
+		case "team":
+			scopes.team = true
+		case "cost_center", "cost-center":
+			scopes.costCenter = true
+		case "global", "organization":
+			scopes.global = true
+		}
+	}
+	if len(applicable) == 0 {
+		return nil
+	}
+	totals, err := s.aggregateRuntimeBudgetTotals(tx, period, project, scopes, costCenter, teamsByID, quotasByID)
+	if err != nil {
+		return err
+	}
+	for _, candidate := range applicable {
+		if totals.forScope(candidate.scope) >= candidate.amount {
+			return ErrBudgetExceeded
+		}
+	}
+	return nil
+}
+
+// runtimeBudgetCandidates keeps the budgets that can block a call and reports
+// whether any of them is cost center scoped.
+func runtimeBudgetCandidates(budgets []AdminResource, now time.Time, period string) ([]runtimeBudgetCandidate, bool) {
+	candidates := make([]runtimeBudgetCandidate, 0, len(budgets))
+	hasCostCenterScope := false
+	for _, budget := range budgets {
+		if !budgetEnforced(budget) {
 			continue
 		}
 		if budgetPeriod := strings.TrimSpace(stringField(budget.Fields, "period_ref")); budgetPeriod != "" && normalizeBillingPeriod(budgetPeriod, now) != period {
@@ -625,66 +1019,90 @@ func (s *GormStore) checkRuntimeBudget(tx *gorm.DB, project Project) error {
 		if amount <= 0 {
 			continue
 		}
-		used, err := s.runtimeBudgetUsed(tx, budget, period)
-		if err != nil {
-			return err
-		}
-		if used >= amount {
-			return ErrBudgetExceeded
+		scope := strings.ToLower(strings.TrimSpace(stringField(budget.Fields, "scope")))
+		candidates = append(candidates, runtimeBudgetCandidate{
+			scope:   scope,
+			scopeID: budgetScopeID(budget, scope),
+			amount:  amount,
+		})
+		if scope == "cost_center" || scope == "cost-center" {
+			hasCostCenterScope = true
 		}
 	}
-	return nil
+	return candidates, hasCostCenterScope
 }
 
-func (s *GormStore) runtimeBudgetUsed(tx *gorm.DB, budget AdminResource, period string) (float64, error) {
-	scope := strings.ToLower(strings.TrimSpace(stringField(budget.Fields, "scope")))
-	scopeID := budgetScopeID(budget, scope)
-	start := periodStart(period)
-	end := periodEnd(period)
-	switch scope {
-	case "project":
-		var total sql.NullFloat64
-		if err := tx.Model(&UsageRecord{}).
-			Where("project_id = ? AND created_at >= ? AND created_at < ?", scopeID, start, end).
-			Select("sum(cost_usd)").Scan(&total).Error; err != nil {
-			return 0, err
-		}
-		return total.Float64, nil
-	case "global", "organization":
-		var total sql.NullFloat64
-		if err := tx.Model(&UsageRecord{}).
-			Where("created_at >= ? AND created_at < ?", start, end).
-			Select("sum(cost_usd)").Scan(&total).Error; err != nil {
-			return 0, err
-		}
-		return total.Float64, nil
-	case "team", "cost_center", "cost-center":
-		var records []UsageRecord
-		if err := tx.Where("created_at >= ? AND created_at < ?", start, end).Find(&records).Error; err != nil {
-			return 0, err
-		}
-		projectCache := map[string]Project{}
-		var total float64
-		for _, record := range records {
-			project, ok := projectCache[record.ProjectID]
-			if !ok {
-				if err := tx.First(&project, "id = ?", record.ProjectID).Error; err != nil {
-					continue
-				}
-				projectCache[record.ProjectID] = project
-			}
-			if scope == "team" && project.TeamID == scopeID {
-				total += record.CostUSD
-				continue
-			}
-			if (scope == "cost_center" || scope == "cost-center") && s.costCenterForProjectWithDB(tx, project) == scopeID {
-				total += record.CostUSD
-			}
-		}
-		return total, nil
-	default:
-		return 0, nil
+// loadCostCenterResources reads the resources costCenterForProject resolves
+// against. Like the per-project lookups it replaces, it ignores resource status.
+// It does report read errors instead of falling through the cost center chain,
+// because a budget resolved against a half-read table would silently admit
+// spend the budget was meant to stop.
+func loadCostCenterResources(tx *gorm.DB) (map[string]AdminResource, map[string]AdminResource, error) {
+	var resources []AdminResource
+	if err := tx.Where("kind IN ?", []string{"teams", "quota-policies"}).Find(&resources).Error; err != nil {
+		return nil, nil, err
 	}
+	teamsByID := map[string]AdminResource{}
+	quotasByID := map[string]AdminResource{}
+	for _, resource := range resources {
+		switch resource.Kind {
+		case "teams":
+			teamsByID[resource.ID] = resource
+		case "quota-policies":
+			quotasByID[resource.ID] = resource
+		}
+	}
+	return teamsByID, quotasByID, nil
+}
+
+// aggregateRuntimeBudgetTotals sums the period once, grouped by project, and
+// folds those subtotals into every scope the applicable budgets consult.
+func (s *GormStore) aggregateRuntimeBudgetTotals(tx *gorm.DB, period string, project Project, scopes runtimeBudgetScopes, costCenter string, teamsByID, quotasByID map[string]AdminResource) (runtimeBudgetTotals, error) {
+	query := tx.Model(&UsageRecord{}).Where("created_at >= ? AND created_at < ?", periodStart(period), periodEnd(period))
+	if !scopes.global && !scopes.team && !scopes.costCenter {
+		// Only this project's own budgets are in play, so stay on the
+		// (project_id, created_at) index instead of scanning the whole period.
+		query = query.Where("project_id = ?", project.ID)
+	}
+	var rows []projectPeriodCost
+	if err := query.Select("project_id, COALESCE(SUM(cost_usd), 0) AS total").Group("project_id").Scan(&rows).Error; err != nil {
+		return runtimeBudgetTotals{}, err
+	}
+	var projectsByID map[string]Project
+	if scopes.team || scopes.costCenter {
+		var projects []Project
+		// These are the columns costCenterForProject and the team match read.
+		if err := tx.Select("id", "team_id", "cost_center", "default_quota_ref").Find(&projects).Error; err != nil {
+			return runtimeBudgetTotals{}, err
+		}
+		projectsByID = make(map[string]Project, len(projects))
+		for _, item := range projects {
+			projectsByID[item.ID] = item
+		}
+	}
+	var totals runtimeBudgetTotals
+	for _, row := range rows {
+		totals.global += row.Total
+		if row.ProjectID == project.ID {
+			totals.project += row.Total
+		}
+		if !scopes.team && !scopes.costCenter {
+			continue
+		}
+		// Usage left behind by a deleted project belongs to no team and no cost
+		// center, which is what the per-record project lookup used to decide.
+		rowProject, ok := projectsByID[row.ProjectID]
+		if !ok {
+			continue
+		}
+		if scopes.team && rowProject.TeamID == project.TeamID {
+			totals.team += row.Total
+		}
+		if scopes.costCenter && costCenterForProject(rowProject, teamsByID, quotasByID) == costCenter {
+			totals.costCenter += row.Total
+		}
+	}
+	return totals, nil
 }
 
 func budgetScopeID(budget AdminResource, scope string) string {
@@ -714,9 +1132,7 @@ func budgetEnforced(budget AdminResource) bool {
 	return true
 }
 
-func budgetAppliesToProject(budget AdminResource, project Project, costCenter string) bool {
-	scope := strings.ToLower(strings.TrimSpace(stringField(budget.Fields, "scope")))
-	scopeID := budgetScopeID(budget, scope)
+func budgetScopeAppliesToProject(scope string, scopeID string, project Project, costCenter string) bool {
 	switch scope {
 	case "project":
 		return scopeID != "" && scopeID == project.ID

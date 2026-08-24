@@ -37,7 +37,7 @@ func TestMarshalUnmarshalBundle(t *testing.T) {
 }
 
 func TestUnmarshalRejectsIncompatibleVersion(t *testing.T) {
-	data := []byte(`{"schema_version":"2.0.0","source":{"adapter":"litellm","adapter_version":"1.60.0"},"generated_at":"2026-07-23T10:00:00Z"}`)
+	data := []byte(`{"schema_version":"1.2.0","source":{"adapter":"litellm","adapter_version":"1.60.0"},"generated_at":"2026-07-23T10:00:00Z"}`)
 	if _, err := Unmarshal(data); err == nil {
 		t.Fatal("expected incompatible schema version to fail")
 	}

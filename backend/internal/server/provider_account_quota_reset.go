@@ -79,11 +79,7 @@ type openAIAccountQuotaResetOperation struct {
 	UpstreamStatus         int
 }
 
-func (s *Server) handleAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
+func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	details, err := s.queryOpenAIAccountQuotaResetCredits(r.Context(), resourceID)
 	if err != nil {
 		httpErr := AsHTTPError(err)
@@ -95,20 +91,16 @@ func (s *Server) handleAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, details)
 }
 
-func (s *Server) handleAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
+func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	if strings.TrimSpace(r.Header.Get(openAIAccountQuotaResetDangerHeader)) != openAIAccountQuotaResetDangerValue {
 		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, "quota_reset_danger_confirmation_required")
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "quota_reset_danger_confirmation_required", "The dangerous operation confirmation header is required"))
 		return
 	}
 	var req openAIAccountQuotaResetRequest
-	if err := decodeJSON(r, &req); err != nil {
-		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, "invalid_request")
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, AsHTTPError(err).Code)
+		writeError(w, r, err)
 		return
 	}
 	if err := validateOpenAIAccountQuotaResetRequest(req, r.Header.Get("Idempotency-Key")); err != nil {
@@ -636,6 +628,9 @@ func openAIAccountQuotaResetDo(client *http.Client, req *http.Request) (*http.Re
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return nil, egressErr
+		}
 		if req.Method == http.MethodPost {
 			status := http.StatusBadGateway
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(req.Context().Err(), context.DeadlineExceeded) {

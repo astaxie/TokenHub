@@ -4,7 +4,7 @@ import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabel, roleLabel, splitList } from "./labels";
 import { tx } from "../i18n/runtime";
-import { preferredModelCategories } from "../shared/ui";
+import { preferredModelCategories } from "./model-categories";
 
 export const codexSubscriptionBaseURL = "https://chatgpt.com/backend-api/codex";
 
@@ -134,8 +134,11 @@ export function modelSelectOptions(data: AppData) {
     }));
 }
 
-export function providerSelectOptions(data: AppData) {
-  return data.providers
+export function providerSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
+  const providers = values?.model_name?.trim() === codexImageModelName
+    ? data.providers.filter((provider) => provider.type === "openai_codex")
+    : data.providers;
+  return providers
     .slice()
     .sort((left, right) => (left.priority - right.priority) || left.name.localeCompare(right.name))
     .map((provider) => ({
@@ -147,6 +150,11 @@ export function providerSelectOptions(data: AppData) {
 export function providerModelSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
   const providerID = values?.provider_id?.trim();
   if (!providerID) return [];
+  if (values?.model_name?.trim() === codexImageModelName) {
+    return data.providers.some((provider) => provider.id === providerID && provider.type === "openai_codex")
+      ? [{ value: "gpt-image-2", label: "gpt-image-2" }]
+      : [];
+  }
   const seen = new Set<string>();
   return data.providerModels
     .filter((model) => model.provider_id === providerID)
@@ -663,7 +671,10 @@ export function providerRouteDefaults(provider: Provider, data: AppData) {
 }
 
 export function modelRouteDefaults(model: Model, data: AppData) {
-  const firstProvider = firstActiveProvider(data);
+  const firstProvider = isCodexSubscriptionImageModel(model)
+    ? data.providers.find((provider) => provider.type === "openai_codex" && provider.status === "active")
+      ?? data.providers.find((provider) => provider.type === "openai_codex")
+    : firstActiveProvider(data);
   const matchingProviderModel = data.providerModels.find((providerModel) =>
     providerModel.provider_id === firstProvider?.id
       && (providerModel.upstream_model === model.name || providerModel.canonical_name === model.name),
@@ -671,7 +682,7 @@ export function modelRouteDefaults(model: Model, data: AppData) {
   return {
     model_name: model.name,
     provider_id: firstProvider?.id ?? "",
-    provider_model: matchingProviderModel?.upstream_model ?? "",
+    provider_model: isCodexSubscriptionImageModel(model) ? "gpt-image-2" : matchingProviderModel?.upstream_model ?? "",
     priority: "1",
     weight: "100",
     quality_score: "50",

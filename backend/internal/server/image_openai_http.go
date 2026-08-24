@@ -195,9 +195,7 @@ func (a OpenAICompatibleAdapter) doMultipartRaw(
 		req.Header.Set("authorization", "Bearer "+provider.APIKey)
 	}
 	applyOpenAICompatibleAccountHeaders(req, provider)
-	for key, value := range provider.Headers {
-		req.Header.Set(key, value)
-	}
+	applyProviderHeaders(req.Header, provider.Headers)
 	client := a.Client
 	if client == nil {
 		client = http.DefaultClient
@@ -206,7 +204,7 @@ func (a OpenAICompatibleAdapter) doMultipartRaw(
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil

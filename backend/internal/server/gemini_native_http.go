@@ -8,17 +8,19 @@ import (
 )
 
 func (s *Server) registerModelRoutes() {
-	s.mux.HandleFunc("/v1/models", s.handleModels)
+	s.registerPublicSingleMethodRoute(http.MethodGet, "/v1/models", s.handleModels, jsonMethodNotAllowed(http.MethodGet))
+	s.registerPublicDynamicGETRoute("/v1/models/{model...}", s.handleModelGet, jsonMethodNotAllowed(http.MethodGet))
 	s.mux.HandleFunc("/v1/models/", s.handleModel)
-	s.mux.HandleFunc("/v1beta/models", s.handleGeminiModels)
+	s.registerPublicSingleMethodRoute(http.MethodGet, "/v1beta/models", s.handleGeminiModels, jsonMethodNotAllowed(http.MethodGet))
+	s.registerPublicDynamicGETRoute("/v1beta/models/{model...}", s.handleGeminiModelGetRoute, geminiModelHeadFallback)
+	s.registerDynamicMethodRoute(http.MethodPost, "/v1beta/models/{model...}", s.handleGeminiModelPostRoute)
+	for _, action := range []string{"generateContent", "streamGenerateContent", "countTokens"} {
+		s.registerPublicGatewayOperation(http.MethodPost, "/v1beta/models/{model}:"+action)
+	}
 	s.mux.HandleFunc("/v1beta/models/", s.handleGeminiModel)
 }
 
 func (s *Server) handleGeminiModels(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	_, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -33,27 +35,63 @@ func (s *Server) handleGeminiModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGeminiModel(w http.ResponseWriter, r *http.Request) {
+	_, action, err := geminiModelPath(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	jsonMethodNotAllowed(geminiModelAllowedMethod(action))(w, r)
+}
+
+func (s *Server) handleGeminiModelGetRoute(w http.ResponseWriter, r *http.Request) {
 	model, action, err := geminiModelPath(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	if action == "" && r.Method == http.MethodGet {
-		s.handleGeminiModelGet(w, r, model)
+	if action != "" {
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	s.handleGeminiModelGet(w, r, model)
+}
+
+func (s *Server) handleGeminiModelPostRoute(w http.ResponseWriter, r *http.Request) {
+	model, action, err := geminiModelPath(r)
+	if err != nil {
+		writeError(w, r, err)
 		return
 	}
 	switch action {
-	case "generateContent", "streamGenerateContent":
-		s.gatewayInFlight(s.handleGeminiGenerate)(w, r)
+	case "generateContent":
+		s.gatewayInFlight(func(w http.ResponseWriter, r *http.Request) {
+			s.handleGeminiGenerate(w, r, model, false)
+		})(w, r)
+	case "streamGenerateContent":
+		s.gatewayInFlight(func(w http.ResponseWriter, r *http.Request) {
+			s.handleGeminiGenerate(w, r, model, true)
+		})(w, r)
 	case "countTokens":
 		s.handleGeminiCountTokens(w, r, model)
 	default:
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "operation_not_found", "Gemini model operation not found"))
 	}
+}
+
+func geminiModelHeadFallback(w http.ResponseWriter, r *http.Request) {
+	_, action, err := geminiModelPath(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	jsonMethodNotAllowed(geminiModelAllowedMethod(action))(w, r)
+}
+
+func geminiModelAllowedMethod(action string) string {
+	if action == "" {
+		return http.MethodGet
+	}
+	return http.MethodPost
 }
 
 func (s *Server) handleGeminiModelGet(w http.ResponseWriter, r *http.Request, modelName string) {
@@ -82,8 +120,8 @@ func (s *Server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var payload map[string]any
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	tokens := estimateAnthropicValueTokens(payload["contents"]) + estimateAnthropicValueTokens(payload["systemInstruction"]) + estimateAnthropicValueTokens(payload["tools"])
@@ -93,21 +131,15 @@ func (s *Server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, map[string]any{"totalTokens": tokens})
 }
 
-func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request) {
-	model, action, err := geminiModelPath(r)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-	stream := action == "streamGenerateContent"
+func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, model string, stream bool) {
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	var payload map[string]any
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	request, reverseNames, err := geminiToResponsesRequest(model, payload, stream)
@@ -219,6 +251,13 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		s.store.MarkRouteUsed(route.Route.ID)
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
+	// StreamOutputCommitted stays unwired: it would keep the full TPM
+	// reservation on an interrupted stream with no provider token usage
+	// (store_routing_calls.go), changing quota behavior beyond this
+	// observability-only change. FirstByteAt and StreamFailed only label
+	// observability output, so wiring them is safe.
+	routed.Call.FirstByteAt = tracker.firstByteTime(streamErr == nil)
+	routed.Call.StreamFailed = streamErr != nil && tracker.Wrote()
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,
@@ -329,6 +368,6 @@ func geminiModelObject(model Model) map[string]any {
 		"description":                "TokenHub routed model",
 		"inputTokenLimit":            inputLimit,
 		"outputTokenLimit":           32768,
-		"supportedGenerationMethods": []string{"generateContent", "countTokens"},
+		"supportedGenerationMethods": []string{"generateContent", "streamGenerateContent", "countTokens"},
 	}
 }

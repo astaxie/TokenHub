@@ -1,0 +1,6 @@
+{
+  "minimum_success_rate_percent": 99.9,
+  "minimum_throughput_ratio": 0.9,
+  "maximum_mean_regression_percent": 15,
+  "maximum_p99_regression_percent": 20
+}

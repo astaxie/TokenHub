@@ -39,21 +39,52 @@ var errProviderStreamIdle = NewHTTPError(
 // the idle budget the streaming one is paired with. Two clients rather than one
 // because http.Client.Timeout covers reading the response body: a total deadline
 // that suits a normal request truncates a stream that is still delivering.
-func newUpstreamClients(config Config) (*http.Client, *http.Client, time.Duration) {
+//
+// Both clients validate the actual request before sending credentials, dial
+// through the SSRF guard, and follow the strict redirect policy. Save-time
+// validation alone cannot protect old records or later DNS rebinding, and a
+// redirect must never bounce inference traffic into the internal network.
+func newUpstreamClients(config Config, syntheticDNS ...*providerSyntheticDNSPolicy) (*http.Client, *http.Client, time.Duration) {
+	var syntheticDNSPolicy *providerSyntheticDNSPolicy
+	if len(syntheticDNS) > 0 {
+		syntheticDNSPolicy = syntheticDNS[0]
+	}
+	return newUpstreamClientsWithPolicies(config, syntheticDNSPolicy, nil)
+}
+
+func newUpstreamClientsWithPolicies(config Config, syntheticDNS *providerSyntheticDNSPolicy, proxyPolicy *providerProxyPolicy) (*http.Client, *http.Client, time.Duration) {
 	idleTimeout := upstreamTimeout(config.UpstreamStreamIdleTimeoutSeconds, defaultUpstreamStreamIdleTimeoutSeconds)
-	client := &http.Client{Timeout: upstreamTimeout(config.UpstreamNonStreamTimeoutSeconds, defaultUpstreamNonStreamTimeoutSeconds)}
-	return client, newUpstreamStreamClient(idleTimeout), idleTimeout
+	allowedPrivate := allowedProviderUpstreamCIDRs()
+	client := &http.Client{
+		Timeout:       upstreamTimeout(config.UpstreamNonStreamTimeoutSeconds, defaultUpstreamNonStreamTimeoutSeconds),
+		Transport:     rotatingProviderUpstreamTransport(allowedPrivate, syntheticDNS, proxyPolicy, nil),
+		CheckRedirect: strictProviderUpstreamRedirect,
+	}
+	return client, newUpstreamStreamClientWithPolicies(idleTimeout, syntheticDNS, proxyPolicy), idleTimeout
 }
 
 // newUpstreamStreamClient returns the client used for streaming upstream calls:
 // no total deadline, and a header timeout matching the idle budget so a stream
-// that never starts fails on the same terms as one that stops.
-func newUpstreamStreamClient(idleTimeout time.Duration) *http.Client {
-	// Cloned rather than mutated: http.DefaultTransport is process-global, and
-	// giving it a header timeout would apply it to every other caller too.
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.ResponseHeaderTimeout = idleTimeout
-	return &http.Client{Transport: transport}
+// that never starts fails on the same terms as one that stops. It uses the same
+// proxy-aware transport as the non-streaming client, with SSRF-guarded dialing
+// on the direct path.
+func newUpstreamStreamClient(idleTimeout time.Duration, syntheticDNS ...*providerSyntheticDNSPolicy) *http.Client {
+	var syntheticDNSPolicy *providerSyntheticDNSPolicy
+	if len(syntheticDNS) > 0 {
+		syntheticDNSPolicy = syntheticDNS[0]
+	}
+	return newUpstreamStreamClientWithPolicies(idleTimeout, syntheticDNSPolicy, nil)
+}
+
+func newUpstreamStreamClientWithPolicies(idleTimeout time.Duration, syntheticDNS *providerSyntheticDNSPolicy, proxyPolicy *providerProxyPolicy) *http.Client {
+	// Each transport generation clones the default transport (never mutates the
+	// process-global one), installs the guarded direct DialContext, and adds the
+	// streaming response-header timeout to both direct and proxied pools.
+	allowedPrivate := allowedProviderUpstreamCIDRs()
+	transport := rotatingProviderUpstreamTransport(allowedPrivate, syntheticDNS, proxyPolicy, func(transport *http.Transport) {
+		transport.ResponseHeaderTimeout = idleTimeout
+	})
+	return &http.Client{Transport: transport, CheckRedirect: strictProviderUpstreamRedirect}
 }
 
 // upstreamTimeout converts a configured second count into a duration, falling

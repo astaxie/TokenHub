@@ -55,14 +55,20 @@ func identityProviderPlatformConfigurationComplete(provider AdminResource) bool 
 	}
 }
 
-func buildIdentityProviderAuthorizeURL(provider AdminResource, redirectURI string, state string) (string, error) {
+func buildIdentityProviderAuthorizeURL(provider AdminResource, redirectURI string, state string, codeChallenge string) (string, error) {
 	authorizeURL := strings.TrimSpace(stringField(provider.Fields, "authorize_url"))
 	clientID := strings.TrimSpace(stringField(provider.Fields, "client_id"))
-	target, err := buildOAuthAuthorizeURL(authorizeURL, clientID, redirectURI, identityProviderScopes(provider), state)
+	templateKey := identityProviderTemplateKey(provider)
+	if templateKey == identityProviderDingTalk || templateKey == identityProviderFeishu || templateKey == identityProviderWeCom {
+		// These vendor-specific exchanges do not accept a PKCE verifier. Do not
+		// advertise a challenge that the token exchange cannot bind. The separate
+		// browser-to-TokenHub exchange remains protected by mandatory S256 PKCE.
+		codeChallenge = ""
+	}
+	target, err := buildOAuthAuthorizeURL(authorizeURL, clientID, redirectURI, identityProviderScopes(provider), state, codeChallenge)
 	if err != nil {
 		return "", err
 	}
-	templateKey := identityProviderTemplateKey(provider)
 	if templateKey != identityProviderDingTalk && templateKey != identityProviderFeishu && templateKey != identityProviderWeCom {
 		return target, nil
 	}

@@ -11,6 +11,11 @@ func (s *Server) providerForCreate(ctx context.Context, req ProviderCreateReques
 		return Provider{}, ProviderCatalogEntry{}, "", err
 	}
 	provider, catalog, source, err := s.providerFromCreateRequest(ctx, req)
+	if err == nil {
+		if _, configured := provider.Options[claudeCodeAttributionPolicyOption]; !configured {
+			provider.Options[claudeCodeAttributionPolicyOption] = defaultClaudeCodeAttributionPolicy(provider.Type, provider.Options["catalog_id"])
+		}
+	}
 	if err == nil && provider.Name != "" && provider.Type != "" {
 		err = validateProviderModelSelection(catalog, req.SelectedModels)
 	}

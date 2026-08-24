@@ -1,0 +1,105 @@
+name: Bug report
+description: Report reproducible behavior that differs from expected TokenHub behavior.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write the issue title and all explanatory text in English. Machine-generated output and code may remain in their original form.
+
+        Search existing issues before submitting a new report. Never include API keys, provider credentials, tokens, cookies, or other secrets.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Select the area most closely related to the problem.
+      options:
+        - OpenAI-compatible API
+        - Anthropic Messages API
+        - Authentication and API keys
+        - Provider and model routing
+        - Admin console
+        - Persistence and migrations
+        - Deployment and configuration
+        - SDK smoke tests
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: TokenHub version
+      description: Provide the release, container image tag, or commit SHA.
+      placeholder: v1.2.3 or 0123456789abcdef
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Source checkout using ./start.sh
+        - Docker Compose with SQLite
+        - Docker Compose with PostgreSQL
+        - Custom container or orchestrator
+        - Not deployment-related
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior
+      description: Describe what happened, including relevant error messages or symptoms.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: Describe what should have happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Configure ...
+        2. Send ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or configuration
+      description: Paste only the minimum redacted output needed to investigate the problem.
+      render: shell
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add links, screenshots, or other information that may help with investigation.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I searched open and closed issues for duplicates.
+          required: true
+        - label: The issue title and all explanatory text are written in English.
+          required: true
+        - label: I removed or redacted all credentials and other secrets.
+          required: true

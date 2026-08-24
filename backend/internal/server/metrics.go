@@ -28,6 +28,16 @@ const (
 // 10s and would put almost every LLM request in +Inf.
 var gatewayDurationBuckets = []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 60, 120, 300}
 
+// gatewayOverheadBuckets is sized for gateway-only work: auth, routing, DB and
+// serialization. Values below a millisecond are rounded away by the attempt
+// latency clamp, and multi-second overhead is already a clear outlier.
+var gatewayOverheadBuckets = []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+
+// gatewayTTFBBuckets is sized for client-perceived time to first byte. The lowest
+// buckets catch sub-100ms cached responses; the top bucket catches rare long-tail
+// startup including failover retry time.
+var gatewayTTFBBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60}
+
 // GatewayMetrics holds the Prometheus collectors for the model API.
 //
 // It owns its registry rather than using the default one, so tests get an isolated
@@ -52,6 +62,38 @@ type GatewayMetrics struct {
 	// like a gateway that received no traffic.
 	traceCompletions *prometheus.CounterVec
 	traceSpans       *prometheus.CounterVec
+
+	// routeAttempts counts every candidate the router considered, including
+	// capacity-skipped attempts. It is the physical attempt count behind the
+	// logical request count in routed_requests_total.
+	routeAttempts *prometheus.CounterVec
+	// attemptDuration records only invoked attempts, split by outcome. It measures
+	// the whole routed attempt — upstream transport, stream translation and
+	// writing to the client — so streaming calls include slow-client backpressure;
+	// the upstream boundary itself is not separately timed here.
+	attemptDuration *prometheus.HistogramVec
+	// routedRequests counts logical requests that made at least one candidate
+	// attempt. It is the denominator for the failover-depth ratio: requests_total
+	// also counts refusals that never reached a provider.
+	routedRequests *prometheus.CounterVec
+	// overhead is the gateway's own cost: max(0, elapsed - sum(invoked attempt
+	// duration)). A request admitted for routing that fails before any attempt
+	// contributes its full elapsed time. It is an approximation because attempt
+	// durations are rounded to whole milliseconds and clamped to a positive floor.
+	overhead *prometheus.HistogramVec
+
+	responseQueueDepth prometheus.Gauge
+	responseQueueWait  prometheus.Histogram
+	responseExecution  *prometheus.HistogramVec
+	responseJobs       *prometheus.CounterVec
+	responseRecoveries *prometheus.CounterVec
+	// timeToFirstByte records client-perceived latency until the first streamed
+	// byte. It is measured from the local admission reference so it includes any
+	// failover retry time, which is what the caller actually waited for.
+	timeToFirstByte *prometheus.HistogramVec
+	// interruptions counts streams that failed after the first byte was written.
+	// The error_code label distinguishes upstream failures from client disconnects.
+	interruptions *prometheus.CounterVec
 }
 
 const (
@@ -61,6 +103,19 @@ const (
 	traceSpanOutcomeExported = "exported"
 	traceSpanOutcomeFailed   = "failed"
 )
+
+// GatewayAttemptSample is one candidate attempt, reduced to the fields the
+// metrics layer needs. Keeping it separate from RouteAttempt avoids pulling the
+// full routing structure into the metrics package.
+type GatewayAttemptSample struct {
+	ProviderType string
+	ProviderID   string
+	ResourceID   string
+	StatusCode   int
+	ErrorCode    string
+	Invoked      bool
+	Duration     time.Duration
+}
 
 // GatewayCallSample is one finished gateway request, successful or not.
 type GatewayCallSample struct {
@@ -74,6 +129,20 @@ type GatewayCallSample struct {
 	Stream       bool
 	Duration     time.Duration
 	Usage        Usage
+	// Attempts is the per-candidate outcome slice. Empty means no candidate was
+	// tried — the request was refused before routing or failed during route
+	// selection — and both still count in requests_total.
+	Attempts []GatewayAttemptSample
+	// TimeToFirstByte is the streamed latency until the first byte reached the
+	// client, measured from the local admission reference. Zero means the request
+	// was not streamed or no byte was written.
+	TimeToFirstByte time.Duration
+	// StreamFailed records that a streamed request ended in failure after the
+	// response started. It carries the failure fact the committed HTTP status can
+	// no longer express: a stream keeps its 200 even when the upstream fails
+	// mid-body, so the interruption classification keys off this flag instead of
+	// the status-code projection.
+	StreamFailed bool
 }
 
 // NewGatewayMetrics builds the collectors. When projectLabel is true every metric
@@ -141,11 +210,131 @@ func NewGatewayMetrics(projectLabel bool) *GatewayMetrics {
 		Help:      "Spans by what the OTLP exporter did with them. \"failed\" means the trace backend rejected them or could not be reached.",
 	}, []string{"outcome"})
 
-	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans)
+	m.routeAttempts = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "route_attempts_total",
+		Help:      "Candidate attempts by outcome. Counts physical attempts, so a request that failed over across several candidates counts each candidate. The ratio rate(route_attempts_total) / rate(routed_requests_total) is the average failover depth; routed_requests_total counts only requests that made an attempt, so refusals that never reached a provider cannot dilute it. status_code is the gateway-mapped status (an upstream 401 is reported as 502); the raw upstream status is in the RouteAttemptLog.",
+	}, withProject("model", "provider_type", "provider_id", "resource_id", "status_code", "error_code", "invoked"))
+	m.attemptDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "attempt_duration_seconds",
+		Help:      "Duration of one invoked routed attempt, measured around the whole attempt: upstream transport, stream translation, and writing to the client. Streaming calls therefore include slow-client backpressure; gateway overhead is reported separately in overhead_seconds. Excludes candidates skipped for capacity.",
+		Buckets:   gatewayDurationBuckets,
+	}, withProject("model", "provider_type", "outcome"))
+	m.routedRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "routed_requests_total",
+		Help:      "Logical model API requests that made at least one candidate attempt. It is the attempt-bearing denominator for the failover-depth ratio; requests_total also counts refusals that never reached a provider. Its provider_type label is the last candidate attempted, so aggregate the depth ratio by model rather than by provider_type when requests fail over across providers.",
+	}, withProject("model", "provider_type", "stream"))
+	m.overhead = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "overhead_seconds",
+		Help:      "Approximate gateway overhead per request: elapsed end-to-end time minus the sum of invoked attempt durations. Clamped at zero. A request admitted for routing that fails before any attempt contributes its full elapsed time. For image jobs the elapsed time includes queue wait, so overhead there is an upper bound.",
+		Buckets:   gatewayOverheadBuckets,
+	}, withProject("stream"))
+	m.responseQueueDepth = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_jobs_queued",
+		Help:      "Durable Responses jobs waiting in the shared database, sampled by this replica.",
+	})
+	m.responseQueueWait = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_job_queue_wait_seconds",
+		Help:      "Time from durable Responses submission until a worker claims the job.",
+		Buckets:   gatewayDurationBuckets,
+	})
+	m.responseExecution = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_job_execution_seconds",
+		Help:      "Time from durable Responses worker claim until a terminal state.",
+		Buckets:   gatewayDurationBuckets,
+	}, []string{"status"})
+	m.responseJobs = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_jobs_total",
+		Help:      "Durable Responses jobs reaching a terminal state, split by status and bounded failure code.",
+	}, []string{"status", "error_code"})
+	m.responseRecoveries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "response_job_recoveries_total",
+		Help:      "Expired durable Responses leases by safe recovery decision.",
+	}, []string{"decision"})
+
+	m.timeToFirstByte = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "time_to_first_byte_seconds",
+		Help:      "Client-perceived time to first byte for streamed requests, measured from local admission so failover retry time is included. Empty-body 200 responses record first byte at stream end.",
+		Buckets:   gatewayTTFBBuckets,
+	}, withProject("model", "provider_type"))
+	m.interruptions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsSubsystem,
+		Name:      "stream_interruptions_total",
+		Help:      "Streamed requests that failed after the first byte was written. error_code is the final classified error code: HTTP-level upstream failures keep their code, while transport-level failures and client disconnects both collapse to internal_error.",
+	}, withProject("model", "provider_type", "provider_id", "error_code"))
+
+	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans, m.routeAttempts, m.attemptDuration, m.routedRequests, m.overhead, m.responseQueueDepth, m.responseQueueWait, m.responseExecution, m.responseJobs, m.responseRecoveries, m.timeToFirstByte, m.interruptions)
 	// Process and Go runtime metrics are what an operator reaches for first when the
 	// gateway itself is the suspect, and they cost nothing to collect.
 	m.registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	return m
+}
+
+func (m *GatewayMetrics) SetResponseQueueDepth(depth int64) {
+	if m == nil {
+		return
+	}
+	m.responseQueueDepth.Set(float64(maxInt64(depth, 0)))
+}
+
+func (m *GatewayMetrics) ObserveResponseJobClaim(createdAt time.Time, startedAt time.Time) {
+	if m == nil || createdAt.IsZero() || startedAt.IsZero() {
+		return
+	}
+	wait := startedAt.Sub(createdAt)
+	if wait < 0 {
+		wait = 0
+	}
+	m.responseQueueWait.Observe(wait.Seconds())
+}
+
+func (m *GatewayMetrics) ObserveResponseJobTerminal(status string, errorCode string, startedAt *time.Time, completedAt *time.Time) {
+	if m == nil {
+		return
+	}
+	m.ObserveResponseJobTerminalCount(status, errorCode, 1)
+	if startedAt == nil || completedAt == nil {
+		return
+	}
+	duration := completedAt.Sub(*startedAt)
+	if duration < 0 {
+		duration = 0
+	}
+	m.responseExecution.WithLabelValues(metricsLabel(status)).Observe(duration.Seconds())
+}
+
+func (m *GatewayMetrics) ObserveResponseJobTerminalCount(status string, errorCode string, count int64) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.responseJobs.WithLabelValues(metricsLabel(status), metricsLabel(errorCode)).Add(float64(count))
+}
+
+func (m *GatewayMetrics) ObserveResponseJobRecovery(decision string, count int64) {
+	if m == nil || count <= 0 {
+		return
+	}
+	m.responseRecoveries.WithLabelValues(metricsLabel(decision)).Add(float64(count))
 }
 
 func (m *GatewayMetrics) ObserveRateLimitHit(keyID string, limit string, scope string) {
@@ -166,7 +355,7 @@ func (m *GatewayMetrics) ObserveRateLimitHit(keyID string, limit string, scope s
 func minuteLimitMetricScope(scope string) string {
 	scope = strings.ToLower(strings.TrimSpace(scope))
 	switch scope {
-	case "api_key", "global", "project", "team":
+	case "api_key", "global", "project", "team", "user":
 		return scope
 	default:
 		return "api_key"
@@ -275,6 +464,71 @@ func (m *GatewayMetrics) ObserveGatewayCall(sample GatewayCallSample) {
 	if sample.Usage.CostUSD > 0 {
 		m.cost.WithLabelValues(m.labels(sample.ProjectID, model, providerType, providerID)...).Add(sample.Usage.CostUSD)
 	}
+
+	// Per-candidate attempt counts and attempt duration. A rejected request has no
+	// attempts, so this block naturally does nothing for that path.
+	var attemptSum time.Duration
+	for _, attempt := range sample.Attempts {
+		attemptProviderType := metricsLabel(attempt.ProviderType)
+		attemptProviderID := metricsLabel(attempt.ProviderID)
+		attemptResourceID := metricsLabel(attempt.ResourceID)
+		attemptStatusCode := strconv.Itoa(attempt.StatusCode)
+		attemptErrorCode := metricsLabel(attempt.ErrorCode)
+		invoked := strconv.FormatBool(attempt.Invoked)
+		m.routeAttempts.WithLabelValues(m.labels(
+			sample.ProjectID,
+			model,
+			attemptProviderType,
+			attemptProviderID,
+			attemptResourceID,
+			attemptStatusCode,
+			attemptErrorCode,
+			invoked,
+		)...).Inc()
+
+		if attempt.Invoked && attempt.Duration > 0 {
+			attemptSum += attempt.Duration
+			m.attemptDuration.WithLabelValues(m.labels(
+				sample.ProjectID,
+				model,
+				attemptProviderType,
+				metricsOutcome(attempt.StatusCode),
+			)...).Observe(attempt.Duration.Seconds())
+		}
+	}
+
+	// routed_requests_total is the attempt-bearing denominator for the
+	// failover-depth ratio: only requests that actually tried a candidate count.
+	if len(sample.Attempts) > 0 {
+		m.routedRequests.WithLabelValues(m.labels(sample.ProjectID, model, providerType, stream)...).Inc()
+	}
+
+	// Overhead is reported for every admitted request: with no attempts the sum is
+	// zero, so a request that failed during route selection contributes its full
+	// elapsed time. Rejected requests never reach this gate — their duration is
+	// zero by convention (see RecordRejectedRequest), and zeroes create no series.
+	if sample.Duration > 0 {
+		overhead := sample.Duration - attemptSum
+		if overhead < 0 {
+			overhead = 0
+		}
+		m.overhead.WithLabelValues(m.labels(sample.ProjectID, stream)...).Observe(overhead.Seconds())
+	}
+
+	// Time to first byte is only meaningful for streamed requests where bytes
+	// actually reached the client. An empty-body 200 records first byte at stream
+	// end (synthesized from the commit time), which is the real latency the
+	// client experienced.
+	if sample.Stream && sample.TimeToFirstByte > 0 {
+		m.timeToFirstByte.WithLabelValues(m.labels(sample.ProjectID, model, providerType)...).Observe(sample.TimeToFirstByte.Seconds())
+		// A committed stream never fails over (ProviderErrorStreamCommitted), so a
+		// stream with a first byte and a final error is an interruption. The failure
+		// fact rides the StreamFailed flag: the committed status is locked at 200 and
+		// can no longer express it.
+		if sample.StreamFailed {
+			m.interruptions.WithLabelValues(m.labels(sample.ProjectID, model, providerType, providerID, metricsLabel(interruptionErrorCode(sample.ErrorCode)))...).Inc()
+		}
+	}
 }
 
 // labels appends the project id when that label is enabled. It takes the project id as
@@ -290,6 +544,23 @@ func (m *GatewayMetrics) labels(projectID string, values ...string) []string {
 	out := make([]string, 0, len(values)+1)
 	out = append(out, values...)
 	return append(out, metricsLabel(projectID))
+}
+
+// interruptionErrorCode normalizes transport-originated interruption codes to
+// internal_error at the metric boundary, honoring the collector's advertised
+// contract: HTTP-level upstream failures keep their code, while transport-level
+// failures and client disconnects both collapse to internal_error. Idle-timeout
+// codes are artifacts of the upstream connection, not of the provider surface,
+// so they must not leak through as distinct label values.
+func interruptionErrorCode(code string) string {
+	switch code {
+	case "provider_stream_idle_timeout", "codex_stream_idle_timeout",
+		"codex_stream_incomplete", "codex_stream_failed",
+		"provider_upstream_timeout", "provider_stream_interrupted",
+		"provider_upstream_unreachable":
+		return "internal_error"
+	}
+	return code
 }
 
 func metricsLabel(value string) string {
@@ -327,10 +598,6 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	token := strings.TrimSpace(s.config.MetricsToken)
 	if token == "" {
 		token = strings.TrimSpace(s.config.AdminToken)
@@ -344,6 +611,17 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.metrics.Handler().ServeHTTP(w, r)
+}
+
+func (s *Server) metricsMethodNotAllowed(allowedMethod string) http.HandlerFunc {
+	reject := jsonMethodNotAllowed(allowedMethod)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.metrics == nil {
+			http.NotFound(w, r)
+			return
+		}
+		reject(w, r)
+	}
 }
 
 // metricsTokenMatches accepts the token only from an Authorization: Bearer header.

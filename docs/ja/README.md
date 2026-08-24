@@ -2,13 +2,15 @@
 
 Language: [English](../README.md) | [简体中文](../zh-CN/README.md) | 日本語
 
-TokenHub のドキュメントは、企業 AI ゲートウェイで使う 3 つのロールを中心に再編成されています。既定言語は英語です。中国語版と日本語版も、同じ英語スクリーンショットと英語サンプルデータを利用します。
+TokenHub のドキュメントは、エンタープライズ Token Governance で使う 3 つのロールを中心に再編成されています。既定言語は英語です。中国語版と日本語版も、同じ英語スクリーンショットと英語サンプルデータを利用します。
 
 ## アーキテクチャとデプロイ
 
 - [全体アーキテクチャ](architecture.md)：デプロイ形態、コントロール/データプレーン、モデルリクエスト経路、永続化、セキュリティ境界。
 - [デプロイ](deployment.md)：Docker Compose、環境変数、データベース、リバースプロキシ、ヘルスチェック。
+- [データベース進化](database-evolution.md)：フォワードオンリーマイグレーション、採用ベースライン、メンテナンスコマンド、ロールバック互換性。
 - [PostgreSQL 設定ガイド](../postgresql-setup.md)：PostgreSQL の設定、運用、移行。
+- [パフォーマンスベンチマーク](performance-benchmarking.md)：再現可能なゲートウェイ比較、プロセス内割り当てベンチマーク、回帰バジェット。
 
 ## ロールガイド
 
@@ -17,6 +19,7 @@ TokenHub のドキュメントは、企業 AI ゲートウェイで使う 3 つ�
 | [利用者ガイド](user-guide.md) | 社員、アプリケーション開発者 | 利用可能モデルの確認、Project Key の作成、モデル API 呼び出し、個人利用量の確認 |
 | [チームリーダーガイド](team-leader-guide.md) | チーム Owner、プロジェクト保守者 | Project、メンバー、API Key、チームレポート、Project コスト配賦の管理 |
 | [管理者ガイド](administrator-guide.md) | プラットフォーム管理者、セキュリティ運用者 | Provider、モデルカタログ、ルーティング、ID プロバイダー、RBAC、監査、コスト統制の設定 |
+| [Agent Token コスト API](agent-token-cost-api.md) | ローカルレポート Agent、プラットフォーム管理者 | 最小権限の分析 Credential を作成し、フィルター・集計・差分 Token コストを JSON/CSV で取得 |
 | [画像生成ガイド](user-guide.md#codex-サブスクリプション画像生成) | 画像モデルを利用するアプリケーション開発者 | 画像の生成と編集、非同期ジョブ、Codex サブスクリプション枠と OpenAI API 利用量の区別 |
 | [Codex を TokenHub に接続：Profile クイック設定](codex-tokenhub-profile-quick-start.md) | 分離 Profile のみを必要とする Codex ユーザー | Profile の作成、Key の設定、接続確認、復旧 |
 | [Codex を TokenHub に接続：4 つの設定方法と復旧](codex-tokenhub-configuration.md) | 接続方法を比較する Codex ユーザーおよび開発者 | Profile、プロセス単位の一時設定、CLI グローバル設定、デスクトップ設定 |

@@ -9,11 +9,16 @@ func anthropicUsageFromRawMap(raw map[string]any) Usage {
 	uncachedInputTokens := int64FromAny(raw["input_tokens"])
 	cacheCreationInputTokens := int64FromAny(raw["cache_creation_input_tokens"])
 	cachedInputTokens := int64FromAny(raw["cache_read_input_tokens"])
+	cacheCreation, _ := raw["cache_creation"].(map[string]any)
+	cacheCreation5mInputTokens := int64FromAny(cacheCreation["ephemeral_5m_input_tokens"])
+	cacheCreation1hInputTokens := int64FromAny(cacheCreation["ephemeral_1h_input_tokens"])
 	usage := Usage{
-		PromptTokens:          uncachedInputTokens + cacheCreationInputTokens + cachedInputTokens,
-		CachedInputTokens:     cachedInputTokens,
-		CacheWriteInputTokens: cacheCreationInputTokens,
-		CompletionTokens:      int64FromAny(raw["output_tokens"]),
+		PromptTokens:            uncachedInputTokens + cacheCreationInputTokens + cachedInputTokens,
+		CachedInputTokens:       cachedInputTokens,
+		CacheWriteInputTokens:   cacheCreationInputTokens,
+		CacheWrite5mInputTokens: cacheCreation5mInputTokens,
+		CacheWrite1hInputTokens: cacheCreation1hInputTokens,
+		CompletionTokens:        int64FromAny(raw["output_tokens"]),
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	return usage

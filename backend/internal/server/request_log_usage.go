@@ -1,17 +1,5 @@
 package server
 
-func (s *Server) requestLogsWithUsageForUser(user AdminUser) []RequestLog {
-	logs := s.filterRequestLogsForUser(user, s.store.ListRequestLogs())
-	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
-	result := enrichRequestLogsWithUsage(logs, records)
-	if !s.canViewGlobalOperations(user) {
-		for index := range result {
-			result[index].ProviderCostUSD = 0
-		}
-	}
-	return result
-}
-
 func enrichRequestLogsWithUsage(logs []RequestLog, records []UsageRecord) []RequestLog {
 	byRequestID := make(map[string]*RequestLog, len(logs))
 	result := make([]RequestLog, len(logs))
@@ -24,21 +12,31 @@ func enrichRequestLogsWithUsage(logs []RequestLog, records []UsageRecord) []Requ
 		if log == nil {
 			continue
 		}
-		log.InputTokens += record.InputTokens
-		log.CachedInputTokens += record.CachedInputTokens
-		log.CacheWriteTokens += record.CacheWriteTokens
-		log.InputAudioTokens += record.InputAudioTokens
-		log.OutputTokens += record.OutputTokens
-		log.ReasoningTokens += record.ReasoningTokens
-		log.OutputAudioTokens += record.OutputAudioTokens
-		log.AcceptedPredictionTokens += record.AcceptedPredictionTokens
-		log.RejectedPredictionTokens += record.RejectedPredictionTokens
-		log.TotalTokens += record.TotalTokens
-		log.EstimatedCostUSD += record.CostUSD
-		log.ProviderCostUSD += record.ProviderCostUSD
-		log.UsageRecordCount++
+		enrichRequestLogWithUsageRecord(log, record)
 	}
 	return result
+}
+
+func enrichRequestLogWithUsageRecord(log *RequestLog, record UsageRecord) {
+	log.InputTokens += record.InputTokens
+	log.CachedInputTokens += record.CachedInputTokens
+	log.CacheWriteTokens += record.CacheWriteTokens
+	log.CacheWrite5mTokens += record.CacheWrite5mTokens
+	log.CacheWrite1hTokens += record.CacheWrite1hTokens
+	log.InputAudioTokens += record.InputAudioTokens
+	log.OutputTokens += record.OutputTokens
+	log.ReasoningTokens += record.ReasoningTokens
+	log.OutputAudioTokens += record.OutputAudioTokens
+	log.AcceptedPredictionTokens += record.AcceptedPredictionTokens
+	log.RejectedPredictionTokens += record.RejectedPredictionTokens
+	log.TotalTokens += record.TotalTokens
+	log.InputCostUSD += record.InputCostUSD
+	log.CacheReadCostUSD += record.CacheReadCostUSD
+	log.CacheWriteCostUSD += record.CacheWriteCostUSD
+	log.OutputCostUSD += record.OutputCostUSD
+	log.EstimatedCostUSD += record.CostUSD
+	log.ProviderCostUSD += record.ProviderCostUSD
+	log.UsageRecordCount++
 }
 
 func (s *Server) redactProviderCostsForUser(user AdminUser, detail map[string]any) {

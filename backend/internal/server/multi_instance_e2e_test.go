@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type multiInstanceBlockingAdapter struct {
@@ -49,17 +51,73 @@ func (a *multiInstanceBlockingAdapter) ChatStream(ctx context.Context, provider 
 
 func TestMultiInstancePostgresE2E(t *testing.T) {
 	storeA, storeB, config := openSharedPostgresStores(t)
+	t.Run("Responses lease renewal and recovery have one winner", func(t *testing.T) {
+		testResponseRecoveryRenewalRace(t, storeA, storeB)
+	})
+	t.Run("durable Responses jobs execute once across replicas", func(t *testing.T) {
+		testSharedResponseJobExecution(t, storeA, storeB, config)
+	})
 	t.Run("concurrent migrations work with a one-connection runtime pool", func(t *testing.T) {
 		testConcurrentMigrations(t, storeA, config)
 	})
 	t.Run("HTTP quotas and concurrency are cluster wide", func(t *testing.T) {
 		testClusterWideHTTPEnforcement(t, storeA, storeB, config)
 	})
+	t.Run("gateway hot paths do not serialize unrelated API keys", func(t *testing.T) {
+		testPostgresGatewayHotPathConcurrency(t, storeA)
+	})
+	t.Run("gateway read snapshots use repeatable read", func(t *testing.T) {
+		testPostgresGatewayReadSnapshot(t, storeA)
+	})
+	t.Run("API key deletion is ordered with admission and settlement", func(t *testing.T) {
+		testPostgresAPIKeyDeletionOrdering(t, storeA)
+	})
+	t.Run("project disable is ordered with admission", func(t *testing.T) {
+		testPostgresProjectDisableOrdering(t, storeA)
+	})
+	t.Run("API key admin updates preserve concurrent last used", func(t *testing.T) {
+		testPostgresAPIKeyUpdatePreservesLastUsed(t, storeA)
+	})
+	t.Run("adaptive stats failure falls back inside the read snapshot", func(t *testing.T) {
+		testPostgresAdaptiveStatsFailureFallback(t, storeA)
+	})
+	t.Run("analytics checkpoints do not serialize replica writes", func(t *testing.T) {
+		testAnalyticsCommitSequence(t, storeA, storeB)
+	})
+	t.Run("route candidates use one read snapshot", func(t *testing.T) {
+		testRouteCandidateReadSnapshot(t, storeA, storeB)
+	})
+	t.Run("adaptive route stats failures remain best effort", func(t *testing.T) {
+		testRouteCandidateStatsFailure(t, storeA)
+	})
+	t.Run("route candidate lookup errors preserve failover", func(t *testing.T) {
+		for _, target := range []string{"providers", "provider_resources"} {
+			t.Run(target, func(t *testing.T) {
+				testRouteCandidateLookupFailover(t, storeA, target)
+			})
+		}
+	})
+	t.Run("analytics migration preserves legacy time windows", func(t *testing.T) {
+		testPostgresAnalyticsLegacySequenceMigration(t, storeA, config)
+	})
+	t.Run("v0.4 bootstrap upgrade preserves customized admin teams", func(t *testing.T) {
+		testPostgresV040BootstrapUpgrade(t, storeA, config)
+	})
 	t.Run("OAuth state and refresh coordination survive replica changes", func(t *testing.T) {
 		testSharedOAuthAndRefresh(t, storeA, storeB, config)
 	})
+	t.Run("admin OAuth records use the shared database clock", func(t *testing.T) {
+		assertAdminOAuthFlowUsesDatabaseClockAcrossInstances(t, storeA, storeB)
+		assertAdminOAuthExchangeUsesDatabaseClockAcrossInstances(t, storeA, storeB)
+	})
 	t.Run("startup task revision runs once", func(t *testing.T) {
 		testClusterTaskRunsOnce(t, storeA, storeB)
+	})
+	t.Run("request payload retention deletes in PostgreSQL", func(t *testing.T) {
+		testRequestPayloadRetentionPostgres(t, storeA)
+	})
+	t.Run("request payload retention index recovers in PostgreSQL", func(t *testing.T) {
+		testRequestPayloadRetentionIndexRecoveryPostgres(t, storeA)
 	})
 	t.Run("startup operations run on every start and serialize replicas", func(t *testing.T) {
 		testClusterOperationRunsEveryStart(t, storeA, storeB)
@@ -67,6 +125,557 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("lost cluster leases cancel guarded work", func(t *testing.T) {
 		testClusterLeaseLossCancelsWork(t, storeA, storeB)
 	})
+}
+
+func testRouteCandidateReadSnapshot(t *testing.T, storeA *GormStore, storeB *GormStore) {
+	t.Helper()
+	suffix := NewID("snapshot")
+	modelName := "route-snapshot-" + suffix
+	providerID := "prv_" + suffix
+	routeID := "route_" + suffix
+	storeA.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+	storeA.AddProvider(Provider{
+		ID: providerID, Name: "Route snapshot provider", Type: ProviderMock,
+		Status: StatusActive, Healthy: true,
+	})
+	storeA.AddRoute(ModelRoute{
+		ID: routeID, ModelName: modelName, ProviderID: providerID,
+		ProviderModel: modelName, Priority: 1, Weight: 100, Status: StatusActive,
+	})
+	t.Cleanup(func() {
+		_ = storeA.db.Where("id = ?", routeID).Delete(&ModelRoute{}).Error
+		_ = storeA.db.Where("id = ?", providerID).Delete(&Provider{}).Error
+		_ = storeA.db.Where("name = ?", modelName).Delete(&Model{}).Error
+	})
+
+	routeRead := make(chan struct{}, 1)
+	resume := make(chan struct{})
+	var pauseOnce sync.Once
+	callbackName := "test:route-candidate-snapshot:" + suffix
+	if err := storeA.db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Schema == nil || tx.Statement.Schema.Table != "model_routes" {
+			return
+		}
+		pauseOnce.Do(func() {
+			routeRead <- struct{}{}
+			select {
+			case <-resume:
+			case <-time.After(5 * time.Second):
+				_ = tx.AddError(fmt.Errorf("timed out waiting to resume route snapshot query"))
+			}
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := storeA.db.Callback().Query().Remove(callbackName); err != nil {
+			t.Errorf("remove route snapshot callback: %v", err)
+		}
+	}()
+
+	type selectionResult struct {
+		candidates []RouteSelection
+		err        error
+	}
+	result := make(chan selectionResult, 1)
+	go func() {
+		candidates, err := storeA.SelectRouteCandidates(modelName)
+		result <- selectionResult{candidates: candidates, err: err}
+	}()
+	select {
+	case <-routeRead:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the route query")
+	}
+	if err := storeB.db.Model(&Provider{}).Where("id = ?", providerID).Update("healthy", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	close(resume)
+
+	select {
+	case selected := <-result:
+		if selected.err != nil {
+			t.Fatal(selected.err)
+		}
+		if len(selected.candidates) != 1 || selected.candidates[0].Provider.ID != providerID || !selected.candidates[0].Provider.Healthy {
+			t.Fatalf("snapshot candidates = %+v", selected.candidates)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for route candidates")
+	}
+}
+
+func testRouteCandidateStatsFailure(t *testing.T, store *GormStore) {
+	t.Helper()
+	suffix := NewID("stats-failure")
+	modelName := "route-stats-failure-" + suffix
+	providerID := "prv_" + suffix
+	routeID := "route_" + suffix
+	store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+	store.AddProvider(Provider{
+		ID: providerID, Name: "Route stats failure provider", Type: ProviderMock,
+		Status: StatusActive, Healthy: true,
+	})
+	store.AddRoute(ModelRoute{
+		ID: routeID, ModelName: modelName, ProviderID: providerID,
+		ProviderModel: modelName, Priority: 1, Weight: 100,
+		Status: StatusActive, Strategy: RouteStrategyAdaptive,
+	})
+	t.Cleanup(func() {
+		_ = store.db.Where("id = ?", routeID).Delete(&ModelRoute{}).Error
+		_ = store.db.Where("id = ?", providerID).Delete(&Provider{}).Error
+		_ = store.db.Where("name = ?", modelName).Delete(&Model{}).Error
+	})
+
+	callbackName := "test:route-candidate-stats-error:" + suffix
+	resultCallbackName := callbackName + ":result"
+	var statsQueryErr error
+	if err := store.db.Callback().Row().Before("gorm:row").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Schema != nil && tx.Statement.Schema.Table == "route_attempt_logs" {
+			tx.Statement.Table = "missing_route_attempt_logs_" + suffix
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Callback().Row().After("gorm:row").Register(resultCallbackName, func(tx *gorm.DB) {
+		if tx.Statement.Schema != nil && tx.Statement.Schema.Table == "route_attempt_logs" {
+			statsQueryErr = tx.Error
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := store.db.Callback().Row().Remove(callbackName); err != nil {
+			t.Errorf("remove route stats error callback: %v", err)
+		}
+		if err := store.db.Callback().Row().Remove(resultCallbackName); err != nil {
+			t.Errorf("remove route stats result callback: %v", err)
+		}
+	}()
+
+	candidates, err := store.SelectRouteCandidates(modelName)
+	if err != nil {
+		t.Fatalf("optional runtime stats failure rejected candidates: %v", err)
+	}
+	if statsQueryErr == nil {
+		t.Fatal("adaptive runtime stats query did not reach the intended database-side failure")
+	}
+	if len(candidates) != 1 || candidates[0].Provider.ID != providerID || candidates[0].Runtime != (RouteRuntimeStats{}) {
+		t.Fatalf("candidates after optional runtime stats failure = %+v", candidates)
+	}
+}
+
+func testRouteCandidateLookupFailover(t *testing.T, store *GormStore, target string) {
+	t.Helper()
+	suffix := NewID("lookup-failover")
+	modelName := "route-lookup-failover-" + suffix
+	providers := make([]Provider, 0, 2)
+	resources := make([]ProviderResource, 0, 2)
+	routes := make([]ModelRoute, 0, 2)
+	store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+	for index, label := range []string{"bad", "good"} {
+		provider := store.AddProvider(Provider{
+			ID: "prv_" + label + "_" + suffix, Name: "Route lookup " + label,
+			Type: ProviderMock, Status: StatusActive, Healthy: true,
+		})
+		resource, err := store.AddProviderResource(ProviderResource{
+			ID: "rsrc_" + label + "_" + suffix, ProviderID: provider.ID,
+			Name: "Route lookup " + label, Status: StatusActive, Healthy: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		providers = append(providers, provider)
+		resources = append(resources, resource)
+		routes = append(routes, store.AddRoute(ModelRoute{
+			ID: "route_" + label + "_" + suffix, ModelName: modelName,
+			ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: modelName,
+			Priority: index + 1, Weight: 100, Status: StatusActive,
+		}))
+	}
+	t.Cleanup(func() {
+		for _, route := range routes {
+			_ = store.db.Where("id = ?", route.ID).Delete(&ModelRoute{}).Error
+		}
+		for _, resource := range resources {
+			_ = store.db.Where("id = ?", resource.ID).Delete(&ProviderResource{}).Error
+		}
+		for _, provider := range providers {
+			_ = store.db.Where("id = ?", provider.ID).Delete(&Provider{}).Error
+		}
+		_ = store.db.Where("name = ?", modelName).Delete(&Model{}).Error
+	})
+
+	attempts := 0
+	databaseErrors := 0
+	callbackName := "test:route-candidate-lookup-failover:" + suffix
+	resultCallbackName := callbackName + ":result"
+	if err := store.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Schema != nil && tx.Statement.Schema.Table == target {
+			attempts++
+			if attempts <= 2 {
+				tx.Statement.Table = "missing_" + target + "_" + suffix
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Callback().Query().After("gorm:query").Register(resultCallbackName, func(tx *gorm.DB) {
+		if tx.Statement.Schema != nil && tx.Statement.Schema.Table == target && tx.Error != nil {
+			databaseErrors++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := store.db.Callback().Query().Remove(callbackName); err != nil {
+			t.Errorf("remove route lookup failover callback: %v", err)
+		}
+		if err := store.db.Callback().Query().Remove(resultCallbackName); err != nil {
+			t.Errorf("remove route lookup failover result callback: %v", err)
+		}
+	}()
+
+	candidates, err := store.SelectRouteCandidates(modelName)
+	if err != nil {
+		t.Fatalf("lookup failure rejected unaffected candidates: %v", err)
+	}
+	if attempts != 3 || databaseErrors != 2 {
+		t.Fatalf("lookup attempts/errors = %d/%d, want 3/2", attempts, databaseErrors)
+	}
+	if len(candidates) != 1 || candidates[0].Route.ID != routes[1].ID {
+		t.Fatalf("lookup failover candidates = %+v, want route %s", candidates, routes[1].ID)
+	}
+}
+
+type multiInstanceResponseAdapter struct {
+	MockAdapter
+	calls atomic.Int64
+}
+
+func (a *multiInstanceResponseAdapter) Responses(ctx context.Context, provider Provider, providerModel string, request ResponsesRequest) (any, Usage, error) {
+	a.calls.Add(1)
+	return a.MockAdapter.Responses(ctx, provider, providerModel, request)
+}
+
+type multiInstanceBlockingResponseAdapter struct {
+	MockAdapter
+	started chan struct{}
+	once    sync.Once
+}
+
+func (a *multiInstanceBlockingResponseAdapter) Responses(ctx context.Context, provider Provider, providerModel string, request ResponsesRequest) (any, Usage, error) {
+	a.once.Do(func() { close(a.started) })
+	<-ctx.Done()
+	return nil, Usage{}, ctx.Err()
+}
+
+func testSharedResponseJobExecution(t *testing.T, storeA *GormStore, storeB *GormStore, config Config) {
+	t.Helper()
+	config.ResponseWorkerConcurrency = 1
+	config.ResponsePollIntervalMillis = 20
+	config.ResponseJobTimeoutSeconds = 5
+	config.ResponseLeaseTTLSeconds = 2
+	config.ResponseResultTTLSeconds = 60
+	config.ResponseMaxQueuedJobs = 100
+	suffix := NewID("response-e2e")
+	project := storeA.CreateProject(Project{ID: "prj_" + suffix, Name: "Response jobs E2E", Status: StatusActive})
+	modelName := "model-" + suffix
+	storeA.AddModel(Model{ID: modelName, Name: modelName, Modality: "chat", Status: StatusActive})
+	provider := storeA.AddProvider(Provider{ID: "prv_" + suffix, Name: "Response jobs mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	resource, err := storeA.AddProviderResource(ProviderResource{ID: "rsrc_" + suffix, ProviderID: provider.ID, Name: "Response jobs resource", ResourceType: "mock", Status: StatusActive, Healthy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeA.AddRoute(ModelRoute{ID: "route_" + suffix, ModelName: modelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: modelName, Status: StatusActive, Priority: 1, Weight: 100})
+	key, _, err := storeA.CreateAPIKey(project.ID, APIKey{ID: "key_" + suffix, Name: "Response jobs key", Allowed: []string{modelName}, Status: StatusActive}, "thk_"+suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serverA := NewWithConfig(storeA, config)
+	serverB := NewWithConfig(storeB, config)
+	adapter := &multiInstanceResponseAdapter{}
+	serverA.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityResponses)
+	serverB.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityResponses)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = serverA.Shutdown(ctx)
+		_ = serverB.Shutdown(ctx)
+		_ = storeA.db.Where("job_id LIKE ?", "%"+suffix+"%").Delete(&ResponseJobEvent{}).Error
+		_ = storeA.db.Where("resource_type = ? AND resource_id LIKE ?", "response_job", "%"+suffix+"%").Delete(&AuditEvent{}).Error
+		_ = storeA.db.Where("id LIKE ?", "%"+suffix+"%").Delete(&ResponseJob{}).Error
+		_ = storeA.DeleteAPIKey(key.ID)
+		_ = storeA.DeleteProvider(provider.ID)
+		_ = storeA.DeleteModel(modelName)
+		_ = storeA.DeleteProject(project.ID)
+	})
+	// Both replicas started while the queue was empty. Stop the would-be
+	// submitting replica before the durable insert so only the already-idle peer
+	// can discover and execute the new work.
+	time.Sleep(2 * time.Duration(config.ResponsePollIntervalMillis) * time.Millisecond)
+	shutdownContext, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := serverA.Shutdown(shutdownContext); err != nil {
+		shutdownCancel()
+		t.Fatal(err)
+	}
+	shutdownCancel()
+
+	createJob := func(input string) ResponseJob {
+		t.Helper()
+		requestJSON, _ := json.Marshal(ResponsesRequest{Model: modelName, Input: input, Background: true})
+		envelopeJSON, _ := json.Marshal(responseJobEnvelope{Request: requestJSON})
+		job, err := storeA.CreateResponseJob(ResponseJob{
+			ID: NewID("resp") + "_" + suffix, ProjectID: project.ID, APIKeyID: key.ID,
+			AttributedUserID: usageAttributionUserID(key, project), Model: modelName,
+		}, envelopeJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return job
+	}
+	waitTerminal := func(id string) ResponseJob {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			current, ok, err := storeA.GetResponseJob(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok && responseJobTerminal(current.Status) {
+				return current
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("shared response job %s did not complete", id)
+		return ResponseJob{}
+	}
+
+	secretInput := "postgres ciphertext secret " + suffix
+	job := createJob(secretInput)
+	current := waitTerminal(job.ID)
+	if current.Status != responseJobStatusSucceeded {
+		t.Fatalf("shared job failed: %+v", current)
+	}
+	if calls := adapter.calls.Load(); calls != 1 {
+		t.Fatalf("shared job reached upstream %d times", calls)
+	}
+	var persisted ResponseJob
+	if err := storeA.db.First(&persisted, "id = ?", job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(persisted.RequestCiphertext, "enc:v1:") || strings.Contains(persisted.RequestCiphertext, secretInput) ||
+		!strings.HasPrefix(persisted.ResultCiphertext, "enc:v1:") || strings.Contains(persisted.ResultCiphertext, secretInput) {
+		t.Fatalf("PostgreSQL did not retain encrypted response payloads: %+v", persisted)
+	}
+	var requestLogs int64
+	if err := storeA.db.Model(&RequestLog{}).Where("request_id = ?", current.RequestID).Count(&requestLogs).Error; err != nil || requestLogs != 1 {
+		t.Fatalf("shared response request accounting: logs=%d err=%v", requestLogs, err)
+	}
+	var usageRecords int64
+	if err := storeA.db.Model(&UsageRecord{}).Where("request_id = ?", current.RequestID).Count(&usageRecords).Error; err != nil || usageRecords != 1 {
+		t.Fatalf("shared response usage accounting: records=%d err=%v", usageRecords, err)
+	}
+	var payloadLogs int64
+	if err := storeA.db.Model(&RequestPayloadLog{}).Where("request_id = ?", current.RequestID).Count(&payloadLogs).Error; err != nil || payloadLogs != 0 {
+		t.Fatalf("background payload escaped encrypted retention: logs=%d err=%v", payloadLogs, err)
+	}
+	past := time.Now().UTC().Add(-time.Second)
+	if err := storeA.db.Model(&ResponseJob{}).Where("id = ?", job.ID).Update("expires_at", past).Error; err != nil {
+		t.Fatal(err)
+	}
+	if expired, err := storeB.ExpireResponseJobs(); err != nil || expired > 1 {
+		t.Fatalf("expire shared response job: expired=%d err=%v", expired, err)
+	}
+	if err := storeA.db.First(&persisted, "id = ?", job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Status != responseJobStatusExpired || persisted.RequestCiphertext != "" || persisted.ResultCiphertext != "" {
+		t.Fatalf("PostgreSQL retention did not scrub response ciphertext: %+v", persisted)
+	}
+
+	blocking := &multiInstanceBlockingResponseAdapter{started: make(chan struct{})}
+	serverB.adapterRegistry.Register(ProviderMock, blocking, AdapterCapabilityResponses)
+	cancelJob := createJob("cancel on peer " + suffix)
+	select {
+	case <-blocking.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shared cancellation job did not reach the provider")
+	}
+	if _, retained, err := storeA.CancelResponseJob(cancelJob.ID, "postgres-e2e", time.Minute); err != nil || !retained {
+		t.Fatalf("cancel shared response job: retained=%v err=%v", retained, err)
+	}
+	cancelled := waitTerminal(cancelJob.ID)
+	if cancelled.Status != responseJobStatusCancelled || cancelled.ErrorCode != "response_cancelled" {
+		t.Fatalf("shared cancellation did not win: %+v", cancelled)
+	}
+	if err := storeA.db.Model(&RequestLog{}).Where("request_id = ?", cancelled.RequestID).Count(&requestLogs).Error; err != nil || requestLogs != 1 {
+		t.Fatalf("cancelled response request accounting: logs=%d err=%v", requestLogs, err)
+	}
+	if err := storeA.db.Model(&UsageRecord{}).Where("request_id = ?", cancelled.RequestID).Count(&usageRecords).Error; err != nil || usageRecords != 0 {
+		t.Fatalf("cancelled response created usage: records=%d err=%v", usageRecords, err)
+	}
+}
+
+func testResponseRecoveryRenewalRace(t *testing.T, storeA *GormStore, storeB *GormStore) {
+	t.Helper()
+	suffix := NewID("response-recovery-race")
+	envelopeJSON, _ := json.Marshal(responseJobEnvelope{Request: json.RawMessage(`{"model":"race","input":"race","background":true}`)})
+	job, err := storeA.CreateResponseJob(ResponseJob{ID: "resp_" + suffix, ProjectID: "project_" + suffix, APIKeyID: "key_" + suffix, Model: "race"}, envelopeJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = storeA.db.Where("job_id = ?", job.ID).Delete(&ResponseJobEvent{}).Error
+		_ = storeA.db.Where("resource_type = ? AND resource_id = ?", "response_job", job.ID).Delete(&AuditEvent{}).Error
+		_ = storeA.db.Delete(&ResponseJob{}, "id = ?", job.ID).Error
+	})
+	claimed, ok, err := storeA.ClaimResponseJob("renewing-worker", time.Second, time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim recovery race job: ok=%v err=%v", ok, err)
+	}
+	past := time.Now().UTC().Add(-time.Second)
+	if err := storeA.db.Model(&ResponseJob{}).Where("id = ?", job.ID).Update("lease_expires_at", past).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	scanned := make(chan struct{})
+	releaseRecovery := make(chan struct{})
+	var scanOnce sync.Once
+	callbackName := "test:response_recovery_scan_" + suffix
+	if err := storeB.db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "response_jobs" && strings.Contains(tx.Statement.SQL.String(), "lease_expires_at") {
+			scanOnce.Do(func() {
+				close(scanned)
+				<-releaseRecovery
+			})
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer storeB.db.Callback().Query().Remove(callbackName)
+
+	type recoveryResult struct {
+		requeued  int64
+		failed    int64
+		cancelled int64
+		err       error
+	}
+	recoveryDone := make(chan recoveryResult, 1)
+	go func() {
+		requeued, failed, cancelled, err := storeB.RecoverResponseJobs(time.Minute)
+		recoveryDone <- recoveryResult{requeued: requeued, failed: failed, cancelled: cancelled, err: err}
+	}()
+	select {
+	case <-scanned:
+	case <-time.After(3 * time.Second):
+		t.Fatal("recovery did not scan the expired lease")
+	}
+	type renewalResult struct {
+		retained bool
+		err      error
+	}
+	renewalDone := make(chan renewalResult, 1)
+	go func() {
+		_, retained, err := storeA.RenewResponseJobLease(claimed.ID, "renewing-worker", claimed.LeaseEpoch, time.Second)
+		renewalDone <- renewalResult{retained: retained, err: err}
+	}()
+	// If recovery did not lock the scanned row, renewal can complete here. The
+	// recovery update must still re-check expiry so both paths cannot win.
+	var renewal renewalResult
+	renewalReady := false
+	select {
+	case renewal = <-renewalDone:
+		renewalReady = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseRecovery)
+	if !renewalReady {
+		renewal = <-renewalDone
+	}
+	recovery := <-recoveryDone
+	if renewal.err != nil || recovery.err != nil {
+		t.Fatalf("lease race returned errors: renewal=%v recovery=%v", renewal.err, recovery.err)
+	}
+	recovered := recovery.requeued+recovery.failed+recovery.cancelled == 1
+	if renewal.retained == recovered {
+		t.Fatalf("renewal and recovery must have exactly one winner: renewed=%v recovery=%+v", renewal.retained, recovery)
+	}
+}
+
+func testAnalyticsCommitSequence(t *testing.T, storeA *GormStore, storeB *GormStore) {
+	t.Helper()
+	suffix := NewID("sequence")
+	firstID := "log_first_" + suffix
+	secondID := "log_second_" + suffix
+	t.Cleanup(func() {
+		_ = storeA.db.Delete(&RequestLog{}, "id IN ?", []string{firstID, secondID}).Error
+	})
+	firstTransaction := storeA.db.Begin()
+	if firstTransaction.Error != nil {
+		t.Fatal(firstTransaction.Error)
+	}
+	if err := firstTransaction.Create(&RequestLog{
+		ID: firstID, RequestID: "req_first_" + suffix, ProjectID: "project_sequence",
+		ModelName: "gpt-sequence", StatusCode: http.StatusOK, CreatedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	var firstLog RequestLog
+	if err := firstTransaction.First(&firstLog, "id = ?", firstID).Error; err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- storeB.db.Create(&RequestLog{
+			ID: secondID, RequestID: "req_second_" + suffix, ProjectID: "project_sequence",
+			ModelName: "gpt-sequence", StatusCode: http.StatusOK, CreatedAt: time.Now().UTC().Add(-48 * time.Hour),
+		}).Error
+	}()
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			_ = firstTransaction.Rollback().Error
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		_ = firstTransaction.Rollback().Error
+		t.Fatal("second replica was blocked by the first request-log transaction")
+	}
+	var secondLog RequestLog
+	if err := storeB.db.First(&secondLog, "id = ?", secondID).Error; err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	checkpointBefore, err := storeB.TokenCostCheckpoint(t.Context(), TokenCostQuery{
+		From: now.Add(-72 * time.Hour), To: now.Add(time.Hour), ProjectID: "project_sequence",
+	})
+	if err != nil {
+		_ = firstTransaction.Rollback().Error
+		t.Fatal(err)
+	}
+	if firstLog.CommitSequence <= 0 || secondLog.CommitSequence <= firstLog.CommitSequence || checkpointBefore >= firstLog.CommitSequence {
+		_ = firstTransaction.Rollback().Error
+		t.Fatalf("unsafe active-transaction checkpoint: first=%d second=%d checkpoint=%d",
+			firstLog.CommitSequence, secondLog.CommitSequence, checkpointBefore)
+	}
+	if err := firstTransaction.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+	checkpointAfter, err := storeB.TokenCostCheckpoint(t.Context(), TokenCostQuery{
+		From: now.Add(-72 * time.Hour), To: now.Add(time.Hour), ProjectID: "project_sequence",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checkpointAfter < secondLog.CommitSequence {
+		t.Fatalf("checkpoint did not advance after the older transaction committed: got %d, want >= %d",
+			checkpointAfter, secondLog.CommitSequence)
+	}
 }
 
 func testConcurrentMigrations(t *testing.T, adminStore *GormStore, config Config) {
@@ -632,6 +1241,79 @@ func testClusterTaskRunsOnce(t *testing.T, storeA *GormStore, storeB *GormStore)
 	}
 	if reran.Load() {
 		t.Fatal("completed cluster task revision ran again")
+	}
+}
+
+func testRequestPayloadRetentionPostgres(t *testing.T, store *GormStore) {
+	t.Helper()
+	suffix := NewID("payload-retention")
+	cutoff := time.Date(2001, time.January, 1, 0, 0, 0, 0, time.UTC)
+	expired := RequestPayloadLog{ID: suffix + "-expired", RequestID: suffix + "-expired-request", CreatedAt: cutoff.Add(-time.Second)}
+	current := RequestPayloadLog{ID: suffix + "-current", RequestID: suffix + "-current-request", CreatedAt: cutoff}
+	if err := store.db.Create(&[]RequestPayloadLog{expired, current}).Error; err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.db.Where("id IN ?", []string{expired.ID, current.ID}).Delete(&RequestPayloadLog{}).Error
+	})
+	deleted, err := store.DeleteRequestPayloadLogsBefore(t.Context(), cutoff, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted < 1 {
+		t.Fatalf("PostgreSQL cleanup deleted %d rows, want at least 1", deleted)
+	}
+	var expiredCount int64
+	if err := store.db.Model(&RequestPayloadLog{}).Where("id = ?", expired.ID).Count(&expiredCount).Error; err != nil || expiredCount != 0 {
+		t.Fatalf("expired PostgreSQL payload remained: count=%d err=%v", expiredCount, err)
+	}
+	var currentCount int64
+	if err := store.db.Model(&RequestPayloadLog{}).Where("id = ?", current.ID).Count(&currentCount).Error; err != nil || currentCount != 1 {
+		t.Fatalf("boundary PostgreSQL payload changed: count=%d err=%v", currentCount, err)
+	}
+}
+
+func testRequestPayloadRetentionIndexRecoveryPostgres(t *testing.T, store *GormStore) {
+	t.Helper()
+	if err := store.db.Exec("DROP INDEX CONCURRENTLY IF EXISTS " + requestPayloadRetentionIndexName).Error; err != nil {
+		t.Fatal(err)
+	}
+	suffix := NewID("payload-retention-index")
+	duplicateTime := time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	duplicates := []RequestPayloadLog{
+		{ID: suffix + "-a", RequestID: suffix + "-request-a", CreatedAt: duplicateTime},
+		{ID: suffix + "-b", RequestID: suffix + "-request-b", CreatedAt: duplicateTime},
+	}
+	if err := store.db.Create(&duplicates).Error; err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.db.Where("id IN ?", []string{duplicates[0].ID, duplicates[1].ID}).Delete(&RequestPayloadLog{}).Error
+	})
+	if err := store.db.Exec("CREATE UNIQUE INDEX CONCURRENTLY " + requestPayloadRetentionIndexName + " ON request_payload_logs(created_at)").Error; err == nil {
+		t.Fatal("expected duplicate payload timestamps to leave a failed concurrent index")
+	}
+	if err := ensureRequestPayloadRetentionIndex(store.db, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	type indexState struct {
+		Valid   bool
+		Columns string
+	}
+	var state indexState
+	if err := store.db.Raw(`SELECT index_state.indisvalid AS valid,
+       string_agg(attribute.attname, ',' ORDER BY key_column.ordinality) AS columns
+FROM pg_index AS index_state
+JOIN LATERAL unnest(index_state.indkey) WITH ORDINALITY AS key_column(attnum, ordinality) ON TRUE
+JOIN pg_attribute AS attribute
+  ON attribute.attrelid = index_state.indrelid
+ AND attribute.attnum = key_column.attnum
+WHERE index_state.indexrelid = to_regclass(?)
+GROUP BY index_state.indisvalid`, requestPayloadRetentionIndexName).Scan(&state).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !state.Valid || state.Columns != "created_at,id" {
+		t.Fatalf("recovered PostgreSQL index = valid:%t columns:%q, want valid:true columns:%q", state.Valid, state.Columns, "created_at,id")
 	}
 }
 

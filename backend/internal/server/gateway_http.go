@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"hash/fnv"
-	"io"
 	"math"
 	"net/http"
 	"sort"
@@ -17,39 +16,50 @@ import (
 )
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	var req ChatCompletionRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if req.Model == "" {
 		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
 		return
 	}
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, req.Model, req.Stream, requestTokenReservation(req))
+	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, guardrailAuditSummary{Model: req.Model})
+		w.Header().Set("x-request-id", requestID)
+		writeError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, chatGuardrailTargets(&req))
+	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 
-	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req.Stream, req)
+	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, req.Model, auditPayload)
 	if !ok {
 		return
 	}
 	routed, err = compatibleChatRoutes(routed, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, req)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 
 	affinity, err := s.chatGatewayAffinity(key.ID, r.Header, req, routed.Routes)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, req)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
@@ -94,6 +104,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			s.store.MarkProviderResourceUsed(routeResourceID(route))
 		}
 		routed.Call.StreamOutputCommitted = tracker.WroteData()
+		routed.Call.FirstByteAt = tracker.firstByteTime(streamErr == nil)
+		routed.Call.StreamFailed = streamErr != nil && tracker.Wrote()
 		s.finishRoutedCall(r, GatewayCallCompletion{
 			Call:            routed.Call,
 			Route:           route,
@@ -102,7 +114,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			StatusCode:      status,
 			ErrorCode:       code,
 			ErrorMessage:    errorMessageOrEmpty(streamErr),
-			RequestPayload:  req,
+			RequestPayload:  auditPayload,
 			ResponsePayload: auditStreamPayload(status, code, streamErr),
 		})
 		if streamErr != nil && !tracker.Wrote() {
@@ -118,38 +130,53 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	resp, route, usage, attempts, err := s.executeRoutedChat(r, routed, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req, resp)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	var req ResponsesRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if req.Model == "" {
 		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
 		return
 	}
-	routed, ok := s.startRoutedCall(w, r, project, key, req.Model, req.Stream, req)
+	if req.Background {
+		s.submitResponseJob(w, r, project, key, req)
+		return
+	}
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, req.Model, req.Stream, requestTokenReservation(req))
+	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, guardrailAuditSummary{Model: req.Model})
+		w.Header().Set("x-request-id", requestID)
+		writeError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, responsesGuardrailTargets(&req))
+	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, req.Model, auditPayload)
 	if !ok {
 		return
 	}
@@ -160,7 +187,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 			"provider_capability_not_supported",
 			"Responses are not supported",
 		)
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, req)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
@@ -172,14 +199,14 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 				"provider_capability_not_supported",
 				"Streaming responses are not supported",
 			)
-			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, req)
+			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 			writeError(w, r, err)
 			return
 		}
 	}
 	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, req)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
@@ -192,7 +219,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	if !codexAffinityApplied {
 		affinity, err = s.responsesCacheLocalityAffinity(key.ID, r.Header, req)
 		if err != nil {
-			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, req)
+			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 			writeError(w, r, err)
 			return
 		}
@@ -203,18 +230,18 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.Stream {
-		s.handleStreamingResponses(w, r, routed, req)
+		s.handleStreamingResponses(w, r, routed, req, auditPayload)
 		return
 	}
 	resp, route, usage, attempts, err := s.executeRoutedResponses(r, routed, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req, resp)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -222,18 +249,14 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	var request map[string]json.RawMessage
-	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &request, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	var model string
@@ -245,14 +268,29 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "missing_model", "model is required"))
 		return
 	}
-	routed, ok := s.startRoutedCall(w, r, project, key, model, false, request)
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, model, false, requestTokenReservation(request))
+	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, false, err, guardrailAuditSummary{Model: model})
+		w.Header().Set("x-request-id", requestID)
+		writeError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, responsesCompactGuardrailTargets(request))
+	auditPayload := guardrailRequestAuditPayload(model, decision, request)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
 	if !ok {
 		return
 	}
 	affinityRequest := ResponsesRequest{Model: model, raw: request}
 	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, affinityRequest)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, request)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
@@ -263,13 +301,13 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 	}
 	response, route, usage, attempts, err := s.executeRoutedCompact(r, routed, request)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, request)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, request, response)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -277,18 +315,14 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	var req EmbeddingsRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if req.Model == "" {
@@ -314,54 +348,77 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, stream bool, requestPayload any) (RoutedCall, bool) {
+	return s.startRoutedCallWithAudit(w, r, project, key, model, stream, requestPayload, requestPayload)
+}
+
+func (s *Server) startRoutedCallWithAudit(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, stream bool, requestPayload any, auditPayload any) (RoutedCall, bool) {
 	admittedAt := time.Now().UTC()
-	call, err := s.store.StartCall(r.Context(), project, key, model, requestTokenReservation(requestPayload))
-	call.Stream = stream
+	call, err := s.admitRoutedCall(w, r, project, key, model, stream, requestTokenReservation(requestPayload))
 	if err != nil {
-		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, stream, err, requestPayload)
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, stream, err, auditPayload)
 		w.Header().Set("x-request-id", requestID)
 		writeError(w, r, err)
 		return RoutedCall{}, false
+	}
+	return s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
+}
+
+func (s *Server) admitRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, stream bool, tokenReservation int64) (CallContext, error) {
+	call, err := s.store.StartCall(r.Context(), project, key, model, tokenReservation)
+	call.Stream = stream
+	if err != nil {
+		return CallContext{}, err
 	}
 	w.Header().Set("x-request-id", call.RequestID)
 	writeRateLimitHeaders(w.Header(), call.RateLimitHeaders)
 	if call.requestContext != nil {
 		*r = *r.WithContext(call.requestContext)
 	}
-	routes, err := s.store.SelectRouteCandidates(model)
+	return call, nil
+}
+
+func (s *Server) prepareAdmittedRoutedCallWithAudit(w http.ResponseWriter, r *http.Request, call CallContext, model string, auditPayload any) (RoutedCall, bool) {
+	routed, err := s.prepareAdmittedRoutedCall(r.Context(), call, model)
 	if err != nil {
-		err = s.annotateRoutingPolicyForCandidateError(&call, err)
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, requestPayload)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: routed.Call}, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return RoutedCall{}, false
 	}
-	routes, err = s.filterCodexRoutesByModel(r.Context(), model, routes)
+	return routed, true
+}
+
+func (s *Server) prepareAdmittedRoutedCall(ctx context.Context, call CallContext, model string) (RoutedCall, error) {
+	routes, err := s.store.SelectRouteCandidates(model)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&call, err)
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, requestPayload)
-		writeError(w, r, err)
-		return RoutedCall{}, false
+		return RoutedCall{Call: call}, err
+	}
+	routes, err = s.filterCodexRoutesByModel(ctx, model, routes)
+	if err != nil {
+		err = s.annotateRoutingPolicyForCandidateError(&call, err)
+		return RoutedCall{Call: call}, err
 	}
 	var resolution RoutingPolicyResolution
 	routes, resolution, err = s.resolveScopedRoutingPolicy(call, routes)
 	applyRoutingPolicyResolution(&call, resolution)
 	if err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, requestPayload)
-		writeError(w, r, err)
-		return RoutedCall{}, false
+		return RoutedCall{Call: call}, err
 	}
-	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, true
+	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, nil
 }
 
 func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
 	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
-	responsesReq := playgroundChatResponsesRequest(req)
 	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(ctx, route)
+		responsesReq, useResponses, err := playgroundResponsesRequestForRoute(route, req)
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		if route.Provider.Type == ProviderOpenAICodex {
+		route, err = s.prepareRouteForUpstream(ctx, route)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		if useResponses {
 			upstreamReq := responsesReq
 			if omitReasoningEffort {
 				upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
@@ -385,22 +442,7 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 }
 
 func (s *Server) executeRoutedResponses(r *http.Request, routed RoutedCall, req ResponsesRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(req)) != nil
-	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(ctx, route)
-		if err != nil {
-			return nil, Usage{}, err
-		}
-		upstreamReq := req
-		if omitReasoningEffort {
-			upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
-		}
-		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
-		}
-		return resp, usage, err
-	})
+	return s.executeRoutedResponsesContext(r.Context(), r.Header, routed, req)
 }
 
 func (s *Server) invokeResponsesAdapter(ctx context.Context, route RouteSelection, req ResponsesRequest, incoming http.Header) (any, Usage, error) {
@@ -415,40 +457,6 @@ func (s *Server) invokeResponsesAdapter(ctx context.Context, route RouteSelectio
 		return responsesAdapter.Responses(ctx, route.Provider, route.ProviderModel, req)
 	}
 	return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses")
-}
-
-func playgroundChatResponsesRequest(req ChatCompletionRequest) ResponsesRequest {
-	instructions := make([]string, 0, len(req.Messages))
-	input := make([]map[string]any, 0, len(req.Messages))
-	for _, message := range req.Messages {
-		role := strings.ToLower(strings.TrimSpace(message.Role))
-		text := contentToText(message.Content)
-		switch role {
-		case "system", "developer":
-			if strings.TrimSpace(text) != "" {
-				instructions = append(instructions, text)
-			}
-		case "assistant":
-			input = append(input, map[string]any{
-				"role":    "assistant",
-				"content": []map[string]any{{"type": "output_text", "text": text}},
-			})
-		default:
-			input = append(input, map[string]any{
-				"role":    role,
-				"content": []map[string]any{{"type": "input_text", "text": text}},
-			})
-		}
-	}
-	responsesReq := ResponsesRequest{
-		Model:        req.Model,
-		Input:        input,
-		Instructions: strings.Join(instructions, "\n\n"),
-	}
-	if effort := normalizedReasoningEffort(req.ReasoningEffort); effort != nil {
-		responsesReq.Reasoning = &ResponsesReasoning{Effort: effort}
-	}
-	return responsesReq
 }
 
 func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, request map[string]json.RawMessage) (any, RouteSelection, Usage, []RouteAttempt, error) {
@@ -492,53 +500,50 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+	var playgroundReq playgroundChatRequest
+	if err := s.decodeJSONLimit(w, r, &playgroundReq, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
-	var req ChatCompletionRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	req := playgroundReq.ChatCompletionRequest
+	if err := validatePlaygroundRequest(&req); err != nil {
+		writeError(w, r, err)
 		return
 	}
-	req.Model = strings.TrimSpace(req.Model)
 	req.Stream = false
-	if req.Model == "" {
-		writeError(w, r, NewHTTPError(400, "missing_model", "model is required"))
+	req.StreamOptions = nil
+	guardrailProjectID, err := s.resolvePlaygroundGuardrailProjectID(user, playgroundReq.ProjectID)
+	if err != nil {
+		writeError(w, r, err)
 		return
-	}
-	if len(req.Messages) == 0 {
-		writeError(w, r, NewHTTPError(400, "missing_messages", "messages are required"))
-		return
-	}
-	for _, message := range req.Messages {
-		if strings.TrimSpace(message.Role) == "" {
-			writeError(w, r, NewHTTPError(400, "invalid_message", "message role is required"))
-			return
-		}
 	}
 
-	requestID := NewID("pg")
 	startedAt := time.Now()
-	routed := RoutedCall{
-		Call: CallContext{
-			RequestID: requestID,
-			Project:   Project{ID: "admin_playground", Name: "Admin Playground", Status: StatusActive},
-			Key:       APIKey{ID: user.ID, Name: "Admin Playground"},
-			// The catalog model, not a bare name: pricing lives on it, and per-attempt
-			// cost is computed from whatever this carries. A name-only model silently
-			// reports every playground generation as free.
-			Model:      playgroundModel(s.store, req.Model),
-			StartedAt:  startedAt.UTC(),
-			measuredAt: startedAt,
-		},
+	call := s.newPlaygroundCallContext(user, req.Model, startedAt)
+	requestID := call.RequestID
+	w.Header().Set("x-request-id", requestID)
+	decision, guardrailErr := s.evaluateOutboundGuardrails(r.Context(), guardrailProjectID, chatGuardrailTargets(&req))
+	requestAuditPayload := guardrailRequestAuditPayload(req.Model, decision, playgroundAuditRequest(req))
+	if guardrailErr != nil {
+		httpErr := AsHTTPError(guardrailErr)
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(guardrailErr, requestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, guardrailErr)
+		return
 	}
+	routed := RoutedCall{Call: call}
 	finishRoutingFailure := func(routeErr error) {
 		routeErr = s.annotateRoutingPolicyForCandidateError(&routed.Call, routeErr)
 		httpErr := AsHTTPError(routeErr)
 		s.finishRoutedCall(r, GatewayCallCompletion{
 			Kind: CompletionKindPlayground, Call: routed.Call, StatusCode: httpErr.Status,
-			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: req,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
 			ResponsePayload: auditErrorPayload(routeErr, requestID),
 		})
 		writeError(w, r, routeErr)
@@ -559,7 +564,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		httpErr := AsHTTPError(err)
 		s.finishRoutedCall(r, GatewayCallCompletion{
 			Kind: CompletionKindPlayground, Call: routed.Call, StatusCode: httpErr.Status,
-			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: req,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
 			ResponsePayload: auditErrorPayload(err, requestID),
 		})
 		writeError(w, r, err)
@@ -578,7 +583,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 			StatusCode:      httpErr.Status,
 			ErrorCode:       httpErr.Code,
 			ErrorMessage:    httpErr.Message,
-			RequestPayload:  req,
+			RequestPayload:  requestAuditPayload,
 			ResponsePayload: auditErrorPayload(err, requestID),
 		})
 		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
@@ -591,7 +596,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	usage = priceUsage(routed.Call.Model, usage)
+	usage = priceUsageAt(routed.Call.Model, usage, routed.Call.StartedAt)
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Kind:            CompletionKindPlayground,
 		Call:            routed.Call,
@@ -599,7 +604,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		Usage:           usage,
 		Attempts:        attempts,
 		StatusCode:      http.StatusOK,
-		RequestPayload:  req,
+		RequestPayload:  requestAuditPayload,
 		ResponsePayload: resp,
 	})
 	s.recordAdminAudit(r, user, "chat", "playground", req.Model, "", map[string]any{
@@ -664,6 +669,10 @@ func executeRoutedWithStore[T any](
 		}
 		omitReasoningEffort := false
 		for {
+			// The attempt window covers the whole routed callback, including stream
+			// translation and writing to the client: a slow reader blocks the
+			// gateway here, and that backpressure is part of the attempt duration,
+			// not of the gateway overhead reported in overhead_seconds.
 			attemptStartedAt := time.Now()
 			resp, usage, err := call(leaseCtx, route, omitReasoningEffort, len(attempts)+1)
 			cumulativeTokens = saturatingAddNonNegative(cumulativeTokens, meteredTokens(usage))
@@ -703,7 +712,7 @@ func executeRoutedWithStore[T any](
 				// Priced per attempt so a failover reports what each candidate cost
 				// rather than attributing the whole request to the winner. Tokens
 				// burned by an attempt that later failed were still billed.
-				Usage:     priceUsage(routed.Call.Model, usage),
+				Usage:     priceUsageAt(routed.Call.Model, usage, routed.Call.StartedAt),
 				StartedAt: attemptStartedAt.UTC(),
 				EndedAt:   attemptEndedAt.UTC(),
 			})
@@ -781,35 +790,6 @@ func finishProviderResourceAttempt(ctx context.Context, store Store, resourceID 
 	store.FinishProviderResourceAttempt(ctx, resourceID, leaseID, providerAttemptOutcome(err), usage)
 }
 
-type streamWriteTracker struct {
-	writer       io.Writer
-	wrote        bool
-	bytesWritten int64
-	// onFirstWrite runs once, just before the first byte is written. Response
-	// headers must wait until that moment: failover can move to another candidate,
-	// and writing early would expose the preferred route rather than the one that
-	// actually served the request.
-	onFirstWrite func()
-}
-
-func (w *streamWriteTracker) Write(data []byte) (int, error) {
-	if !w.wrote {
-		if w.onFirstWrite != nil {
-			w.onFirstWrite()
-		}
-		if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
-			responseWriter.WriteHeader(http.StatusOK)
-			if flusher, ok := responseWriter.(http.Flusher); ok {
-				flusher.Flush()
-			}
-		}
-	}
-	w.wrote = true
-	n, err := w.writer.Write(data)
-	w.bytesWritten = saturatingAddNonNegative(w.bytesWritten, int64(n))
-	return n, err
-}
-
 // classifyStreamError decides whether a streaming failure may move to the next
 // candidate.
 //
@@ -836,39 +816,6 @@ func classifyStreamError(ctx context.Context, err error, wrote bool) error {
 		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorStreamCommitted}
 	}
 	return err
-}
-
-func (w *streamWriteTracker) Wrote() bool {
-	return w != nil && w.wrote
-}
-
-func (w *streamWriteTracker) WroteData() bool {
-	return w != nil && w.bytesWritten > 0
-}
-
-// ensureStarted runs the deferred hook even when the upstream produced no bytes.
-// A 200 response with an empty body would otherwise reach the client with none of
-// the headers onFirstWrite installs, including content-type.
-func (w *streamWriteTracker) ensureStarted() {
-	if w == nil || w.wrote {
-		return
-	}
-	if w.onFirstWrite != nil {
-		w.onFirstWrite()
-	}
-	if responseWriter, ok := w.writer.(http.ResponseWriter); ok {
-		responseWriter.WriteHeader(http.StatusOK)
-	}
-	w.wrote = true
-}
-
-func (w *streamWriteTracker) Flush() {
-	if w == nil {
-		return
-	}
-	if flusher, ok := w.writer.(http.Flusher); ok {
-		flusher.Flush()
-	}
 }
 
 func (s *Server) adapterForRoute(route RouteSelection) (ProviderAdapter, error) {
@@ -907,9 +854,9 @@ func (s *Server) routeSupportsAdapterCapability(route RouteSelection, capability
 		return true
 	}
 	// DeepSeek's Responses API is model-scoped rather than provider-scoped. Keep
-	// this allowlist narrow: unsupported parameters are otherwise silently ignored
-	// upstream, which would make an endpoint-level capability claim misleading.
-	return strings.EqualFold(strings.TrimSpace(route.ProviderModel), "deepseek-v4-flash")
+	// this allowlist aligned with the models advertised by the upstream endpoint.
+	model := strings.ToLower(strings.TrimSpace(route.ProviderModel))
+	return model == "deepseek-v4-flash" || model == "deepseek-v4-pro"
 }
 
 func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []RouteSelection {
@@ -981,14 +928,7 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 					identity = cacheDomainID
 					score = weightedCacheDomainScore
 				}
-				sort.SliceStable(group, func(i, j int) bool {
-					left := score(routingKey, identity(group[i]), routeEffectiveWeight(group[i]))
-					right := score(routingKey, identity(group[j]), routeEffectiveWeight(group[j]))
-					if left != right {
-						return left > right
-					}
-					return routeSortID(group[i]) < routeSortID(group[j])
-				})
+				sortRouteGroupByRendezvous(routingKey, group, identity, score)
 				planned = append(planned, group...)
 				priorityGroup = priorityGroup[groupEnd:]
 				continue
@@ -1003,6 +943,36 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 		ordered = ordered[end:]
 	}
 	return planned
+}
+
+type rendezvousRouteRanking struct {
+	routes []RouteSelection
+	scores []float64
+}
+
+func (ranking rendezvousRouteRanking) Len() int { return len(ranking.routes) }
+
+func (ranking rendezvousRouteRanking) Less(i, j int) bool {
+	if ranking.scores[i] != ranking.scores[j] {
+		return ranking.scores[i] > ranking.scores[j]
+	}
+	return routeSortID(ranking.routes[i]) < routeSortID(ranking.routes[j])
+}
+
+func (ranking rendezvousRouteRanking) Swap(i, j int) {
+	ranking.routes[i], ranking.routes[j] = ranking.routes[j], ranking.routes[i]
+	ranking.scores[i], ranking.scores[j] = ranking.scores[j], ranking.scores[i]
+}
+
+func sortRouteGroupByRendezvous(routingKey string, group []RouteSelection, identity func(RouteSelection) string, score func(string, string, int) float64) {
+	if len(group) < 2 {
+		return
+	}
+	scores := make([]float64, len(group))
+	for index := range group {
+		scores[index] = score(routingKey, identity(group[index]), routeEffectiveWeight(group[index]))
+	}
+	sort.Stable(rendezvousRouteRanking{routes: group, scores: scores})
 }
 
 // weightedRendezvousScore scores candidates for Codex session affinity, where
@@ -1291,7 +1261,7 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 		return false
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted, ProviderErrorEgress:
 		return false
 	case ProviderErrorTransientSame:
 		return !routeIsBound

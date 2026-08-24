@@ -2,10 +2,14 @@ import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, P
 import { useRef, useState } from "react";
 import { type ApiContext, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
+import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
 import { formatModelPrice } from "../domain/formatting";
+import { providerAnthropicAuthType, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerTypeOptions } from "../shared/ui";
+import { ProviderCustomHeaders } from "./provider-custom-headers";
+import { AnthropicAuthTypeField } from "./provider-editor-sections";
 
 type ProviderConnectionTestState = {
   status: "idle" | "testing" | "success" | "error";
@@ -108,20 +112,24 @@ export function ProviderAPIQuickConnect({
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
   const connectionTestRun = useRef(0);
   const custom = catalogID === "custom";
+  const optionalAPIKey = catalogID === "kronk";
   const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
-  const connectionReady = Boolean(values.base_url?.trim() && values.api_key?.trim());
+  const connectionReady = Boolean(values.base_url?.trim() && (optionalAPIKey || values.api_key?.trim()));
 
   function updateConnectionValue(key: string, value: string) {
-    if (key === "base_url" || key === "api_key") {
-      connectionTestRun.current += 1;
+    const nextRun = providerConnectionTestRunAfterUpdate(connectionTestRun.current, key);
+    if (nextRun !== connectionTestRun.current) {
+      connectionTestRun.current = nextRun;
       setConnectionTest({ status: "idle" });
     }
     onUpdate(key, value);
   }
 
   async function testConnection() {
+    const headerError = providerHeaderFormError(values.custom_headers);
+    if (headerError) { setConnectionTest({ status: "error", message: tx(headerError) }); return; }
     if (!connectionReady) {
-      setConnectionTest({ status: "error", message: tx("请填写 Base URL 和 API Key 后测试。") });
+      setConnectionTest({ status: "error", message: tx(optionalAPIKey ? "请填写 Base URL 后测试。" : "请填写 Base URL 和 API Key 后测试。") });
       return;
     }
     const run = connectionTestRun.current + 1;
@@ -137,6 +145,8 @@ export function ProviderAPIQuickConnect({
           type: values.type,
           base_url: values.base_url,
           api_key: values.api_key,
+          ...providerHeadersPayload(values.custom_headers),
+          anthropic_auth_type: providerAnthropicAuthType(values),
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));
@@ -145,7 +155,7 @@ export function ProviderAPIQuickConnect({
       setConnectionTest({
         status: "success",
         latencyMS: Math.max(0, result.latency_ms),
-        message: tx("API Key 配置有效"),
+        message: tx(optionalAPIKey ? "Kronk 服务连接正常" : "API Key 配置有效"),
       });
     } catch (err) {
       if (connectionTestRun.current !== run || isAuthExpiredError(err)) return;
@@ -179,8 +189,8 @@ export function ProviderAPIQuickConnect({
           <div className="provider-api-quick-intro">
             <span><KeyRound size={18} /></span>
             <div>
-              <strong>{tx(custom ? "填写连接信息" : "只需填写 API Key")}</strong>
-              <p>{tx(custom ? "自定义渠道需要填写名称、Base URL 和 API Key。" : "把上游 Key 保存到 Provider，适合单账号或兼容 API。")}</p>
+              <strong>{tx(custom ? "填写连接信息" : optionalAPIKey ? "连接 Kronk Model Server" : "只需填写 API Key")}</strong>
+              <p>{tx(custom ? "自定义渠道需要填写名称、Base URL 和 API Key。" : optionalAPIKey ? "未启用 Kronk 认证时可留空；启用后填写 application token。" : "把上游 Key 保存到 Provider，适合单账号或兼容 API。")}</p>
             </div>
           </div>
 
@@ -203,7 +213,7 @@ export function ProviderAPIQuickConnect({
           )}
 
           <label className="field provider-quick-key-field">
-            <span>API Key</span>
+            <span>{optionalAPIKey ? tx("Application Token（可选）") : "API Key"}</span>
             <div className="provider-quick-key-input">
               <input
                 autoComplete="new-password"
@@ -215,13 +225,13 @@ export function ProviderAPIQuickConnect({
                   updateConnectionValue("api_key", event.target.value);
                 }}
                 onInvalid={handleRequiredFieldInvalid}
-                required
+                required={!optionalAPIKey}
               />
               <button aria-label={tx(showKey ? "隐藏 API Key" : "显示 API Key")} onClick={() => setShowKey((current) => !current)} type="button">
                 {showKey ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
-            {entry?.doc_url ? <a href={entry.doc_url} rel="noreferrer" target="_blank">{tx("获取 API Key")}</a> : null}
+            {entry?.doc_url ? <a href={entry.doc_url} rel="noreferrer" target="_blank">{tx(optionalAPIKey ? "查看 Kronk 文档" : "获取 API Key")}</a> : null}
           </label>
           <div className="provider-quick-test-row">
             <button
@@ -308,15 +318,29 @@ export function ProviderAPIQuickConnect({
             ) : null}
             <label className="field">
               <span>{tx("渠道商类型")}</span>
-              <select value={values.type ?? ""} onChange={(event) => onUpdate("type", event.target.value)} required>
+              <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
                 {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
               </select>
             </label>
+            <AnthropicAuthTypeField values={values} onUpdate={updateConnectionValue} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
             </label>
+            <label className="field">
+              <span>{tx("Claude Code 归因块")}</span>
+              <select value={values.claude_code_attribution_policy ?? "preserve"} onChange={(event) => onUpdate("claude_code_attribution_policy", event.target.value)}>
+                <option value="preserve">{tx("保留归因块")}</option>
+                <option value="strip">{tx("移除归因块")}</option>
+              </select>
+              <small>{tx("Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。")}</small>
+            </label>
           </div>
+          <ProviderCustomHeaders
+            disabled={values.type === "azure_openai" || values.type === "openai_codex"}
+            onChange={(value) => onUpdate("custom_headers", value)}
+            value={values.custom_headers ?? "[]"}
+          />
         </div>
       ) : null}
     </section>

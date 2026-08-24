@@ -28,7 +28,7 @@ TokenHub 包含 Go 后端、Next.js 管理后台、Node.js SDK 冒烟测试、YA
 需要单独运行组件时，在 `backend/` 目录启动后端：
 
 ```bash
-go run ./cmd/tokenhub
+TOKENHUB_CORS_ALLOWED_ORIGINS=http://localhost:3000 go run ./cmd/tokenhub
 ```
 
 在 `frontend/` 目录启动管理后台：
@@ -73,9 +73,15 @@ go vet ./...
 
 ```bash
 npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+浏览器冒烟测试会启动相互隔离的 Next.js 前端、Go 后端、模拟 Provider 上游和临时 SQLite 数据库，不需要真实凭据，也不要求预先启动 TokenHub。
 
 修改 Docker 或部署配置时，如果本地可以使用 Docker，需要渲染 Compose 配置：
 
@@ -101,6 +107,7 @@ Agent 专用的仓库指令见 [AGENTS.md](AGENTS.md#optional-development-workfl
 
 ## Pull Request
 
+- 标题和正文的每一节均使用英文。
 - 使用英文 Conventional Commits 风格的标题：`<type>[optional scope][!]: <short summary>`。
 - 标题不超过 72 个字符，摘要使用小写祈使句，不添加句号。
 - 完整填写 [Pull Request 模板](.github/pull_request_template.md)的每一节，并说明跳过或不适用的检查。

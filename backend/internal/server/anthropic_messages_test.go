@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -208,6 +209,62 @@ func TestAnthropicMessagesConvertsToolsAndToolResultsForOpenAI(t *testing.T) {
 	}
 }
 
+func TestAnthropicMessagesOmitsEmptyToolCallsForOpenAI(t *testing.T) {
+	var mu sync.Mutex
+	var upstreamRequests []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		decoder := json.NewDecoder(r.Body)
+		decoder.UseNumber()
+		if err := decoder.Decode(&payload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+			return
+		}
+		mu.Lock()
+		upstreamRequests = append(upstreamRequests, payload)
+		mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"chatcmpl_nocalls",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"Understood."},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}
+		}`)
+	}))
+	defer upstream.Close()
+
+	handler, _, secret := newAnthropicGateway(t, upstream.URL, ProviderOpenAICompatible)
+	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 1024,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Summarize the plan."},
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "thinking", "thinking": "No tool call needed."},
+					map[string]any{"type": "text", "text": "Let me check."},
+				},
+			},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(upstreamRequests) != 1 {
+		t.Fatalf("expected one upstream request, got %d", len(upstreamRequests))
+	}
+	messages, _ := upstreamRequests[0]["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("expected two upstream messages, got %#v", messages)
+	}
+	assistant, _ := messages[1].(map[string]any)
+	if _, present := assistant["tool_calls"]; present {
+		t.Fatalf("assistant message without tool_use must not carry tool_calls, got %#v", assistant)
+	}
+}
+
 func TestAnthropicMessagesConvertsOpenAIStreamingTextAndToolCall(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]any
@@ -226,7 +283,7 @@ func TestAnthropicMessagesConvertsOpenAIStreamingTextAndToolCall(t *testing.T) {
 		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_stream\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_read\",\"type\":\"function\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"file_path\\\":\"}}]},\"finish_reason\":null}]}\n\n")
 		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_stream\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"README.md\\\"}\"}}]},\"finish_reason\":null}]}\n\n")
 		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_stream\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n")
-		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":90,\"completion_tokens\":12,\"total_tokens\":102}}\n\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":90,\"completion_tokens\":12,\"total_tokens\":102,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
@@ -262,8 +319,13 @@ func TestAnthropicMessagesConvertsOpenAIStreamingTextAndToolCall(t *testing.T) {
 			t.Fatalf("stream is missing %q:\n%s", expected, body)
 		}
 	}
+	events := parsePlaygroundSSE(t, body)
+	finalUsage, _ := findPlaygroundSSEEvent(t, events, "message_delta").Data["usage"].(map[string]any)
+	if finalUsage["input_tokens"] != float64(10) || finalUsage["cache_read_input_tokens"] != float64(80) || finalUsage["cache_creation_input_tokens"] != float64(0) || finalUsage["output_tokens"] != float64(12) {
+		t.Fatalf("expected authoritative Anthropic cache usage in the final event, got %#v", finalUsage)
+	}
 	records := store.ListUsageRecords()
-	if len(records) != 1 || records[0].TotalTokens != 102 {
+	if len(records) != 1 || records[0].InputTokens != 90 || records[0].CachedInputTokens != 80 || records[0].OutputTokens != 12 || records[0].TotalTokens != 102 {
 		t.Fatalf("unexpected streaming usage records: %+v", records)
 	}
 }
@@ -282,6 +344,9 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 		}
 		if r.Header.Get("anthropic-beta") != "interleaved-thinking-2025-05-14" {
 			t.Errorf("unexpected beta %q", r.Header.Get("anthropic-beta"))
+		}
+		if r.Header.Get("User-Agent") != "TokenHub-Anthropic/1.0" {
+			t.Errorf("unexpected custom User-Agent %q", r.Header.Get("User-Agent"))
 		}
 		decoder := json.NewDecoder(r.Body)
 		decoder.UseNumber()
@@ -302,7 +367,12 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	handler, _, secret := newAnthropicGateway(t, upstream.URL, ProviderAnthropic)
+	handler, store, secret := newAnthropicGateway(t, upstream.URL+"/v1", ProviderAnthropic)
+	provider, _ := store.GetProvider("prv_claude_code")
+	provider.Headers = map[string]string{"User-Agent": "TokenHub-Anthropic/1.0"}
+	if _, err := store.UpdateProvider(provider.ID, provider); err != nil {
+		t.Fatal(err)
+	}
 	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
 		"model":      "claude-tokenhub-test",
 		"max_tokens": 1024,
@@ -327,6 +397,40 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	if !strings.Contains(resp.Body.String(), `"model":"claude-tokenhub-test"`) ||
 		!strings.Contains(resp.Body.String(), `"type":"tool_use"`) {
 		t.Fatalf("native response was not preserved and remapped: %s", resp.Body)
+	}
+}
+
+func TestAnthropicMessagesUsesBearerAuthForNativeProvider(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("authorization"); got != "Bearer upstream-secret" {
+			t.Errorf("unexpected upstream authorization %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "" {
+			t.Errorf("x-api-key must be omitted in bearer mode, got %q", got)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_bearer",
+			"type":"message",
+			"role":"assistant",
+			"model":"upstream-model",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":1,"output_tokens":1}
+		}`)
+	}))
+	defer upstream.Close()
+
+	handler, _, secret := newAnthropicGatewayWithOptions(t, upstream.URL, ProviderAnthropic, map[string]string{
+		anthropicAuthTypeOption: anthropicAuthTypeBearer,
+	})
+	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 64,
+		"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -435,7 +539,7 @@ func TestAnthropicMessagesRejectsSystemRoleWithoutBeta(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", body)
 	req.Header.Set("content-type", "application/json")
 
-	_, err := decodeAnthropicMessagesRequest(req, true)
+	_, err := New(NewMemoryStore()).decodeAnthropicMessagesRequest(httptest.NewRecorder(), req, true)
 	if err == nil {
 		t.Fatal("expected system role without beta to be rejected")
 	}
@@ -739,6 +843,43 @@ func TestCompatibleAnthropicRoutesUsesHighestPriorityError(t *testing.T) {
 	}
 }
 
+func TestCompatibleAnthropicRoutesSkipsProviderRejectingReasoningEffort(t *testing.T) {
+	req := anthropicMessagesRequest{
+		Raw: map[string]any{
+			"model":         "claude-route-reasoning",
+			"max_tokens":    256,
+			"output_config": map[string]any{"effort": "xhigh"},
+			"messages":      []any{map[string]any{"role": "user", "content": "Plan the change."}},
+		},
+		Model:     "claude-route-reasoning",
+		Messages:  []any{map[string]any{"role": "user", "content": "Plan the change."}},
+		MaxTokens: 256,
+	}
+	routed := RoutedCall{Routes: []RouteSelection{
+		{
+			Route: ModelRoute{ID: "route_rejecting", Priority: 1},
+			Provider: Provider{ID: "prv_rejecting", Type: ProviderOpenAICompatible, Options: map[string]string{
+				reasoningEffortValuesOption:      "none,low,medium,high,max",
+				reasoningEffortUnsupportedOption: "reject",
+			}},
+		},
+		{
+			Route: ModelRoute{ID: "route_compatible", Priority: 2},
+			Provider: Provider{ID: "prv_compatible", Type: ProviderOpenAICompatible, Options: map[string]string{
+				reasoningEffortValuesOption: "none,low,medium,high,max,xhigh",
+			}},
+		},
+	}}
+
+	compatible, err := compatibleAnthropicRoutes(routed, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compatible.Routes) != 1 || compatible.Routes[0].Route.ID != "route_compatible" {
+		t.Fatalf("expected only the compatible route, got %#v", compatible.Routes)
+	}
+}
+
 func TestAnthropicMessagesRejectsUnsupportedServerToolOnOpenAIRoute(t *testing.T) {
 	handler, _, secret := newAnthropicGateway(t, "http://127.0.0.1:1", ProviderOpenAICompatible)
 	resp := doAnthropicRequest(t, handler, "/v1/messages", map[string]any{
@@ -780,6 +921,10 @@ func TestGatewayModelsIncludeAnthropicDiscoveryFields(t *testing.T) {
 }
 
 func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) (http.Handler, *GormStore, string) {
+	return newAnthropicGatewayWithOptions(t, upstreamURL, providerType, nil)
+}
+
+func newAnthropicGatewayWithOptions(t *testing.T, upstreamURL string, providerType string, options map[string]string) (http.Handler, *GormStore, string) {
 	t.Helper()
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Claude Code Project", Status: StatusActive})
@@ -808,6 +953,7 @@ func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) 
 		APIKey:  "upstream-secret",
 		Status:  StatusActive,
 		Healthy: true,
+		Options: options,
 	})
 	store.AddRoute(ModelRoute{
 		ID:            "route_claude_code",
@@ -871,4 +1017,25 @@ func findTestBeta(payload any) string {
 		return "interleaved-thinking-2025-05-14"
 	}
 	return ""
+}
+
+// TestDoNativeAnthropicRequestRejectsMissingAdapter guards the native
+// Anthropic path against a registry that does not know the Anthropic adapter:
+// it must fail with a controlled 503 instead of dereferencing an
+// unconfigured zero-value client.
+func TestDoNativeAnthropicRequestRejectsMissingAdapter(t *testing.T) {
+	store := NewMemoryStore()
+	srv := NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+	// Drop every registered adapter so the Anthropic adapter is unavailable.
+	srv.adapterRegistry = NewAdapterRegistry()
+	_, err := srv.doNativeAnthropicRequest(context.Background(), Provider{
+		ID:      "prv_no_adapter",
+		Type:    ProviderAnthropic,
+		BaseURL: "http://127.0.0.1:1",
+		APIKey:  "secret",
+	}, "/v1/messages", map[string]any{"model": "claude-x", "max_tokens": 1}, http.Header{}, false)
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusServiceUnavailable || httpErr.Code != "provider_adapter_missing" {
+		t.Fatalf("expected 503 provider_adapter_missing, got %v", err)
+	}
 }

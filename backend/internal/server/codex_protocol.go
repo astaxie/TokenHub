@@ -10,6 +10,7 @@ import (
 
 var codexRequestHeaderAllowlist = []string{
 	"session-id",
+	"session_id",
 	"thread-id",
 	"x-client-request-id",
 	"x-codex-turn-state",

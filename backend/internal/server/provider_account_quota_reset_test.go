@@ -21,6 +21,8 @@ type quotaResetUpstream struct {
 	consumeCalls   int
 	getCalls       int
 	authorizations []string
+	getAuth        []string
+	getAccountIDs  []string
 }
 
 func (u *quotaResetUpstream) handler(w http.ResponseWriter, r *http.Request) {
@@ -28,6 +30,8 @@ func (u *quotaResetUpstream) handler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/rate-limit-reset-credits"):
 		u.getCalls++
+		u.getAuth = append(u.getAuth, r.Header.Get("authorization"))
+		u.getAccountIDs = append(u.getAccountIDs, r.Header.Get("chatgpt-account-id"))
 		_, _ = io.WriteString(w, `{"available_count":`+stringifyValueForTest(u.availableCount)+`,"credits":[{"id":"`+u.creditID+`","status":"available","expires_at":"2099-01-01T00:00:00Z"}]}`)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rate-limit-reset-credits/consume"):
 		u.consumeCalls++

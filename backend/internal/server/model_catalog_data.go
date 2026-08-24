@@ -9,22 +9,26 @@ import (
 )
 
 type modelCatalogSeed struct {
-	Name                   string            `yaml:"name"`
-	Title                  string            `yaml:"title"`
-	Description            string            `yaml:"description"`
-	Category               string            `yaml:"category"`
-	Family                 string            `yaml:"family"`
-	Modality               string            `yaml:"modality"`
-	ContextWindow          int64             `yaml:"context_window"`
-	InputPriceUSDPer1M     float64           `yaml:"input_price_usd_per_1m"`
-	CacheReadPriceUSDPer1M float64           `yaml:"cache_read_price_usd_per_1m"`
-	OutputPriceUSDPer1M    float64           `yaml:"output_price_usd_per_1m"`
-	EmbeddingPriceUSDPer1M float64           `yaml:"embedding_price_usd_per_1m"`
-	InputModalities        []string          `yaml:"input_modalities"`
-	OutputModalities       []string          `yaml:"output_modalities"`
-	Capabilities           []string          `yaml:"capabilities"`
-	SupportedParameters    []string          `yaml:"supported_parameters"`
-	Metadata               map[string]string `yaml:"metadata"`
+	Name                      string               `yaml:"name"`
+	Title                     string               `yaml:"title"`
+	Description               string               `yaml:"description"`
+	Category                  string               `yaml:"category"`
+	Family                    string               `yaml:"family"`
+	Modality                  string               `yaml:"modality"`
+	ContextWindow             int64                `yaml:"context_window"`
+	InputPriceUSDPer1M        float64              `yaml:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M    float64              `yaml:"cache_read_price_usd_per_1m"`
+	CacheWritePriceUSDPer1M   *float64             `yaml:"cache_write_price_usd_per_1m"`
+	CacheWrite5mPriceUSDPer1M *float64             `yaml:"cache_write_5m_price_usd_per_1m"`
+	CacheWrite1hPriceUSDPer1M *float64             `yaml:"cache_write_1h_price_usd_per_1m"`
+	OutputPriceUSDPer1M       float64              `yaml:"output_price_usd_per_1m"`
+	EmbeddingPriceUSDPer1M    float64              `yaml:"embedding_price_usd_per_1m"`
+	PricingPeriods            []ModelPricingPeriod `yaml:"pricing_periods"`
+	InputModalities           []string             `yaml:"input_modalities"`
+	OutputModalities          []string             `yaml:"output_modalities"`
+	Capabilities              []string             `yaml:"capabilities"`
+	SupportedParameters       []string             `yaml:"supported_parameters"`
+	Metadata                  map[string]string    `yaml:"metadata"`
 }
 
 type modelCatalogDocument struct {
@@ -115,23 +119,39 @@ func buildCatalogModel(seed modelCatalogSeed) Model {
 		metadata["description"] = description
 	}
 	return Model{
-		ID:                     name,
-		Name:                   name,
-		Category:               category,
-		Family:                 family,
-		Modality:               modality,
-		ContextWindow:          contextWindow,
-		InputModalities:        seed.InputModalities,
-		OutputModalities:       seed.OutputModalities,
-		Capabilities:           capabilities,
-		SupportedParameters:    supportedParameters,
-		InputPriceUSDPer1M:     inputPrice,
-		CacheReadPriceUSDPer1M: seed.CacheReadPriceUSDPer1M,
-		OutputPriceUSDPer1M:    outputPrice,
+		ID:                        name,
+		Name:                      name,
+		Category:                  category,
+		Family:                    family,
+		Modality:                  modality,
+		ContextWindow:             contextWindow,
+		InputModalities:           seed.InputModalities,
+		OutputModalities:          seed.OutputModalities,
+		Capabilities:              capabilities,
+		SupportedParameters:       supportedParameters,
+		InputPriceUSDPer1M:        inputPrice,
+		CacheReadPriceUSDPer1M:    seed.CacheReadPriceUSDPer1M,
+		CacheWritePriceUSDPer1M:   catalogOptionalPrice(seed.CacheWritePriceUSDPer1M),
+		CacheWrite5mPriceUSDPer1M: catalogOptionalPrice(seed.CacheWrite5mPriceUSDPer1M),
+		CacheWrite1hPriceUSDPer1M: catalogOptionalPrice(seed.CacheWrite1hPriceUSDPer1M),
+		OutputPriceUSDPer1M:       outputPrice,
+		CacheWritePriceConfiguration: CacheWritePriceConfiguration{
+			CacheWritePriceConfigured:   seed.CacheWritePriceUSDPer1M != nil,
+			CacheWrite5mPriceConfigured: seed.CacheWrite5mPriceUSDPer1M != nil,
+			CacheWrite1hPriceConfigured: seed.CacheWrite1hPriceUSDPer1M != nil,
+		},
 		EmbeddingPriceUSDPer1M: seed.EmbeddingPriceUSDPer1M,
+		PricingPeriods:         append([]ModelPricingPeriod(nil), seed.PricingPeriods...),
 		Status:                 StatusActive,
 		Metadata:               metadata,
 	}
+}
+
+func catalogOptionalPrice(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func inferCatalogModelFamily(name string, category string) string {

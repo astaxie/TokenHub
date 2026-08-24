@@ -14,6 +14,7 @@ export type LoadPlan = {
   alertDeliveries: boolean;
   approvals: boolean;
   sqliteBackups: boolean;
+  dailyUsage: boolean;
   breakdown: boolean;
   timeseries: boolean;
   users: boolean;
@@ -22,6 +23,8 @@ export type LoadPlan = {
 	billingConnectors: boolean;
 	billingRecords: boolean;
 	billingSyncRuns: boolean;
+	reconciliationRules: boolean;
+	reconciliationRuns: boolean;
   resources: string[];
 };
 
@@ -43,6 +46,7 @@ export function emptyLoadPlan(): LoadPlan {
     alertDeliveries: false,
     approvals: false,
     sqliteBackups: false,
+    dailyUsage: false,
     breakdown: false,
     timeseries: false,
     users: false,
@@ -51,6 +55,8 @@ export function emptyLoadPlan(): LoadPlan {
 		billingConnectors: false,
 		billingRecords: false,
 		billingSyncRuns: false,
+		reconciliationRules: false,
+		reconciliationRuns: false,
     resources: [],
   };
 }
@@ -92,6 +98,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       break;
     case "usage":
       plan.overview = true;
+      plan.keys = can("api-keys");
+      plan.dailyUsage = true;
       plan.breakdown = true;
       plan.timeseries = true;
       plan.users = can("users") || appRole(user.role) === "team_leader";
@@ -107,12 +115,13 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
 			plan.billingConnectors = true;
 			plan.billingRecords = true;
 			plan.billingSyncRuns = true;
+			plan.reconciliationRules = true;
+			plan.reconciliationRuns = true;
 		}
       break;
     case "audit":
       plan.overview = true;
       plan.keys = can("api-keys");
-      plan.logs = true;
       plan.auditEvents = canViewAdminAudit(user);
       break;
     case "providers":
@@ -165,9 +174,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.overview = true;
       plan.keys = true;
       plan.users = can("users") || appRole(user.role) === "team_leader";
-      if (appRole(user.role) !== "user") {
-        addResourceDependency(plan, "teams");
-      }
+      addResourceDependency(plan, "teams");
       addResourceDependency(plan, "project-members");
       break;
     case "teams":
@@ -181,19 +188,28 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "role-configs");
       break;
     case "settings":
+	  plan.providers = true;
       addResourceDependency(plan, "settings");
       addResourceDependency(plan, "role-configs");
       addResourceDependency(plan, "identity-providers");
       break;
+    case "security-policies":
+      plan.overview = true;
+      addResourceDependency(plan, "security-policies");
+      break;
     case "quota-policies":
+      plan.overview = true;
+      plan.keys = true;
+      plan.users = true;
+      addResourceDependency(plan, "teams");
+      addResourceDependency(plan, view);
+      break;
     case "cost-centers":
     case "approval-flows":
     case "reports":
     case "notification-channels":
     case "monitors":
-    case "proxies":
     case "announcements":
-    case "security-policies":
     case "identity-providers":
       addResourceDependency(plan, view);
       break;
@@ -235,6 +251,7 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     sqliteBackups: loaded.sqliteBackups ?? current.sqliteBackups,
     users: loaded.users ?? current.users,
     breakdown: loaded.breakdown ?? current.breakdown,
+    dailyUsage: loaded.dailyUsage ?? current.dailyUsage,
     timeseries: loaded.timeseries ?? current.timeseries,
     keys: loaded.keys ?? current.keys,
     providerCatalog: loaded.providerCatalog ?? current.providerCatalog,
@@ -242,6 +259,8 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
 		billingConnectors: loaded.billingConnectors ?? current.billingConnectors,
 		billingRecords: loaded.billingRecords ?? current.billingRecords,
 		billingSyncRuns: loaded.billingSyncRuns ?? current.billingSyncRuns,
+		reconciliationRules: loaded.reconciliationRules ?? current.reconciliationRules,
+		reconciliationRuns: loaded.reconciliationRuns ?? current.reconciliationRuns,
     resources: loaded.resources ? { ...current.resources, ...loaded.resources } : current.resources,
   };
 }

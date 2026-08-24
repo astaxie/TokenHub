@@ -23,9 +23,19 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, or `POST /v1/embeddings`.
 5. Review **Usage Analytics** and **Request Logs** for requests, tokens, cost, and errors.
 
+The console **API Documentation** page remains the guided onboarding view. For the complete interactive and machine-readable gateway contract, open `http://localhost:8080/docs` in a private deployment or import `http://localhost:8080/openapi.json` into an API client, SDK generator, test tool, or enterprise API catalog. The documentation page keeps any entered project key in browser memory only.
+
+## Review One API Key's Usage
+
+In **Key Management**, select **Usage** for a Key to open its dedicated usage page. The page reports requests, success rate, latency, detailed token categories, estimated client cost, model and error breakdowns, and paginated request details. Use the 7-, 30-, or 90-day presets, or select a custom UTC range of up to 366 days.
+
+The quota section compares the current UTC day and month counters with the effective limits after Key, Project, Team, and global quota policies are combined. Usage belongs only to the selected saved Key ID. A rotated predecessor or successor is shown as related information but is never merged into the totals. Request payloads, when audit capture is enabled, follow the existing redaction and truncation rules; the complete API Key is never returned.
+
 ## Test a Model in the Playground
 
 Open **Model Playground** in the console to test an available chat model without creating an API script. Each response shows streaming or buffered delivery, TTFT when it can be measured, output throughput, total duration, full-context input tokens, output tokens, estimated cost, local completion time, and a request ID. Expand the response for the actual response details. Provider and route internals appear only when your role has routing-read permission.
+
+Image upload is available only when the selected model's `input_modalities` includes `image`; configure this value in the model directory for multimodal models. The Playground accepts JPEG, PNG, and WebP images, with limits of 4 images per message, 5 MiB per image, and 12 MiB of images across the current conversation. Exported sessions retain image names, media types, and sizes for context, but omit the image data.
 
 The session is temporary and remains only on the current page unless you choose **Export Playground**. **Stop** keeps partial output. **Rerun** creates another candidate from that turn and removes later turns. Changing models starts a new session unless you explicitly choose to keep the existing context. For an upstream that does not support streaming, the page uses buffered mode and marks TTFT as not applicable.
 
@@ -149,10 +159,11 @@ Anthropic and Gemini require the opaque signature attached to a reasoning step t
 | --- | --- |
 | `message.reasoning_content` | Anthropic `thinking` text, Gemini thought parts, Codex reasoning summaries |
 | `message.reasoning_signature` | Anthropic `thinking.signature`, Codex encrypted reasoning |
+| `message.reasoning_details` | Codex encrypted reasoning bound to a tool call ID |
 | `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
 | `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
 
-Echo these fields on the assistant message of the following request to preserve reasoning continuity. Clients that ignore them still work: TokenHub omits the reasoning block rather than replaying a signature the provider would reject. Signatures are tagged with the provider that issued them and are never replayed to a different provider.
+Echo these fields on the assistant message of the following request to preserve reasoning continuity. For `reasoning_details`, preserve the complete item and its `id`; TokenHub accepts it only when that ID matches a tool call in the same assistant message. Clients that ignore these fields still work: TokenHub omits the reasoning block rather than replaying a signature the provider would reject. Signatures are tagged with the provider that issued them and are never replayed to a different provider.
 
 ## Anthropic Messages and Claude Code
 
@@ -175,6 +186,8 @@ curl --request POST \
 
 Native Anthropic routes preserve Anthropic content blocks and beta headers. OpenAI-compatible routes translate text, images, client tools, tool results, parallel tool calls, and streaming events. Anthropic server tools that cannot be represented by an OpenAI-compatible provider return `400 unsupported_tool`.
 
+For OpenAI-compatible routes, Provider and Provider Resource `options` can adapt Claude reasoning controls to the upstream vocabulary. `reasoning_effort_map` is a JSON object such as `{"minimal":"low","xhigh":"max"}`; `reasoning_effort_values` is a comma-separated allowlist; `reasoning_effort_unsupported` is `omit` (default), `reject`, or the explicitly opted-in `passthrough`; and `reasoning_budget_map` maps maximum token counts plus optional `*` fallback to effort values, for example `{"2048":"low","8192":"medium","*":"max"}`. Resource options override Provider options. TokenHub translates `thinking.type=disabled` to `none`, leaves `adaptive` at the upstream default unless an explicit effort exists, and maps `enabled` with `budget_tokens`. An explicit `output_config.effort` overrides top-level `effort` and the budget-derived value. Set `preserve_reasoning_content=true` only when the upstream accepts its own `reasoning_content` on later assistant messages. OpenAI-compatible `reasoning_content` is returned to Claude clients as ordered `thinking` / `thinking_delta` blocks with a TokenHub replay signature.
+
 Models routed to an OpenAI Codex Subscription account work through the same Messages endpoint: TokenHub translates Messages directly to the Responses protocol and converts the result back to Anthropic events. Claude Code therefore connects to TokenHub directly; CC-Switch or another local protocol proxy is not required. Codex-issued reasoning signatures are carried across tool turns, and a Claude Code session remains affined to one healthy subscription account.
 
 On Codex-backed Messages routes, `max_tokens`, `temperature`, `top_p`, `stop_sequences`, and Anthropic structured-output formatting cannot be enforced because the subscription upstream does not support their equivalent request fields.
@@ -193,6 +206,27 @@ claude
 
 `ANTHROPIC_AUTH_TOKEN` sends the TokenHub key in `Authorization: Bearer`. `ANTHROPIC_API_KEY` also works through `x-api-key` when no Authorization header is present. Token counting verifies key and model access but does not create a billed inference record.
 
+## Persistent background Responses
+
+Set `background: true` on `POST /v1/responses` to persist a Responses request and return a stable gateway-owned response ID immediately:
+
+```bash
+curl http://localhost:8080/v1/responses \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-5.4","input":"Summarize the report","background":true}'
+```
+
+Read the status or final response with `GET /v1/responses/{id}`. Request cancellation with `POST /v1/responses/{id}/cancel`. Reads and cancellation require the same project, API key, attributed owner, and current model access as the original submission; a mismatch returns `404`. `background: true` with `stream: true` is rejected because resumable background SSE is not implemented.
+
+The public status values are `queued`, `in_progress`, `completed`, `failed`, and `cancelled`. Quota, budget, concurrency, routing, guardrails, cache affinity, cost accounting, request logs, and traces are applied by the worker before and during the upstream call. A cancellation/completion race has one durable winner, while any upstream usage already incurred is still settled exactly once.
+
+Queued work survives a server restart. Work whose lease expires before admission is safely returned to the queue. Work that loses its worker after admission is marked `failed` with `response_execution_lost` instead of being replayed, because the provider may already have received it. PostgreSQL replicas coordinate claims with fenced leases and row locking. SQLite supports restart recovery but remains a single-backend deployment; do not share one SQLite file between backend replicas.
+
+Request envelopes and results are encrypted at rest with `TOKENHUB_SECRET_KEY`; authentication headers are never stored, and only a bounded protocol-header allowlist is retained. Background request and response bodies are not copied to plaintext request-payload audit records or tracing exports, and upstream route error text is removed from their route-attempt records. Encryption or decryption failure is fail-closed. Terminal payloads are retained for `TOKENHUB_RESPONSE_RESULT_TTL_SECONDS`, then both request and result ciphertext are scrubbed and later reads return `404`. The returned ID is a TokenHub retrieval ID and is not translated into an upstream `previous_response_id`.
+
+Prometheus exposes `tokenhub_gateway_response_jobs_queued`, `tokenhub_gateway_response_job_queue_wait_seconds`, `tokenhub_gateway_response_job_execution_seconds`, `tokenhub_gateway_response_jobs_total`, and `tokenhub_gateway_response_job_recoveries_total` when metrics are enabled. Worker concurrency, polling, timeout, lease, retention, and queue limits are listed in [Deployment](deployment.md#backend-environment-variables).
+
 ## Gemini CLI with Codex subscription GPT
 
 Gemini CLI can connect directly to TokenHub's native Gemini `v1beta` surface and use a GPT model routed to an OpenAI Codex Subscription account. Set `GEMINI_API_KEY` to a TokenHub project key, `GOOGLE_GEMINI_BASE_URL` to the TokenHub host without `/v1beta`, and select the routed GPT model. CCswitch is not required. See [Use Codex Subscription GPT from Gemini CLI](gemini-cli-codex-subscription.md) for isolated and project-local configuration, supported endpoints, verification, and limitations.
@@ -205,9 +239,9 @@ Gemini CLI can connect directly to TokenHub's native Gemini `v1beta` surface and
 
 Image jobs have a five-minute default execution timeout controlled by `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS`.
 
-TokenHub records image-generation capability from real account results. Accounts confirmed as supported are preferred, accounts returning `403` are temporarily skipped, and accounts that have not been checked remain eligible for first-use detection. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), an unsupported account becomes discoverable and routable again so the next real request can retry it. TokenHub does not generate a background image merely to probe recovery.
+Administrators configure this capability in **Provider Channels**: open an OpenAI Codex Provider, select the **Models** tab, and check **Codex subscription image generation**. After an active account is selected, TokenHub displays a quota warning and sends that real account one low-quality `gpt-image-2` request. Only a non-empty, valid image result records the account as supported and creates or re-enables the Provider route. A `403` result records the account as unsupported; expired credentials require reauthorization; rate limits, timeouts, and transient upstream failures can be retried from the dialog without overwriting the previous capability result. The test consumes a small amount of subscription quota, and TokenHub never runs it in the background.
 
-`codex-gpt-image-2` appears in `GET /v1/models` when a healthy connected Codex account is confirmed as supported or has reached its low-frequency retry window. It is a subscription-backed virtual model and does not require a conventional Provider model route. Except for the Codex-client compatibility mapping above, the separate `gpt-image-2` catalog model uses an OpenAI API provider and does not consume Codex subscription quota.
+The checkbox idempotently manages an active route from `codex-gpt-image-2` to the OpenAI Codex Provider with upstream model `gpt-image-2`. An upgrade performs a one-time backfill for active accounts already confirmed as supported. Clearing the checkbox disables matching routes but retains the account capability result. Startup backfill does not reactivate an explicitly disabled route or recreate a route deleted after its migration marker; an administrator can explicitly test and enable it again. Advanced priority, weight, project scope, resource, and resource-group controls remain editable in routing. With an active route, supported accounts are preferred and an account returning `403` is temporarily skipped. After `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` (24 hours by default), it becomes eligible for a low-frequency retry on the next real request. An initial failed test that created no route must be retried manually. `codex-gpt-image-2` appears in `GET /v1/models` only when an eligible route and account exist. Except for the Codex-client compatibility mapping above, the separate `gpt-image-2` catalog model uses an OpenAI API Provider and does not consume Codex subscription quota.
 
 ## SDK Setup
 

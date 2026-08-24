@@ -133,7 +133,7 @@ Invoke-WebRequest `
 
 If TokenHub returns `provider_capability_not_supported`, an administrator must correct the model route or provider resource type.
 
-For the official DeepSeek provider, Responses and Codex are currently model-scoped: use `deepseek-v4-flash`; TokenHub does not advertise `deepseek-v4-pro` as Responses-capable until DeepSeek enables it upstream. DeepSeek manages context caching automatically. When `TOKENHUB_CACHE_AFFINITY_ENABLED=true`, TokenHub uses stable Codex session hints such as `session-id`, `client_metadata.session_id`, or `prompt_cache_key` to keep successive Responses turns on the same upstream account; this key controls gateway routing and does not create a separate TokenHub response cache.
+For the official DeepSeek provider, Responses and Codex are model-scoped and available with both `deepseek-v4-flash` and `deepseek-v4-pro`. Both models support server-side `web_search`, the Codex `apply_patch` custom tool, and `top_logprobs` from 0 through 20, but do not support image or file input. DeepSeek's Responses API is stateless, so clients must send the complete conversation history in `input` on every turn instead of relying on `previous_response_id` or `conversation`. DeepSeek manages context caching automatically. When `TOKENHUB_CACHE_AFFINITY_ENABLED=true`, TokenHub uses stable Codex session hints such as `session-id`, `client_metadata.session_id`, or `prompt_cache_key` to keep successive Responses turns on the same upstream account; this key controls gateway routing and does not create a separate TokenHub response cache.
 
 ---
 

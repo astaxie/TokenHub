@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	DefaultAppVersion = "0.4.0"
+	DefaultAppVersion = "0.6.0"
 
 	defaultBuildType         = "source"
 	releaseBuildType         = "release"
@@ -63,6 +63,12 @@ type rollbackVersionInfo struct {
 	Version     string `json:"version"`
 	PublishedAt string `json:"published_at"`
 	HTMLURL     string `json:"html_url"`
+	// Compatibility marks whether the current database state allows
+	// activating this release: compatible, incompatible, or unknown.
+	Compatibility             string         `json:"compatibility,omitempty"`
+	CompatibilityReason       string         `json:"compatibility_reason,omitempty"`
+	CompatibilityReasonCode   string         `json:"compatibility_reason_code,omitempty"`
+	CompatibilityReasonParams map[string]any `json:"compatibility_reason_params,omitempty"`
 }
 
 type githubRelease struct {
@@ -100,6 +106,7 @@ type versionService struct {
 	deploymentType   string
 	managedUpdates   bool
 	installRoot      string
+	databaseURL      string
 	now              func() time.Time
 	downloadClient   *http.Client
 	validateAssetURL func(string) error
@@ -140,6 +147,7 @@ func newVersionService(config Config) *versionService {
 		deploymentType:   deploymentType,
 		managedUpdates:   config.ManagedUpdates,
 		installRoot:      filepath.Clean(strings.TrimSpace(config.InstallRoot)),
+		databaseURL:      strings.TrimSpace(config.DatabaseURL),
 		now:              time.Now,
 		operation:        make(chan struct{}, 1),
 		downloadClient:   newNativeDownloadClient(),
@@ -726,10 +734,6 @@ func parseNumericIdentifier(value string) (uint64, bool) {
 }
 
 func (s *Server) handleAdminSystemVersion(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	if _, ok := s.requireAdmin(w, r, "system", r.Method); !ok {
 		return
 	}
@@ -739,10 +743,6 @@ func (s *Server) handleAdminSystemVersion(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleAdminRollbackVersions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	if _, ok := s.requireAdmin(w, r, "system", r.Method); !ok {
 		return
 	}
@@ -751,5 +751,6 @@ func (s *Server) handleAdminRollbackVersions(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, NewHTTPError(http.StatusBadGateway, "release_lookup_failed", "Unable to load release history"))
 		return
 	}
+	s.annotateRollbackCompatibility(r.Context(), versions)
 	writeJSON(w, http.StatusOK, map[string]any{"versions": versions})
 }

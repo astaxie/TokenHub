@@ -94,7 +94,12 @@ func (s *Server) finishCall(completion GatewayCallCompletion) {
 	// FinishCall but its result never leaves that function, so anything observing
 	// the caller's Usage afterwards would report a zero cost. priceUsage is pure and
 	// idempotent, which makes the store's own call a no-op rather than a conflict.
-	completion.Usage = priceUsage(completion.Call.Model, completion.Usage)
+	completion.Usage = priceUsageAt(completion.Call.Model, completion.Usage, completion.Call.StartedAt)
+	// Thread the attempt outcomes into the call context so the single metrics
+	// observation point can report per-candidate counts and upstream latency.
+	// Only the bounded outcome fields are consumed there, so the upstream error
+	// text stays out of this path the same way it stays out of traces.
+	completion.Call.RouteAttempts = attemptsWithoutErrorText(completion.Attempts)
 	s.store.RecordRouteAttempts(completion.Call.RequestID, completion.Attempts)
 	switch completion.Kind {
 	case CompletionKindPlayground:

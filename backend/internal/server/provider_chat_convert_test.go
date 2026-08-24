@@ -43,6 +43,7 @@ func TestWithoutGatewayExtensionsStripsExplicitEmptyRawFields(t *testing.T) {
 			"reasoning_content":"",
 			"reasoning_signature":"",
 			"redacted_reasoning_content":"",
+			"reasoning_details":[{"type":"reasoning.encrypted","id":"call_1","data":"codex:opaque-state"}],
 			"provider_message":"preserve me"
 		}]
 	}`), &req); err != nil {
@@ -60,7 +61,7 @@ func TestWithoutGatewayExtensionsStripsExplicitEmptyRawFields(t *testing.T) {
 	}
 	messages, _ := forwarded["messages"].([]any)
 	message, _ := messages[0].(map[string]any)
-	for _, field := range []string{"reasoning_content", "reasoning_signature", "redacted_reasoning_content"} {
+	for _, field := range []string{"reasoning_content", "reasoning_signature", "redacted_reasoning_content", "reasoning_details"} {
 		if _, present := message[field]; present {
 			t.Fatalf("explicit empty %s must not be forwarded: %v", field, message)
 		}
@@ -71,6 +72,9 @@ func TestWithoutGatewayExtensionsStripsExplicitEmptyRawFields(t *testing.T) {
 
 	if _, present := req.Messages[0].raw["reasoning_signature"]; !present {
 		t.Fatal("the original request was mutated")
+	}
+	if _, present := req.Messages[0].raw["reasoning_details"]; !present {
+		t.Fatal("the original reasoning details were mutated")
 	}
 }
 
@@ -93,6 +97,9 @@ func TestDeepSeekAdapterForwardsReasoningContentOnly(t *testing.T) {
 			ReasoningContent:         "deepseek continuation",
 			ReasoningSignature:       "anthropic:sig",
 			RedactedReasoningContent: "opaque",
+			raw: map[string]json.RawMessage{
+				"reasoning_details": json.RawMessage(`[{"type":"reasoning.encrypted","id":"call_foreign","data":"openrouter-state"},{"type":"reasoning.encrypted","id":"call_1","data":"codex:opaque-state"}]`),
+			},
 		}},
 	})
 	if err != nil {
@@ -108,6 +115,49 @@ func TestDeepSeekAdapterForwardsReasoningContentOnly(t *testing.T) {
 		if _, present := message[field]; present {
 			t.Fatalf("%s must remain gateway-local: %v", field, message)
 		}
+	}
+	details, _ := message["reasoning_details"].([]any)
+	if len(details) != 1 {
+		t.Fatalf("non-Codex reasoning details were not preserved: %v", message)
+	}
+	detail, _ := details[0].(map[string]any)
+	if detail["id"] != "call_foreign" || detail["data"] != "openrouter-state" {
+		t.Fatalf("unexpected forwarded reasoning detail: %v", detail)
+	}
+}
+
+func TestDeepSeekAdapterCanDisableReasoningContent(t *testing.T) {
+	var received map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		decodeFixtureRequest(t, r.Body, &received)
+		w.Header().Set("content-type", "application/json")
+		writeFixture(t, w, `{"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	adapter := OpenAICompatibleAdapter{Client: upstream.Client()}
+	provider := Provider{
+		Type:    "deepseek",
+		BaseURL: upstream.URL,
+		APIKey:  "test-key",
+		Options: map[string]string{reasoningContentOption: "false"},
+	}
+	_, _, err := adapter.Chat(context.Background(), provider, "model-x", ChatCompletionRequest{
+		Model: "model-x",
+		Messages: []ChatMessage{{
+			Role:             "assistant",
+			Content:          "answer",
+			ReasoningContent: "do not replay",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+
+	messages, _ := received["messages"].([]any)
+	message, _ := messages[0].(map[string]any)
+	if _, present := message["reasoning_content"]; present {
+		t.Fatalf("DeepSeek explicit false still forwarded reasoning_content: %v", message)
 	}
 }
 

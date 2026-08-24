@@ -1111,9 +1111,10 @@ func (s *codexAnthropicStreamSink) emit(event string, payload map[string]any) er
 }
 
 type codexChatStreamSink struct {
-	encoder      *openAIChatStreamEncoder
-	reverseNames map[string]string
-	toolSlots    map[string]int
+	encoder                   *openAIChatStreamEncoder
+	reverseNames              map[string]string
+	toolSlots                 map[string]int
+	pendingReasoningSignature string
 }
 
 func (s *codexChatStreamSink) Start(map[string]any) error {
@@ -1133,6 +1134,7 @@ func (s *codexChatStreamSink) ReasoningDelta(delta string) error {
 }
 
 func (s *codexChatStreamSink) ReasoningDone(signature string) error {
+	s.pendingReasoningSignature = signature
 	return s.encoder.EmitReasoningSignature(codexSignatureProvider, signature)
 }
 
@@ -1146,11 +1148,20 @@ func (s *codexChatStreamSink) ToolStart(
 	}
 	slot := s.encoder.NextToolSlot()
 	s.toolSlots[key] = slot
-	return s.encoder.EmitToolCallStart(
+	toolCallID := codexShortIdentifier(id)
+	if err := s.encoder.EmitToolCallStart(
 		slot,
-		codexShortIdentifier(id),
+		toolCallID,
 		codexRestoreToolName(s.reverseNames, name),
-	)
+	); err != nil {
+		return err
+	}
+	if s.pendingReasoningSignature == "" {
+		return nil
+	}
+	signature := s.pendingReasoningSignature
+	s.pendingReasoningSignature = ""
+	return s.encoder.EmitToolReasoningDetail(toolCallID, codexSignatureProvider, signature)
 }
 
 func (s *codexChatStreamSink) ToolArguments(key string, delta string) error {

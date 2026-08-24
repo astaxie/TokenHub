@@ -111,6 +111,45 @@ func TestAnthropicAdapterStreamsIncrementally(t *testing.T) {
 	}
 }
 
+func TestAnthropicAdapterUsesConfiguredAuthentication(t *testing.T) {
+	for _, testCase := range []struct {
+		name              string
+		options           map[string]string
+		wantAuthorization string
+		wantAPIKey        string
+	}{
+		{name: "default x-api-key", wantAPIKey: "test-key"},
+		{
+			name:              "bearer",
+			options:           map[string]string{anthropicAuthTypeOption: anthropicAuthTypeBearer},
+			wantAuthorization: "Bearer test-key",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("authorization"); got != testCase.wantAuthorization {
+					t.Errorf("authorization = %q, want %q", got, testCase.wantAuthorization)
+				}
+				if got := r.Header.Get("x-api-key"); got != testCase.wantAPIKey {
+					t.Errorf("x-api-key = %q, want %q", got, testCase.wantAPIKey)
+				}
+				w.Header().Set("content-type", "application/json")
+				writeFixture(t, w, `{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+			}))
+			defer upstream.Close()
+
+			adapter := AnthropicAdapter{Client: upstream.Client()}
+			provider := Provider{BaseURL: upstream.URL, APIKey: "test-key", Options: testCase.options}
+			if _, _, err := adapter.Chat(context.Background(), provider, "claude-test", ChatCompletionRequest{
+				Model:    "model-x",
+				Messages: []ChatMessage{{Role: "user", Content: "hi"}},
+			}); err != nil {
+				t.Fatalf("Chat: %v", err)
+			}
+		})
+	}
+}
+
 func TestGeminiAdapterStreamRequestTargetsSSEEndpoint(t *testing.T) {
 	var captured *http.Request
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

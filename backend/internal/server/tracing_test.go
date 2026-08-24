@@ -683,8 +683,9 @@ func TestTracingTagsPlaygroundTraffic(t *testing.T) {
 	app := newTracingTestServer(t, tracingTestConfig(endpoint.tracesURL()))
 
 	response := doJSON(t, app.Handler(), http.MethodPost, "/api/admin/playground/chat", map[string]any{
-		"model":    "gpt-4.1-mini",
-		"messages": []map[string]any{{"role": "user", "content": "hello"}},
+		"project_id": "prj_demo",
+		"model":      "gpt-4.1-mini",
+		"messages":   []map[string]any{{"role": "user", "content": "hello"}},
 	}, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
@@ -845,8 +846,9 @@ func TestTracingPricesPlaygroundGenerations(t *testing.T) {
 	app := newTracingTestServer(t, tracingTestConfig(endpoint.tracesURL()))
 
 	response := doJSON(t, app.Handler(), http.MethodPost, "/api/admin/playground/chat", map[string]any{
-		"model":    "gpt-4.1-mini",
-		"messages": []map[string]any{{"role": "user", "content": "hello"}},
+		"project_id": "prj_demo",
+		"model":      "gpt-4.1-mini",
+		"messages":   []map[string]any{{"role": "user", "content": "hello"}},
 	}, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)

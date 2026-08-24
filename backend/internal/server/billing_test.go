@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
@@ -12,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"tokenhub/backend/internal/billing/persistence"
 )
 
 func TestBillingConnectorLifecycleProtectsCredentials(t *testing.T) {
@@ -27,6 +30,10 @@ func TestBillingConnectorLifecycleProtectsCredentials(t *testing.T) {
 		"base_url":                  "https://billing.example.test",
 		"status":                    StatusActive,
 		"schedule_interval_minutes": 60,
+		"config": map[string]string{
+			"provider_id":          "provider-finance",
+			"provider_resource_id": "resource-finance",
+		},
 		"credentials": map[string]string{
 			"api_token": "oneapi-super-secret",
 		},
@@ -37,11 +44,11 @@ func TestBillingConnectorLifecycleProtectsCredentials(t *testing.T) {
 	if strings.Contains(created.Body, "oneapi-super-secret") {
 		t.Fatalf("create response exposed credentials: %s", created.Body)
 	}
-	var connector BillingConnector
-	if err := json.Unmarshal([]byte(created.Body), &connector); err != nil {
+	connector, err := decodeBillingConnector(created.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if connector.ID == "" || !connector.CredentialsConfigured {
+	if connector.ID == "" || !connector.CredentialsConfigured || connector.Config["provider_id"] != "provider-finance" || connector.Config["provider_resource_id"] != "resource-finance" {
 		t.Fatalf("expected created connector and credential summary: %#v", connector)
 	}
 
@@ -53,7 +60,7 @@ func TestBillingConnectorLifecycleProtectsCredentials(t *testing.T) {
 		t.Fatalf("list response exposed credentials: %s", listed.Body)
 	}
 
-	var stored BillingConnector
+	var stored persistence.ConnectorRow
 	if err := store.db.First(&stored, "id = ?", connector.ID).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -148,8 +155,8 @@ func TestOneAPIBillingSyncRetriesPaginatesAndIsIdempotent(t *testing.T) {
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create connector: %d %s", created.Code, created.Body)
 	}
-	var connector BillingConnector
-	if err := json.Unmarshal([]byte(created.Body), &connector); err != nil {
+	connector, err := decodeBillingConnector(created.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -161,7 +168,7 @@ func TestOneAPIBillingSyncRetriesPaginatesAndIsIdempotent(t *testing.T) {
 	if first.Code != http.StatusOK {
 		t.Fatalf("sync OneAPI connector: %d %s", first.Code, first.Body)
 	}
-	var firstRun BillingSyncRun
+	var firstRun billingSyncRunResponse
 	if err := json.Unmarshal([]byte(first.Body), &firstRun); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +181,7 @@ func TestOneAPIBillingSyncRetriesPaginatesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("list billing records: %d %s", recordsResponse.Code, recordsResponse.Body)
 	}
 	var recordsPayload struct {
-		Data []BillingRecord `json:"data"`
+		Data []billingRecordResponse `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(recordsResponse.Body), &recordsPayload); err != nil {
 		t.Fatal(err)
@@ -193,7 +200,7 @@ func TestOneAPIBillingSyncRetriesPaginatesAndIsIdempotent(t *testing.T) {
 	if second.Code != http.StatusOK {
 		t.Fatalf("repeat sync: %d %s", second.Code, second.Body)
 	}
-	var secondRun BillingSyncRun
+	var secondRun billingSyncRunResponse
 	if err := json.Unmarshal([]byte(second.Body), &secondRun); err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +208,7 @@ func TestOneAPIBillingSyncRetriesPaginatesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("repeat sync was not idempotent: %#v", secondRun)
 	}
 	var recordCount int64
-	if err := store.db.Model(&BillingRecord{}).Where("connector_id = ?", connector.ID).Count(&recordCount).Error; err != nil {
+	if err := store.db.Model(&persistence.RecordRow{}).Where("connector_id = ?", connector.ID).Count(&recordCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if recordCount != 2 {
@@ -211,11 +218,11 @@ func TestOneAPIBillingSyncRetriesPaginatesAndIsIdempotent(t *testing.T) {
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete connector: %d %s", deleted.Code, deleted.Body)
 	}
-	if len(store.ListBillingRecords(connector.ID, 10)) != 2 || len(store.ListBillingSyncRuns(connector.ID, 10)) != 2 {
+	if len(store.BillingRepository().ListBillingRecords(connector.ID, 10)) != 2 || len(store.BillingRepository().ListBillingSyncRuns(connector.ID, 10)) != 2 {
 		t.Fatalf("deleting connector removed billing audit history")
 	}
 	var snapshotCount int64
-	if err := store.db.Model(&BillingRawSnapshot{}).Where("connector_id = ?", connector.ID).Count(&snapshotCount).Error; err != nil {
+	if err := store.db.Model(&persistence.RawSnapshotRow{}).Where("connector_id = ?", connector.ID).Count(&snapshotCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if snapshotCount != 2 {
@@ -279,8 +286,8 @@ func TestNewAPIBillingSyncUsesQuotaEndpointAndChunksRange(t *testing.T) {
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create NewAPI connector: %d %s", created.Code, created.Body)
 	}
-	var connector BillingConnector
-	if err := json.Unmarshal([]byte(created.Body), &connector); err != nil {
+	connector, err := decodeBillingConnector(created.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -292,7 +299,7 @@ func TestNewAPIBillingSyncUsesQuotaEndpointAndChunksRange(t *testing.T) {
 	if first.Code != http.StatusOK {
 		t.Fatalf("sync NewAPI connector: %d %s", first.Code, first.Body)
 	}
-	var firstRun BillingSyncRun
+	var firstRun billingSyncRunResponse
 	if err := json.Unmarshal([]byte(first.Body), &firstRun); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +311,7 @@ func TestNewAPIBillingSyncUsesQuotaEndpointAndChunksRange(t *testing.T) {
 		t.Fatalf("unexpected NewAPI request ranges: %#v", ranges)
 	}
 
-	records := store.ListBillingRecords(connector.ID, 10)
+	records := store.BillingRepository().ListBillingRecords(connector.ID, 10)
 	if len(records) != 2 {
 		t.Fatalf("expected two normalized NewAPI records, got %#v", records)
 	}
@@ -322,11 +329,11 @@ func TestNewAPIBillingSyncUsesQuotaEndpointAndChunksRange(t *testing.T) {
 	if second.Code != http.StatusOK {
 		t.Fatalf("repeat NewAPI sync: %d %s", second.Code, second.Body)
 	}
-	var secondRun BillingSyncRun
+	var secondRun billingSyncRunResponse
 	if err := json.Unmarshal([]byte(second.Body), &secondRun); err != nil {
 		t.Fatal(err)
 	}
-	if secondRun.RecordsInserted != 0 || secondRun.RecordsUpdated != 2 || len(store.ListBillingRecords(connector.ID, 10)) != 2 {
+	if secondRun.RecordsInserted != 0 || secondRun.RecordsUpdated != 2 || len(store.BillingRepository().ListBillingRecords(connector.ID, 10)) != 2 {
 		t.Fatalf("repeat NewAPI sync was not idempotent: %#v", secondRun)
 	}
 }
@@ -420,8 +427,8 @@ func TestAliyunBillingSyncSignsRequestsAndAdvancesBillingCycles(t *testing.T) {
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create Aliyun connector: %d %s", created.Code, created.Body)
 	}
-	var connector BillingConnector
-	if err := json.Unmarshal([]byte(created.Body), &connector); err != nil {
+	connector, err := decodeBillingConnector(created.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
 	synced := doJSON(t, app, http.MethodPost, "/api/admin/billing/connectors/"+connector.ID+"/sync", map[string]any{
@@ -434,7 +441,7 @@ func TestAliyunBillingSyncSignsRequestsAndAdvancesBillingCycles(t *testing.T) {
 	if strings.Join(cycles, ",") != "2026-01,2026-02" {
 		t.Fatalf("expected month-by-month billing requests, got %v", cycles)
 	}
-	records := store.ListBillingRecords(connector.ID, 10)
+	records := store.BillingRepository().ListBillingRecords(connector.ID, 10)
 	if len(records) != 2 {
 		t.Fatalf("expected two Aliyun billing records, got %#v", records)
 	}
@@ -455,14 +462,14 @@ func TestAliyunBillingSyncSignsRequestsAndAdvancesBillingCycles(t *testing.T) {
 	if repeated.Code != http.StatusOK {
 		t.Fatalf("repeat Aliyun sync: %d %s", repeated.Code, repeated.Body)
 	}
-	var repeatedRun BillingSyncRun
+	var repeatedRun billingSyncRunResponse
 	if err := json.Unmarshal([]byte(repeated.Body), &repeatedRun); err != nil {
 		t.Fatal(err)
 	}
-	if repeatedRun.RecordsInserted != 0 || repeatedRun.RecordsUpdated != 2 || len(store.ListBillingRecords(connector.ID, 10)) != 2 {
+	if repeatedRun.RecordsInserted != 0 || repeatedRun.RecordsUpdated != 2 || len(store.BillingRepository().ListBillingRecords(connector.ID, 10)) != 2 {
 		t.Fatalf("corrected Aliyun amounts were not idempotently updated: %#v", repeatedRun)
 	}
-	for _, record := range store.ListBillingRecords(connector.ID, 10) {
+	for _, record := range store.BillingRepository().ListBillingRecords(connector.ID, 10) {
 		if record.BillingPeriod == "2026-01" && record.NetAmount != "8.75" {
 			t.Fatalf("corrected Aliyun amount was not stored: %#v", record)
 		}
@@ -538,8 +545,8 @@ func TestBillingSyncFailureKeepsCheckpointAndRetryResumes(t *testing.T) {
 		},
 		"credentials": map[string]string{"api_token": "checkpoint-secret"},
 	}, "")
-	var connector BillingConnector
-	if err := json.Unmarshal([]byte(created.Body), &connector); err != nil {
+	connector, err := decodeBillingConnector(created.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
 	syncPath := "/api/admin/billing/connectors/" + connector.ID + "/sync"
@@ -547,14 +554,14 @@ func TestBillingSyncFailureKeepsCheckpointAndRetryResumes(t *testing.T) {
 	if failed.Code != http.StatusBadGateway {
 		t.Fatalf("expected failed upstream sync, got %d %s", failed.Code, failed.Body)
 	}
-	stored, err := store.GetBillingConnector(connector.ID, true)
+	stored, err := store.BillingRepository().GetBillingConnector(connector.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stored.Checkpoint, `"cursor":"2"`) {
 		t.Fatalf("failed sync did not preserve page checkpoint: %q", stored.Checkpoint)
 	}
-	runs := store.ListBillingSyncRuns(connector.ID, 10)
+	runs := store.BillingRepository().ListBillingSyncRuns(connector.ID, 10)
 	if len(runs) != 1 || runs[0].Status != BillingSyncFailed || runs[0].ErrorCode != "billing_upstream_http_error" {
 		t.Fatalf("failed sync run is not diagnosable: %#v", runs)
 	}
@@ -567,10 +574,10 @@ func TestBillingSyncFailureKeepsCheckpointAndRetryResumes(t *testing.T) {
 	if pageOneRequests.Load() != 1 {
 		t.Fatalf("retry restarted from page one instead of checkpoint: %d requests", pageOneRequests.Load())
 	}
-	if len(store.ListBillingRecords(connector.ID, 10)) != 2 {
+	if len(store.BillingRepository().ListBillingRecords(connector.ID, 10)) != 2 {
 		t.Fatalf("checkpoint retry did not complete both records")
 	}
-	stored, err = store.GetBillingConnector(connector.ID, true)
+	stored, err = store.BillingRepository().GetBillingConnector(connector.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +591,7 @@ func TestBillingSyncFailureKeepsCheckpointAndRetryResumes(t *testing.T) {
 			t.Fatalf("billing credential leaked into audit event: %s", serialized)
 		}
 	}
-	var snapshots []BillingRawSnapshot
+	var snapshots []persistence.RawSnapshotRow
 	if err := store.db.Find(&snapshots).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -613,8 +620,8 @@ func TestBillingConnectorTestAndScheduledSync(t *testing.T) {
 		"schedule_interval_minutes": 15,
 		"credentials":               map[string]string{"api_token": "scheduled-token"},
 	}, "")
-	var connector BillingConnector
-	if err := json.Unmarshal([]byte(created.Body), &connector); err != nil {
+	connector, err := decodeBillingConnector(created.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
 	tested := doJSON(t, app, http.MethodPost, "/api/admin/billing/connectors/"+connector.ID+"/test", map[string]any{}, "")
@@ -622,7 +629,7 @@ func TestBillingConnectorTestAndScheduledSync(t *testing.T) {
 		t.Fatalf("test billing connector: %d %s", tested.Code, tested.Body)
 	}
 	dueAt := time.Now().UTC().Add(-time.Minute)
-	if err := store.db.Model(&BillingConnector{}).Where("id = ?", connector.ID).Update("next_sync_at", dueAt).Error; err != nil {
+	if err := store.db.Model(&persistence.ConnectorRow{}).Where("id = ?", connector.ID).Update("next_sync_at", dueAt).Error; err != nil {
 		t.Fatal(err)
 	}
 	runs := server.billing.RunDue(t.Context(), time.Now().UTC())
@@ -640,6 +647,82 @@ func TestBillingConnectorTestAndScheduledSync(t *testing.T) {
 	}
 	if !foundSystemAudit {
 		t.Fatalf("scheduled sync did not create a system audit event")
+	}
+}
+
+func TestBillingRecordStartsInRangeIncludesToBoundary(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	record := BillingRecord{UsageStartAt: base}
+	if !billingRecordStartsInRange(record, base, base.Add(time.Hour)) {
+		t.Fatal("record inside range should be included")
+	}
+	if !billingRecordStartsInRange(record, base, base) {
+		t.Fatal("record exactly at the upper boundary should be included")
+	}
+	if billingRecordStartsInRange(record, base.Add(time.Minute), base.Add(time.Hour)) {
+		t.Fatal("record before from should be excluded")
+	}
+}
+
+func TestBillingDecimalValueRejectsInvalid(t *testing.T) {
+	if _, err := billingDecimalValue("not-a-number"); err == nil {
+		t.Fatal("expected error for invalid decimal")
+	}
+	if v, err := billingDecimalValue(""); err != nil || v != "0" {
+		t.Fatalf("empty value should return 0, got %q, err=%v", v, err)
+	}
+	if v, err := billingDecimalValue("12.34"); err != nil || v == "" {
+		t.Fatalf("valid decimal should parse, got %q, err=%v", v, err)
+	}
+}
+
+// TestBillingDecimalAddRejectsInvalid guards the discount aggregation: an
+// unparseable component must reject the record instead of silently
+// understating the discount.
+func TestBillingDecimalAddRejectsInvalid(t *testing.T) {
+	if _, err := billingDecimalAdd("1.5", "not-a-number"); err == nil {
+		t.Fatal("expected error for invalid discount component")
+	}
+	if v, err := billingDecimalAdd("1.5", "", nil, "2.5"); err != nil || v != "4" {
+		t.Fatalf("expected 4, got %q err=%v", v, err)
+	}
+}
+
+// TestOneAPIBillingRecordPreservesLargeIntegerFields guards the int64 parse
+// path: 2^53+1 is not representable as a float64, so converting through
+// float64 would silently drop one token and skew the derived amount.
+func TestOneAPIBillingRecordPreservesLargeIntegerFields(t *testing.T) {
+	large := int64(1<<53 + 1)
+	record, err := normalizeOneAPIBillingRecord(map[string]any{
+		"id":                "log-large",
+		"created_at":        "2026-01-01 00:00:00",
+		"quota":             json.Number(strconv.FormatInt(large, 10)),
+		"prompt_tokens":     json.Number(strconv.FormatInt(large, 10)),
+		"completion_tokens": json.Number("0"),
+	}, BillingConnector{Config: map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.UsageQuantity != large {
+		t.Fatalf("expected exact token count %d, got %d", large, record.UsageQuantity)
+	}
+	expectedAmount := billingDecimalRatio(large, int64(500000))
+	if record.GrossAmount != expectedAmount {
+		t.Fatalf("expected exact quota amount %s, got %s", expectedAmount, record.GrossAmount)
+	}
+}
+
+// TestBillingSchedulerRestartsAfterShutdown guards the run-state tracking
+// that replaced sync.Once: StartScheduler must work again after Shutdown.
+func TestBillingSchedulerRestartsAfterShutdown(t *testing.T) {
+	service := newBillingService(NewMemoryStore())
+	service.StartScheduler(time.Hour)
+	if err := service.Shutdown(context.Background()); err != nil {
+		t.Fatalf("first shutdown: %v", err)
+	}
+	service.StartScheduler(time.Hour)
+	if err := service.Shutdown(context.Background()); err != nil {
+		t.Fatalf("second shutdown: %v", err)
 	}
 }
 

@@ -58,6 +58,7 @@ func resolveCodexSessionAffinity(secret string, apiKeyID string, headers http.He
 func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
 	for _, value := range []string{
 		headers.Get("session-id"),
+		headers.Get("session_id"),
 		codexClientMetadataSessionID(request),
 		codexRawStringField(request, "prompt_cache_key"),
 		headers.Get("thread-id"),

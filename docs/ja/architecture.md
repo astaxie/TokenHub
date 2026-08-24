@@ -105,7 +105,7 @@ flowchart LR
 | Provider 型 | アダプターと能力 |
 | --- | --- |
 | `openai`、`openai_compatible`、`qwen`、`local` | OpenAI 互換：Chat、ストリーミング Chat、Responses、Embeddings、プローブ |
-| `deepseek` | OpenAI 互換：Chat、ストリーミング Chat、Embeddings、プローブ。Responses とストリーミング Responses はモデル単位で宣言し、現在は `deepseek-v4-flash` のみ有効 |
+| `deepseek` | OpenAI 互換：Chat、ストリーミング Chat、Embeddings、プローブ。Responses とストリーミング Responses はモデル単位で宣言し、`deepseek-v4-flash` と `deepseek-v4-pro` で有効 |
 | `azure_openai` | Chat、ストリーミング Chat、Embeddings、プローブ |
 | `anthropic` | Chat、ストリーミング Chat、プローブ |
 | `gemini` | Chat、ストリーミング Chat、Embeddings、プローブ |
@@ -114,7 +114,7 @@ flowchart LR
 
 ## モデルリクエスト経路
 
-`Model` は外部 API 契約、`ProviderModel` は 1 つの Provider に対する永続化された上流モデルインベントリ、`ModelRoute` はその間のマッピングです。外部モデルには明示的で永続化されたディレクトリロールが付くため、最後のルートを削除しても候補テンプレートへ戻らず、下書きとして残ります。ルートの作成または編集では、選択した `ProviderModel` がインベントリに存在する必要があります。これにより、同名 1:1 マッピングとカスタムエイリアスの両方を支持し、呼び出し側は Provider 固有のモデル名を意識しません。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings` は同じ認証、クォータ、ルーティング入口を共有します。
+`Model` は外部 API 契約、`ProviderModel` は 1 つの Provider に対する永続化された上流モデルインベントリ、`ModelRoute` はその間のマッピングです。外部モデルには明示的で永続化されたディレクトリロールが付くため、最後のルートを削除しても候補テンプレートへ戻らず、下書きとして残ります。ルートの作成または編集では、選択した `ProviderModel` がインベントリに存在する必要があります。限定的な例外は、サブスクリプション型仮想モデル `codex-gpt-image-2` です。このルートは OpenAI Codex Provider を対象とし、上流モデルを `gpt-image-2` に固定する必要があります。これはチャットモデルのインベントリ項目ではなく、実行能力です。これにより、同名 1:1 マッピングとカスタムエイリアスの両方を支持し、呼び出し側は Provider 固有のモデル名を意識しません。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings` は同じ認証、クォータ、ルーティング入口を共有します。
 
 ```mermaid
 sequenceDiagram
@@ -127,6 +127,8 @@ sequenceDiagram
     C->>G: Bearer Project API Key とモデルリクエスト
     G->>S: Key、Project、有効期限、IP 許可リストを検証
     G->>G: Project と API Key のモデルアクセスを積集合化
+    G->>S: 適用されるコンテンツセキュリティポリシーを一貫したスナップショットで取得
+    G->>G: ユーザー表示リクエストテキストを検査、監査、マスク、またはブロック
     G->>S: クォータと並行リースを確認し、呼び出しコンテキストを作成
     G->>S: 有効かつ健全な Provider / Resource / Route を取得
     G->>G: API Key、Project、Global ポリシーを解決し候補を絞り込む
@@ -143,30 +145,34 @@ sequenceDiagram
 
 非アクティブまたは不健全な Provider、Resource、Route は除外されます。ただし例外として、クールダウンが満了した Resource はハーフオープン候補として再び候補に加わります。最初に到達したリクエストがクールダウン期限を前方へ進めることで試行権を取得するため、同時実行のリクエストは引き続き拒否され、試行が失敗した場合は次のより長いウィンドウがすでに設定されています。その試行自身が成功した場合にのみブレーカーが閉じ、管理者の操作なしに Resource が復旧します。ブレーカー作動時にすでに実行中だったリクエストが Resource を復活させることはありません。失敗が繰り返される場合は `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` を上限として指数的にウィンドウが延長されます。管理者が無効化した Resource が再び組み入れられることはありません。非ストリーミング呼び出しは候補を順番に試行します。出力開始後のストリームは安全に上流を切り替えられません。ストリーミング Responses には `response_stream` 能力を持つアダプターが必要です。`openai_codex` のルートでは、リクエストと API Key からセッションアフィニティキーを導出し、継続性のために Resource バインドを永続化できます。
 
+`background: true` を設定した `POST /v1/responses` では、同期リクエストフローは認証と永続化された投入の後で終了します。各レプリカは起動時にキューが空でも永続キューを継続して poll します。Worker はジョブを取得して元の認可を再検証し、admitted phase、request ID、quota counter、token reservation、concurrency lease を同じデータベース transaction で commit してから、同じ guardrail、routing、Provider、metering、audit、trace のフローへ入ります。lease epoch が古い Worker を fence します。PostgreSQL の複数レプリカは row lock と `SKIP LOCKED` で取得し、SQLite は対応対象の単一バックエンド構成で原子的に取得します。Admission 前の lease 喪失は安全に再実行できます。Admission 後の lease 喪失は Provider への重複リクエストを避けるため明示的な終端状態となり、未 dispatch の token reservation は復旧時に返却されます。
+
 Project と API Key のモデルアクセスはルート選択前の明示的な最小権限レイヤーです。制限リストは積集合化され、制限かつ空リストはすべてを拒否し、レガシーの空モードは継承のままです。スコープルーティングポリシーは、`routing-policies` kind の監査可能な `AdminResource` として保存されます。実行時は厳密な API Key → Project → Global の優先順位で最大 1 つのバインドを選び、その Provider、Resource、Model、タグ、リージョン、環境の制約をルートの Project スコープと積集合化します。無効、競合、または候補が空の上位バインドはフェイルクローズします。戦略の上書き、アフィニティ、ハーフオープン復旧、フェイルオーバーは絞り込み後の候補内でのみ動作します。有効ポリシー ID、スコープ、優先度はリクエスト監査レコードにコピーされます。
 
 ## セキュリティ、ヘルス、データ境界
 
 - Project API Key はハッシュ、状態、Project 状態、有効期限、モデル範囲、IP 許可リスト、クォータ、並行数で検証されます。
-- 管理 API はログインセッション Token または `TOKENHUB_ADMIN_TOKEN` を使用します。初期 `admin` アカウントは `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` から作成されます。
-- 開発以外の起動時は、プレースホルダー値、32 バイト未満の Admin Token/バックエンドシークレット、12 バイト未満の初期管理者パスワードを拒否します。
-- `TOKENHUB_TRUSTED_PROXY_CIDRS` は `X-Forwarded-For` を提供できるプロキシを限定し、`TOKENHUB_CORS_ALLOWED_ORIGINS` は資格情報を伴うブラウザ Origin を制御します。
-- `/livez` はプロセス生存確認用です。`/readyz` と互換用の `/healthz` はデータベース可用性を確認し、利用不可時には `503` を返します。
+- 管理 API はログインセッション Token または任意の `TOKENHUB_ADMIN_TOKEN` を使用します。`TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` が設定されている場合は初期 `admin` アカウントに使用し、未設定の場合は TokenHub がパスワードを生成します。取得可能な暗号化コピーは、初回ログイン成功後またはリセット後に削除されます。
+- 開発以外の環境では、任意のブートストラップ認証情報にある既知のプレースホルダーを無効化し、それ以外の空でない弱い値を拒否します。`TOKENHUB_SECRET_KEY` は引き続き必須ですが、新規のファイル型 SQLite データベースに限り、データベースの隣に永続キーファイルを生成できます。既存データベースに代替キーを自動生成することはありません。
+- `TOKENHUB_TRUSTED_PROXY_CIDRS` は `X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto` を提供できるプロキシを限定し、信頼済みプロキシはこれらのヘッダーを上書きする必要があります。`TOKENHUB_CORS_ALLOWED_ORIGINS` は資格情報を伴うブラウザ Origin を制御します。
+- `/livez` はプロセス生存確認用です。`/readyz` と互換用の `/healthz` はデータベース可用性とデータベース進化状態を確認し、データベースが利用できない場合、マイグレーションが不完全な場合、台帳検証が失敗した場合、ブロッキングデータバックフィルが未完了の場合に `503` を返します。保留中のオンラインバックフィルは準備状態を維持します。起動構成が安全でない場合も `/livez` だけが正常となり、構成を修正して再起動するまで readiness とアプリケーションルートは `503` を返します。
 
-Provider 認証情報、請求コネクター認証情報、生の請求スナップショットは `TOKENHUB_SECRET_KEY` から導出した AES-GCM で暗号化されます。Project API Key は SHA-256 ダイジェストと表示用のプレフィックス/サフィックスだけを保持します。すべてのレプリカは同じ安定したシークレットを使用する必要があります。
+Provider 認証情報、請求コネクター認証情報、生の請求スナップショット、永続化されたバックグラウンド Responses payload は `TOKENHUB_SECRET_KEY` から導出した AES-GCM で暗号化されます。Project API Key は SHA-256 ダイジェストと表示用のプレフィックス/サフィックスだけを保持します。すべてのレプリカは同じ安定したシークレットを使用する必要があります。
 
 | カテゴリー | 主なエンティティ | 用途 |
 | --- | --- | --- |
 | テナントと認証情報 | `Project`、`APIKey`、`AdminUser`、`AdminSession` | Project 所有、アプリケーションアクセス、管理セッション |
 | ルーティング | `Provider`、`ProviderResource`、`ProviderModel`、`Model`、`ModelRoute`、`AdminResource (routing-policies)` | 上流チャネル、リソースプール、上流インベントリ、外部モデル、ルート、スコープポリシーバインド |
+| コンテンツセキュリティ | `guardrails.Policy`、`guardrails.DetectionItem`、`guardrails.Binding` | Project 単位のリクエスト検査、検出器設定、アクション、ポリシーバインド |
 | ガバナンスと計量 | `QuotaBucket`、`UsageRecord`、`ProviderResourceBucket`、`InFlightLease` | クォータ、利用量/コスト、レプリカ間並行数 |
 | 外部請求 | `BillingConnector`、`BillingRecord`、`BillingRawSnapshot`、`BillingSyncRun` | Provider 請求の収集、正規化、チェックポイント、同期履歴 |
 | マルチインスタンス協調 | `ClusterLease`、`ClusterTaskState`、`AdapterSessionBinding` | カタログ同期、クラスタ操作、Codex セッションの Resource バインド |
+| バックグラウンド Responses | `ResponseJob`、`ResponseJobEvent` | 暗号化されたリクエストと結果の保持、fencing された実行状態、キャンセル、期限切れ、状態遷移監査 |
 | 可観測性 | `RequestLog`、`RequestPayloadLog`、`RouteAttemptLog`、`ProviderObservation`、`AuditEvent` | リクエスト追跡、ペイロード監査、ルート試行、Provider 観測、管理監査 |
 
 SQLite は単一接続と 5 秒の `busy_timeout` を使用し、バックエンドレプリカ間で共有してはなりません。PostgreSQL はコネクションプール、マイグレーション用 advisory lock、実行中リース、クラスタロックを提供します。内蔵バックアップ API は SQLite 専用です。PostgreSQL では `pg_dump` と `pg_restore` などのプラットフォーム機能を使用してください。
 
-デプロイは Redis、メッセージブローカー、サービスメッシュに依存しません。リクエストとレスポンスのペイロードは監査用に記録される場合があるため、本番では保持期間、最小権限、ディスク暗号化、バックアップアクセス制御を適用してください。
+デプロイは Redis、メッセージブローカー、サービスメッシュに依存しません。同期リクエストとレスポンスのペイロードは監査用に記録される場合があるため、本番では保持期間、最小権限、ディスク暗号化、バックアップアクセス制御を適用してください。永続化されたバックグラウンド Responses は平文の payload 監査と trace export から除外され、その内容は TTL 付きの暗号化ジョブレコードだけに保持されます。
 
 ## 関連ドキュメント
 

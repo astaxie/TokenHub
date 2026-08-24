@@ -1,10 +1,11 @@
 import { type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
+import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
+import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptions, StatusPill } from "../shared/ui";
 
@@ -32,8 +33,10 @@ export function providerConfig(): ResourceConfig<Provider> {
       { key: "base_url", label: "Base URL" },
       { key: "api_key", label: "API Key", type: "password", help: "编辑时留空表示不修改现有 Key；只有填写新值才会覆盖。" },
       { key: "priority", label: "优先级", type: "number", placeholder: "留空自动追加", help: "数字越小越先调用；新增时留空会自动排在该统一模型已有 Provider 后面。" },
+      { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["preserve", "strip"], help: "Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
       { key: "healthy", label: "健康", type: "boolean" },
+      ...providerReasoningFieldConfigs((values) => providerSupportsAnthropicReasoning(values.type)),
     ],
     list: (ctx) => ctx.providers,
     create: (ctx, values) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values)),
@@ -57,8 +60,10 @@ export function providerConfig(): ResourceConfig<Provider> {
       type: item.type,
       base_url: item.base_url ?? "",
       priority: String(item.priority ?? 10),
+      claude_code_attribution_policy: item.options?.claude_code_attribution_policy ?? "preserve",
       status: item.status,
       healthy: String(item.healthy),
+      ...providerReasoningFormValues(item.options),
     }),
   };
 }
@@ -86,6 +91,15 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "rate_limit_rpm", label: "RPM 限制", type: "number" },
     { key: "token_limit_tpm", label: "TPM 限制", type: "number" },
     { key: "max_concurrency", label: "最大并发", type: "number" },
+    {
+      key: "codex_fingerprint_mode",
+      label: "Codex 指纹收敛",
+      type: "select",
+      options: ["off", "device", "session", "full"],
+      visible: openAIAccountFieldVisible,
+      help: "共享同一订阅账号时，将客户端设备与会话标识改写为账号级稳定值，减少上游可见的设备数和会话数。",
+    },
+    { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["inherit", "preserve", "strip"], help: "继承 Provider 策略，或只为当前 Resource 覆盖保留或移除行为。" },
     { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     { key: "healthy", label: "健康", type: "boolean" },
   ];
@@ -115,14 +129,14 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/provider-resources/${item.id}`),
     actions: [
       {
-        label: "刷新 Token",
-        title: "使用保存的 refresh token 更新账号访问 Token",
+        label: "续租 Token",
+        title: "使用保存的 refresh token 续租账号访问 Token",
         visible: (item) => item.resource_type === "openai_subscription" && item.credential_summary?.has_refresh_token === "true",
         run: (ctx, item) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}/refresh-token`, "POST", {}),
-        doneMessage: (item) => `${item.name} ${tx("Token 已刷新")}`,
+        doneMessage: (item) => formatTranslationTemplate(tx("{name} Token 已续租"), { name: item.name }),
       },
     ],
-    toForm: providerResourceToForm,
+    toForm: (item) => providerResourceToForm(item, provider?.options),
   };
 }
 
@@ -138,7 +152,7 @@ export function providerCreateAccountResourceFields() {
 }
 
 export function providerCreateAccountRuntimeFields() {
-  const keys = new Set(["base_url", "group", "priority", "weight", "rate_limit_rpm", "token_limit_tpm", "max_concurrency", "status"]);
+  const keys = new Set(["base_url", "group", "priority", "weight", "rate_limit_rpm", "token_limit_tpm", "max_concurrency", "codex_fingerprint_mode", "claude_code_attribution_policy", "status"]);
   return providerResourceFieldConfigs()
     .filter((field) => keys.has(field.key))
     .map((field) => field.key === "base_url" ? { ...field, required: true } : field);
@@ -176,11 +190,14 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     rate_limit_rpm: "",
     token_limit_tpm: "",
     max_concurrency: "3",
+    codex_fingerprint_mode: "session",
+    claude_code_attribution_policy: "inherit",
     token_type: "",
     expires_at: "",
     scopes: "",
     status: "active",
     healthy: "true",
+    ...providerReasoningFormValues(),
   };
 }
 
@@ -214,12 +231,13 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "category", label: "模型类型", render: (item) => modelCategoryLabel(modelCategory(item)) },
       { key: "capabilities", label: "能力", render: (item) => modelCapabilitySummary(item) },
       { key: "routes", label: "可用供应商", render: (item, ctx) => <ModelRouteProviders model={item} data={ctx} /> },
-      { key: "route_count", label: "路由数", render: (item, ctx) => isCodexSubscriptionImageModel(item) ? codexImageCapableResources(ctx).length : modelRoutesFor(item, ctx).length },
+      { key: "route_count", label: "路由数", render: (item, ctx) => modelRoutesFor(item, ctx).length },
       { key: "price", label: "对外统一价", render: (item) => modelPriceSummary(item) },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
     fields: [
-      { key: "name", label: "模型名", required: true },
+      { key: "name", label: "对外模型 ID", required: true, readOnlyOnEdit: true },
+      { key: "display_name", label: "显示名称" },
       {
         key: "initial_provider_models",
         label: "可用 Provider 模型",
@@ -235,6 +253,7 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "category", label: "模型类型", type: "select", options: modelCategoryFormOptions(), required: true },
       { key: "family", label: "系列", required: true },
       { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank"], required: true },
+      { key: "input_modalities", label: "输入模态", type: "tag-select", options: ["text", "image", "video", "audio", "pdf"], help: "选择模型实际支持的输入类型。" },
       { key: "context_window", label: "上下文窗口", type: "number" },
       { key: "input_price_usd_per_1m", label: "对外输入价 USD/1M", type: "number", help: "用于客户端用量计费和额度；实际 Provider 成本在 Provider 模型库存中单独维护。" },
       {
@@ -245,15 +264,47 @@ export function modelConfig(): ResourceConfig<Model> {
         help: "配置后用于统一对外计费；留空时 DeepSeek V4 Pro 按约 0.83%、其他 DeepSeek 按 2%、其余模型按 10% 估算。",
         visible: (values) => values.modality !== "embedding",
       },
+      {
+        key: "cache_write_price_usd_per_1m",
+        label: "对外缓存写价 USD/1M",
+        type: "number",
+        placeholder: "可选，留空时按输入价计费",
+        help: "用于无法区分缓存写入时长的 cache-write tokens；未配置时按输入价计费以保持旧账单兼容。",
+        visible: (values) => values.modality !== "embedding",
+      },
+      {
+        key: "cache_write_5m_price_usd_per_1m",
+        label: "对外 5 分钟缓存写价 USD/1M",
+        type: "number",
+        placeholder: "可选，留空时使用缓存写价",
+        help: "当上游 usage 区分 5 分钟缓存写入时使用。",
+        visible: (values) => values.modality !== "embedding",
+      },
+      {
+        key: "cache_write_1h_price_usd_per_1m",
+        label: "对外 1 小时缓存写价 USD/1M",
+        type: "number",
+        placeholder: "可选，留空时使用缓存写价",
+        help: "当上游 usage 区分 1 小时缓存写入时使用。",
+        visible: (values) => values.modality !== "embedding",
+      },
       { key: "output_price_usd_per_1m", label: "对外输出价 USD/1M", type: "number" },
       { key: "embedding_price_usd_per_1m", label: "对外 Embedding 价 USD/1M", type: "number" },
+      {
+        key: "pricing_periods",
+        label: "分时价格配置（JSON）",
+        type: "textarea",
+        placeholder: "[{\"timezone\":\"Asia/Shanghai\",\"start_time\":\"00:00\",\"end_time\":\"08:30\",\"input_price_usd_per_1m\":0.14,\"output_price_usd_per_1m\":0.28}]",
+        help: "按请求开始时间匹配；支持 timezone、start_time、end_time、effective_from、effective_until 以及输入/输出价格覆盖。",
+        visible: (values) => values.modality !== "embedding",
+      },
       { key: "capabilities", label: "能力标签，逗号分隔" },
       { key: "supported_parameters", label: "支持参数，逗号分隔" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     ],
     list: (ctx) => ctx.models,
     create: (ctx, values) => adminMutate(ctx, "/api/admin/models", "POST", modelPayload(values)),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`, "PATCH", modelPayload(values)),
+    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`, "PATCH", modelPayload(values, item.metadata)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`),
     actions: [
       {
@@ -299,7 +350,7 @@ export function routeConfig(): ResourceConfig<ModelRoute> {
         help: "从模型目录选择需要新增 Provider 线路的模型。",
       },
       { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true },
-      { key: "provider_model", label: "Provider 模型", type: "select", optionsFromData: providerModelSelectOptions, required: true, help: "选择 Provider 后，只显示该 Provider 已引入的模型。" },
+      { key: "provider_model", label: "Provider 模型", type: "select", optionsFromData: providerModelSelectOptions, required: true, help: "选择 Provider 后，只显示可用于该路由的上游模型。" },
       { key: "weight", label: "流量权重", type: "number", required: true, help: "固定比例下决定目标占比；自适应策略下作为基础权重。" },
       { key: "project_scope", label: "项目作用域", type: "select", options: ["all", "include", "exclude"], required: true, help: "可让私有项目只命中内部 Provider，并让其他项目继续使用外部 Provider。" },
       { key: "project_ids", label: "指定项目", type: "multi-select", optionsFromData: projectMemberProjectSelectOptions, multiSelectOnEdit: true, visible: (values) => values.project_scope !== "all", help: "“仅指定项目”表示白名单；“排除指定项目”表示这些项目不能使用该线路。" },

@@ -1,20 +1,15 @@
 import { languageStorageKey } from "../core/types";
+import { type AppLanguage, languageFromLocales, languageOptions, preferredLanguage } from "./language-preference";
 import { translations } from "./translations";
 
-export type AppLanguage = "zh-CN" | "en" | "ja";
-
-export const languageOptions: Array<{ value: AppLanguage; label: string; nativeLabel: string }> = [
-  { value: "zh-CN", label: "Chinese", nativeLabel: "简体中文" },
-  { value: "en", label: "English", nativeLabel: "English" },
-  { value: "ja", label: "Japanese", nativeLabel: "日本語" },
-];
+export { type AppLanguage, languageFromLocales, languageOptions, preferredLanguage };
 
 export let activeLanguage: AppLanguage = "en";
 
 export function readSavedLanguage(): AppLanguage {
   if (typeof window === "undefined") return "en";
   const saved = window.localStorage.getItem(languageStorageKey);
-  return saved === "en" || saved === "ja" || saved === "zh-CN" ? saved : "en";
+  return preferredLanguage(saved, navigator.languages?.length ? navigator.languages : [navigator.language]);
 }
 
 export function setActiveLanguage(language: AppLanguage) {
@@ -25,6 +20,10 @@ export function tx(value: string | undefined | null) {
   if (!value) return "";
   if (activeLanguage === "zh-CN") return value;
   return translations[activeLanguage][value] ?? translateGeneratedText(value, activeLanguage) ?? value;
+}
+
+export function formatTranslationTemplate(template: string, values: Record<string, string>) {
+  return Object.entries(values).reduce((message, [key, value]) => message.split(`{${key}}`).join(value), template);
 }
 
 // Localize the browser's native constraint-validation bubble (e.g. the required-field
@@ -117,15 +116,55 @@ export function languageLocale() {
   return "zh-CN";
 }
 
-function localeNumber(value: number) {
+export function formatLocaleNumber(value: number) {
   return new Intl.NumberFormat(languageLocale()).format(value);
 }
 
 export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaUnit: string, enPluralUnit = `${enUnit}s`) {
-  const formatted = localeNumber(count);
+  const formatted = formatLocaleNumber(count);
   if (activeLanguage === "en") return `${formatted} ${count === 1 ? enUnit : enPluralUnit}`;
   if (activeLanguage === "ja") return `${formatted} ${jaUnit}`;
   return `${formatted} ${zhUnit}`;
+}
+
+export function guardrailDetectionItemName(index: number) {
+  const formatted = formatLocaleNumber(index);
+  if (activeLanguage === "en") return `Detection item ${formatted}`;
+  if (activeLanguage === "ja") return `検出項目 ${formatted}`;
+  return `检测项 ${formatted}`;
+}
+
+export function millisecondsText(value: number) {
+  const formatted = formatLocaleNumber(value);
+  if (activeLanguage === "en") return `${formatted} ms`;
+  if (activeLanguage === "ja") return `${formatted} ミリ秒`;
+  return `${formatted} 毫秒`;
+}
+
+export function guardrailBlockedDiagnostic(reasonLabels: string[], policyLabels: string[], requestID: string) {
+  const joinLabels = (labels: string[]) => labels.join(activeLanguage === "en" ? ", " : "、");
+  if (activeLanguage === "en") {
+    const details = [
+      reasonLabels.length > 0 ? `Reasons: ${joinLabels(reasonLabels)}` : "",
+      policyLabels.length > 0 ? `Matched policies: ${joinLabels(policyLabels)}` : "",
+      requestID ? `Request ID: ${requestID}` : "",
+    ].filter(Boolean);
+    return ["The request was blocked by a content security policy.", details.join("; ")].filter(Boolean).join(" ");
+  }
+  if (activeLanguage === "ja") {
+    const details = [
+      reasonLabels.length > 0 ? `理由：${joinLabels(reasonLabels)}` : "",
+      policyLabels.length > 0 ? `一致したポリシー：${joinLabels(policyLabels)}` : "",
+      requestID ? `リクエスト ID：${requestID}` : "",
+    ].filter(Boolean);
+    return ["コンテンツセキュリティポリシーによりリクエストがブロックされました。", details.join("；")].filter(Boolean).join(" ");
+  }
+  const details = [
+    reasonLabels.length > 0 ? `原因：${joinLabels(reasonLabels)}` : "",
+    policyLabels.length > 0 ? `命中策略：${joinLabels(policyLabels)}` : "",
+    requestID ? `请求 ID：${requestID}` : "",
+  ].filter(Boolean);
+  return ["请求已被内容安全策略阻断。", details.join("；")].filter(Boolean).join(" ");
 }
 
 export function providerSaveMessage(updated: boolean, accountResourceCreated: boolean, imported: number, categoryLabel: string) {
@@ -154,9 +193,9 @@ export function providerSaveMessage(updated: boolean, accountResourceCreated: bo
 }
 
 export function countWithLabel(count: number, label: string) {
-  if (activeLanguage === "en") return `${localeNumber(count)} ${tx(label)}`;
-  if (activeLanguage === "ja") return `${localeNumber(count)} ${tx(label)}`;
-  return `${localeNumber(count)} ${label}`;
+  if (activeLanguage === "en") return `${formatLocaleNumber(count)} ${tx(label)}`;
+  if (activeLanguage === "ja") return `${formatLocaleNumber(count)} ${tx(label)}`;
+  return `${formatLocaleNumber(count)} ${label}`;
 }
 
 export function selectedModelsText(count: number) {
@@ -206,16 +245,16 @@ export function deleteConfirmMessage(name: string) {
 }
 
 export function bulkDeleteConfirmMessage(count: number) {
-  if (activeLanguage === "en") return `After deleting ${localeNumber(count)} selected records, the current in-memory data will be removed immediately.`;
-  if (activeLanguage === "ja") return `選択した ${localeNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
-  return `删除选中的 ${localeNumber(count)} 条记录后，当前内存数据会立即移除。`;
+  if (activeLanguage === "en") return `After deleting ${formatLocaleNumber(count)} selected records, the current in-memory data will be removed immediately.`;
+  if (activeLanguage === "ja") return `選択した ${formatLocaleNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
+  return `删除选中的 ${formatLocaleNumber(count)} 条记录后，当前内存数据会立即移除。`;
 }
 
 export function routeAttemptCountText(count: number) {
   if (count > 1) {
-    if (activeLanguage === "en") return `${localeNumber(count)} attempts, with fallback`;
-    if (activeLanguage === "ja") return `${localeNumber(count)} 回、fallback 含む`;
-    return `${localeNumber(count)} 次，含 fallback`;
+    if (activeLanguage === "en") return `${formatLocaleNumber(count)} attempts, with fallback`;
+    if (activeLanguage === "ja") return `${formatLocaleNumber(count)} 回、fallback 含む`;
+    return `${formatLocaleNumber(count)} 次，含 fallback`;
   }
   return countWithUnit(count, "次", "attempt", "回");
 }

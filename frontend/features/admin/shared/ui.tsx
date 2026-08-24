@@ -1,12 +1,19 @@
 import { Check, Copy, KeyRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import Select, { type MultiValue } from "react-select";
 import { type AdminUser, type AppData, type FieldConfig, type Model } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
-import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelRoutesFor } from "../domain/entities";
+import { copyText } from "../domain/clipboard";
+import { modelDisplayName } from "../domain/model-display-name";
+import { findProvider, modelRoutesFor } from "../domain/entities";
 import { compactNumber, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
 import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
-import { PaginationControls, usePagination } from "../views/settings-table";
+import { PaginationControls, usePagination } from "./pagination";
+
+function HiddenSelectIndicator() {
+  return null;
+}
 
 export function ConfirmDialog({
   title,
@@ -50,12 +57,7 @@ export function IssuedKeyModal({ value, onClose }: { value: string; onClose: () 
   }, [closeCountdown]);
 
   async function copyKey() {
-    try {
-      await navigator.clipboard?.writeText(value);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
+    setCopied(await copyText(value));
   }
 
   return (
@@ -119,8 +121,36 @@ export function FieldInput({
   const autoComplete = field.autoComplete ?? "off";
   const inputName = `tokenhub-${field.key}`;
   let options = field.optionsFromData?.(data, currentUser, values) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
-  if (field.type !== "multi-select" && value && !options.some((option) => option.value === value)) {
+  if (field.type !== "multi-select" && field.type !== "tag-select" && value && !options.some((option) => option.value === value)) {
     options = [...options, { value, label: value }];
+  }
+  if (field.type === "tag-select") {
+    const translatedOptions = options.map((option) => ({ ...option, label: tx(option.label) }));
+    const optionsByValue = new Map(translatedOptions.map((option) => [option.value, option]));
+    const selected = splitList(value).map((item) => optionsByValue.get(item) ?? { value: item, label: item });
+    return (
+      <div className="field tag-select-field" data-field-key={field.key}>
+        <label htmlFor={inputName}>{tx(field.label)}</label>
+        <Select
+          className="tag-select"
+          classNamePrefix="tag-select"
+          components={{ ClearIndicator: HiddenSelectIndicator, DropdownIndicator: HiddenSelectIndicator, IndicatorSeparator: HiddenSelectIndicator }}
+          inputId={inputName}
+          instanceId={inputName}
+          isDisabled={readOnly}
+          isMulti
+          isSearchable
+          noOptionsMessage={() => tx("没有匹配的选项")}
+          onChange={(next: MultiValue<{ value: string; label: string }>) => onChange(next.map((option) => option.value).join(", "))}
+          openMenuOnFocus
+          options={translatedOptions}
+          placeholder={tx(field.placeholder ?? "请选择")}
+          required={field.required}
+          value={selected}
+        />
+        {field.help ? <small>{tx(field.help)}</small> : null}
+      </div>
+    );
   }
   if (field.type === "multi-select" && (!editing || field.multiSelectOnEdit)) {
     const selected = new Set(splitList(value));
@@ -357,34 +387,16 @@ export function StatusPill({ status, label }: { status: string; label?: string }
 }
 
 export function ModelNameCell({ model }: { model: Model }) {
+  const title = modelDisplayName(model.metadata, model.name);
   return (
     <div className="model-name-cell">
-      <strong>{model.name}</strong>
-      <span>{modelCategoryLabel(modelCategory(model))} · {model.family || "-"} · {model.modality || "chat"} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}</span>
+      <strong>{title}</strong>
+      <span>{title !== model.name ? `${model.name} · ` : ""}{modelCategoryLabel(modelCategory(model))} · {model.family || "-"} · {model.modality || "chat"} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}</span>
     </div>
   );
 }
 
 export function ModelRouteProviders({ model, data }: { model: Model; data: AppData }) {
-  if (isCodexSubscriptionImageModel(model)) {
-    const resources = codexImageCapableResources(data);
-    if (resources.length === 0) {
-      return <span className="muted-inline">{tx("暂无可生图账号")}</span>;
-    }
-    return (
-      <div className="route-provider-list">
-        {resources.slice(0, 4).map((resource) => (
-          <div className="route-provider-chip" key={resource.id}>
-            <span className="route-dot ok" />
-            <strong>{findProvider(data, resource.provider_id)?.name || resource.provider_id}</strong>
-            <em>{resource.name}</em>
-            <small>{tx("Codex 订阅生图")}</small>
-          </div>
-        ))}
-        {resources.length > 4 ? <span className="route-overflow">+{resources.length - 4}</span> : null}
-      </div>
-    );
-  }
   const routes = modelRoutesFor(model, data);
   if (routes.length === 0) {
     return <span className="muted-inline">{tx("未配置线路")}</span>;
@@ -407,51 +419,4 @@ export function ModelRouteProviders({ model, data }: { model: Model; data: AppDa
   );
 }
 
-export const providerTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local"];
-
-export const modelCategoryLabels: Record<string, string> = {
-  all: "全部",
-  codex: "OpenAI Codex",
-  openai: "OpenAI",
-  claude: "Claude",
-  deepseek: "DeepSeek",
-  gemini: "Gemini",
-  qwen: "Qwen",
-  glm: "GLM",
-  kimi: "Kimi",
-  doubao: "Doubao",
-  ernie: "ERNIE",
-  baichuan: "Baichuan",
-  minimax: "MiniMax",
-  stepfun: "StepFun",
-  wanx: "WanX",
-  paddlepaddle: "PaddlePaddle",
-  microsoft: "Microsoft",
-  llama: "Llama",
-  mistral: "Mistral",
-  grok: "Grok",
-  custom: "自定义",
-};
-
-export const preferredModelCategories = [
-  "codex",
-  "openai",
-  "claude",
-  "deepseek",
-  "gemini",
-  "qwen",
-  "glm",
-  "kimi",
-  "doubao",
-  "ernie",
-  "baichuan",
-  "minimax",
-  "stepfun",
-  "wanx",
-  "grok",
-  "paddlepaddle",
-  "microsoft",
-  "llama",
-  "mistral",
-  "custom",
-];
+export const providerTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local", "kronk"];

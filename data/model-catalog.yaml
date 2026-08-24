@@ -77,6 +77,33 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
+  - name: "glm-5.3"
+    title: "GLM-5.3"
+    description: "GLM-5.3 is Zhipu AI's flagship model for long-horizon coding, agents, and complex project delivery. It supports a 1M-token context window, always-on reasoning with low, high, and max effort levels, tool calling, and structured outputs."
+    category: "glm"
+    family: "glm"
+    modality: "chat"
+    context_window: 1000000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "zhipuai-coding-plan"
+      provider_model_id: "glm-5.3"
+      provider_model_name: "GLM-5.3"
+      endpoints: "chat/completions"
+      features: "function-calling,structured-outputs,reasoning"
+      max_output_tokens: "131072"
+      billing_mode: "subscription"
+      release_date: "2026-08-14"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_mode: "always_on"
+      reasoning_effort_options: "low,high,max"
   - name: "zai-org/glm-5.2"
     title: "GLM 5.2"
     description: "GLM-5.2 is Z.AI's latest flagship model, meticulously engineered for long-horizon autonomous tasks. Capable of working continuously on a single assignment for up to 8 hours, it autonomously manages the entire workflow—from initial planning and execution to iterative optimization and the delivery of production-grade results. With coding and agentic capabilities that rival leading proprietary frontier models, it excels particularly in sustained execution, complex engineering optimization, and real-world development scenarios. Its context window has been expanded from 200K to 1M tokens, making it an ideal foundational model for powering advanced autonomous agents and long-horizon coding assistants."
@@ -366,7 +393,7 @@ models:
     input_modalities: ["text"]
     output_modalities: ["text"]
     capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"]
+    supported_parameters: ["temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "deepseek-api"
@@ -374,8 +401,12 @@ models:
       provider_model_id: "deepseek-v4-flash"
       provider_model_name: "DeepSeek V4 Flash"
       endpoints: "responses,chat/completions,anthropic"
-      features: "function-calling,structured-outputs,reasoning,apply-patch"
+      features: "function-calling,structured-outputs,reasoning,apply-patch,web-search"
       max_output_tokens: "393216"
+      top_logprobs_range: "0,20"
+      responses_stateful: "false"
+      prompt_cache_mode: "automatic"
+      custom_tool_names: "apply_patch"
       tool_call: "true"
       vision: "false"
       reasoning_supported: "true"
@@ -383,7 +414,7 @@ models:
       reasoning_effort_options: "low,high,max"
   - name: "deepseek-v4-pro"
     title: "DeepSeek V4 Pro"
-    description: "Official DeepSeek V4 Pro API model. Responses API is intentionally not advertised until DeepSeek enables it upstream."
+    description: "Official DeepSeek V4 Pro API model with native Responses API and Codex support."
     category: "deepseek"
     family: "deepseek"
     modality: "chat"
@@ -394,16 +425,20 @@ models:
     input_modalities: ["text"]
     output_modalities: ["text"]
     capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"]
+    supported_parameters: ["temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "deepseek-api"
       provider_catalog_id: "deepseek"
       provider_model_id: "deepseek-v4-pro"
       provider_model_name: "DeepSeek V4 Pro"
-      endpoints: "chat/completions,anthropic"
-      features: "function-calling,structured-outputs,reasoning"
+      endpoints: "responses,chat/completions,anthropic"
+      features: "function-calling,structured-outputs,reasoning,apply-patch,web-search"
       max_output_tokens: "393216"
+      top_logprobs_range: "0,20"
+      responses_stateful: "false"
+      prompt_cache_mode: "automatic"
+      custom_tool_names: "apply_patch"
       tool_call: "true"
       vision: "false"
       reasoning_supported: "true"
@@ -4127,6 +4162,133 @@ models:
       endpoints: "chat/completions"
       features: "serverless,function-calling,structured-outputs,reasoning"
       max_output_tokens: "64000"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "qwen/qwen3.6-flash"
+    title: "Qwen3.6 Flash"
+    description: "Qwen3.6 Flash is the low-latency model in the Qwen3.6 family, with native text, image, and video understanding, reasoning, tool use, and a 1M-token context window."
+    category: "qwen"
+    family: "qwen3.6"
+    modality: "chat"
+    context_window: 1000000
+    input_price_usd_per_1m: 0.1875
+    output_price_usd_per_1m: 1.125
+    input_modalities: ["text", "image", "video"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "serverless", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "openrouter"
+      provider_model_id: "qwen/qwen3.6-flash"
+      provider_model_name: "Qwen3.6 Flash"
+      endpoints: "chat/completions"
+      features: "serverless,function-calling,structured-outputs,reasoning"
+      max_output_tokens: "65536"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "qwen/qwen3.6-35b-a3b"
+    title: "Qwen3.6 35B A3B"
+    description: "Qwen3.6-35B-A3B is an open-weight native multimodal mixture-of-experts model with 35B total parameters, 3B active parameters, and strong agentic coding capabilities."
+    category: "qwen"
+    family: "qwen3.6"
+    modality: "chat"
+    context_window: 262144
+    input_price_usd_per_1m: 0.15
+    cache_read_price_usd_per_1m: 0.05
+    output_price_usd_per_1m: 1
+    input_modalities: ["text", "image", "video"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "serverless", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "openrouter"
+      provider_model_id: "qwen/qwen3.6-35b-a3b"
+      provider_model_name: "Qwen3.6 35B A3B"
+      endpoints: "chat/completions"
+      features: "serverless,function-calling,structured-outputs,reasoning"
+      max_output_tokens: "262144"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "qwen/qwen3.6-max-preview"
+    title: "Qwen3.6 Max Preview"
+    description: "Qwen3.6 Max Preview is the proprietary frontier model in the Qwen3.6 family, optimized for agentic coding, reasoning, and tool use."
+    category: "qwen"
+    family: "qwen3.6"
+    modality: "chat"
+    context_window: 262144
+    input_price_usd_per_1m: 1.027
+    output_price_usd_per_1m: 6.162
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "reasoning", "tools", "serverless", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "openrouter"
+      provider_model_id: "qwen/qwen3.6-max-preview"
+      provider_model_name: "Qwen3.6 Max Preview"
+      endpoints: "chat/completions"
+      features: "serverless,function-calling,structured-outputs,reasoning"
+      max_output_tokens: "65536"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "qwen/qwen3.6-27b"
+    title: "Qwen3.6 27B"
+    description: "Qwen3.6-27B is an open-weight 27B dense native multimodal model focused on agentic coding, reasoning, and long-context work."
+    category: "qwen"
+    family: "qwen3.6"
+    modality: "chat"
+    context_window: 262144
+    input_price_usd_per_1m: 0.6
+    cache_read_price_usd_per_1m: 0.12
+    output_price_usd_per_1m: 3.6
+    input_modalities: ["text", "image", "video"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "serverless", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "openrouter"
+      provider_model_id: "qwen/qwen3.6-27b"
+      provider_model_name: "Qwen3.6 27B"
+      endpoints: "chat/completions"
+      features: "serverless,function-calling,structured-outputs,reasoning"
+      max_output_tokens: "262144"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "qwen/qwen3.6-plus"
+    title: "Qwen3.6 Plus"
+    description: "Qwen3.6 Plus is the high-capability multimodal model in the Qwen3.6 family, with reasoning, tool use, and a 1M-token context window."
+    category: "qwen"
+    family: "qwen3.6"
+    modality: "chat"
+    context_window: 1000000
+    input_price_usd_per_1m: 0.325
+    output_price_usd_per_1m: 1.95
+    input_modalities: ["text", "image", "video"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "serverless", "structured_outputs"]
+    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "openrouter"
+      provider_model_id: "qwen/qwen3.6-plus"
+      provider_model_name: "Qwen3.6 Plus"
+      endpoints: "chat/completions"
+      features: "serverless,function-calling,structured-outputs,reasoning"
+      max_output_tokens: "65536"
       tool_call: "true"
       vision: "true"
       reasoning_supported: "true"

@@ -2,14 +2,8 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -40,6 +34,7 @@ const (
 	ProviderAzureOpenAI      = "azure_openai"
 	ProviderAnthropic        = "anthropic"
 	ProviderGemini           = "gemini"
+	ProviderKronk            = "kronk"
 
 	ProviderResourceAPIKey             = "api_key"
 	ProviderResourceOpenAISubscription = "openai_subscription"
@@ -67,6 +62,7 @@ type HTTPError struct {
 	Status         int
 	Code           string
 	Message        string
+	Details        any               `json:"-"`
 	UpstreamStatus int               `json:"-"`
 	Headers        map[string]string `json:"-"`
 }
@@ -171,73 +167,93 @@ type QuotaCounter struct {
 	CostUSD          float64 `json:"cost_usd"`
 }
 
+type QuotaPolicyUsage struct {
+	Daily   QuotaCounter `json:"daily"`
+	Monthly QuotaCounter `json:"monthly"`
+}
+
 type Model struct {
-	ID                     string            `json:"id" gorm:"primaryKey"`
-	Name                   string            `json:"name" gorm:"uniqueIndex"`
-	Category               string            `json:"category,omitempty" gorm:"index"`
-	Family                 string            `json:"family"`
-	Modality               string            `json:"modality"`
-	ContextWindow          int64             `json:"context_window"`
-	InputPriceUSDPer1M     float64           `json:"input_price_usd_per_1m"`
-	CacheReadPriceUSDPer1M float64           `json:"cache_read_price_usd_per_1m"`
-	OutputPriceUSDPer1M    float64           `json:"output_price_usd_per_1m"`
-	EmbeddingPriceUSDPer1M float64           `json:"embedding_price_usd_per_1m"`
-	InputModalities        []string          `json:"input_modalities,omitempty" gorm:"serializer:json"`
-	OutputModalities       []string          `json:"output_modalities,omitempty" gorm:"serializer:json"`
-	Capabilities           []string          `json:"capabilities,omitempty" gorm:"serializer:json"`
-	SupportedParameters    []string          `json:"supported_parameters,omitempty" gorm:"serializer:json"`
-	Metadata               map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
-	Status                 string            `json:"status"`
-	CreatedAt              time.Time         `json:"created_at"`
+	ID                        string  `json:"id" gorm:"primaryKey"`
+	Name                      string  `json:"name" gorm:"uniqueIndex"`
+	Category                  string  `json:"category,omitempty" gorm:"index"`
+	Family                    string  `json:"family"`
+	Modality                  string  `json:"modality"`
+	ContextWindow             int64   `json:"context_window"`
+	InputPriceUSDPer1M        float64 `json:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M    float64 `json:"cache_read_price_usd_per_1m"`
+	CacheWritePriceUSDPer1M   float64 `json:"cache_write_price_usd_per_1m"`
+	CacheWrite5mPriceUSDPer1M float64 `json:"cache_write_5m_price_usd_per_1m"`
+	CacheWrite1hPriceUSDPer1M float64 `json:"cache_write_1h_price_usd_per_1m"`
+	CacheWritePriceConfiguration
+	OutputPriceUSDPer1M    float64              `json:"output_price_usd_per_1m"`
+	EmbeddingPriceUSDPer1M float64              `json:"embedding_price_usd_per_1m"`
+	PricingPeriods         []ModelPricingPeriod `json:"pricing_periods,omitempty" gorm:"serializer:json"`
+	InputModalities        []string             `json:"input_modalities,omitempty" gorm:"serializer:json"`
+	OutputModalities       []string             `json:"output_modalities,omitempty" gorm:"serializer:json"`
+	Capabilities           []string             `json:"capabilities,omitempty" gorm:"serializer:json"`
+	SupportedParameters    []string             `json:"supported_parameters,omitempty" gorm:"serializer:json"`
+	Metadata               map[string]string    `json:"metadata,omitempty" gorm:"serializer:json"`
+	Status                 string               `json:"status"`
+	CreatedAt              time.Time            `json:"created_at"`
 }
 
 type ProviderCatalogModel struct {
-	ID                     string            `json:"id"`
-	Name                   string            `json:"name"`
-	DisplayName            string            `json:"display_name,omitempty"`
-	CanonicalName          string            `json:"canonical_name,omitempty"`
-	Category               string            `json:"category,omitempty"`
-	Family                 string            `json:"family,omitempty"`
-	Type                   string            `json:"type,omitempty"`
-	ContextWindow          int64             `json:"context_window,omitempty"`
-	MaxOutputTokens        int64             `json:"max_output_tokens,omitempty"`
-	InputPriceUSDPer1M     float64           `json:"input_price_usd_per_1m,omitempty"`
-	CacheReadPriceUSDPer1M float64           `json:"cache_read_price_usd_per_1m,omitempty"`
-	OutputPriceUSDPer1M    float64           `json:"output_price_usd_per_1m,omitempty"`
-	InputModalities        []string          `json:"input_modalities,omitempty"`
-	OutputModalities       []string          `json:"output_modalities,omitempty"`
-	Capabilities           []string          `json:"capabilities,omitempty"`
-	SupportedParameters    []string          `json:"supported_parameters,omitempty"`
-	LastUpdated            string            `json:"last_updated,omitempty"`
-	Metadata               map[string]string `json:"metadata,omitempty"`
+	ID                        string  `json:"id"`
+	Name                      string  `json:"name"`
+	DisplayName               string  `json:"display_name,omitempty"`
+	CanonicalName             string  `json:"canonical_name,omitempty"`
+	Category                  string  `json:"category,omitempty"`
+	Family                    string  `json:"family,omitempty"`
+	Type                      string  `json:"type,omitempty"`
+	ContextWindow             int64   `json:"context_window,omitempty"`
+	MaxOutputTokens           int64   `json:"max_output_tokens,omitempty"`
+	InputPriceUSDPer1M        float64 `json:"input_price_usd_per_1m,omitempty"`
+	CacheReadPriceUSDPer1M    float64 `json:"cache_read_price_usd_per_1m,omitempty"`
+	CacheWritePriceUSDPer1M   float64 `json:"cache_write_price_usd_per_1m,omitempty"`
+	CacheWrite5mPriceUSDPer1M float64 `json:"cache_write_5m_price_usd_per_1m,omitempty"`
+	CacheWrite1hPriceUSDPer1M float64 `json:"cache_write_1h_price_usd_per_1m,omitempty"`
+	CacheWritePriceConfiguration
+	OutputPriceUSDPer1M float64              `json:"output_price_usd_per_1m,omitempty"`
+	PricingPeriods      []ModelPricingPeriod `json:"pricing_periods,omitempty"`
+	InputModalities     []string             `json:"input_modalities,omitempty"`
+	OutputModalities    []string             `json:"output_modalities,omitempty"`
+	Capabilities        []string             `json:"capabilities,omitempty"`
+	SupportedParameters []string             `json:"supported_parameters,omitempty"`
+	LastUpdated         string               `json:"last_updated,omitempty"`
+	Metadata            map[string]string    `json:"metadata,omitempty"`
 }
 
 // ProviderModel is an upstream model imported into a concrete Provider. It is
 // inventory, not a public API model: publication happens only through a
 // ModelRoute that connects a Model to this provider/upstream-model pair.
 type ProviderModel struct {
-	ID                     string            `json:"id" gorm:"primaryKey"`
-	ProviderID             string            `json:"provider_id" gorm:"uniqueIndex:idx_provider_upstream;index"`
-	UpstreamModel          string            `json:"upstream_model" gorm:"uniqueIndex:idx_provider_upstream"`
-	DisplayName            string            `json:"display_name,omitempty"`
-	CanonicalName          string            `json:"canonical_name,omitempty"`
-	Category               string            `json:"category,omitempty" gorm:"index"`
-	Family                 string            `json:"family,omitempty"`
-	Modality               string            `json:"modality,omitempty"`
-	ContextWindow          int64             `json:"context_window,omitempty"`
-	InputPriceUSDPer1M     float64           `json:"input_price_usd_per_1m,omitempty"`
-	CacheReadPriceUSDPer1M float64           `json:"cache_read_price_usd_per_1m,omitempty"`
-	OutputPriceUSDPer1M    float64           `json:"output_price_usd_per_1m,omitempty"`
-	InputModalities        []string          `json:"input_modalities,omitempty" gorm:"serializer:json"`
-	OutputModalities       []string          `json:"output_modalities,omitempty" gorm:"serializer:json"`
-	Capabilities           []string          `json:"capabilities,omitempty" gorm:"serializer:json"`
-	SupportedParameters    []string          `json:"supported_parameters,omitempty" gorm:"serializer:json"`
-	Metadata               map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
-	Source                 string            `json:"source,omitempty" gorm:"index"`
-	Status                 string            `json:"status" gorm:"index"`
-	LastSeenAt             *time.Time        `json:"last_seen_at,omitempty"`
-	CreatedAt              time.Time         `json:"created_at"`
-	UpdatedAt              time.Time         `json:"updated_at"`
+	ID                        string  `json:"id" gorm:"primaryKey"`
+	ProviderID                string  `json:"provider_id" gorm:"uniqueIndex:idx_provider_upstream;index"`
+	UpstreamModel             string  `json:"upstream_model" gorm:"uniqueIndex:idx_provider_upstream"`
+	DisplayName               string  `json:"display_name,omitempty"`
+	CanonicalName             string  `json:"canonical_name,omitempty"`
+	Category                  string  `json:"category,omitempty" gorm:"index"`
+	Family                    string  `json:"family,omitempty"`
+	Modality                  string  `json:"modality,omitempty"`
+	ContextWindow             int64   `json:"context_window,omitempty"`
+	InputPriceUSDPer1M        float64 `json:"input_price_usd_per_1m,omitempty"`
+	CacheReadPriceUSDPer1M    float64 `json:"cache_read_price_usd_per_1m,omitempty"`
+	CacheWritePriceUSDPer1M   float64 `json:"cache_write_price_usd_per_1m,omitempty"`
+	CacheWrite5mPriceUSDPer1M float64 `json:"cache_write_5m_price_usd_per_1m,omitempty"`
+	CacheWrite1hPriceUSDPer1M float64 `json:"cache_write_1h_price_usd_per_1m,omitempty"`
+	CacheWritePriceConfiguration
+	OutputPriceUSDPer1M float64              `json:"output_price_usd_per_1m,omitempty"`
+	PricingPeriods      []ModelPricingPeriod `json:"pricing_periods,omitempty" gorm:"serializer:json"`
+	InputModalities     []string             `json:"input_modalities,omitempty" gorm:"serializer:json"`
+	OutputModalities    []string             `json:"output_modalities,omitempty" gorm:"serializer:json"`
+	Capabilities        []string             `json:"capabilities,omitempty" gorm:"serializer:json"`
+	SupportedParameters []string             `json:"supported_parameters,omitempty" gorm:"serializer:json"`
+	Metadata            map[string]string    `json:"metadata,omitempty" gorm:"serializer:json"`
+	Source              string               `json:"source,omitempty" gorm:"index"`
+	Status              string               `json:"status" gorm:"index"`
+	LastSeenAt          *time.Time           `json:"last_seen_at,omitempty"`
+	CreatedAt           time.Time            `json:"created_at"`
+	UpdatedAt           time.Time            `json:"updated_at"`
 }
 
 type ProviderModelImportRequest struct {
@@ -267,23 +283,28 @@ type ProviderCatalogEntry struct {
 }
 
 type ProviderCreateRequest struct {
-	ID            string            `json:"id"`
-	ProviderID    string            `json:"provider_id"`
-	Name          string            `json:"name"`
-	Type          string            `json:"type"`
-	BaseURL       string            `json:"base_url"`
-	APIKey        string            `json:"api_key"`
-	Status        string            `json:"status"`
-	Healthy       *bool             `json:"healthy"`
-	Priority      int               `json:"priority"`
-	Headers       map[string]string `json:"headers"`
-	Options       map[string]string `json:"options"`
-	CatalogID     string            `json:"catalog_id"`
-	ModelCategory string            `json:"model_category"`
+	ID                          string            `json:"id"`
+	ProviderID                  string            `json:"provider_id"`
+	Name                        string            `json:"name"`
+	Type                        string            `json:"type"`
+	BaseURL                     string            `json:"base_url"`
+	APIKey                      string            `json:"api_key"`
+	ClearAPIKey                 bool              `json:"clear_api_key"`
+	Status                      string            `json:"status"`
+	Healthy                     *bool             `json:"healthy"`
+	Priority                    int               `json:"priority"`
+	Headers                     map[string]string `json:"headers"`
+	SensitiveHeaders            []string          `json:"sensitive_headers"`
+	Options                     map[string]string `json:"options"`
+	CatalogID                   string            `json:"catalog_id"`
+	ModelCategory               string            `json:"model_category"`
+	ClaudeCodeAttributionPolicy *string           `json:"claude_code_attribution_policy,omitempty"`
 	// CreateRoutes is accepted only to reject the retired automatic-route workflow.
 	CreateRoutes   *bool                  `json:"create_routes"`
 	SelectedModels []string               `json:"selected_models"`
 	CustomModels   []ProviderCatalogModel `json:"custom_models"`
+	// AnthropicAuthType is a write-only convenience field persisted in Options.
+	AnthropicAuthType string `json:"anthropic_auth_type"`
 }
 
 type ProviderCreateResult struct {
@@ -293,48 +314,53 @@ type ProviderCreateResult struct {
 }
 
 type Provider struct {
-	ID        string            `json:"id" gorm:"primaryKey"`
-	Name      string            `json:"name"`
-	Type      string            `json:"type"`
-	BaseURL   string            `json:"base_url,omitempty"`
-	APIKey    string            `json:"-"`
-	Status    string            `json:"status"`
-	Healthy   bool              `json:"healthy"`
-	Priority  int               `json:"priority"`
-	Headers   map[string]string `json:"headers,omitempty" gorm:"serializer:json"`
-	Options   map[string]string `json:"options,omitempty" gorm:"serializer:json"`
-	CreatedAt time.Time         `json:"created_at"`
+	ID                     string            `json:"id" gorm:"primaryKey"`
+	Name                   string            `json:"name"`
+	Type                   string            `json:"type"`
+	BaseURL                string            `json:"base_url,omitempty"`
+	APIKey                 string            `json:"-"`
+	ClearAPIKey            bool              `json:"-" gorm:"-"`
+	Status                 string            `json:"status"`
+	Healthy                bool              `json:"healthy"`
+	Priority               int               `json:"priority"`
+	Headers                map[string]string `json:"headers,omitempty" gorm:"serializer:json"`
+	SensitiveHeaders       []string          `json:"sensitive_headers,omitempty" gorm:"serializer:json"`
+	HeaderValidationErrors []string          `json:"header_validation_errors,omitempty" gorm:"-"`
+	Options                map[string]string `json:"options,omitempty" gorm:"serializer:json"`
+	CreatedAt              time.Time         `json:"created_at"`
 }
 
 type ProviderResource struct {
-	ID                string                       `json:"id" gorm:"primaryKey"`
-	ProviderID        string                       `json:"provider_id" gorm:"index"`
-	Name              string                       `json:"name"`
-	Group             string                       `json:"group,omitempty" gorm:"index"`
-	ResourceType      string                       `json:"resource_type"`
-	BaseURL           string                       `json:"base_url,omitempty"`
-	APIKey            string                       `json:"api_key,omitempty"`
-	Region            string                       `json:"region,omitempty"`
-	Environment       string                       `json:"environment,omitempty"`
-	Status            string                       `json:"status"`
-	Healthy           bool                         `json:"healthy"`
-	Priority          int                          `json:"priority"`
-	Weight            int                          `json:"weight"`
-	RateLimitRPM      int64                        `json:"rate_limit_rpm"`
-	TokenLimitTPM     int64                        `json:"token_limit_tpm"`
-	MaxConcurrency    int64                        `json:"max_concurrency"`
-	Headers           map[string]string            `json:"headers,omitempty" gorm:"serializer:json"`
-	Options           map[string]string            `json:"options,omitempty" gorm:"serializer:json"`
-	Credentials       *ProviderResourceCredentials `json:"credentials,omitempty" gorm:"-"`
-	CredentialBlob    string                       `json:"-" gorm:"column:credential_blob"`
-	CredentialSummary map[string]string            `json:"credential_summary,omitempty" gorm:"-"`
-	Observation       *ProviderResourceObservation `json:"observation,omitempty" gorm:"-"`
-	FailureCount      int                          `json:"failure_count"`
-	CooldownUntil     *time.Time                   `json:"cooldown_until,omitempty"`
-	LastUsedAt        *time.Time                   `json:"last_used_at,omitempty"`
-	LastCheckedAt     *time.Time                   `json:"last_checked_at,omitempty"`
-	CreatedAt         time.Time                    `json:"created_at"`
-	UpdatedAt         time.Time                    `json:"updated_at"`
+	ID                     string                       `json:"id" gorm:"primaryKey"`
+	ProviderID             string                       `json:"provider_id" gorm:"index"`
+	Name                   string                       `json:"name"`
+	Group                  string                       `json:"group,omitempty" gorm:"index"`
+	ResourceType           string                       `json:"resource_type"`
+	BaseURL                string                       `json:"base_url,omitempty"`
+	APIKey                 string                       `json:"api_key,omitempty"`
+	Region                 string                       `json:"region,omitempty"`
+	Environment            string                       `json:"environment,omitempty"`
+	Status                 string                       `json:"status"`
+	Healthy                bool                         `json:"healthy"`
+	Priority               int                          `json:"priority"`
+	Weight                 int                          `json:"weight"`
+	RateLimitRPM           int64                        `json:"rate_limit_rpm"`
+	TokenLimitTPM          int64                        `json:"token_limit_tpm"`
+	MaxConcurrency         int64                        `json:"max_concurrency"`
+	Headers                map[string]string            `json:"headers,omitempty" gorm:"serializer:json"`
+	SensitiveHeaders       []string                     `json:"sensitive_headers,omitempty" gorm:"serializer:json"`
+	HeaderValidationErrors []string                     `json:"header_validation_errors,omitempty" gorm:"-"`
+	Options                map[string]string            `json:"options,omitempty" gorm:"serializer:json"`
+	Credentials            *ProviderResourceCredentials `json:"credentials,omitempty" gorm:"-"`
+	CredentialBlob         string                       `json:"-" gorm:"column:credential_blob"`
+	CredentialSummary      map[string]string            `json:"credential_summary,omitempty" gorm:"-"`
+	Observation            *ProviderResourceObservation `json:"observation,omitempty" gorm:"-"`
+	FailureCount           int                          `json:"failure_count"`
+	CooldownUntil          *time.Time                   `json:"cooldown_until,omitempty"`
+	LastUsedAt             *time.Time                   `json:"last_used_at,omitempty"`
+	LastCheckedAt          *time.Time                   `json:"last_checked_at,omitempty"`
+	CreatedAt              time.Time                    `json:"created_at"`
+	UpdatedAt              time.Time                    `json:"updated_at"`
 }
 
 type ProviderResourceCredentials struct {
@@ -405,6 +431,8 @@ type Usage struct {
 	PromptTokens             int64       `json:"prompt_tokens"`
 	CachedInputTokens        int64       `json:"cached_input_tokens,omitempty"`
 	CacheWriteInputTokens    int64       `json:"cache_write_input_tokens,omitempty"`
+	CacheWrite5mInputTokens  int64       `json:"cache_write_5m_input_tokens,omitempty"`
+	CacheWrite1hInputTokens  int64       `json:"cache_write_1h_input_tokens,omitempty"`
 	InputAudioTokens         int64       `json:"input_audio_tokens,omitempty"`
 	CompletionTokens         int64       `json:"completion_tokens"`
 	ReasoningOutputTokens    int64       `json:"reasoning_output_tokens,omitempty"`
@@ -412,6 +440,10 @@ type Usage struct {
 	AcceptedPredictionTokens int64       `json:"accepted_prediction_tokens,omitempty"`
 	RejectedPredictionTokens int64       `json:"rejected_prediction_tokens,omitempty"`
 	TotalTokens              int64       `json:"total_tokens"`
+	InputCostUSD             float64     `json:"input_cost_usd,omitempty"`
+	CacheReadCostUSD         float64     `json:"cache_read_cost_usd,omitempty"`
+	CacheWriteCostUSD        float64     `json:"cache_write_cost_usd,omitempty"`
+	OutputCostUSD            float64     `json:"output_cost_usd,omitempty"`
 	CostUSD                  float64     `json:"estimated_cost_usd,omitempty"`
 	ProviderCostUSD          float64     `json:"-"`
 	UpstreamRequestID        string      `json:"upstream_request_id,omitempty"`
@@ -428,7 +460,7 @@ type Usage struct {
 type UsageRecord struct {
 	ID                       string    `json:"id" gorm:"primaryKey"`
 	RequestID                string    `json:"request_id" gorm:"index"`
-	ProjectID                string    `json:"project_id" gorm:"index"`
+	ProjectID                string    `json:"project_id" gorm:"index;index:idx_usage_records_project_created,priority:1"`
 	APIKeyID                 string    `json:"api_key_id" gorm:"index"`
 	AttributedUserID         string    `json:"attributed_user_id,omitempty" gorm:"index"`
 	ModelName                string    `json:"model" gorm:"index"`
@@ -437,6 +469,8 @@ type UsageRecord struct {
 	InputTokens              int64     `json:"input_tokens"`
 	CachedInputTokens        int64     `json:"cached_input_tokens,omitempty"`
 	CacheWriteTokens         int64     `json:"cache_write_input_tokens,omitempty"`
+	CacheWrite5mTokens       int64     `json:"cache_write_5m_input_tokens,omitempty"`
+	CacheWrite1hTokens       int64     `json:"cache_write_1h_input_tokens,omitempty"`
 	InputAudioTokens         int64     `json:"input_audio_tokens,omitempty"`
 	OutputTokens             int64     `json:"output_tokens"`
 	ReasoningTokens          int64     `json:"reasoning_output_tokens,omitempty"`
@@ -444,16 +478,22 @@ type UsageRecord struct {
 	AcceptedPredictionTokens int64     `json:"accepted_prediction_tokens,omitempty"`
 	RejectedPredictionTokens int64     `json:"rejected_prediction_tokens,omitempty"`
 	TotalTokens              int64     `json:"total_tokens"`
+	InputCostUSD             float64   `json:"input_cost_usd,omitempty"`
+	CacheReadCostUSD         float64   `json:"cache_read_cost_usd,omitempty"`
+	CacheWriteCostUSD        float64   `json:"cache_write_cost_usd,omitempty"`
+	OutputCostUSD            float64   `json:"output_cost_usd,omitempty"`
 	CostUSD                  float64   `json:"estimated_cost_usd"`
 	ProviderCostUSD          float64   `json:"provider_cost_usd,omitempty"`
-	CreatedAt                time.Time `json:"created_at"`
+	CreatedAt                time.Time `json:"created_at" gorm:"index;index:idx_usage_records_project_created,priority:2"`
 }
 
 type RequestLog struct {
 	ID                       string    `json:"id" gorm:"primaryKey"`
 	RequestID                string    `json:"request_id" gorm:"index"`
-	ProjectID                string    `json:"project_id" gorm:"index"`
-	APIKeyID                 string    `json:"api_key_id" gorm:"index"`
+	CommitSequence           int64     `json:"-" gorm:"not null;default:0"`
+	ProjectID                string    `json:"project_id" gorm:"index;index:idx_request_logs_project_created,priority:1"`
+	APIKeyID                 string    `json:"api_key_id" gorm:"index;index:idx_request_logs_api_key_created,priority:1"`
+	AttributedUserID         string    `json:"attributed_user_id,omitempty" gorm:"index"`
 	ModelName                string    `json:"model" gorm:"index"`
 	ProviderID               string    `json:"provider_id,omitempty" gorm:"index"`
 	ProviderResourceID       string    `json:"provider_resource_id,omitempty" gorm:"index"`
@@ -470,10 +510,12 @@ type RequestLog struct {
 	LatencyMS                int64     `json:"latency_ms"`
 	ClientIP                 string    `json:"client_ip,omitempty"`
 	UserAgent                string    `json:"user_agent,omitempty"`
-	CreatedAt                time.Time `json:"created_at"`
+	CreatedAt                time.Time `json:"created_at" gorm:"index:idx_request_logs_created_at;index:idx_request_logs_project_created,priority:2;index:idx_request_logs_api_key_created,priority:2"`
 	InputTokens              int64     `json:"input_tokens,omitempty" gorm:"-"`
 	CachedInputTokens        int64     `json:"cached_input_tokens,omitempty" gorm:"-"`
 	CacheWriteTokens         int64     `json:"cache_write_input_tokens,omitempty" gorm:"-"`
+	CacheWrite5mTokens       int64     `json:"cache_write_5m_input_tokens,omitempty" gorm:"-"`
+	CacheWrite1hTokens       int64     `json:"cache_write_1h_input_tokens,omitempty" gorm:"-"`
 	InputAudioTokens         int64     `json:"input_audio_tokens,omitempty" gorm:"-"`
 	OutputTokens             int64     `json:"output_tokens,omitempty" gorm:"-"`
 	ReasoningTokens          int64     `json:"reasoning_output_tokens,omitempty" gorm:"-"`
@@ -481,6 +523,10 @@ type RequestLog struct {
 	AcceptedPredictionTokens int64     `json:"accepted_prediction_tokens,omitempty" gorm:"-"`
 	RejectedPredictionTokens int64     `json:"rejected_prediction_tokens,omitempty" gorm:"-"`
 	TotalTokens              int64     `json:"total_tokens,omitempty" gorm:"-"`
+	InputCostUSD             float64   `json:"input_cost_usd,omitempty" gorm:"-"`
+	CacheReadCostUSD         float64   `json:"cache_read_cost_usd,omitempty" gorm:"-"`
+	CacheWriteCostUSD        float64   `json:"cache_write_cost_usd,omitempty" gorm:"-"`
+	OutputCostUSD            float64   `json:"output_cost_usd,omitempty" gorm:"-"`
 	EstimatedCostUSD         float64   `json:"estimated_cost_usd,omitempty" gorm:"-"`
 	ProviderCostUSD          float64   `json:"provider_cost_usd,omitempty" gorm:"-"`
 	UsageRecordCount         int64     `json:"usage_record_count,omitempty" gorm:"-"`
@@ -497,32 +543,113 @@ type RequestPayloadLog struct {
 }
 
 type ImageJob struct {
-	ID                      string     `json:"id" gorm:"primaryKey"`
-	ProjectID               string     `json:"project_id" gorm:"index"`
-	APIKeyID                string     `json:"api_key_id" gorm:"index"`
-	RequestID               string     `json:"request_id,omitempty" gorm:"index"`
-	Status                  string     `json:"status" gorm:"index"`
-	Model                   string     `json:"model"`
-	Action                  string     `json:"action"`
-	PromptCiphertext        string     `json:"-" gorm:"type:text"`
-	Prompt                  string     `json:"prompt,omitempty" gorm:"-"`
-	RevisedPromptCiphertext string     `json:"-" gorm:"type:text"`
-	RevisedPrompt           string     `json:"revised_prompt,omitempty" gorm:"-"`
-	Quality                 string     `json:"quality,omitempty"`
-	Size                    string     `json:"size,omitempty"`
-	ProviderID              string     `json:"provider_id,omitempty" gorm:"index"`
-	ProviderResourceID      string     `json:"provider_resource_id,omitempty" gorm:"index"`
-	ProviderModel           string     `json:"provider_model,omitempty"`
-	UpstreamRequestID       string     `json:"upstream_request_id,omitempty"`
-	InputTokens             int64      `json:"input_tokens,omitempty"`
-	CachedInputTokens       int64      `json:"cached_input_tokens,omitempty"`
-	OutputTokens            int64      `json:"output_tokens,omitempty"`
-	TotalTokens             int64      `json:"total_tokens,omitempty"`
-	ErrorCode               string     `json:"error_code,omitempty"`
-	ErrorMessage            string     `json:"error_message,omitempty"`
-	CreatedAt               time.Time  `json:"created_at"`
-	StartedAt               *time.Time `json:"started_at,omitempty"`
-	CompletedAt             *time.Time `json:"completed_at,omitempty"`
+	ID                                                          string     `json:"id" gorm:"primaryKey"`
+	ProjectID                                                   string     `json:"project_id" gorm:"index"`
+	APIKeyID                                                    string     `json:"api_key_id" gorm:"index"`
+	AttributedUserID                                            string     `json:"attributed_user_id,omitempty" gorm:"index"`
+	RequestID                                                   string     `json:"request_id,omitempty" gorm:"index"`
+	UserQuotaEnabled                                            bool       `json:"-"`
+	UserMinuteRequestHeld                                       bool       `json:"-"`
+	UserTokenLimitBucket                                        string     `json:"-"`
+	RedisBillingAdmitted, RedisKeyLeaseHeld, RedisUserLeaseHeld bool       `json:"-"`
+	TokenLimitBucket                                            string     `json:"-"`
+	MinuteRequestHeld                                           bool       `json:"-"`
+	ReservedTokens                                              int64      `json:"-"`
+	AdmittedAt                                                  *time.Time `json:"-"`
+	Status                                                      string     `json:"status" gorm:"index"`
+	Model                                                       string     `json:"model"`
+	Action                                                      string     `json:"action"`
+	PromptCiphertext                                            string     `json:"-" gorm:"type:text"`
+	Prompt                                                      string     `json:"prompt,omitempty" gorm:"-"`
+	RevisedPromptCiphertext                                     string     `json:"-" gorm:"type:text"`
+	RevisedPrompt                                               string     `json:"revised_prompt,omitempty" gorm:"-"`
+	Quality                                                     string     `json:"quality,omitempty"`
+	Size                                                        string     `json:"size,omitempty"`
+	ProviderID                                                  string     `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID                                          string     `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel                                               string     `json:"provider_model,omitempty"`
+	UpstreamRequestID                                           string     `json:"upstream_request_id,omitempty"`
+	InputTokens                                                 int64      `json:"input_tokens,omitempty"`
+	CachedInputTokens                                           int64      `json:"cached_input_tokens,omitempty"`
+	OutputTokens                                                int64      `json:"output_tokens,omitempty"`
+	TotalTokens                                                 int64      `json:"total_tokens,omitempty"`
+	ErrorCode                                                   string     `json:"error_code,omitempty"`
+	ErrorMessage                                                string     `json:"error_message,omitempty"`
+	CreatedAt                                                   time.Time  `json:"created_at"`
+	StartedAt                                                   *time.Time `json:"started_at,omitempty"`
+	CompletedAt                                                 *time.Time `json:"completed_at,omitempty"`
+}
+
+const (
+	responseJobStatusQueued    = "queued"
+	responseJobStatusRunning   = "running"
+	responseJobStatusSucceeded = "succeeded"
+	responseJobStatusFailed    = "failed"
+	responseJobStatusCancelled = "cancelled"
+	responseJobStatusExpired   = "expired"
+
+	responseJobPhaseQueued     = "queued"
+	responseJobPhaseClaimed    = "claimed"
+	responseJobPhaseAdmitted   = "admitted"
+	responseJobPhaseDispatched = "dispatched"
+)
+
+// ResponseJob is a durable, gateway-owned execution record for an OpenAI
+// Responses request submitted with background=true. Request and result content is
+// stored only in the encrypted columns; the plaintext fields are transient values
+// populated after authenticated reads.
+type ResponseJob struct {
+	ID                                                          string     `json:"id" gorm:"primaryKey"`
+	ProjectID                                                   string     `json:"project_id" gorm:"index"`
+	APIKeyID                                                    string     `json:"api_key_id" gorm:"index"`
+	AttributedUserID                                            string     `json:"attributed_user_id,omitempty" gorm:"index"`
+	UserQuotaEnabled                                            bool       `json:"-"`
+	UserMinuteRequestHeld                                       bool       `json:"-"`
+	UserTokenLimitBucket                                        string     `json:"-"`
+	RedisBillingAdmitted, RedisKeyLeaseHeld, RedisUserLeaseHeld bool       `json:"-"`
+	RequestID                                                   string     `json:"request_id,omitempty" gorm:"index"`
+	TokenLimitBucket                                            string     `json:"-"`
+	MinuteRequestHeld                                           bool       `json:"-"`
+	ReservedTokens                                              int64      `json:"-"`
+	AdmittedAt                                                  *time.Time `json:"-"`
+	Status                                                      string     `json:"status" gorm:"index:idx_response_job_claim,priority:1;index:idx_response_job_lease,priority:1"`
+	Phase                                                       string     `json:"phase" gorm:"index"`
+	Model                                                       string     `json:"model" gorm:"index"`
+	RequestCiphertext                                           string     `json:"-" gorm:"type:text"`
+	ResultCiphertext                                            string     `json:"-" gorm:"type:text"`
+	RequestJSON                                                 []byte     `json:"-" gorm:"-"`
+	ResultJSON                                                  []byte     `json:"-" gorm:"-"`
+	ClientIP                                                    string     `json:"-" gorm:"-"`
+	UserAgent                                                   string     `json:"-" gorm:"-"`
+	LeaseOwner                                                  string     `json:"-" gorm:"index"`
+	LeaseEpoch                                                  int64      `json:"-"`
+	LeaseExpiresAt                                              *time.Time `json:"-" gorm:"index:idx_response_job_lease,priority:2"`
+	CancelRequestedAt                                           *time.Time `json:"-" gorm:"index"`
+	ProviderID                                                  string     `json:"provider_id,omitempty" gorm:"index"`
+	ProviderResourceID                                          string     `json:"provider_resource_id,omitempty" gorm:"index"`
+	ProviderModel                                               string     `json:"provider_model,omitempty"`
+	UpstreamRequestID                                           string     `json:"upstream_request_id,omitempty"`
+	UpstreamResponseID                                          string     `json:"upstream_response_id,omitempty"`
+	ErrorCode                                                   string     `json:"error_code,omitempty"`
+	ErrorMessage                                                string     `json:"error_message,omitempty"`
+	CreatedAt                                                   time.Time  `json:"created_at" gorm:"index:idx_response_job_claim,priority:2"`
+	StartedAt                                                   *time.Time `json:"started_at,omitempty"`
+	CompletedAt                                                 *time.Time `json:"completed_at,omitempty"`
+	ExpiresAt                                                   *time.Time `json:"expires_at,omitempty" gorm:"index"`
+	UpdatedAt                                                   time.Time  `json:"updated_at"`
+}
+
+// ResponseJobEvent is the append-only audit trail for every durable state
+// transition. Details are deliberately bounded operational codes, never request or
+// response content.
+type ResponseJobEvent struct {
+	ID         string    `json:"id" gorm:"primaryKey"`
+	JobID      string    `json:"job_id" gorm:"index"`
+	FromStatus string    `json:"from_status,omitempty"`
+	ToStatus   string    `json:"to_status"`
+	ReasonCode string    `json:"reason_code,omitempty"`
+	Actor      string    `json:"actor"`
+	CreatedAt  time.Time `json:"created_at" gorm:"index"`
 }
 
 type ImageAsset struct {
@@ -623,15 +750,16 @@ type AuditEvent struct {
 }
 
 type AdminResource struct {
-	ID                      string         `json:"id" gorm:"primaryKey"`
-	Kind                    string         `json:"kind" gorm:"primaryKey;index"`
-	Name                    string         `json:"name"`
-	Description             string         `json:"description,omitempty"`
-	Status                  string         `json:"status"`
-	Fields                  map[string]any `json:"fields,omitempty" gorm:"serializer:json"`
-	RoutingPolicyBindingKey *string        `json:"-" gorm:"uniqueIndex:idx_admin_resource_routing_policy_binding"`
-	CreatedAt               time.Time      `json:"created_at"`
-	UpdatedAt               time.Time      `json:"updated_at"`
+	ID                      string            `json:"id" gorm:"primaryKey"`
+	Kind                    string            `json:"kind" gorm:"primaryKey;index"`
+	Name                    string            `json:"name"`
+	Description             string            `json:"description,omitempty"`
+	Status                  string            `json:"status"`
+	Fields                  map[string]any    `json:"fields,omitempty" gorm:"serializer:json"`
+	CurrentUsage            *QuotaPolicyUsage `json:"current_usage,omitempty" gorm:"-"`
+	RoutingPolicyBindingKey *string           `json:"-" gorm:"uniqueIndex:idx_admin_resource_routing_policy_binding"`
+	CreatedAt               time.Time         `json:"created_at"`
+	UpdatedAt               time.Time         `json:"updated_at"`
 }
 
 type MonitorRunResult struct {
@@ -733,6 +861,15 @@ type AdminPasswordResetToken struct {
 	UsedAt    *time.Time `json:"used_at,omitempty"`
 	CreatedBy string     `json:"created_by,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
+}
+
+// BootstrapCredential retains a generated first-run credential only long
+// enough for an operator with database/config access to retrieve it. The
+// plaintext never enters the database.
+type BootstrapCredential struct {
+	Name       string    `json:"-" gorm:"primaryKey"`
+	Ciphertext string    `json:"-" gorm:"type:text"`
+	CreatedAt  time.Time `json:"-"`
 }
 
 type SQLiteBackupRecord struct {
@@ -936,6 +1073,7 @@ type ResponsesRequest struct {
 	Model        string              `json:"model"`
 	Input        any                 `json:"input"`
 	Stream       bool                `json:"stream,omitempty"`
+	Background   bool                `json:"background,omitempty"`
 	MaxTokens    int                 `json:"max_output_tokens,omitempty"`
 	Temperature  *float64            `json:"temperature,omitempty"`
 	Instructions string              `json:"instructions,omitempty"`
@@ -977,6 +1115,10 @@ func (r ResponsesRequest) MarshalJSON() ([]byte, error) {
 	setRawJSONField(raw, "model", r.Model, r.Model != "")
 	setRawJSONField(raw, "input", r.Input, r.Input != nil)
 	setRawJSONField(raw, "stream", r.Stream, true)
+	background, backgroundPresent := raw["background"]
+	if !backgroundPresent || r.Background || strings.TrimSpace(string(background)) != "null" {
+		setRawJSONField(raw, "background", r.Background, r.Background || backgroundPresent)
+	}
 	setRawJSONField(raw, "max_output_tokens", r.MaxTokens, r.MaxTokens != 0)
 	setRawJSONField(raw, "temperature", r.Temperature, r.Temperature != nil)
 	setRawJSONField(raw, "instructions", r.Instructions, r.Instructions != "")
@@ -1140,15 +1282,41 @@ type CallContext struct {
 	measuredAt time.Time
 	// RateLimitHeaders is calculated atomically with minute-bucket admission so
 	// every compatible HTTP surface reports the same effective limits.
-	RateLimitHeaders map[string]string
-	TokenLimitBucket string
-	ReservedTokens   int64
+	RateLimitHeaders  map[string]string
+	TokenLimitBucket  string
+	MinuteRequestHeld bool
+	ReservedTokens    int64
+	// UserQuotaID identifies the durable aggregate bucket when a user-scoped
+	// quota policy applies. It is intentionally internal and never exposed to
+	// gateway clients.
+	UserQuotaID                                                 string
+	UserQuotaEnabled                                            bool
+	UserMinuteRequestHeld                                       bool
+	UserTokenLimitBucket                                        string
+	UserQuotaLimits                                             QuotaLimits
+	RedisBillingAdmitted, RedisKeyLeaseHeld, RedisUserLeaseHeld bool
+	// AttributedUserID is captured at admission so settlement remains attached
+	// to the owner who actually started the request, even if the key is transferred.
+	AttributedUserID string
 	// StreamOutputCommitted keeps the reservation when a stream delivered data but
 	// ended before an authoritative usage event was received.
 	StreamOutputCommitted bool
 	// Stream records whether the client asked for a streamed response. It only
 	// labels observability output and never influences routing.
-	Stream         bool
+	Stream bool
+	// RouteAttempts carries the per-candidate outcomes for observability output.
+	// It is filled from the completion's Attempts just before FinishCall and never
+	// influences routing.
+	RouteAttempts []RouteAttempt
+	// FirstByteAt records when the first response byte reached the client on a
+	// streamed request. Zero means no byte was ever written. Like Stream, it only
+	// labels observability output and never influences routing.
+	FirstByteAt time.Time
+	// StreamFailed records that a streamed request ended in failure after the
+	// response started. It replaces the status-code projection for interruption
+	// classification: once a stream commits, the HTTP status cannot change, so
+	// the failure fact must travel as a flag rather than a derived status.
+	StreamFailed   bool
 	Affinity       *RequestAffinity
 	requestContext context.Context
 }
@@ -1191,87 +1359,6 @@ func latencyMillis(interval time.Duration) int64 {
 	return interval.Milliseconds()
 }
 
-func NewID(prefix string) string {
-	var buf [12]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
-	}
-	return prefix + "_" + base64.RawURLEncoding.EncodeToString(buf[:])
-}
-
-func GenerateAPIKeyWithOptions(prefix string, randomLength int) string {
-	prefix = NormalizeAPIKeyPrefix(prefix)
-	randomLength = NormalizeAPIKeyRandomLength(randomLength)
-	byteLen := (randomLength*3 + 3) / 4
-	buf := make([]byte, byteLen+2)
-	if _, err := rand.Read(buf); err != nil {
-		randomPart := ""
-		for len(randomPart) < randomLength {
-			randomPart += strings.TrimPrefix(NewID("live"), "live_")
-		}
-		return prefix + randomPart[:randomLength]
-	}
-	randomPart := base64.RawURLEncoding.EncodeToString(buf)
-	for len(randomPart) < randomLength {
-		var extra [12]byte
-		if _, err := rand.Read(extra[:]); err != nil {
-			randomPart += strings.TrimPrefix(NewID("live"), "live_")
-			continue
-		}
-		randomPart += base64.RawURLEncoding.EncodeToString(extra[:])
-	}
-	return prefix + randomPart[:randomLength]
-}
-
-func NormalizeAPIKeyPrefix(prefix string) string {
-	prefix = strings.TrimSpace(prefix)
-	if prefix == "" {
-		return DefaultAPIKeyPrefix
-	}
-	var builder strings.Builder
-	for _, char := range prefix {
-		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_' || char == '-' {
-			builder.WriteRune(char)
-		}
-		if builder.Len() >= MaxAPIKeyPrefixLength {
-			break
-		}
-	}
-	if builder.Len() == 0 {
-		return DefaultAPIKeyPrefix
-	}
-	return builder.String()
-}
-
-func NormalizeAPIKeyRandomLength(length int) int {
-	if length <= 0 {
-		return DefaultAPIKeyRandomLength
-	}
-	if length < MinAPIKeyRandomLength {
-		return MinAPIKeyRandomLength
-	}
-	if length > MaxAPIKeyRandomLength {
-		return MaxAPIKeyRandomLength
-	}
-	return length
-}
-
-func GenerateAdminSessionToken() string {
-	return "tha_" + NewID("session")
-}
-
-func HashSecret(secret string) string {
-	sum := sha256.Sum256([]byte(secret))
-	return hex.EncodeToString(sum[:])
-}
-
-func PrefixSuffix(secret string) (string, string) {
-	if len(secret) <= 12 {
-		return secret, secret
-	}
-	return secret[:8], secret[len(secret)-6:]
-}
-
 func AllowedModelSet(models []string) map[string]bool {
 	set := make(map[string]bool, len(models))
 	for _, model := range models {
@@ -1281,62 +1368,4 @@ func AllowedModelSet(models []string) map[string]bool {
 		}
 	}
 	return set
-}
-
-func EstimateTextTokens(text string) int64 {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return 0
-	}
-	words := int64(len(strings.Fields(text)))
-	chars := int64(math.Ceil(float64(len([]rune(text))) / 4.0))
-	if words > chars {
-		return words
-	}
-	return chars
-}
-
-func ChatPromptText(messages []ChatMessage) string {
-	parts := make([]string, 0, len(messages))
-	for _, msg := range messages {
-		parts = append(parts, contentToText(msg.Content))
-	}
-	return strings.Join(parts, "\n")
-}
-
-func ResponsesInputText(input any) string {
-	return contentToText(input)
-}
-
-func EmbeddingInputText(input any) string {
-	return contentToText(input)
-}
-
-func contentToText(value any) string {
-	switch typed := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return typed
-	case []any:
-		var parts []string
-		for _, item := range typed {
-			parts = append(parts, contentToText(item))
-		}
-		return strings.Join(parts, " ")
-	case map[string]any:
-		if text, ok := typed["text"].(string); ok {
-			return text
-		}
-		if value, ok := typed["content"]; ok {
-			return contentToText(value)
-		}
-		var parts []string
-		for _, item := range typed {
-			parts = append(parts, contentToText(item))
-		}
-		return strings.Join(parts, " ")
-	default:
-		return fmt.Sprint(value)
-	}
 }

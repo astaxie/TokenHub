@@ -2,22 +2,27 @@ import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucid
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
-import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategory, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
+import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
+import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
+import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
+import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible } from "../domain/provider-custom-upstream";
+import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerResourceDraftDefaults } from "../resources/provider-model-config";
-import { ReviewItem } from "../shared/modals";
-import { providerTypeOptions } from "../shared/ui";
+import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
+import { ProviderCodexImageCapability } from "./provider-codex-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
-import { ProviderInlineField, customUpstreamConnectionKey, customUpstreamModelsAreCurrent, providerAccountResourceReady, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
-import { ProviderAdvancedFields, ProviderConnectionFields } from "./provider-editor-sections";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
+import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
+import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
+import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
+import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
-
 type OpenAIAccountQuota = {
   account_id?: string;
   email?: string;
@@ -41,7 +46,6 @@ type OpenAIAccountQuota = {
   rate_limit_reset_credits?: { available_count: number };
   fetched_at: number;
 };
-
 type CodexSubscriptionTestResult = {
   resource_id: string;
   model: string;
@@ -56,16 +60,12 @@ type CodexSubscriptionTestResult = {
     total_tokens: number;
   };
 };
-
 type ProviderEditTab = "connect" | "models" | "advanced";
-
 type ProviderAccountConfirmation = {
   action: "enable" | "disable" | "delete";
   resource: ProviderResource;
 };
-
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
-
 const codexProviderCatalogSummary: ProviderCatalogEntry = {
   id: "openai-codex",
   name: "OpenAI Codex",
@@ -77,9 +77,7 @@ const codexProviderCatalogSummary: ProviderCatalogEntry = {
   models_count: 0,
   source: "openai-codex-live",
 };
-
 const accountProviderCatalogOptions = [codexProviderCatalogSummary];
-
 const fallbackCodexReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
 
 export function ProviderUpsertModal({
@@ -137,7 +135,7 @@ export function ProviderUpsertModal({
   const initialEntry = editingCodexSubscription
     ? codexProviderCatalogSummary
     : mode === "edit"
-      ? selectableProviderCatalog.find((entry) => entry.id === "custom") ?? selectableProviderCatalog[0]
+      ? selectableProviderCatalog.find((entry) => entry.id === (provider?.type === "kronk" ? "kronk" : "custom")) ?? selectableProviderCatalog[0]
       : selectableProviderCatalog.find((entry) => entry.id === providerCatalogID)
         ?? selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, initialCategory))
         ?? selectableProviderCatalog.find((entry) => entry.id === "custom")
@@ -153,17 +151,24 @@ export function ProviderUpsertModal({
   const [modelLoading, setModelLoading] = useState(false);
   const [modelError, setModelError] = useState("");
   const [catalogReloadKey, setCatalogReloadKey] = useState(0);
-  const catalogRefreshRequested = useRef(false);
   const [selectedModels, setSelectedModels] = useState<Record<string, boolean>>({});
+  const catalogRefreshRequested = useRef(false);
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
     name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex" : provider?.name ?? "" : initialEntry?.display_name ?? "",
     type: mode === "edit" ? editingCodexSubscription ? "openai_codex" : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
     base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
+    clear_api_key: "false",
+    anthropic_auth_type: provider?.options?.anthropic_auth_type ?? "x-api-key",
     priority: String(provider?.priority ?? 10),
+    claude_code_attribution_policy: mode === "edit"
+      ? provider?.options?.claude_code_attribution_policy ?? "preserve"
+      : defaultProviderClaudeCodeAttributionPolicy(initialEntry?.type ?? "openai_compatible", initialEntry?.id ?? "custom"),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
+    custom_headers: providerHeadersFormValue(provider?.headers, provider?.sensitive_headers),
+    ...providerReasoningFormValues(provider?.options),
   }));
   const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingCodexSubscription ? "account_integration" : "provider_api_key");
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() =>
@@ -239,7 +244,7 @@ export function ProviderUpsertModal({
     if (!categoryCatalog.some((entry) => entry.id === catalogID)) {
       selectCatalog(categoryCatalog[0]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectCatalog also rewrites form state; catalog identity changes alone control this correction.
   }, [modelCategory, categoryCatalog.length, credentialMode, catalogID, quickAPIFlow]);
 
   useEffect(() => {
@@ -267,28 +272,26 @@ export function ProviderUpsertModal({
         cancelled = true;
       };
     }
-    if (catalogID === "custom") {
+    if (catalogID === "custom" || catalogID === "kronk") {
       if (!values.base_url?.trim()) {
-        setDetail(customCatalogEntry);
+        setDetail(catalogID === "custom" ? customCatalogEntry : entry ?? null);
         setModelLoading(false);
         return () => {
           cancelled = true;
         };
       }
       setModelLoading(true);
-      adminFetch(api, "/api/admin/provider-catalog/custom", {
+      adminFetch(api, `/api/admin/provider-catalog/${catalogID === "kronk" ? "kronk" : "custom"}`, {
         method: "POST",
-        body: JSON.stringify({
-          provider_id: mode === "edit" ? provider?.id : "",
-          name: values.name,
-          type: values.type || "openai_compatible",
-          base_url: values.base_url,
-          api_key: values.api_key,
-          model_category: modelCategory,
-        }),
+        body: JSON.stringify(customUpstreamDiscoveryPayload(
+          values,
+          mode === "edit" ? provider?.id ?? "" : "",
+          modelCategory,
+          providerHeadersPayload(values.custom_headers),
+        )),
       })
         .then(async (resp) => {
-          if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载自定义上游模型")));
+          if (!resp.ok) throw new Error(await readAdminError(resp, tx(catalogID === "kronk" ? "发现 Kronk 本地模型" : "加载自定义上游模型")));
           return (await resp.json()) as { data: ProviderCatalogEntry };
         })
         .then((payload) => {
@@ -298,8 +301,8 @@ export function ProviderUpsertModal({
         })
         .catch((err) => {
           if (cancelled || isAuthExpiredError(err)) return;
-          const message = err instanceof Error ? err.message : tx("自定义上游模型加载失败");
-          setDetail(customCatalogEntry);
+          const message = err instanceof Error ? err.message : tx(catalogID === "kronk" ? "Kronk 模型发现失败" : "自定义上游模型加载失败");
+          setDetail(catalogID === "custom" ? customCatalogEntry : entry ?? null);
           setModelError(message);
         })
         .finally(() => {
@@ -345,7 +348,7 @@ export function ProviderUpsertModal({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the explicit catalog and connection keys are the request identity; form setters must not refetch.
   }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id]);
 
   useEffect(() => {
@@ -409,6 +412,15 @@ export function ProviderUpsertModal({
     usesCodexCatalog,
     accountValues.access_token,
     accountValues.account_id,
+    accountValues.account_email,
+    accountValues.auth_type,
+    accountValues.expires_at,
+    accountValues.id_token,
+    accountValues.organization_id,
+    accountValues.plan_type,
+    accountValues.refresh_token,
+    accountValues.scopes,
+    accountValues.token_type,
     catalogReloadKey,
     mode,
   ]);
@@ -453,15 +465,15 @@ export function ProviderUpsertModal({
   }, [createStep, mode]);
 
   useEffect(() => {
-    if (mode !== "create" || catalogID !== "custom" || !values.base_url?.trim()) return;
-    // Load custom upstream models once model selection is on screen: behind a
-    // tab in the quick connect UI, at its model step in the stepped wizard.
-    if (quickAPIConnect ? quickAPITab !== "models" : createStep !== 3) return;
+    if ((catalogID !== "custom" && catalogID !== "kronk") || !values.base_url?.trim()) return;
+    // Load custom upstream models once model selection is on screen. This also
+    // covers edit mode, where changing the Anthropic auth selector on the
+    // Advanced tab must refresh discovery when the operator returns to Models.
+    if (!customUpstreamModelsVisible(mode, editTab, quickAPIConnect, quickAPITab, createStep)) return;
     if (loadedCustomConnection.current === customConnectionKey) return;
     loadedCustomConnection.current = customConnectionKey;
     setCatalogReloadKey((current) => current + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogID, createStep, mode, quickAPIConnect, quickAPITab]);
+  }, [catalogID, createStep, customConnectionKey, editTab, mode, quickAPIConnect, quickAPITab, values.base_url]);
 
   useEffect(() => {
     if (mode !== "edit" || editTab !== "advanced") return;
@@ -469,7 +481,7 @@ export function ProviderUpsertModal({
       if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
     }
     const timer = window.setInterval(() => { for (const resource of selectedAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
   }, [editTab, mode, selectedAccountResources]);
 
   const selectedAccountCatalog = useMemo(
@@ -488,12 +500,15 @@ export function ProviderUpsertModal({
     : usesCodexCatalog ? codexCatalogError : modelError;
   const models = useMemo(
     () => (effectiveDetail?.models ?? []).filter((model) => {
-      if (quickAPIFlow) return true;
-      if (modelCategory !== "all" && modelCategoryForCatalog(model) !== modelCategory) return false;
-      if (usesCodexCatalog) return true;
-      if (catalogID === "custom") return true;
       const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name);
-      return standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name) === canonicalModelNameForUI(canonical, canonical));
+      return providerCatalogModelIsSelectable({
+        catalogID,
+        usesCodexCatalog,
+        quickAPIFlow,
+        selectedCategory: modelCategory,
+        discoveredCategory: modelCategoryForCatalog(model),
+        matchesStandardModel: standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name) === canonicalModelNameForUI(canonical, canonical)),
+      });
     }),
     [catalogID, effectiveDetail, modelCategory, quickAPIFlow, standardModels, usesCodexCatalog],
   );
@@ -521,8 +536,8 @@ export function ProviderUpsertModal({
       .slice(0, 80);
   }, [models, modelQuery]);
   const importedModels = useMemo(
-    () => provider ? providerModels.filter((model) => model.provider_id === provider.id) : [],
-    [provider, providerModels],
+    () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!editingCodexSubscription || model.upstream_model !== "gpt-image-2")) : [],
+    [editingCodexSubscription, provider, providerModels],
   );
   const importedModelIDs = useMemo(() => new Set(importedModels.map((model) => model.upstream_model)), [importedModels]);
   const selectedModelIDs = Object.entries(selectedModels)
@@ -544,7 +559,7 @@ export function ProviderUpsertModal({
     if (!normalized) return false;
     return resources.some((resource) => resource.name.trim().toLocaleLowerCase() === normalized);
   }, [accountValues.name, resources]);
-  const codexTestModels = selectedAccountCatalog?.models ?? [];
+  const codexTestModels = useMemo(() => selectedAccountCatalog?.models ?? [], [selectedAccountCatalog?.models]);
   const selectedCodexTestModel = codexTestModels.find((model) => model.id === codexTestValues.model);
   const codexReasoningEfforts = selectedCodexTestModel?.metadata?.supported_reasoning_levels
     ?.split(",")
@@ -565,13 +580,13 @@ export function ProviderUpsertModal({
       if (nextModel === current.model && nextEffort === current.reasoning_effort) return current;
       return { ...current, model: nextModel, reasoning_effort: nextEffort };
     });
-  }, [codexTestModels, codexTestValues.model]);
+  }, [codexTestModels]);
 
   useEffect(() => {
     if (mode !== "create" || !hasPendingProviderAccountOAuthResult()) return;
     selectCredentialMode("account_integration");
     setCreateStep(2);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- this one-shot callback restore is keyed only by create mode.
   }, [mode]);
 
   useEffect(() => {
@@ -579,20 +594,26 @@ export function ProviderUpsertModal({
     const pending = consumePendingProviderAccountOAuthResult();
     if (!pending) return;
     void applyProviderAccountOAuthResult(pending, tx("已从回调 URL 自动回填账号 Token。"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- consuming the stored callback result must run once per credential-mode transition.
   }, [mode, credentialMode]);
 
   useEffect(() => {
     if (mode !== "create" || credentialMode !== "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
     setModelCategory("codex");
     selectCatalog(codexProviderCatalogSummary);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- catalog selection is the corrective action; including it would retrigger the correction.
   }, [credentialMode, mode, catalogID]);
 
   function update(key: string, value: string) {
     const previousProviderName = values.name;
     const previousBaseURL = values.base_url;
-    setValues((current) => ({ ...current, [key]: value }));
+    setValues((current) => ({
+      ...current,
+      [key]: value,
+      ...(mode === "create" && key === "type"
+        ? { claude_code_attribution_policy: defaultProviderClaudeCodeAttributionPolicy(value, catalogID) }
+        : {}),
+    }));
     if (mode !== "create") return;
     if (key === "name") {
       setAccountValues((current) => {
@@ -762,10 +783,9 @@ export function ProviderUpsertModal({
   }
 
   async function copyProviderAccountCallbackURL() {
-    try {
-      await navigator.clipboard.writeText(openAIAccountOAuthRedirectURI);
+    if (await copyText(openAIAccountOAuthRedirectURI)) {
       setAccountOAuthStatus(tx("已复制 OpenAI 固定回调地址。"));
-    } catch {
+    } else {
       setAccountOAuthCallback(openAIAccountOAuthRedirectURI);
       setAccountOAuthStatus(openAIAccountOAuthRedirectURI);
     }
@@ -943,6 +963,9 @@ export function ProviderUpsertModal({
       type: entry.type || current.type || "openai_compatible",
       base_url: mode === "create" ? entry.base_url ?? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
+      claude_code_attribution_policy: mode === "create"
+        ? defaultProviderClaudeCodeAttributionPolicy(entry.type, entry.id)
+        : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(nextName, entry.base_url);
   }
@@ -964,6 +987,9 @@ export function ProviderUpsertModal({
       type: current.type || "openai_compatible",
       base_url: mode === "create" ? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
+      claude_code_attribution_policy: mode === "create"
+        ? defaultProviderClaudeCodeAttributionPolicy(current.type, "custom")
+        : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(values.name || "Provider", "");
   }
@@ -976,17 +1002,6 @@ export function ProviderUpsertModal({
     setDetail(null);
     setSelectedModels({});
     setModelError("");
-  }
-
-  function canContinueCreateStep(targetStep = createStep) {
-    if (mode !== "create") return true;
-    if (targetStep === 0) return Boolean(credentialMode);
-    if (targetStep === 1) {
-      return Boolean(selectedEntry && values.name?.trim());
-    }
-    if (targetStep === 2 && credentialMode === "provider_api_key") return Boolean(values.api_key?.trim());
-    if (targetStep === 2 && credentialMode === "account_integration") return providerAccountResourceReady(accountValues);
-    return true;
   }
 
   function validateCreateStep(targetStep = createStep) {
@@ -1009,7 +1024,7 @@ export function ProviderUpsertModal({
       setError(tx("请填写 Base URL。"));
       return false;
     }
-    if (targetStep === 1 && credentialMode === "provider_api_key" && !values.api_key?.trim()) {
+    if (targetStep === 1 && credentialMode === "provider_api_key" && catalogID !== "kronk" && !values.api_key?.trim()) {
       if (quickAPIFlow) setQuickAPITab("connect");
       setError(tx("请填写 API Key。"));
       return false;
@@ -1038,16 +1053,16 @@ export function ProviderUpsertModal({
     setError("");
     return true;
   }
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const headerError = providerHeaderFormError(values.custom_headers); if (headerError) { setError(tx(headerError)); return; }
     if (mode === "create" && createStep < lastCreateStep) {
       if (!validateCreateStep(createStep)) return;
       setCreateStep((current) => Math.min(current + 1, lastCreateStep));
       return;
     }
     if (quickAPIConnect && !validateCreateStep(createStep)) return;
-    if (mode === "create" && catalogID === "custom"
+    if (mode === "create" && (catalogID === "custom" || catalogID === "kronk")
       && !customUpstreamModelsAreCurrent(models.length, loadedCustomConnection.current, customConnectionKey)) {
       if (quickAPIFlow) setQuickAPITab("models");
       setError(tx("请先加载自定义渠道的上游模型，再选择要引入的模型。"));
@@ -1071,7 +1086,7 @@ export function ProviderUpsertModal({
         catalog_id: catalogID,
         model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
-        custom_models: (catalogID === "custom" || usesCodexCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
+        custom_models: (catalogID === "custom" || catalogID === "kronk" || usesCodexCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
@@ -1513,15 +1528,13 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "edit" && editTab === "connect" ? (
-              <ProviderConnectionFields values={values} onUpdate={update} />
+              <ProviderConnectionFields values={values} onUpdate={update} validationErrors={provider?.header_validation_errors} />
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
-              <ProviderAdvancedFields
-                accountIntegration={credentialMode === "account_integration"}
-                values={values}
-                onUpdate={update}
-              />
+              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} />
+                <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
+            {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} resources={resources} /> : null}
             {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
@@ -1552,6 +1565,7 @@ export function ProviderUpsertModal({
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
+                            <ProviderAccountTokenRenewal api={api} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} />
                             {resource.status === "active" ? (
                               <button
                                 className="secondary-button provider-account-disable-button"
@@ -1750,35 +1764,19 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "create" && createStep === 1 && !quickAPIConnect ? (
-              <div className="provider-form-grid">
-              <label className="field">
-                <span>Provider ID</span>
-                <input value={values.id ?? ""} onChange={(event) => update("id", event.target.value)} placeholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} />
-              </label>
-              <label className="field">
-                <span>{tx(credentialMode === "account_integration" ? "通道名称" : "渠道名称")}</span>
-                <input value={values.name ?? ""} onChange={(event) => update("name", event.target.value)} required />
-              </label>
-              <label className="field">
-                <span>{tx(credentialMode === "account_integration" ? "兼容协议" : "渠道商类型")}</span>
-                <select value={values.type ?? ""} onChange={(event) => update("type", event.target.value)} required>
-                  {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
-                </select>
-              </label>
-              <label className="field">
-                <span>Base URL</span>
-                <input value={values.base_url ?? ""} onChange={(event) => update("base_url", event.target.value)} />
-              </label>
-              <label className="field">
-                <span>{tx("优先级")}</span>
-                <input value={values.priority ?? "10"} type="number" onChange={(event) => update("priority", event.target.value)} />
-              </label>
-            </div>
+              <ProviderAdvancedFields
+                accountIntegration={credentialMode === "account_integration"}
+                creating
+                idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")}
+                values={values}
+                onUpdate={update}
+              />
             ) : null}
 
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
             {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
+            {mode === "edit" && editingCodexSubscription && provider ? <div className="provider-model-list provider-codex-image-list"><ProviderCodexImageCapability api={api} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
             {mode === "edit" && editingCodexSubscription && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">
                 {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}

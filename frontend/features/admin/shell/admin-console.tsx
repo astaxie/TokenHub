@@ -1,15 +1,18 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
-import { clearOAuthLoginResult, clearPendingOAuthBaseURL, clearProviderAccountOAuthResultFromLocation, clearSavedSession, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthBaseURL, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
+import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
+import { filterAPIKeys } from "../domain/api-key-filter";
+import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
-import { uniqueUIID, viewFromPath } from "../domain/formatting";
+import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/formatting";
 import { reportDatasetLabel } from "../domain/labels";
+import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
 import { resourceCreateTarget } from "../domain/resource-create-target";
 import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
 import { createKeyWithCapture } from "../resources/generic-config";
@@ -17,9 +20,9 @@ import { downloadReport } from "../resources/governance-config";
 import { adminFetch, adminMutate, importUsersFromCSVContent, isAuthExpiredError, loadRequestLabel, notificationChannelDefaults, permissionPartialLoadMessage, readAdminError, readLoadError, restoreDefaultModelCatalog } from "../resources/payloads";
 import { projectMemberConfig, projectMemberInitialValues } from "../resources/project-key-config";
 import { resourceConfigFor } from "../resources/settings-config";
-import { APIKeyWizardModal, UserImportModal } from "../shared/modals";
+import { usePagination } from "../shared/pagination";
+import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "../shared/auth";
 import { ConfirmDialog, IssuedKeyModal } from "../shared/ui";
-import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "./auth";
 import { PageHeader, Sidebar, StatusStack, TopNav } from "./navigation-ui";
 import { ResponsiveVersionStatus } from "./version-status";
 import { AuditView } from "../views/audit";
@@ -34,13 +37,17 @@ import { PlaygroundPage } from "../views/playground";
 import { ProviderUpsertModal } from "../views/provider-editor";
 import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
 import { RoutingPolicySimulator } from "../views/routing-policy-simulator";
-import { EditModal, SettingsView, usePagination } from "../views/settings-table";
+import { ContentSecurityPolicies, SecurityPolicyTabs } from "../views/security-policies";
+import { APIKeyWizardModal, UserImportModal } from "../views/modals";
+import { EditModal, SettingsView } from "../views/settings-table";
 import { BillingView, UsageView } from "../views/usage-billing";
+import { APIKeyUsageView } from "../views/api-key-usage";
 
 export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const routeView = viewFromPath(pathname);
+  const apiKeyUsageID = apiKeyUsageIDFromPath(pathname);
   const [language, setLanguage] = useState<AppLanguage>(() => readSavedLanguage());
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [baseURL, setBaseURL] = useState(defaultBaseURL);
@@ -62,6 +69,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [modelCategoryFilter, setModelCategoryFilter] = useState("all");
   const [routeModelQuery, setRouteModelQuery] = useState("");
   const [settingsTab, setSettingsTab] = useState<SettingsTabKey>("settings");
+  const [securityPolicyTab, setSecurityPolicyTab] = useState<"access" | "content">("access");
   const [modal, setModal] = useState<ModalState<any> | null>(null);
   const [projectWorkspace, setProjectWorkspace] = useState<{ mode: ProjectWorkspaceMode; projectID?: string } | null>(null);
   const [providerCreateOpen, setProviderCreateOpen] = useState(false);
@@ -72,8 +80,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [confirmDelete, setConfirmDelete] = useState<ConfirmState<any> | null>(null);
   const [confirmRestoreModels, setConfirmRestoreModels] = useState(false);
   const [issuedKey, setIssuedKey] = useState("");
+  const loadRef = useRef<(view?: ViewKey) => Promise<void>>(async () => undefined);
   const [reportHistory, setReportHistory] = useState<ReportExportHistoryItem[]>([]);
-  const resetToken = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("reset_token") ?? "";
+  const [resetToken, setResetToken] = useState("");
 
   const api = useMemo(() => ({ baseURL, adminToken }), [baseURL, adminToken]);
   const activeConfig = resourceConfigFor(activeView);
@@ -88,7 +97,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setTheme((value) => (value === "light" ? "dark" : "light"));
   }
 
-  function selectView(view: ViewKey, options: { replace?: boolean; routeModelQuery?: string } = {}) {
+  const selectView = useCallback((view: ViewKey, options: { replace?: boolean; routeModelQuery?: string } = {}) => {
     if (view !== activeView) {
       setNotice("");
       setError("");
@@ -107,7 +116,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     } else {
       router.push(nextURL);
     }
-  }
+  }, [activeView, pathname, router]);
 
   function openRoutes(model?: Model) {
     selectView("routes", { routeModelQuery: model?.name ?? "" });
@@ -116,38 +125,70 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   useEffect(() => {
     let cancelled = false;
     async function bootstrapSession() {
-      const saved = readSavedSession();
-      const oauth = readOAuthLoginResult();
-      const sessionBaseURL = readPendingOAuthBaseURL() ?? saved?.baseURL ?? defaultBaseURL;
-      if (!oauth && forwardOAuthAuthorizationResponse(sessionBaseURL)) return;
-      if (oauth?.error) {
+      const passwordResetToken = consumePasswordResetToken();
+      if (passwordResetToken) {
+        clearSavedSession();
         clearOAuthLoginResult();
-        clearPendingOAuthBaseURL();
-        setError(tx("OAuth 登录失败"));
+        clearOAuthAuthorizationResponse();
+        clearPendingOAuthLogin();
+        setResetToken(passwordResetToken);
+        setBootstrapped(true);
+        return;
       }
-      if (oauth?.token) {
+      const saved = readSavedSession();
+      const pendingLogin = readPendingOAuthLogin();
+      const oauthCallback = resolvePendingOAuthLoginResult(window.location, pendingLogin);
+      if (oauthCallback.status === "none" && pendingLogin && forwardOAuthAuthorizationResponse(pendingLogin.baseURL)) return;
+      if (
+        oauthCallback.status === "none" &&
+        !isProviderAccountOAuthAuthorizationResponse() &&
+        isOAuthAuthorizationResponse()
+      ) {
+        clearOAuthAuthorizationResponse();
+        clearPendingOAuthLogin();
+        setError(tx("OAuth 登录失败"));
+        setBootstrapped(true);
+        return;
+      }
+      if (oauthCallback.status === "unexpected") {
+        clearOAuthLoginResult();
+        clearPendingOAuthLogin();
+        setError(tx("OAuth 登录失败"));
+        setBootstrapped(true);
+        return;
+      }
+      if (oauthCallback.status === "ready" && oauthCallback.result.error) {
+        clearOAuthLoginResult();
+        clearPendingOAuthLogin();
+        setError(tx("OAuth 登录失败"));
+        setBootstrapped(true);
+        return;
+      }
+      if (oauthCallback.status === "ready" && oauthCallback.result.code) {
+        const sessionBaseURL = oauthCallback.baseURL;
         setBaseURL(sessionBaseURL);
         setLoading(true);
         try {
-          const resp = await fetch(`${sessionBaseURL.replace(/\/$/, "")}/api/admin/auth/me`, {
-            headers: { authorization: `Bearer ${oauth.token}` },
-          });
-          if (!resp.ok) {
-            throw new Error(await readAdminError(resp, "OAuth 会话校验失败"));
+          const exchange = await exchangeOAuthLoginCode(sessionBaseURL, oauthCallback.result.code, oauthCallback.codeVerifier);
+          const resp = new Response(exchange.body, { status: exchange.status });
+          if (!exchange.ok) {
+            throw new Error(await readAdminError(resp, tx("登录失败")));
           }
-          const payload = (await resp.json()) as { user: AdminUser };
-          const expiresAt = oauth.expiresAt || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+          const payload = JSON.parse(exchange.body) as { token?: string; user?: AdminUser; expires_at?: string };
+          if (!payload.token || !payload.user || !payload.expires_at) {
+            throw new Error(tx("登录失败"));
+          }
           if (cancelled) return;
           setData(emptyData());
-          setAdminToken(oauth.token);
+          setAdminToken(payload.token);
           setCurrentUser(payload.user);
-          saveSession({ baseURL: sessionBaseURL, token: oauth.token, user: payload.user, expiresAt });
+          saveSession({ baseURL: sessionBaseURL, token: payload.token, user: payload.user, expiresAt: payload.expires_at });
           setError("");
         } catch (err) {
           if (!cancelled) setError(err instanceof Error ? err.message : tx("OAuth 登录失败"));
         } finally {
           clearOAuthLoginResult();
-          clearPendingOAuthBaseURL();
+          clearPendingOAuthLogin();
           if (!cancelled) {
             setLoading(false);
             setBootstrapped(true);
@@ -155,6 +196,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         }
         return;
       }
+      clearOAuthLoginResult();
       if (saved) {
         setBaseURL(saved.baseURL);
         setAdminToken(saved.token);
@@ -166,7 +208,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [defaultBaseURL]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -186,8 +228,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     selectView("providers", { replace: true });
     setProviderCreateOpen(true);
     setNotice(tx("收到账号授权回调，已打开账号池创建向导。"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser]);
+  }, [currentUser, selectView]);
 
   useEffect(() => {
     if (!bootstrapped || currentUser) return;
@@ -223,8 +264,16 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!bootstrapped || !adminToken || !currentUser) return;
     if (!canAccessView(currentUser, activeView)) return;
     void load(activeView);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load is an orchestration command; the explicit state keys define when it runs.
   }, [bootstrapped, adminToken, currentUser, activeView]);
+
+  useEffect(() => {
+    if (!bootstrapped || !adminToken || !currentUser || activeView !== "usage") return;
+    const timer = window.setInterval(() => {
+      void loadRef.current("usage");
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [activeView, adminToken, bootstrapped, currentUser]);
 
   useEffect(() => {
     if (activeView === "notification-channels" && !notificationChannelTypes.includes(modelCategoryFilter)) {
@@ -237,8 +286,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!canAccessView(currentUser, activeView)) {
       selectView(defaultViewForRole(currentUser), { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, activeView]);
+  }, [currentUser, activeView, selectView]);
 
   useEffect(() => {
     if (!currentUser || !canAccessView(currentUser, activeView)) return;
@@ -277,7 +325,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     }
     window.addEventListener(authExpiredEventName, onAuthExpired);
     return () => window.removeEventListener(authExpiredEventName, onAuthExpired);
-  }, []);
+  }, [selectView]);
 
   useEffect(() => {
     function onIssuedKey(event: Event) {
@@ -313,12 +361,13 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.providerModels, "provider-models", "/api/admin/provider-models");
       queue(plan.keys, "api-keys", "/api/admin/api-keys");
       queue(plan.routes, "routes", "/api/admin/routing-rules");
-      queue(plan.logs, "audit", "/api/admin/audit/requests");
+      queue(plan.logs, "audit", auditRequestPagePath({ page: 1, pageSize: 20, status: "all", query: "" }));
       queue(plan.auditEvents, "audit-events", "/api/admin/audit/events");
       queue(plan.alerts, "alerts", "/api/admin/alerts");
       queue(plan.alertDeliveries, "alert-deliveries", "/api/admin/alert-deliveries");
       queue(plan.approvals, "approvals", "/api/admin/approvals");
       queue(plan.sqliteBackups, "sqlite-backups", "/api/admin/sqlite/backups");
+      queue(plan.dailyUsage, "daily-usage", "/api/admin/usage/daily");
       queue(plan.breakdown, "breakdown", "/api/admin/usage/breakdown");
       queue(plan.timeseries, "timeseries", "/api/admin/usage/timeseries");
       queue(plan.users, "users", "/api/admin/users");
@@ -327,6 +376,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 			queue(plan.billingConnectors, "billing-connectors", "/api/admin/billing/connectors");
 			queue(plan.billingRecords, "billing-records", "/api/admin/billing/records");
 			queue(plan.billingSyncRuns, "billing-sync-runs", "/api/admin/billing/sync-runs");
+			queue(plan.reconciliationRules, "reconciliation-rules", "/api/admin/billing/reconciliation-rules");
+			queue(plan.reconciliationRuns, "reconciliation-runs", "/api/admin/billing/reconciliations");
       for (const kind of plan.resources) {
         requests.push({ name: `resource:${kind}`, request: adminFetch(api, `/api/admin/resources/${kind}`), optional: true });
       }
@@ -390,6 +441,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         } else if (name === "sqlite-backups") {
           const payload = (await resp.json()) as { data: SQLiteBackup[] };
           loaded.sqliteBackups = payload.data ?? [];
+        } else if (name === "daily-usage") {
+          loaded.dailyUsage = (await resp.json()) as UsageDaily;
         } else if (name === "breakdown") {
           loaded.breakdown = (await resp.json()) as UsageBreakdown;
         } else if (name === "timeseries") {
@@ -413,6 +466,12 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 				} else if (name === "billing-sync-runs") {
 					const payload = (await resp.json()) as { data: BillingSyncRun[] };
 					loaded.billingSyncRuns = payload.data ?? [];
+				} else if (name === "reconciliation-rules") {
+					const payload = (await resp.json()) as { data: ReconciliationRule[] };
+					loaded.reconciliationRules = payload.data ?? [];
+				} else if (name === "reconciliation-runs") {
+					const payload = (await resp.json()) as { data: ReconciliationRun[] };
+					loaded.reconciliationRuns = payload.data ?? [];
         } else if (name.startsWith("resource:")) {
           const kind = name.slice("resource:".length);
           const payload = (await resp.json()) as { data: AdminResource[] };
@@ -431,6 +490,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setLoading(false);
     }
   }
+  loadRef.current = load;
 
   async function login(identity: string, password: string) {
     setLoading(true);
@@ -465,7 +525,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         body: JSON.stringify({ token, password }),
       });
       if (!resp.ok) throw new Error(`reset password ${resp.status}`);
-      window.history.replaceState(null, "", window.location.pathname);
+      setResetToken("");
       setNotice(tx("密码已重置，请使用新密码登录"));
     } catch (err) {
       setError(err instanceof Error ? err.message : tx("密码重置失败"));
@@ -712,7 +772,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 
   const viewItems = activeConfig?.list(data) ?? [];
   const categoryItems = filterByModelCategory(activeConfig?.view, viewItems, modelCategoryFilter, data);
-  const filteredItems = filterRows(categoryItems, query);
+  const filteredItems =
+    activeConfig?.view === "api-keys" ? filterAPIKeys(categoryItems as APIKey[], query) : filterRows(categoryItems, query);
   const crudPagination = usePagination(filteredItems.length, `${activeView}:${modelCategoryFilter}:${query}`);
   const pagedItems = useMemo(
     () => filteredItems.slice(crudPagination.startIndex, crudPagination.endIndex),
@@ -731,7 +792,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       <ResetPasswordView
         loading={loading}
         error={error}
+        language={language}
         theme={theme}
+        onLanguageChange={changeLanguage}
         onThemeToggle={toggleTheme}
         token={resetToken}
         onReset={(token, password) => void resetPassword(token, password)}
@@ -747,7 +810,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         baseURL={baseURL}
         identityProviders={loginIdentityProviders}
         oauthReturnURL={oauthReturnURL}
+        language={language}
         theme={theme}
+        onLanguageChange={changeLanguage}
         onThemeToggle={toggleTheme}
         onLogin={(identity, password) => void login(identity, password)}
       />
@@ -775,13 +840,15 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           activeView={activeView}
           data={data}
           user={currentUser}
+          language={language}
           theme={theme}
+          onLanguageChange={changeLanguage}
           onSelectView={selectView}
           onThemeToggle={toggleTheme}
         />
 
         <div className={activeView === "playground" ? "content-panel playground-content-panel" : "content-panel"}>
-          {activeView === "playground" || activeView === "overview" ? null : (
+          {activeView === "playground" || activeView === "overview" || apiKeyUsageID ? null : (
             <PageHeader activeView={activeView} data={data} meta={activeMeta} user={currentUser} />
           )}
 
@@ -792,9 +859,11 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             onClearNotice={() => setNotice("")}
           />
 
-          {activeView === "playground" ? null : <div className="divider" />}
+          {activeView === "playground" || apiKeyUsageID ? null : <div className="divider" />}
 
-          {activeView === "overview" ? (
+          {apiKeyUsageID ? (
+            <APIKeyUsageView api={api} data={data} user={currentUser} keyID={apiKeyUsageID} onBack={() => selectView("api-keys")} />
+          ) : activeView === "overview" ? (
             <OverviewView data={data} user={currentUser} onSelectView={selectView} />
           ) : activeView === "playground" ? (
             <PlaygroundPage api={api} data={data} canViewRoutes={canAccessView(currentUser, "routes")} />
@@ -831,6 +900,35 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onAction={(action, item) => void runResourceAction(action, item, data)}
               onToolbarAction={(action, items) => void runToolbarAction(action, items)}
             />
+          ) : activeView === "security-policies" && activeConfig ? (
+            <div className="security-policies-view">
+              <SecurityPolicyTabs active={securityPolicyTab} onChange={setSecurityPolicyTab} />
+              {securityPolicyTab === "content" ? (
+                <ContentSecurityPolicies api={api} data={data} />
+              ) : (
+                <CrudView
+                  config={activeConfig}
+                  data={data}
+                  api={api}
+                  user={currentUser}
+                  items={pagedItems}
+                  monitorItems={filteredItems}
+                  totalItems={filteredItems.length}
+                  loading={loading}
+                  query={query}
+                  currentUser={currentUser}
+                  pagination={crudPagination}
+                  categoryFilter={modelCategoryFilter}
+                  onCategoryFilter={setModelCategoryFilter}
+                  onQuery={setQuery}
+                  onCreate={openCreateForCurrentView}
+                  onEdit={(item) => setModal({ config: activeConfig, item })}
+                  onDelete={(item) => setConfirmDelete({ config: activeConfig, item })}
+                  onAction={(action, item) => void runResourceAction(action, item, data)}
+                  onToolbarAction={(action) => void runToolbarAction(action, filteredItems)}
+                />
+              )}
+            </div>
           ) : activeView === "routes" && activeConfig ? (
             <RouteStrategyView
               config={activeConfig as ResourceConfig<ModelRoute>}
@@ -943,6 +1041,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         <EditModal
           state={modal}
           data={data}
+          api={api}
           currentUser={currentUser}
           loading={loading}
           onClose={() => setModal(null)}

@@ -5,7 +5,7 @@
 <h1 align="center">TokenHub</h1>
 
 <p align="center">
-  TokenHub は、企業の AI モデル接続とガバナンスを一元化し、すべてのリクエストを制御・追跡し、利用主体を特定できるプライベートゲートウェイです。
+  TokenHub は、AI 時代のエンタープライズ Token Governance 基盤です。モデルルーティング、権限管理、Token コスト最適化、Provider 照合、あらゆる上流モデル Provider への統制されたアクセスを提供します。
 </p>
 
 <p align="center">
@@ -19,63 +19,25 @@
   <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | 日本語
 </p>
 
-## 対応 Provider
+## エンタープライズ Token ガバナンス
 
-> [!TIP]
-> **Codex サブスクリプションに対応：**OpenAI Codex のサブスクリプションアカウントを TokenHub に接続し、API Provider と同じ統合ゲートウェイでモデルを提供・管理できます。[Codex 接続ガイド →](docs/ja/codex-tokenhub-profile-quick-start.md)
+TokenHub は、Provider 接続、プロジェクト Key、ルーティングポリシー、利用主体の特定、予算管理、請求照合まで、AI モデルライフサイクルのためのガバナンス層を企業に提供します。
 
-TokenHub は、Codex サブスクリプション、OpenAI、Azure OpenAI、Anthropic、Gemini、DeepSeek、Qwen、ローカルモデル向けのネイティブアダプターに加え、150 以上の Provider テンプレートとカスタム OpenAI-Compatible 上流接続を備えています。主な接続先：
+本当に解きたいのは、企業内の AI アプリケーションとモデルが増え続けたあと、Token をどう管理するかです。TokenHub は、すべてのモデル呼び出しの手前に次のガバナンス制御を置きます。
 
-<table>
-  <tr>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="docs/ja/codex-tokenhub-profile-quick-start.md"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/openai.svg" alt="Codex サブスクリプション" width="32" height="32"></a><br><sub><strong><a href="docs/ja/codex-tokenhub-profile-quick-start.md">Codex サブスクリプション</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://platform.openai.com/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/openai.svg" alt="OpenAI" width="32" height="32"></a><br><sub><strong><a href="https://platform.openai.com/docs/models">OpenAI</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://docs.anthropic.com/en/docs/about-claude/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/anthropic.svg" alt="Anthropic" width="32" height="32"></a><br><sub><strong><a href="https://docs.anthropic.com/en/docs/about-claude/models">Anthropic</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://ai.google.dev/gemini-api/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/gemini-color.svg" alt="Google Gemini" width="32" height="32"></a><br><sub><strong><a href="https://ai.google.dev/gemini-api/docs/models">Google Gemini</a></strong></sub></td>
-    <td width="20%" align="center" bgcolor="#ffffff"><a href="https://learn.microsoft.com/azure/ai-foundry/openai/concepts/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/azure-color.svg" alt="Azure OpenAI" width="32" height="32"></a><br><sub><strong><a href="https://learn.microsoft.com/azure/ai-foundry/openai/concepts/models">Azure OpenAI</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/bedrock-color.svg" alt="Amazon Bedrock" width="32" height="32"></a><br><sub><strong><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html">Amazon Bedrock</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://cloud.google.com/vertex-ai/generative-ai/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/vertexai-color.svg" alt="Google Vertex AI" width="32" height="32"></a><br><sub><strong><a href="https://cloud.google.com/vertex-ai/generative-ai/docs/models">Google Vertex AI</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.x.ai/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/grok.svg" alt="xAI Grok" width="32" height="32"></a><br><sub><strong><a href="https://docs.x.ai/docs/models">xAI / Grok</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://api-docs.deepseek.com"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/deepseek-color.svg" alt="DeepSeek" width="32" height="32"></a><br><sub><strong><a href="https://api-docs.deepseek.com">DeepSeek</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://www.alibabacloud.com/help/en/model-studio/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/qwen-color.svg" alt="Qwen DashScope" width="32" height="32"></a><br><sub><strong><a href="https://www.alibabacloud.com/help/en/model-studio/models">Qwen / DashScope</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://platform.moonshot.cn/docs/api/chat"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/moonshot.svg" alt="Moonshot AI Kimi" width="32" height="32"></a><br><sub><strong><a href="https://platform.moonshot.cn/docs/api/chat">Moonshot AI / Kimi</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.z.ai"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/zhipu-color.svg" alt="Z.AI GLM" width="32" height="32"></a><br><sub><strong><a href="https://docs.z.ai">Z.AI / GLM</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://platform.minimax.io/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/minimax-color.svg" alt="MiniMax" width="32" height="32"></a><br><sub><strong><a href="https://platform.minimax.io/docs">MiniMax</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://www.volcengine.com/docs/82379/1330310"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/doubao-color.svg" alt="Doubao" width="32" height="32"></a><br><sub><strong><a href="https://www.volcengine.com/docs/82379/1330310">Doubao</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://cloud.siliconflow.com/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/siliconcloud-color.svg" alt="SiliconFlow" width="32" height="32"></a><br><sub><strong><a href="https://cloud.siliconflow.com/models">SiliconFlow</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://modelscope.cn/docs/model-service/API-Inference/intro"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/modelscope-color.svg" alt="ModelScope" width="32" height="32"></a><br><sub><strong><a href="https://modelscope.cn/docs/model-service/API-Inference/intro">ModelScope</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://openrouter.ai/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/openrouter-color.svg" alt="OpenRouter" width="32" height="32"></a><br><sub><strong><a href="https://openrouter.ai/docs">OpenRouter</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://console.groq.com/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/groq.svg" alt="Groq" width="32" height="32"></a><br><sub><strong><a href="https://console.groq.com/docs/models">Groq</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.together.ai/docs/serverless-models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/together-color.svg" alt="Together AI" width="32" height="32"></a><br><sub><strong><a href="https://docs.together.ai/docs/serverless-models">Together AI</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://fireworks.ai/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/fireworks-color.svg" alt="Fireworks AI" width="32" height="32"></a><br><sub><strong><a href="https://fireworks.ai/docs">Fireworks AI</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.mistral.ai/getting-started/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/mistral-color.svg" alt="Mistral AI" width="32" height="32"></a><br><sub><strong><a href="https://docs.mistral.ai/getting-started/models">Mistral AI</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.cohere.com/docs/models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/cohere-color.svg" alt="Cohere" width="32" height="32"></a><br><sub><strong><a href="https://docs.cohere.com/docs/models">Cohere</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.perplexity.ai"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/perplexity-color.svg" alt="Perplexity" width="32" height="32"></a><br><sub><strong><a href="https://docs.perplexity.ai">Perplexity</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://huggingface.co/docs/inference-providers"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/huggingface-color.svg" alt="Hugging Face" width="32" height="32"></a><br><sub><strong><a href="https://huggingface.co/docs/inference-providers">Hugging Face</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.api.nvidia.com/nim"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/nvidia-color.svg" alt="NVIDIA NIM" width="32" height="32"></a><br><sub><strong><a href="https://docs.api.nvidia.com/nim">NVIDIA NIM</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.github.com/en/github-models"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/github.svg" alt="GitHub Models" width="32" height="32"></a><br><sub><strong><a href="https://docs.github.com/en/github-models">GitHub Models</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.github.com/en/copilot"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/githubcopilot.svg" alt="GitHub Copilot" width="32" height="32"></a><br><sub><strong><a href="https://docs.github.com/en/copilot">GitHub Copilot</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://vercel.com/docs/ai-gateway"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/vercel.svg" alt="Vercel AI Gateway" width="32" height="32"></a><br><sub><strong><a href="https://vercel.com/docs/ai-gateway">Vercel AI Gateway</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://developers.cloudflare.com/ai-gateway"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/cloudflare-color.svg" alt="Cloudflare AI Gateway" width="32" height="32"></a><br><sub><strong><a href="https://developers.cloudflare.com/ai-gateway">Cloudflare AI Gateway</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.ollama.com"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/ollama.svg" alt="Ollama" width="32" height="32"></a><br><sub><strong><a href="https://docs.ollama.com">Ollama</a></strong></sub></td>
-  </tr>
-  <tr>
-    <td align="center" bgcolor="#ffffff"><a href="https://lmstudio.ai/docs"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/lmstudio.svg" alt="LM Studio" width="32" height="32"></a><br><sub><strong><a href="https://lmstudio.ai/docs">LM Studio</a></strong></sub></td>
-    <td align="center" bgcolor="#ffffff"><a href="https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html"><img src="https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/vllm-color.svg" alt="vLLM とカスタム Provider" width="32" height="32"></a><br><sub><strong><a href="https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html">vLLM / カスタム</a></strong></sub></td>
-  </tr>
-</table>
+- モデルルーティング: シナリオ、コスト、性能、ヘルス状態、フェイルオーバー方針に応じて適切なモデルを選びます。
+- 権限管理: 人、チーム、プロジェクト、アプリケーションの間で Token アクセスを割り当て、制御します。
+- Token 節約: キャッシュ、モデル選択、クォータ、呼び出し戦略によって企業の AI コストを下げます。
+- Provider 照合: 社内の実利用量と Provider 請求を突き合わせ、財務、プラットフォーム、事業チームが AI コストを説明できるようにします。
 
-Provider テンプレートは、利用可能な場合は対応するネイティブアダプターを使用し、それ以外は OpenAI-Compatible エンドポイントへ接続します。利用可能なモデルと機能は、上流サービスおよびアカウントによって異なります。
+## TokenHub が選ばれる理由
+
+多くのオープンソース AI ゲートウェイは Provider 集約に重点を置いています。つまり、1 つのエンドポイントから複数の上流を呼び出す仕組みです。これは開発者のモデル接続には役立ちますが、企業運用の課題をそれだけで解決できるわけではありません。TokenHub は、その不足しているガバナンス層を中心に設計されています。
+
+- Token 配布をプロジェクトとチームで管理し、生の Provider Key を各アプリケーションへ散在させません。
+- モデルアクセス、ルーティング、フェイルオーバーを管理者がポリシーとして変更でき、クライアントコードの変更を抑えられます。
+- 請求とリクエスト履歴を社内の所有関係へ紐づけ、財務、プラットフォーム、事業チームが AI コストを説明できます。
+- ユーザー、チームリーダー、管理者のワークスペースを分け、日常利用、承認、コスト配賦、プラットフォーム運用を責任ごとに整理します。
 
 ## スクリーンショット
 
@@ -95,19 +57,31 @@ TokenHub は、日常的なモデル利用、チームガバナンス、プラ�
 
 ## プラットフォーム機能
 
-- OpenAI-Compatible モデル API: `/v1/chat/completions`、`/v1/responses`、`/v1/embeddings`。Anthropic Messages API: `/v1/messages`、`/v1/messages/count_tokens`。
-- OpenAI-Compatible の画像生成および参照画像編集 API: `/v1/images/generations`、`/v1/images/edits`。非同期ジョブとサーバー側の画像保持に対応し、`codex-gpt-image-2` は Codex サブスクリプション枠、`gpt-image-2` は OpenAI API Provider を使用します。[画像生成ガイド](docs/ja/user-guide.md#codex-サブスクリプション画像生成)を参照してください。
-- Provider チャネル: OpenAI-Compatible、Azure OpenAI、Anthropic、Gemini、DeepSeek、Qwen、ローカル vLLM/Ollama、カスタム上流。
-- モデルカタログとルーティングポリシー: 優先度、重み、フェイルオーバー順序、ルートヘルス診断に対応。
 - プロジェクト単位の Key 管理: チーム所有、メンバー権限、クォータ、並行数制限に対応。
+- モデルカタログとルーティングポリシー: 優先度、重み、フェイルオーバー順序、シナリオ別選択、ルートヘルス診断に対応。
 - ユーザー、プロジェクト、チーム、モデル、コストセンターに紐づく利用分析とリクエストログ。
+- コストガバナンス: Token 予算、Provider 支出比較、モデル選択、将来的なキャッシュによる節約戦略を扱います。
 - OAuth/OIDC によるエンタープライズサインイン、RBAC、監査証跡に対応する ID ソース設定。
+- OpenAI-Compatible モデル API: `/v1/chat/completions`、`/v1/responses`、`/v1/embeddings`。Anthropic Messages API: `/v1/messages`、`/v1/messages/count_tokens`。
+- OpenAI-Compatible の画像生成および参照画像編集 API: `/v1/images/generations`、`/v1/images/edits`。非同期ジョブとサーバー側の画像保持に対応します。
 - クリーンなコンソール: ロール別ナビゲーション、グローバル検索、ライト/ダーク切り替え、左ナビ + 右詳細の API ドキュメント。
 - SQLite-first のプライベートデプロイ向けに、ネイティブ systemd と Docker Compose の両方をサポート。
 - PostgreSQL はマルチインスタンス構成に対応します。リモート PostgreSQL で状態を共有し、フロントエンドとバックエンドのレプリカを水平スケールできるほか、コネクションプールも設定できます。[デプロイガイド](docs/ja/deployment.md)を参照してください。
 - 管理コンソールは英語、中国語、日本語の切り替えに対応。
-- TokenHub は OpenAI Codex のサブスクリプションアカウントリソースにも接続できます。分離および復旧が可能な Codex Profile を使用し、指定したローカル Codex CLI またはデスクトップセッションを TokenHub 経由で実行できます。[Codex 接続ガイド](docs/ja/codex-tokenhub-profile-quick-start.md)を参照してください。
-- Gemini CLI は TokenHub の Gemini ネイティブ API に直接接続し、Codex サブスクリプションアカウントの GPT モデルを CCswitch なしで使用できます。[Gemini CLI 接続ガイド](docs/ja/gemini-cli-codex-subscription.md)を参照してください。
+
+## Provider エコシステム
+
+Provider は TokenHub の接続境界です。ホスト型 API、サブスクリプションチャネル、ローカルモデル、カスタム上流は Provider 抽象を通じて接続され、同じエンタープライズポリシーであらゆるモデル経路を統制できます。
+
+ルーティング、権限、Token 節約、利用主体の特定、監査、照合の制御を整えたうえで、TokenHub はその管理されたワークフローを OpenAI、Azure OpenAI、Anthropic、Gemini、DeepSeek、Qwen、Codex サブスクリプション、ローカルモデル、カスタム OpenAI-Compatible 上流へ接続します。
+
+TokenHub は、OpenAI、Azure OpenAI、Anthropic、Gemini、DeepSeek、Qwen、Codex サブスクリプション、ローカルモデル向けのネイティブ Provider アダプターに加え、150 以上の Provider テンプレートを備えています。主な接続先：
+
+<p align="center">
+  <img src="docs/assets/provider-showcase.svg" alt="商用モデル、サブスクリプションモデル、ローカルモデル、カスタム上流を含む TokenHub の主な Provider 接続先。" width="100%">
+</p>
+
+Provider テンプレートは、利用可能な場合は対応するネイティブアダプターを使用し、それ以外は OpenAI-Compatible エンドポイントへ接続します。利用可能なモデルと機能は、上流サービスおよびアカウントによって異なり、企業側のポリシーは TokenHub に集約されます。
 
 ## クイックスタート
 
@@ -154,11 +128,144 @@ cp deploy/.env.example deploy/.env
 
 TokenHub は、実際のエンタープライズ利用からのフィードバック、ゲートウェイ連携、ドキュメント、テスト、継続的なメンテナンスによって育っています。プロジェクトをより信頼できるものにしてくれるすべての方に感謝します。
 
-<p align="center">
-  <a href="https://github.com/astaxie/TokenHub/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=astaxie/TokenHub" alt="TokenHub contributors" />
-  </a>
-</p>
+<!-- readme: contributors -start -->
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/astaxie">
+        <img src="https://avatars.githubusercontent.com/u/233907?v=4" width="80px" alt="astaxie" />
+        <br /><sub><b>astaxie</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/deepjerry-ai">
+        <img src="https://avatars.githubusercontent.com/u/262369278?v=4" width="80px" alt="deepjerry-ai" />
+        <br /><sub><b>deepjerry-ai</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/legendtkl">
+        <img src="https://avatars.githubusercontent.com/u/2370761?v=4" width="80px" alt="legendtkl" />
+        <br /><sub><b>legendtkl</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/Mr0bean">
+        <img src="https://avatars.githubusercontent.com/u/19573968?v=4" width="80px" alt="Mr0bean" />
+        <br /><sub><b>Mr0bean</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/cngump">
+        <img src="https://avatars.githubusercontent.com/u/108251?v=4" width="80px" alt="cngump" />
+        <br /><sub><b>cngump</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/bailu-ZZ">
+        <img src="https://avatars.githubusercontent.com/u/311096537?v=4" width="80px" alt="bailu-ZZ" />
+        <br /><sub><b>bailu-ZZ</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/coldbrewtea">
+        <img src="https://avatars.githubusercontent.com/u/6879314?v=4" width="80px" alt="coldbrewtea" />
+        <br /><sub><b>coldbrewtea</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/excniesNIED">
+        <img src="https://avatars.githubusercontent.com/u/61446002?v=4" width="80px" alt="excniesNIED" />
+        <br /><sub><b>excniesNIED</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/samz406">
+        <img src="https://avatars.githubusercontent.com/u/3055810?v=4" width="80px" alt="samz406" />
+        <br /><sub><b>samz406</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/imaben">
+        <img src="https://avatars.githubusercontent.com/u/3390195?v=4" width="80px" alt="imaben" />
+        <br /><sub><b>imaben</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/wangle201210">
+        <img src="https://avatars.githubusercontent.com/u/19949348?v=4" width="80px" alt="wangle201210" />
+        <br /><sub><b>wangle201210</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/CLukeLi">
+        <img src="https://avatars.githubusercontent.com/u/252523101?v=4" width="80px" alt="CLukeLi" />
+        <br /><sub><b>CLukeLi</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/myssl">
+        <img src="https://avatars.githubusercontent.com/u/27838738?v=4" width="80px" alt="myssl" />
+        <br /><sub><b>myssl</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/exgliuzhi">
+        <img src="https://avatars.githubusercontent.com/u/6261701?v=4" width="80px" alt="exgliuzhi" />
+        <br /><sub><b>exgliuzhi</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/hoorayman">
+        <img src="https://avatars.githubusercontent.com/u/73151874?v=4" width="80px" alt="hoorayman" />
+        <br /><sub><b>hoorayman</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/debin-ge">
+        <img src="https://avatars.githubusercontent.com/u/21329997?v=4" width="80px" alt="debin-ge" />
+        <br /><sub><b>debin-ge</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/ocass-chen">
+        <img src="https://avatars.githubusercontent.com/u/172055494?v=4" width="80px" alt="ocass-chen" />
+        <br /><sub><b>ocass-chen</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/AnxForever">
+        <img src="https://avatars.githubusercontent.com/u/130662349?v=4" width="80px" alt="AnxForever" />
+        <br /><sub><b>AnxForever</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/yujiewanwan">
+        <img src="https://avatars.githubusercontent.com/u/268286250?v=4" width="80px" alt="yujiewanwan" />
+        <br /><sub><b>yujiewanwan</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/lxm">
+        <img src="https://avatars.githubusercontent.com/u/1918195?v=4" width="80px" alt="lxm" />
+        <br /><sub><b>lxm</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/susunola">
+        <img src="https://avatars.githubusercontent.com/u/38539169?v=4" width="80px" alt="susunola" />
+        <br /><sub><b>susunola</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
+
+<!-- readme: contributors -end -->
 
 <p align="center">
   <a href="https://github.com/astaxie/TokenHub/graphs/contributors">すべてのコントリビューターを見る</a>

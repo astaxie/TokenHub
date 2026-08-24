@@ -513,6 +513,12 @@ func (s *StoreSink) Plan(b *bundle.CanonicalMigrationBundle) (*MigrationReport, 
 
 func (s *StoreSink) applyProvider(item bundle.ProviderRef) (Change, error) {
 	spec := item.Spec
+	resolvedHeaders, sensitiveHeaders, err := resolveHeaderSecrets(s.secrets, spec.Headers, item.HeaderSecrets)
+	if err != nil {
+		return Change{}, fmt.Errorf("resolve provider header secret %s: %w", item.ExternalRef.ID, err)
+	}
+	spec.Headers = resolvedHeaders
+	spec.SensitiveHeaders = sensitiveHeaders
 	if item.APIKeySecret != nil && !item.APIKeySecret.IsZero() {
 		secret, err := s.secrets.Resolve(*item.APIKeySecret)
 		if err != nil {
@@ -520,14 +526,25 @@ func (s *StoreSink) applyProvider(item bundle.ProviderRef) (Change, error) {
 		}
 		spec.APIKey = secret
 	}
+	if err := server.ValidateProviderHeaderConfigForWrite(&spec); err != nil {
+		return Change{}, fmt.Errorf("validate provider headers %s: %w", item.ExternalRef.ID, err)
+	}
+	// The sink writes straight to the store, bypassing the admin HTTP layer
+	// where base URLs are normally validated; apply the same SSRF guard here
+	// so a bundle cannot persist a provider that dials the internal network.
+	if err := server.ValidateProviderUpstreamBaseURL(spec.BaseURL); err != nil {
+		return Change{}, fmt.Errorf("provider %s: %w", item.ExternalRef.ID, err)
+	}
 
 	for _, existing := range s.store.ListProviders() {
 		if existing.Name == spec.Name && existing.Type == spec.Type {
-			if sameProvider(existing, spec) {
+			// Header secrets are write-only on the target and their resolver values
+			// may rotate without changing the bundle, so every apply reasserts them.
+			if len(item.HeaderSecrets) == 0 && sameProvider(existing, spec) {
 				s.refIndex.providers[item.ExternalRef.ID] = existing.ID
 				return Change{Resource: "provider", ID: existing.ID, Action: ActionSkip}, nil
 			}
-			updated, err := s.store.UpdateProvider(existing.ID, spec)
+			updated, err := s.store.UpdateProvider(existing.ID, providerUpdateSpec(existing, spec))
 			if err != nil {
 				return Change{}, err
 			}
@@ -542,6 +559,12 @@ func (s *StoreSink) applyProvider(item bundle.ProviderRef) (Change, error) {
 
 func (s *StoreSink) applyProviderResource(item bundle.ProviderResourceRef) (Change, error) {
 	spec := item.Spec
+	resolvedHeaders, sensitiveHeaders, err := resolveHeaderSecrets(s.secrets, spec.Headers, item.HeaderSecrets)
+	if err != nil {
+		return Change{}, fmt.Errorf("resolve provider resource header secret %s: %w", item.ExternalRef.ID, err)
+	}
+	spec.Headers = resolvedHeaders
+	spec.SensitiveHeaders = sensitiveHeaders
 	if providerID := s.refIndex.providers[item.ProviderRef]; providerID != "" {
 		spec.ProviderID = providerID
 	}
@@ -552,14 +575,23 @@ func (s *StoreSink) applyProviderResource(item bundle.ProviderResourceRef) (Chan
 		}
 		spec.APIKey = secret
 	}
+	for _, provider := range s.store.ListProviders() {
+		if provider.ID == spec.ProviderID {
+			if err := server.ValidateProviderHeaderSupportForWrite(provider.Type, spec.Headers); err != nil {
+				return Change{}, fmt.Errorf("validate provider resource headers %s: %w", item.ExternalRef.ID, err)
+			}
+			break
+		}
+	}
 
 	for _, existing := range s.store.ListProviderResources() {
 		if existing.ProviderID == spec.ProviderID && existing.Name == spec.Name {
-			if sameProviderResource(existing, spec) {
+			// See applyProvider: a SecretRef is authoritative on every apply.
+			if len(item.HeaderSecrets) == 0 && sameProviderResource(existing, spec) {
 				s.refIndex.resources[item.ExternalRef.ID] = existing.ID
 				return Change{Resource: "provider_resource", ID: existing.ID, Action: ActionSkip}, nil
 			}
-			updated, err := s.store.UpdateProviderResource(existing.ID, spec)
+			updated, err := s.store.UpdateProviderResource(existing.ID, providerResourceUpdateSpec(existing, spec))
 			if err != nil {
 				return Change{}, err
 			}
@@ -829,8 +861,18 @@ func sameProvider(existing server.Provider, desired server.Provider) bool {
 	if desired.Priority != 0 && existing.Priority != desired.Priority {
 		return false
 	}
-	return reflect.DeepEqual(normalizeStringMap(existing.Headers), normalizeStringMap(desired.Headers)) &&
-		reflect.DeepEqual(normalizeStringMap(existing.Options), normalizeStringMap(desired.Options))
+	return reflect.DeepEqual(normalizeHeaderMap(existing.Headers, existing.SensitiveHeaders), normalizeHeaderMap(desired.Headers, desired.SensitiveHeaders)) &&
+		reflect.DeepEqual(normalizeHeaderNames(existing.SensitiveHeaders), normalizeHeaderNames(desired.SensitiveHeaders)) &&
+		reflect.DeepEqual(migrationProviderOptions(existing.Options), migrationProviderOptions(desired.Options))
+}
+
+func providerUpdateSpec(existing server.Provider, desired server.Provider) server.Provider {
+	merged := desired
+	merged.Healthy = existing.Healthy
+	if desired.BaseURL == "" {
+		merged.BaseURL = existing.BaseURL
+	}
+	return merged
 }
 
 // sameProviderResource follows sameProvider: only the fields the bundle owns
@@ -877,8 +919,33 @@ func sameProviderResource(existing server.ProviderResource, desired server.Provi
 	if desired.MaxConcurrency != 0 && existing.MaxConcurrency != desired.MaxConcurrency {
 		return false
 	}
-	return reflect.DeepEqual(normalizeStringMap(existing.Headers), normalizeStringMap(desired.Headers)) &&
+	return reflect.DeepEqual(normalizeHeaderMap(existing.Headers, existing.SensitiveHeaders), normalizeHeaderMap(desired.Headers, desired.SensitiveHeaders)) &&
+		reflect.DeepEqual(normalizeHeaderNames(existing.SensitiveHeaders), normalizeHeaderNames(desired.SensitiveHeaders)) &&
 		reflect.DeepEqual(normalizeStringMap(existing.Options), normalizeStringMap(desired.Options))
+}
+
+func providerResourceUpdateSpec(existing server.ProviderResource, desired server.ProviderResource) server.ProviderResource {
+	merged := desired
+	merged.Healthy = existing.Healthy
+	if desired.BaseURL == "" {
+		merged.BaseURL = existing.BaseURL
+	}
+	if desired.Region == "" {
+		merged.Region = existing.Region
+	}
+	if desired.Environment == "" {
+		merged.Environment = existing.Environment
+	}
+	if desired.RateLimitRPM == 0 {
+		merged.RateLimitRPM = existing.RateLimitRPM
+	}
+	if desired.TokenLimitTPM == 0 {
+		merged.TokenLimitTPM = existing.TokenLimitTPM
+	}
+	if desired.MaxConcurrency == 0 {
+		merged.MaxConcurrency = existing.MaxConcurrency
+	}
+	return merged
 }
 
 // metadataContains reports whether every key the bundle declares is present on
@@ -1117,6 +1184,86 @@ func normalizeStringSlice(input []string) []string {
 		return nil
 	}
 	return input
+}
+
+func normalizeHeaderNames(input []string) []string {
+	seen := make(map[string]bool, len(input))
+	result := make([]string, 0, len(input))
+	for _, value := range input {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value != "" && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	slices.Sort(result)
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func resolveHeaderSecrets(resolver bundle.SecretResolver, headers map[string]string, refs map[string]bundle.SecretRef) (map[string]string, []string, error) {
+	resolved, sensitive, err := headerSecretComparisonConfig(headers, refs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, name := range sensitive {
+		secret, err := resolver.Resolve(refs[name])
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve header %q: %w", name, err)
+		}
+		resolved[name] = secret
+	}
+	return resolved, sensitive, nil
+}
+
+func headerSecretComparisonConfig(headers map[string]string, refs map[string]bundle.SecretRef) (map[string]string, []string, error) {
+	resolved := make(map[string]string, len(headers)+len(refs))
+	for name, value := range headers {
+		resolved[name] = value
+	}
+	if len(refs) == 0 {
+		if len(resolved) == 0 {
+			return nil, nil, nil
+		}
+		return resolved, nil, nil
+	}
+	names := make([]string, 0, len(refs))
+	for name := range refs {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	sensitive := make([]string, 0, len(names))
+	for _, name := range names {
+		for existing := range resolved {
+			if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(name)) {
+				return nil, nil, fmt.Errorf("header %q is declared as both plaintext and sensitive", name)
+			}
+		}
+		resolved[name] = "<sensitive>"
+		sensitive = append(sensitive, name)
+	}
+	return resolved, sensitive, nil
+}
+
+func normalizeHeaderMap(headers map[string]string, sensitive []string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+	sensitiveSet := make(map[string]bool, len(sensitive))
+	for _, name := range normalizeHeaderNames(sensitive) {
+		sensitiveSet[name] = true
+	}
+	result := make(map[string]string, len(headers))
+	for name, value := range headers {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if sensitiveSet[name] {
+			value = "<sensitive>"
+		}
+		result[name] = value
+	}
+	return result
 }
 
 func normalizedMigrationModelAccess(mode string, allowed []string) (string, []string) {

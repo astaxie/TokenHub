@@ -8,6 +8,7 @@ FAKE_DOCKER="$TEST_DIR/docker"
 ENV_FILE="$TEST_DIR/deploy.env"
 MODEL_CATALOG_FILE="$TEST_DIR/model-catalog.yaml"
 CALL_LOG="$TEST_DIR/calls.log"
+DATA_VOLUME_DIR="$TEST_DIR/tokenhub-data"
 
 cleanup() {
   rm -rf "$TEST_DIR"
@@ -36,6 +37,28 @@ case "$*" in
     ;;
   *" config --environment")
     printf '%s\n' "$FAKE_COMPOSE_ENVIRONMENT"
+    ;;
+  "volume ls --quiet --filter name=^tokenhub-data$")
+    if [ "${FAKE_DATA_VOLUME_EXISTS:-false}" = true ]; then
+      printf 'tokenhub-data\n'
+    fi
+    ;;
+  "volume inspect --format {{.Mountpoint}} tokenhub-data")
+    if [ "${FAKE_DATA_VOLUME_EXISTS:-false}" != true ] ||
+      [ -z "${FAKE_DATA_VOLUME_MOUNTPOINT:-}" ]; then
+      exit 1
+    fi
+    printf '%s\n' "$FAKE_DATA_VOLUME_MOUNTPOINT"
+    ;;
+  "exec "*)
+    shift 2
+    if [ "$#" -ne 4 ] || [ "$1" != "node" ] || [ "$2" != "-e" ] ||
+      [ -z "${FAKE_CONTAINER_DATA_DIR:-}" ]; then
+      exit 99
+    fi
+    container_database_path="$4"
+    host_database_path="$FAKE_CONTAINER_DATA_DIR/${container_database_path#/app/data/}"
+    exec node -e "$3" "$host_database_path"
     ;;
   *" pull")
     exit "${FAKE_PULL_STATUS:-0}"
@@ -109,6 +132,9 @@ run_install() {
     FAKE_BACKEND_STATE="${FAKE_BACKEND_STATE:-running}" \
     FAKE_BACKEND_HEALTH="${FAKE_BACKEND_HEALTH:-healthy}" \
     FAKE_BACKEND_STARTED_AT="${FAKE_BACKEND_STARTED_AT:-2026-07-22T00:00:00Z}" \
+    FAKE_DATA_VOLUME_EXISTS="${FAKE_DATA_VOLUME_EXISTS:-false}" \
+    FAKE_DATA_VOLUME_MOUNTPOINT="${FAKE_DATA_VOLUME_MOUNTPOINT:-}" \
+    FAKE_CONTAINER_DATA_DIR="${FAKE_CONTAINER_DATA_DIR:-}" \
     "$INSTALL_SCRIPT" --env-file "$ENV_FILE" "$@"
 }
 
@@ -165,6 +191,125 @@ TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=strong-admin-password
 EOF
 )
+
+placeholder_environment=$(cat <<'EOF'
+TOKENHUB_ENV=prod
+TOKENHUB_ADMIN_TOKEN=change-me-tokenhub-admin-token
+TOKENHUB_SECRET_KEY=change-me-tokenhub-secret-key
+TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=change-me-tokenhub-admin-password
+EOF
+)
+
+: >"$CALL_LOG"
+FAKE_COMPOSE_ENVIRONMENT="$placeholder_environment"
+output="$(run_install --check-only 2>&1)"
+assert_contains "$output" "deployment configuration is valid for prod"
+assert_not_contains "$(<"$CALL_LOG")" " pull"
+assert_not_contains "$(<"$CALL_LOG")" " build"
+
+postgres_placeholder_environment=$(cat <<'EOF'
+TOKENHUB_ENV=prod
+TOKENHUB_ADMIN_TOKEN=change-me-tokenhub-admin-token
+TOKENHUB_DATABASE_URL=postgresql://tokenhub@example.test/tokenhub
+TOKENHUB_SECRET_KEY=change-me-tokenhub-secret-key
+TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=change-me-tokenhub-admin-password
+EOF
+)
+
+: >"$CALL_LOG"
+FAKE_COMPOSE_ENVIRONMENT="$postgres_placeholder_environment"
+set +e
+output="$(run_install --check-only 2>&1)"
+status=$?
+set -e
+if [ "$status" -ne 1 ]; then
+  printf 'expected PostgreSQL placeholder root key to exit 1, got %d\n' "$status" >&2
+  exit 1
+fi
+assert_contains "$output" "TOKENHUB_SECRET_KEY must not use a default placeholder value"
+assert_not_contains "$output" "TOKENHUB_ADMIN_TOKEN must not use a default placeholder value"
+assert_not_contains "$output" "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD must not use a default placeholder value"
+
+mkdir -p "$DATA_VOLUME_DIR"
+printf 'existing database\n' >"$DATA_VOLUME_DIR/tokenhub.db"
+: >"$CALL_LOG"
+FAKE_COMPOSE_ENVIRONMENT="$placeholder_environment"
+set +e
+output="$(FAKE_DATA_VOLUME_EXISTS=true FAKE_DATA_VOLUME_MOUNTPOINT="$DATA_VOLUME_DIR" run_install --check-only 2>&1)"
+status=$?
+set -e
+if [ "$status" -ne 1 ]; then
+  printf 'expected existing SQLite database without a root-key sidecar to exit 1, got %d\n' "$status" >&2
+  exit 1
+fi
+assert_contains "$output" "TOKENHUB_SECRET_KEY must not use a default placeholder value"
+
+sidecar_path="$DATA_VOLUME_DIR/tokenhub.db.secret-key"
+for sidecar_case in empty short placeholder group_readable; do
+  case "$sidecar_case" in
+    empty)
+      printf ' \t\n' >"$sidecar_path"
+      chmod 600 "$sidecar_path"
+      ;;
+    short)
+      printf 'short-key\n' >"$sidecar_path"
+      chmod 600 "$sidecar_path"
+      ;;
+    placeholder)
+      printf 'change-me-tokenhub-secret-key\n' >"$sidecar_path"
+      chmod 600 "$sidecar_path"
+      ;;
+    group_readable)
+      printf '%064d\n' 0 >"$sidecar_path"
+      chmod 640 "$sidecar_path"
+      ;;
+  esac
+  : >"$CALL_LOG"
+  set +e
+  output="$(FAKE_DATA_VOLUME_EXISTS=true FAKE_DATA_VOLUME_MOUNTPOINT="$DATA_VOLUME_DIR" run_install --check-only 2>&1)"
+  status=$?
+  set -e
+  if [ "$status" -ne 1 ]; then
+    printf 'expected %s SQLite root-key sidecar to exit 1, got %d\n' "$sidecar_case" "$status" >&2
+    exit 1
+  fi
+  assert_contains "$output" "TOKENHUB_SECRET_KEY must not use a default placeholder value"
+done
+
+printf '%064d\n' 0 >"$sidecar_path"
+chmod 600 "$sidecar_path"
+: >"$CALL_LOG"
+output="$(FAKE_DATA_VOLUME_EXISTS=true FAKE_DATA_VOLUME_MOUNTPOINT="$DATA_VOLUME_DIR" run_install --check-only 2>&1)"
+assert_contains "$output" "deployment configuration is valid for prod"
+
+chmod 640 "$sidecar_path"
+: >"$CALL_LOG"
+set +e
+output="$(FAKE_DATA_VOLUME_EXISTS=true FAKE_DATA_VOLUME_MOUNTPOINT="$TEST_DIR/unavailable-volume" FAKE_BACKEND_ID_BEFORE=backend-existing FAKE_CONTAINER_DATA_DIR="$DATA_VOLUME_DIR" run_install --check-only 2>&1)"
+status=$?
+set -e
+if [ "$status" -ne 1 ]; then
+  printf 'expected container-visible unsafe SQLite root-key sidecar to exit 1, got %d\n' "$status" >&2
+  exit 1
+fi
+chmod 600 "$sidecar_path"
+output="$(FAKE_DATA_VOLUME_EXISTS=true FAKE_DATA_VOLUME_MOUNTPOINT="$TEST_DIR/unavailable-volume" FAKE_BACKEND_ID_BEFORE=backend-existing FAKE_CONTAINER_DATA_DIR="$DATA_VOLUME_DIR" run_install --check-only 2>&1)"
+assert_contains "$output" "deployment configuration is valid for prod"
+
+optional_placeholder_environment=$(cat <<'EOF'
+TOKENHUB_ENV=prod
+TOKENHUB_ADMIN_TOKEN=change-me-tokenhub-admin-token
+TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss
+TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=change-me-tokenhub-admin-password
+EOF
+)
+
+: >"$CALL_LOG"
+FAKE_COMPOSE_ENVIRONMENT="$optional_placeholder_environment"
+output="$(run_install --check-only 2>&1)"
+assert_contains "$output" "deployment configuration is valid for prod"
+assert_not_contains "$(<"$CALL_LOG")" " pull"
+assert_not_contains "$(<"$CALL_LOG")" " build"
 
 : >"$CALL_LOG"
 FAKE_COMPOSE_ENVIRONMENT="$strong_environment"

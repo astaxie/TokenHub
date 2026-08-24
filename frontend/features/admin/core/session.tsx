@@ -1,39 +1,23 @@
 import { type AdminUser, oauthBaseURLStorageKey, sessionStorageKey } from "./types";
 import { parseProviderAccountOAuthResult, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult } from "./session-oauth";
+import { clearTransientAdminSession, readTransientAdminSession, saveTransientAdminSession, type StoredAdminSession } from "../domain/admin-session";
+import {
+  parseOAuthLoginResult,
+  readPendingOAuthLoginState,
+  savePendingOAuthLoginState,
+  type OAuthLoginResult,
+  type PendingOAuthLogin,
+} from "../domain/oauth-login";
+import { consumePasswordResetTokenFromURL } from "../domain/password-reset";
 
 export type { ProviderAccountOAuthGenerateResponse, ProviderAccountOAuthResult } from "./session-oauth";
 export { parseProviderAccountOAuthResult } from "./session-oauth";
 
-export type SavedSession = {
-  baseURL: string;
-  token: string;
-  user: AdminUser;
-  expiresAt: string;
-};
-
-export type OAuthLoginResult = {
-  token?: string;
-  expiresAt?: string;
-  error?: string;
-};
+export type SavedSession = StoredAdminSession<AdminUser>;
 
 export function readOAuthLoginResult(): OAuthLoginResult | null {
   if (typeof window === "undefined") return null;
-  const sources = [window.location.hash.replace(/^#/, ""), window.location.search.replace(/^\?/, "")];
-  for (const source of sources) {
-    if (!source) continue;
-    const params = new URLSearchParams(source);
-    const token = params.get("oauth_token") ?? "";
-    const error = params.get("oauth_error") ?? "";
-    if (token || error) {
-      return {
-        token,
-        error,
-        expiresAt: params.get("oauth_expires_at") ?? undefined,
-      };
-    }
-  }
-  return null;
+  return parseOAuthLoginResult(window.location);
 }
 
 export const providerAccountOAuthStorageKey = "tokenhub_provider_account_oauth_result";
@@ -196,7 +180,7 @@ export function clearOAuthLoginResult() {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   let changed = false;
-  for (const key of ["oauth_token", "oauth_expires_at", "oauth_error"]) {
+  for (const key of ["oauth_code", "oauth_token", "oauth_expires_at", "oauth_error"]) {
     if (url.searchParams.has(key)) {
       url.searchParams.delete(key);
       changed = true;
@@ -205,7 +189,7 @@ export function clearOAuthLoginResult() {
   if (url.hash) {
     const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
     let hashChanged = false;
-    for (const key of ["oauth_token", "oauth_expires_at", "oauth_error"]) {
+    for (const key of ["oauth_code", "oauth_token", "oauth_expires_at", "oauth_error"]) {
       if (hashParams.has(key)) {
         hashParams.delete(key);
         hashChanged = true;
@@ -220,6 +204,22 @@ export function clearOAuthLoginResult() {
   if (changed) {
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }
+}
+
+export function consumePasswordResetToken() {
+  if (typeof window === "undefined") return "";
+  return consumePasswordResetTokenFromURL(window.location.href, (url) => {
+    window.history.replaceState(window.history.state, "", url);
+  });
+}
+
+export function clearOAuthAuthorizationResponse() {
+  if (typeof window === "undefined" || !isOAuthAuthorizationResponse()) return;
+  const url = new URL(window.location.href);
+  for (const key of ["code", "authCode", "state", "error", "error_description", "error_uri"]) {
+    url.searchParams.delete(key);
+  }
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 export function isOAuthAuthorizationResponse() {
@@ -243,44 +243,32 @@ export function forwardOAuthAuthorizationResponse(baseURL: string) {
   return true;
 }
 
-export function readPendingOAuthBaseURL() {
+export function readPendingOAuthLogin(): PendingOAuthLogin | null {
   if (typeof window === "undefined") return null;
-  return window.sessionStorage.getItem(oauthBaseURLStorageKey);
+  return readPendingOAuthLoginState(oauthBaseURLStorageKey, window.sessionStorage);
 }
 
-export function savePendingOAuthBaseURL(baseURL: string) {
+export function savePendingOAuthLogin(baseURL: string, codeVerifier: string) {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(oauthBaseURLStorageKey, baseURL);
+  savePendingOAuthLoginState(oauthBaseURLStorageKey, { baseURL, codeVerifier }, window.sessionStorage);
 }
 
-export function clearPendingOAuthBaseURL() {
+export function clearPendingOAuthLogin() {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(oauthBaseURLStorageKey);
 }
 
 export function readSavedSession(): SavedSession | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(sessionStorageKey);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as SavedSession;
-    if (!parsed.token || !parsed.user || new Date(parsed.expiresAt).getTime() <= Date.now()) {
-      window.localStorage.removeItem(sessionStorageKey);
-      return null;
-    }
-    return parsed;
-  } catch {
-    window.localStorage.removeItem(sessionStorageKey);
-    return null;
-  }
+  return readTransientAdminSession<AdminUser>(sessionStorageKey, window.sessionStorage, window.localStorage);
 }
 
 export function saveSession(session: SavedSession) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(sessionStorageKey, JSON.stringify(session));
+  saveTransientAdminSession(sessionStorageKey, session, window.sessionStorage, window.localStorage);
 }
 
 export function clearSavedSession() {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(sessionStorageKey);
+  clearTransientAdminSession(sessionStorageKey, window.sessionStorage, window.localStorage);
 }

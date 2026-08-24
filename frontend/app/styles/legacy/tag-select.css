@@ -1,0 +1,97 @@
+.tag-select-field {
+  min-width: 0;
+}
+
+.tag-select-field > label {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 730;
+}
+
+.tag-select .tag-select__control {
+  min-height: 32px;
+  border-color: var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.tag-select .tag-select__control:hover,
+.tag-select .tag-select__control--is-focused {
+  border-color: var(--accent);
+}
+
+.tag-select .tag-select__value-container {
+  gap: 3px;
+  padding: 2px 8px;
+}
+
+.field .tag-select input {
+  width: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.tag-select .tag-select__multi-value {
+  margin: 0;
+  border-radius: 6px;
+  background: var(--accent-weak);
+}
+
+.tag-select .tag-select__multi-value__label {
+  padding: 2px 3px 2px 7px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.tag-select .tag-select__multi-value__remove {
+  border-radius: 0 6px 6px 0;
+  color: var(--muted-strong);
+  cursor: pointer;
+}
+
+.tag-select .tag-select__multi-value__remove:hover {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+}
+
+.tag-select .tag-select__input-container,
+.tag-select .tag-select__single-value {
+  color: var(--text);
+}
+
+.tag-select .tag-select__placeholder {
+  color: var(--muted);
+}
+
+.tag-select .tag-select__menu {
+  z-index: 20;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.tag-select .tag-select__menu-list {
+  padding: 4px;
+}
+
+.tag-select .tag-select__option {
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tag-select .tag-select__option--is-focused {
+  background: var(--surface-soft);
+}
+
+.tag-select .tag-select__option--is-selected {
+  background: var(--accent);
+  color: white;
+}

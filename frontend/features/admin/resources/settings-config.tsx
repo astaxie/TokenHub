@@ -1,9 +1,9 @@
 import { type AdminResource, type FieldConfig, notificationChannelTypes, type ResourceConfig, type SQLiteBackup, type ViewKey } from "../core/types";
 import { notificationChannelLabel, notificationChannelTargetSummary, notificationChannelType, notificationChannelUsesEmail, notificationChannelUsesIncomingWebhook, notificationChannelUsesTelegram, notificationChannelUsesWhatsApp, notificationCredentialSummary } from "../domain/catalog";
-import { costCenterLabel, costCenterSelectOptions, oauthDefaultProjectRoleOptions, ownerUserLabel, projectMemberProjectSelectOptions, stringifyValue, teamMemberCount, teamSelectOptions, userSelectOptions } from "../domain/entities";
+import { apiKeyOwnerSelectOptions, costCenterLabel, costCenterSelectOptions, oauthDefaultProjectRoleOptions, ownerUserLabel, projectMemberProjectSelectOptions, stringifyValue, teamMemberCount, teamSelectOptions, userSelectOptions } from "../domain/entities";
 import { formatBytes, formatNumber, formatTime } from "../domain/formatting";
 import { boolLabel, dataScopeLabel, identityProviderDefaultGrantLabel, identityProviderLoginEntryLabel, identityProviderTypeLabel, monitorTargetLabel, numberFromUnknown, numberOr } from "../domain/labels";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { genericResourceConfig } from "./generic-config";
 import { adminUserConfig, alertDeliveryConfig, alertEventConfig, alertRuleConfig, approvalConfig, approvalFlowConfig, costCenterConfig, downloadSQLiteBackup, reportConfig, restoreSQLiteBackup } from "./governance-config";
 import { adminDelete, adminFetch, adminMutate, identityProviderPayload, notificationChannelPayload } from "./payloads";
@@ -11,7 +11,7 @@ import { apiKeyConfig, projectConfig, projectMemberConfig } from "./project-key-
 import { modelConfig, providerConfig, routeConfig } from "./provider-model-config";
 import { routingPolicyConfig } from "./routing-policy-config";
 import { StatusPill } from "../shared/ui";
-import { identityProviderIconOptions, identityProviderInitialFormValues, identityProviderTemplateOptions } from "../shell/auth";
+import { identityProviderIconOptions, identityProviderInitialFormValues, identityProviderTemplateOptions } from "../shared/auth";
 
 let cachedResourceConfigs: Partial<Record<ViewKey, ResourceConfig<any>>> | undefined;
 
@@ -31,19 +31,7 @@ function createResourceConfigs(): Partial<Record<ViewKey, ResourceConfig<any>>> 
   "api-keys": apiKeyConfig(),
   teams: teamConfig(),
   users: adminUserConfig(),
-  "quota-policies": genericResourceConfig("quota-policies", "项目额度", "项目、Key、用户维度的请求、Token、成本与并发上限", [
-    { key: "scope", label: "作用域", type: "select", options: ["global", "project", "api_key", "team"], required: true },
-    { key: "scope_id", label: "作用域 ID" },
-    { key: "rate_limit_rpm", label: "每分钟请求数（RPM）", type: "number" },
-    { key: "token_limit_tpm", label: "每分钟 Token 数（TPM）", type: "number" },
-    { key: "daily_requests", label: "日请求", type: "number" },
-    { key: "monthly_requests", label: "月请求", type: "number" },
-    { key: "daily_tokens", label: "日 Token", type: "number" },
-    { key: "monthly_tokens", label: "月 Token", type: "number" },
-    { key: "daily_cost_usd", label: "日成本 USD", type: "number" },
-    { key: "monthly_cost_usd", label: "月成本 USD", type: "number" },
-    { key: "max_concurrency", label: "最大并发", type: "number" },
-  ]),
+  "quota-policies": quotaPolicyConfig(),
   "cost-centers": costCenterConfig(),
   "approval-flows": approvalFlowConfig(),
   reports: reportConfig(),
@@ -53,15 +41,10 @@ function createResourceConfigs(): Partial<Record<ViewKey, ResourceConfig<any>>> 
   "alert-events": alertEventConfig(),
   "alert-deliveries": alertDeliveryConfig(),
   approvals: approvalConfig(),
-  "security-policies": genericResourceConfig("security-policies", "安全策略", "敏感数据、错误透传、IP 访问和审计策略", [
+  "security-policies": genericResourceConfig("security-policies", "安全策略", "Prompt 日志保护、错误透传和 IP 访问控制", [
     { key: "mask_prompts", label: "脱敏 Prompt", type: "boolean", help: "开启后策略要求请求与响应审计避免直接展示完整 Prompt。" },
     { key: "ip_allowlist", label: "IP 白名单", type: "textarea", placeholder: "127.0.0.1/32\n10.0.0.0/8", help: "每行一个 CIDR 或 IP，留空表示不配置白名单。" },
     { key: "error_passthrough", label: "错误透传", type: "select", options: ["sanitized", "passthrough", "hidden"], required: true },
-  ]),
-  proxies: genericResourceConfig("proxies", "代理出口", "Provider 出口代理和内网访问策略", [
-    { key: "protocol", label: "协议", type: "select", options: ["direct", "http", "https", "socks5"], required: true },
-    { key: "host", label: "Host" },
-    { key: "port", label: "端口", type: "number" },
   ]),
   "sqlite-backups": sqliteBackupConfig(),
   announcements: genericResourceConfig("announcements", "公告通知", "后台公告、试运行通知和操作提示", [
@@ -73,19 +56,159 @@ function createResourceConfigs(): Partial<Record<ViewKey, ResourceConfig<any>>> 
   };
 }
 
+function quotaPolicyConfig(): ResourceConfig<AdminResource> {
+  const base = genericResourceConfig("quota-policies", "额度策略", "按全局、项目、团队、API Key 或用户聚合请求、Token、成本与并发上限", [
+    { key: "scope", label: "作用域", type: "select", options: ["global", "project", "api_key", "team", "user"], required: true },
+    {
+      key: "scope_id",
+      label: "作用域对象",
+      type: "select",
+      optionsFromData: (data, currentUser, values) => {
+        switch (values?.scope) {
+          case "global":
+            return [{ value: "global", label: "全局" }];
+          case "project":
+            return projectMemberProjectSelectOptions(data);
+          case "api_key":
+            return data.keys.map((key) => ({ value: key.id, label: `${key.name || key.id} / ${key.key_prefix}...${key.key_suffix}` }));
+          case "team":
+            return teamSelectOptions(data);
+          case "user":
+            return apiKeyOwnerSelectOptions(data, currentUser);
+          default:
+            return [];
+        }
+      },
+      required: true,
+      help: "用户作用域会合并该用户所有归属 Key 的用量，Key 轮换不会重置额度。",
+    },
+    { key: "rate_limit_rpm", label: "每分钟请求数（RPM）", type: "number" },
+    { key: "token_limit_tpm", label: "每分钟 Token 数（TPM）", type: "number" },
+    { key: "daily_requests", label: "日请求", type: "number" },
+    { key: "monthly_requests", label: "月请求", type: "number" },
+    { key: "daily_tokens", label: "日 Token", type: "number" },
+    { key: "monthly_tokens", label: "月 Token", type: "number" },
+    { key: "daily_cost_usd", label: "日成本 USD", type: "number" },
+    { key: "monthly_cost_usd", label: "月成本 USD", type: "number" },
+    { key: "max_concurrency", label: "最大并发", type: "number" },
+  ]);
+  return {
+    ...base,
+    columns: [
+      ...base.columns.slice(0, 3),
+      {
+        key: "current_usage",
+        label: "用量统计",
+        render: (item) => item.current_usage
+          ? `${formatQuotaUsage(tx("日：{requests} 次请求 · {tokens} Token · {cost}"), item.current_usage.daily)} / ${formatQuotaUsage(tx("月：{requests} 次请求 · {tokens} Token · {cost}"), item.current_usage.monthly)}`
+          : "-",
+      },
+      ...base.columns.slice(3),
+    ],
+  };
+}
+
+function formatQuotaUsage(template: string, usage: { requests: number; total_tokens: number; cost_usd: number }) {
+  const locale = languageLocale();
+  return formatTranslationTemplate(template, {
+    requests: new Intl.NumberFormat(locale).format(usage.requests || 0),
+    tokens: new Intl.NumberFormat(locale).format(usage.total_tokens || 0),
+    cost: new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 6 }).format(usage.cost_usd || 0),
+  });
+}
+
 export function systemSettingConfig(): ResourceConfig<AdminResource> {
   const base = genericResourceConfig("settings", "系统设置", "网关地址、审计保留、企业集成和默认策略", [
     { key: "public_base_url", label: "公开 Base URL", help: "对外展示给业务系统和 API 文档示例的网关地址。" },
     { key: "default_timeout", label: "默认超时", help: "网关转发上游请求的默认等待时间，例如 120s。" },
-    { key: "audit_retention", label: "审计保留", help: "请求审计日志的默认保留周期，例如 180d。" },
+    { key: "audit_retention", label: "审计保留", help: "请求和响应正文的保留周期，范围为 1d 至 3650d；请求元数据不会被清理。" },
+    { key: "dashboard_timezone", label: "用量看板时区", placeholder: "UTC", help: "用于当天用量和使用趋势的自然日边界。请填写 IANA 时区，例如 UTC、Asia/Shanghai 或 America/New_York。" },
     { key: "api_key_prefix", label: "API Key 前缀", placeholder: "sk_", help: "新建和轮换 Key 时使用；建议以 _ 结尾，例如 sk_。" },
     { key: "api_key_random_length", label: "API Key 随机长度", type: "number", placeholder: "48", help: "前缀后面的随机字符数，系统会限制在 24-128 之间。" },
+    {
+      key: "provider_egress_mode",
+      label: "Provider 出口模式",
+      type: "select",
+      optionsFromData: () => [
+        { value: "inherit_environment", label: "继承环境变量代理" },
+        { value: "direct", label: "直接连接" },
+        { value: "configured_proxy", label: "使用统一代理" },
+      ],
+      required: true,
+      help: "仅作用于所有 Provider 上游通道。升级后的默认值为继承 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY。",
+    },
+    {
+      key: "provider_proxy_protocol",
+      label: "代理协议",
+      type: "select",
+      options: ["http", "https"],
+      required: true,
+      visible: (values) => values.provider_egress_mode === "configured_proxy",
+      help: "支持 HTTP 或 HTTPS forward proxy，不支持 SOCKS5。",
+    },
+    {
+      key: "provider_proxy_host",
+      label: "代理 Host",
+      required: true,
+      visible: (values) => values.provider_egress_mode === "configured_proxy",
+    },
+    {
+      key: "provider_proxy_port",
+      label: "代理端口",
+      type: "number",
+      required: true,
+      visible: (values) => values.provider_egress_mode === "configured_proxy",
+    },
+    {
+      key: "provider_proxy_auth_enabled",
+      label: "启用代理 Basic 认证",
+      type: "boolean",
+      visible: (values) => values.provider_egress_mode === "configured_proxy",
+    },
+    {
+      key: "provider_proxy_username",
+      label: "代理用户名",
+      required: true,
+      visible: (values) => values.provider_egress_mode === "configured_proxy" && values.provider_proxy_auth_enabled === "true",
+    },
+    {
+      key: "provider_proxy_password",
+      label: "代理密码",
+      type: "password",
+      autoComplete: "new-password",
+      help: "密码会加密保存；编辑时留空表示保留原密码，关闭认证会清除用户名和密码。",
+      visible: (values) => values.provider_egress_mode === "configured_proxy" && values.provider_proxy_auth_enabled === "true",
+    },
+    {
+      key: "provider_synthetic_dns_enabled",
+      label: "允许 Provider 使用 Synthetic DNS / Fake-IP",
+      type: "boolean",
+      help: "仅当 TokenHub 所在主机启用了 Fake-IP 代理，且 Provider 域名因此解析到合成地址时开启。该例外只用于域名解析结果，不允许把字面量 IP 直接配置为 Provider Base URL。",
+    },
+    {
+      key: "provider_synthetic_dns_allow_private_ranges",
+      label: "允许信任私网 / ULA Synthetic DNS 网段（高风险）",
+      type: "boolean",
+      visible: (values) => values.provider_synthetic_dns_enabled === "true",
+      help: "默认仍禁止 RFC1918 私网和 IPv6 ULA。仅当代理确实把这些范围用作 Fake-IP 池（例如部分 Xray IPv6 配置）时开启；开启后，恶意或被劫持的 Provider 域名可能访问该范围内的真实内网服务。",
+    },
+    {
+      key: "provider_synthetic_dns_cidrs",
+      label: "Synthetic DNS / Fake-IP 网段",
+      type: "textarea",
+      placeholder: "198.18.0.0/15",
+      help: "安全提示：每行一个 CIDR，必须与本机代理的实际 Fake-IP 池一致。198.18.0.0/15 是基准测试保留网段，只是常被代理软件用作 Fake-IP，并非 Fake-IP 专属；不同软件或配置可使用其他网段。配置过宽或填入真实内网会削弱 SSRF 防护。loopback、link-local、metadata、multicast、NAT64 等敏感范围始终禁止。",
+    },
   ]);
   return {
     ...base,
     eyebrow: "基础设置",
     create: undefined,
     remove: undefined,
+    toForm: (item) => ({
+      ...(base.toForm?.(item) ?? {}),
+      dashboard_timezone: stringifyValue(item.fields?.dashboard_timezone) || "UTC",
+    }),
   };
 }
 
@@ -249,6 +372,7 @@ export function notificationChannelConfig(): ResourceConfig<AdminResource> {
     { key: "whatsapp_api_version", label: "WhatsApp API Version", visible: notificationChannelUsesWhatsApp },
     { key: "smtp_host", label: "SMTP Host", required: true, visible: notificationChannelUsesEmail },
     { key: "smtp_port", label: "SMTP 端口", type: "number", required: true, visible: notificationChannelUsesEmail },
+    { key: "smtp_encryption", label: "SMTP 加密", type: "select", options: ["auto", "starttls", "ssl"], visible: notificationChannelUsesEmail, help: "auto：按服务器能力机会式升级 STARTTLS（legacy）；starttls：强制 STARTTLS，服务器不支持时拒绝发送（端口 587）；ssl：从第一个字节即隐式 TLS（端口 465）。" },
     { key: "smtp_username", label: "SMTP 用户名", visible: notificationChannelUsesEmail },
     { key: "smtp_password", label: "SMTP 密码", type: "password", help: "编辑时留空表示不修改。", visible: notificationChannelUsesEmail },
     { key: "smtp_from", label: "发件人", required: true, visible: notificationChannelUsesEmail },
@@ -290,6 +414,7 @@ export function notificationChannelConfig(): ResourceConfig<AdminResource> {
       whatsapp_api_version: stringifyValue(item.fields?.whatsapp_api_version || item.fields?.api_version || "v20.0"),
       smtp_host: stringifyValue(item.fields?.smtp_host),
       smtp_port: stringifyValue(item.fields?.smtp_port),
+      smtp_encryption: stringifyValue(item.fields?.smtp_encryption) || "auto",
       smtp_username: stringifyValue(item.fields?.smtp_username),
       smtp_password: "",
       smtp_from: stringifyValue(item.fields?.smtp_from),

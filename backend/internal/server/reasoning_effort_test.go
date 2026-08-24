@@ -344,7 +344,7 @@ func TestAnthropicAdapterTranslatesReasoningEffort(t *testing.T) {
 
 	effort := "medium"
 	adapter := AnthropicAdapter{}
-	provider := Provider{BaseURL: upstream.URL}
+	provider := Provider{BaseURL: upstream.URL + "/v1"}
 	_, _, err := adapter.Chat(context.Background(), provider, "claude-sonnet-5", ChatCompletionRequest{
 		Model:           "reasoning-model",
 		Messages:        []ChatMessage{{Role: "user", Content: "reason"}},

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -8,6 +9,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	_ "golang.org/x/image/webp"
 )
 
 const (
@@ -66,18 +72,14 @@ func defaultImageStorageDir() string {
 }
 
 func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	var request imageGenerationRequest
-	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	originator := strings.ToLower(strings.TrimSpace(r.Header.Get("originator")))
@@ -90,24 +92,33 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, err)
 		return
 	}
-	call, ok := s.startImageCall(w, r, project, key, request)
-	if !ok {
-		return
-	}
-	job, err := s.store.CreateImageJob(ImageJob{
+	job, call, atomicAdmission, ok, err := s.createImageJobForRequest(w, r, project, key, request, ImageJob{
 		ProjectID: project.ID,
 		APIKeyID:  key.ID,
-		RequestID: call.RequestID,
 		Status:    imageJobStatusQueued,
 		Model:     request.Model,
 		Action:    "generate",
 		Quality:   request.Quality,
 		Size:      request.Size,
 	}, request.Prompt)
+	if !ok {
+		return
+	}
 	if err != nil {
-		s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, imageAuditRequest(ImageJob{RequestID: call.RequestID, Model: request.Model, Action: "generate", Quality: request.Quality, Size: request.Size}), auditErrorPayload(err, call.RequestID))
-		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "image_job_create_failed", err.Error()))
+		if call.RequestID != "" && !atomicAdmission {
+			s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
+		}
+		httpErr := AsHTTPError(err)
+		if httpErr.Code == "internal_error" {
+			httpErr = NewHTTPError(http.StatusInternalServerError, "image_job_create_failed", err.Error())
+		}
+		requestID := call.RequestID
+		if requestID == "" {
+			requestID = s.store.RecordRejectedRequest(project, key, request.Model, false, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		}
+		w.Header().Set("x-request-id", requestID)
+		s.recordRequestPayload(requestID, imageAuditRequest(ImageJob{RequestID: requestID, Model: request.Model, Action: "generate", Quality: request.Quality, Size: request.Size}), auditErrorPayload(err, requestID))
+		writeError(w, r, httpErr)
 		return
 	}
 	work := imageJobWork{
@@ -150,10 +161,6 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -239,24 +246,33 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 	if mask != nil {
 		inputs = append(inputs, *mask)
 	}
-	call, ok := s.startImageCall(w, r, project, key, request)
-	if !ok {
-		return
-	}
-	job, err := s.store.CreateImageJob(ImageJob{
+	job, call, atomicAdmission, ok, err := s.createImageJobForRequest(w, r, project, key, request, ImageJob{
 		ProjectID: project.ID,
 		APIKeyID:  key.ID,
-		RequestID: call.RequestID,
 		Status:    imageJobStatusQueued,
 		Model:     request.Model,
 		Action:    "edit",
 		Quality:   request.Quality,
 		Size:      request.Size,
 	}, request.Prompt)
+	if !ok {
+		return
+	}
 	if err != nil {
-		s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, imageAuditRequest(ImageJob{RequestID: call.RequestID, Model: request.Model, Action: "edit", Quality: request.Quality, Size: request.Size}), auditErrorPayload(err, call.RequestID))
-		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "image_job_create_failed", err.Error()))
+		if call.RequestID != "" && !atomicAdmission {
+			s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
+		}
+		httpErr := AsHTTPError(err)
+		if httpErr.Code == "internal_error" {
+			httpErr = NewHTTPError(http.StatusInternalServerError, "image_job_create_failed", err.Error())
+		}
+		requestID := call.RequestID
+		if requestID == "" {
+			requestID = s.store.RecordRejectedRequest(project, key, request.Model, false, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+		}
+		w.Header().Set("x-request-id", requestID)
+		s.recordRequestPayload(requestID, imageAuditRequest(ImageJob{RequestID: requestID, Model: request.Model, Action: "edit", Quality: request.Quality, Size: request.Size}), auditErrorPayload(err, requestID))
+		writeError(w, r, httpErr)
 		return
 	}
 	for index, input := range inputs {
@@ -317,9 +333,14 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleImageJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
 		return
 	}
+	s.handleImageJobGet(w, r)
+}
+
+func (s *Server) handleImageJobGet(w http.ResponseWriter, r *http.Request) {
 	project, _, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -339,11 +360,8 @@ func (s *Server) handleImageJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminImageJobs(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "audit", r.Method); !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	user, ok := s.requireAdmin(w, r, "audit", r.Method)
+	if !ok {
 		return
 	}
 	limit := 200
@@ -355,7 +373,14 @@ func (s *Server) handleAdminImageJobs(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	jobs := s.store.ListImageJobs(limit)
+	query := ImageJobAuditQuery{Limit: limit, Global: s.canViewGlobalOperations(user)}
+	if !query.Global {
+		if normalizeAdminRole(user.Role) == "team_leader" {
+			query.ProjectIDs = trueMapKeys(s.visibleProjectIDSet(user))
+		}
+		query.APIKeyIDs = trueMapKeys(s.visibleAPIKeyIDSet(user))
+	}
+	jobs := s.store.ListImageJobsForAudit(query)
 	data := make([]map[string]any, 0, len(jobs))
 	for _, job := range jobs {
 		item := s.imageJobResponse(r, job)
@@ -376,9 +401,14 @@ func (s *Server) handleAdminImageJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleImageAsset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
 		return
 	}
+	s.handleImageAssetGet(w, r)
+}
+
+func (s *Server) handleImageAssetGet(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/image-assets/"), "/")
 	parts := strings.Split(path, "/")
 	if len(parts) != 2 || parts[1] != "content" {
@@ -431,6 +461,40 @@ func (s *Server) startImageCall(w http.ResponseWriter, r *http.Request, project 
 	return call, true
 }
 
+func (s *Server) createImageJobForRequest(w http.ResponseWriter, r *http.Request, project Project, key APIKey, request imageGenerationRequest, job ImageJob, prompt string) (ImageJob, CallContext, bool, bool, error) {
+	if atomicStore, ok := s.store.(*GormStore); ok {
+		persisted, call, err := atomicStore.CreateImageJobWithAdmission(s.imageContext, project, key, request.Model, EstimateTextTokens(prompt), job, prompt)
+		if err == nil {
+			w.Header().Set("x-request-id", call.RequestID)
+			writeRateLimitHeaders(w.Header(), call.RateLimitHeaders)
+		}
+		return persisted, call, true, true, err
+	}
+	call, ok := s.startImageCall(w, r, project, key, request)
+	if !ok {
+		return ImageJob{}, CallContext{}, false, false, nil
+	}
+	persisted, err := s.store.CreateImageJob(imageJobWithAdmission(job, call), prompt)
+	return persisted, call, false, true, err
+}
+
+func imageJobWithAdmission(job ImageJob, call CallContext) ImageJob {
+	job.TokenLimitBucket = call.TokenLimitBucket
+	job.MinuteRequestHeld = call.MinuteRequestHeld
+	job.UserQuotaEnabled = call.UserQuotaEnabled
+	job.UserMinuteRequestHeld = call.UserMinuteRequestHeld
+	job.UserTokenLimitBucket = call.UserTokenLimitBucket
+	job.RedisBillingAdmitted = call.RedisBillingAdmitted
+	job.RedisKeyLeaseHeld = call.RedisKeyLeaseHeld
+	job.RedisUserLeaseHeld = call.RedisUserLeaseHeld
+	job.ReservedTokens = call.ReservedTokens
+	if !call.StartedAt.IsZero() {
+		admittedAt := call.StartedAt
+		job.AdmittedAt = &admittedAt
+	}
+	return job
+}
+
 func (s *Server) startImageWorkers() {
 	s.imageWorkerStart.Do(func() {
 		for index := 0; index < s.config.ImageWorkerConcurrency; index++ {
@@ -463,13 +527,47 @@ func (s *Server) enqueueImageJob(work imageJobWork) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	// The instance heartbeat stays published until every database worker has
+	// stopped: contract preflight must keep seeing this instance through the
+	// drain, on every exit path.
+	if s.stopHeartbeat != nil {
+		defer s.stopHeartbeat()
+	}
 	// Traces are flushed last, once every producer of completions has stopped.
 	// Deferring it also makes the flush survive the early returns below: failing to
 	// drain the image queue is bad, failing to drain it and silently discarding
 	// every buffered trace is worse.
 	defer s.shutdownTracing()
+	s.responseWorkerStop.Do(func() {
+		s.responseCancel()
+	})
+	responseWorkersDone := make(chan struct{})
+	go func() {
+		s.responseWorkerGroup.Wait()
+		close(responseWorkersDone)
+	}()
+	select {
+	case <-responseWorkersDone:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	if s.billing != nil {
 		if err := s.billing.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	if s.reconciliation != nil {
+		if err := s.reconciliation.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	if s.credentialRefresh != nil {
+		if err := s.credentialRefresh.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	if s.payloadRetention != nil {
+		if err := s.payloadRetention.Shutdown(ctx); err != nil {
 			return err
 		}
 	}
@@ -572,6 +670,11 @@ func (s *Server) processImageJob(work imageJobWork) {
 		return imageRunResult{data: imageBytes, revisedPrompt: revisedPrompt}, responseUsage, nil
 	})
 	s.store.RecordRouteAttempts(work.call.RequestID, attempts)
+	// Thread the attempt outcomes into the call context so the shared observation
+	// point reports per-candidate counts and upstream latency for image jobs the
+	// same way it does for chat and embedding calls. Both completion paths below
+	// reach observeGatewayCall through call, which carries these attempts.
+	work.call.RouteAttempts = attempts
 	if invokeErr != nil {
 		if errors.Is(invokeErr, context.DeadlineExceeded) {
 			message := fmt.Sprintf("Image generation exceeded the configured %d second timeout", s.config.ImageJobTimeoutSeconds)
@@ -656,6 +759,9 @@ func (s *Server) failImageJob(job ImageJob, code string, message string) {
 	job.ErrorCode = firstNonEmpty(strings.TrimSpace(code), "image_generation_failed")
 	job.ErrorMessage = strings.TrimSpace(message)
 	job.CompletedAt = &now
+	job.RedisBillingAdmitted = false
+	job.RedisKeyLeaseHeld = false
+	job.RedisUserLeaseHeld = false
 	_ = s.store.UpdateImageJob(job, "")
 }
 
@@ -769,6 +875,11 @@ func decodeGeneratedImage(encoded string) ([]byte, error) {
 	}
 	if len(decoded) > maxGeneratedImageBytes {
 		return nil, fmt.Errorf("image result exceeds %d bytes", maxGeneratedImageBytes)
+	}
+	if _, format, err := image.Decode(bytes.NewReader(decoded)); err != nil {
+		return nil, fmt.Errorf("decode image result: %w", err)
+	} else if format != "png" && format != "jpeg" && format != "webp" {
+		return nil, fmt.Errorf("image result must be PNG, JPEG, or WebP")
 	}
 	return decoded, nil
 }
@@ -962,7 +1073,22 @@ func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 
 func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 	if model == codexImageModelName {
-		return s.codexImageRouteCandidates(), nil
+		routes, err := s.store.SelectRouteCandidates(codexImageModelName)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]RouteSelection, 0, len(routes))
+		for _, route := range routes {
+			if route.Provider.Type == ProviderOpenAICodex &&
+				route.ProviderModel == codexImageUpstreamModel &&
+				route.Resource != nil && isOpenAIAccountResource(route.Resource.ResourceType) {
+				filtered = append(filtered, route)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, ErrProviderMissing
+		}
+		return filtered, nil
 	}
 	routes, err := s.store.SelectRouteCandidates(openAIImageModelName)
 	if err != nil {

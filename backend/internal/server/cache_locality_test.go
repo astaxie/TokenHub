@@ -425,6 +425,48 @@ func TestCodexRendezvousStillUsesFNV(t *testing.T) {
 	}
 }
 
+func TestRendezvousSortPrecomputesScores(t *testing.T) {
+	group := []RouteSelection{
+		{Route: ModelRoute{ID: "route_c", Weight: 30}},
+		{Route: ModelRoute{ID: "route_a", Weight: 10}},
+		{Route: ModelRoute{ID: "route_b", Weight: 20}},
+	}
+	scores := map[string]float64{
+		"route_a": 10,
+		"route_b": 20,
+		"route_c": 20,
+	}
+	calls := map[string]int{}
+	sortRouteGroupByRendezvous("affinity-key", group, routeSortID, func(key, identity string, weight int) float64 {
+		if key != "affinity-key" {
+			t.Fatalf("routing key = %q, want affinity-key", key)
+		}
+		calls[identity]++
+		return scores[identity]
+	})
+
+	want := []string{"route_b", "route_c", "route_a"}
+	for index := range group {
+		identity := routeSortID(group[index])
+		if identity != want[index] {
+			t.Fatalf("route at %d = %q, want %q", index, identity, want[index])
+		}
+		if calls[identity] != 1 {
+			t.Fatalf("score calls for %q = %d, want 1", identity, calls[identity])
+		}
+	}
+
+	singletonCalls := 0
+	singleton := []RouteSelection{{Route: ModelRoute{ID: "route_single", Weight: 100}}}
+	sortRouteGroupByRendezvous("affinity-key", singleton, routeSortID, func(string, string, int) float64 {
+		singletonCalls++
+		return 1
+	})
+	if singletonCalls != 0 {
+		t.Fatalf("singleton score calls = %d, want 0", singletonCalls)
+	}
+}
+
 // With the switch off the whole routing path must stay byte-identical to the
 // pre-change behaviour.
 func TestSwitchOffIsByteIdenticalToLegacyRouting(t *testing.T) {

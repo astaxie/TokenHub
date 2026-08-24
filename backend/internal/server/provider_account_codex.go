@@ -115,7 +115,8 @@ func (a CodexSubscriptionAdapter) OpenResponses(ctx context.Context, provider Pr
 	if err != nil {
 		return nil, err
 	}
-	resp, err := a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming)
+	fingerprintIDs := prepareCodexFingerprintRequest(provider, incoming, &request)
+	resp, err := a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
 	if err == nil || providerErrorDisposition(err) != ProviderErrorAuthBroken {
 		return resp, err
 	}
@@ -123,17 +124,17 @@ func (a CodexSubscriptionAdapter) OpenResponses(ctx context.Context, provider Pr
 	if refreshErr != nil {
 		return nil, refreshErr
 	}
-	return a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming)
+	return a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
 }
 
-func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header) (*http.Response, error) {
+func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
 	maxRetries := a.MaxRequestRetries
 	if maxRetries <= 0 {
 		maxRetries = openAICodexMaxRequestRetries
 	}
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		resp, err := a.openResponsesWithCredentials(ctx, endpoint, creds, providerModel, request, incoming)
+		resp, err := a.openResponsesWithCredentials(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
 		if err == nil {
 			return resp, nil
 		}
@@ -159,7 +160,7 @@ func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, en
 	return nil, lastErr
 }
 
-func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header) (*http.Response, error) {
+func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
 	accessToken := strings.TrimSpace(creds.AccessToken)
 	accountID := strings.TrimSpace(creds.AccountID)
 	if accessToken == "" {
@@ -183,6 +184,7 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 	if strings.EqualFold(strings.TrimSpace(request.ServiceTier), "fast") {
 		request.ServiceTier = "priority"
 	}
+	request = withoutUnsupportedCodexGenerationControls(request)
 	applyCodexRequestEnvelope(&request, incoming)
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -200,12 +202,16 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	applyCodexRequestHeaders(req.Header, incoming)
+	applyCodexFingerprintHeaders(req.Header, fingerprintIDs)
 	client := a.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if egressErr := providerEgressFailure(err); egressErr != nil {
+			return nil, egressErr
+		}
 		return nil, &ProviderInvocationError{
 			Err:         NewHTTPError(http.StatusBadGateway, "codex_request_failed", fmt.Sprintf("Codex request failed: %v", err)),
 			Disposition: ProviderErrorTransientSame,
@@ -218,6 +224,17 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 	}
 	resp.Body = newIdleTimeoutReadCloser(resp.Body, a.streamIdleTimeout(), errCodexStreamIdle)
 	return resp, nil
+}
+
+func withoutUnsupportedCodexGenerationControls(request ResponsesRequest) ResponsesRequest {
+	request.MaxTokens = 0
+	request.Temperature = nil
+	if request.raw != nil {
+		request.raw = cloneRawJSON(request.raw, 0)
+		delete(request.raw, "max_output_tokens")
+		delete(request.raw, "temperature")
+	}
+	return request
 }
 
 func codexResponsesEndpoint(provider Provider) (string, error) {
@@ -338,7 +355,7 @@ func consumeCodexResponsesStream(body io.Reader, destination io.Writer) (map[str
 	}
 }
 
-func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest) {
+func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest, auditPayload any) {
 	tracker := &streamWriteTracker{writer: w}
 	attemptNumber := 0
 	allowEffortFallback := normalizedReasoningEffort(responsesReasoningEffort(request)) != nil
@@ -388,6 +405,8 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 	})
 	streamStarted := tracker.Wrote()
 	routed.Call.StreamOutputCommitted = tracker.WroteData()
+	routed.Call.FirstByteAt = tracker.firstByteTime(err == nil)
+	routed.Call.StreamFailed = err != nil && streamStarted
 	if err != nil {
 		if streamStarted {
 			// The client already has a 200, so any usage the upstream reported
@@ -401,11 +420,11 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 				StatusCode:      httpErr.Status,
 				ErrorCode:       httpErr.Code,
 				ErrorMessage:    httpErr.Message,
-				RequestPayload:  request,
+				RequestPayload:  auditPayload,
 				ResponsePayload: auditErrorPayload(err, routed.Call.RequestID),
 			})
 		} else {
-			s.finishFailedRoutedCall(r, routed, attempts, usage, err, request)
+			s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		}
 		if !streamStarted {
 			writeError(w, r, err)
@@ -417,7 +436,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, request, response)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 }
 
 func codexStreamEventError(event map[string]any) error {
@@ -494,6 +513,7 @@ func (a CodexSubscriptionAdapter) Probe(ctx context.Context, provider Provider, 
 	if provider.Options == nil {
 		provider.Options = map[string]string{}
 	}
+	provider.Options = mergedStringMap(provider.Options, resource.Options)
 	provider.Options["resource_id"] = resource.ID
 	reasoningEffort := request.ReasoningEffort
 	responsesRequest := ResponsesRequest{

@@ -2,7 +2,7 @@ import { type AdminResource, type AdminUser, type AppData, type SettingsTabKey }
 import { fieldSummary, projectName, stringifyValue, teamLabel } from "./entities";
 import { routeStrategyLabel } from "./formatting";
 import { displayText, tx } from "../i18n/runtime";
-import { identityProviderTemplateLabel, normalizedIdentityProviderIconKey } from "../shell/auth";
+import { identityProviderTemplateLabel, normalizedIdentityProviderIconKey } from "../shared/auth";
 
 export function compactList(value: unknown) {
   const values = Array.isArray(value) ? value.map(stringifyValue) : splitList(stringifyValue(value));
@@ -78,6 +78,8 @@ export function dataScopeLabel(scope: string) {
     global: "全局",
     team: "团队",
     project: "项目",
+    user: "用户",
+    api_key: "API Key",
     self: "本人",
     all: "所有项目",
     include: "仅指定项目",
@@ -169,11 +171,16 @@ export function enumValueLabel(value: string | undefined) {
     cost: "成本优先",
     priority_weighted: "优先级 + 权重",
     priority_only: "仅优先级",
+    inherit: "继承 Provider 策略",
+    preserve: "保留归因块",
+    strip: "移除归因块",
+    text: "文本",
     chat: "文本对话",
     embedding: "向量嵌入",
     image: "图像",
     video: "视频",
     audio: "音频",
+    pdf: "PDF",
     ocr: "OCR",
     rerank: "重排序",
   };
@@ -193,8 +200,20 @@ export function fieldValueLabel(fieldKey: string, value: unknown): string {
   if (normalizedKey === "icon_key") return identityProviderIconLabel(text);
   if (normalizedKey === "status" || normalizedKey.includes("status")) return enumValueLabel(text);
   if (normalizedKey === "strategy") return routeStrategyLabel(text);
+  if (normalizedKey === "claude_code_attribution_policy") return enumValueLabel(text);
+  if (normalizedKey === "codex_fingerprint_mode") {
+    return tx({
+      off: "关闭（透传）",
+      device: "仅收敛设备",
+      session: "收敛设备与会话（推荐）",
+      full: "完全收敛",
+    }[text.toLowerCase()] ?? text);
+  }
   if (normalizedKey === "trigger") return approvalTriggerLabel(text);
   if (normalizedKey === "dataset") return reportDatasetLabel(text);
+  if (normalizedKey === "reasoning_effort_unsupported") {
+    return tx({ passthrough: "透传", omit: "删除参数", reject: "拒绝请求" }[text.toLowerCase()] ?? text);
+  }
   if (normalizedKey === "schedule" || normalizedKey === "period") return enumValueLabel(text);
   if (normalizedKey === "enforcement") return budgetEnforcementLabel(text);
   if (normalizedKey === "type" || normalizedKey === "notify_mode" || normalizedKey === "protocol" || normalizedKey === "target_type" || normalizedKey === "resource_type" || normalizedKey === "modality") {
@@ -305,6 +324,7 @@ export function providerTypeLabel(type: string | undefined) {
     deepseek: "DeepSeek",
     qwen: "Qwen / 通义千问",
     local: "本地模型",
+    kronk: "Kronk 本地推理",
   };
   return tx(labels[normalized] ?? type ?? "-");
 }

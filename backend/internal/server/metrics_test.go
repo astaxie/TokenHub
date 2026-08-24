@@ -1,13 +1,20 @@
 package server
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
@@ -143,6 +150,65 @@ func TestMetricsRecordInheritedRateLimitScopeWithoutPerKeySeries(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(server.metrics.rateLimitHits.WithLabelValues("project", "rpm", metricsLabelUnset)); got != 1 {
 		t.Fatalf("expected one project RPM limit hit without a key reference, got %v", got)
+	}
+}
+
+func TestMetricsAndAuditRecordUserRateLimitScopeWithoutIdentityLabels(t *testing.T) {
+	store, server, secret := newMetricsTestServer(t, false)
+	key := store.ListAPIKeys()[0]
+	const userID = "usr_metrics_quota"
+	if err := store.db.Model(&APIKey{}).Where("id = ?", key.ID).Update("owner_user_id", userID).Error; err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("quota-policies", AdminResource{
+		Name: "User RPM", Status: StatusActive,
+		Fields: map[string]any{"scope": "user", "scope_id": userID, "rate_limit_rpm": int64(1)},
+	})
+	app := server.Handler()
+	if code := chatOnce(t, app, secret, false); code != http.StatusOK {
+		t.Fatalf("first chat failed: %d", code)
+	}
+	rejected := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-4.1-mini", "messages": []map[string]any{{"role": "user", "content": "hi"}},
+	}, secret)
+	if rejected.Code != http.StatusTooManyRequests || !strings.Contains(rejected.Body, `"scope":"user"`) {
+		t.Fatalf("user RPM rejection did not expose the bounded scope diagnostic: %d %s", rejected.Code, rejected.Body)
+	}
+	if got := testutil.ToFloat64(server.metrics.rateLimitHits.WithLabelValues("user", "rpm", metricsLabelUnset)); got != 1 {
+		t.Fatalf("expected one user RPM hit without an identity label, got %v", got)
+	}
+	var payload RequestPayloadLog
+	if err := store.db.Order("created_at DESC").First(&payload).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(payload.ResponseBody, `"scope": "user"`) || strings.Contains(payload.ResponseBody, userID) {
+		t.Fatalf("quota audit payload did not retain only the bounded scope: %s", payload.ResponseBody)
+	}
+}
+
+func TestMetricsRecordUserDailyQuotaScope(t *testing.T) {
+	store, server, secret := newMetricsTestServer(t, false)
+	key := store.ListAPIKeys()[0]
+	const userID = "usr_metrics_daily_quota"
+	if err := store.db.Model(&APIKey{}).Where("id = ?", key.ID).Update("owner_user_id", userID).Error; err != nil {
+		t.Fatal(err)
+	}
+	store.CreateResource("quota-policies", AdminResource{
+		Name: "User daily requests", Status: StatusActive,
+		Fields: map[string]any{"scope": "user", "scope_id": userID, "daily_requests": int64(1)},
+	})
+	app := server.Handler()
+	if code := chatOnce(t, app, secret, false); code != http.StatusOK {
+		t.Fatalf("first chat failed: %d", code)
+	}
+	rejected := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-4.1-mini", "messages": []map[string]any{{"role": "user", "content": "hi"}},
+	}, secret)
+	if rejected.Code != http.StatusTooManyRequests || !strings.Contains(rejected.Body, `"scope":"user"`) {
+		t.Fatalf("user daily quota rejection did not expose its scope: %d %s", rejected.Code, rejected.Body)
+	}
+	if got := testutil.ToFloat64(server.metrics.rateLimitHits.WithLabelValues("user", "daily_requests", metricsLabelUnset)); got != 1 {
+		t.Fatalf("expected one bounded user daily quota hit, got %v", got)
 	}
 }
 
@@ -321,7 +387,11 @@ func TestMetricsTokenMatching(t *testing.T) {
 
 func TestGatewayMetricsNilIsSafe(t *testing.T) {
 	var m *GatewayMetrics
-	m.ObserveGatewayCall(GatewayCallSample{Model: "x", Duration: time.Second})
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model:    "x",
+		Duration: time.Second,
+		Attempts: []GatewayAttemptSample{{ProviderType: "t", Invoked: true, Duration: time.Second}},
+	})
 	m.incInFlight()
 	m.decInFlight()
 	if m.Handler() == nil {
@@ -414,5 +484,490 @@ func TestMetricsRejectedStreamingCallKeepsStreamLabel(t *testing.T) {
 	))
 	if sameButNotStreaming != 0 {
 		t.Fatalf("it must not also appear as stream=false, got %v", sameButNotStreaming)
+	}
+}
+
+// newMetricsFailoverGateway wires one model to two openai_compatible upstreams in
+// priority order and enables metrics. It mirrors newStreamFailoverGateway but uses
+// NewWithConfig so the /metrics endpoint is available.
+func newMetricsFailoverGateway(t *testing.T, primaryURL string, secondaryURL string) (*Server, string) {
+	t.Helper()
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "metrics-failover", Status: StatusActive})
+	const model = "metrics-failover-model"
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "metrics-failover-key",
+		Allowed: []string{model},
+		Status:  StatusActive,
+	}, "thk_metrics_failover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: model, Modality: "chat", Status: StatusActive})
+	for index, upstreamURL := range []string{primaryURL, secondaryURL} {
+		provider := store.AddProvider(Provider{
+			ID:      fmt.Sprintf("prv_metrics_%d", index),
+			Name:    fmt.Sprintf("metrics-%d", index),
+			Type:    ProviderOpenAICompatible,
+			BaseURL: upstreamURL,
+			Status:  StatusActive,
+			Healthy: true,
+		})
+		resource, err := store.AddProviderResource(ProviderResource{
+			ID:             fmt.Sprintf("rsrc_metrics_%d", index),
+			ProviderID:     provider.ID,
+			Name:           fmt.Sprintf("metrics-resource-%d", index),
+			ResourceType:   "openai",
+			Status:         StatusActive,
+			Healthy:        true,
+			Priority:       1,
+			Weight:         100,
+			MaxConcurrency: 10,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		store.AddRoute(ModelRoute{
+			ID:                 fmt.Sprintf("route_metrics_%d", index),
+			ModelName:          model,
+			ProviderID:         provider.ID,
+			ProviderResourceID: resource.ID,
+			ProviderModel:      fmt.Sprintf("upstream-model-%d", index),
+			Priority:           index + 1,
+			Weight:             100,
+			Status:             StatusActive,
+			Strategy:           RouteStrategyPriorityOnly,
+		})
+	}
+	server := NewWithConfig(store, Config{
+		AdminToken:     "dev_admin_token",
+		MetricsEnabled: true,
+	})
+	if server.metrics == nil {
+		t.Fatal("expected metrics to be enabled")
+	}
+	return server, secret
+}
+
+// findMetricLine returns the first /metrics exposition line containing every fragment.
+// It avoids importing the prometheus client_model package (indirect dependency) and is
+// resilient to label ordering.
+func findMetricLine(body string, fragments ...string) string {
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		ok := true
+		for _, f := range fragments {
+			if !strings.Contains(line, f) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return line
+		}
+	}
+	return ""
+}
+
+// metricLineValue parses the trailing float from an exposition line.
+func metricLineValue(t *testing.T, line string) float64 {
+	t.Helper()
+	line = strings.TrimSpace(line)
+	idx := strings.LastIndexByte(line, ' ')
+	if idx < 0 {
+		t.Fatalf("no value in metric line: %q", line)
+	}
+	v, err := strconv.ParseFloat(line[idx+1:], 64)
+	if err != nil {
+		t.Fatalf("parse metric value %q: %v", line[idx+1:], err)
+	}
+	return v
+}
+
+func scrapeMetrics(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	resp := doRawRequest(t, handler, http.MethodGet, "/metrics", map[string]string{"Authorization": "Bearer dev_admin_token"})
+	if resp.Code != http.StatusOK {
+		t.Fatalf("metrics scrape failed: %d %s", resp.Code, resp.Body)
+	}
+	return resp.Body
+}
+
+// A failover produces two route_attempts_total series but only one requests_total.
+func TestMetricsFailoverAttributesEveryAttempt(t *testing.T) {
+	var secondaryHits int32
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"message":"rate limited"}}`)
+	}))
+	defer primary.Close()
+	secondary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&secondaryHits, 1)
+		writeChatStreamChunk(w, "recovered")
+	}))
+	defer secondary.Close()
+
+	server, secret := newMetricsFailoverGateway(t, primary.URL, secondary.URL)
+	resp := postStream(t, server.Handler(), "/v1/chat/completions", map[string]any{
+		"model":    "metrics-failover-model",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+		"stream":   true,
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected fallback to succeed, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	body := scrapeMetrics(t, server.Handler())
+
+	primaryAttempt := findMetricLine(body, "tokenhub_gateway_route_attempts_total", `provider_id="prv_metrics_0"`, `invoked="true"`, `status_code="429"`)
+	if primaryAttempt == "" {
+		t.Fatalf("missing primary attempt series in metrics:\n%s", body)
+	}
+	if metricLineValue(t, primaryAttempt) != 1 {
+		t.Fatalf("expected exactly one primary attempt")
+	}
+	secondaryAttempt := findMetricLine(body, "tokenhub_gateway_route_attempts_total", `provider_id="prv_metrics_1"`, `invoked="true"`, `status_code="200"`)
+	if secondaryAttempt == "" {
+		t.Fatalf("missing secondary attempt series in metrics:\n%s", body)
+	}
+
+	if got := testutil.ToFloat64(server.metrics.requests.WithLabelValues(
+		"metrics-failover-model", ProviderOpenAICompatible, "prv_metrics_1", "rsrc_metrics_1", "200", metricsLabelUnset, "true",
+	)); got != 1 {
+		t.Fatalf("expected one logical request, got %v", got)
+	}
+
+	upstreamPrimary := findMetricLine(body, "tokenhub_gateway_attempt_duration_seconds", `provider_type="openai_compatible"`)
+	if upstreamPrimary == "" {
+		t.Fatalf("missing attempt duration series in metrics:\n%s", body)
+	}
+
+	overhead := findMetricLine(body, "tokenhub_gateway_overhead_seconds_bucket")
+	if overhead == "" {
+		t.Fatalf("missing overhead series in metrics:\n%s", body)
+	}
+}
+
+// A single successful request records exactly one invoked attempt.
+func TestMetricsDirectSuccessRecordsSingleAttempt(t *testing.T) {
+	_, server, secret := newMetricsTestServer(t, false)
+	app := server.Handler()
+	if code := chatOnce(t, app, secret, false); code != http.StatusOK {
+		t.Fatalf("chat failed: %d", code)
+	}
+
+	body := scrapeMetrics(t, app)
+	attempt := findMetricLine(body, "tokenhub_gateway_route_attempts_total", `provider_id="prv_`+ProviderMock+`"`, `invoked="true"`, `status_code="200"`)
+	if attempt == "" {
+		t.Fatalf("missing direct attempt series in metrics:\n%s", body)
+	}
+	if metricLineValue(t, attempt) != 1 {
+		t.Fatalf("expected exactly one direct attempt")
+	}
+}
+
+// A capacity-skipped attempt contributes to route_attempts_total with invoked="false"
+// but does not create an attempt_duration_seconds series.
+func TestMetricsNonInvokedAttemptSkipsAttemptDuration(t *testing.T) {
+	m := NewGatewayMetrics(false)
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model:        "m",
+		ProviderType: "t",
+		ProviderID:   "p",
+		ResourceID:   "r",
+		StatusCode:   200,
+		Duration:     time.Second,
+		Attempts: []GatewayAttemptSample{
+			{ProviderType: "t", ProviderID: "p1", ResourceID: "r1", StatusCode: 429, ErrorCode: "capacity_exceeded", Invoked: false},
+			{ProviderType: "t", ProviderID: "p2", ResourceID: "r2", StatusCode: 200, Invoked: true, Duration: 500 * time.Millisecond},
+		},
+	})
+
+	if got := testutil.ToFloat64(m.routeAttempts.WithLabelValues("m", "t", "p1", "r1", "429", "capacity_exceeded", "false")); got != 1 {
+		t.Fatalf("expected non-invoked attempt counter to be 1, got %v", got)
+	}
+	if got := testutil.ToFloat64(m.routeAttempts.WithLabelValues("m", "t", "p2", "r2", "200", metricsLabelUnset, "true")); got != 1 {
+		t.Fatalf("expected invoked attempt counter to be 1, got %v", got)
+	}
+	if got := testutil.CollectAndCount(m.attemptDuration); got != 1 {
+		t.Fatalf("expected one attempt_duration series (only invoked), got %d", got)
+	}
+}
+
+// Overhead is clamped at zero when the sum of attempt latencies exceeds elapsed time.
+func TestMetricsOverheadClampsAtZero(t *testing.T) {
+	m := NewGatewayMetrics(false)
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model:      "m",
+		StatusCode: 200,
+		Duration:   time.Second,
+		Attempts: []GatewayAttemptSample{
+			{StatusCode: 200, Invoked: true, Duration: 1500 * time.Millisecond},
+		},
+	})
+
+	handler := promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scrape failed: %d", rec.Code)
+	}
+	sumLine := findMetricLine(rec.Body.String(), "tokenhub_gateway_overhead_seconds_sum")
+	if sumLine == "" {
+		t.Fatal("missing overhead sum")
+	}
+	if got := metricLineValue(t, sumLine); got != 0 {
+		t.Fatalf("overhead must be clamped at 0, got %v", got)
+	}
+}
+
+// A rejected request never reached a provider, so it must not create attempt series.
+func TestMetricsRejectedRequestAddsNoAttemptSeries(t *testing.T) {
+	_, server, _ := newMetricsTestServer(t, false)
+	app := server.Handler()
+
+	doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model":    "gpt-4.1-mini",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+	}, "thk_not_a_real_key")
+
+	body := scrapeMetrics(t, app)
+	if strings.Contains(body, "tokenhub_gateway_route_attempts_total{") {
+		t.Fatalf("rejected request must not produce route_attempts_total series:\n%s", body)
+	}
+	if strings.Contains(body, "tokenhub_gateway_attempt_duration_seconds{") {
+		t.Fatalf("rejected request must not produce attempt_duration_seconds series:\n%s", body)
+	}
+	if strings.Contains(body, "tokenhub_gateway_overhead_seconds{") {
+		t.Fatalf("rejected request must not produce overhead_seconds series:\n%s", body)
+	}
+	if strings.Contains(body, "tokenhub_gateway_routed_requests_total{") {
+		t.Fatalf("rejected request must not produce routed_requests_total series:\n%s", body)
+	}
+}
+
+// An image job reaches the same observation funnel as chat: requests_total counts
+// once and the routed attempts produce attempt, upstream-duration and overhead
+// series, so the failover-depth ratio is not diluted by image traffic.
+func TestMetricsImageJobAttributesAttempts(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Metrics Image Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name: "metrics-image-key", Allowed: []string{openAIImageModelName}, Status: StatusActive,
+	}, "thk_metrics_image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_metrics_image", Name: "Metrics Image Provider", Type: ProviderOpenAI, Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_metrics_image", ProviderID: provider.ID, Name: "Metrics Image Resource",
+		ResourceType: "openai", Status: StatusActive, Healthy: true,
+		Priority: 1, Weight: 100, MaxConcurrency: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID,
+		ProviderModel: openAIImageModelName, Priority: 1, Weight: 100, Status: StatusActive,
+	})
+	server := NewWithConfig(store, Config{
+		AdminToken: "dev_admin_token", SecretKey: "metrics-image-secret",
+		MetricsEnabled: true, ImageStorageDir: t.TempDir(),
+	})
+	if server.metrics == nil {
+		t.Fatal("expected metrics to be enabled")
+	}
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(_ context.Context, _ RouteSelection, _ ImageJob) ([]byte, string, Usage, error) {
+		return realPNGFixture(t), "", Usage{PromptTokens: 7, CompletionTokens: 13, TotalTokens: 20}, nil
+	}
+	handler := server.Handler()
+
+	create := doImageJSON(t, handler, http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "metrics image",
+	}, secret, map[string]string{"Prefer": "respond-async"})
+	if create.Code != http.StatusAccepted {
+		t.Fatalf("create image job: status=%d body=%s", create.Code, create.Body)
+	}
+	var created map[string]any
+	if err := json.Unmarshal([]byte(create.Body), &created); err != nil {
+		t.Fatal(err)
+	}
+	jobID, _ := created["id"].(string)
+	if jobID == "" {
+		t.Fatalf("missing image job id: %s", create.Body)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	// Completion commits before the gateway observation runs, so a completed
+	// status alone does not guarantee the counters are published yet. The
+	// overhead series is the last one ObserveGatewayCall writes; wait for it.
+	for {
+		job, ok := store.GetImageJob(jobID)
+		if ok && job.Status == imageJobStatusFailed {
+			t.Fatalf("image job failed: %+v", job)
+		}
+		if ok && job.Status == imageJobStatusCompleted &&
+			testutil.CollectAndCount(server.metrics.overhead) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("image job did not complete")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if got := testutil.ToFloat64(server.metrics.requests.WithLabelValues(
+		openAIImageModelName, ProviderOpenAI, provider.ID, resource.ID, "200", metricsLabelUnset, "false",
+	)); got != 1 {
+		t.Fatalf("expected the image request to be counted once, got %v", got)
+	}
+	if got := testutil.ToFloat64(server.metrics.routeAttempts.WithLabelValues(
+		openAIImageModelName, ProviderOpenAI, provider.ID, resource.ID, "200", metricsLabelUnset, "true",
+	)); got != 1 {
+		t.Fatalf("expected one invoked attempt series, got %v", got)
+	}
+	if got := testutil.CollectAndCount(server.metrics.attemptDuration); got != 1 {
+		t.Fatalf("expected one attempt duration series, got %d", got)
+	}
+	if got := testutil.CollectAndCount(server.metrics.overhead); got != 1 {
+		t.Fatalf("expected one overhead series, got %d", got)
+	}
+	if got := testutil.ToFloat64(server.metrics.routedRequests.WithLabelValues(
+		openAIImageModelName, ProviderOpenAI, "false",
+	)); got != 1 {
+		t.Fatalf("expected one routed request, got %v", got)
+	}
+}
+
+// A request admitted for routing that fails before any candidate attempt — route
+// selection, image claim, no-route handling — still records overhead: with no
+// attempts the sum is zero, so overhead is the full elapsed time. Rejected
+// requests keep the zero-duration convention and stay out of the histogram.
+func TestMetricsAdmittedZeroAttemptFailureRecordsOverhead(t *testing.T) {
+	m := NewGatewayMetrics(false)
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", ProviderID: "p", ResourceID: "r",
+		StatusCode: 503, ErrorCode: "no_route", Duration: 250 * time.Millisecond,
+	})
+
+	if got := testutil.CollectAndCount(m.attemptDuration); got != 0 {
+		t.Fatalf("a failed route selection must not create attempt_duration series, got %d", got)
+	}
+	if got := testutil.CollectAndCount(m.overhead); got != 1 {
+		t.Fatalf("an admitted zero-attempt failure must record overhead, got %d series", got)
+	}
+	handler := promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	handler.ServeHTTP(rec, req)
+	sumLine := findMetricLine(rec.Body.String(), "tokenhub_gateway_overhead_seconds_sum")
+	if sumLine == "" {
+		t.Fatal("missing overhead sum")
+	}
+	if got := metricLineValue(t, sumLine); got != 0.25 {
+		t.Fatalf("overhead must equal the full elapsed time when no attempt ran, got %v", got)
+	}
+}
+
+// routed_requests_total is the attempt-bearing denominator for the failover-depth
+// ratio: only requests that actually tried a candidate count, so a rejection burst
+// cannot make the ratio dip below 1 for perfectly healthy traffic.
+func TestMetricsRoutedRequestsCountsOnlyAttemptBearingRequests(t *testing.T) {
+	m := NewGatewayMetrics(false)
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", Duration: time.Second,
+		Attempts: []GatewayAttemptSample{{StatusCode: 200, Invoked: true}},
+	})
+	// Admitted but no candidate tried: routed traffic, not a routed request.
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", ProviderID: "p", StatusCode: 503, ErrorCode: "no_route", Duration: time.Second,
+	})
+	// Refused before routing: zero duration by convention.
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", ProviderID: "p", StatusCode: 429, ErrorCode: "quota_exceeded",
+	})
+
+	if got := testutil.ToFloat64(m.routedRequests.WithLabelValues("m", "t", "false")); got != 1 {
+		t.Fatalf("expected exactly one attempt-bearing request, got %v", got)
+	}
+	if got := testutil.ToFloat64(m.requests.WithLabelValues(
+		"m", "t", "p", metricsLabelUnset, "503", "no_route", "false",
+	)); got != 1 {
+		t.Fatalf("the admitted failure must still count in requests_total, got %v", got)
+	}
+}
+
+// The attempt window covers writing the stream to the client, so a slow reader
+// blocks the gateway inside the attempt and that backpressure must appear in
+// attempt_duration_seconds — not be misattributed to overhead. This is the
+// documented semantics of the metric, pinned by a regression test.
+func TestMetricsStreamAttemptDurationIncludesClientBackpressure(t *testing.T) {
+	const backpressure = 500 * time.Millisecond
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		// Enough payload to fill the socket buffers: the gateway blocks writing it
+		// while the client below stalls, which is the slow-writer scenario.
+		chunk := strings.Repeat("x", 4096)
+		for i := 0; i < 6000; i++ {
+			_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\""+chunk+"\"}}]}\n\n")
+			if i%32 == 0 {
+				flusher.Flush()
+			}
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer upstream.Close()
+
+	server, secret := newMetricsFailoverGateway(t, upstream.URL, upstream.URL)
+	gateway := httptest.NewServer(server.Handler())
+	defer gateway.Close()
+
+	payload, err := json.Marshal(map[string]any{
+		"model":    "metrics-failover-model",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+		"stream":   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPost, gateway.URL+"/v1/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer "+secret)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stall like a slow client: headers are in hand, but the body is not read for
+	// a while, so the gateway's stream copy blocks and the attempt window grows.
+	time.Sleep(backpressure)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	body := scrapeMetrics(t, server.Handler())
+	sumLine := findMetricLine(body, "tokenhub_gateway_attempt_duration_seconds_sum")
+	if sumLine == "" {
+		t.Fatalf("missing attempt duration sum:\n%s", body)
+	}
+	if got := metricLineValue(t, sumLine); got < backpressure.Seconds()*0.6 {
+		t.Fatalf("attempt duration must include the client backpressure, got %v", got)
+	}
+	overheadLine := findMetricLine(body, "tokenhub_gateway_overhead_seconds_sum")
+	if overheadLine == "" {
+		t.Fatalf("missing overhead sum:\n%s", body)
+	}
+	if got := metricLineValue(t, overheadLine); got >= backpressure.Seconds()*0.6 {
+		t.Fatalf("overhead must not include client backpressure, got %v", got)
 	}
 }

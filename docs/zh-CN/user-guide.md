@@ -23,9 +23,19 @@ Language: [English](../user-guide.md) | 简体中文 | [日本語](../ja/user-gu
 4. 选择一个模型 ID，调用 `POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses` 或 `POST /v1/embeddings`。
 5. 在 **用量统计** 和 **请求日志** 中查看请求、Token、成本和错误。
 
+控制台中的「接口文档」仍是面向上手的引导页。需要完整的交互式和机器可读网关合约时，请在私有部署中打开 `http://localhost:8080/docs`，或将 `http://localhost:8080/openapi.json` 导入 API 客户端、SDK 生成器、测试工具或企业 API 目录。文档页中输入的项目 Key 只保存在浏览器内存中。
+
+## 查看单个 API Key 的用量
+
+在 **Key 管理** 中点击某个 Key 的「用量」，即可打开独立用量页。页面展示请求数、成功率、延迟、详细 Token 分类、对外预估成本、模型与错误分布，以及可分页的请求明细。可以选择最近 7 天、30 天、90 天，或者最长 366 天的自定义 UTC 日期范围。
+
+额度区域会把当前 UTC 日/月计数与有效上限进行比较；有效上限由 Key、项目、团队和全局额度策略合并后得出。统计严格属于当前保存的 Key ID，轮换前后的 Key 只展示关联关系，不会合并用量。启用审计快照时，请求内容仍遵循现有的脱敏和截断规则，接口永远不会返回完整 API Key。
+
 ## 在演练场测试模型
 
 打开控制台中的「模型演练场」，无需编写 API 脚本即可测试可用的聊天模型。每次响应都会展示流式或缓冲模式、可测量时的 TTFT、输出吞吐、总耗时、完整上下文输入 Tokens、输出 Tokens、估算成本、本地完成时间和 Request ID。展开响应可查看实际响应详情；只有拥有路由读取权限的角色才能看到 Provider 和路由内部信息。
+
+只有所选模型的 `input_modalities` 包含 `image` 时，演练场才会开放图片上传；多模态模型需要在模型目录中配置该字段。演练场支持 JPEG、PNG 和 WebP 图片，每条消息最多上传 4 张、单张最大 5 MiB，当前会话中的图片总大小最多为 12 MiB。导出的会话会保留图片名称、媒体类型和大小等上下文信息，但不会包含图片内容。
 
 会话默认是临时的，只保留在当前页面；需要留档时请使用「导出演练」。点击「停止」会保留部分输出；「重跑」会从该轮生成新候选并移除后续轮次。切换模型默认新建会话，只有显式选择后才会沿用原上下文。上游不支持流式时，页面会使用缓冲模式，并把 TTFT 标为不适用。
 
@@ -149,10 +159,11 @@ Anthropic 与 Gemini 要求在多轮工具调用的下一轮中，原样回传�
 | --- | --- |
 | `message.reasoning_content` | Anthropic `thinking` 文本、Gemini thought 片段、Codex 推理摘要 |
 | `message.reasoning_signature` | Anthropic `thinking.signature`、Codex 加密推理内容 |
+| `message.reasoning_details` | 与工具调用 ID 绑定的 Codex 加密推理内容 |
 | `message.redacted_reasoning_content` | Anthropic `redacted_thinking.data` |
 | `message.tool_calls[].thought_signature` | Gemini `thoughtSignature` |
 
-在后续请求的 assistant 消息中回传这些字段即可保持推理连续性。忽略这些字段的客户端同样可用：TokenHub 会省略推理块，而不会回传供应商将拒绝的签名。签名带有签发供应商的标记，绝不会被回传给其他供应商。
+在后续请求的 assistant 消息中回传这些字段即可保持推理连续性。对于 `reasoning_details`，必须完整保留条目及其 `id`；只有该 ID 与同一 assistant 消息中的工具调用匹配时，TokenHub 才会接受。忽略这些字段的客户端同样可用：TokenHub 会省略推理块，而不会回传供应商将拒绝的签名。签名带有签发供应商的标记，绝不会被回传给其他供应商。
 
 ## Anthropic Messages 与 Claude Code
 
@@ -175,6 +186,8 @@ curl --request POST \
 
 原生 Anthropic 路由保留 Anthropic 内容块与 beta Header。OpenAI 兼容路由转换文本、图片、客户端工具、工具结果、并行工具调用和流式事件。Anthropic 服务端工具无法转换到 OpenAI 兼容 Provider 时，接口返回 `400 unsupported_tool`。
 
+OpenAI 兼容路由可通过 Provider 和 Provider Resource 的 `options` 适配 Claude 推理参数。`reasoning_effort_map` 是类似 `{"minimal":"low","xhigh":"max"}` 的 JSON 对象；`reasoning_effort_values` 是逗号分隔的允许值；`reasoning_effort_unsupported` 可设为 `omit`（默认）、`reject`，或显式启用的 `passthrough`；`reasoning_budget_map` 按最大 Token 数及可选的 `*` 兜底值映射推理等级，例如 `{"2048":"low","8192":"medium","*":"max"}`。Provider Resource 配置覆盖 Provider 配置。TokenHub 将 `thinking.type=disabled` 转为 `none`；`adaptive` 在没有显式 effort 时使用上游默认值；`enabled` 根据 `budget_tokens` 映射。显式 `output_config.effort` 的优先级高于顶层 `effort` 和预算推导值。仅当上游支持在后续 assistant 消息中接收自身的 `reasoning_content` 时，才设置 `preserve_reasoning_content=true`。OpenAI 兼容上游返回的 `reasoning_content` 会按合法顺序转换为 Claude 的 `thinking` / `thinking_delta` 块，并附带 TokenHub 回放签名。
+
 路由到 OpenAI Codex Subscription 账号的模型也使用同一个 Messages 接口：TokenHub 将 Messages 直接转换为 Responses 协议，再把结果转换回 Anthropic 事件。因此 Claude Code 可以直接连接 TokenHub，不需要 CC-Switch 或其他本地协议代理。Codex 签发的推理签名会跨工具调用轮次传递，同一个 Claude Code 会话会保持绑定到同一个健康订阅账号。
 
 在 Codex 路由的 Messages 请求中，由于订阅上游不支持对应请求字段，`max_tokens`、`temperature`、`top_p`、`stop_sequences` 和 Anthropic 结构化输出格式无法被强制执行。
@@ -193,6 +206,27 @@ claude
 
 `ANTHROPIC_AUTH_TOKEN` 通过 `Authorization: Bearer` 发送 TokenHub Key。没有 Authorization Header 时，也可通过 `ANTHROPIC_API_KEY` 使用 `x-api-key`。Token 估算会检查 Key 和模型权限，但不生成计费推理记录。
 
+## 持久化后台 Responses
+
+在 `POST /v1/responses` 中设置 `background: true`，即可持久化 Responses 请求并立即获得由网关生成的稳定 Response ID：
+
+```bash
+curl http://localhost:8080/v1/responses \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-5.4","input":"Summarize the report","background":true}'
+```
+
+通过 `GET /v1/responses/{id}` 查询状态或最终结果，通过 `POST /v1/responses/{id}/cancel` 请求取消。查询与取消必须使用原始任务对应的项目、API Key、归属用户，并且该 Key 当前仍有模型访问权限；任一条件不匹配均返回 `404`。暂不支持可恢复的后台 SSE，因此同时设置 `background: true` 与 `stream: true` 会被拒绝。
+
+对外状态包括 `queued`、`in_progress`、`completed`、`failed` 和 `cancelled`。Worker 会在上游调用前后应用配额、预算、并发限制、路由、Guardrail、缓存亲和、成本核算、请求日志和链路追踪。取消与完成竞态只有一个持久化结果；如果上游已经产生用量，仍会且只会结算一次。
+
+排队中的任务可跨服务重启继续执行。租约在准入前丢失的任务会安全地重新排队；准入后丢失 Worker 的任务不会盲目重放，而是以 `response_execution_lost` 明确失败，因为上游可能已经收到请求。PostgreSQL 多实例通过带隔离代次的租约和行锁协调领取。SQLite 支持重启恢复，但仍限定为单后端部署，不得让多个后端实例共享同一个 SQLite 文件。
+
+请求信封与结果使用 `TOKENHUB_SECRET_KEY` 静态加密；认证 Header 不会落库，只保留有长度限制的协议 Header 白名单。后台请求与响应正文不会复制到明文请求载荷审计记录或链路追踪导出中，路由尝试记录也会移除上游错误文本。加解密失败时流程会关闭并返回错误，不会回退到明文。终态载荷保留 `TOKENHUB_RESPONSE_RESULT_TTL_SECONDS`，到期后会擦除请求与结果密文，后续查询返回 `404`。返回的 ID 是 TokenHub 查询 ID，不会转换为上游 `previous_response_id`。
+
+启用指标后，Prometheus 会提供 `tokenhub_gateway_response_jobs_queued`、`tokenhub_gateway_response_job_queue_wait_seconds`、`tokenhub_gateway_response_job_execution_seconds`、`tokenhub_gateway_response_jobs_total` 和 `tokenhub_gateway_response_job_recoveries_total`。Worker 并发数、轮询间隔、超时、租约、保留时间与队列上限见[部署文档](deployment.md#后端环境变量)。
+
 ## Gemini CLI 使用 Codex 订阅 GPT
 
 Gemini CLI 可以直接连接 TokenHub 的 Gemini 原生 `v1beta` 接口，并使用路由到 OpenAI Codex Subscription 账号的 GPT 模型。将 `GEMINI_API_KEY` 设置为 TokenHub 项目 Key，将 `GOOGLE_GEMINI_BASE_URL` 设置为不含 `/v1beta` 的 TokenHub Host，并选择对应 GPT 模型即可，不需要 CCswitch。隔离启动、项目级配置、支持端点、验证步骤和限制见 [Gemini CLI 通过 TokenHub 使用 Codex 订阅 GPT](gemini-cli-codex-subscription.md)。
@@ -205,9 +239,9 @@ Gemini CLI 可以直接连接 TokenHub 的 Gemini 原生 `v1beta` 接口，并�
 
 生图任务默认最多执行 5 分钟，可通过 `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` 调整。
 
-TokenHub 根据账号的真实调用结果记录生图能力。已确认支持的账号会被优先选择；返回 `403` 的账号会被临时跳过；尚未检测的账号仍可在首次使用时完成检测。经过 `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（默认 24 小时）后，不支持的账号会重新进入模型发现和路由范围，由下一次真实请求低频复测。TokenHub 不会为了探测恢复而在后台自动生成图片。
+管理员在 **Provider 渠道** 中配置这项能力：打开 OpenAI Codex Provider，在 **模型** 页签勾选 **Codex 订阅生图**。选择一个已启用账号后，TokenHub 会先提示额度消耗，再向该真实账号发送一次低质量 `gpt-image-2` 请求。只有收到非空且有效的图片，系统才会把账号记录为“支持生图”，并创建或重新启用 Provider 线路。返回 `403` 会记录为“不支持生图”；凭据过期时需要重新授权；限流、超时和上游临时故障不会覆盖之前的能力结果，可在弹窗中重试。测试会消耗少量订阅额度，TokenHub 不会在后台自动执行这项测试。
 
-至少一个健康的 Codex 接入账号已确认支持生图或进入低频复测窗口时，`codex-gpt-image-2` 会出现在 `GET /v1/models` 中。它是订阅制虚拟模型，不需要配置普通 Provider 模型路由。除上述 Codex 客户端兼容映射外，独立的 `gpt-image-2` 模型使用 OpenAI API Provider，不会消耗 Codex 订阅额度。
+这个勾选项会以幂等方式（重复操作不会创建重复数据）管理一条从 `codex-gpt-image-2` 到 OpenAI Codex Provider、上游模型为 `gpt-image-2` 的启用线路。升级时，系统会为之前已经确认支持生图的启用账号做一次性线路补齐。取消勾选会停用匹配线路，但保留账号能力测试结果；服务启动时不会重新启用管理员明确停用的线路，也不会在迁移标记完成后重新创建被管理员删除的线路，管理员仍可主动重新测试并启用。优先级、权重、项目范围、指定资源和资源分组等高级控制仍可在路由策略中编辑。有启用线路后，已确认支持的账号会被优先选择，返回 `403` 的账号会被临时跳过；经过 `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS`（默认 24 小时）后，该账号可由下一次真实请求低频复测。首次测试失败且没有创建线路时，需要管理员手动重试。只有存在可用线路和账号时，`codex-gpt-image-2` 才会出现在 `GET /v1/models` 中。除上述 Codex 客户端兼容映射外，独立的 `gpt-image-2` 模型使用 OpenAI API Provider，不会消耗 Codex 订阅额度。
 
 完整的 curl、异步轮询、参考图、Node.js 和 Python 测试流程见 [Codex 生图 API 调用与测试指南](codex-image-generation-api.md)。
 

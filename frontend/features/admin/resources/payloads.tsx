@@ -2,13 +2,23 @@ import { appRole } from "../core/navigation";
 import { clearSavedSession } from "../core/session";
 import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderCatalogModel, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
 import { inferModelCategoryText, normalizeNotificationChannelType, notificationChannelDescription, notificationChannelLabel, notificationChannelURLPlaceholder } from "../domain/catalog";
+import { applyCodexFingerprintOption, normalizeCodexFingerprintMode } from "../domain/codex-fingerprint";
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
+import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
+import { providerAnthropicAuthType } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
+import { modelMetadataPayload } from "../domain/model-display-name";
+import { defaultDisplayName } from "../domain/form-defaults";
+import { configuredPriceEntered } from "../domain/configured-pricing";
+import { providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
+import { providerEgressTestPayload } from "../domain/provider-egress";
+import { providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
+import { modelPricingPeriodsInvalidPeriodError, modelPricingPeriodsJSONError, modelPricingPeriodsObjectArrayError, parseModelPricingPeriods } from "../domain/model-pricing-periods";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
-import { projectQuotaFields, type ProjectQuotaValues } from "../views/crud-projects";
+import { projectQuotaFields, type ProjectQuotaValues } from "../domain/project-quota";
 
 export function providerPayload(values: Record<string, string>) {
   return {
@@ -17,12 +27,17 @@ export function providerPayload(values: Record<string, string>) {
     type: values.type,
     base_url: values.base_url,
     api_key: values.api_key,
+    clear_api_key: values.clear_api_key === "true",
     status: values.status || "active",
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 10),
-		catalog_id: values.catalog_id,
-		model_category: values.model_category,
-		selected_models: splitList(values.selected_models),
+    ...providerHeadersPayload(values.custom_headers),
+    anthropic_auth_type: providerAnthropicAuthType(values),
+    claude_code_attribution_policy: values.claude_code_attribution_policy || defaultProviderClaudeCodeAttributionPolicy(values.type, values.catalog_id),
+    catalog_id: values.catalog_id,
+    model_category: values.model_category,
+    options: providerReasoningOptions(values),
+    selected_models: splitList(values.selected_models),
     custom_models: parseProviderCatalogModels(values.custom_models),
   };
 }
@@ -78,6 +93,7 @@ export function providerResourcePayload(values: Record<string, string>) {
     rate_limit_rpm: numberOr(values.rate_limit_rpm, 0),
     token_limit_tpm: numberOr(values.token_limit_tpm, 0),
     max_concurrency: numberOr(values.max_concurrency, 0),
+    ...providerHeadersPayload(values.custom_headers),
     credentials,
     options: providerResourceOptions(values),
   };
@@ -95,8 +111,7 @@ export function providerResourceUpdatePayload(values: Record<string, string>) {
 }
 
 export function providerResourceOptions(values: Record<string, string>) {
-  if (values.resource_type !== "openai_subscription") return {};
-  return {
+  const accountOptions: Record<string, string> = values.resource_type === "openai_subscription" ? {
     credential_source: "openai_subscription",
     auth_type: values.auth_type || "oauth",
     account_email: values.account_email,
@@ -105,10 +120,17 @@ export function providerResourceOptions(values: Record<string, string>) {
     plan_type: values.plan_type,
     token_expires_at: values.expires_at,
     scopes: values.scopes,
-  };
+  } : {};
+  const options = providerReasoningOptions(values, accountOptions);
+  if (values.claude_code_attribution_policy === "preserve" || values.claude_code_attribution_policy === "strip") {
+    options.claude_code_attribution_policy = values.claude_code_attribution_policy;
+  } else {
+    delete options.claude_code_attribution_policy;
+  }
+  return applyCodexFingerprintOption(options, values);
 }
 
-export function providerResourceToForm(item: ProviderResource) {
+export function providerResourceToForm(item: ProviderResource, providerOptions?: Record<string, string>) {
   const summary = item.credential_summary ?? {};
   return {
     provider_id: item.provider_id,
@@ -133,14 +155,41 @@ export function providerResourceToForm(item: ProviderResource) {
     rate_limit_rpm: String(item.rate_limit_rpm ?? ""),
     token_limit_tpm: String(item.token_limit_tpm ?? ""),
     max_concurrency: String(item.max_concurrency ?? ""),
+    codex_fingerprint_mode: normalizeCodexFingerprintMode(item.options?.codex_fingerprint_mode),
+    claude_code_attribution_policy: item.options?.claude_code_attribution_policy ?? "inherit",
     region: item.region ?? "",
     environment: item.environment ?? "",
     status: item.status,
     healthy: String(item.healthy),
+    custom_headers: providerHeadersFormValue(item.headers, item.sensitive_headers),
+    ...providerReasoningOverrideFormValues(item.options, providerOptions),
   };
 }
 
-export function modelPayload(values: Record<string, string>) {
+export function providerResourceAttributionPolicyPayload(resource: ProviderResource, policy: string) {
+  const options = { ...(resource.options ?? {}) };
+  if (policy === "inherit") delete options.claude_code_attribution_policy;
+  else options.claude_code_attribution_policy = policy;
+  return {
+    provider_id: resource.provider_id,
+    name: resource.name,
+    resource_type: resource.resource_type,
+    base_url: resource.base_url ?? "",
+    group: resource.group ?? "",
+    region: resource.region ?? "",
+    environment: resource.environment ?? "",
+    status: resource.status,
+    healthy: resource.healthy,
+    priority: resource.priority,
+    weight: resource.weight,
+    rate_limit_rpm: resource.rate_limit_rpm ?? 0,
+    token_limit_tpm: resource.token_limit_tpm ?? 0,
+    max_concurrency: resource.max_concurrency ?? 0,
+    options,
+  };
+}
+
+export function modelPayload(values: Record<string, string>, existingMetadata?: Record<string, string>) {
   const payload = numberPayload(
     {
       name: values.name,
@@ -149,20 +198,51 @@ export function modelPayload(values: Record<string, string>) {
       context_window: values.context_window,
       input_price_usd_per_1m: values.input_price_usd_per_1m,
       cache_read_price_usd_per_1m: values.cache_read_price_usd_per_1m,
+      cache_write_price_usd_per_1m: values.cache_write_price_usd_per_1m,
+      cache_write_5m_price_usd_per_1m: values.cache_write_5m_price_usd_per_1m,
+      cache_write_1h_price_usd_per_1m: values.cache_write_1h_price_usd_per_1m,
       output_price_usd_per_1m: values.output_price_usd_per_1m,
       embedding_price_usd_per_1m: values.embedding_price_usd_per_1m,
       status: values.status,
     },
-    ["context_window", "input_price_usd_per_1m", "cache_read_price_usd_per_1m", "output_price_usd_per_1m", "embedding_price_usd_per_1m"],
+    [
+      "context_window",
+      "input_price_usd_per_1m",
+      "cache_read_price_usd_per_1m",
+      "cache_write_price_usd_per_1m",
+      "cache_write_5m_price_usd_per_1m",
+      "cache_write_1h_price_usd_per_1m",
+      "output_price_usd_per_1m",
+      "embedding_price_usd_per_1m",
+    ],
   );
   if (values.modality === "embedding") {
     payload.cache_read_price_usd_per_1m = 0;
+    payload.cache_write_price_usd_per_1m = 0;
+    payload.cache_write_price_configured = false;
+    payload.cache_write_5m_price_usd_per_1m = 0;
+    payload.cache_write_5m_price_configured = false;
+    payload.cache_write_1h_price_usd_per_1m = 0;
+    payload.cache_write_1h_price_configured = false;
+  } else {
+    payload.cache_write_price_configured = configuredPriceEntered(values.cache_write_price_usd_per_1m);
+    payload.cache_write_5m_price_configured = configuredPriceEntered(values.cache_write_5m_price_usd_per_1m);
+    payload.cache_write_1h_price_configured = configuredPriceEntered(values.cache_write_1h_price_usd_per_1m);
   }
   payload.category = values.category || inferModelCategoryText(values.name || values.family || "");
   payload.capabilities = splitList(values.capabilities);
   payload.supported_parameters = splitList(values.supported_parameters);
   payload.input_modalities = splitList(values.input_modalities);
   payload.output_modalities = splitList(values.output_modalities);
+  try {
+    payload.pricing_periods = parseModelPricingPeriods(values.pricing_periods);
+  } catch (err) {
+    if (err instanceof Error && err.message === modelPricingPeriodsJSONError) throw new Error(tx("分时价格配置必须是 JSON 数组"));
+    if (err instanceof Error && err.message === modelPricingPeriodsObjectArrayError) throw new Error(tx("分时价格配置必须是 JSON 对象数组"));
+    if (err instanceof Error && err.message === modelPricingPeriodsInvalidPeriodError) throw new Error(tx("分时价格配置包含无效时间、时区或生效日期"));
+    throw err;
+  }
+  Object.assign(payload, modelMetadataPayload(existingMetadata, values.display_name ?? ""));
   const routes = initialModelRoutes(values.initial_provider_models);
   if (routes.length > 0) payload.routes = routes;
   return payload;
@@ -435,7 +515,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "owner") values[field.key] = firstActiveUser(data)?.id ?? "";
     if (field.key === "cost_center") values[field.key] = firstCostCenterCode(data);
     if (field.key === "role_key") values[field.key] = "user";
-    if (field.key === "display_name") values[field.key] = "普通用户";
+    if (field.key === "display_name") values[field.key] = defaultDisplayName(config.view);
     if (field.key === "data_scope") values[field.key] = "self";
     if (field.key === "permissions") values[field.key] = "overview:read, project:read";
     if (field.key === "menu_scopes") values[field.key] = "overview, projects";
@@ -505,10 +585,19 @@ export function notificationChannelPayload(values: Record<string, string>, exist
   const whatsappAccessToken = values.access_token || stringifyValue(existing?.fields?.access_token || existing?.fields?.whatsapp_access_token || existing?.fields?.secret);
   let fields: Record<string, unknown>;
   if (type === "email") {
+    // "auto" is the legacy/opportunistic STARTTLS mode: the field is left unset
+    // so the backend keeps the previous behavior. "starttls" persists an
+    // explicit fail-closed mode, and "ssl" persists direct TLS. New channels
+    // default to "starttls" (explicit, safe) via notificationChannelDefaults.
+    let smtpEncryption: string | undefined;
+    if (values.smtp_encryption && values.smtp_encryption !== "auto") {
+      smtpEncryption = values.smtp_encryption;
+    }
     fields = {
       type,
       smtp_host: values.smtp_host,
       smtp_port: numberOr(values.smtp_port, 587),
+      ...(smtpEncryption === undefined ? {} : { smtp_encryption: smtpEncryption }),
       smtp_username: values.smtp_username,
       smtp_password: smtpPassword,
       smtp_from: values.smtp_from,
@@ -562,6 +651,7 @@ export function notificationChannelDefaults(type: string) {
     whatsapp_api_version: "v20.0",
     smtp_host: "smtp.example.com",
     smtp_port: "587",
+    smtp_encryption: "starttls",
     smtp_username: "tokenhub@example.com",
     smtp_password: "",
     smtp_from: "tokenhub@example.com",
@@ -650,16 +740,39 @@ export async function importUsersFromCSVContent(ctx: ApiContext, content: string
 }
 
 export async function readAdminError(resp: Response, fallback: string) {
-  if (resp.status === 403) {
-    return permissionDeniedMessage(fallback);
-  }
   const body = await resp.text().catch(() => "");
-  if (!body) return `${fallback} (${resp.status})`;
+  if (!body) return resp.status === 403 ? permissionDeniedMessage(fallback) : `${fallback} (${resp.status})`;
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string }; message?: string };
+    const localized = localizedAdminErrorCode(parsed.error?.code);
+    if (localized) return localized;
+    if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("OpenAI/Codex 账号会话已失效，请重新进行账号授权。");
+    if (parsed.error?.code === "codex_image_forbidden") return tx("所选 Codex 账号不支持生图，无法创建图片。可更换账号后重试。");
+    if (parsed.error?.code === "codex_rate_limited") return tx("Codex 生图测试被限流，请稍后重试；本次结果不会标记为不支持。");
+    if (["codex_upstream_unavailable", "codex_upstream_timeout", "codex_image_request_failed", "codex_image_response_failed"].includes(parsed.error?.code ?? "")) {
+      return tx("Codex 生图上游暂时不可用，请稍后重试；本次结果不会标记为不支持。");
+    }
+    if (resp.status === 403) return permissionDeniedMessage(fallback);
     return parsed.error?.message || parsed.message || `${fallback} (${resp.status})`;
   } catch {
     return body.length > 180 ? `${body.slice(0, 180)}...` : body;
+  }
+}
+
+function localizedAdminErrorCode(code?: string) {
+  switch (code) {
+    case "provider_synthetic_dns_cidrs_required":
+      return tx("开启时至少填写一个 Synthetic DNS CIDR。");
+    case "provider_synthetic_dns_cidrs_invalid":
+      return tx("Synthetic DNS CIDR 格式无效，请每行填写一个 CIDR。");
+    case "provider_synthetic_dns_cidrs_too_broad":
+      return tx("Synthetic DNS CIDR 范围过宽，请缩小后重试。");
+    case "provider_synthetic_dns_cidrs_not_allowed":
+      return tx("该 Synthetic DNS CIDR 与受保护地址范围重叠，无法保存。");
+    case "provider_synthetic_dns_private_cidr_requires_unsafe_mode":
+      return tx("该 Synthetic DNS CIDR 属于私网或 ULA；如确认代理使用此网段，请先开启高风险私网信任。");
+    default:
+      return "";
   }
 }
 
@@ -675,6 +788,15 @@ export async function adminMutate(ctx: ApiContext, path: string, method: "POST" 
       window.dispatchEvent(new CustomEvent("tokenhub-issued-key", { detail: `已提交审批：${data.approval?.id ?? ""}` }));
     }
   }
+}
+
+export async function testProviderEgress(ctx: ApiContext, providerID: string, values: Record<string, string>) {
+  const resp = await adminFetch(ctx, "/api/admin/provider-egress/test", {
+    method: "POST",
+    body: JSON.stringify(providerEgressTestPayload(providerID, values)),
+  });
+  if (!resp.ok) throw new Error(await readAdminError(resp, tx("代理连接测试失败")));
+  return await resp.json() as { ok: boolean; latency_ms?: number; target_host?: string };
 }
 
 export async function testProviderAvailability(ctx: ApiContext, provider: { id: string }) {
@@ -791,7 +913,6 @@ export function resourceKindLabel(kind: string) {
     reports: "导出报表",
     "notification-channels": "通知渠道",
     monitors: "健康检测",
-    proxies: "代理出口",
     announcements: "公告通知",
     "security-policies": "安全策略",
   };
