@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -240,6 +241,122 @@ func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext
 		}
 	}
 	return nil
+}
+
+func (s *Server) runGatewayGuardrailPreHooks(ctx context.Context, call CallContext, payload any, targets []guardrailTextTarget, apply func(json.RawMessage) error) error {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageGuardrailPre)) == 0 {
+		return nil
+	}
+	body, ok := marshalGatewayHookData(payload)
+	if !ok {
+		return NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	segments := gatewayTextSegmentsFromGuardrailTargets(targets)
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:        "v1",
+			Protocol:       "gateway",
+			Operation:      "guardrail_pre",
+			Model:          call.Model.Name,
+			RequestBody:    body,
+			NormalizedText: segments,
+		},
+		Data: gatewayHookCallData(call, body),
+	}
+	if encoded, ok := marshalGatewayHookData(segments); ok {
+		input.Data[pluginmeta.DataNormalizedText] = encoded
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageGuardrailPre, input)
+	if err != nil {
+		return gatewayHookHTTPError(pluginmeta.StageGuardrailPre, err)
+	}
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataRequestBody]
+		if !ok {
+			continue
+		}
+		if err := apply(patch.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) runGatewayChatGuardrailPreHooks(ctx context.Context, call CallContext, req *ChatCompletionRequest) error {
+	return s.runGatewayGuardrailPreHooks(ctx, call, *req, chatGuardrailTargets(req), func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ChatCompletionRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		*req = patched
+		return nil
+	})
+}
+
+func (s *Server) runGatewayResponsesGuardrailPreHooks(ctx context.Context, call CallContext, req *ResponsesRequest) error {
+	return s.runGatewayGuardrailPreHooks(ctx, call, *req, responsesGuardrailTargets(req), func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ResponsesRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		*req = patched
+		return nil
+	})
+}
+
+func (s *Server) runGatewayCompactGuardrailPreHooks(ctx context.Context, call CallContext, request map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	body := cloneRawJSON(request, 0)
+	err := s.runGatewayGuardrailPreHooks(ctx, call, body, responsesCompactGuardrailTargets(body), func(data json.RawMessage) error {
+		originalModel := compactRequestModel(body)
+		var patched map[string]json.RawMessage
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if patchedModel := compactRequestModel(patched); patchedModel != originalModel {
+			return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+		}
+		body = cloneRawJSON(patched, 0)
+		return nil
+	})
+	return body, err
+}
+
+func (s *Server) runGatewayAnthropicGuardrailPreHooks(ctx context.Context, call CallContext, req *anthropicMessagesRequest) error {
+	return s.runGatewayGuardrailPreHooks(ctx, call, req.Raw, anthropicGuardrailTargets(req), func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched map[string]any
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		model, _ := patched["model"].(string)
+		if strings.TrimSpace(model) != originalModel {
+			return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+		}
+		stream, _ := patched["stream"].(bool)
+		if stream != originalStream {
+			return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested stream mode")
+		}
+		messages, ok := patched["messages"].([]any)
+		if !ok || len(messages) == 0 {
+			return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid request patch")
+		}
+		req.Raw = patched
+		req.Messages = messages
+		req.MaxTokens = int(int64FromAny(patched["max_tokens"]))
+		return nil
+	})
 }
 
 func (s *Server) runGatewayContextOptimizeHooks(ctx context.Context, call CallContext, payload any, apply func(json.RawMessage) error) error {
@@ -671,6 +788,28 @@ func validateGatewayHookRequestInvariant(originalModel string, originalStream bo
 		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested stream mode")
 	}
 	return nil
+}
+
+func gatewayTextSegmentsFromGuardrailTargets(targets []guardrailTextTarget) []pluginmeta.TextSegment {
+	segments := make([]pluginmeta.TextSegment, 0, len(targets))
+	for _, target := range targets {
+		if target.fragment.ID == "" && target.fragment.Text == "" {
+			continue
+		}
+		segments = append(segments, pluginmeta.TextSegment{
+			ID:   target.fragment.ID,
+			Text: target.fragment.Text,
+		})
+	}
+	return segments
+}
+
+func compactRequestModel(request map[string]json.RawMessage) string {
+	var model string
+	if request != nil {
+		_ = json.Unmarshal(request["model"], &model)
+	}
+	return strings.TrimSpace(model)
 }
 
 func gatewayRouteCandidateViews(routes []RouteSelection) []gatewayRouteCandidateView {

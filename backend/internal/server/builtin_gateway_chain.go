@@ -55,7 +55,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			HookID:        "guardrail_pre",
 			Stage:         pluginmeta.StageGuardrailPre,
 			Priority:      100,
-			Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProjectMetadata, pluginmeta.DataNormalizedText, pluginmeta.DataRequestBody},
+			Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAuthContext, pluginmeta.DataProjectMetadata, pluginmeta.DataAPIKeyMetadata, pluginmeta.DataNormalizedText, pluginmeta.DataRequestBody},
 			Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataAudit},
 			FailurePolicy: pluginmeta.FailurePolicyFailClosed,
 			TimeoutMillis: 0,

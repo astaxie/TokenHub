@@ -41,6 +41,11 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
+	if err := s.runGatewayAnthropicGuardrailPreHooks(r.Context(), call, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
 	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, anthropicGuardrailTargets(&req))
 	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req.Raw)
 	if err != nil {

@@ -60,6 +60,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	if err := s.runGatewayChatGuardrailPreHooks(r.Context(), call, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeError(w, r, err)
+		return
+	}
 	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, chatGuardrailTargets(&req))
 	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req)
 	if err != nil {
@@ -256,6 +261,11 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	if err := s.runGatewayResponsesGuardrailPreHooks(r.Context(), call, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeError(w, r, err)
+		return
+	}
 	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, responsesGuardrailTargets(&req))
 	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req)
 	if err != nil {
@@ -373,85 +383,6 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
-}
-
-func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) {
-	project, key, err := s.authenticate(r)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-	var request map[string]json.RawMessage
-	if err := s.decodeJSONLimit(w, r, &request, s.config.MaxMultimodalRequestBytes); err != nil {
-		writeError(w, r, err)
-		return
-	}
-	var model string
-	if value, ok := request["model"]; ok {
-		_ = json.Unmarshal(value, &model)
-	}
-	model = strings.TrimSpace(model)
-	if model == "" {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "missing_model", "model is required"))
-		return
-	}
-	admittedAt := time.Now().UTC()
-	call, err := s.admitRoutedCall(w, r, project, key, model, false, requestTokenReservation(request))
-	if err != nil {
-		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, false, err, guardrailAuditSummary{Model: model})
-		w.Header().Set("x-request-id", requestID)
-		writeError(w, r, err)
-		return
-	}
-	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, responsesCompactGuardrailTargets(request))
-	auditPayload := guardrailRequestAuditPayload(model, decision, request)
-	if err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
-	if !ok {
-		return
-	}
-	affinityRequest := ResponsesRequest{Model: model, raw: request}
-	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, affinityRequest)
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
-		routed.Affinity = affinity
-		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
-	}
-	response, route, usage, attempts, err := s.executeRoutedCompact(r, routed, request)
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	s.store.MarkRouteUsed(route.Route.ID)
-	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	response, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, response)
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, response, usage)
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
-	w.Header().Set("x-request-id", routed.Call.RequestID)
-	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
-	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
-	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
@@ -591,6 +522,20 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	call := s.newPlaygroundCallContext(user, req.Model, startedAt)
 	requestID := call.RequestID
 	w.Header().Set("x-request-id", requestID)
+	if err := s.runGatewayChatGuardrailPreHooks(r.Context(), call, &req); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, requestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
 	decision, guardrailErr := s.evaluateOutboundGuardrails(r.Context(), guardrailProjectID, chatGuardrailTargets(&req))
 	requestAuditPayload := guardrailRequestAuditPayload(req.Model, decision, playgroundAuditRequest(req))
 	if guardrailErr != nil {
