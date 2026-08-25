@@ -14,6 +14,7 @@ export function PluginsView({ data }: { data: AppData }) {
   const uiPlugins = plugins.filter((plugin) => plugin.placements.includes("presentation") || plugin.kinds.includes("admin_ui") || plugin.kinds.includes("sim")).length;
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
+  const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
 
   return (
     <div className="plugins-view">
@@ -141,7 +142,9 @@ export function PluginsView({ data }: { data: AppData }) {
                       </td>
                       <td>{contribution.plugin_id}</td>
                       <td>{contribution.provider_types?.join(", ") || "-"}</td>
-                      <td>{contribution.action || "-"}</td>
+                      <td>
+                        <ContributionAction action={contribution.action} registered={pluginActionKeys.has(pluginActionKey(contribution.plugin_id, contribution.action))} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -188,6 +191,20 @@ export function PluginsView({ data }: { data: AppData }) {
       </section>
     </div>
   );
+}
+
+function ContributionAction({ action, registered }: { action?: string; registered: boolean }) {
+  if (!action) return <>-</>;
+  return (
+    <div className="stacked-cell">
+      <strong>{action}</strong>
+      <span>{registered ? tx("动作已注册") : tx("动作未注册")}</span>
+    </div>
+  );
+}
+
+function pluginActionKey(pluginID: string, actionID?: string) {
+  return `${pluginID}:${actionID ?? ""}`;
 }
 
 function PluginMetric({ icon, label, value }: { icon: ReactNode; label: ReactNode; value: number }) {
