@@ -140,6 +140,116 @@ func TestPrivacyPreHookDenyReturnsForbidden(t *testing.T) {
 	}
 }
 
+func TestCacheLookupHookCanShortCircuitWithProviderResponse(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-cache",
+		HookID:        "lookup",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyReturnFallback,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Envelope.RequestBody) == 0 {
+			t.Fatal("request body was not available to cache lookup")
+		}
+		response, err := json.Marshal(map[string]any{"id": "cached_response"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		usage, err := json.Marshal(Usage{PromptTokens: 4, CompletionTokens: 5, TotalTokens: 9})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pluginmeta.GatewayHookResult{
+			Decision: pluginmeta.HookDecisionShortCircuit,
+			Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+				pluginmeta.DataProviderResponse: {Value: response},
+				pluginmeta.DataUsage:            {Value: usage},
+			},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register cache lookup handler: %v", err)
+	}
+
+	response, usage, hit, err := server.runGatewayCacheLookupHooks(context.Background(), gatewayPluginTestCall(), ChatCompletionRequest{Model: "gpt-test"})
+	if err != nil {
+		t.Fatalf("run cache lookup hook: %v", err)
+	}
+	if !hit {
+		t.Fatal("cache lookup did not report a hit")
+	}
+	body, ok := response.(map[string]any)
+	if !ok || body["id"] != "cached_response" {
+		t.Fatalf("cache response = %#v, want cached_response", response)
+	}
+	if usage.TotalTokens != 9 {
+		t.Fatalf("cache usage = %+v, want total tokens 9", usage)
+	}
+}
+
+func TestCacheLookupShortCircuitRequiresProviderResponse(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-cache",
+		HookID:        "empty",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      2000,
+		FailurePolicy: pluginmeta.FailurePolicyReturnFallback,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionShortCircuit}, nil
+	})); err != nil {
+		t.Fatalf("register cache lookup handler: %v", err)
+	}
+
+	_, _, hit, err := server.runGatewayCacheLookupHooks(context.Background(), gatewayPluginTestCall(), ChatCompletionRequest{Model: "gpt-test"})
+	if hit {
+		t.Fatal("invalid cache lookup reported a hit")
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusBadGateway || httpErr.Code != "gateway_hook_cache_hit_invalid" {
+		t.Fatalf("cache lookup error = %d/%s, want 502/gateway_hook_cache_hit_invalid", httpErr.Status, httpErr.Code)
+	}
+}
+
+func TestCacheWriteHookReceivesRequestResponseAndUsage(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-cache",
+		HookID:        "write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody, pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache write hook: %v", err)
+	}
+	var sawRequest, sawResponse, sawUsage bool
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		sawRequest = len(input.Data[pluginmeta.DataRequestBody]) > 0
+		sawResponse = len(input.Data[pluginmeta.DataProviderResponse]) > 0
+		sawUsage = len(input.Data[pluginmeta.DataUsage]) > 0
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register cache write handler: %v", err)
+	}
+
+	server.runGatewayCacheWriteHooks(context.Background(), gatewayPluginTestCall(), ChatCompletionRequest{Model: "gpt-test"}, map[string]any{"id": "provider_response"}, Usage{TotalTokens: 7})
+	if !sawRequest || !sawResponse || !sawUsage {
+		t.Fatalf("cache write saw request=%v response=%v usage=%v, want all true", sawRequest, sawResponse, sawUsage)
+	}
+}
+
 func TestRouteRankHookCanReorderCoreApprovedCandidates(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{

@@ -28,6 +28,84 @@ type gatewayRouteOrderPatch struct {
 	RouteIDs []string `json:"route_ids"`
 }
 
+func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContext, payload any) (any, Usage, bool, error) {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageCacheLookup)) == 0 {
+		return nil, Usage{}, false, nil
+	}
+	body, ok := marshalGatewayHookData(payload)
+	if !ok {
+		return nil, Usage{}, false, NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:     "v1",
+			Protocol:    "gateway",
+			Operation:   "cache_lookup",
+			Model:       call.Model.Name,
+			RequestBody: body,
+		},
+		Data: gatewayHookCallData(call, body),
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageCacheLookup, input)
+	if err != nil {
+		return nil, Usage{}, false, gatewayHookHTTPError(pluginmeta.StageCacheLookup, err)
+	}
+	if report.TerminalDecision != pluginmeta.HookDecisionShortCircuit {
+		return nil, Usage{}, false, nil
+	}
+	result := report.Results[len(report.Results)-1]
+	responsePatch, ok := result.Writes[pluginmeta.DataProviderResponse]
+	if !ok {
+		return nil, Usage{}, false, NewHTTPError(http.StatusBadGateway, "gateway_hook_cache_hit_invalid", "Gateway cache plugin did not return a response")
+	}
+	var response any
+	if err := decodeGatewayHookPayload(responsePatch.Value, &response, "gateway_hook_cache_hit_invalid", "Gateway cache plugin returned an invalid response"); err != nil {
+		return nil, Usage{}, false, err
+	}
+	var usage Usage
+	if usagePatch, ok := result.Writes[pluginmeta.DataUsage]; ok {
+		if err := decodeGatewayHookPayload(usagePatch.Value, &usage, "gateway_hook_cache_hit_invalid", "Gateway cache plugin returned invalid usage"); err != nil {
+			return nil, Usage{}, false, err
+		}
+	}
+	return response, usage, true, nil
+}
+
+func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext, payload any, response any, usage Usage) {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageCacheWrite)) == 0 {
+		return
+	}
+	body, ok := marshalGatewayHookData(payload)
+	if !ok {
+		log.Printf("[tokenhub] gateway cache_write hooks skipped for request %s: input could not be encoded", call.RequestID)
+		return
+	}
+	responseBody, ok := marshalGatewayHookData(response)
+	if !ok {
+		log.Printf("[tokenhub] gateway cache_write hooks skipped for request %s: response could not be encoded", call.RequestID)
+		return
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:     "v1",
+			Protocol:    "gateway",
+			Operation:   "cache_write",
+			Model:       call.Model.Name,
+			RequestBody: body,
+		},
+		Data: gatewayHookCallData(call, body),
+	}
+	input.Data[pluginmeta.DataProviderResponse] = responseBody
+	if encodedUsage, ok := marshalGatewayHookData(usage); ok {
+		input.Data[pluginmeta.DataUsage] = encodedUsage
+	}
+	if _, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageCacheWrite, input); err != nil {
+		log.Printf("[tokenhub] gateway cache_write hooks failed for request %s: %v", call.RequestID, err)
+	}
+}
+
 func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
 	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)) == 0 {
 		return nil
@@ -156,6 +234,21 @@ func gatewayTraceExportAuditView(completion GatewayCallCompletion) map[string]an
 	}
 }
 
+func gatewayHookCallData(call CallContext, requestBody json.RawMessage) pluginmeta.GatewayHookData {
+	data := pluginmeta.GatewayHookData{}
+	for dataClass, value := range map[pluginmeta.GatewayDataClass]any{
+		pluginmeta.DataAuthContext:     gatewayAuthContextView(call),
+		pluginmeta.DataProjectMetadata: call.Project,
+		pluginmeta.DataAPIKeyMetadata:  gatewayAPIKeyMetadataView(call.Key),
+		pluginmeta.DataRequestBody:     requestBody,
+	} {
+		if encoded, ok := marshalGatewayHookData(value); ok {
+			data[dataClass] = encoded
+		}
+	}
+	return data
+}
+
 func marshalGatewayHookData(value any) (json.RawMessage, bool) {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -198,14 +291,18 @@ func gatewayHookHTTPError(stage pluginmeta.GatewayHookStage, err error) error {
 }
 
 func decodeGatewayHookRequestPatch(data json.RawMessage, target any) error {
+	return decodeGatewayHookPayload(data, target, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid request patch")
+}
+
+func decodeGatewayHookPayload(data json.RawMessage, target any, code string, message string) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	if err := decoder.Decode(target); err != nil {
-		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid request patch")
+		return NewHTTPError(http.StatusBadGateway, code, message)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin request patch must contain a single JSON value")
+		return NewHTTPError(http.StatusBadGateway, code, "Gateway plugin payload must contain a single JSON value")
 	}
 	return nil
 }

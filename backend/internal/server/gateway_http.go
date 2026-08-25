@@ -62,6 +62,20 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	if !req.Stream {
+		resp, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), call, req)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		if hit {
+			s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, resp)
+			w.Header().Set("x-tokenhub-cache", "hit")
+			writeJSON(w, http.StatusOK, resp)
+			return
+		}
+	}
 
 	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, req.Model, auditPayload)
 	if !ok {
@@ -153,6 +167,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req, resp, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -209,6 +224,20 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
+	}
+	if !req.Stream {
+		resp, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), call, req)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		if hit {
+			s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, resp)
+			w.Header().Set("x-tokenhub-cache", "hit")
+			writeJSON(w, http.StatusOK, resp)
+			return
+		}
 	}
 	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, req.Model, auditPayload)
 	if !ok {
@@ -275,6 +304,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req, resp, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
