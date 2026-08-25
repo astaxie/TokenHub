@@ -1,4 +1,4 @@
-import { type PluginCapabilityDescriptor } from "../core/types";
+import { type AppData, type PluginCapabilityDescriptor } from "../core/types";
 
 export const providerResourceAPIKeyType = "api_key";
 export const providerResourceOpenAISubscriptionType = "openai_subscription";
@@ -22,6 +22,10 @@ export function isOpenAISubscriptionResourceType(resourceType: string | undefine
 
 export function isOpenAISubscriptionResource(resource: ProviderResourceTypeLike) {
   return isOpenAISubscriptionResourceType(resource.resource_type);
+}
+
+export function isProviderAccountResourceType(resourceType: string | undefined) {
+  return Boolean(resourceType?.trim()) && resourceType !== providerResourceAPIKeyType;
 }
 
 export function providerResourceTypeOptionOrder(value: string) {
@@ -50,6 +54,59 @@ export function parseProviderResourceTypeCapabilityMetadata(capability: PluginCa
   } catch {
     return null;
   }
+}
+
+export function providerResourceTypeMetadataFromData(data: Pick<AppData, "plugins">, providerType: string) {
+  const metadata: ProviderResourceTypeCapabilityMetadata[] = [];
+  for (const plugin of data.plugins) {
+    for (const capability of plugin.capabilities) {
+      if (capability.kind !== providerResourceTypeCapabilityKind) continue;
+      if (capability.subject && providerType && capability.subject !== providerType) continue;
+      const parsed = parseProviderResourceTypeCapabilityMetadata(capability);
+      metadata.push(parsed ?? {
+        type: capability.name.trim(),
+        authModes: [],
+        defaults: {},
+        default: false,
+      });
+    }
+  }
+  return metadata.filter((item) => Boolean(item.type));
+}
+
+export function providerResourceTypeMetadataForValues(data: AppData, values?: Record<string, string>) {
+  const providerType = providerTypeForResourceValues(data, values);
+  const resourceType = values?.resource_type?.trim();
+  if (!resourceType) return null;
+  return providerResourceTypeMetadataFromData(data, providerType).find((metadata) => metadata.type === resourceType) ?? null;
+}
+
+export function defaultProviderResourceTypeMetadata(data: Pick<AppData, "plugins">, providerType: string) {
+  const metadata = providerResourceTypeMetadataFromData(data, providerType);
+  return metadata.find((item) => item.default) ?? metadata[0] ?? null;
+}
+
+export function providerResourceAuthTypeOptionsFromData(data: AppData, _currentUser?: unknown, values?: Record<string, string>) {
+  const metadata = providerResourceTypeMetadataForValues(data, values);
+  const options = metadata?.authModes.length
+    ? metadata.authModes
+    : ["oauth", "personal_access_token", "api_key"];
+  return options.map((value) => ({ value, label: providerResourceAuthTypeLabel(value) }));
+}
+
+function providerTypeForResourceValues(data: AppData, values?: Record<string, string>) {
+  const providerID = values?.provider_id?.trim();
+  if (!providerID) return "";
+  return data.providers.find((provider) => provider.id === providerID)?.type ?? "";
+}
+
+function providerResourceAuthTypeLabel(value: string) {
+  const labels: Record<string, string> = {
+    oauth: "OAuth",
+    personal_access_token: "Personal Access Token",
+    api_key: "API Key",
+  };
+  return labels[value] ?? value;
 }
 
 function stringValue(value: unknown) {

@@ -359,6 +359,7 @@ func (s *GormStore) GetProviderResource(id string) (ProviderResource, bool) {
 		return ProviderResource{}, false
 	}
 	resource.APIKey = s.decryptSecret(resource.APIKey)
+	resource.CredentialSummary = providerResourceCredentialSummary(resource)
 	resource.Headers, resource.HeaderValidationErrors = s.revealProviderHeaderConfig(resource.Headers, resource.SensitiveHeaders)
 	var provider Provider
 	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err == nil {

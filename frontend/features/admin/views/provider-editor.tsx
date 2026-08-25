@@ -1,7 +1,7 @@
 import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
+import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { accountProviderCatalogOptions, codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
 import { copyText } from "../domain/clipboard";
@@ -82,6 +82,7 @@ export function ProviderUpsertModal({
   setLoading,
   setError,
   setNotice, providerTypeOptions, pluginUI = [], pluginActions = [],
+  plugins = [],
 }: {
   mode: "create" | "edit";
   provider?: Provider;
@@ -97,7 +98,7 @@ export function ProviderUpsertModal({
   onAccountsChanged?: () => Promise<void>;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
-  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[];
+  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
   const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
     resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource),
@@ -157,13 +158,12 @@ export function ProviderUpsertModal({
     ...providerReasoningFormValues(provider?.options),
   }));
   const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingCodexSubscription ? "account_integration" : "provider_api_key");
-  const [accountValues, setAccountValues] = useState<Record<string, string>>(() =>
-    providerResourceDraftDefaults({
-      provider_id: "",
-      name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex Codex Account" : provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
-      base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
-    }),
-  );
+  const [accountValues, setAccountValues] = useState<Record<string, string>>(() => providerResourceDraftDefaults({
+    provider_id: "",
+    name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex Codex Account" : provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
+    base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
+    type: mode === "edit" ? editingCodexSubscription ? codexProviderType : provider?.type ?? "" : initialEntry?.type ?? "",
+  }, { plugins }));
   const [accountOAuthCallback, setAccountOAuthCallback] = useState("");
   const [accountOAuthStatus, setAccountOAuthStatus] = useState("");
   const [accountOAuthBusy, setAccountOAuthBusy] = useState(false);
@@ -833,13 +833,10 @@ export function ProviderUpsertModal({
     }
   }
 
-  function syncAccountDefaults(providerName: string, baseURL?: string) {
+  function syncAccountDefaults(providerName: string, baseURL?: string, providerType = values.type) {
     if (mode !== "create") return;
-    setAccountValues((current) => ({
-      ...current,
-      name: defaultProviderResourceName(providerName),
-      base_url: baseURL || codexProviderCatalogSummary.base_url || "",
-    }));
+    const nextDefaults = providerResourceDraftDefaults({ name: providerName, base_url: baseURL, type: providerType }, { plugins });
+    setAccountValues((current) => ({ ...current, resource_type: nextDefaults.resource_type, auth_type: nextDefaults.auth_type, name: nextDefaults.name, base_url: nextDefaults.base_url, max_concurrency: nextDefaults.max_concurrency }));
   }
 
   function requestAccountConfirmation(action: ProviderAccountConfirmation["action"], resource: ProviderResource) {
@@ -942,7 +939,7 @@ export function ProviderUpsertModal({
         ? defaultProviderClaudeCodeAttributionPolicy(entry.type, entry.id)
         : current.claude_code_attribution_policy,
     }));
-    syncAccountDefaults(nextName, entry.base_url);
+    syncAccountDefaults(nextName, entry.base_url, entry.type);
   }
 
   function selectCustomCatalog() {

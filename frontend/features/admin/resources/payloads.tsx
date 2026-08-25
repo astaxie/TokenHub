@@ -16,7 +16,7 @@ import { configuredPriceEntered } from "../domain/configured-pricing";
 import { providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
 import { providerEgressTestPayload } from "../domain/provider-egress";
 import { providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { isOpenAISubscriptionResourceType, providerResourceAPIKeyType, providerResourceOpenAISubscriptionType } from "../domain/provider-resource-types";
+import { isProviderAccountResourceType, providerResourceAPIKeyType } from "../domain/provider-resource-types";
 import { modelPricingPeriodsInvalidPeriodError, modelPricingPeriodsJSONError, modelPricingPeriodsObjectArrayError, parseModelPricingPeriods } from "../domain/model-pricing-periods";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
@@ -63,8 +63,8 @@ export function providerUpdatePayload(values: Record<string, string>) {
 }
 
 export function providerResourcePayload(values: Record<string, string>) {
-  const isOpenAIAccount = isOpenAISubscriptionResourceType(values.resource_type);
-  const credentials = isOpenAIAccount
+  const isAccountResource = isProviderAccountResourceType(values.resource_type);
+  const credentials = isAccountResource
     ? {
         auth_type: values.auth_type || "oauth",
         access_token: values.access_token,
@@ -84,7 +84,7 @@ export function providerResourcePayload(values: Record<string, string>) {
     name: values.name,
     resource_type: values.resource_type || providerResourceAPIKeyType,
     base_url: values.base_url,
-    api_key: isOpenAIAccount ? values.access_token : values.api_key,
+    api_key: isAccountResource ? values.access_token : values.api_key,
     group: values.group || "default",
     region: values.region,
     environment: values.environment,
@@ -103,18 +103,18 @@ export function providerResourcePayload(values: Record<string, string>) {
 
 export function providerResourceUpdatePayload(values: Record<string, string>) {
   const payload = providerResourcePayload(values) as Record<string, unknown>;
-  const isOpenAIAccount = isOpenAISubscriptionResourceType(values.resource_type);
-  if (isOpenAIAccount && !values.access_token?.trim()) delete payload.api_key;
-  if (!isOpenAIAccount && !values.api_key?.trim()) delete payload.api_key;
-  if (isOpenAIAccount && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
+  const isAccountResource = isProviderAccountResourceType(values.resource_type);
+  if (isAccountResource && !values.access_token?.trim()) delete payload.api_key;
+  if (!isAccountResource && !values.api_key?.trim()) delete payload.api_key;
+  if (isAccountResource && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
     delete payload.credentials;
   }
   return payload;
 }
 
 export function providerResourceOptions(values: Record<string, string>) {
-  const accountOptions: Record<string, string> = isOpenAISubscriptionResourceType(values.resource_type) ? {
-    credential_source: providerResourceOpenAISubscriptionType,
+  const accountOptions: Record<string, string> = isProviderAccountResourceType(values.resource_type) ? {
+    credential_source: values.resource_type,
     auth_type: values.auth_type || "oauth",
     account_email: values.account_email,
     account_id: values.account_id,

@@ -410,6 +410,52 @@ func TestOpenAISubscriptionResourceSuppliesRouteCredentials(t *testing.T) {
 	}
 }
 
+func TestPluginAccountResourceStoresCredentialEnvelope(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_plugin", Name: "Kimi Plugin", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_account",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Account",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType:     "personal_access_token",
+			AccessToken:  "kimi-access-token",
+			RefreshToken: "kimi-refresh-token",
+			AccountID:    "kimi-account",
+			Email:        "owner@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted ProviderResource
+	if err := store.db.First(&persisted, "id = ?", resource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.APIKey == "kimi-access-token" || !strings.HasPrefix(persisted.APIKey, "enc:v1:") {
+		t.Fatalf("plugin account access token should be stored encrypted, got %q", persisted.APIKey)
+	}
+	if persisted.CredentialBlob == "" || !strings.HasPrefix(persisted.CredentialBlob, "enc:v1:") {
+		t.Fatalf("plugin account credential blob should be stored encrypted, got %q", persisted.CredentialBlob)
+	}
+	credentials := store.providerResourceCredentialsForRuntime(persisted)
+	if credentials.AccessToken != "kimi-access-token" || credentials.RefreshToken != "kimi-refresh-token" || credentials.AuthType != "personal_access_token" {
+		t.Fatalf("plugin account credentials = %+v", credentials)
+	}
+	listed, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("stored plugin account resource was not found")
+	}
+	if listed.CredentialSummary["credential_source"] != "kimi_oauth_account" ||
+		listed.CredentialSummary["has_refresh_token"] != "true" ||
+		listed.CredentialSummary["account_email"] != "owner@example.com" {
+		t.Fatalf("plugin account credential summary = %+v", listed.CredentialSummary)
+	}
+}
+
 func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {

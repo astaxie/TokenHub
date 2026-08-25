@@ -7,7 +7,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -76,15 +76,15 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true, readOnlyOnEdit: Boolean(provider) },
     { key: "name", label: "名称", required: true },
     { key: "resource_type", label: "账号类型", type: "select", optionsFromData: providerResourceTypeOptionsFromData, required: true },
-    { key: "auth_type", label: "认证方式", type: "select", options: ["oauth", "personal_access_token", "api_key"], visible: openAIAccountFieldVisible },
-    { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "OpenAI subscription / Codex OAuth access token 或 PAT；保存后不会再次显示。" },
-    { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
-    { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: openAIAccountFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
-    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values) => !isOpenAISubscriptionResourceType(values.resource_type), help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
-    { key: "account_email", label: "账号邮箱", autoComplete: "off", visible: openAIAccountFieldVisible },
-    { key: "account_id", label: "账号 ID", autoComplete: "off", visible: openAIAccountFieldVisible },
-    { key: "organization_id", label: "组织 ID", autoComplete: "off", visible: openAIAccountFieldVisible },
-    { key: "plan_type", label: "计划类型", visible: openAIAccountFieldVisible },
+    { key: "auth_type", label: "认证方式", type: "select", optionsFromData: providerResourceAuthTypeOptionsFromData, visible: accountResourceFieldVisible },
+    { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "OpenAI subscription / Codex OAuth access token 或 PAT；保存后不会再次显示。" },
+    { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
+    { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: accountResourceFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
+    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values) => !isProviderAccountResourceType(values.resource_type), help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
+    { key: "account_email", label: "账号邮箱", autoComplete: "off", visible: accountResourceFieldVisible },
+    { key: "account_id", label: "账号 ID", autoComplete: "off", visible: accountResourceFieldVisible },
+    { key: "organization_id", label: "组织 ID", autoComplete: "off", visible: accountResourceFieldVisible },
+    { key: "plan_type", label: "计划类型", visible: accountResourceFieldVisible },
     { key: "base_url", label: "Base URL", placeholder: "https://api.openai.com/v1" },
     { key: "group", label: "分组" },
     { key: "region", label: "地域", placeholder: "cn-east" },
@@ -145,6 +145,10 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
 
 export function openAIAccountFieldVisible(values: Record<string, string>) {
   return isOpenAISubscriptionResourceType(values.resource_type);
+}
+
+export function accountResourceFieldVisible(values: Record<string, string>) {
+  return isProviderAccountResourceType(values.resource_type);
 }
 
 export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
@@ -336,20 +340,24 @@ export function defaultProviderResourceName(providerName?: string) {
   return `${normalized} Codex Account`;
 }
 
-export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string }) {
-  return {
+export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string; type?: string }, data?: Pick<AppData, "plugins">) {
+  const metadata = data && provider.type ? defaultProviderResourceTypeMetadata(data, provider.type) : null;
+  const metadataDefaults = metadata?.defaults ?? {};
+  const resourceType = metadata?.type || providerResourceOpenAISubscriptionType;
+  const authType = metadataDefaults.auth_type || metadata?.authModes[0] || "oauth";
+  const defaults = {
     provider_id: provider.provider_id ?? "",
     name: defaultProviderResourceName(provider.name),
-    resource_type: providerResourceOpenAISubscriptionType,
-    auth_type: "oauth",
+    resource_type: resourceType,
+    auth_type: authType,
     authorization_url: "",
-    base_url: provider.base_url || codexSubscriptionBaseURL,
+    base_url: metadataDefaults.base_url || provider.base_url || codexSubscriptionBaseURL,
     group: "default",
     priority: "1",
     weight: "100",
     rate_limit_rpm: "",
     token_limit_tpm: "",
-    max_concurrency: "3",
+    max_concurrency: metadataDefaults.max_concurrency || "3",
     codex_fingerprint_mode: "session",
     claude_code_attribution_policy: "inherit",
     token_type: "",
@@ -359,18 +367,26 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     healthy: "true",
     ...providerReasoningFormValues(),
   };
+  return {
+    ...defaults,
+    ...metadataDefaults,
+    provider_id: provider.provider_id ?? "",
+    name: defaultProviderResourceName(provider.name),
+    resource_type: resourceType,
+  };
 }
 
-export function providerResourceDefaults(provider: Provider) {
+export function providerResourceDefaults(provider: Provider, data?: AppData) {
   return providerResourceDraftDefaults({
     provider_id: provider.id,
     name: provider.name || provider.id,
     base_url: provider.base_url,
-  });
+    type: provider.type,
+  }, data);
 }
 
 export function assertProviderAccountResourceReady(values: Record<string, string>) {
-  if (isOpenAISubscriptionResourceType(values.resource_type)) {
+  if (isProviderAccountResourceType(values.resource_type)) {
     if (values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim()) return;
     throw new Error(tx("请先完成账号授权回填，或在高级选项中手动粘贴 Token。"));
   }

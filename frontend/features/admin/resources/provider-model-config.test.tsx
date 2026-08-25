@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
-import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { providerResourceAuthTypeOptionsFromData } from "../domain/provider-resource-types";
+import { providerResourcePayload } from "./payloads";
+import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("shows credential refresh only when a provider plugin action is registered", async () => {
@@ -285,6 +287,73 @@ describe("providerResourceConfig", () => {
       "openai_subscription",
       "api_key",
     ]);
+  });
+
+  it("applies provider resource metadata to account defaults and auth options", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    data.plugins = [{
+      id: "tokenhub.provider.kimi",
+      name: "Kimi Subscription",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [{
+        kind: "provider_resource_type",
+        name: "kimi_oauth_account",
+        subject: "kimi_subscription",
+        value: JSON.stringify({
+          type: "kimi_oauth_account",
+          display_name: "Kimi OAuth Account",
+          auth_modes: ["personal_access_token", "oauth"],
+          default: true,
+          defaults: {
+            auth_type: "personal_access_token",
+            base_url: "https://api.moonshot.cn/v1",
+            max_concurrency: "5",
+            group: "kimi",
+          },
+        }),
+      }],
+    }];
+
+    expect(providerResourceDraftDefaults({ provider_id: "prv_kimi", name: "Kimi", type: "kimi_subscription" }, data)).toMatchObject({
+      provider_id: "prv_kimi",
+      name: "Kimi Codex Account",
+      resource_type: "kimi_oauth_account",
+      auth_type: "personal_access_token",
+      base_url: "https://api.moonshot.cn/v1",
+      max_concurrency: "5",
+      group: "kimi",
+    });
+    expect(providerResourceAuthTypeOptionsFromData(data, null, { provider_id: "prv_kimi", resource_type: "kimi_oauth_account" })).toEqual([
+      { value: "oauth", label: "OAuth" },
+      { value: "personal_access_token", label: "Personal Access Token" },
+    ]);
+  });
+
+  it("submits plugin account resource credentials with its own credential source", () => {
+    const payload = providerResourcePayload({
+      provider_id: "prv_kimi",
+      name: "Kimi Account",
+      resource_type: "kimi_oauth_account",
+      auth_type: "personal_access_token",
+      access_token: "kimi-token",
+      refresh_token: "kimi-refresh",
+      base_url: "https://api.moonshot.cn/v1",
+    }) as { api_key?: string; credentials?: Record<string, string>; options?: Record<string, string> };
+
+    expect(payload.api_key).toBe("kimi-token");
+    expect(payload.credentials).toMatchObject({
+      auth_type: "personal_access_token",
+      access_token: "kimi-token",
+      refresh_token: "kimi-refresh",
+    });
+    expect(payload.options).toMatchObject({
+      credential_source: "kimi_oauth_account",
+      auth_type: "personal_access_token",
+    });
   });
 
   it("tests subscription-backed Providers through resource probe plugin actions", async () => {

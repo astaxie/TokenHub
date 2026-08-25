@@ -37,10 +37,13 @@ type openAIOrganizationClaim struct {
 }
 
 func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource) {
-	if resource == nil || !isOpenAIAccountResource(resource.ResourceType) {
+	if resource == nil || !isProviderAccountResource(resource.ResourceType) {
 		return
 	}
-	if strings.TrimSpace(resource.BaseURL) == "" {
+	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
+		return
+	}
+	if isOpenAIAccountResource(resource.ResourceType) && strings.TrimSpace(resource.BaseURL) == "" {
 		resource.BaseURL = openAICodexBaseURL
 	}
 	if resource.Options == nil {
@@ -50,10 +53,13 @@ func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource)
 }
 
 func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource, patch ProviderResource) {
-	if resource == nil || !isOpenAIAccountResource(resource.ResourceType) {
+	if resource == nil || !isProviderAccountResource(resource.ResourceType) {
 		return
 	}
-	if strings.TrimSpace(resource.BaseURL) == "" {
+	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
+		return
+	}
+	if isOpenAIAccountResource(resource.ResourceType) && strings.TrimSpace(resource.BaseURL) == "" {
 		resource.BaseURL = openAICodexBaseURL
 	}
 	if resource.Options == nil {
@@ -101,24 +107,26 @@ func (s *GormStore) mergeOpenAIAccountCredentials(resource *ProviderResource, pa
 	if strings.TrimSpace(creds.AuthType) == "" {
 		creds.AuthType = firstNonEmpty(resource.Options["auth_type"], "oauth")
 	}
-	if claims := decodeOpenAIIDTokenClaims(creds.IDToken); claims != nil {
-		creds.Email = firstNonEmpty(creds.Email, claims.Email)
-		if claims.OpenAIAuth != nil {
-			creds.AccountID = firstNonEmpty(creds.AccountID, claims.OpenAIAuth.ChatGPTAccountID)
-			creds.UserID = firstNonEmpty(creds.UserID, claims.OpenAIAuth.UserID, claims.OpenAIAuth.ChatGPTUserID)
-			creds.PlanType = firstNonEmpty(creds.PlanType, claims.OpenAIAuth.ChatGPTPlanType)
-			creds.OrganizationID = firstNonEmpty(creds.OrganizationID, defaultOpenAIOrganizationID(claims.OpenAIAuth.Organizations))
+	if isOpenAIAccountResource(resource.ResourceType) {
+		if claims := decodeOpenAIIDTokenClaims(creds.IDToken); claims != nil {
+			creds.Email = firstNonEmpty(creds.Email, claims.Email)
+			if claims.OpenAIAuth != nil {
+				creds.AccountID = firstNonEmpty(creds.AccountID, claims.OpenAIAuth.ChatGPTAccountID)
+				creds.UserID = firstNonEmpty(creds.UserID, claims.OpenAIAuth.UserID, claims.OpenAIAuth.ChatGPTUserID)
+				creds.PlanType = firstNonEmpty(creds.PlanType, claims.OpenAIAuth.ChatGPTPlanType)
+				creds.OrganizationID = firstNonEmpty(creds.OrganizationID, defaultOpenAIOrganizationID(claims.OpenAIAuth.Organizations))
+			}
 		}
 	}
 	if strings.TrimSpace(creds.AccessToken) != "" {
 		resource.APIKey = creds.AccessToken
 	}
-	if hasOpenAIAccountSecret(creds) {
-		resource.CredentialBlob = s.encryptOpenAIAccountCredentialBlob(creds)
+	if hasProviderResourceCredentialSecret(creds) {
+		resource.CredentialBlob = s.encryptProviderResourceCredentialBlob(creds)
 	} else if patch == nil && resource.CredentialBlob == "" {
 		resource.CredentialBlob = ""
 	}
-	applyOpenAIAccountOptions(resource.Options, creds)
+	applyProviderAccountOptions(resource.Options, resource.ResourceType, creds)
 	if patch != nil && openAIAccountAuthenticationPatch(patch.Credentials) {
 		delete(resource.Options, openAIAccountReauthorizationRequiredOption)
 	}
@@ -194,7 +202,7 @@ func mergeRefreshedProviderResourceCredentials(
 	return current
 }
 
-func hasOpenAIAccountSecret(creds ProviderResourceCredentials) bool {
+func hasProviderResourceCredentialSecret(creds ProviderResourceCredentials) bool {
 	return strings.TrimSpace(creds.RefreshToken) != "" ||
 		strings.TrimSpace(creds.IDToken) != "" ||
 		strings.TrimSpace(creds.ClientID) != "" ||
@@ -203,7 +211,7 @@ func hasOpenAIAccountSecret(creds ProviderResourceCredentials) bool {
 		strings.TrimSpace(creds.ExpiresAt) != ""
 }
 
-func (s *GormStore) encryptOpenAIAccountCredentialBlob(creds ProviderResourceCredentials) string {
+func (s *GormStore) encryptProviderResourceCredentialBlob(creds ProviderResourceCredentials) string {
 	secret := map[string]string{}
 	addNonEmpty(secret, "auth_type", creds.AuthType)
 	addNonEmpty(secret, "refresh_token", creds.RefreshToken)
@@ -225,6 +233,10 @@ func (s *GormStore) encryptOpenAIAccountCredentialBlob(creds ProviderResourceCre
 }
 
 func applyOpenAIAccountOptions(options map[string]string, creds ProviderResourceCredentials) {
+	applyProviderAccountOptions(options, ProviderResourceOpenAISubscription, creds)
+}
+
+func applyProviderAccountOptions(options map[string]string, resourceType string, creds ProviderResourceCredentials) {
 	if options == nil {
 		return
 	}
@@ -237,7 +249,7 @@ func applyOpenAIAccountOptions(options map[string]string, creds ProviderResource
 	} {
 		delete(options, key)
 	}
-	options["credential_source"] = ProviderResourceOpenAISubscription
+	options["credential_source"] = firstNonEmpty(strings.TrimSpace(resourceType), ProviderResourceOpenAISubscription)
 	options["auth_type"] = firstNonEmpty(creds.AuthType, options["auth_type"], "oauth")
 	if strings.TrimSpace(creds.RefreshToken) != "" {
 		options["has_refresh_token"] = "true"
@@ -259,8 +271,17 @@ func isOpenAIAccountResource(resourceType string) bool {
 		normalized == "openai_account"
 }
 
+func isProviderAccountResource(resourceType string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(resourceType))
+	return normalized != "" && normalized != ProviderResourceAPIKey
+}
+
+func providerResourceCredentialInputPresent(resource ProviderResource) bool {
+	return resource.Credentials != nil || strings.TrimSpace(resource.APIKey) != ""
+}
+
 func providerResourceCredentialSummary(resource ProviderResource) map[string]string {
-	if !isOpenAIAccountResource(resource.ResourceType) {
+	if !isProviderAccountResource(resource.ResourceType) {
 		return nil
 	}
 	summary := map[string]string{}
