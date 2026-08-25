@@ -71,6 +71,10 @@ func (s *Server) handleAdminProviderCatalogGet(w http.ResponseWriter, r *http.Re
 		writeError(w, r, err)
 		return
 	}
+	if merged, added := s.providerCatalogEntriesWithPlugins(entries); added {
+		entries = merged
+		source = firstNonEmpty(source, "catalog") + "+plugins"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": entries, "source": source})
 }
 
@@ -125,6 +129,14 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		}
 		if err != nil {
 			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		return
+	}
+	if entry, ok := s.pluginProviderCatalogEntry(id); ok {
+		if r.Method != http.MethodGet {
+			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
@@ -249,15 +261,21 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		}
 		catalogSource = catalog.Source
 	} else if catalogID != "" {
-		entry, source, ok, err := s.providerCatalog.Get(ctx, catalogID, false)
-		if err != nil {
-			return Provider{}, ProviderCatalogEntry{}, source, err
+		entry, pluginOK := s.pluginProviderCatalogEntry(catalogID)
+		if pluginOK {
+			catalog = entry
+			catalogSource = entry.Source
+		} else {
+			entry, source, ok, err := s.providerCatalog.Get(ctx, catalogID, false)
+			if err != nil {
+				return Provider{}, ProviderCatalogEntry{}, source, err
+			}
+			if !ok {
+				return Provider{}, ProviderCatalogEntry{}, source, NewHTTPError(400, "provider_catalog_not_found", "Provider catalog entry not found")
+			}
+			catalog = entry
+			catalogSource = source
 		}
-		if !ok {
-			return Provider{}, ProviderCatalogEntry{}, source, NewHTTPError(400, "provider_catalog_not_found", "Provider catalog entry not found")
-		}
-		catalog = entry
-		catalogSource = source
 	}
 	if catalog.ID == "custom" {
 		if len(req.CustomModels) > 0 {

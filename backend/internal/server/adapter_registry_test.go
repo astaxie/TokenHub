@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -269,6 +271,64 @@ capabilities:
 	}
 	if !found {
 		t.Fatalf("local admin UI contribution was not loaded: %+v", contributions)
+	}
+}
+
+func TestServerExposesLocalProviderPluginsInCatalog(t *testing.T) {
+	pluginDir := t.TempDir()
+	providerPluginDir := filepath.Join(pluginDir, "provider")
+	writeServerPluginManifest(t, providerPluginDir, `
+schema_version: 1
+id: tokenhub.provider.catalog-stdio
+name: Catalog stdio Provider
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: provider.sh
+capabilities:
+  provider_types:
+    - catalog_stdio
+  gateway:
+    - chat
+permissions:
+  data:
+    read:
+      - provider_credentials
+`)
+	if err := os.WriteFile(filepath.Join(providerPluginDir, "provider.sh"), []byte(`#!/bin/sh
+printf '{"response":{},"usage":{}}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	catalog := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog", nil, "dev_admin_token")
+	if catalog.Code != http.StatusOK {
+		t.Fatalf("provider catalog status = %d body=%s", catalog.Code, catalog.Body)
+	}
+	if !strings.Contains(catalog.Body, `"id":"catalog_stdio"`) || !strings.Contains(catalog.Body, `"source":"plugin:local_file"`) {
+		t.Fatalf("provider catalog did not include local provider plugin: %s", catalog.Body)
+	}
+	item := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/catalog_stdio", nil, "dev_admin_token")
+	if item.Code != http.StatusOK || !strings.Contains(item.Body, `"type":"catalog_stdio"`) {
+		t.Fatalf("provider catalog item status = %d body=%s", item.Code, item.Body)
+	}
+	created := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id": "catalog_stdio",
+		"api_key":    "provider-secret",
+	}, "dev_admin_token")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create provider from plugin catalog status = %d body=%s", created.Code, created.Body)
+	}
+	if !strings.Contains(created.Body, `"type":"catalog_stdio"`) || !strings.Contains(created.Body, `"catalog_source":"plugin:local_file"`) {
+		t.Fatalf("created provider did not use plugin catalog: %s", created.Body)
 	}
 }
 
