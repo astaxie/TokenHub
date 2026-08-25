@@ -12,22 +12,40 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "admin_ui", Name: "dashboard_card", Subject: "plugin_ecosystem"},
+			{Kind: "admin_ui", Name: "settings_panel", Subject: "plugin_ecosystem"},
 		},
 	})
-	mustRegisterAdminUIContribution(adminUI, pluginmeta.AdminUIContribution{
-		PluginID: "tokenhub.admin.plugin-ecosystem",
-		ID:       "overview",
-		Slot:     pluginmeta.SlotDashboardCard,
-		Title:    "Plugin Ecosystem",
-		Schema: map[string]any{
-			"fields": []any{
-				map[string]any{"name": "registered_plugins", "type": "metric", "label": "Registered plugins", "source": "plugins.length", "format": "number"},
-				map[string]any{"name": "gateway_hooks", "type": "metric", "label": "Gateway hooks", "source": "pluginChain.hooks.length", "format": "number"},
-				map[string]any{"name": "admin_ui_contributions", "type": "metric", "label": "UI contributions", "source": "pluginUI.length", "format": "number"},
-				map[string]any{"name": "plugin_actions", "type": "metric", "label": "Plugin actions", "source": "pluginActions.length", "format": "number"},
+	for _, contribution := range []pluginmeta.AdminUIContribution{
+		{
+			PluginID: "tokenhub.admin.plugin-ecosystem",
+			ID:       "overview",
+			Slot:     pluginmeta.SlotDashboardCard,
+			Title:    "Plugin Ecosystem",
+			Schema: map[string]any{
+				"fields": []any{
+					map[string]any{"name": "registered_plugins", "type": "metric", "label": "Registered plugins", "source": "plugins.length", "format": "number"},
+					map[string]any{"name": "gateway_hooks", "type": "metric", "label": "Gateway hooks", "source": "pluginChain.hooks.length", "format": "number"},
+					map[string]any{"name": "admin_ui_contributions", "type": "metric", "label": "UI contributions", "source": "pluginUI.length", "format": "number"},
+					map[string]any{"name": "plugin_actions", "type": "metric", "label": "Plugin actions", "source": "pluginActions.length", "format": "number"},
+				},
 			},
 		},
-	})
+		{
+			PluginID: "tokenhub.admin.plugin-ecosystem",
+			ID:       "runtime",
+			Slot:     pluginmeta.SlotSettingsPanel,
+			Title:    "Plugin Runtime",
+			Schema: map[string]any{
+				"fields": []any{
+					map[string]any{"name": "schema_version", "type": "text", "label": "Admin UI schema", "value": "v1"},
+					map[string]any{"name": "registered_plugins", "type": "metric", "label": "Registered plugins", "source": "plugins.length", "format": "number"},
+					map[string]any{"name": "gateway_hooks", "type": "metric", "label": "Gateway hooks", "source": "pluginChain.hooks.length", "format": "number"},
+				},
+			},
+		},
+	} {
+		mustRegisterAdminUIContribution(adminUI, contribution)
+	}
 
 	mustRegisterPlugin(registry, pluginmeta.Descriptor{
 		ID:         "tokenhub.provider.openai-codex",

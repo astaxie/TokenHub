@@ -912,6 +912,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             <PluginsView api={api} data={data} />
           ) : activeView === "settings" ? (
             <SettingsView
+              api={api}
               data={data}
               activeTab={settingsTab}
               language={language}

@@ -17,9 +17,11 @@ import { identityProviderInitialFormValues } from "../shared/auth";
 import { CrudView } from "./crud-projects";
 import { IdentityProviderEditModal } from "./modals";
 import { ModelCreateModal } from "./model-create-modal";
+import { AdminUISettingsPanels } from "./admin-ui-settings-panels";
 
 export function SettingsView({
   data,
+  api,
   activeTab,
   language,
   onTabChange,
@@ -32,6 +34,7 @@ export function SettingsView({
   onToolbarAction,
 }: {
   data: AppData;
+  api: ApiContext;
   activeTab: SettingsTabKey;
   language: AppLanguage;
   onTabChange: (tab: SettingsTabKey) => void;
@@ -72,14 +75,17 @@ export function SettingsView({
         ))}
       </div>
       {activeConfig.view === "settings" ? (
-        <SystemSettingsPanel
-          config={activeConfig}
-          items={filteredItems as AdminResource[]}
-          language={language}
-          onLanguageChange={onLanguageChange}
-          onRestoreModelCatalog={onRestoreModelCatalog}
-          onEdit={(item) => onEdit(activeConfig, item)}
-        />
+        <>
+          <SystemSettingsPanel
+            config={activeConfig}
+            items={filteredItems as AdminResource[]}
+            language={language}
+            onLanguageChange={onLanguageChange}
+            onRestoreModelCatalog={onRestoreModelCatalog}
+            onEdit={(item) => onEdit(activeConfig, item)}
+          />
+          <AdminUISettingsPanels api={api} data={data} />
+        </>
       ) : (
         <CrudView
           config={activeConfig}

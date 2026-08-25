@@ -633,6 +633,88 @@ h2 {
   padding: 14px 16px 16px;
 }
 
+.system-settings-plugin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.system-settings-plugin-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: var(--surface-2);
+}
+
+.system-settings-plugin-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.system-settings-plugin-panel-head > span {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.system-settings-plugin-panel-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.system-settings-plugin-panel-head p {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.system-settings-plugin-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.system-settings-plugin-field {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.system-settings-plugin-field span,
+.system-settings-plugin-field small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.system-settings-plugin-field strong,
+.system-settings-plugin-field pre {
+  display: block;
+  margin: 5px 0 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.system-settings-plugin-field pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: 1fr 1fr;
