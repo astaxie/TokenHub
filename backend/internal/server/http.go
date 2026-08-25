@@ -56,9 +56,12 @@ type Server struct {
 	versions                *versionService
 	guardrailEngine         *guardrails.Engine
 	upstreamClient          *http.Client
-	syntheticDNSPolicy      *providerSyntheticDNSPolicy
-	providerProxyPolicy     *providerProxyPolicy
-	syntheticDNSSetting     sync.Mutex
+	// codexVoiceSidebandUpstreamBaseURL is the internal OpenAI upstream used for
+	// Codex Voice sideband connections. It does not expose the public Realtime API.
+	codexVoiceSidebandUpstreamBaseURL string
+	syntheticDNSPolicy                *providerSyntheticDNSPolicy
+	providerProxyPolicy               *providerProxyPolicy
+	syntheticDNSSetting               sync.Mutex
 	// smtpRootCAs is a test seam for implicit-TLS SMTP delivery. When nil the
 	// production dial validates the server certificate against the platform
 	// roots; tests inject the in-process fake server's certificate here.
@@ -177,7 +180,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
 	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	registry.Register(ProviderKronk, adapters[ProviderKronk], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe)
-	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate)
+	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate, AdapterCapabilityCodexVoice)
 	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
 	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
@@ -213,9 +216,10 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 			Model:   config.GuardrailModelName,
 			Timeout: time.Duration(config.GuardrailModelTimeoutSeconds) * time.Second,
 		})),
-		upstreamClient:      client,
-		syntheticDNSPolicy:  syntheticDNSPolicy,
-		providerProxyPolicy: providerProxyPolicy,
+		upstreamClient:                    client,
+		codexVoiceSidebandUpstreamBaseURL: codexVoiceDefaultSidebandUpstreamBaseURL,
+		syntheticDNSPolicy:                syntheticDNSPolicy,
+		providerProxyPolicy:               providerProxyPolicy,
 	}
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,

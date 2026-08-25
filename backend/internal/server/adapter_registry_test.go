@@ -25,7 +25,7 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
 	},
 	ProviderOpenAICodex: {
-		AdapterCapabilityImageGenerate, AdapterCapabilityModels,
+		AdapterCapabilityCodexVoice, AdapterCapabilityImageGenerate, AdapterCapabilityModels,
 		AdapterCapabilityOAuth, AdapterCapabilityProbe,
 		AdapterCapabilityQuota, AdapterCapabilityResponses,
 		AdapterCapabilityCompact, AdapterCapabilityResponseStream,

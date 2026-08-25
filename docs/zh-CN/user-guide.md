@@ -232,6 +232,23 @@ curl http://localhost:8080/v1/responses \
 
 Gemini CLI 可以直接连接 TokenHub 的 Gemini 原生 `v1beta` 接口，并使用路由到 OpenAI Codex Subscription 账号的 GPT 模型。将 `GEMINI_API_KEY` 设置为 TokenHub 项目 Key，将 `GOOGLE_GEMINI_BASE_URL` 设置为不含 `/v1beta` 的 TokenHub Host，并选择对应 GPT 模型即可，不需要 CCswitch。隔离启动、项目级配置、支持端点、验证步骤和限制见 [Gemini CLI 通过 TokenHub 使用 Codex 订阅 GPT](gemini-cli-codex-subscription.md)。
 
+## Codex Voice 代理（实验性）
+
+TokenHub 可以为已经实现 WebRTC 与 sideband 协议的客户端代理 Codex 产品内部 Full Voice 传输。它不是公开的 OpenAI Realtime API，也不会增加独立语音转文字、翻译或文字转语音接口。
+
+| 接口 | 作用 |
+| --- | --- |
+| `POST /v1/live` | 创建 Codex Voice WebRTC call；原样转发请求体，并在缺省时把 `intent` / `architecture` 补为 `quicksilver` / `avas`。 |
+| `POST /v1/realtime/calls` | 通过 V1 兼容路径创建同一种 Codex Voice call；它不是完整的公共 Realtime call API。 |
+| `GET /v1/live/{call_id}` | 连接 V3 Frameless sideband WebSocket。 |
+| `GET /v1/realtime?call_id={call_id}` | 连接 V1 sideband WebSocket。 |
+
+四个接口都要求 TokenHub 项目 API Key；连接 sideband 时必须使用创建 call 的同一个 Key。TokenHub 按 Provider 优先级、Resource 优先级、权重和稳定 ID 选择第一个可用的 Codex Subscription 资源，刷新 OAuth 后调用上游，并把返回的 call ID 持久绑定到该资源一小时。WebRTC 媒体由客户端与 OpenAI 协商；TokenHub 只代理 call bootstrap 和 sideband，不中继 RTP 媒体。两个 call-create 路径都映射到 ChatGPT Codex 产品后端；`/v1/realtime/calls` 的路径重名不代表 TokenHub 暴露了完整公共 Realtime API。
+
+Voice 路由会有界透传未知的端到端 Header，使后续实验性协议 Header 不必等待 TokenHub 发版。TokenHub 始终移除调用方鉴权、账号、Cookie、转发身份、内部 `X-TokenHub-*`、Host 和逐跳 Header，再写入所选 Codex OAuth 与账号 ID。`OpenAI-Alpha`、`x-oai-attestation`、`Originator` 以及未来协议 Header 等客户端值会保留；TokenHub 不会自行生成 attestation。
+
+这些实验性接口是账号级能力，不是模型目录路由：它们会认证项目 Key，但不执行单模型白名单、Token 配额结算、成本记录或模型线路故障切换。需要隔离这项权限时应使用专用项目 Key。代理成功不能授予 Voice 权益。上游会分别校验账号授权与实验性会话参数，因此 `403 Voice session access denied` 既可能表示账号或工作区受限，也可能是模型与音色组合不受支持；应结合完整请求和当前 Codex 契约诊断。
+
 ## Codex 订阅生图
 
 `POST /v1/images/generations` 接受 OpenAI 兼容的 `model`、`prompt`、`quality`、`size`、`n` 和 `response_format` 字段。请使用对外虚拟模型 `model: "codex-gpt-image-2"` 与 `n: 1`。`gpt-image-2` 通常仍是独立的标准 API 模型；作为一个窄兼容例外，TokenHub 会把带 Codex `originator` 或 `x-codex-image-turn-id` 请求头的生图请求映射为 `codex-gpt-image-2` 并返回 `b64_json`，API Key 必须允许 `codex-gpt-image-2`。添加 `Prefer: respond-async` 可先获得图片任务，再轮询 `GET /v1/image-jobs/{id}`。

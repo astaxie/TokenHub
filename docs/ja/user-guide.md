@@ -232,6 +232,23 @@ metrics を有効にすると、Prometheus に `tokenhub_gateway_response_jobs_q
 
 Gemini CLI は TokenHub の Gemini ネイティブ `v1beta` API に直接接続し、OpenAI Codex Subscription アカウントへルーティングされた GPT モデルを利用できます。`GEMINI_API_KEY` に TokenHub の Project Key、`GOOGLE_GEMINI_BASE_URL` に `/v1beta` を含まない TokenHub Host を設定し、対象 GPT モデルを選択します。CCswitch は不要です。分離起動、プロジェクト設定、対応エンドポイント、検証方法、制限については [Gemini CLI から Codex サブスクリプション GPT を使用する](gemini-cli-codex-subscription.md) を参照してください。
 
+## Codex Voice プロキシ（実験的）
+
+TokenHub は、WebRTC と sideband プロトコルを実装済みのクライアント向けに、Codex 製品内部の Full Voice トランスポートをプロキシできます。これは公開 OpenAI Realtime API ではなく、単独の音声認識、翻訳、音声合成 API を追加するものでもありません。
+
+| エンドポイント | 用途 |
+| --- | --- |
+| `POST /v1/live` | Codex Voice WebRTC call を作成します。本文をそのまま転送し、省略された `intent` / `architecture` を `quicksilver` / `avas` で補います。 |
+| `POST /v1/realtime/calls` | V1 互換パスで同じ Codex Voice call を作成します。完全な公開 Realtime call API ではありません。 |
+| `GET /v1/live/{call_id}` | V3 Frameless sideband WebSocket を接続します。 |
+| `GET /v1/realtime?call_id={call_id}` | V1 sideband WebSocket を接続します。 |
+
+4 つのエンドポイントはすべて TokenHub Project API Key を必要とし、sideband には call 作成時と同じ Key を使用します。TokenHub は Provider 優先度、Resource 優先度、weight、安定 ID の順で最初の利用可能な Codex Subscription リソースを選び、OAuth を更新して、返された call ID をそのリソースへ 1 時間永続的に固定します。WebRTC メディアはクライアントと OpenAI が交渉し、TokenHub は call bootstrap と sideband のみをプロキシして RTP メディアは中継しません。2 つの call-create パスはいずれも ChatGPT Codex 製品バックエンドへマッピングされます。`/v1/realtime/calls` という同名パスがあっても、完全な公開 Realtime API を公開するものではありません。
+
+Voice ルートは、今後の実験的なプロトコル Header が TokenHub の更新を待たずに動作できるよう、サイズ制限付きで未知の end-to-end Header を転送します。TokenHub は呼び出し元の認証、アカウント、Cookie、転送元識別、内部 `X-TokenHub-*`、Host、hop-by-hop Header を必ず削除し、選択した Codex OAuth とアカウント ID を設定します。`OpenAI-Alpha`、`x-oai-attestation`、`Originator`、将来のプロトコル Header などのクライアント値は保持されますが、TokenHub 自身は attestation を生成しません。
+
+これらの実験的エンドポイントはアカウント単位の機能であり、モデルカタログのルートではありません。Project Key は認証されますが、モデル単位の allowlist、Token quota 集計、コスト記録、モデルルートの failover は適用されません。この境界を分離する必要がある場合は専用 Project Key を使用してください。プロキシが成功しても Voice entitlement は付与されません。上流はアカウント認可と実験的なセッションパラメーターを個別に検証するため、`403 Voice session access denied` はアカウントまたは workspace の制限だけでなく、モデルと Voice の組み合わせがサポート外であることも示す場合があります。完全なリクエストと現行の Codex 契約に基づいて診断してください。
+
 ## Codex サブスクリプション画像生成
 
 `POST /v1/images/generations` は OpenAI 互換の `model`、`prompt`、`quality`、`size`、`n`、`response_format` を受け付けます。公開仮想モデル `model: "codex-gpt-image-2"` と `n: 1` を使用してください。`gpt-image-2` は通常、別の標準 API モデルのままです。限定的な互換処理として、Codex の `originator` または `x-codex-image-turn-id` ヘッダーが付いた生成リクエストは `codex-gpt-image-2` にマッピングされ、`b64_json` が返されます。API キーでは `codex-gpt-image-2` を許可する必要があります。`Prefer: respond-async` を付けると画像ジョブが返り、`GET /v1/image-jobs/{id}` でポーリングできます。
