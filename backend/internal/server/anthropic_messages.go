@@ -41,6 +41,11 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
+	if err := s.runGatewayAnthropicDecodeNormalizeHooks(r.Context(), call, r.Header, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
 	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, req.Raw, anthropicTokenReservation(req)); err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
 		writeAnthropicError(w, r, err)

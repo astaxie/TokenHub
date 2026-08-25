@@ -35,6 +35,12 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, err)
 		return
 	}
+	request, err = s.runGatewayCompactDecodeNormalizeHooks(r.Context(), call, r.Header, request)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
 	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, request, requestTokenReservation(request)); err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
 		writeError(w, r, err)
