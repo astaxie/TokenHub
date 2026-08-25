@@ -88,7 +88,8 @@ func TestTrackedStepFunProvidersSeparateDirectAPIAndStepPlan(t *testing.T) {
 
 	directModels := []string{
 		"step-1-32k", "step-2-16k", "step-3.5-flash", "step-3.5-flash-2603",
-		"step-3.7-flash", "step-tts-2", "stepaudio-2.5-asr", "stepaudio-2.5-tts",
+		"step-3.7-flash", "step-tts-2", "stepaudio-2.5-asr", "stepaudio-2.5-chat",
+		"stepaudio-2.5-realtime", "stepaudio-2.5-tts",
 	}
 	chinaPlanModels := []string{
 		"step-3.5-flash", "step-3.5-flash-2603", "step-3.7-flash", "step-image-edit-2", "step-router-v1",
@@ -129,20 +130,55 @@ func TestTrackedStepFunProvidersSeparateDirectAPIAndStepPlan(t *testing.T) {
 		})
 	}
 
-	for _, providerID := range []string{"stepfun", "stepfun-global"} {
-		models := providerModelsByID(byID[providerID].Models)
+	type expectedPrices struct {
+		input     float64
+		cacheRead float64
+		output    float64
+	}
+	directProviderPricing := []struct {
+		id       string
+		step37   expectedPrices
+		chat     expectedPrices
+		realtime expectedPrices
+	}{
+		{
+			id:       "stepfun",
+			step37:   expectedPrices{input: 0.185, cacheRead: 0.037, output: 1.11},
+			chat:     expectedPrices{input: 1.37, cacheRead: 0.27, output: 3.42},
+			realtime: expectedPrices{input: 1.37, cacheRead: 0.27, output: 9.59},
+		},
+		{
+			id:       "stepfun-global",
+			step37:   expectedPrices{input: 0.20, cacheRead: 0.04, output: 1.15},
+			chat:     expectedPrices{input: 1.50, cacheRead: 0.30, output: 3.50},
+			realtime: expectedPrices{input: 1.50, cacheRead: 0.30, output: 10.00},
+		},
+	}
+	for _, provider := range directProviderPricing {
+		models := providerModelsByID(byID[provider.id].Models)
 		step37 := models["step-3.7-flash"]
 		if step37.Category != "stepfun" || step37.ContextWindow != 256000 || step37.MaxOutputTokens != 256000 ||
-			step37.InputPriceUSDPer1M != 0.185 || step37.CacheReadPriceUSDPer1M != 0.037 || step37.OutputPriceUSDPer1M != 1.11 ||
+			step37.InputPriceUSDPer1M != provider.step37.input || step37.CacheReadPriceUSDPer1M != provider.step37.cacheRead ||
+			step37.OutputPriceUSDPer1M != provider.step37.output ||
 			step37.Metadata["reasoning_effort_options"] != "low,medium,high" ||
 			!slices.Equal(step37.InputModalities, []string{"image", "text", "video"}) {
-			t.Fatalf("unexpected %s Step 3.7 Flash metadata: %+v", providerID, step37)
+			t.Fatalf("unexpected %s Step 3.7 Flash metadata: %+v", provider.id, step37)
 		}
-		for _, modelID := range []string{"step-tts-2", "stepaudio-2.5-asr", "stepaudio-2.5-tts"} {
+		for _, modelID := range []string{"step-tts-2", "stepaudio-2.5-asr", "stepaudio-2.5-chat", "stepaudio-2.5-realtime", "stepaudio-2.5-tts"} {
 			model := models[modelID]
 			if model.Type != "audio" || !slices.Contains(model.Capabilities, "audio") {
-				t.Fatalf("unexpected %s %s audio metadata: %+v", providerID, modelID, model)
+				t.Fatalf("unexpected %s %s audio metadata: %+v", provider.id, modelID, model)
 			}
+		}
+		chat := models["stepaudio-2.5-chat"]
+		if chat.Metadata["endpoints"] != "chat/completions" || chat.InputPriceUSDPer1M != provider.chat.input ||
+			chat.CacheReadPriceUSDPer1M != provider.chat.cacheRead || chat.OutputPriceUSDPer1M != provider.chat.output {
+			t.Fatalf("unexpected %s StepAudio 2.5 Chat metadata: %+v", provider.id, chat)
+		}
+		realtime := models["stepaudio-2.5-realtime"]
+		if realtime.Metadata["endpoints"] != "realtime" || realtime.InputPriceUSDPer1M != provider.realtime.input ||
+			realtime.CacheReadPriceUSDPer1M != provider.realtime.cacheRead || realtime.OutputPriceUSDPer1M != provider.realtime.output {
+			t.Fatalf("unexpected %s StepAudio 2.5 Realtime metadata: %+v", provider.id, realtime)
 		}
 	}
 
