@@ -147,6 +147,8 @@ tokenhub:
   plugin_api: v1
 kinds:
   - extension
+placement:
+  - gateway_chain
 capabilities:
   hooks:
     - id: bad
@@ -185,6 +187,8 @@ tokenhub:
   plugin_api: v1
 kinds:
   - extension
+placement:
+  - gateway_chain
 capabilities:
   hooks:
     - id: mask
@@ -194,6 +198,74 @@ capabilities:
 `))
 	if err == nil {
 		t.Fatal("manifest with undeclared hook data permissions parsed successfully")
+	}
+}
+
+func TestParseManifestRejectsAdminUIWithoutPresentationPlacement(t *testing.T) {
+	for _, manifest := range []string{
+		`
+schema_version: 1
+id: tokenhub.ui
+name: UI Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - admin_ui
+placement:
+  - gateway_chain
+capabilities:
+  admin_ui:
+    - settings_panel
+`,
+		`
+schema_version: 1
+id: tokenhub.ui-schema
+name: UI Schema Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - sim
+placement:
+  - gateway_chain
+entry:
+  frontend:
+    schema: admin-ui.schema.json
+`,
+	} {
+		_, err := ParseManifest([]byte(manifest))
+		if err == nil {
+			t.Fatal("manifest with admin UI surface but no presentation placement parsed successfully")
+		}
+	}
+}
+
+func TestParseManifestRejectsGatewayHookWithoutGatewayChainPlacement(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.router
+name: Router
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - presentation
+capabilities:
+  hooks:
+    - id: rank
+      stage: route_rank
+      reads:
+        - route_candidates
+permissions:
+  data:
+    read:
+      - route_candidates
+`))
+	if err == nil {
+		t.Fatal("manifest with gateway hook but no gateway_chain placement parsed successfully")
 	}
 }
 
@@ -252,6 +324,8 @@ tokenhub:
   plugin_api: v1
 kinds:
   - extension
+placement:
+  - gateway_chain
 capabilities:
   hooks:
     - id: mask

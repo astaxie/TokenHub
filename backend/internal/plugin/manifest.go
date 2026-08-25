@@ -147,9 +147,15 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("unsupported plugin placement %q", placement)
 		}
 	}
+	if (m.hasFrontendSchema() || len(m.Capabilities.AdminUI) > 0) && !manifestHasPlacement(m.Placement, PlacementPresentation) {
+		return fmt.Errorf("admin UI capabilities require presentation placement")
+	}
 	for _, hook := range m.Capabilities.Hooks {
 		if strings.TrimSpace(hook.ID) == "" {
 			return fmt.Errorf("gateway hook id is required")
+		}
+		if !manifestHasPlacement(m.Placement, PlacementGatewayChain) {
+			return fmt.Errorf("gateway hook %s requires gateway_chain placement", hook.ID)
 		}
 		if !validGatewayHookStage(hook.Stage) {
 			return fmt.Errorf("unsupported gateway hook stage %q", hook.Stage)
@@ -225,6 +231,10 @@ func (m Manifest) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (m Manifest) hasFrontendSchema() bool {
+	return m.Entry.Frontend != nil && strings.TrimSpace(m.Entry.Frontend.Schema) != ""
 }
 
 func (m Manifest) Descriptor() Descriptor {
