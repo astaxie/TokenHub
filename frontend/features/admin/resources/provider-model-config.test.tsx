@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
-import { providerResourceConfig, providerResourceCredentialRefreshAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { providerResourceConfig, providerResourceCredentialRefreshAction, runProviderAvailabilityTest, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("shows credential refresh only when a provider plugin action is registered", async () => {
@@ -94,5 +94,81 @@ describe("providerResourceConfig", () => {
   it("unwraps plugin action envelopes", () => {
     expect(unwrapPluginActionData<{ ok: boolean }>({ data: { ok: true } })).toEqual({ ok: true });
     expect(unwrapPluginActionData<{ ok: boolean }>({ ok: false })).toEqual({ ok: false });
+  });
+
+  it("tests subscription-backed Providers through resource probe plugin actions", async () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_codex", name: "Codex", type: "openai_codex", status: "active", healthy: true, priority: 1 }];
+    data.providerResources = [{
+      id: "rsrc_codex",
+      provider_id: "prv_codex",
+      name: "Codex Account",
+      resource_type: "openai_subscription",
+      status: "active",
+      healthy: true,
+      priority: 1,
+      weight: 100,
+    }];
+    data.pluginActions = [{
+      plugin_id: "tokenhub.provider.openai-codex",
+      action_id: "openai_codex.probe.run",
+      kind: "test",
+      capability: "probe.run",
+      subject: "openai_codex",
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { healthy: true } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runProviderAvailabilityTest({ baseURL: "http://localhost:8080", adminToken: "admin-token" }, data.providers[0], data);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.probe.run");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      provider_id: "prv_codex",
+      resource_id: "rsrc_codex",
+      model: "gpt-5.6-luna",
+      reasoning_effort: "medium",
+      speed: "standard",
+    });
+  });
+
+  it("tests direct Providers through provider probe plugin actions", async () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_plugin", name: "Plugin Provider", type: "plugin_provider", status: "active", healthy: true, priority: 1 }];
+    data.pluginActions = [{
+      plugin_id: "tokenhub.provider.plugin",
+      action_id: "provider.probe.run",
+      kind: "test",
+      capability: "provider.probe.run",
+      subject: "plugin_provider",
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { healthy: true } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runProviderAvailabilityTest({ baseURL: "http://localhost:8080", adminToken: "admin-token" }, data.providers[0], data);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.plugin/actions/provider.probe.run");
+    expect(JSON.parse(String(init.body))).toEqual({ provider_id: "prv_plugin" });
+  });
+
+  it("falls back to legacy Provider tests while providers are migrated", async () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_legacy", name: "Legacy Provider", type: "openai_compatible", status: "active", healthy: true, priority: 1 }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runProviderAvailabilityTest({ baseURL: "http://localhost:8080", adminToken: "admin-token" }, data.providers[0], data);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:8080/api/admin/providers/prv_legacy/test");
   });
 });

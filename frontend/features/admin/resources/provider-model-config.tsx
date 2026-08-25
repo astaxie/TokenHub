@@ -6,7 +6,7 @@ import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
-import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload, testProviderAvailability } from "./payloads";
+import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
 
 export function providerConfig(): ResourceConfig<Provider> {
@@ -51,7 +51,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       {
         label: "测试",
         title: "检测 Provider 可用性；Codex 订阅使用 Luna 中等推理标准速度真实测试",
-        run: testProviderAvailability,
+        run: runProviderAvailabilityTest,
         doneMessage: (item) => `${item.name} ${tx("检测完成")}`,
       },
     ],
@@ -144,6 +144,32 @@ export function openAIAccountFieldVisible(values: Record<string, string>) {
   return values.resource_type === "openai_subscription";
 }
 
+export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Provider, data: AppData) {
+  const subscription = data.providerResources.find((resource) =>
+    resource.provider_id === provider.id && resource.resource_type === "openai_subscription" && resource.status === "active",
+  );
+  if (subscription) {
+    const action = providerPluginActionForCapability(data.pluginActions, provider.type, "probe.run");
+    if (action) {
+      await runProviderResourcePluginAction(ctx, subscription, action, {
+        model: "gpt-5.6-luna",
+        reasoning_effort: "medium",
+        speed: "standard",
+        prompt: "请用一句话确认 Codex 连接正常。",
+      }, tx("Codex Luna 中等推理标准测试"));
+      return;
+    }
+    await legacyProviderResourceProbe(ctx, subscription);
+    return;
+  }
+  const action = providerPluginActionForCapability(data.pluginActions, provider.type, "provider.probe.run");
+  if (action) {
+    await adminMutate(ctx, providerPluginActionPath(action), "POST", { provider_id: provider.id });
+    return;
+  }
+  await adminMutate(ctx, `/api/admin/providers/${provider.id}/test`, "POST", {});
+}
+
 export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext, item: ProviderResource, data: AppData) {
   const action = providerResourceCredentialRefreshAction(data, item);
   if (!action) throw new Error(tx("该插件动作尚未注册。"));
@@ -192,6 +218,19 @@ export function providerPluginActionPath(action: PluginActionDescriptor) {
 
 function providerResourcePluginPayload(item: ProviderResource, payload: Record<string, unknown>) {
   return { provider_id: item.provider_id, resource_id: item.id, ...payload };
+}
+
+async function legacyProviderResourceProbe(ctx: ApiContext, resource: ProviderResource) {
+  const resp = await adminFetch(ctx, `/api/admin/provider-resources/${resource.id}/test`, {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gpt-5.6-luna",
+      reasoning_effort: "medium",
+      speed: "standard",
+      prompt: "请用一句话确认 Codex 连接正常。",
+    }),
+  });
+  if (!resp.ok) throw new Error(await readAdminError(resp, tx("Codex Luna 中等推理标准测试")));
 }
 
 export function providerCreateAccountResourceFields() {
