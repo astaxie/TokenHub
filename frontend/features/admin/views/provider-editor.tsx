@@ -1525,7 +1525,7 @@ export function ProviderUpsertModal({
                 <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} resources={resources} /> : null}
-            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && editingCodexSubscription ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("订阅额度")}</h3>
@@ -1637,7 +1637,7 @@ export function ProviderUpsertModal({
                 </div>
               </section>
             ) : null}
-            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && editingCodexSubscription ? (
               <section className="provider-quota-panel provider-codex-test-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("Codex 真实请求测试")}</h3>
