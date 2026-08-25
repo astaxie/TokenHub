@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -61,6 +62,68 @@ func TestChatStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	}
 }
 
+func TestResponsesStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Stream Transform Responses App", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "stream-transform-responses-key",
+		Allowed: []string{"gpt-stream-transform-responses"},
+		Status:  StatusActive,
+	}, "thk_stream_transform_responses")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_stream_transform_responses", Name: "Stream Transform Responses",
+		Type: "stream_transform_responses", Status: StatusActive, Healthy: true,
+	})
+	store.AddModel(Model{Name: "gpt-stream-transform-responses", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID: "route_stream_transform_responses", ModelName: "gpt-stream-transform-responses",
+		ProviderID: provider.ID, ProviderModel: "upstream-responses", Status: StatusActive, Priority: 1, Weight: 100,
+	})
+	server := New(store)
+	server.adapterRegistry.Register("stream_transform_responses", responsesStreamTransformAdapter{}, AdapterCapabilityResponses, AdapterCapabilityResponseStream)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-stream",
+		HookID:        "rewrite-responses-delta",
+		Stage:         pluginmeta.StageStreamTransform,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var event gatewayStreamEventView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataStreamEvents], &event); err != nil {
+			t.Fatalf("decode stream event: %v", err)
+		}
+		if !strings.Contains(event.Data, "Echo responses") {
+			return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+		}
+		return streamEventPatchResult(t, map[string]any{
+			"data": strings.Replace(event.Data, "Echo responses", "Plugin responses", 1),
+		}), nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
+		"model":  "gpt-stream-transform-responses",
+		"stream": true,
+		"input":  "hello",
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, "Plugin responses") {
+		t.Fatalf("responses stream body was not transformed: %s", resp.Body)
+	}
+}
+
 func TestPlaygroundChatStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {
@@ -107,6 +170,24 @@ func TestPlaygroundChatStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	if !strings.Contains(resp.Body, "Playground plugin: hello") {
 		t.Fatalf("playground stream body was not transformed: %s", resp.Body)
 	}
+}
+
+type responsesStreamTransformAdapter struct{}
+
+func (a responsesStreamTransformAdapter) OpenResponses(context.Context, Provider, string, ResponsesRequest, http.Header) (*http.Response, error) {
+	body := strings.Join([]string{
+		`event: response.output_text.delta`,
+		`data: {"type":"response.output_text.delta","delta":"Echo responses"}`,
+		``,
+		`event: response.completed`,
+		`data: {"type":"response.completed","response":{"id":"resp_stream_transform","object":"response","model":"upstream-responses","output_text":"Echo responses","usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}}`,
+		``,
+	}, "\n")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
 }
 
 func streamEventPatchResult(t *testing.T, value any) pluginmeta.GatewayHookResult {

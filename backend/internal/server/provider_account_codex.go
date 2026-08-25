@@ -397,7 +397,18 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		writeCodexResponseHeaders(w.Header(), opened.Header)
 		s.writeRouteHeaders(w, routed.Call, prepared, attemptNumber)
 		tracker.ensureStarted()
-		response, _, usage, streamErr := consumeCodexResponsesStream(opened.Body, tracker)
+		streamWriter := io.Writer(tracker)
+		var transformer *gatewayStreamTransformWriter
+		if s.hasGatewayStreamTransformHooks() {
+			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, tracker)
+			streamWriter = transformer
+		}
+		response, _, usage, streamErr := consumeCodexResponsesStream(opened.Body, streamWriter)
+		if transformer != nil {
+			if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
+				streamErr = closeErr
+			}
+		}
 		applyCodexResponseMetadata(&usage, opened.Header)
 		if streamErr != nil {
 			return response, usage, &ProviderInvocationError{
