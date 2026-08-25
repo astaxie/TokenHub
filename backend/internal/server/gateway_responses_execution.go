@@ -22,6 +22,9 @@ func (s *Server) executeRoutedResponsesContext(ctx context.Context, incoming htt
 		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+			return resp, usage, err
+		}
 		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, incoming)
 		if isCodexModelUnsupportedError(err) {
 			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)

@@ -12,14 +12,6 @@ func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, reques
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		adapter, err := s.responsesAdapterForRoute(prepared)
-		if err != nil {
-			return nil, Usage{}, err
-		}
-		compactAdapter, ok := adapter.(ResponsesCompactAdapter)
-		if !ok {
-			return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses compact")
-		}
 		body := make(map[string]json.RawMessage, len(request))
 		for key, value := range request {
 			body[key] = append(json.RawMessage(nil), value...)
@@ -27,6 +19,17 @@ func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, reques
 		body, err = s.runGatewayCompactRequestTransformHooks(ctx, routed.Call, prepared, body)
 		if err != nil {
 			return nil, Usage{}, err
+		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, body); err != nil || handled {
+			return resp, usage, err
+		}
+		adapter, err := s.responsesAdapterForRoute(prepared)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		compactAdapter, ok := adapter.(ResponsesCompactAdapter)
+		if !ok {
+			return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses compact")
 		}
 		return compactAdapter.CompactWithHeaders(ctx, prepared.Provider, prepared.ProviderModel, body, r.Header)
 	})
@@ -51,15 +54,14 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 			if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 				return nil, Usage{}, transformErr
 			}
+			if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+				return resp, usage, err
+			}
 			resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
 			if isCodexModelUnsupportedError(err) {
 				s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
 			}
 			return resp, usage, err
-		}
-		adapter, err := s.adapterForRoute(route)
-		if err != nil {
-			return nil, Usage{}, err
 		}
 		upstreamReq := req
 		if omitReasoningEffort {
@@ -67,6 +69,13 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 		}
 		if transformErr := s.runGatewayChatRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 			return nil, Usage{}, transformErr
+		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+			return resp, usage, err
+		}
+		adapter, err := s.adapterForRoute(route)
+		if err != nil {
+			return nil, Usage{}, err
 		}
 		return adapter.Chat(ctx, route.Provider, route.ProviderModel, upstreamReq)
 	})
@@ -96,13 +105,16 @@ func (s *Server) executeRoutedEmbeddings(r *http.Request, routed RoutedCall, req
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		adapter, err := s.adapterForRoute(route)
-		if err != nil {
-			return nil, Usage{}, err
-		}
 		upstreamReq := req
 		if transformErr := s.runGatewayEmbeddingsRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 			return nil, Usage{}, transformErr
+		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+			return resp, usage, err
+		}
+		adapter, err := s.adapterForRoute(route)
+		if err != nil {
+			return nil, Usage{}, err
 		}
 		return adapter.Embeddings(ctx, route.Provider, route.ProviderModel, upstreamReq)
 	})

@@ -1371,6 +1371,25 @@ func rawProviderResponsePatch(t *testing.T, value any) pluginmeta.GatewayHookRes
 	}
 }
 
+func rawProviderCallResult(t *testing.T, response any, usage Usage) pluginmeta.GatewayHookResult {
+	t.Helper()
+	responseData, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	usageData, err := json.Marshal(usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pluginmeta.GatewayHookResult{
+		Decision: pluginmeta.HookDecisionShortCircuit,
+		Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+			pluginmeta.DataProviderResponse: {Value: responseData},
+			pluginmeta.DataUsage:            {Value: usageData},
+		},
+	}
+}
+
 func rawUsagePatch(t *testing.T, value Usage) pluginmeta.GatewayHookResult {
 	t.Helper()
 	data, err := json.Marshal(value)

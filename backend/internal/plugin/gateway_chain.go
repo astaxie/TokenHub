@@ -266,9 +266,10 @@ func GatewayStagePolicy(stage GatewayHookStage) (GatewayHookStagePolicy, bool) {
 		return GatewayHookStagePolicy{
 			DefaultFailurePolicy: FailurePolicySkipRoute,
 			AllowedFailurePolicy: []GatewayHookFailurePolicy{FailurePolicySkipRoute, FailurePolicyFailClosed},
-			Reads:                []GatewayDataClass{DataAuthContext, DataProjectMetadata, DataProviderCredentials, DataProviderRequest},
+			Reads:                []GatewayDataClass{DataAuthContext, DataProjectMetadata, DataProviderCredentials, DataProviderRequest, DataRouteCandidates},
 			Writes:               []GatewayDataClass{DataProviderResponse, DataStreamEvents, DataUsage, DataAudit},
 			AllowsDeny:           true,
+			AllowsShortCircuit:   true,
 		}, true
 	case StageStreamTransform:
 		return GatewayHookStagePolicy{

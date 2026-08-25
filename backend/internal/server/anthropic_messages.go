@@ -251,7 +251,21 @@ func (s *Server) executeRoutedAnthropicMessages(
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return s.executeAnthropicMessagesRoute(ctx, route, anthropicRequestForRoute(req, route), r.Header)
+		upstreamReq := anthropicRequestForRoute(req, route)
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq.Raw); err != nil || handled {
+			if err != nil {
+				return nil, Usage{}, err
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				return nil, Usage{}, &ProviderInvocationError{
+					Err:         NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response"),
+					Disposition: ProviderErrorPolicy,
+				}
+			}
+			return body, usage, nil
+		}
+		return s.executeAnthropicMessagesRoute(ctx, route, upstreamReq, r.Header)
 	})
 }
 
