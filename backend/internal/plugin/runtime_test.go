@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -164,6 +165,43 @@ capabilities:
 	}
 	if contributions[0].PluginID != "tokenhub.codex" || contributions[0].Slot != SlotProviderResourcePanel {
 		t.Fatalf("admin UI contribution = %+v", contributions[0])
+	}
+}
+
+func TestRuntimeLoadIntoWithActionsRegistersActionDescriptors(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, filepath.Join(root, "action"), `
+schema_version: 1
+id: tokenhub.action
+name: Action Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - management_action
+capabilities:
+  actions:
+    - id: sync.run
+      kind: mutate
+      title: Run sync
+`)
+	actions := NewActionBroker()
+
+	if _, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), NewGatewayChainRegistry(), nil, actions); err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	descriptor, ok := actions.Describe("tokenhub.action", "sync.run")
+	if !ok {
+		t.Fatal("action descriptor was not registered")
+	}
+	if descriptor.Kind != ActionKindMutate || descriptor.Title != "Run sync" {
+		t.Fatalf("action descriptor = %+v", descriptor)
+	}
+	_, err := actions.Execute(t.Context(), ActionInvocation{PluginID: "tokenhub.action", ActionID: "sync.run"})
+	if !errors.Is(err, ErrPluginActionUnavailable) {
+		t.Fatalf("execute descriptor-only action error = %v, want ErrPluginActionUnavailable", err)
 	}
 }
 

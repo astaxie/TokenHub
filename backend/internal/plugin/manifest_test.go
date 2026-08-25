@@ -26,6 +26,17 @@ capabilities:
     - responses_stream
   admin_ui:
     - provider_form
+  actions:
+    - id: codex.quota.read
+      kind: read
+      title: Read quota
+      input_schema:
+        type: object
+        required:
+          - resource_id
+        properties:
+          resource_id:
+            type: string
   hooks:
     - id: codex_affinity
       stage: route_rank
@@ -53,8 +64,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 5 {
-		t.Fatalf("descriptor capabilities = %v, want 5 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 6 {
+		t.Fatalf("descriptor capabilities = %v, want 6 entries", descriptor.Capabilities)
 	}
 	hooks := manifest.GatewayHooks()
 	if len(hooks) != 1 {
@@ -62,6 +73,13 @@ permissions:
 	}
 	if hooks[0].PluginID != manifest.ID || hooks[0].Stage != StageRouteRank {
 		t.Fatalf("gateway hook = %+v", hooks[0])
+	}
+	actions := manifest.Actions()
+	if len(actions) != 1 || actions[0].ActionID != "codex.quota.read" || actions[0].Kind != ActionKindRead {
+		t.Fatalf("actions = %+v", actions)
+	}
+	if actions[0].InputSchema["type"] != "object" {
+		t.Fatalf("action input schema = %+v", actions[0].InputSchema)
 	}
 }
 
@@ -122,6 +140,28 @@ capabilities:
 `))
 	if err == nil {
 		t.Fatal("manifest with undeclared hook data permissions parsed successfully")
+	}
+}
+
+func TestParseManifestRejectsActionWithoutManagementPlacement(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.action
+name: Action Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - admin_ui
+placement:
+  - presentation
+capabilities:
+  actions:
+    - id: run
+      kind: mutate
+`))
+	if err == nil {
+		t.Fatal("manifest with action but no management_action placement parsed successfully")
 	}
 }
 

@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-var ErrPluginActionNotFound = errors.New("plugin action is not registered")
+var (
+	ErrPluginActionNotFound    = errors.New("plugin action is not registered")
+	ErrPluginActionUnavailable = errors.New("plugin action handler is unavailable")
+)
 
 type ActionKind string
 
@@ -59,19 +62,36 @@ func (f ActionHandlerFunc) ExecutePluginAction(ctx context.Context, invocation A
 	return f(ctx, invocation)
 }
 
+type unavailableActionHandler struct{}
+
+func (unavailableActionHandler) ExecutePluginAction(context.Context, ActionInvocation) (ActionResult, error) {
+	return ActionResult{}, ErrPluginActionUnavailable
+}
+
 type ActionBroker struct {
-	actions  map[string]ActionDescriptor
-	handlers map[string]ActionHandler
+	actions map[string]actionEntry
+}
+
+type actionEntry struct {
+	descriptor ActionDescriptor
+	handler    ActionHandler
 }
 
 func NewActionBroker() *ActionBroker {
 	return &ActionBroker{
-		actions:  map[string]ActionDescriptor{},
-		handlers: map[string]ActionHandler{},
+		actions: map[string]actionEntry{},
 	}
 }
 
+func (b *ActionBroker) RegisterDescriptor(descriptor ActionDescriptor) error {
+	return b.register(descriptor, unavailableActionHandler{}, false)
+}
+
 func (b *ActionBroker) Register(descriptor ActionDescriptor, handler ActionHandler) error {
+	return b.register(descriptor, handler, true)
+}
+
+func (b *ActionBroker) register(descriptor ActionDescriptor, handler ActionHandler, allowDescriptorBinding bool) error {
 	if b == nil {
 		return fmt.Errorf("plugin action broker is not configured")
 	}
@@ -89,11 +109,10 @@ func (b *ActionBroker) Register(descriptor ActionDescriptor, handler ActionHandl
 		return fmt.Errorf("plugin action handler is required")
 	}
 	key := pluginActionKey(descriptor.PluginID, descriptor.ActionID)
-	if _, ok := b.actions[key]; ok {
+	if existing, ok := b.actions[key]; ok && !(allowDescriptorBinding && isUnavailableActionHandler(existing.handler)) {
 		return fmt.Errorf("plugin action %s from plugin %s is already registered", descriptor.ActionID, descriptor.PluginID)
 	}
-	b.actions[key] = descriptor
-	b.handlers[key] = handler
+	b.actions[key] = actionEntry{descriptor: descriptor, handler: handler}
 	return nil
 }
 
@@ -103,19 +122,19 @@ func (b *ActionBroker) Execute(ctx context.Context, invocation ActionInvocation)
 	}
 	invocation.PluginID = strings.TrimSpace(invocation.PluginID)
 	invocation.ActionID = strings.TrimSpace(invocation.ActionID)
-	handler := b.handlers[pluginActionKey(invocation.PluginID, invocation.ActionID)]
-	if handler == nil {
+	entry, ok := b.actions[pluginActionKey(invocation.PluginID, invocation.ActionID)]
+	if !ok {
 		return ActionResult{}, ErrPluginActionNotFound
 	}
-	return handler.ExecutePluginAction(ctx, invocation)
+	return entry.handler.ExecutePluginAction(ctx, invocation)
 }
 
 func (b *ActionBroker) Describe(pluginID string, actionID string) (ActionDescriptor, bool) {
 	if b == nil {
 		return ActionDescriptor{}, false
 	}
-	descriptor, ok := b.actions[pluginActionKey(pluginID, actionID)]
-	return descriptor, ok
+	entry, ok := b.actions[pluginActionKey(pluginID, actionID)]
+	return entry.descriptor, ok
 }
 
 func (b *ActionBroker) List() []ActionDescriptor {
@@ -123,8 +142,8 @@ func (b *ActionBroker) List() []ActionDescriptor {
 		return nil
 	}
 	items := make([]ActionDescriptor, 0, len(b.actions))
-	for _, descriptor := range b.actions {
-		items = append(items, descriptor)
+	for _, entry := range b.actions {
+		items = append(items, entry.descriptor)
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].PluginID != items[j].PluginID {
@@ -156,4 +175,9 @@ func validActionKind(kind ActionKind) bool {
 
 func pluginActionKey(pluginID string, actionID string) string {
 	return strings.TrimSpace(pluginID) + "\x00" + strings.TrimSpace(actionID)
+}
+
+func isUnavailableActionHandler(handler ActionHandler) bool {
+	_, ok := handler.(unavailableActionHandler)
+	return ok
 }

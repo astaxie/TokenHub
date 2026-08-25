@@ -46,6 +46,7 @@ type ManifestCapabilities struct {
 	Gateway       []string              `yaml:"gateway"`
 	AdminUI       []string              `yaml:"admin_ui"`
 	Hooks         []GatewayHookManifest `yaml:"hooks"`
+	Actions       []ActionManifest      `yaml:"actions"`
 }
 
 type GatewayHookManifest struct {
@@ -56,6 +57,14 @@ type GatewayHookManifest struct {
 	Writes        []GatewayDataClass       `yaml:"writes"`
 	FailurePolicy GatewayHookFailurePolicy `yaml:"failure_policy"`
 	TimeoutMillis int                      `yaml:"timeout_millis"`
+}
+
+type ActionManifest struct {
+	ID           string         `yaml:"id"`
+	Kind         ActionKind     `yaml:"kind"`
+	Title        string         `yaml:"title"`
+	InputSchema  map[string]any `yaml:"input_schema"`
+	OutputSchema map[string]any `yaml:"output_schema"`
 }
 
 type ManifestPermissions struct {
@@ -129,6 +138,25 @@ func (m Manifest) Validate() error {
 			return err
 		}
 	}
+	for _, action := range m.Capabilities.Actions {
+		descriptor := NormalizeActionDescriptor(ActionDescriptor{
+			PluginID:     m.ID,
+			ActionID:     action.ID,
+			Kind:         action.Kind,
+			Title:        action.Title,
+			InputSchema:  action.InputSchema,
+			OutputSchema: action.OutputSchema,
+		})
+		if descriptor.ActionID == "" {
+			return fmt.Errorf("plugin action id is required")
+		}
+		if !validActionKind(descriptor.Kind) {
+			return fmt.Errorf("unsupported plugin action kind %q", descriptor.Kind)
+		}
+		if !manifestHasPlacement(m.Placement, PlacementManagementAction) {
+			return fmt.Errorf("plugin action %s requires management_action placement", descriptor.ActionID)
+		}
+	}
 	return nil
 }
 
@@ -166,6 +194,12 @@ func (m Manifest) Descriptor() Descriptor {
 			Name: string(hook.Stage),
 		})
 	}
+	for _, action := range m.Capabilities.Actions {
+		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+			Kind: "management_action",
+			Name: strings.TrimSpace(action.ID),
+		})
+	}
 	return NormalizeDescriptor(descriptor)
 }
 
@@ -186,6 +220,21 @@ func (m Manifest) GatewayHooks() []GatewayHookDescriptor {
 	return hooks
 }
 
+func (m Manifest) Actions() []ActionDescriptor {
+	actions := make([]ActionDescriptor, 0, len(m.Capabilities.Actions))
+	for _, action := range m.Capabilities.Actions {
+		actions = append(actions, NormalizeActionDescriptor(ActionDescriptor{
+			PluginID:     m.ID,
+			ActionID:     action.ID,
+			Kind:         action.Kind,
+			Title:        action.Title,
+			InputSchema:  action.InputSchema,
+			OutputSchema: action.OutputSchema,
+		}))
+	}
+	return actions
+}
+
 func validKind(kind Kind) bool {
 	switch kind {
 	case KindProvider, KindAdminUI, KindSIM, KindExtension:
@@ -202,6 +251,15 @@ func validPlacement(placement Placement) bool {
 	default:
 		return false
 	}
+}
+
+func manifestHasPlacement(placements []Placement, want Placement) bool {
+	for _, placement := range placements {
+		if placement == want {
+			return true
+		}
+	}
+	return false
 }
 
 func validGatewayHookStage(stage GatewayHookStage) bool {

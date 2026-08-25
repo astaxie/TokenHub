@@ -67,6 +67,9 @@ func pluginActionHTTPError(err error) error {
 	if errors.Is(err, pluginmeta.ErrPluginActionNotFound) {
 		return NewHTTPError(http.StatusNotFound, "plugin_action_not_found", "Plugin action not found")
 	}
+	if errors.Is(err, pluginmeta.ErrPluginActionUnavailable) {
+		return NewHTTPError(http.StatusNotImplemented, "plugin_action_unavailable", "Plugin action handler is unavailable")
+	}
 	httpErr := AsHTTPError(err)
 	if httpErr.Code != "internal_error" {
 		return httpErr

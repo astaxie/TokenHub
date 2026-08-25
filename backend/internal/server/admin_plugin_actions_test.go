@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -57,6 +59,45 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 	if !strings.Contains(body, `"action_id":"openai_codex.quota.read"`) || !strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
 	}
+}
+
+func TestAdminPluginActionsLoadsExternalManifestActions(t *testing.T) {
+	pluginRoot := t.TempDir()
+	pluginDir := filepath.Join(pluginRoot, "sync")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.yaml"), []byte(`
+schema_version: 1
+id: tokenhub.sync
+name: Sync Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - management_action
+capabilities:
+  actions:
+    - id: sync.run
+      kind: mutate
+      title: Run sync
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin", PluginDir: pluginRoot})
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-actions", nil, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET plugin actions: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"plugin_id":"tokenhub.sync"`) || !strings.Contains(response.Body, `"action_id":"sync.run"`) {
+		t.Fatalf("GET plugin actions did not include external manifest action: %s", response.Body)
+	}
+
+	execute := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.sync/actions/sync.run", map[string]any{}, "plugin-action-admin")
+	assertResponseBodyJSONError(t, execute, http.StatusNotImplemented, "plugin_action_unavailable")
 }
 
 func TestAdminPluginActionRejectsUnknownPlugin(t *testing.T) {

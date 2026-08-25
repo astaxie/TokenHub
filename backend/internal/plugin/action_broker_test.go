@@ -53,6 +53,25 @@ func TestActionBrokerReportsUnknownAction(t *testing.T) {
 	}
 }
 
+func TestActionBrokerDescriptorOnlyActionIsUnavailable(t *testing.T) {
+	broker := NewActionBroker()
+	if err := broker.RegisterDescriptor(ActionDescriptor{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+		Kind:     ActionKindRead,
+	}); err != nil {
+		t.Fatalf("register descriptor: %v", err)
+	}
+
+	_, err := broker.Execute(context.Background(), ActionInvocation{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+	})
+	if !errors.Is(err, ErrPluginActionUnavailable) {
+		t.Fatalf("error = %v, want ErrPluginActionUnavailable", err)
+	}
+}
+
 func TestActionBrokerListsActionsDeterministically(t *testing.T) {
 	broker := NewActionBroker()
 	handler := ActionHandlerFunc(func(context.Context, ActionInvocation) (ActionResult, error) {
@@ -73,6 +92,34 @@ func TestActionBrokerListsActionsDeterministically(t *testing.T) {
 	want := []string{"tokenhub.a:a", "tokenhub.a:b", "tokenhub.b:z"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("actions = %v, want %v", got, want)
+	}
+}
+
+func TestActionBrokerBindsHandlerAfterDescriptor(t *testing.T) {
+	broker := NewActionBroker()
+	descriptor := ActionDescriptor{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+		Kind:     ActionKindRead,
+	}
+	if err := broker.RegisterDescriptor(descriptor); err != nil {
+		t.Fatalf("register descriptor: %v", err)
+	}
+	if err := broker.Register(descriptor, ActionHandlerFunc(func(context.Context, ActionInvocation) (ActionResult, error) {
+		return ActionResult{Data: "ok"}, nil
+	})); err != nil {
+		t.Fatalf("bind handler: %v", err)
+	}
+
+	result, err := broker.Execute(context.Background(), ActionInvocation{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+	})
+	if err != nil {
+		t.Fatalf("execute action: %v", err)
+	}
+	if result.Data != "ok" {
+		t.Fatalf("result data = %v, want ok", result.Data)
 	}
 }
 

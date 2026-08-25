@@ -23,13 +23,21 @@ func NewRuntime(dir string) Runtime {
 }
 
 func (r Runtime) LoadInto(plugins *Registry, chain *GatewayChainRegistry, adminUIRegistries ...*AdminUIRegistry) ([]Package, error) {
-	packages, err := r.Discover()
-	if err != nil {
-		return nil, err
-	}
 	var adminUI *AdminUIRegistry
 	if len(adminUIRegistries) > 0 {
 		adminUI = adminUIRegistries[0]
+	}
+	return r.loadInto(plugins, chain, adminUI, nil)
+}
+
+func (r Runtime) LoadIntoWithActions(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker) ([]Package, error) {
+	return r.loadInto(plugins, chain, adminUI, actions)
+}
+
+func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker) ([]Package, error) {
+	packages, err := r.Discover()
+	if err != nil {
+		return nil, err
 	}
 	packageDirsByID := map[string]string{}
 	for _, pkg := range packages {
@@ -48,6 +56,13 @@ func (r Runtime) LoadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 		if adminUI != nil {
 			if err := adminUI.RegisterManifest(pkg.AdminUI); err != nil {
 				return nil, fmt.Errorf("register admin UI contributions from plugin %s: %w", pkg.Manifest.ID, err)
+			}
+		}
+		if actions != nil {
+			for _, action := range pkg.Manifest.Actions() {
+				if err := actions.RegisterDescriptor(action); err != nil {
+					return nil, fmt.Errorf("register action %s from plugin %s: %w", action.ActionID, pkg.Manifest.ID, err)
+				}
 			}
 		}
 	}
