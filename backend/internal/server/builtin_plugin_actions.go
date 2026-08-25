@@ -23,6 +23,13 @@ func registerBuiltinPluginActions(server *Server) {
 				"return_url":   map[string]any{"type": "string"},
 			},
 		},
+		OutputSchema: actionObjectSchema([]string{"auth_url", "session_id", "state", "redirect_uri", "expires_at"}, map[string]string{
+			"auth_url":     "string",
+			"session_id":   "string",
+			"state":        "string",
+			"redirect_uri": "string",
+			"expires_at":   "string",
+		}),
 	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload providerAccountOAuthGenerateRequest
 		if len(invocation.Payload) > 0 {
@@ -53,6 +60,21 @@ func registerBuiltinPluginActions(server *Server) {
 				"redirect_uri": map[string]any{"type": "string"},
 			},
 		},
+		OutputSchema: actionObjectSchema(nil, map[string]string{
+			"access_token":    "string",
+			"refresh_token":   "string",
+			"id_token":        "string",
+			"client_id":       "string",
+			"scopes":          "string",
+			"token_type":      "string",
+			"expires_in":      "integer",
+			"expires_at":      "string",
+			"account_email":   "string",
+			"account_id":      "string",
+			"user_id":         "string",
+			"organization_id": "string",
+			"plan_type":       "string",
+		}),
 	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload providerAccountOAuthExchangeRequest
 		if len(invocation.Payload) > 0 {
@@ -81,6 +103,13 @@ func registerBuiltinPluginActions(server *Server) {
 				"refresh":     map[string]any{"type": "boolean"},
 			},
 		},
+		OutputSchema: actionObjectSchema([]string{"fetched_at"}, map[string]string{
+			"user_id":    "string",
+			"account_id": "string",
+			"email":      "string",
+			"plan_type":  "string",
+			"fetched_at": "integer",
+		}),
 	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {
 			ResourceID string `json:"resource_id"`
@@ -115,6 +144,16 @@ func registerBuiltinPluginActions(server *Server) {
 				"prompt":           map[string]any{"type": "string"},
 			},
 		},
+		OutputSchema: actionObjectSchema([]string{"resource_id", "model", "output_text", "latency_ms"}, map[string]string{
+			"resource_id":           "string",
+			"model":                 "string",
+			"reasoning_effort":      "string",
+			"speed":                 "string",
+			"upstream_service_tier": "string",
+			"output_text":           "string",
+			"usage":                 "object",
+			"latency_ms":            "integer",
+		}),
 	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {
 			ResourceID      string `json:"resource_id"`
@@ -154,6 +193,13 @@ func registerBuiltinPluginActions(server *Server) {
 				"force":       map[string]any{"type": "boolean"},
 			},
 		},
+		OutputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"credential_summary"},
+			"properties": map[string]any{
+				"credential_summary": map[string]any{"type": "object"},
+			},
+		},
 	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {
 			ResourceID string `json:"resource_id"`
@@ -176,4 +222,19 @@ func mustRegisterPluginAction(actions *pluginmeta.ActionBroker, descriptor plugi
 	if err := actions.Register(descriptor, handler); err != nil {
 		panic(err)
 	}
+}
+
+func actionObjectSchema(required []string, properties map[string]string) map[string]any {
+	schemaProperties := map[string]any{}
+	for name, valueType := range properties {
+		schemaProperties[name] = map[string]any{"type": valueType}
+	}
+	schema := map[string]any{
+		"type":       "object",
+		"properties": schemaProperties,
+	}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
 }
