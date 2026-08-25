@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type adminProviderResourceItemHandler func(http.ResponseWriter, *http.Request, AdminUser, string)
@@ -294,11 +297,63 @@ func (s *Server) serveAdminProviderResourceRefreshToken(w http.ResponseWriter, r
 }
 
 func (s *Server) serveAdminOpenAIAccountQuota(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	quota, err := s.queryOpenAIAccountQuotaCached(r.Context(), resourceID, r.URL.Query().Get("refresh") == "true")
+	result, err := s.executeProviderResourceQuotaAction(r.Context(), user, resourceID, r.URL.Query().Get("refresh") == "true")
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "query_quota", "provider_resource", resourceID, "", quota)
-	writeJSON(w, http.StatusOK, quota)
+	s.recordAdminAudit(r, user, "query_quota", "provider_resource", resourceID, "", result.Data)
+	writeJSON(w, http.StatusOK, result.Data)
+}
+
+func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user AdminUser, resourceID string, refresh bool) (pluginmeta.ActionResult, error) {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	pluginID, actionID, ok := s.providerResourcePanelAction(provider.Type, "quota", AdapterCapabilityQuota)
+	if !ok {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_unsupported", "Quota is not available for this provider resource")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"resource_id": resourceID,
+		"refresh":     refresh,
+	})
+	if err != nil {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
+		PluginID: pluginID,
+		ActionID: actionID,
+		Actor: pluginmeta.ActionActor{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return pluginmeta.ActionResult{}, pluginActionHTTPError(err)
+	}
+	return result, nil
+}
+
+func (s *Server) providerResourcePanelAction(providerType string, panelID string, capability AdapterCapability) (string, string, bool) {
+	descriptor, ok := s.adapterRegistry.Describe(providerType)
+	if !ok || descriptor.PluginID == "" || !adapterSupports(descriptor, capability) {
+		return "", "", false
+	}
+	for _, contribution := range s.adminUI.List() {
+		if contribution.PluginID != descriptor.PluginID || contribution.Slot != pluginmeta.SlotProviderResourcePanel || contribution.ID != panelID || contribution.Action == "" {
+			continue
+		}
+		if len(contribution.ProviderTypes) == 0 || stringInList(providerType, contribution.ProviderTypes) {
+			return contribution.PluginID, contribution.Action, true
+		}
+	}
+	return "", "", false
 }

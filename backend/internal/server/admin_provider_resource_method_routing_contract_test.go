@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type adminProviderResourceMethodRoute struct {
@@ -205,6 +208,73 @@ func TestAdminProviderResourceQuotaRoutePreservesRefreshAndUpstreamHeaders(t *te
 	}
 	if authorization != "Bearer quota-route-secret" || accountID != "quota-route-account" || beta != openAIAccountQuotaBeta {
 		t.Fatalf("quota upstream headers: authorization=%q account=%q beta=%q", authorization, accountID, beta)
+	}
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota", "provider_resource", resource.ID)
+}
+
+func TestAdminProviderResourceQuotaRouteUsesPluginActionBroker(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_quota_plugin", Name: "Quota Plugin Provider", Type: "quota_plugin",
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_quota_plugin", ProviderID: provider.ID, Name: "Quota Plugin Resource",
+		ResourceType: "quota_plugin", Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.quota-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:         pluginID,
+		Name:       "Quota Plugin",
+		Version:    "test",
+		Source:     pluginmeta.SourceLocalFile,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementGatewayChain, pluginmeta.PlacementManagementAction},
+	}, AdapterRegistration{Type: "quota_plugin", Adapter: MockAdapter{}, Capabilities: []AdapterCapability{AdapterCapabilityQuota}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.adminUI.Register(pluginmeta.AdminUIContribution{
+		PluginID:      pluginID,
+		ID:            "quota",
+		Slot:          pluginmeta.SlotProviderResourcePanel,
+		ProviderTypes: []string{"quota_plugin"},
+		Action:        "quota.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID: pluginID,
+		ActionID: "quota.read",
+		Kind:     pluginmeta.ActionKindRead,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Refresh    bool   `json:"refresh"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"plan_type":   "plugin-action-plan",
+			"resource_id": payload.ResourceID,
+			"refresh":     payload.Refresh,
+		}}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	response := methodRoutingRequest(server.Handler(), http.MethodGet, "/api/admin/provider-resources/"+resource.ID+"/quota?refresh=true", "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET plugin quota: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"plan_type":"plugin-action-plan"`) ||
+		!strings.Contains(response.Body.String(), `"resource_id":"`+resource.ID+`"`) ||
+		!strings.Contains(response.Body.String(), `"refresh":true`) {
+		t.Fatalf("plugin quota response did not come from action broker: %s", response.Body.String())
 	}
 	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota", "provider_resource", resource.ID)
 }
