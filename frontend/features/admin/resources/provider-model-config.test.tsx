@@ -320,7 +320,7 @@ describe("providerResourceConfig", () => {
 
     expect(providerResourceDraftDefaults({ provider_id: "prv_kimi", name: "Kimi", type: "kimi_subscription" }, data)).toMatchObject({
       provider_id: "prv_kimi",
-      name: "Kimi Codex Account",
+      name: "Kimi Account",
       resource_type: "kimi_oauth_account",
       auth_type: "personal_access_token",
       base_url: "https://api.moonshot.cn/v1",
@@ -331,6 +331,41 @@ describe("providerResourceConfig", () => {
       { value: "oauth", label: "OAuth" },
       { value: "personal_access_token", label: "Personal Access Token" },
     ]);
+  });
+
+  it("renders plugin resource type display names in account resource tables", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    data.plugins = [{
+      id: "tokenhub.provider.kimi",
+      name: "Kimi Subscription",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [{
+        kind: "provider_resource_type",
+        name: "kimi_oauth_account",
+        subject: "kimi_subscription",
+        value: JSON.stringify({
+          type: "kimi_oauth_account",
+          display_name: "Kimi OAuth Account",
+        }),
+      }],
+    }];
+    const column = providerResourceConfig().columns.find((item) => item.key === "resource_type");
+    const rendered = column?.render?.({
+      id: "rsrc_kimi",
+      provider_id: "prv_kimi",
+      name: "Kimi Account",
+      resource_type: "kimi_oauth_account",
+      status: "active",
+      healthy: true,
+      priority: 1,
+      weight: 100,
+    }, data);
+
+    expect(rendered).toBe("Kimi OAuth Account");
   });
 
   it("submits plugin account resource credentials with its own credential source", () => {

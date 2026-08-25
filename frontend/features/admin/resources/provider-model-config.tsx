@@ -7,7 +7,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeMetadataForResource, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -118,7 +118,7 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
     columns: [
       { key: "name", label: "名称" },
       { key: "provider_id", label: "Provider", render: (item, ctx) => findProvider(ctx, item.provider_id)?.name || item.provider_id },
-      { key: "resource_type", label: "账号类型", render: (item) => resourceTypeLabel(item.resource_type) },
+      { key: "resource_type", label: "账号类型", render: (item, ctx) => providerResourceTypeMetadataForResource(ctx, item)?.displayName || resourceTypeLabel(item.resource_type) },
       { key: "credential_summary", label: "账号邮箱", render: (item) => item.credential_summary?.account_email || item.credential_summary?.account_id || "-" },
       { key: "weight", label: "权重" },
       { key: "region", label: "地域" },
@@ -337,7 +337,7 @@ export function providerAccountTokenSummary(values: Record<string, string>) {
 
 export function defaultProviderResourceName(providerName?: string) {
   const normalized = providerName?.trim() || "Provider";
-  return `${normalized} Codex Account`;
+  return `${normalized} Account`;
 }
 
 export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string; type?: string }, data?: Pick<AppData, "plugins">) {

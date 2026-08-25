@@ -85,6 +85,13 @@ export function providerResourceTypeMetadataForValues(data: AppData, values?: Re
   return providerResourceTypeMetadataFromData(data, providerType).find((metadata) => metadata.type === resourceType) ?? null;
 }
 
+export function providerResourceTypeMetadataForResource(data: AppData, resource: ProviderResourceTypeLike & { provider_id?: string }) {
+  return providerResourceTypeMetadataForValues(data, {
+    provider_id: resource.provider_id ?? "",
+    resource_type: resource.resource_type ?? "",
+  });
+}
+
 export function defaultProviderResourceTypeMetadata(data: Pick<AppData, "plugins">, providerType: string) {
   const metadata = providerResourceTypeMetadataFromData(data, providerType);
   return metadata.find((item) => item.default) ?? metadata[0] ?? null;
