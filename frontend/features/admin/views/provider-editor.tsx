@@ -1566,7 +1566,7 @@ export function ProviderUpsertModal({
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
-                            <ProviderAccountTokenRenewal api={api} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} />
+                            <ProviderAccountTokenRenewal api={api} pluginActions={pluginActions} providerType={values.type} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} />
                             {resource.status === "active" ? (
                               <button
                                 className="secondary-button provider-account-disable-button"

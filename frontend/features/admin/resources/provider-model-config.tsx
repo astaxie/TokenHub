@@ -147,6 +147,10 @@ export function openAIAccountFieldVisible(values: Record<string, string>) {
 export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext, item: ProviderResource, data: AppData) {
   const action = providerResourceCredentialRefreshAction(data, item);
   if (!action) throw new Error(tx("该插件动作尚未注册。"));
+  await runProviderResourceCredentialRefreshPluginAction(ctx, item, action);
+}
+
+export async function runProviderResourceCredentialRefreshPluginAction(ctx: ApiContext, item: ProviderResource, action: PluginActionDescriptor) {
   await adminMutate(ctx, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, "POST", {
     provider_id: item.provider_id,
     resource_id: item.id,
@@ -155,12 +159,16 @@ export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext
 }
 
 export function providerResourceCredentialRefreshAction(data: AppData, item: ProviderResource): PluginActionDescriptor | undefined {
-  if (item.credential_summary?.has_refresh_token !== "true") return undefined;
   const provider = findProvider(data, item.provider_id);
   if (!provider) return undefined;
-  return data.pluginActions.find((action) =>
+  return providerResourceCredentialRefreshActionForProviderType(data.pluginActions, item, provider.type);
+}
+
+export function providerResourceCredentialRefreshActionForProviderType(actions: PluginActionDescriptor[], item: ProviderResource, providerType: string): PluginActionDescriptor | undefined {
+  if (item.credential_summary?.has_refresh_token !== "true") return undefined;
+  return actions.find((action) =>
     action.capability === "credentials.refresh" &&
-    (!action.subject || action.subject === provider.type),
+    (!action.subject || action.subject === providerType),
   );
 }
 
