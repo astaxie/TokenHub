@@ -2,7 +2,7 @@ import { useState } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ProviderAPIQuickConnect } from "./provider-api-quick-connect";
+import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 
 function ProviderHarness() {
   const [values, setValues] = useState<Record<string, string>>({
@@ -35,6 +35,65 @@ function ProviderHarness() {
 }
 
 describe("ProviderAPIQuickConnect", () => {
+  it("renders provider catalog cards contributed by matching plugins", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <ProviderAPIQuickCatalog
+        entries={[
+          {
+            id: "plugin-kimi",
+            name: "Kimi Provider",
+            display_name: "Kimi Provider",
+            type: "kimi_subscription",
+            models_count: 0,
+            source: "plugin:local_file",
+          },
+          {
+            id: "openai",
+            name: "OpenAI",
+            display_name: "OpenAI",
+            type: "openai_compatible",
+            models_count: 2,
+            source: "builtin",
+          },
+        ]}
+        onQueryChange={vi.fn()}
+        onSelect={onSelect}
+        onSelectCustom={vi.fn()}
+        pluginCatalogCards={[
+          {
+            plugin_id: "tokenhub.provider.kimi",
+            id: "catalog-card",
+            slot: "provider.catalog.card",
+            title: "Kimi Subscription",
+            provider_types: ["kimi_subscription"],
+            schema: { description: "Connect a Kimi account from the plugin marketplace." },
+          },
+          {
+            plugin_id: "tokenhub.provider.other",
+            id: "catalog-card",
+            slot: "provider.catalog.card",
+            title: "Other Subscription",
+            provider_types: ["other_subscription"],
+            schema: { description: "Should not render." },
+          },
+        ]}
+        query=""
+        selectedID="plugin-kimi"
+        total={2}
+      />,
+    );
+
+    expect(screen.getByText("Kimi Subscription")).toBeInTheDocument();
+    expect(screen.getByText("Connect a Kimi account from the plugin marketplace.")).toBeInTheDocument();
+    expect(screen.queryByText("Other Subscription")).not.toBeInTheDocument();
+    expect(screen.getByText(/OpenAI 兼容/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Kimi Subscription/ }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "plugin-kimi", type: "kimi_subscription" }));
+  });
+
   it("enables connection testing only after required fields are present and sends the expected payload", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 12 }), {

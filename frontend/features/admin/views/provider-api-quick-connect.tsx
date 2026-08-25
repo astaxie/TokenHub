@@ -1,6 +1,6 @@
 import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
 import { useRef, useState } from "react";
-import { type ApiContext, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
+import { type AdminUIContribution, type ApiContext, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
 import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
 import { formatModelPrice } from "../domain/formatting";
@@ -25,6 +25,7 @@ export function ProviderAPIQuickCatalog({
   onQueryChange,
   onSelect,
   onSelectCustom,
+  pluginCatalogCards = [],
 }: {
   entries: ProviderCatalogEntry[];
   total: number;
@@ -33,6 +34,7 @@ export function ProviderAPIQuickCatalog({
   onQueryChange: (value: string) => void;
   onSelect: (entry: ProviderCatalogEntry) => void;
   onSelectCustom: () => void;
+  pluginCatalogCards?: AdminUIContribution[];
 }) {
   return (
     <section className="provider-catalog-pane provider-quick-catalog-pane">
@@ -48,14 +50,17 @@ export function ProviderAPIQuickCatalog({
         {entries.length === 0 ? (
           <div className="empty compact-empty">{tx("没有匹配的渠道商")}</div>
         ) : entries.map((entry) => {
+          const pluginCard = providerCatalogCardContribution(entry, pluginCatalogCards);
           const name = entry.display_name || entry.name;
+          const title = pluginCard?.title || name;
+          const description = schemaString(pluginCard?.schema?.description);
           const active = entry.id === selectedID;
           return (
             <button className={active ? "provider-quick-catalog-item active" : "provider-quick-catalog-item"} key={entry.id} onClick={() => onSelect(entry)} type="button">
-              <span className="provider-quick-catalog-avatar">{name.slice(0, 1).toUpperCase()}</span>
+              <span className="provider-quick-catalog-avatar">{title.slice(0, 1).toUpperCase()}</span>
               <span className="provider-quick-catalog-copy">
-                <strong>{name}</strong>
-                <em>{providerTypeLabel(entry.type)} · {countWithUnit(entry.models_count, "个模型", "model", "モデル")}</em>
+                <strong>{title}</strong>
+                <em>{description || `${providerTypeLabel(entry.type)} · ${countWithUnit(entry.models_count, "个模型", "model", "モデル")}`}</em>
               </span>
               {active ? <Check size={15} /> : null}
             </button>
@@ -69,6 +74,17 @@ export function ProviderAPIQuickCatalog({
       </button>
     </section>
   );
+}
+
+function providerCatalogCardContribution(entry: ProviderCatalogEntry, contributions: AdminUIContribution[]) {
+  return contributions.find((contribution) =>
+    contribution.slot === "provider.catalog.card" &&
+    (contribution.provider_types ?? []).includes(entry.type),
+  );
+}
+
+function schemaString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export function ProviderAPIQuickConnect({

@@ -1165,6 +1165,7 @@ export function ProviderUpsertModal({
                 onQueryChange={setCatalogQuery}
                 onSelect={selectCatalog}
                 onSelectCustom={selectCustomCatalog}
+                pluginCatalogCards={pluginUI}
               />
             ) : (
             <section className="provider-catalog-pane">
@@ -1185,7 +1186,6 @@ export function ProviderUpsertModal({
                 </button>
               ))}
             </div>
-
             <div className="provider-catalog-head provider-catalog-subhead">
               <strong>{tx("渠道商")}</strong>
               <span>{filteredCatalog.length}/{categoryCatalog.length}</span>
