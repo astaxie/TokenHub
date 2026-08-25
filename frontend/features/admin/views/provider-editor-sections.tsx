@@ -4,7 +4,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
-import { providerTypeOptions } from "../shared/ui";
+import { legacyProviderTypeOptions } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -13,6 +13,11 @@ export { providerReasoningFormValues } from "../domain/provider-reasoning";
 type ProviderEditSectionProps = {
   values: Record<string, string>;
   onUpdate: (key: string, value: string) => void;
+};
+
+type ProviderTypeOption = {
+  value: string;
+  label: string;
 };
 
 export function ProviderConnectionFields({ values, onUpdate, validationErrors = [] }: ProviderEditSectionProps & { validationErrors?: string[] }) {
@@ -79,7 +84,8 @@ export function ProviderAdvancedFields({
   accountIntegration,
   creating = false,
   idPlaceholder,
-}: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string }) {
+  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option) })),
+}: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
   const showReasoningCompatibility = providerSupportsAnthropicReasoning(values.type);
   return (
     <section className="provider-edit-section">
@@ -100,7 +106,7 @@ export function ProviderAdvancedFields({
         <label className="field">
           <span>{tx(accountIntegration ? "兼容协议" : "渠道商类型")}</span>
           <select value={values.type ?? ""} onChange={(event) => onUpdate("type", event.target.value)} required>
-            {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
+            {providerTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         {creating ? (

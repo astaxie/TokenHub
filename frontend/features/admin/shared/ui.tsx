@@ -7,7 +7,7 @@ import { copyText } from "../domain/clipboard";
 import { modelDisplayName } from "../domain/model-display-name";
 import { findProvider, modelRoutesFor } from "../domain/entities";
 import { compactNumber, routeStrategyLabel } from "../domain/formatting";
-import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
+import { enumOptionLabel, enumValueLabel, providerTypeLabel, splitList } from "../domain/labels";
 import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
 import { PaginationControls, usePagination } from "./pagination";
 
@@ -419,4 +419,34 @@ export function ModelRouteProviders({ model, data }: { model: Model; data: AppDa
   );
 }
 
-export const providerTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local", "kronk"];
+export const legacyProviderTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local", "kronk"];
+
+export const providerTypeOptions = legacyProviderTypeOptions;
+
+export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providers">, values?: Record<string, string>) {
+  const types = new Set(legacyProviderTypeOptions);
+  for (const plugin of data.plugins ?? []) {
+    for (const capability of plugin.capabilities ?? []) {
+      if (capability.kind !== "provider") continue;
+      const providerType = String(capability.subject || capability.name || "").trim();
+      if (providerType) types.add(providerType);
+    }
+  }
+  for (const entry of data.providerCatalog ?? []) {
+    if (entry.type) types.add(entry.type);
+  }
+  for (const provider of data.providers ?? []) {
+    if (provider.type) types.add(provider.type);
+  }
+  if (values?.type) types.add(values.type);
+  return [...types].sort(providerTypeSort).map((value) => ({ value, label: providerTypeLabel(value) }));
+}
+
+function providerTypeSort(left: string, right: string) {
+  const leftIndex = legacyProviderTypeOptions.indexOf(left);
+  const rightIndex = legacyProviderTypeOptions.indexOf(right);
+  if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex;
+  if (leftIndex >= 0) return -1;
+  if (rightIndex >= 0) return 1;
+  return left.localeCompare(right);
+}

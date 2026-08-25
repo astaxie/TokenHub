@@ -22,7 +22,7 @@ import { projectMemberConfig, projectMemberInitialValues } from "../resources/pr
 import { resourceConfigFor } from "../resources/settings-config";
 import { usePagination } from "../shared/pagination";
 import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "../shared/auth";
-import { ConfirmDialog, IssuedKeyModal } from "../shared/ui";
+import { ConfirmDialog, IssuedKeyModal, providerTypeOptionsFromData } from "../shared/ui";
 import { PageHeader, Sidebar, StatusStack, TopNav } from "./navigation-ui";
 import { ResponsiveVersionStatus } from "./version-status";
 import { AuditView } from "../views/audit";
@@ -86,6 +86,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [resetToken, setResetToken] = useState("");
 
   const api = useMemo(() => ({ baseURL, adminToken }), [baseURL, adminToken]);
+  const providerTypeOptions = useMemo(() => providerTypeOptionsFromData(data), [data]);
   const activeConfig = resourceConfigFor(activeView);
   const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
   setActiveLanguage(language);
@@ -1082,6 +1083,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           standardModels={data.models}
           providerModels={data.providerModels}
           resources={data.providerResources}
+          providerTypeOptions={providerTypeOptions}
           loading={loading}
           onClose={() => setProviderCreateOpen(false)}
           onSaved={async () => {
@@ -1104,6 +1106,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}
+          providerTypeOptions={providerTypeOptions}
           loading={loading}
           onClose={() => setProviderEditItem(null)}
           onSaved={async () => {

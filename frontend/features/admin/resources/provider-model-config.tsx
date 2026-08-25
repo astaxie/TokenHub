@@ -7,7 +7,7 @@ import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSup
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
-import { ModelNameCell, ModelRouteProviders, providerTypeOptions, StatusPill } from "../shared/ui";
+import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
 
 export function providerConfig(): ResourceConfig<Provider> {
   return {
@@ -29,7 +29,7 @@ export function providerConfig(): ResourceConfig<Provider> {
     ],
     fields: [
       { key: "name", label: "名称", required: true },
-      { key: "type", label: "类型", type: "select", options: providerTypeOptions, required: true },
+      { key: "type", label: "类型", type: "select", optionsFromData: (data, _currentUser, values) => providerTypeOptionsFromData(data, values), required: true },
       { key: "base_url", label: "Base URL" },
       { key: "api_key", label: "API Key", type: "password", help: "编辑时留空表示不修改现有 Key；只有填写新值才会覆盖。" },
       { key: "priority", label: "优先级", type: "number", placeholder: "留空自动追加", help: "数字越小越先调用；新增时留空会自动排在该统一模型已有 Provider 后面。" },

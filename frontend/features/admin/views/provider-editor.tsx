@@ -95,7 +95,7 @@ export function ProviderUpsertModal({
   onAccountsChanged,
   setLoading,
   setError,
-  setNotice,
+  setNotice, providerTypeOptions,
 }: {
   mode: "create" | "edit";
   provider?: Provider;
@@ -111,7 +111,7 @@ export function ProviderUpsertModal({
   onAccountsChanged?: () => Promise<void>;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
-  setNotice: (value: string) => void;
+  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string }>;
 }) {
   const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
     resource.provider_id === provider?.id && resource.resource_type === "openai_subscription",
@@ -1356,7 +1356,7 @@ export function ProviderUpsertModal({
                   onModelToggle={(modelID, enabled) => setSelectedModels((current) => ({ ...current, [modelID]: enabled }))}
                   onReloadModels={reloadSelectedCatalog}
                   onTabChange={setQuickAPITab}
-                  onUpdate={update}
+                  onUpdate={update} providerTypeOptions={providerTypeOptions}
                 />
               ) : (
               <section className="provider-wizard-panel">
@@ -1531,7 +1531,7 @@ export function ProviderUpsertModal({
               <ProviderConnectionFields values={values} onUpdate={update} validationErrors={provider?.header_validation_errors} />
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
-              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} />
+              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
                 <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} resources={resources} /> : null}
@@ -1769,7 +1769,7 @@ export function ProviderUpsertModal({
                 creating
                 idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")}
                 values={values}
-                onUpdate={update}
+                onUpdate={update} providerTypeOptions={providerTypeOptions}
               />
             ) : null}
 

@@ -7,7 +7,7 @@ import { formatModelPrice } from "../domain/formatting";
 import { providerAnthropicAuthType, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { providerTypeOptions } from "../shared/ui";
+import { legacyProviderTypeOptions } from "../shared/ui";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 import { AnthropicAuthTypeField } from "./provider-editor-sections";
 
@@ -89,6 +89,7 @@ export function ProviderAPIQuickConnect({
   onReloadModels,
   onTabChange,
   onUpdate,
+  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option) })),
 }: {
   api: ApiContext;
   catalogID: string;
@@ -107,6 +108,7 @@ export function ProviderAPIQuickConnect({
   onReloadModels: () => void;
   onTabChange: (tab: "connect" | "models" | "advanced") => void;
   onUpdate: (key: string, value: string) => void;
+  providerTypeOptions?: Array<{ value: string; label: string }>;
 }) {
   const [showKey, setShowKey] = useState(false);
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
@@ -319,7 +321,7 @@ export function ProviderAPIQuickConnect({
             <label className="field">
               <span>{tx("渠道商类型")}</span>
               <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
-                {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
+                {providerTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <AnthropicAuthTypeField values={values} onUpdate={updateConnectionValue} />
