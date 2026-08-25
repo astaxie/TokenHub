@@ -51,6 +51,9 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 			return s.store.TestProviderResource(resourceID)
 		}
 		effective := effectiveProviderResourceConfig(provider, &resource)
+		if err := validateProviderHeaderSupportWithRegistry(s.registry, effective.Type, effective.Headers); err != nil {
+			return nil, err
+		}
 		startedAt := time.Now()
 		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
 			Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
@@ -121,6 +124,10 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		if firstResourceErr != nil {
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, firstResourceErr
+		}
+		if err := validateProviderHeaderSupportWithRegistry(s.registry, effectiveProvider.Type, effectiveProvider.Headers); err != nil {
+			_, _ = s.store.SetProviderHealth(providerID, false)
+			return nil, err
 		}
 		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
 			Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,

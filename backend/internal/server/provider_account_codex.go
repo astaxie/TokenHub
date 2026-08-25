@@ -49,6 +49,10 @@ type CodexSubscriptionAdapter struct {
 	MaxRequestRetries  int
 }
 
+func (a CodexSubscriptionAdapter) SupportsProviderHeaders() bool {
+	return false
+}
+
 type ProviderProbeRequest struct {
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`

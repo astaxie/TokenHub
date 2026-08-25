@@ -38,7 +38,7 @@ func (s *Server) handleAdminProviderResourcesPost(w http.ResponseWriter, r *http
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
 		return
 	}
-	if err := validateProviderHeaderSupport(provider.Type, req.Headers); err != nil {
+	if err := s.validateProviderHeaderSupport(provider.Type, req.Headers); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -152,7 +152,7 @@ func (s *Server) serveAdminProviderResourcePatch(w http.ResponseWriter, r *http.
 	if headers == nil {
 		headers = current.Headers
 	}
-	if err := validateProviderHeaderSupport(provider.Type, headers); err != nil {
+	if err := s.validateProviderHeaderSupport(provider.Type, headers); err != nil {
 		writeError(w, r, err)
 		return
 	}

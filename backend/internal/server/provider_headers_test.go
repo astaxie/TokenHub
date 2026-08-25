@@ -9,7 +9,18 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
+
+type providerHeaderPolicyTestAdapter struct {
+	MockAdapter
+	supportsHeaders bool
+}
+
+func (adapter providerHeaderPolicyTestAdapter) SupportsProviderHeaders() bool {
+	return adapter.supportsHeaders
+}
 
 func TestNormalizeProviderHeadersAndMergeResourceOverrides(t *testing.T) {
 	providerHeaders, err := normalizeProviderHeaders(map[string]string{
@@ -39,6 +50,84 @@ func TestNormalizeProviderHeadersAndMergeResourceOverrides(t *testing.T) {
 	}
 	if len(merged) != 3 {
 		t.Fatalf("merged headers = %#v", merged)
+	}
+}
+
+func TestAdminProviderHeadersUseAdapterDeclaredPolicy(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	const providerType = "no_headers_plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(
+		"tokenhub.provider.no-headers",
+		"No Headers Provider",
+		[]string{providerType},
+		[]string{string(AdapterCapabilityChat)},
+	), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      providerHeaderPolicyTestAdapter{supportsHeaders: false},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+	app := server.Handler()
+
+	createdWithHeaders := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":       "prv_no_headers_rejected",
+		"name":     "No headers rejected",
+		"type":     providerType,
+		"base_url": "https://provider.example/v1",
+		"api_key":  "test-key",
+		"headers":  map[string]string{"X-Tenant": "tenant-one"},
+	}, "")
+	if createdWithHeaders.Code != http.StatusBadRequest || !strings.Contains(createdWithHeaders.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("provider create with headers = %d: %s", createdWithHeaders.Code, createdWithHeaders.Body)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":       "prv_no_headers",
+		"name":     "No headers",
+		"type":     providerType,
+		"base_url": "https://provider.example/v1",
+		"api_key":  "test-key",
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("provider create = %d: %s", created.Code, created.Body)
+	}
+	resourceWithHeaders := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+		"provider_id":   "prv_no_headers",
+		"name":          "No headers resource rejected",
+		"resource_type": ProviderResourceAPIKey,
+		"api_key":       "resource-key",
+		"headers":       map[string]string{"X-Tenant": "tenant-one"},
+	}, "")
+	if resourceWithHeaders.Code != http.StatusBadRequest || !strings.Contains(resourceWithHeaders.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("resource create with headers = %d: %s", resourceWithHeaders.Code, resourceWithHeaders.Body)
+	}
+	resource := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+		"id":            "rsrc_no_headers",
+		"provider_id":   "prv_no_headers",
+		"name":          "No headers resource",
+		"resource_type": ProviderResourceAPIKey,
+		"api_key":       "resource-key",
+	}, "")
+	if resource.Code != http.StatusCreated {
+		t.Fatalf("resource create = %d: %s", resource.Code, resource.Body)
+	}
+	patched := doJSON(t, app, http.MethodPatch, "/api/admin/provider-resources/rsrc_no_headers", map[string]any{
+		"headers": map[string]string{"X-Tenant": "tenant-two"},
+	}, "")
+	if patched.Code != http.StatusBadRequest || !strings.Contains(patched.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("resource patch with headers = %d: %s", patched.Code, patched.Body)
+	}
+	testConnection := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", map[string]any{
+		"name":     "No headers test",
+		"type":     providerType,
+		"base_url": "https://provider.example/v1",
+		"api_key":  "test-key",
+		"headers":  map[string]string{"X-Tenant": "tenant-one"},
+	}, "")
+	if testConnection.Code != http.StatusBadRequest || !strings.Contains(testConnection.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("test connection with headers = %d: %s", testConnection.Code, testConnection.Body)
 	}
 }
 

@@ -240,6 +240,23 @@ func validateProviderHeaderConfig(provider *Provider) error {
 	return nil
 }
 
+func (s *Server) validateProviderHeaderConfig(provider *Provider) error {
+	if err := s.validateProviderHeaderSupport(provider.Type, provider.Headers); err != nil {
+		return err
+	}
+	headers, err := normalizeProviderHeaders(provider.Headers)
+	if err != nil {
+		return err
+	}
+	sensitive, err := normalizedSensitiveProviderHeaders(provider.SensitiveHeaders, headers)
+	if err != nil {
+		return err
+	}
+	provider.Headers = headers
+	provider.SensitiveHeaders = sensitive
+	return nil
+}
+
 // ValidateProviderHeaderConfigForWrite exposes the same validation used by the
 // Admin API to trusted internal writers such as the migration sink.
 func ValidateProviderHeaderConfigForWrite(provider *Provider) error {
@@ -313,10 +330,28 @@ func validateProviderHeaderSupport(providerType string, headers map[string]strin
 	}
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
 	case ProviderAzureOpenAI, ProviderOpenAICodex:
-		return NewHTTPError(http.StatusBadRequest, "provider_headers_unsupported", "This Provider adapter manages its own client identity and does not support custom request headers")
+		return providerHeadersUnsupportedError()
 	default:
 		return nil
 	}
+}
+
+func (s *Server) validateProviderHeaderSupport(providerType string, headers map[string]string) error {
+	return validateProviderHeaderSupportWithRegistry(s.adapterRegistry, providerType, headers)
+}
+
+func validateProviderHeaderSupportWithRegistry(registry *AdapterRegistry, providerType string, headers map[string]string) error {
+	if len(headers) == 0 {
+		return nil
+	}
+	if policyer, ok := resolveTypedAdapter[ProviderHeaderPolicyer](registry, providerType); ok && !policyer.SupportsProviderHeaders() {
+		return providerHeadersUnsupportedError()
+	}
+	return validateProviderHeaderSupport(providerType, headers)
+}
+
+func providerHeadersUnsupportedError() error {
+	return NewHTTPError(http.StatusBadRequest, "provider_headers_unsupported", "This Provider adapter manages its own client identity and does not support custom request headers")
 }
 
 func sensitiveProviderHeaderSet(names []string) map[string]bool {

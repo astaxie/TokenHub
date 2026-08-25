@@ -40,7 +40,7 @@ func (s *Server) handleAdminProvidersPost(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(400, "invalid_provider", "name and type are required"))
 		return
 	}
-	if err := validateProviderHeaderConfig(&provider); err != nil {
+	if err := s.validateProviderHeaderConfig(&provider); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -220,6 +220,10 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		var entry ProviderCatalogEntry
 		var err error
 		for _, candidate := range catalogRequests {
+			if supportErr := s.validateProviderHeaderSupport(candidate.Type, candidate.Headers); supportErr != nil {
+				err = supportErr
+				continue
+			}
 			entry, err = CustomProviderCatalogFromUpstream(r.Context(), s.upstreamClient, candidate)
 			if err == nil {
 				break
@@ -619,6 +623,10 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "provider_api_key_required", "API key is required to test the connection"))
 		return
 	}
+	if err := s.validateProviderHeaderSupport(req.Type, req.Headers); err != nil {
+		writeError(w, r, err)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	startedAt := time.Now()
@@ -681,7 +689,7 @@ func (s *Server) serveAdminProviderPatch(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	provider.ID = providerID
-	if err := validateProviderHeaderSupport(provider.Type, provider.Headers); err != nil {
+	if err := s.validateProviderHeaderSupport(provider.Type, provider.Headers); err != nil {
 		writeError(w, r, err)
 		return
 	}
