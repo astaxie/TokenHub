@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -23,6 +26,45 @@ type gatewayRouteCandidateView struct {
 
 type gatewayRouteOrderPatch struct {
 	RouteIDs []string `json:"route_ids"`
+}
+
+func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)) == 0 {
+		return nil
+	}
+	body, ok := marshalGatewayHookData(payload)
+	if !ok {
+		return NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:     "v1",
+			Protocol:    "gateway",
+			Operation:   "privacy_pre",
+			Model:       call.Model.Name,
+			RequestBody: body,
+		},
+		Data: pluginmeta.GatewayHookData{},
+	}
+	if requestHeaders, ok := marshalGatewayHookData(sanitizedGatewayHookHeaders(headers)); ok {
+		input.Data[pluginmeta.DataRequestHeaders] = requestHeaders
+	}
+	input.Data[pluginmeta.DataRequestBody] = body
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StagePrivacyPre, input)
+	if err != nil {
+		return gatewayHookHTTPError(pluginmeta.StagePrivacyPre, err)
+	}
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataRequestBody]
+		if !ok {
+			continue
+		}
+		if err := apply(patch.Value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) runGatewayRouteRankHooks(ctx context.Context, call CallContext, planned []RouteSelection) []RouteSelection {
@@ -120,6 +162,62 @@ func marshalGatewayHookData(value any) (json.RawMessage, bool) {
 		return nil, false
 	}
 	return data, true
+}
+
+func sanitizedGatewayHookHeaders(headers http.Header) map[string][]string {
+	sanitized := map[string][]string{}
+	for key, values := range headers {
+		canonical := http.CanonicalHeaderKey(key)
+		if sensitiveGatewayHookHeader(canonical) {
+			sanitized[canonical] = []string{"[redacted]"}
+			continue
+		}
+		sanitized[canonical] = append([]string(nil), values...)
+	}
+	return sanitized
+}
+
+func sensitiveGatewayHookHeader(key string) bool {
+	switch http.CanonicalHeaderKey(key) {
+	case "Authorization", "Cookie", "Set-Cookie", "Proxy-Authorization", "X-Api-Key":
+		return true
+	default:
+		return false
+	}
+}
+
+func gatewayHookHTTPError(stage pluginmeta.GatewayHookStage, err error) error {
+	if pluginmeta.IsGatewayHookDenied(err) {
+		return NewHTTPError(http.StatusForbidden, "gateway_hook_denied", fmt.Sprintf("Request blocked by the %s plugin stage", stage))
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Code != "internal_error" {
+		return httpErr
+	}
+	return NewHTTPError(http.StatusInternalServerError, "gateway_hook_failed", fmt.Sprintf("Gateway plugin stage %s failed", stage))
+}
+
+func decodeGatewayHookRequestPatch(data json.RawMessage, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid request patch")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin request patch must contain a single JSON value")
+	}
+	return nil
+}
+
+func validateGatewayHookRequestInvariant(originalModel string, originalStream bool, patchedModel string, patchedStream bool) error {
+	if patchedModel != originalModel {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+	}
+	if patchedStream != originalStream {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested stream mode")
+	}
+	return nil
 }
 
 func gatewayRouteCandidateViews(routes []RouteSelection) []gatewayRouteCandidateView {

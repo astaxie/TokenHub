@@ -127,6 +127,7 @@ func (r *GatewayHookRunner) RunStage(ctx context.Context, stage GatewayHookStage
 		if err != nil {
 			return report, err
 		}
+		applyGatewayHookWritesToInput(&input, result.Writes)
 		if result.Decision != HookDecisionContinue {
 			report.TerminalDecision = result.Decision
 			if result.Decision == HookDecisionDeny {
@@ -212,6 +213,28 @@ func validateGatewayHookResult(hook GatewayHookDescriptor, result GatewayHookRes
 		}
 	}
 	return nil
+}
+
+func applyGatewayHookWritesToInput(input *GatewayHookInput, writes map[GatewayDataClass]RawPatch) {
+	if input == nil || len(writes) == 0 {
+		return
+	}
+	if input.Data == nil {
+		input.Data = GatewayHookData{}
+	}
+	for dataClass, patch := range writes {
+		value := cloneRawMessage(patch.Value)
+		input.Data[dataClass] = value
+		switch dataClass {
+		case DataRequestBody:
+			input.Envelope.RequestBody = cloneRawMessage(value)
+		case DataNormalizedText:
+			var segments []TextSegment
+			if json.Unmarshal(value, &segments) == nil {
+				input.Envelope.NormalizedText = segments
+			}
+		}
+	}
 }
 
 func clipGatewayHookInput(input GatewayHookInput, reads []GatewayDataClass) GatewayHookInput {

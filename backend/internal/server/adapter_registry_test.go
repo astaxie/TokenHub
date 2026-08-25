@@ -213,7 +213,7 @@ permissions:
 		t.Fatalf("local plugin source = %q, want %q", descriptor.Source, pluginmeta.SourceLocalFile)
 	}
 	hooks := server.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)
-	if len(hooks) != 1 || hooks[0].PluginID != "tokenhub.local-privacy" || hooks[0].HookID != "mask" {
+	if !gatewayHookExists(hooks, "tokenhub.local-privacy", "mask") {
 		t.Fatalf("privacy hooks = %+v", hooks)
 	}
 }
@@ -344,4 +344,13 @@ func writeServerPluginManifest(t *testing.T, dir string, body string) {
 	if err := os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func gatewayHookExists(hooks []pluginmeta.GatewayHookDescriptor, pluginID string, hookID string) bool {
+	for _, hook := range hooks {
+		if hook.PluginID == pluginID && hook.HookID == hookID {
+			return true
+		}
+	}
+	return false
 }

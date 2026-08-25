@@ -10,7 +10,7 @@ import (
 func TestGatewayHookRunnerExecutesRegisteredHooksInPlanOrder(t *testing.T) {
 	chain := NewGatewayChainRegistry()
 	first := GatewayHookDescriptor{PluginID: "tokenhub.a", HookID: "first", Stage: StagePrivacyPre, Priority: 2000, Writes: []GatewayDataClass{DataRequestBody}}
-	second := GatewayHookDescriptor{PluginID: "tokenhub.b", HookID: "second", Stage: StagePrivacyPre, Priority: 2100}
+	second := GatewayHookDescriptor{PluginID: "tokenhub.b", HookID: "second", Stage: StagePrivacyPre, Priority: 2100, Reads: []GatewayDataClass{DataRequestBody}}
 	for _, hook := range []GatewayHookDescriptor{second, first} {
 		if err := chain.RegisterHook(hook); err != nil {
 			t.Fatalf("register hook: %v", err)
@@ -29,8 +29,11 @@ func TestGatewayHookRunnerExecutesRegisteredHooksInPlanOrder(t *testing.T) {
 	})); err != nil {
 		t.Fatalf("register first handler: %v", err)
 	}
-	if err := runner.RegisterHandler(second, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+	if err := runner.RegisterHandler(second, GatewayHookHandlerFunc(func(_ context.Context, input GatewayHookInput) (GatewayHookResult, error) {
 		calls = append(calls, "second")
+		if string(input.Envelope.RequestBody) != `{"masked":true}` {
+			t.Fatalf("second hook request body = %s, want first hook patch", input.Envelope.RequestBody)
+		}
 		return GatewayHookResult{}, nil
 	})); err != nil {
 		t.Fatalf("register second handler: %v", err)

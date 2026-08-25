@@ -38,6 +38,23 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	if err := s.runGatewayPrivacyPreHooks(r.Context(), call, r.Header, req, func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ChatCompletionRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		req = patched
+		return nil
+	}); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeError(w, r, err)
+		return
+	}
 	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, chatGuardrailTargets(&req))
 	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req)
 	if err != nil {
@@ -166,6 +183,23 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, guardrailAuditSummary{Model: req.Model})
 		w.Header().Set("x-request-id", requestID)
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayPrivacyPreHooks(r.Context(), call, r.Header, req, func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ResponsesRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		req = patched
+		return nil
+	}); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
 		writeError(w, r, err)
 		return
 	}
