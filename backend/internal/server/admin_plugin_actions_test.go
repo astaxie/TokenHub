@@ -125,15 +125,62 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 		!strings.Contains(body, `"action_id":"openai_codex.probe.run"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.provider.probe.run"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.models.read"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.models.preview"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.image_capability.configure"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.credentials.refresh"`) ||
 		!strings.Contains(body, `"capability":"quota.reset_credits.read"`) ||
 		!strings.Contains(body, `"capability":"quota.reset"`) ||
 		!strings.Contains(body, `"capability":"provider.probe.run"`) ||
 		!strings.Contains(body, `"capability":"models.read"`) ||
+		!strings.Contains(body, `"capability":"models.preview"`) ||
 		!strings.Contains(body, `"capability":"image.capability.configure"`) ||
 		!strings.Contains(body, `"capability":"credentials.refresh"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
+	}
+}
+
+func TestProviderCredentialModelsPreviewUsesPluginAction(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
+	providerType := "preview_action_provider"
+	pluginID := "tokenhub.provider.preview-action"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Preview Action Provider", []string{providerType}, []string{string(AdapterCapabilityModels)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register preview provider: %v", err)
+	}
+	var observed ProviderResourceCredentials
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "preview.models",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "models.preview",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		if err := json.Unmarshal(invocation.Payload, &observed); err != nil {
+			t.Fatalf("decode preview payload: %v", err)
+		}
+		return pluginmeta.ActionResult{Data: ProviderCatalogEntry{
+			ID: "preview-catalog", Name: "Preview Catalog", DisplayName: "Preview Catalog",
+			Type: providerType, ModelsCount: 1, Source: "preview-action",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register preview action: %v", err)
+	}
+
+	catalog, supported, err := server.executeProviderCredentialModelsAction(context.Background(), AdminUser{ID: "admin", Role: "admin"}, providerType, ProviderResourceCredentials{
+		AccessToken: "preview-token",
+		AccountID:   "preview-account",
+	})
+	if err != nil || !supported {
+		t.Fatalf("preview action supported=%v err=%v", supported, err)
+	}
+	if observed.AccessToken != "preview-token" || observed.AccountID != "preview-account" {
+		t.Fatalf("preview credentials = %+v", observed)
+	}
+	if catalog.ID != "preview-catalog" || catalog.Source != "preview-action" {
+		t.Fatalf("catalog = %+v", catalog)
 	}
 }
 

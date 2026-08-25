@@ -79,6 +79,35 @@ func (s *Server) executeProviderResourceModelsAction(ctx context.Context, user A
 	return catalog, true, nil
 }
 
+func (s *Server) executeProviderCredentialModelsAction(ctx context.Context, user AdminUser, providerType string, credentials ProviderResourceCredentials) (ProviderCatalogEntry, bool, error) {
+	pluginID, actionID, ok := s.providerPluginCapabilityAction(providerType, AdapterCapabilityModels, "models.preview")
+	if !ok {
+		return ProviderCatalogEntry{}, false, nil
+	}
+	payload, err := json.Marshal(credentials)
+	if err != nil {
+		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
+		PluginID: pluginID,
+		ActionID: actionID,
+		Actor: pluginmeta.ActionActor{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return ProviderCatalogEntry{}, true, pluginActionHTTPError(err)
+	}
+	catalog, ok := providerCatalogEntryFromActionData(result.Data)
+	if !ok {
+		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "provider_models_invalid_result", "Provider models preview action returned an invalid result")
+	}
+	return catalog, true, nil
+}
+
 func providerCatalogEntryFromActionData(data any) (ProviderCatalogEntry, bool) {
 	if result, ok := data.(ProviderCatalogEntry); ok {
 		return result, strings.TrimSpace(result.ID) != ""

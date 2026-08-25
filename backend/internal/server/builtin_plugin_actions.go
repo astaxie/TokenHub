@@ -352,6 +352,48 @@ func registerBuiltinPluginActions(server *Server) {
 	}))
 	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "openai_codex.models.preview",
+		Kind:       pluginmeta.ActionKindRead,
+		Title:      "Preview OpenAI Codex models with credentials",
+		Capability: "models.preview",
+		Subject:    ProviderOpenAICodex,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"access_token":    map[string]any{"type": "string"},
+				"account_id":      map[string]any{"type": "string"},
+				"organization_id": map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"id", "models_count", "models"}, map[string]string{
+			"id":              "string",
+			"name":            "string",
+			"display_name":    "string",
+			"type":            "string",
+			"base_url":        "string",
+			"doc_url":         "string",
+			"categories":      "array",
+			"category_counts": "object",
+			"models_count":    "integer",
+			"source":          "string",
+			"etag":            "string",
+			"models":          "array",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var credentials ProviderResourceCredentials
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &credentials); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		catalog, err := server.codexSubscription.ModelsWithCredentials(ctx, credentials)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: catalog}, nil
+	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.image_capability.configure",
 		Kind:       pluginmeta.ActionKindMutate,
 		Title:      "Configure OpenAI Codex image capability",

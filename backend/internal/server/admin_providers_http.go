@@ -127,7 +127,11 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				writeError(w, r, decodeErr)
 				return
 			}
-			entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
+			var supported bool
+			entry, supported, err = s.executeProviderCredentialModelsAction(r.Context(), user, ProviderOpenAICodex, credentials)
+			if !supported {
+				entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
+			}
 		default:
 			jsonMethodNotAllowed(http.MethodGet+", "+http.MethodPost)(w, r)
 			return
