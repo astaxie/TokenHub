@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"sort"
@@ -19,6 +21,7 @@ type providerPluginAdapter struct {
 	timeout                 time.Duration
 	routeProtocols          []string
 	supportsProviderHeaders bool
+	supportsChatStream      bool
 }
 
 type providerPluginRequest struct {
@@ -40,6 +43,16 @@ type providerPluginResponse struct {
 	Usage    Usage `json:"usage,omitempty"`
 }
 
+type providerPluginStreamResponse struct {
+	Events []providerPluginStreamEvent `json:"events"`
+	Usage  Usage                       `json:"usage,omitempty"`
+}
+
+type providerPluginStreamEvent struct {
+	Event string          `json:"event,omitempty"`
+	Data  json.RawMessage `json:"data,omitempty"`
+}
+
 type providerPluginModelsResponse struct {
 	Catalog ProviderCatalogEntry `json:"catalog"`
 	Status  int                  `json:"status,omitempty"`
@@ -56,6 +69,7 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 		timeout:                 providerPluginCommandTimeout,
 		routeProtocols:          providerPluginRouteProtocols(pkg.Manifest),
 		supportsProviderHeaders: providerPluginSupportsCustomHeaders(pkg.Manifest),
+		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
 	}
 }
 
@@ -82,8 +96,34 @@ func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, prov
 	return result.Response, result.Usage, nil
 }
 
-func (a providerPluginAdapter) ChatStream(context.Context, Provider, string, ChatCompletionRequest, io.Writer) (Usage, error) {
-	return Usage{}, providerPluginCapabilityUnsupported("chat streaming")
+func (a providerPluginAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, writer io.Writer) (Usage, error) {
+	if !a.supportsChatStream {
+		return Usage{}, providerPluginCapabilityUnsupported("chat streaming")
+	}
+	req.Stream = true
+	var result providerPluginStreamResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:     "chat_stream",
+		Provider:      provider,
+		ProviderModel: providerModel,
+		Request:       req,
+		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+	}, &result); err != nil {
+		return Usage{}, err
+	}
+	for _, event := range result.Events {
+		rendered, err := renderProviderPluginStreamEvent(event)
+		if err != nil {
+			return Usage{}, err
+		}
+		if _, err := writer.Write(rendered); err != nil {
+			return Usage{}, err
+		}
+		if flusher, ok := writer.(streamFlusher); ok {
+			flusher.Flush()
+		}
+	}
+	return result.Usage, nil
 }
 
 func (a providerPluginAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -206,7 +246,7 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityResponses, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe:
+		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe:
 			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}
@@ -225,7 +265,7 @@ func providerPluginDefaultRouteProtocols(capabilities []string) []string {
 	protocols := []string{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat:
+		case AdapterCapabilityChat, AdapterCapabilityChatStream:
 			protocols = append(protocols, "chat/completions")
 		case AdapterCapabilityResponses:
 			protocols = append(protocols, "responses")
@@ -236,6 +276,15 @@ func providerPluginDefaultRouteProtocols(capabilities []string) []string {
 		}
 	}
 	return protocols
+}
+
+func providerPluginHasGatewayCapability(manifest pluginmeta.Manifest, capability AdapterCapability) bool {
+	for _, candidate := range manifest.Capabilities.Gateway {
+		if AdapterCapability(strings.TrimSpace(candidate)) == capability {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizedProviderPluginProtocols(protocols []string) []string {
@@ -258,6 +307,36 @@ func providerPluginSupportsCustomHeaders(manifest pluginmeta.Manifest) bool {
 		return true
 	}
 	return *manifest.Capabilities.Provider.SupportsCustomHeaders
+}
+
+func renderProviderPluginStreamEvent(event providerPluginStreamEvent) ([]byte, error) {
+	if strings.ContainsAny(event.Event, "\r\n") {
+		return nil, invalidProviderResponseError("provider plugin returned an invalid stream event name")
+	}
+	data, err := providerPluginStreamEventData(event.Data)
+	if err != nil {
+		return nil, err
+	}
+	return renderSSEEvent(serverSentEvent{Event: event.Event, Data: data}), nil
+}
+
+func providerPluginStreamEventData(raw json.RawMessage) (string, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return "", nil
+	}
+	if raw[0] == '"' {
+		var data string
+		if err := json.Unmarshal(raw, &data); err != nil {
+			return "", invalidProviderResponseError("provider plugin returned invalid stream event data")
+		}
+		return data, nil
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, raw); err != nil {
+		return "", invalidProviderResponseError("provider plugin returned invalid stream event data")
+	}
+	return compact.String(), nil
 }
 
 func providerPluginCapabilityUnsupported(capability string) error {

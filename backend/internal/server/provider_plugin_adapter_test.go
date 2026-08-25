@@ -73,6 +73,58 @@ esac
 	}
 }
 
+func TestExternalProviderPluginAdapterExecutesChatStreamCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"chat", "chat_stream"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"chat_stream"'*'"provider_model":"upstream-model"'*'"stream":true'*'"api_key":"provider-secret"'*)
+    cat <<'JSON'
+{"events":[{"data":{"id":"chatcmpl_plugin_stream","object":"chat.completion.chunk","choices":[{"delta":{"content":"from plugin stream"}}]}},{"data":"[DONE]"}],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}}
+JSON
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginmeta.NewRegistry(), pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+	descriptor, ok := registry.Describe("custom_stdio")
+	if !ok || !adapterSupports(descriptor, AdapterCapabilityChatStream) {
+		t.Fatalf("adapter descriptor = %+v, want chat_stream", descriptor)
+	}
+	adapter, ok := resolveTypedAdapter[ProviderAdapter](registry, "custom_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderAdapter")
+	}
+
+	var stream strings.Builder
+	usage, err := adapter.ChatStream(context.Background(), Provider{Type: "custom_stdio", APIKey: "provider-secret"}, "upstream-model", ChatCompletionRequest{Model: "gateway-model"}, &stream)
+	if err != nil {
+		t.Fatalf("chat stream through provider plugin: %v", err)
+	}
+	if usage.TotalTokens != 8 {
+		t.Fatalf("usage = %+v, want total 8", usage)
+	}
+	output := stream.String()
+	if !strings.Contains(output, `data: {"id":"chatcmpl_plugin_stream"`) || !strings.Contains(output, "from plugin stream") || !strings.Contains(output, "data: [DONE]") {
+		t.Fatalf("stream output did not come from provider plugin:\n%s", output)
+	}
+}
+
 func TestExternalProviderPluginAdapterUsesManifestProviderPolicy(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")
@@ -188,6 +240,54 @@ printf '{"response":{"id":"chatcmpl_stdio","object":"chat.completion","choices":
 	}
 	if !strings.Contains(response.Body, `"id":"chatcmpl_stdio"`) || !strings.Contains(response.Body, "served by plugin") {
 		t.Fatalf("gateway chat response did not come from provider plugin: %s", response.Body)
+	}
+}
+
+func TestExternalProviderPluginAdapterServesGatewayChatStream(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"chat", "chat_stream"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+cat >/dev/null
+cat <<'JSON'
+{"events":[{"data":{"id":"chatcmpl_stdio_stream","object":"chat.completion.chunk","choices":[{"delta":{"content":"streamed by plugin"}}]}},{"data":"[DONE]"}],"usage":{"prompt_tokens":2,"completion_tokens":4,"total_tokens":6}}
+JSON
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Provider Plugin Stream Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Provider Plugin Stream Key", Allowed: []string{"plugin-stream-chat"}, Status: StatusActive}, "thk_provider_plugin_stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-stream-chat", Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{ID: "prv_plugin_stream", Name: "Provider Plugin Stream", Type: "custom_stdio", APIKey: "provider-secret", Status: StatusActive, Healthy: true})
+	store.AddRoute(ModelRoute{
+		ModelName:     "plugin-stream-chat",
+		ProviderID:    provider.ID,
+		ProviderModel: "plugin-upstream-stream-chat",
+		Priority:      1,
+		Weight:        100,
+		Status:        StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-admin", PluginDir: root})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model":  "plugin-stream-chat",
+		"stream": true,
+		"messages": []map[string]any{
+			{"role": "user", "content": "hello"},
+		},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("gateway chat stream through provider plugin: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"chatcmpl_stdio_stream"`) || !strings.Contains(response.Body, "streamed by plugin") || !strings.Contains(response.Body, "data: [DONE]") {
+		t.Fatalf("gateway chat stream response did not come from provider plugin: %s", response.Body)
 	}
 }
 
