@@ -38,6 +38,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, req, requestTokenReservation(req)); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeError(w, r, err)
+		return
+	}
 	if err := s.runGatewayPrivacyPreHooks(r.Context(), call, r.Header, req, func(data json.RawMessage) error {
 		originalModel := req.Model
 		originalStream := req.Stream
@@ -248,6 +253,11 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, guardrailAuditSummary{Model: req.Model})
 		w.Header().Set("x-request-id", requestID)
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, req, requestTokenReservation(req)); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
 		writeError(w, r, err)
 		return
 	}
@@ -474,6 +484,11 @@ func (s *Server) startRoutedCallWithAudit(w http.ResponseWriter, r *http.Request
 		writeError(w, r, err)
 		return RoutedCall{}, false
 	}
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, requestPayload, requestTokenReservation(requestPayload)); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return RoutedCall{}, false
+	}
 	return s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
 }
 
@@ -552,6 +567,20 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	call := s.newPlaygroundCallContext(user, req.Model, startedAt)
 	requestID := call.RequestID
 	w.Header().Set("x-request-id", requestID)
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, req, requestTokenReservation(req)); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, requestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
 	if err := s.runGatewayChatGuardrailPreHooks(r.Context(), call, &req); err != nil {
 		httpErr := AsHTTPError(err)
 		requestAuditPayload := guardrailAuditSummary{Model: req.Model}

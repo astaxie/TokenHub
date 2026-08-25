@@ -259,6 +259,37 @@ func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallC
 	return output, nil
 }
 
+func (s *Server) runGatewayAdmissionHooks(ctx context.Context, call CallContext, headers http.Header, payload any, tokenReservation int64) error {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageAdmission)) == 0 {
+		return nil
+	}
+	body, ok := marshalGatewayHookData(payload)
+	if !ok {
+		return NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:     "v1",
+			Protocol:    "gateway",
+			Operation:   "admission",
+			Model:       call.Model.Name,
+			RequestBody: body,
+		},
+		Data: gatewayHookCallData(call, body),
+	}
+	if requestHeaders, ok := marshalGatewayHookData(sanitizedGatewayHookHeaders(headers)); ok {
+		input.Data[pluginmeta.DataRequestHeaders] = requestHeaders
+	}
+	if reservation, ok := marshalGatewayHookData(Usage{TotalTokens: maxInt64(tokenReservation, 0)}); ok {
+		input.Data[pluginmeta.DataUsage] = reservation
+	}
+	if _, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageAdmission, input); err != nil {
+		return gatewayHookHTTPError(pluginmeta.StageAdmission, err)
+	}
+	return nil
+}
+
 func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
 	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)) == 0 {
 		return nil

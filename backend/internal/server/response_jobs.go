@@ -423,6 +423,14 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 
+	if err := s.runGatewayAdmissionHooks(ctx, call, envelope.Headers, request, requestTokenReservation(request)); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, request, resultTTL)
+		return
+	}
 	if err := s.runGatewayResponsesGuardrailPreHooks(ctx, call, &request); err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
