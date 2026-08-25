@@ -32,6 +32,8 @@ type ActionDescriptor struct {
 	ActionID     string         `json:"action_id"`
 	Kind         ActionKind     `json:"kind"`
 	Title        string         `json:"title,omitempty"`
+	Capability   string         `json:"capability,omitempty"`
+	Subject      string         `json:"subject,omitempty"`
 	InputSchema  map[string]any `json:"input_schema,omitempty"`
 	OutputSchema map[string]any `json:"output_schema,omitempty"`
 }
@@ -164,6 +166,8 @@ func NormalizeActionDescriptor(descriptor ActionDescriptor) ActionDescriptor {
 	descriptor.PluginID = strings.TrimSpace(descriptor.PluginID)
 	descriptor.ActionID = strings.TrimSpace(descriptor.ActionID)
 	descriptor.Title = strings.TrimSpace(descriptor.Title)
+	descriptor.Capability = strings.TrimSpace(descriptor.Capability)
+	descriptor.Subject = strings.TrimSpace(descriptor.Subject)
 	if descriptor.Kind == "" {
 		descriptor.Kind = ActionKindRead
 	}

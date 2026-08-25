@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -59,7 +61,9 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 	body := response.Body
 	if !strings.Contains(body, `"action_id":"openai_codex.quota.read"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) ||
-		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) {
+		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.credentials.refresh"`) ||
+		!strings.Contains(body, `"capability":"credentials.refresh"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
 	}
 }
@@ -95,6 +99,65 @@ func TestAdminPluginActionStartsOpenAICodexOAuth(t *testing.T) {
 		t.Fatalf("unexpected OAuth action auth URL: %s", result.Data.AuthURL)
 	}
 	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.oauth.start" {
+		t.Fatalf("plugin action audit events = %+v", events)
+	}
+}
+
+func TestAdminPluginActionRefreshesOpenAICodexCredentials(t *testing.T) {
+	tokenCalls := 0
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenCalls++
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("refresh_token") != "plugin-refresh-secret" {
+			t.Fatalf("unexpected refresh form: %v", r.Form)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"plugin-fresh-secret","refresh_token":"plugin-fresh-refresh","token_type":"bearer","expires_in":3600}`)
+	}))
+	t.Cleanup(tokenServer.Close)
+	previousEndpoint := openAIAccountOAuthTokenEndpoint
+	openAIAccountOAuthTokenEndpoint = tokenServer.URL
+	t.Cleanup(func() { openAIAccountOAuthTokenEndpoint = previousEndpoint })
+
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_plugin_refresh", Name: "Plugin Refresh Provider", Type: ProviderOpenAICodex,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_plugin_refresh", ProviderID: provider.ID, Name: "Plugin Refresh Resource",
+		ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType: "oauth", AccessToken: "plugin-old-secret", RefreshToken: "plugin-refresh-secret",
+			AccountID: "plugin-refresh-account", Email: "plugin-refresh@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.credentials.refresh", map[string]any{
+		"resource_id": resource.ID,
+		"force":       true,
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST credential refresh action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if tokenCalls != 1 {
+		t.Fatalf("credential refresh upstream calls = %d, want 1", tokenCalls)
+	}
+	for _, secret := range []string{"plugin-old-secret", "plugin-refresh-secret", "plugin-fresh-secret", "plugin-fresh-refresh"} {
+		if strings.Contains(response.Body, secret) {
+			t.Fatalf("credential refresh action leaked %q: %s", secret, response.Body)
+		}
+	}
+	if !strings.Contains(response.Body, `"account_id":"plugin-refresh-account"`) || !strings.Contains(response.Body, `"has_refresh_token":"true"`) {
+		t.Fatalf("credential refresh action response missing summary: %s", response.Body)
+	}
+	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.credentials.refresh" {
 		t.Fatalf("plugin action audit events = %+v", events)
 	}
 }

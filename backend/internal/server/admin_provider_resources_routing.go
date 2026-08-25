@@ -287,13 +287,13 @@ func (s *Server) serveAdminProviderResourceTest(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) serveAdminProviderResourceRefreshToken(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	creds, err := s.store.RefreshProviderResourceCredentials(r.Context(), resourceID, true)
+	result, err := s.executeProviderResourceCredentialRefreshAction(r.Context(), user, resourceID, true)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "refresh_token", "provider_resource", resourceID, "", providerAccountCredentialSummary(creds))
-	writeJSON(w, http.StatusOK, map[string]any{"credential_summary": providerAccountCredentialSummary(creds)})
+	s.recordAdminAudit(r, user, "refresh_token", "provider_resource", resourceID, "", result.Data)
+	writeJSON(w, http.StatusOK, result.Data)
 }
 
 func (s *Server) serveAdminOpenAIAccountQuota(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
@@ -342,6 +342,42 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	return result, nil
 }
 
+func (s *Server) executeProviderResourceCredentialRefreshAction(ctx context.Context, user AdminUser, resourceID string, force bool) (pluginmeta.ActionResult, error) {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityOAuth, "credentials.refresh")
+	if !ok {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_resource_refresh_unsupported", "Credential refresh is not available for this provider resource")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"resource_id": resourceID,
+		"force":       force,
+	})
+	if err != nil {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
+		PluginID: pluginID,
+		ActionID: actionID,
+		Actor: pluginmeta.ActionActor{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return pluginmeta.ActionResult{}, pluginActionHTTPError(err)
+	}
+	return result, nil
+}
+
 func (s *Server) providerResourcePanelAction(providerType string, panelID string, capability AdapterCapability) (string, string, bool) {
 	descriptor, ok := s.adapterRegistry.Describe(providerType)
 	if !ok || descriptor.PluginID == "" || !adapterSupports(descriptor, capability) {
@@ -354,6 +390,23 @@ func (s *Server) providerResourcePanelAction(providerType string, panelID string
 		if len(contribution.ProviderTypes) == 0 || stringInList(providerType, contribution.ProviderTypes) {
 			return contribution.PluginID, contribution.Action, true
 		}
+	}
+	return "", "", false
+}
+
+func (s *Server) providerPluginCapabilityAction(providerType string, capability AdapterCapability, actionCapability string) (string, string, bool) {
+	descriptor, ok := s.adapterRegistry.Describe(providerType)
+	if !ok || descriptor.PluginID == "" || !adapterSupports(descriptor, capability) {
+		return "", "", false
+	}
+	for _, action := range s.pluginActions.List() {
+		if action.PluginID != descriptor.PluginID || action.Capability != actionCapability {
+			continue
+		}
+		if action.Subject != "" && action.Subject != providerType {
+			continue
+		}
+		return action.PluginID, action.ActionID, true
 	}
 	return "", "", false
 }

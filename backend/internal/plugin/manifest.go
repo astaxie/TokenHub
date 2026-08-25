@@ -63,6 +63,8 @@ type ActionManifest struct {
 	ID           string         `yaml:"id"`
 	Kind         ActionKind     `yaml:"kind"`
 	Title        string         `yaml:"title"`
+	Capability   string         `yaml:"capability"`
+	Subject      string         `yaml:"subject"`
 	InputSchema  map[string]any `yaml:"input_schema"`
 	OutputSchema map[string]any `yaml:"output_schema"`
 }
@@ -150,6 +152,8 @@ func (m Manifest) Validate() error {
 			ActionID:     action.ID,
 			Kind:         action.Kind,
 			Title:        action.Title,
+			Capability:   action.Capability,
+			Subject:      action.Subject,
 			InputSchema:  action.InputSchema,
 			OutputSchema: action.OutputSchema,
 		})
@@ -234,6 +238,8 @@ func (m Manifest) Actions() []ActionDescriptor {
 			ActionID:     action.ID,
 			Kind:         action.Kind,
 			Title:        action.Title,
+			Capability:   action.Capability,
+			Subject:      action.Subject,
 			InputSchema:  action.InputSchema,
 			OutputSchema: action.OutputSchema,
 		}))

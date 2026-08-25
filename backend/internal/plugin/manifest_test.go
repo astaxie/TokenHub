@@ -30,6 +30,8 @@ capabilities:
     - id: codex.quota.read
       kind: read
       title: Read quota
+      capability: quota.read
+      subject: openai_codex
       input_schema:
         type: object
         required:
@@ -77,6 +79,9 @@ permissions:
 	actions := manifest.Actions()
 	if len(actions) != 1 || actions[0].ActionID != "codex.quota.read" || actions[0].Kind != ActionKindRead {
 		t.Fatalf("actions = %+v", actions)
+	}
+	if actions[0].Capability != "quota.read" || actions[0].Subject != "openai_codex" {
+		t.Fatalf("action capability metadata = %+v", actions[0])
 	}
 	if actions[0].InputSchema["type"] != "object" {
 		t.Fatalf("action input schema = %+v", actions[0].InputSchema)
