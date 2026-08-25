@@ -69,7 +69,20 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	postResp, err := s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp)
+	postResp, err := s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	resp, ok = postResp.(map[string]any)
+	if !ok {
+		err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	postResp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeAnthropicError(w, r, err)

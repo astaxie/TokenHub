@@ -479,6 +479,12 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 	}
 	response, route, usage, attempts, invokeErr := s.executeRoutedResponsesContext(ctx, envelope.Headers, routed, request)
 	if invokeErr == nil {
+		response, invokeErr = s.runGatewayGuardrailPostHooks(ctx, routed.Call, route, response, usage)
+		if invokeErr != nil {
+			httpErr := AsHTTPError(invokeErr)
+			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
 		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response)
 		if invokeErr != nil {
 			httpErr := AsHTTPError(invokeErr)

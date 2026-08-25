@@ -650,6 +650,152 @@ func TestRequestTransformHookRewritesGatewayResponsesRequestBeforeUpstream(t *te
 	}
 }
 
+func TestGuardrailPostHookCanRewriteProviderResponse(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-response-guardrail",
+		HookID:        "sanitize",
+		Stage:         pluginmeta.StageGuardrailPost,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAuthContext, pluginmeta.DataAPIKeyMetadata, pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register guardrail post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Envelope.RequestBody) == 0 {
+			t.Fatal("provider response was not available in the hook envelope")
+		}
+		if _, ok := input.Data[pluginmeta.DataAuthContext]; !ok {
+			t.Fatal("auth context was not available to guardrail post hook")
+		}
+		if _, ok := input.Data[pluginmeta.DataAPIKeyMetadata]; !ok {
+			t.Fatal("API key metadata was not available to guardrail post hook")
+		}
+		if _, ok := input.Data[pluginmeta.DataUsage]; !ok {
+			t.Fatal("usage was not available to guardrail post hook")
+		}
+		return rawProviderResponsePatch(t, map[string]any{"id": "sanitized"}), nil
+	})); err != nil {
+		t.Fatalf("register guardrail post handler: %v", err)
+	}
+
+	response, err := server.runGatewayGuardrailPostHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"}, Usage{TotalTokens: 3})
+	if err != nil {
+		t.Fatalf("run guardrail post hook: %v", err)
+	}
+	body, ok := response.(map[string]any)
+	if !ok || body["id"] != "sanitized" {
+		t.Fatalf("provider response = %#v, want sanitized", response)
+	}
+}
+
+func TestGuardrailPostHookRewritesGatewayChatResponseBeforeClient(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Guardrail Post Chat App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "guardrail-post-chat-key",
+		Allowed: []string{"gpt-guardrail-post"},
+		Status:  StatusActive,
+	}, "thk_guardrail_post_chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_guardrail_post_chat", Name: "Guardrail Post Chat", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-guardrail-post", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_guardrail_post_chat", ModelName: "gpt-guardrail-post", ProviderID: provider.ID, ProviderModel: "upstream-chat", Status: StatusActive, Priority: 1, Weight: 100})
+	server := New(store)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-response-guardrail",
+		HookID:        "sanitize-chat",
+		Stage:         pluginmeta.StageGuardrailPost,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register guardrail post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderResponsePatch(t, map[string]any{
+			"id":      "chat_guardrail_post",
+			"object":  "chat.completion",
+			"created": float64(1),
+			"model":   "gpt-guardrail-post",
+			"choices": []map[string]any{{
+				"index": float64(0),
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": "[sanitized-output]",
+				},
+				"finish_reason": "stop",
+			}},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register guardrail post handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-guardrail-post",
+		"messages": []map[string]any{
+			{"role": "user", "content": "original"},
+		},
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, "[sanitized-output]") || !strings.Contains(resp.Body, "chat_guardrail_post") {
+		t.Fatalf("response body was not sanitized: %s", resp.Body)
+	}
+}
+
+func TestGuardrailPostHookDenyStopsGatewayChatResponse(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Guardrail Post Deny App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "guardrail-post-deny-key",
+		Allowed: []string{"gpt-guardrail-post-deny"},
+		Status:  StatusActive,
+	}, "thk_guardrail_post_deny")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_guardrail_post_deny", Name: "Guardrail Post Deny", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-guardrail-post-deny", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_guardrail_post_deny", ModelName: "gpt-guardrail-post-deny", ProviderID: provider.ID, ProviderModel: "upstream-chat", Status: StatusActive, Priority: 1, Weight: 100})
+	server := New(store)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-response-guardrail",
+		HookID:        "deny-chat",
+		Stage:         pluginmeta.StageGuardrailPost,
+		Priority:      2000,
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register guardrail post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionDeny}, nil
+	})); err != nil {
+		t.Fatalf("register guardrail post handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-guardrail-post-deny",
+		"messages": []map[string]any{
+			{"role": "user", "content": "original"},
+		},
+	}, secret)
+	if resp.Code != http.StatusForbidden || !strings.Contains(resp.Body, "gateway_hook_denied") {
+		t.Fatalf("expected 403 gateway_hook_denied, got %d: %s", resp.Code, resp.Body)
+	}
+}
+
 func TestResponsePostHookCanRewriteProviderResponse(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{

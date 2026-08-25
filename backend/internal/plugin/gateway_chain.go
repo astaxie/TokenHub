@@ -290,7 +290,7 @@ func GatewayStagePolicy(stage GatewayHookStage) (GatewayHookStagePolicy, bool) {
 		return GatewayHookStagePolicy{
 			DefaultFailurePolicy: FailurePolicyFailClosed,
 			AllowedFailurePolicy: []GatewayHookFailurePolicy{FailurePolicyFailClosed, FailurePolicyFailOpen},
-			Reads:                []GatewayDataClass{DataProjectMetadata, DataProviderResponse, DataStreamEvents},
+			Reads:                []GatewayDataClass{DataAuthContext, DataProjectMetadata, DataAPIKeyMetadata, DataProviderResponse, DataStreamEvents, DataUsage},
 			Writes:               []GatewayDataClass{DataProviderResponse, DataAudit},
 			AllowsDeny:           true,
 		}, true

@@ -80,6 +80,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if hit {
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
 			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
@@ -192,6 +198,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 	resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
@@ -281,6 +293,12 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if hit {
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
 			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
@@ -364,6 +382,12 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 	resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
@@ -412,6 +436,12 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req)
+		writeError(w, r, err)
+		return
+	}
 	resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req)

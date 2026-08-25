@@ -152,6 +152,61 @@ func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallConte
 	return output, nil
 }
 
+func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage) (any, error) {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageGuardrailPost)) == 0 {
+		return response, nil
+	}
+	body, ok := marshalGatewayHookData(response)
+	if !ok {
+		return nil, NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:     "v1",
+			Protocol:    "gateway",
+			Operation:   "guardrail_post",
+			Model:       call.Model.Name,
+			RequestBody: body,
+		},
+		Data: pluginmeta.GatewayHookData{
+			pluginmeta.DataProviderResponse: body,
+		},
+	}
+	for dataClass, value := range map[pluginmeta.GatewayDataClass]any{
+		pluginmeta.DataAuthContext:     gatewayAuthContextView(call),
+		pluginmeta.DataProjectMetadata: call.Project,
+		pluginmeta.DataAPIKeyMetadata:  gatewayAPIKeyMetadataView(call.Key),
+		pluginmeta.DataUsage:           usage,
+	} {
+		if encoded, ok := marshalGatewayHookData(value); ok {
+			input.Data[dataClass] = encoded
+		}
+	}
+	if len(route.Route.ID) > 0 || len(route.Provider.ID) > 0 {
+		if routeData, ok := marshalGatewayHookData(gatewayRouteCandidateViews([]RouteSelection{route})); ok {
+			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
+		}
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageGuardrailPost, input)
+	if err != nil {
+		return nil, gatewayHookHTTPError(pluginmeta.StageGuardrailPost, err)
+	}
+	output := response
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataProviderResponse]
+		if !ok {
+			continue
+		}
+		var patched any
+		if err := decodeGatewayHookPayload(patch.Value, &patched, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response"); err != nil {
+			return nil, err
+		}
+		output = patched
+	}
+	return output, nil
+}
+
 func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage) (Usage, error) {
 	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageUsageAttribution)) == 0 {
 		return usage, nil
