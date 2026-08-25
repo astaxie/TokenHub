@@ -452,6 +452,115 @@ JSON
 	}
 }
 
+func TestExternalProviderPluginAdapterExecutesImageGenerationCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"image_generation"})
+	imageB64 := encodeBase64(realPNGFixture(t))
+	script := strings.ReplaceAll(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"image_generation"'*'"provider_model":"plugin-image-model"'*'"action":"generate"'*'"prompt":"draw plugin image"'*'"api_key":"provider-secret"'*)
+    cat <<'JSON'
+{"response":{"data":[{"b64_json":"__IMAGE_B64__","revised_prompt":"revised by plugin"}]},"usage":{"prompt_tokens":6,"completion_tokens":7,"total_tokens":13}}
+JSON
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`, "__IMAGE_B64__", imageB64)
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginmeta.NewRegistry(), pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+	descriptor, ok := registry.Describe("custom_stdio")
+	if !ok || !adapterSupports(descriptor, AdapterCapabilityImageGenerate) {
+		t.Fatalf("adapter descriptor = %+v, want image_generation", descriptor)
+	}
+	adapter, ok := resolveTypedAdapter[ProviderImageGenerator](registry, "custom_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderImageGenerator")
+	}
+
+	imageBytes, revisedPrompt, usage, err := adapter.GenerateImage(context.Background(), Provider{Type: "custom_stdio", APIKey: "provider-secret"}, "plugin-image-model", ProviderImageGenerationRequest{
+		Action: "generate",
+		Model:  "plugin-image-model",
+		Prompt: "draw plugin image",
+	})
+	if err != nil {
+		t.Fatalf("image generation through provider plugin: %v", err)
+	}
+	if len(imageBytes) == 0 || revisedPrompt != "revised by plugin" || usage.TotalTokens != 13 || usage.ServedModel != "plugin-image-model" {
+		t.Fatalf("image bytes=%d revised=%q usage=%+v", len(imageBytes), revisedPrompt, usage)
+	}
+}
+
+func TestExternalProviderPluginAdapterServesGatewayImageGeneration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"image_generation"})
+	imageB64 := encodeBase64(realPNGFixture(t))
+	script := strings.ReplaceAll(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"image_generation"'*'"provider_model":"plugin-image-model"'*'"action":"generate"'*'"prompt":"gateway plugin image"'*'"api_key":"provider-secret"'*)
+    cat <<'JSON'
+{"response":{"data":[{"b64_json":"__IMAGE_B64__","revised_prompt":"gateway revised prompt"}]},"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}
+JSON
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`, "__IMAGE_B64__", imageB64)
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Provider Plugin Image Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Provider Plugin Image Key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_provider_plugin_image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	provider := store.AddProvider(Provider{ID: "prv_plugin_image", Name: "Provider Plugin Image", Type: "custom_stdio", APIKey: "provider-secret", Status: StatusActive, Healthy: true})
+	store.AddRoute(ModelRoute{
+		ModelName:     openAIImageModelName,
+		ProviderID:    provider.ID,
+		ProviderModel: "plugin-image-model",
+		Priority:      1,
+		Weight:        100,
+		Status:        StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-admin", PluginDir: root})
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model":           openAIImageModelName,
+		"prompt":          "gateway plugin image",
+		"response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("gateway image generation through provider plugin: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"b64_json"`) || !strings.Contains(response.Body, "gateway revised prompt") {
+		t.Fatalf("gateway image response did not come from provider plugin: %s", response.Body)
+	}
+}
+
 func TestExternalProviderPluginAdapterExecutesModelsAndProbe(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")

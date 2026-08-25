@@ -23,6 +23,7 @@ type providerPluginAdapter struct {
 	supportsProviderHeaders bool
 	supportsChatStream      bool
 	supportsResponsesStream bool
+	supportsImageGenerate   bool
 }
 
 type providerPluginRequest struct {
@@ -63,6 +64,11 @@ type providerPluginProbeResponse struct {
 	Result ProviderProbeResult `json:"result"`
 }
 
+type providerPluginImageResponse struct {
+	Response openAIImageResponse `json:"response"`
+	Usage    Usage               `json:"usage,omitempty"`
+}
+
 func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 	return providerPluginAdapter{
 		dir:                     pkg.Dir,
@@ -72,6 +78,7 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 		supportsProviderHeaders: providerPluginSupportsCustomHeaders(pkg.Manifest),
 		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
 		supportsResponsesStream: providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityResponseStream),
+		supportsImageGenerate:   providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityImageGenerate),
 	}
 }
 
@@ -191,6 +198,35 @@ func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider
 	return result.Response, result.Usage, nil
 }
 
+func (a providerPluginAdapter) GenerateImage(ctx context.Context, provider Provider, providerModel string, req ProviderImageGenerationRequest) ([]byte, string, Usage, error) {
+	if !a.supportsImageGenerate {
+		return nil, "", Usage{}, providerPluginCapabilityUnsupported("image generation")
+	}
+	var result providerPluginImageResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:     "image_generation",
+		Provider:      provider,
+		ProviderModel: providerModel,
+		Request:       req,
+		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+	}, &result); err != nil {
+		return nil, "", Usage{}, err
+	}
+	if len(result.Response.Data) == 0 || strings.TrimSpace(result.Response.Data[0].B64JSON) == "" {
+		return nil, "", Usage{}, NewHTTPError(http.StatusBadGateway, "image_result_missing", "Provider plugin image generation completed without an image result")
+	}
+	imageBytes, err := decodeGeneratedImage(result.Response.Data[0].B64JSON)
+	if err != nil {
+		return nil, "", Usage{}, NewHTTPError(http.StatusBadGateway, "image_result_invalid", err.Error())
+	}
+	usage := result.Usage
+	if usage.TotalTokens == 0 && usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+		usage = usageFromMap(map[string]any{"usage": result.Response.Usage})
+	}
+	usage.ServedModel = firstNonEmpty(strings.TrimSpace(providerModel), req.Model)
+	return imageBytes, result.Response.Data[0].RevisedPrompt, usage, nil
+}
+
 func (a providerPluginAdapter) ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error) {
 	effective := effectiveProviderResourceConfig(provider, &resource)
 	var result providerPluginModelsResponse
@@ -282,7 +318,7 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe:
+		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityImageGenerate:
 			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}

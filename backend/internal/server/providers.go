@@ -33,6 +33,26 @@ type ResponsesStreamOpener interface {
 	OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, incoming http.Header) (*http.Response, error)
 }
 
+type ProviderImageGenerator interface {
+	GenerateImage(ctx context.Context, provider Provider, providerModel string, req ProviderImageGenerationRequest) ([]byte, string, Usage, error)
+}
+
+type ProviderImageGenerationRequest struct {
+	Action         string               `json:"action"`
+	Model          string               `json:"model"`
+	Prompt         string               `json:"prompt"`
+	Quality        string               `json:"quality,omitempty"`
+	Size           string               `json:"size,omitempty"`
+	ResponseFormat string               `json:"response_format,omitempty"`
+	Images         []ProviderImageInput `json:"images,omitempty"`
+}
+
+type ProviderImageInput struct {
+	Role        string `json:"role"`
+	ContentType string `json:"content_type"`
+	DataBase64  string `json:"data_base64"`
+}
+
 type ProviderResourceProber interface {
 	DefaultProbeRequest() ProviderProbeRequest
 	Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error)

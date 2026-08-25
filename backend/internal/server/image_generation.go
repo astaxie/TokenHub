@@ -657,11 +657,7 @@ func (s *Server) processImageJob(work imageJobWork) {
 		defer release()
 		runner := s.imageRunner
 		if runner == nil {
-			if job.Model == codexImageModelName {
-				runner = s.executeCodexSubscriptionImage
-			} else {
-				runner = s.executeOpenAIImage
-			}
+			runner = s.imageRunnerForRoute(job, route)
 		}
 		imageBytes, revisedPrompt, responseUsage, err := runner(ctx, route, job)
 		if err != nil {
@@ -1071,6 +1067,69 @@ func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 	return nil
 }
 
+func (s *Server) imageRunnerForRoute(job ImageJob, route RouteSelection) func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+	if job.Model == codexImageModelName {
+		return s.executeCodexSubscriptionImage
+	}
+	if _, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, route.Provider.Type); ok {
+		return s.executeProviderImage
+	}
+	if route.Provider.Type == ProviderOpenAI {
+		return s.executeOpenAIImage
+	}
+	return s.executeUnsupportedProviderImage
+}
+
+func (s *Server) executeUnsupportedProviderImage(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+	return nil, "", Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support image generation")
+}
+
+func (s *Server) executeProviderImage(ctx context.Context, route RouteSelection, job ImageJob) ([]byte, string, Usage, error) {
+	prepared, err := s.prepareRouteForUpstream(ctx, route)
+	if err != nil {
+		return nil, "", Usage{}, err
+	}
+	adapter, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, prepared.Provider.Type)
+	if !ok {
+		return nil, "", Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support image generation")
+	}
+	request, err := s.providerImageGenerationRequest(prepared, job)
+	if err != nil {
+		return nil, "", Usage{}, err
+	}
+	return adapter.GenerateImage(ctx, prepared.Provider, prepared.ProviderModel, request)
+}
+
+func (s *Server) providerImageGenerationRequest(route RouteSelection, job ImageJob) (ProviderImageGenerationRequest, error) {
+	request := ProviderImageGenerationRequest{
+		Action:         job.Action,
+		Model:          firstNonEmpty(strings.TrimSpace(route.ProviderModel), job.Model),
+		Prompt:         job.Prompt,
+		Quality:        normalizedImageOption(job.Quality, "auto"),
+		Size:           normalizedImageOption(job.Size, "auto"),
+		ResponseFormat: "b64_json",
+	}
+	for _, asset := range s.store.ListImageAssets(job.ID) {
+		if asset.Role != "input" && asset.Role != "mask" {
+			continue
+		}
+		path, err := s.imageAssetPath(asset.RelativePath)
+		if err != nil {
+			return ProviderImageGenerationRequest{}, err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return ProviderImageGenerationRequest{}, err
+		}
+		request.Images = append(request.Images, ProviderImageInput{
+			Role:        asset.Role,
+			ContentType: asset.ContentType,
+			DataBase64:  base64.StdEncoding.EncodeToString(raw),
+		})
+	}
+	return request, nil
+}
+
 func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 	if model == codexImageModelName {
 		routes, err := s.store.SelectRouteCandidates(codexImageModelName)
@@ -1096,7 +1155,7 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 	}
 	filtered := make([]RouteSelection, 0, len(routes))
 	for _, route := range routes {
-		if route.Provider.Type == ProviderOpenAI {
+		if route.Provider.Type != ProviderOpenAICodex {
 			filtered = append(filtered, route)
 		}
 	}
