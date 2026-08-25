@@ -596,17 +596,16 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 	defer cancel()
 	startedAt := time.Now()
 	var catalog ProviderCatalogEntry
-	var health *KronkHealthResult
+	var health any
 	var err error
 	if strings.TrimSpace(req.Type) == ProviderKronk {
-		adapter, ok := resolveTypedAdapter[KronkAdapter](s.adapterRegistry, ProviderKronk)
+		adapter, ok := resolveProviderHealthProber(s.adapterRegistry, ProviderKronk)
 		if !ok {
 			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable"))
 			return
 		}
-		provider := Provider{Name: req.Name, Type: ProviderKronk, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
-		result, healthErr := adapter.Health(ctx, provider)
-		health, err = &result, healthErr
+		provider := Provider{Name: req.Name, Type: req.Type, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
+		health, err = adapter.ProbeProvider(ctx, provider)
 		if err == nil {
 			catalog, err = KronkProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
 		}

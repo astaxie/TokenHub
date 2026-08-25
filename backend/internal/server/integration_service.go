@@ -91,7 +91,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		return nil, err
 	}
 	descriptor, described := s.registry.Describe(provider.Type)
-	if healthProber, supported := adapter.(ProviderHealthProber); supported && described && adapterSupports(descriptor, AdapterCapabilityProbe) {
+	if healthProber, supported := resolveProviderHealthProber(s.registry, provider.Type, adapter); supported {
 		result, probeErr := healthProber.ProbeProvider(ctx, effectiveProviderResourceConfig(provider, nil))
 		_, _ = s.store.SetProviderHealth(providerID, probeErr == nil)
 		if probeErr != nil {
@@ -161,6 +161,25 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	}
 	_, _ = s.store.SetProviderHealth(providerID, true)
 	return result, nil
+}
+
+func resolveProviderHealthProber(registry *AdapterRegistry, providerType string, adapters ...any) (ProviderHealthProber, bool) {
+	var adapter any
+	if len(adapters) > 0 {
+		adapter = adapters[0]
+	} else {
+		resolved, err := registry.Resolve(providerType)
+		if err != nil {
+			return nil, false
+		}
+		adapter = resolved
+	}
+	healthProber, supported := adapter.(ProviderHealthProber)
+	if !supported {
+		return nil, false
+	}
+	descriptor, described := registry.Describe(providerType)
+	return healthProber, described && adapterSupports(descriptor, AdapterCapabilityProbe)
 }
 
 func (s *IntegrationService) finishProbe(ctx context.Context, provider Provider, resource ProviderResource, startedAt time.Time, err error, usage Usage) {
