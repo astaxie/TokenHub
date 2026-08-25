@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"sync"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type recordingTraceEmitter struct {
@@ -39,6 +42,58 @@ func newTracedTestServer(t *testing.T) (http.Handler, *recordingTraceEmitter) {
 	emitter := &recordingTraceEmitter{}
 	app.traceEmitter = emitter
 	return app.Handler(), emitter
+}
+
+func TestGatewayCompletionRunsTraceExportHooks(t *testing.T) {
+	store := NewMemoryStore()
+	app := New(store)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID: "tokenhub.test-trace",
+		HookID:   "capture",
+		Stage:    pluginmeta.StageTraceExport,
+		Priority: 2000,
+		Reads:    []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+	}
+	if err := app.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace hook: %v", err)
+	}
+	var captured pluginmeta.GatewayHookInput
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		captured = input
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Kind: CompletionKindRejected,
+		Call: CallContext{
+			RequestID: "req_trace_hook",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Usage:      Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7},
+		StatusCode: http.StatusForbidden,
+		ErrorCode:  "blocked",
+	})
+
+	if captured.RequestID != "req_trace_hook" {
+		t.Fatalf("captured request id = %q, want req_trace_hook", captured.RequestID)
+	}
+	if captured.Envelope.Model != "gpt-trace" || captured.Envelope.Operation != string(CompletionKindRejected) {
+		t.Fatalf("captured envelope = %+v", captured.Envelope)
+	}
+	if _, ok := captured.Data[pluginmeta.DataAudit]; !ok {
+		t.Fatalf("captured data has no audit payload: %+v", captured.Data)
+	}
+	var usage Usage
+	if err := json.Unmarshal(captured.Data[pluginmeta.DataUsage], &usage); err != nil {
+		t.Fatalf("unmarshal usage: %v", err)
+	}
+	if usage.TotalTokens != 7 {
+		t.Fatalf("captured usage total tokens = %d, want 7", usage.TotalTokens)
+	}
 }
 
 // TestGatewayCallEmitsExactlyOneCompletion is the load-bearing test for tracing.

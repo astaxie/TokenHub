@@ -130,6 +130,7 @@ func (s *Server) finishCall(completion GatewayCallCompletion) {
 		completion.Attempts = attemptsWithoutErrorText(completion.Attempts)
 	}
 	s.emitGatewayTrace(completion)
+	s.runGatewayTraceExportHooks(context.Background(), completion)
 }
 
 // finishRoutedCall completes a call while its request is still in hand, taking the
