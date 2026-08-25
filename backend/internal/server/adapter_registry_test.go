@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -357,6 +358,19 @@ entry:
 capabilities:
   provider_types:
     - catalog_stdio
+  provider:
+    catalog:
+      display_name: Catalog Stdio
+      base_url: https://stdio.example/v1
+      doc_url: https://stdio.example/docs
+      categories:
+        - custom
+      models:
+        - id: plugin-model
+          display_name: Plugin Model
+          category: custom
+          type: chat
+          context_window: 128000
   gateway:
     - chat
 permissions:
@@ -382,9 +396,24 @@ printf '{"response":{},"usage":{}}'
 	if item.Code != http.StatusOK || !strings.Contains(item.Body, `"type":"catalog_stdio"`) {
 		t.Fatalf("provider catalog item status = %d body=%s", item.Code, item.Body)
 	}
+	var itemPayload struct {
+		Data ProviderCatalogEntry `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(item.Body), &itemPayload); err != nil {
+		t.Fatalf("decode plugin catalog item: %v", err)
+	}
+	if itemPayload.Data.DisplayName != "Catalog Stdio" || itemPayload.Data.BaseURL != "https://stdio.example/v1" || itemPayload.Data.DocURL != "https://stdio.example/docs" {
+		t.Fatalf("plugin catalog metadata = %+v", itemPayload.Data)
+	}
+	if itemPayload.Data.ModelsCount != 1 || len(itemPayload.Data.Models) != 1 || itemPayload.Data.Models[0].ID != "plugin-model" || itemPayload.Data.Models[0].ContextWindow != 128000 {
+		t.Fatalf("plugin catalog models = %+v", itemPayload.Data.Models)
+	}
 	created := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
-		"catalog_id": "catalog_stdio",
-		"api_key":    "provider-secret",
+		"catalog_id":        "catalog_stdio",
+		"api_key":           "provider-secret",
+		"selected_models":   []string{"plugin-model"},
+		"model_category":    "custom",
+		"model_access_mode": "inherit",
 	}, "dev_admin_token")
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create provider from plugin catalog status = %d body=%s", created.Code, created.Body)

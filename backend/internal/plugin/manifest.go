@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -53,8 +54,46 @@ type ManifestCapabilities struct {
 }
 
 type ManifestProvider struct {
-	RouteProtocols        []string `yaml:"route_protocols"`
-	SupportsCustomHeaders *bool    `yaml:"supports_custom_headers"`
+	RouteProtocols        []string                `yaml:"route_protocols"`
+	SupportsCustomHeaders *bool                   `yaml:"supports_custom_headers"`
+	Catalog               ManifestProviderCatalog `yaml:"catalog"`
+}
+
+type ManifestProviderCatalog struct {
+	ID          string                         `json:"id,omitempty" yaml:"id"`
+	Name        string                         `json:"name,omitempty" yaml:"name"`
+	DisplayName string                         `json:"display_name,omitempty" yaml:"display_name"`
+	Type        string                         `json:"type,omitempty" yaml:"type"`
+	BaseURL     string                         `json:"base_url,omitempty" yaml:"base_url"`
+	DocURL      string                         `json:"doc_url,omitempty" yaml:"doc_url"`
+	Categories  []string                       `json:"categories,omitempty" yaml:"categories"`
+	ModelsCount int                            `json:"models_count,omitempty" yaml:"models_count"`
+	Models      []ManifestProviderCatalogModel `json:"models,omitempty" yaml:"models"`
+	ETag        string                         `json:"etag,omitempty" yaml:"etag"`
+}
+
+type ManifestProviderCatalogModel struct {
+	ID                        string            `json:"id" yaml:"id"`
+	Name                      string            `json:"name,omitempty" yaml:"name"`
+	DisplayName               string            `json:"display_name,omitempty" yaml:"display_name"`
+	CanonicalName             string            `json:"canonical_name,omitempty" yaml:"canonical_name"`
+	Category                  string            `json:"category,omitempty" yaml:"category"`
+	Family                    string            `json:"family,omitempty" yaml:"family"`
+	Type                      string            `json:"type,omitempty" yaml:"type"`
+	ContextWindow             int64             `json:"context_window,omitempty" yaml:"context_window"`
+	MaxOutputTokens           int64             `json:"max_output_tokens,omitempty" yaml:"max_output_tokens"`
+	InputPriceUSDPer1M        float64           `json:"input_price_usd_per_1m,omitempty" yaml:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M    float64           `json:"cache_read_price_usd_per_1m,omitempty" yaml:"cache_read_price_usd_per_1m"`
+	CacheWritePriceUSDPer1M   float64           `json:"cache_write_price_usd_per_1m,omitempty" yaml:"cache_write_price_usd_per_1m"`
+	CacheWrite5mPriceUSDPer1M float64           `json:"cache_write_5m_price_usd_per_1m,omitempty" yaml:"cache_write_5m_price_usd_per_1m"`
+	CacheWrite1hPriceUSDPer1M float64           `json:"cache_write_1h_price_usd_per_1m,omitempty" yaml:"cache_write_1h_price_usd_per_1m"`
+	OutputPriceUSDPer1M       float64           `json:"output_price_usd_per_1m,omitempty" yaml:"output_price_usd_per_1m"`
+	InputModalities           []string          `json:"input_modalities,omitempty" yaml:"input_modalities"`
+	OutputModalities          []string          `json:"output_modalities,omitempty" yaml:"output_modalities"`
+	Capabilities              []string          `json:"capabilities,omitempty" yaml:"capabilities"`
+	SupportedParameters       []string          `json:"supported_parameters,omitempty" yaml:"supported_parameters"`
+	LastUpdated               string            `json:"last_updated,omitempty" yaml:"last_updated"`
+	Metadata                  map[string]string `json:"metadata,omitempty" yaml:"metadata"`
 }
 
 type GatewayHookManifest struct {
@@ -141,6 +180,9 @@ func (m Manifest) Validate() error {
 		if !validKind(kind) {
 			return fmt.Errorf("unsupported plugin kind %q", kind)
 		}
+	}
+	if err := m.validateProviderCatalog(); err != nil {
+		return err
 	}
 	for _, placement := range m.Placement {
 		if !validPlacement(placement) {
@@ -233,6 +275,31 @@ func (m Manifest) Validate() error {
 	return nil
 }
 
+func (m Manifest) validateProviderCatalog() error {
+	if !m.Capabilities.Provider.Catalog.Configured() {
+		return nil
+	}
+	if len(m.Capabilities.ProviderTypes) == 0 {
+		return fmt.Errorf("provider catalog requires at least one provider type")
+	}
+	if !manifestHasKind(m.Kinds, KindProvider) {
+		return fmt.Errorf("provider catalog requires provider kind")
+	}
+	catalog := m.Capabilities.Provider.Catalog
+	if strings.TrimSpace(catalog.ID) != "" && strings.Contains(strings.TrimSpace(catalog.ID), "/") {
+		return fmt.Errorf("provider catalog id must not contain /")
+	}
+	if catalog.ModelsCount < 0 {
+		return fmt.Errorf("provider catalog models_count cannot be negative")
+	}
+	for index, model := range catalog.Models {
+		if strings.TrimSpace(model.ID) == "" {
+			return fmt.Errorf("provider catalog model %d id is required", index)
+		}
+	}
+	return nil
+}
+
 func (m Manifest) hasFrontendSchema() bool {
 	return m.Entry.Frontend != nil && strings.TrimSpace(m.Entry.Frontend.Schema) != ""
 }
@@ -285,6 +352,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Subject: providerType,
 			})
 		}
+		if catalogCapability, ok := m.Capabilities.Provider.Catalog.CapabilityValue(providerType); ok {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_catalog",
+				Name:    "entry",
+				Subject: providerType,
+				Value:   catalogCapability,
+			})
+		}
 	}
 	for _, capability := range m.Capabilities.AdminUI {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
@@ -313,6 +388,40 @@ func (m Manifest) Descriptor() Descriptor {
 		})
 	}
 	return NormalizeDescriptor(descriptor)
+}
+
+func (catalog ManifestProviderCatalog) Configured() bool {
+	return strings.TrimSpace(catalog.ID) != "" ||
+		strings.TrimSpace(catalog.Name) != "" ||
+		strings.TrimSpace(catalog.DisplayName) != "" ||
+		strings.TrimSpace(catalog.Type) != "" ||
+		strings.TrimSpace(catalog.BaseURL) != "" ||
+		strings.TrimSpace(catalog.DocURL) != "" ||
+		strings.TrimSpace(catalog.ETag) != "" ||
+		len(catalog.Categories) > 0 ||
+		catalog.ModelsCount > 0 ||
+		len(catalog.Models) > 0
+}
+
+func (catalog ManifestProviderCatalog) CapabilityValue(providerType string) (string, bool) {
+	if !catalog.Configured() {
+		return "", false
+	}
+	catalog.Type = firstNonEmptyString(catalog.Type, providerType)
+	if catalog.ID == "" {
+		catalog.ID = catalog.Type
+	}
+	if catalog.Name == "" {
+		catalog.Name = firstNonEmptyString(catalog.DisplayName, catalog.ID)
+	}
+	if catalog.DisplayName == "" {
+		catalog.DisplayName = catalog.Name
+	}
+	data, err := json.Marshal(catalog)
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
 }
 
 func (m Manifest) GatewayHooks() []GatewayHookDescriptor {
@@ -396,6 +505,15 @@ func manifestHasPlacement(placements []Placement, want Placement) bool {
 	return false
 }
 
+func manifestHasKind(kinds []Kind, want Kind) bool {
+	for _, kind := range kinds {
+		if kind == want {
+			return true
+		}
+	}
+	return false
+}
+
 func validGatewayHookStage(stage GatewayHookStage) bool {
 	for _, candidate := range orderedGatewayStages() {
 		if candidate == stage {
@@ -445,4 +563,14 @@ func gatewayDataClassSet(dataClasses []GatewayDataClass) map[GatewayDataClass]st
 		allowed[dataClass] = struct{}{}
 	}
 	return allowed
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

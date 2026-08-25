@@ -1,6 +1,9 @@
 package plugin
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestParseManifestBuildsDescriptorAndGatewayHooks(t *testing.T) {
 	manifest, err := ParseManifest([]byte(`
@@ -135,6 +138,139 @@ func descriptorHasCapability(descriptor Descriptor, capability CapabilityDescrip
 		}
 	}
 	return false
+}
+
+func TestParseManifestBuildsProviderCatalogCapability(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.custom-stdio
+name: Custom Stdio Provider
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - custom_stdio
+  provider:
+    catalog:
+      display_name: Custom Stdio
+      base_url: https://stdio.example/v1
+      doc_url: https://stdio.example/docs
+      categories:
+        - custom
+      models:
+        - id: plugin-model
+          display_name: Plugin Model
+          category: custom
+          type: chat
+          context_window: 128000
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	descriptor := manifest.Descriptor()
+	var catalogValue string
+	for _, capability := range descriptor.Capabilities {
+		if capability.Kind == "provider_catalog" && capability.Name == "entry" && capability.Subject == "custom_stdio" {
+			catalogValue = capability.Value
+			break
+		}
+	}
+	if catalogValue == "" {
+		t.Fatalf("descriptor is missing provider catalog capability: %+v", descriptor.Capabilities)
+	}
+	var catalog ManifestProviderCatalog
+	if err := json.Unmarshal([]byte(catalogValue), &catalog); err != nil {
+		t.Fatalf("decode provider catalog capability: %v", err)
+	}
+	if catalog.ID != "custom_stdio" || catalog.Type != "custom_stdio" || catalog.DisplayName != "Custom Stdio" || len(catalog.Models) != 1 {
+		t.Fatalf("provider catalog capability = %+v", catalog)
+	}
+}
+
+func TestParseManifestRejectsInvalidProviderCatalog(t *testing.T) {
+	for _, manifest := range []string{
+		`
+schema_version: 1
+id: tokenhub.provider.catalog
+name: Catalog Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider:
+    catalog:
+      display_name: Missing Type
+`,
+		`
+schema_version: 1
+id: tokenhub.provider.catalog
+name: Catalog Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - custom_stdio
+  provider:
+    catalog:
+      id: bad/id
+`,
+		`
+schema_version: 1
+id: tokenhub.provider.catalog
+name: Catalog Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - custom_stdio
+  provider:
+    catalog:
+      models:
+        - display_name: Missing ID
+`,
+		`
+schema_version: 1
+id: tokenhub.provider.catalog
+name: Catalog Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - custom_stdio
+  provider:
+    catalog:
+      display_name: Wrong Kind
+`,
+	} {
+		_, err := ParseManifest([]byte(manifest))
+		if err == nil {
+			t.Fatal("manifest with invalid provider catalog parsed successfully")
+		}
+	}
 }
 
 func TestParseManifestRejectsUnsupportedHookStage(t *testing.T) {
