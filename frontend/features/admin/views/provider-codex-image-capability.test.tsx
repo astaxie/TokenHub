@@ -1,0 +1,88 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { ProviderCodexImageCapability, unwrapCodexImageCapabilityResult } from "./provider-codex-image-capability";
+
+const provider = { id: "prv_codex", name: "Codex", type: "openai_codex", status: "active", healthy: true, priority: 1 };
+const resource = {
+  id: "rsrc_codex",
+  provider_id: "prv_codex",
+  name: "Codex Account",
+  resource_type: "openai_subscription",
+  status: "active",
+  healthy: true,
+  priority: 1,
+  weight: 100,
+};
+const action = {
+  plugin_id: "tokenhub.provider.openai-codex",
+  action_id: "openai_codex.image_capability.configure",
+  kind: "mutate",
+  capability: "image.capability.configure",
+  subject: "openai_codex",
+};
+
+describe("ProviderCodexImageCapability", () => {
+  it("configures image capability through the plugin action endpoint", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    const setNotice = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { enabled: true, tested: true, capability: "supported", resource_id: "rsrc_codex" },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderCodexImageCapability
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={[action]}
+        provider={provider}
+        routes={[]}
+        resources={[resource]}
+        selectedAccountID="rsrc_codex"
+        onChanged={onChanged}
+        setNotice={setNotice}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "开始测试并启用" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.image_capability.configure");
+    expect(JSON.parse(String(init.body))).toEqual({
+      provider_id: "prv_codex",
+      resource_id: "rsrc_codex",
+      enabled: true,
+    });
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(setNotice).toHaveBeenCalledWith("Codex 订阅生图测试通过并已启用。");
+  });
+
+  it("stays hidden when the plugin action is not registered", () => {
+    render(
+      <ProviderCodexImageCapability
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={[]}
+        provider={provider}
+        routes={[]}
+        resources={[resource]}
+        selectedAccountID="rsrc_codex"
+        onChanged={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("Codex 订阅生图")).not.toBeInTheDocument();
+  });
+
+  it("unwraps plugin action result envelopes", () => {
+    expect(unwrapCodexImageCapabilityResult({
+      data: { enabled: true, tested: true, resource_id: "rsrc_codex" },
+    })).toEqual({ enabled: true, tested: true, resource_id: "rsrc_codex" });
+  });
+});

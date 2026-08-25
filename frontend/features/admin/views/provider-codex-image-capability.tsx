@@ -1,9 +1,10 @@
 import { AlertCircle, Image as ImageIcon, LoaderCircle } from "lucide-react";
 import { useMemo, useState } from "react";
-import { type ApiContext, type ModelRoute, type Provider, type ProviderResource } from "../core/types";
+import { type ApiContext, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
 import { codexImageModelState, codexImageResources, codexImageRouteEnabled, defaultCodexImageResourceID } from "../domain/codex-image-capability";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
+import { providerPluginActionForCapability } from "../resources/provider-model-config";
 import { formatImageGenerationCapabilityTag, providerResourceAccountLabel } from "./provider-account-ui";
 
 type CodexImageCapabilityResult = {
@@ -16,6 +17,7 @@ type CodexImageCapabilityResult = {
 
 export function ProviderCodexImageCapability({
   api,
+  pluginActions,
   provider,
   routes,
   resources,
@@ -24,6 +26,7 @@ export function ProviderCodexImageCapability({
   setNotice,
 }: {
   api: ApiContext;
+  pluginActions: PluginActionDescriptor[];
   provider: Provider;
   routes: ModelRoute[];
   resources: ProviderResource[];
@@ -32,6 +35,10 @@ export function ProviderCodexImageCapability({
   setNotice: (value: string) => void;
 }) {
   const providerResources = useMemo(() => codexImageResources(resources, provider.id), [provider.id, resources]);
+  const action = useMemo(
+    () => providerPluginActionForCapability(pluginActions, provider.type, "image.capability.configure"),
+    [pluginActions, provider.type],
+  );
   const enabled = codexImageRouteEnabled(routes, provider.id);
   const modelState = codexImageModelState(resources, provider.id, enabled);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -54,6 +61,10 @@ export function ProviderCodexImageCapability({
   }
 
   async function configure(enabledValue: boolean, targetResourceID: string) {
+    if (!action) {
+      setError(tx("该插件动作尚未注册。"));
+      return;
+    }
     if (!targetResourceID) {
       setError(tx("没有可用于生图测试的 Codex 账号，请先启用账号。"));
       return;
@@ -61,12 +72,12 @@ export function ProviderCodexImageCapability({
     setBusy(enabledValue ? "enable" : "disable");
     setError("");
     try {
-      const response = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(targetResourceID)}/image-capability`, {
+      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
         method: "POST",
-        body: JSON.stringify({ enabled: enabledValue }),
+        body: JSON.stringify({ provider_id: provider.id, resource_id: targetResourceID, enabled: enabledValue }),
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("配置 Codex 订阅生图")));
-      const result = await response.json() as CodexImageCapabilityResult;
+      const result = unwrapCodexImageCapabilityResult(await response.json());
       setNotice(tx(result.enabled ? "Codex 订阅生图测试通过并已启用。" : "Codex 订阅生图已停用；能力测试结果已保留。"));
       await onChanged().catch(() => undefined);
       setDialogOpen(false);
@@ -78,6 +89,8 @@ export function ProviderCodexImageCapability({
       setBusy("");
     }
   }
+
+  if (!action) return null;
 
   return (
     <>
@@ -151,4 +164,11 @@ export function ProviderCodexImageCapability({
       ) : null}
     </>
   );
+}
+
+export function unwrapCodexImageCapabilityResult(payload: unknown): CodexImageCapabilityResult {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    return (payload as { data?: CodexImageCapabilityResult }).data ?? { enabled: false, tested: false, resource_id: "" };
+  }
+  return payload as CodexImageCapabilityResult;
 }

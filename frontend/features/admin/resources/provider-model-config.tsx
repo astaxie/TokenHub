@@ -166,8 +166,12 @@ export function providerResourceCredentialRefreshAction(data: AppData, item: Pro
 
 export function providerResourceCredentialRefreshActionForProviderType(actions: PluginActionDescriptor[], item: ProviderResource, providerType: string): PluginActionDescriptor | undefined {
   if (item.credential_summary?.has_refresh_token !== "true") return undefined;
+  return providerPluginActionForCapability(actions, providerType, "credentials.refresh");
+}
+
+export function providerPluginActionForCapability(actions: PluginActionDescriptor[], providerType: string, capability: string): PluginActionDescriptor | undefined {
   return actions.find((action) =>
-    action.capability === "credentials.refresh" &&
+    action.capability === capability &&
     (!action.subject || action.subject === providerType),
   );
 }
