@@ -36,10 +36,7 @@ type providerCatalogHTTPClient interface {
 func (s *providerCatalogService) refreshLocked(ctx context.Context, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, string, error) {
 	entries, upstreamErr := s.loadUpstreamProviderCatalog(ctx)
 	if upstreamErr == nil {
-		localEntries, localErr := loadLocalProviderCatalog(s.catalogFile)
-		if localErr != nil {
-			upstreamErr = fmt.Errorf("load curated local provider catalogs: %w", localErr)
-		} else {
+		if localEntries, localErr := loadLocalProviderCatalog(s.catalogFile); localErr == nil {
 			entries = mergeCuratedProviderCatalogEntries(entries, localEntries)
 		}
 	}

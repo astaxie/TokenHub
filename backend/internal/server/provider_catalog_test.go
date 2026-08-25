@@ -196,6 +196,39 @@ func TestProviderCatalogServiceRefreshesFromUpstream(t *testing.T) {
 	}
 }
 
+func TestProviderCatalogServiceRefreshUsesUpstreamWhenCuratedLocalCatalogIsMissing(t *testing.T) {
+	store := NewMemoryStore()
+	upstreamCatalogFile := filepath.Join(t.TempDir(), "upstream-provider-catalog.json")
+	writeProviderCatalogFixture(t, upstreamCatalogFile)
+	replaceProviderCatalogFixtureURL(t, upstreamCatalogFile, "fresh-provider", "https://upstream-provider.example/v1")
+	upstreamCatalog, err := os.ReadFile(upstreamCatalogFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(upstreamCatalog)
+	}))
+	t.Cleanup(upstream.Close)
+
+	missingLocalCatalog := filepath.Join(t.TempDir(), "missing-provider-catalog.json")
+	service := newProviderCatalogService(store, missingLocalCatalog)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	summaries, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != providerCatalogUpstreamSource || !providerCatalogContains(summaries, "fresh-provider") {
+		t.Fatalf("expected upstream refresh without curated local catalog, source=%q entries=%+v", source, summaries)
+	}
+
+	entry, storedSource, ok, err := service.Get(context.Background(), "fresh-provider", false)
+	if err != nil || !ok || storedSource != providerCatalogUpstreamSource || entry.BaseURL != "https://upstream-provider.example/v1" {
+		t.Fatalf("expected persisted upstream provider, source=%q entry=%+v ok=%v err=%v", storedSource, entry, ok, err)
+	}
+}
+
 func TestMergeCuratedProviderCatalogEntriesPreservesReviewedLocalProviders(t *testing.T) {
 	upstream := []ProviderCatalogEntry{
 		{ID: "stepfun", BaseURL: "https://stale.example/v1"},
