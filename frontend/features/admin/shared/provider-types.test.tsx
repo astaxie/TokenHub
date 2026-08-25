@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerTypeOptionsFromData, providerTypeSupportsCustomHeaders } from "./ui";
+import { providerTypeOptionsFromData, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
 
 describe("providerTypeOptionsFromData", () => {
@@ -59,6 +59,7 @@ describe("providerTypeOptionsFromData", () => {
     const options = providerTypeOptionsFromData(data);
 
     expect(providerTypeSupportsCustomHeaders(options, "native_subscription")).toBe(false);
+    expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(providerTypeSupportsCustomHeaders(options, "openai_compatible")).toBe(true);
     expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(false);
     expect(providerTypeSupportsCustomHeaders(options, "openai_codex")).toBe(false);
@@ -76,11 +77,14 @@ describe("providerTypeOptionsFromData", () => {
       capabilities: [
         { kind: "provider", name: "responses", subject: "oauth_subscription" },
         { kind: "provider_policy", name: "supports_custom_headers", subject: "oauth_subscription", value: "false" },
+        { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "responses" },
+        { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "images/generations" },
       ],
     }];
 
     const options = providerTypeOptionsFromData(data);
 
     expect(providerTypeSupportsCustomHeaders(options, "oauth_subscription")).toBe(false);
+    expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
   });
 });

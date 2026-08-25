@@ -427,15 +427,20 @@ export type ProviderTypeOption = {
   value: string;
   label: string;
   supportsCustomHeaders: boolean;
+  routeProtocols?: string[];
 };
 
 export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">, values?: Record<string, string>) {
   const types = new Set(legacyProviderTypeOptions);
   const policyByType = new Map<string, boolean>();
+  const routeProtocolsByType = new Map<string, Set<string>>();
   for (const adapter of data.providerAdapters ?? []) {
     if (!adapter.type) continue;
     types.add(adapter.type);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
+    for (const protocol of adapter.provider_policy?.route_protocols ?? []) {
+      addProviderRouteProtocol(routeProtocolsByType, adapter.type, protocol);
+    }
   }
   for (const plugin of data.plugins ?? []) {
     for (const capability of plugin.capabilities ?? []) {
@@ -449,6 +454,12 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         types.add(providerType);
         policyByType.set(providerType, capability.value !== "false");
       }
+      if (capability.kind === "provider_policy" && capability.name === "route_protocol") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        addProviderRouteProtocol(routeProtocolsByType, providerType, capability.value);
+      }
     }
   }
   for (const entry of data.providerCatalog ?? []) {
@@ -458,15 +469,36 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     if (provider.type) types.add(provider.type);
   }
   if (values?.type) types.add(values.type);
-  return [...types].sort(providerTypeSort).map((value) => ({ value, label: providerTypeLabel(value), supportsCustomHeaders: policyByType.get(value) ?? legacyProviderTypeSupportsCustomHeaders(value) }));
+  return [...types].sort(providerTypeSort).map((value) => ({
+    value,
+    label: providerTypeLabel(value),
+    supportsCustomHeaders: policyByType.get(value) ?? legacyProviderTypeSupportsCustomHeaders(value),
+    routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
+  }));
 }
 
 export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {
   return providerTypeOptions.find((option) => option.value === providerType)?.supportsCustomHeaders ?? legacyProviderTypeSupportsCustomHeaders(providerType);
 }
 
+export function providerTypeRouteProtocols(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.routeProtocols ?? [];
+}
+
 function legacyProviderTypeSupportsCustomHeaders(providerType: string) {
   return providerType !== "azure_openai" && providerType !== "openai_codex";
+}
+
+function addProviderRouteProtocol(protocolsByType: Map<string, Set<string>>, providerType: string, protocol?: string) {
+  protocol = String(protocol || "").trim().toLowerCase();
+  if (!providerType || !protocol) return;
+  const protocols = protocolsByType.get(providerType) ?? new Set<string>();
+  protocols.add(protocol);
+  protocolsByType.set(providerType, protocols);
+}
+
+function providerRouteProtocolList(protocols?: Set<string>) {
+  return protocols ? [...protocols].sort() : undefined;
 }
 
 function providerTypeSort(left: string, right: string) {

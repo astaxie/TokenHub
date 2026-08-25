@@ -199,6 +199,18 @@ func (m Manifest) Descriptor() Descriptor {
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.SupportsCustomHeaders),
 			})
 		}
+		for _, protocol := range m.Capabilities.Provider.RouteProtocols {
+			protocol = strings.TrimSpace(protocol)
+			if protocol == "" {
+				continue
+			}
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "route_protocol",
+				Subject: providerType,
+				Value:   protocol,
+			})
+		}
 		for _, resourceType := range m.Capabilities.ResourceTypes {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
 				Kind:    "provider_resource_type",
