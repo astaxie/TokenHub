@@ -196,6 +196,23 @@ func TestBuiltinGatewayChainPluginPlansCoreHooks(t *testing.T) {
 	if len(descriptor.Capabilities) == 0 {
 		t.Fatal("core gateway chain plugin exposes no capabilities")
 	}
+	capabilities := map[string]bool{}
+	for _, capability := range descriptor.Capabilities {
+		if capability.Kind == "gateway_chain" {
+			capabilities[capability.Name] = true
+		}
+	}
+	for _, stage := range []pluginmeta.GatewayHookStage{
+		pluginmeta.StageAuthContext,
+		pluginmeta.StageContextOptimize,
+		pluginmeta.StageRequestTransform,
+		pluginmeta.StageStreamTransform,
+		pluginmeta.StageResponsePost,
+	} {
+		if !capabilities[string(stage)] {
+			t.Fatalf("core gateway chain plugin does not expose stage %q", stage)
+		}
+	}
 	plan := server.gatewayChain.Plan()
 	if len(plan.Hooks) == 0 {
 		t.Fatal("core gateway chain plan has no hooks")

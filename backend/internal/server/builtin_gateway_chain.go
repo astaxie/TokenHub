@@ -4,26 +4,13 @@ import pluginmeta "tokenhub/backend/internal/plugin"
 
 func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pluginmeta.GatewayChainRegistry, runners ...*pluginmeta.GatewayHookRunner) {
 	mustRegisterPlugin(registry, pluginmeta.Descriptor{
-		ID:         "tokenhub.chain.core",
-		Name:       "TokenHub Core Gateway Chain",
-		Version:    "built-in",
-		Source:     pluginmeta.SourceBuiltIn,
-		Kinds:      []pluginmeta.Kind{pluginmeta.KindExtension},
-		Placements: []pluginmeta.Placement{pluginmeta.PlacementGatewayChain},
-		Capabilities: []pluginmeta.CapabilityDescriptor{
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageDecodeNormalize)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageAdmission)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StagePrivacyPre)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageGuardrailPre)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageCacheLookup)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageRouteCandidates)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageRouteRank)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageProviderCall)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageGuardrailPost)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageCacheWrite)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageUsageAttribution)},
-			{Kind: "gateway_chain", Name: string(pluginmeta.StageTraceExport)},
-		},
+		ID:           "tokenhub.chain.core",
+		Name:         "TokenHub Core Gateway Chain",
+		Version:      "built-in",
+		Source:       pluginmeta.SourceBuiltIn,
+		Kinds:        []pluginmeta.Kind{pluginmeta.KindExtension},
+		Placements:   []pluginmeta.Placement{pluginmeta.PlacementGatewayChain},
+		Capabilities: builtinGatewayChainCapabilities(),
 	})
 	var runner *pluginmeta.GatewayHookRunner
 	if len(runners) > 0 {
@@ -167,6 +154,33 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			mustRegisterGatewayHookHandler(runner, hook, pluginmeta.NoopGatewayHookHandler())
 		}
 	}
+}
+
+func builtinGatewayChainCapabilities() []pluginmeta.CapabilityDescriptor {
+	stages := []pluginmeta.GatewayHookStage{
+		pluginmeta.StageAuthContext,
+		pluginmeta.StageDecodeNormalize,
+		pluginmeta.StageAdmission,
+		pluginmeta.StagePrivacyPre,
+		pluginmeta.StageGuardrailPre,
+		pluginmeta.StageContextOptimize,
+		pluginmeta.StageCacheLookup,
+		pluginmeta.StageRouteCandidates,
+		pluginmeta.StageRouteRank,
+		pluginmeta.StageRequestTransform,
+		pluginmeta.StageProviderCall,
+		pluginmeta.StageStreamTransform,
+		pluginmeta.StageResponsePost,
+		pluginmeta.StageGuardrailPost,
+		pluginmeta.StageCacheWrite,
+		pluginmeta.StageUsageAttribution,
+		pluginmeta.StageTraceExport,
+	}
+	capabilities := make([]pluginmeta.CapabilityDescriptor, 0, len(stages))
+	for _, stage := range stages {
+		capabilities = append(capabilities, pluginmeta.CapabilityDescriptor{Kind: "gateway_chain", Name: string(stage)})
+	}
+	return capabilities
 }
 
 func mustRegisterPlugin(registry *pluginmeta.Registry, descriptor pluginmeta.Descriptor) {
