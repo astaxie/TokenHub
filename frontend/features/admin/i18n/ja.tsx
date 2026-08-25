@@ -382,7 +382,7 @@ export const jaTranslations: Record<string, string> = {
     "Provider 账号资源": "Provider アカウントリソース",
     "OpenAI 账号资源": "OpenAI アカウントリソース",
     "添加账号资源": "アカウントリソースを追加",
-    "账号资源": "アカウントリソース",
+    "账号资源": "アカウントリソース", "无账号资源测试": "アカウントリソーステストなし", "等待账号资源测试": "アカウントリソーステスト待ち",
     "使用保存的 refresh token 续租账号访问 Token": "保存済み refresh token でアカウント Access Token を更新します。", "{name} Token 已续租": "{name} の Token を更新しました", "续租 Token": "Token を更新", "续租中": "更新中", "续租 Token 失败": "Token の更新に失敗しました",
     "账号类型": "アカウント種別",
     "认证方式": "認証方式",

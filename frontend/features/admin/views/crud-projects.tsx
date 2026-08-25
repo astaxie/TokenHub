@@ -7,6 +7,7 @@ import { notificationChannelLabel } from "../domain/catalog";
 import { providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerRoutesFor, providerRouteSummary, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
 import { providerLatencyLabel, providerPerformanceExplanation, providerQualityScoreLabel } from "../domain/provider-monitoring";
+import { isProviderAccountResource } from "../domain/provider-resource-types";
 import { enumValueLabel, providerTypeLabel, reportDatasetLabel, roleLabel } from "../domain/labels";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { reportExportDefinitions } from "../resources/governance-config";
@@ -221,7 +222,7 @@ export type ProviderProbeTone = "ok" | "warn" | "down" | "na";
 
 export type ProviderTrendTone = "success" | "warning" | "failure" | "none";
 
-export type ProviderMonitorSampleSource = "codex_test" | "gateway_request";
+export type ProviderMonitorSampleSource = "resource_test" | "gateway_request";
 
 export type ProviderMonitorSample = {
   created_at: string;
@@ -646,12 +647,16 @@ export function providerMonitorRowsFromSnapshots(
 }
 
 export function providerChannelAccountDetail(resources: ProviderResource[]) {
-  const accounts = resources.filter((resource) => resource.resource_type === "openai_subscription");
+  const accounts = providerAccountResources(resources);
   if (accounts.length === 0) return "";
   const active = accounts.filter((resource) => resource.status === "active" && resource.healthy).length;
   const first = accounts[0];
-  const label = first.credential_summary?.account_email || first.credential_summary?.account_id || first.name || tx("OpenAI 账号资源");
+  const label = first.credential_summary?.account_email || first.credential_summary?.account_id || first.name || tx("账号资源");
   return `${active}/${accounts.length} ${tx("启用")} · ${label}`;
+}
+
+function providerAccountResources(resources: ProviderResource[]) {
+  return resources.filter(isProviderAccountResource);
 }
 
 function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitoringSnapshot, quotaOverride?: ProviderQuotaSummary): ProviderMonitorRow {
@@ -677,7 +682,7 @@ function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitor
     latencyMS: observedSignal.latency_ms ?? 0,
     availability24h: observedSignal.success_rate ?? 0,
     observed24h: observed,
-    sampleSource: observedSignal.source === "active_probe" ? "codex_test" : "gateway_request",
+    sampleSource: observedSignal.source === "active_probe" ? "resource_test" : "gateway_request",
     quota: quotaOverride ?? snapshot.quota,
     qualityScore: snapshot.quality_score,
     trend: snapshot.trend,
@@ -744,8 +749,8 @@ export function providerMonitorRow(data: AppData, provider: Provider): ProviderM
     activeRouteCount,
     statusTone,
     statusLabel: providerStatusLabel(statusTone),
-    statusDetail: sampleSource === "codex_test"
-      ? providerCodexTestStatusDetail(samples, resources)
+    statusDetail: sampleSource === "resource_test"
+      ? providerResourceTestStatusDetail(samples, providerAccountResources(resources))
       : providerStatusDetail(provider, logs, resources),
     basicPrimaryTone: healthyProvider ? "ok" : "down",
     basicPrimaryDetail: provider.status === "active" ? tx("Provider 在线") : enumValueLabel(provider.status),
@@ -755,8 +760,8 @@ export function providerMonitorRow(data: AppData, provider: Provider): ProviderM
       : tx("未配置账号资源"),
     realTone: providerRealProbeTone(observed24h, availability24h, warning24h.length, failed24h),
     realDetail: observed24h
-      ? `${providerPercent(availability24h)} · ${providerObservationCount(recent24h.length, sampleSource === "codex_test")}`
-      : tx(sampleSource === "codex_test" ? "无 Codex 测试" : "无真实请求"),
+      ? `${providerPercent(availability24h)} · ${providerObservationCount(recent24h.length, sampleSource === "resource_test")}`
+      : tx(sampleSource === "resource_test" ? "无账号资源测试" : "无真实请求"),
     latencyMS,
     availability24h,
     observed24h,
@@ -774,9 +779,9 @@ function providerObservationCount(count: number, test: boolean) {
 }
 
 export function providerMonitorSamples(data: AppData, provider: Provider, resources: ProviderResource[]): { source: ProviderMonitorSampleSource; samples: ProviderMonitorSample[] } {
-  const codexResources = resources.filter((resource) => resource.resource_type === "openai_subscription");
-  if (codexResources.length > 0) {
-    return { source: "codex_test", samples: providerCodexTestSamples(data.auditEvents, codexResources) };
+  const accountResources = providerAccountResources(resources);
+  if (accountResources.length > 0) {
+    return { source: "resource_test", samples: providerResourceTestSamples(data.auditEvents, accountResources) };
   }
   const samples = providerLogsFor(data, provider, resources).map((log) => ({
     created_at: log.created_at,
@@ -787,7 +792,7 @@ export function providerMonitorSamples(data: AppData, provider: Provider, resour
   return { source: "gateway_request", samples };
 }
 
-export function providerCodexTestSamples(events: AuditEvent[], resources: ProviderResource[]): ProviderMonitorSample[] {
+export function providerResourceTestSamples(events: AuditEvent[], resources: ProviderResource[]): ProviderMonitorSample[] {
   const resourceIDs = new Set(resources.map((resource) => resource.id));
   return events
     .filter((event) => event.action === "test" && event.resource_type === "provider_resource" && resourceIDs.has(event.resource_id))
@@ -803,7 +808,7 @@ export function providerCodexTestSamples(events: AuditEvent[], resources: Provid
     .sort((left, right) => safeTime(left.created_at) - safeTime(right.created_at));
 }
 
-export function providerCodexTestStatusDetail(samples: ProviderMonitorSample[], resources: ProviderResource[]) {
+export function providerResourceTestStatusDetail(samples: ProviderMonitorSample[], resources: ProviderResource[]) {
   const latest = samples[samples.length - 1];
   if (latest?.error_code) return `${timeLabel(latest.created_at)} · ${latest.error_code}`;
   if (latest) return timeLabel(latest.created_at);
@@ -811,7 +816,7 @@ export function providerCodexTestStatusDetail(samples: ProviderMonitorSample[], 
     .map((resource) => resource.last_checked_at || resource.updated_at || "")
     .filter(Boolean)
     .sort((left, right) => safeTime(right) - safeTime(left))[0];
-  return latestResourceCheck ? timeLabel(latestResourceCheck) : tx("等待 Codex 测试");
+  return latestResourceCheck ? timeLabel(latestResourceCheck) : tx("等待账号资源测试");
 }
 
 export function auditSnapshot(value: string | undefined): Record<string, unknown> {

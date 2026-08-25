@@ -28,6 +28,10 @@ export function isProviderAccountResourceType(resourceType: string | undefined) 
   return Boolean(resourceType?.trim()) && resourceType !== providerResourceAPIKeyType;
 }
 
+export function isProviderAccountResource(resource: ProviderResourceTypeLike) {
+  return isProviderAccountResourceType(resource.resource_type);
+}
+
 export function providerResourceTypeOptionOrder(value: string) {
   if (value === providerResourceOpenAISubscriptionType) return 0;
   if (value === providerResourceAPIKeyType) return 1;
