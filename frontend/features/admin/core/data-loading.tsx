@@ -19,6 +19,7 @@ export type LoadPlan = {
   timeseries: boolean;
   users: boolean;
   providerCatalog: boolean;
+  providerAdapters: boolean;
   providerMonitoring: boolean;
   plugins: boolean;
   pluginChain: boolean;
@@ -55,6 +56,7 @@ export function emptyLoadPlan(): LoadPlan {
     timeseries: false,
     users: false,
     providerCatalog: false,
+    providerAdapters: false,
     providerMonitoring: false,
     plugins: false,
     pluginChain: false,
@@ -144,11 +146,13 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.auditEvents = canViewAdminAudit(user);
       plan.breakdown = can("usage") || can("billing");
       plan.providerCatalog = true;
+      plan.providerAdapters = true;
       plan.providerModels = true;
       plan.providerMonitoring = true;
       break;
     case "plugins":
       plan.plugins = true;
+      plan.providerAdapters = true;
       plan.pluginChain = true;
       plan.pluginUI = true;
       plan.pluginActions = true;
@@ -272,6 +276,7 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     timeseries: loaded.timeseries ?? current.timeseries,
     keys: loaded.keys ?? current.keys,
     providerCatalog: loaded.providerCatalog ?? current.providerCatalog,
+    providerAdapters: loaded.providerAdapters ?? current.providerAdapters,
     providerMonitoring: loaded.providerMonitoring ?? current.providerMonitoring,
     plugins: loaded.plugins ?? current.plugins,
     pluginChain: loaded.pluginChain ?? current.pluginChain,

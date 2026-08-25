@@ -4,7 +4,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
-import { legacyProviderTypeOptions } from "../shared/ui";
+import { legacyProviderTypeOptions, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -15,12 +15,12 @@ type ProviderEditSectionProps = {
   onUpdate: (key: string, value: string) => void;
 };
 
-type ProviderTypeOption = {
-  value: string;
-  label: string;
-};
-
-export function ProviderConnectionFields({ values, onUpdate, validationErrors = [] }: ProviderEditSectionProps & { validationErrors?: string[] }) {
+export function ProviderConnectionFields({
+  values,
+  onUpdate,
+  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
+  validationErrors = [],
+}: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[]; validationErrors?: string[] }) {
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid provider-connect-form-grid">
@@ -55,7 +55,7 @@ export function ProviderConnectionFields({ values, onUpdate, validationErrors = 
         ) : null}
       </div>
       <ProviderCustomHeaders
-        disabled={values.type === "azure_openai" || values.type === "openai_codex"}
+        disabled={!providerTypeSupportsCustomHeaders(providerTypeOptions, values.type)}
         onChange={(value) => onUpdate("custom_headers", value)}
         validationErrors={validationErrors}
         value={values.custom_headers ?? "[]"}
@@ -84,7 +84,7 @@ export function ProviderAdvancedFields({
   accountIntegration,
   creating = false,
   idPlaceholder,
-  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option) })),
+  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
 }: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
   const showReasoningCompatibility = providerSupportsAnthropicReasoning(values.type);
   return (

@@ -268,6 +268,10 @@ export type AdapterDescriptor = {
   type: string;
   capabilities: string[];
   plugin_id?: string;
+  provider_policy?: {
+    route_protocols?: string[];
+    supports_custom_headers: boolean;
+  };
 };
 
 export type PluginCapabilityDescriptor = {
@@ -1205,6 +1209,7 @@ export type AppData = {
   timeseries: UsagePoint[];
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];
+  providerAdapters: AdapterDescriptor[];
   providerMonitoring: ProviderMonitoringSnapshot[];
   plugins: PluginDescriptor[];
   pluginChain: GatewayChainPlan;

@@ -26,9 +26,15 @@ const (
 )
 
 type AdapterDescriptor struct {
-	Type         string              `json:"type"`
-	Capabilities []AdapterCapability `json:"capabilities"`
-	PluginID     string              `json:"plugin_id,omitempty"`
+	Type           string                `json:"type"`
+	Capabilities   []AdapterCapability   `json:"capabilities"`
+	PluginID       string                `json:"plugin_id,omitempty"`
+	ProviderPolicy AdapterProviderPolicy `json:"provider_policy"`
+}
+
+type AdapterProviderPolicy struct {
+	RouteProtocols        []string `json:"route_protocols,omitempty"`
+	SupportsCustomHeaders bool     `json:"supports_custom_headers"`
 }
 
 // AdapterRegistry is the single source of truth for which adapter serves a
@@ -130,6 +136,9 @@ func (r *AdapterRegistry) Describe(adapterType string) (AdapterDescriptor, bool)
 		return AdapterDescriptor{}, false
 	}
 	descriptor, ok := r.descriptors[adapterType]
+	if ok {
+		descriptor = r.withProviderPolicy(descriptor)
+	}
 	return descriptor, ok
 }
 
@@ -148,10 +157,32 @@ func (r *AdapterRegistry) List() []AdapterDescriptor {
 	}
 	items := make([]AdapterDescriptor, 0, len(r.descriptors))
 	for _, descriptor := range r.descriptors {
-		items = append(items, descriptor)
+		items = append(items, r.withProviderPolicy(descriptor))
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Type < items[j].Type })
 	return items
+}
+
+func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) AdapterDescriptor {
+	descriptor.ProviderPolicy = AdapterProviderPolicy{
+		RouteProtocols:        adapterRouteProtocols(r, descriptor),
+		SupportsCustomHeaders: adapterSupportsProviderHeaders(r, descriptor.Type),
+	}
+	return descriptor
+}
+
+func adapterRouteProtocols(registry *AdapterRegistry, descriptor AdapterDescriptor) []string {
+	if protocoler, ok := resolveTypedAdapter[ProviderRouteProtocoler](registry, descriptor.Type); ok {
+		return routeProtocolList(protocoler.RouteProtocols())
+	}
+	return routeProtocolSetList(routeProviderProtocolsFromCapabilities(descriptor))
+}
+
+func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType string) bool {
+	if policyer, ok := resolveTypedAdapter[ProviderHeaderPolicyer](registry, providerType); ok {
+		return policyer.SupportsProviderHeaders()
+	}
+	return legacyProviderTypeSupportsHeaders(providerType)
 }
 
 func (r *AdapterRegistry) ListPlugins() []pluginmeta.Descriptor {

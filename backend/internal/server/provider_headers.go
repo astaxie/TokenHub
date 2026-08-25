@@ -328,11 +328,18 @@ func validateProviderHeaderSupport(providerType string, headers map[string]strin
 	if len(headers) == 0 {
 		return nil
 	}
+	if !legacyProviderTypeSupportsHeaders(providerType) {
+		return providerHeadersUnsupportedError()
+	}
+	return nil
+}
+
+func legacyProviderTypeSupportsHeaders(providerType string) bool {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
 	case ProviderAzureOpenAI, ProviderOpenAICodex:
-		return providerHeadersUnsupportedError()
+		return false
 	default:
-		return nil
+		return true
 	}
 }
 

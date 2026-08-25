@@ -1346,31 +1346,6 @@ func (s *Server) routeProviderProtocols(providerType string, descriptor AdapterD
 	return routeProviderProtocolsFromCapabilities(descriptor)
 }
 
-func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[string]bool {
-	protocols := map[string]bool{}
-	if adapterSupports(descriptor, AdapterCapabilityChat) {
-		protocols["chat/completions"] = true
-	}
-	if adapterSupports(descriptor, AdapterCapabilityResponses) {
-		protocols["responses"] = true
-	}
-	if adapterSupports(descriptor, AdapterCapabilityEmbeddings) {
-		protocols["embeddings"] = true
-	}
-	return protocols
-}
-
-func routeProtocolSet(protocols []string) map[string]bool {
-	set := map[string]bool{}
-	for _, protocol := range protocols {
-		protocol = strings.ToLower(strings.TrimSpace(protocol))
-		if protocol != "" {
-			set[protocol] = true
-		}
-	}
-	return set
-}
-
 func (s *Server) validateRoutePolicy(route ModelRoute) error {
 	switch routeStrategy(route) {
 	case RouteStrategyBalanced, RouteStrategyAdaptive, RouteStrategyCost, RouteStrategyQuality, RouteStrategyPriorityWeighted, RouteStrategyPriorityOnly:

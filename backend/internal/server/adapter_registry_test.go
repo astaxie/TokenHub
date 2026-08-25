@@ -107,11 +107,56 @@ func TestBuiltinAdaptersResolveWithUnchangedCapabilities(t *testing.T) {
 		if descriptor.PluginID != builtinAdapterPlugins[adapterType] {
 			t.Fatalf("plugin id for %q = %q, want %q", adapterType, descriptor.PluginID, builtinAdapterPlugins[adapterType])
 		}
+		if len(descriptor.ProviderPolicy.RouteProtocols) == 0 {
+			t.Fatalf("provider policy for %q has no route protocols", adapterType)
+		}
 	}
 
 	listed := server.adapterRegistry.List()
 	if len(listed) != len(builtinAdapterCapabilities) {
 		t.Fatalf("registry lists %d adapters, want %d", len(listed), len(builtinAdapterCapabilities))
+	}
+}
+
+func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
+	server := New(NewMemoryStore())
+
+	anthropic, ok := server.adapterRegistry.Describe(ProviderAnthropic)
+	if !ok {
+		t.Fatal("Anthropic adapter descriptor is missing")
+	}
+	if !reflect.DeepEqual(anthropic.ProviderPolicy.RouteProtocols, []string{"anthropic"}) {
+		t.Fatalf("Anthropic route protocols = %v", anthropic.ProviderPolicy.RouteProtocols)
+	}
+	if !anthropic.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("Anthropic should support custom headers")
+	}
+
+	azure, ok := server.adapterRegistry.Describe(ProviderAzureOpenAI)
+	if !ok {
+		t.Fatal("Azure OpenAI adapter descriptor is missing")
+	}
+	if azure.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("Azure OpenAI should not support custom headers")
+	}
+
+	codex, ok := server.adapterRegistry.Describe(ProviderOpenAICodex)
+	if !ok {
+		t.Fatal("OpenAI Codex adapter descriptor is missing")
+	}
+	if codex.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("OpenAI Codex should not support custom headers")
+	}
+
+	compatible, ok := server.adapterRegistry.Describe(ProviderOpenAICompatible)
+	if !ok {
+		t.Fatal("OpenAI-compatible adapter descriptor is missing")
+	}
+	if !compatible.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("OpenAI-compatible should support custom headers")
+	}
+	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"chat/completions", "embeddings", "responses"}) {
+		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
 	}
 }
 

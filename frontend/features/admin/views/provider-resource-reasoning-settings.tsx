@@ -4,6 +4,7 @@ import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, pro
 import { effectiveProviderHeaderEntries, parseProviderHeaderEntries, providerHeaderEntryErrors, providerHeadersFormValue } from "../domain/provider-headers";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerResourceToForm, providerResourceUpdatePayload, readAdminError } from "../resources/payloads";
+import { providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -11,12 +12,14 @@ export function ProviderResourceReasoningSettings({
   api,
   provider,
   providerType,
+  providerTypeOptions = [],
   resources,
   onSaved,
 }: {
   api: ApiContext;
   provider: Provider;
   providerType: string;
+  providerTypeOptions?: ProviderTypeOption[];
   resources: ProviderResource[];
   onSaved: () => Promise<void> | void;
 }) {
@@ -127,7 +130,7 @@ export function ProviderResourceReasoningSettings({
                 </div>
               ) : null}
               <ProviderCustomHeaders
-                disabled={providerType === "azure_openai" || providerType === "openai_codex"}
+                disabled={!providerTypeSupportsCustomHeaders(providerTypeOptions, providerType)}
                 inheritedValue={providerHeadersFormValue(provider.headers, provider.sensitive_headers)}
                 onChange={(value) => update(resource.id, "custom_headers", value)}
                 validationErrors={resource.header_validation_errors}

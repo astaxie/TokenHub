@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerTypeOptionsFromData } from "./ui";
+import { providerTypeOptionsFromData, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
 
 describe("providerTypeOptionsFromData", () => {
@@ -42,5 +42,25 @@ describe("providerTypeOptionsFromData", () => {
     expect(options).toContain("glm_subscription");
     expect(options).toContain("existing_subscription");
     expect(options).toContain("draft_subscription");
+  });
+
+  it("carries provider header policy from adapter descriptors", () => {
+    const data = emptyData();
+    data.providerAdapters = [{
+      type: "native_subscription",
+      capabilities: ["responses"],
+      plugin_id: "tokenhub.provider.native-subscription",
+      provider_policy: {
+        route_protocols: ["native/responses"],
+        supports_custom_headers: false,
+      },
+    }];
+
+    const options = providerTypeOptionsFromData(data);
+
+    expect(providerTypeSupportsCustomHeaders(options, "native_subscription")).toBe(false);
+    expect(providerTypeSupportsCustomHeaders(options, "openai_compatible")).toBe(true);
+    expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(false);
+    expect(providerTypeSupportsCustomHeaders(options, "openai_codex")).toBe(false);
   });
 });

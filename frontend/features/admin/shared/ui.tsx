@@ -423,8 +423,20 @@ export const legacyProviderTypeOptions = ["mock", "openai", "openai_codex", "ope
 
 export const providerTypeOptions = legacyProviderTypeOptions;
 
-export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providers">, values?: Record<string, string>) {
+export type ProviderTypeOption = {
+  value: string;
+  label: string;
+  supportsCustomHeaders: boolean;
+};
+
+export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">, values?: Record<string, string>) {
   const types = new Set(legacyProviderTypeOptions);
+  const policyByType = new Map<string, boolean>();
+  for (const adapter of data.providerAdapters ?? []) {
+    if (!adapter.type) continue;
+    types.add(adapter.type);
+    policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
+  }
   for (const plugin of data.plugins ?? []) {
     for (const capability of plugin.capabilities ?? []) {
       if (capability.kind !== "provider") continue;
@@ -439,7 +451,15 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     if (provider.type) types.add(provider.type);
   }
   if (values?.type) types.add(values.type);
-  return [...types].sort(providerTypeSort).map((value) => ({ value, label: providerTypeLabel(value) }));
+  return [...types].sort(providerTypeSort).map((value) => ({ value, label: providerTypeLabel(value), supportsCustomHeaders: policyByType.get(value) ?? legacyProviderTypeSupportsCustomHeaders(value) }));
+}
+
+export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.supportsCustomHeaders ?? legacyProviderTypeSupportsCustomHeaders(providerType);
+}
+
+function legacyProviderTypeSupportsCustomHeaders(providerType: string) {
+  return providerType !== "azure_openai" && providerType !== "openai_codex";
 }
 
 function providerTypeSort(left: string, right: string) {

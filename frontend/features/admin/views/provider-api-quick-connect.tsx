@@ -7,7 +7,7 @@ import { formatModelPrice } from "../domain/formatting";
 import { providerAnthropicAuthType, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { legacyProviderTypeOptions } from "../shared/ui";
+import { legacyProviderTypeOptions, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 import { AnthropicAuthTypeField } from "./provider-editor-sections";
 
@@ -89,7 +89,7 @@ export function ProviderAPIQuickConnect({
   onReloadModels,
   onTabChange,
   onUpdate,
-  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option) })),
+  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
 }: {
   api: ApiContext;
   catalogID: string;
@@ -108,7 +108,7 @@ export function ProviderAPIQuickConnect({
   onReloadModels: () => void;
   onTabChange: (tab: "connect" | "models" | "advanced") => void;
   onUpdate: (key: string, value: string) => void;
-  providerTypeOptions?: Array<{ value: string; label: string }>;
+  providerTypeOptions?: ProviderTypeOption[];
 }) {
   const [showKey, setShowKey] = useState(false);
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
@@ -339,7 +339,7 @@ export function ProviderAPIQuickConnect({
             </label>
           </div>
           <ProviderCustomHeaders
-            disabled={values.type === "azure_openai" || values.type === "openai_codex"}
+            disabled={!providerTypeSupportsCustomHeaders(providerTypeOptions, values.type)}
             onChange={(value) => onUpdate("custom_headers", value)}
             value={values.custom_headers ?? "[]"}
           />
