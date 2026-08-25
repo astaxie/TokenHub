@@ -474,6 +474,152 @@ func (s imageStartRejectStore) StartCall(context.Context, Project, APIKey, strin
 	return CallContext{}, ErrModelNotAllowed
 }
 
+func TestNativeCodexJSONImageEditUsesSubscriptionRoute(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	imageURL := "data:image/png;base64," + encodeBase64(imageBytes)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Native Codex Image Edit Project"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name: "native-codex-image-edit", Allowed: []string{codexImageModelName}, Status: StatusActive,
+	}, "thk_native_codex_image_edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_native_codex_image_edit", Name: "Native Codex Image Edit",
+		Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+	})
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_native_codex_image_edit", ProviderID: provider.ID, Name: "Native Codex Image Account",
+		ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
+		Options: map[string]string{codexImageCapabilityOption: codexImageCapabilitySupported},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
+	server := NewWithConfig(store, Config{
+		AdminToken: "test-admin-token", SecretKey: "native-codex-image-edit-secret", ImageStorageDir: t.TempDir(),
+	})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	var routedModel string
+	var routedAction string
+	var routedInputCount int
+	server.imageRunner = func(_ context.Context, route RouteSelection, job ImageJob) ([]byte, string, Usage, error) {
+		routedModel = route.Route.ModelName
+		routedAction = job.Action
+		for _, asset := range store.ListImageAssets(job.ID) {
+			if asset.Role == "input" {
+				routedInputCount++
+			}
+		}
+		return imageBytes, "", Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2}, nil
+	}
+
+	images := make([]map[string]any, 16)
+	for index := range images {
+		images[index] = map[string]any{"image_url": imageURL}
+	}
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/edits", map[string]any{
+		"model": openAIImageModelName, "prompt": "Combine all reference images.",
+		"images": images, "quality": "low", "size": "1024x1024", "response_format": "url",
+	}, secret, map[string]string{"x-codex-image-turn-id": "turn_native_edit"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("native Codex JSON edit: status=%d body=%s", response.Code, response.Body)
+	}
+	if routedModel != codexImageModelName || routedAction != "edit" || routedInputCount != 16 {
+		t.Fatalf("unexpected native Codex edit route: model=%q action=%q inputs=%d", routedModel, routedAction, routedInputCount)
+	}
+	var success map[string]any
+	if err := json.Unmarshal([]byte(response.Body), &success); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := success["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("native Codex edit must return one image: %+v", success)
+	}
+	first, _ := data[0].(map[string]any)
+	if first["b64_json"] == "" || first["url"] != nil {
+		t.Fatalf("native Codex edit must return b64_json: %+v", success)
+	}
+
+	t.Run("accepts JSON request above the shared decoder limit", func(t *testing.T) {
+		largeImageURL := "data:image/png;base64," + encodeBase64(largePNGFixture(t))
+		response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/edits", map[string]any{
+			"model": openAIImageModelName, "prompt": "Use this large reference image.",
+			"images": []map[string]any{{"image_url": largeImageURL}},
+		}, secret, map[string]string{"x-codex-image-turn-id": "turn_large_native_edit"})
+		if response.Code != http.StatusOK {
+			t.Fatalf("large native Codex JSON edit: status=%d body=%s", response.Code, response.Body)
+		}
+	})
+
+	tooMany := append(images, map[string]any{"image_url": imageURL})
+	tests := []struct {
+		name      string
+		payload   map[string]any
+		headers   map[string]string
+		status    int
+		errorCode string
+	}{
+		{
+			name:    "more than sixteen images",
+			payload: map[string]any{"model": openAIImageModelName, "prompt": "too many", "images": tooMany},
+			headers: map[string]string{"x-codex-image-turn-id": "turn_too_many"},
+			status:  http.StatusBadRequest, errorCode: "too_many_images",
+		},
+		{
+			name:    "missing images",
+			payload: map[string]any{"model": openAIImageModelName, "prompt": "missing"},
+			headers: map[string]string{"x-codex-image-turn-id": "turn_missing"},
+			status:  http.StatusBadRequest, errorCode: "missing_image",
+		},
+		{
+			name: "invalid base64 image",
+			payload: map[string]any{
+				"model": openAIImageModelName, "prompt": "invalid",
+				"images": []map[string]any{{"image_url": "data:image/png;base64,not-base64"}},
+			},
+			headers: map[string]string{"Originator": "codex_cli_rs"},
+			status:  http.StatusBadRequest, errorCode: "invalid_input_image",
+		},
+		{
+			name: "ordinary JSON client",
+			payload: map[string]any{
+				"model": openAIImageModelName, "prompt": "not Codex",
+				"images": []map[string]any{{"image_url": imageURL}},
+			},
+			status: http.StatusUnsupportedMediaType, errorCode: "invalid_content_type",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/edits", test.payload, secret, test.headers)
+			if response.Code != test.status {
+				t.Fatalf("status=%d body=%s, want %d", response.Code, response.Body, test.status)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(response.Body), &payload); err != nil {
+				t.Fatal(err)
+			}
+			errorPayload, _ := payload["error"].(map[string]any)
+			if errorPayload["code"] != test.errorCode {
+				t.Fatalf("error code=%v body=%s, want %q", errorPayload["code"], response.Body, test.errorCode)
+			}
+		})
+	}
+}
+
+func TestNativeCodexImageEditRejectsOversizedJSONBody(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/v1/images/edits", &repeatedByteReader{
+		remaining: maxImageEditRequestBytes + 1,
+	})
+	_, _, err := decodeNativeCodexImageEdit(request)
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusRequestEntityTooLarge || httpErr.Code != "image_edit_request_too_large" {
+		t.Fatalf("oversized JSON error = status %d code %q, want status %d code %q", httpErr.Status, httpErr.Code, http.StatusRequestEntityTooLarge, "image_edit_request_too_large")
+	}
+}
+
 func TestImageAuthorizationHappensBeforeJobOrAssetPersistence(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Rejected Image Project"})
@@ -1374,6 +1520,42 @@ func realPNGFixture(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return output.Bytes()
+}
+
+func largePNGFixture(t *testing.T) []byte {
+	t.Helper()
+	canvas := image.NewRGBA(image.Rect(0, 0, 1024, 1024))
+	state := uint32(0x9e3779b9)
+	for index := range canvas.Pix {
+		state = state*1664525 + 1013904223
+		canvas.Pix[index] = byte(state >> 24)
+	}
+	var output bytes.Buffer
+	if err := png.Encode(&output, canvas); err != nil {
+		t.Fatal(err)
+	}
+	if output.Len() <= 3<<20 {
+		t.Fatalf("large PNG fixture is %d bytes, want more than 3 MiB", output.Len())
+	}
+	return output.Bytes()
+}
+
+type repeatedByteReader struct {
+	remaining int64
+}
+
+func (r *repeatedByteReader) Read(buffer []byte) (int, error) {
+	if r.remaining == 0 {
+		return 0, io.EOF
+	}
+	if int64(len(buffer)) > r.remaining {
+		buffer = buffer[:r.remaining]
+	}
+	for index := range buffer {
+		buffer[index] = ' '
+	}
+	r.remaining -= int64(len(buffer))
+	return len(buffer), nil
 }
 
 func encodeBase64(data []byte) string {

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -32,6 +33,7 @@ const (
 	maxGeneratedImageBytes   = 64 << 20
 	maxImageEditRequestBytes = 128 << 20
 	maxInputImageBytes       = 50 << 20
+	maxImageEditInputCount   = 16
 	maxImageTextFieldBytes   = 1 << 20
 	codexImageModelName      = "codex-gpt-image-2"
 	openAIImageModelName     = "gpt-image-2"
@@ -49,6 +51,16 @@ type imageGenerationRequest struct {
 type uploadedImage struct {
 	role string
 	data []byte
+}
+
+type nativeCodexImageEditRequest struct {
+	Model          string                   `json:"model"`
+	Prompt         string                   `json:"prompt"`
+	Images         []codexSubscriptionImage `json:"images"`
+	N              int                      `json:"n,omitempty"`
+	Quality        string                   `json:"quality,omitempty"`
+	Size           string                   `json:"size,omitempty"`
+	ResponseFormat string                   `json:"response_format,omitempty"`
 }
 
 type imageJobWork struct {
@@ -166,69 +178,79 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	if !strings.HasPrefix(strings.ToLower(r.Header.Get("content-type")), "multipart/form-data") {
-		writeError(w, r, NewHTTPError(http.StatusUnsupportedMediaType, "invalid_content_type", "Image edits require multipart/form-data"))
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageEditRequestBytes)
-	multipartReader, err := r.MultipartReader()
-	if err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", err.Error()))
-		return
-	}
-	fields := make(map[string]string)
 	inputs := make([]uploadedImage, 0, 1)
 	var mask *uploadedImage
-	for {
-		part, partErr := multipartReader.NextPart()
-		if partErr == io.EOF {
-			break
-		}
-		if partErr != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", partErr.Error()))
-			return
-		}
-		name := part.FormName()
-		switch name {
-		case "image", "image[]":
-			data, readErr := readUploadedImagePart(part)
-			_ = part.Close()
-			if readErr != nil {
-				writeError(w, r, readErr)
-				return
-			}
-			inputs = append(inputs, uploadedImage{role: "input", data: data})
-		case "mask":
-			data, readErr := readUploadedImagePart(part)
-			_ = part.Close()
-			if readErr != nil {
-				writeError(w, r, readErr)
-				return
-			}
-			if mask != nil {
-				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", "Only one mask is supported"))
-				return
-			}
-			mask = &uploadedImage{role: "mask", data: data}
-		default:
-			data, readErr := io.ReadAll(io.LimitReader(part, maxImageTextFieldBytes+1))
-			_ = part.Close()
-			if readErr != nil || len(data) > maxImageTextFieldBytes {
-				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", "Multipart text field is too large or unreadable"))
-				return
-			}
-			fields[name] = string(data)
-		}
-	}
-	request := imageGenerationRequest{
-		Model: fields["model"], Prompt: fields["prompt"], Quality: fields["quality"],
-		Size: fields["size"], ResponseFormat: fields["response_format"],
-	}
-	if rawN := strings.TrimSpace(fields["n"]); rawN != "" {
-		request.N, err = strconv.Atoi(rawN)
+	var request imageGenerationRequest
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("content-type")))
+	if strings.HasPrefix(contentType, "application/json") && isNativeCodexImageRequest(r) {
+		request, inputs, err = decodeNativeCodexImageEdit(r)
 		if err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_count", "n must be an integer"))
+			writeError(w, r, err)
 			return
+		}
+	} else {
+		if !strings.HasPrefix(contentType, "multipart/form-data") {
+			writeError(w, r, NewHTTPError(http.StatusUnsupportedMediaType, "invalid_content_type", "Image edits require multipart/form-data"))
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxImageEditRequestBytes)
+		multipartReader, readErr := r.MultipartReader()
+		if readErr != nil {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", readErr.Error()))
+			return
+		}
+		fields := make(map[string]string)
+		for {
+			part, partErr := multipartReader.NextPart()
+			if partErr == io.EOF {
+				break
+			}
+			if partErr != nil {
+				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", partErr.Error()))
+				return
+			}
+			name := part.FormName()
+			switch name {
+			case "image", "image[]":
+				data, readErr := readUploadedImagePart(part)
+				_ = part.Close()
+				if readErr != nil {
+					writeError(w, r, readErr)
+					return
+				}
+				inputs = append(inputs, uploadedImage{role: "input", data: data})
+			case "mask":
+				data, readErr := readUploadedImagePart(part)
+				_ = part.Close()
+				if readErr != nil {
+					writeError(w, r, readErr)
+					return
+				}
+				if mask != nil {
+					writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", "Only one mask is supported"))
+					return
+				}
+				mask = &uploadedImage{role: "mask", data: data}
+			default:
+				data, readErr := io.ReadAll(io.LimitReader(part, maxImageTextFieldBytes+1))
+				_ = part.Close()
+				if readErr != nil || len(data) > maxImageTextFieldBytes {
+					writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", "Multipart text field is too large or unreadable"))
+					return
+				}
+				fields[name] = string(data)
+			}
+		}
+		request = imageGenerationRequest{
+			Model: fields["model"], Prompt: fields["prompt"], Quality: fields["quality"],
+			Size: fields["size"], ResponseFormat: fields["response_format"],
+		}
+		if rawN := strings.TrimSpace(fields["n"]); rawN != "" {
+			request.N, err = strconv.Atoi(rawN)
+			if err != nil {
+				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_count", "n must be an integer"))
+				return
+			}
 		}
 	}
 	if err := normalizeImageGenerationRequest(&request); err != nil {
@@ -329,6 +351,68 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func isNativeCodexImageRequest(r *http.Request) bool {
+	originator := strings.ToLower(strings.TrimSpace(r.Header.Get("originator")))
+	return strings.TrimSpace(r.Header.Get("x-codex-image-turn-id")) != "" || strings.HasPrefix(originator, "codex")
+}
+
+func decodeNativeCodexImageEdit(r *http.Request) (imageGenerationRequest, []uploadedImage, error) {
+	var payload nativeCodexImageEditRequest
+	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(nil, r.Body, maxImageEditRequestBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
+		return imageGenerationRequest{}, nil, nativeCodexImageEditDecodeError(err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return imageGenerationRequest{}, nil, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", "request body must contain a single JSON value")
+		}
+		return imageGenerationRequest{}, nil, nativeCodexImageEditDecodeError(err)
+	}
+	if len(payload.Images) == 0 {
+		return imageGenerationRequest{}, nil, NewHTTPError(http.StatusBadRequest, "missing_image", "At least one image is required")
+	}
+	if len(payload.Images) > maxImageEditInputCount {
+		return imageGenerationRequest{}, nil, NewHTTPError(http.StatusBadRequest, "too_many_images", "Image edits support at most 16 input images")
+	}
+	inputs := make([]uploadedImage, 0, len(payload.Images))
+	for _, image := range payload.Images {
+		_, encoded, err := parseDataURI(strings.TrimSpace(image.ImageURL))
+		if err != nil {
+			return imageGenerationRequest{}, nil, NewHTTPError(http.StatusBadRequest, "invalid_input_image", AsHTTPError(err).Message)
+		}
+		data, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return imageGenerationRequest{}, nil, NewHTTPError(http.StatusBadRequest, "invalid_input_image", "Input image is not valid base64 data")
+		}
+		data, err = readUploadedImagePart(bytes.NewReader(data))
+		if err != nil {
+			return imageGenerationRequest{}, nil, err
+		}
+		inputs = append(inputs, uploadedImage{role: "input", data: data})
+	}
+	request := imageGenerationRequest{
+		Model: payload.Model, Prompt: payload.Prompt, N: payload.N, Quality: payload.Quality,
+		Size: payload.Size, ResponseFormat: payload.ResponseFormat,
+	}
+	if strings.TrimSpace(request.Model) == openAIImageModelName {
+		request.Model = codexImageModelName
+	}
+	request.ResponseFormat = "b64_json"
+	return request, inputs, nil
+}
+
+func nativeCodexImageEditDecodeError(err error) error {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return NewHTTPError(http.StatusRequestEntityTooLarge, "image_edit_request_too_large", "Image edit JSON requests must be 128 MB or smaller")
+	}
+	return NewHTTPError(http.StatusBadRequest, "invalid_image_edit", err.Error())
 }
 
 func (s *Server) handleImageJob(w http.ResponseWriter, r *http.Request) {
