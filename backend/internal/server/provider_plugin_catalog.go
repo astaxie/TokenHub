@@ -71,3 +71,15 @@ func providerCatalogEntryFromPlugin(plugin pluginmeta.Descriptor, adapter Adapte
 		Source:      "plugin:" + string(plugin.Source),
 	}
 }
+
+func providerCatalogEntryWithSubmittedModels(entry ProviderCatalogEntry, models []ProviderCatalogModel, category string) ProviderCatalogEntry {
+	catalog := customProviderCatalogFromModels(models, category)
+	catalog.ID = firstNonEmpty(entry.ID, catalog.ID)
+	catalog.Name = firstNonEmpty(entry.Name, entry.DisplayName, catalog.Name)
+	catalog.DisplayName = firstNonEmpty(entry.DisplayName, catalog.DisplayName, catalog.Name)
+	catalog.Type = firstNonEmpty(entry.Type, catalog.Type)
+	catalog.BaseURL = entry.BaseURL
+	catalog.DocURL = entry.DocURL
+	catalog.Source = firstNonEmpty(entry.Source, catalog.Source)
+	return catalog
+}

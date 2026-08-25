@@ -708,6 +708,58 @@ func TestAdminPluginProviderCatalogPostUsesModelsPreviewAction(t *testing.T) {
 	}
 }
 
+func TestAdminProviderCreateImportsSubmittedModelsForPluginCatalog(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-create-admin"})
+	providerType := "submitted_models_provider"
+	pluginID := "tokenhub.provider.submitted-models"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Submitted Models Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+			pluginmeta.PlacementManagementAction,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityResponses), Subject: providerType},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses},
+	}); err != nil {
+		t.Fatalf("register submitted models provider: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":      providerType,
+		"selected_models": []string{"plugin/model-a"},
+		"custom_models": []map[string]any{{
+			"id":             "plugin/model-a",
+			"display_name":   "Plugin Model A",
+			"category":       "custom",
+			"type":           "chat",
+			"context_window": 128000,
+		}},
+	}, "plugin-create-admin")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create provider from plugin catalog: expected 201, got %d: %s", response.Code, response.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(response.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Provider.Type != providerType || result.CatalogSource != "plugin:local_file" || result.ImportedModels != 1 {
+		t.Fatalf("create result = %+v", result)
+	}
+	models := server.store.ListProviderModels()
+	if len(models) != 1 || models[0].ProviderID != result.Provider.ID || models[0].UpstreamModel != "plugin/model-a" || models[0].Source != "custom-upstream" {
+		t.Fatalf("imported provider models = %+v", models)
+	}
+}
+
 func TestAdminAnthropicProviderCatalogLoadsVersionedUpstreamModels(t *testing.T) {
 	app := newTestServer()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

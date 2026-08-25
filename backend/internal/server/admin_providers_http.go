@@ -291,7 +291,11 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	} else if catalogID != "" {
 		entry, pluginOK := s.pluginProviderCatalogEntry(catalogID)
 		if pluginOK {
-			catalog = entry
+			if len(req.CustomModels) > 0 {
+				catalog = providerCatalogEntryWithSubmittedModels(entry, req.CustomModels, req.ModelCategory)
+			} else {
+				catalog = entry
+			}
 			catalogSource = entry.Source
 		} else {
 			entry, source, ok, err := s.providerCatalog.Get(ctx, catalogID, false)
