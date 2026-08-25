@@ -9,6 +9,7 @@ import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
 import { providerAnthropicAuthType } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
+import { providerPluginOptionValues } from "../domain/provider-plugin-options";
 import { modelMetadataPayload } from "../domain/model-display-name";
 import { defaultDisplayName } from "../domain/form-defaults";
 import { configuredPriceEntered } from "../domain/configured-pricing";
@@ -36,7 +37,7 @@ export function providerPayload(values: Record<string, string>) {
     claude_code_attribution_policy: values.claude_code_attribution_policy || defaultProviderClaudeCodeAttributionPolicy(values.type, values.catalog_id),
     catalog_id: values.catalog_id,
     model_category: values.model_category,
-    options: providerReasoningOptions(values),
+    options: { ...providerReasoningOptions(values), ...providerPluginOptionValues(values) },
     selected_models: splitList(values.selected_models),
     custom_models: parseProviderCatalogModels(values.custom_models),
   };

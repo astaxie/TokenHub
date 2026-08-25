@@ -51,6 +51,16 @@ describe("ProviderUpsertModal", () => {
         mode="create"
         onClose={vi.fn()}
         onSaved={onSaved}
+        pluginUI={[
+          {
+            plugin_id: "tokenhub.provider.quality",
+            id: "tenant",
+            slot: "provider.form.section",
+            title: "Quality Settings",
+            provider_types: ["openai_compatible"],
+            schema: { fields: [{ name: "tenant_id", type: "text", label: "Tenant ID" }] },
+          },
+        ]}
         resources={[]}
         setError={vi.fn()}
         setLoading={vi.fn()}
@@ -64,6 +74,7 @@ describe("ProviderUpsertModal", () => {
       expect.any(Object),
     ));
     await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.type(screen.getByLabelText("Tenant ID"), "tenant-001");
     await user.type(screen.getByLabelText("API Key", { exact: true }), "provider-secret");
     await user.click(screen.getByRole("button", { name: "新增 Provider" }));
 
@@ -78,6 +89,7 @@ describe("ProviderUpsertModal", () => {
       base_url: "https://provider.example/v1",
       api_key: "provider-secret",
       catalog_id: "quality-provider",
+      options: { tenant_id: "tenant-001" },
     });
   });
 

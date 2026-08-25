@@ -21,6 +21,7 @@ import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardSte
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderPluginPanels } from "./provider-plugin-panels";
+import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
@@ -565,7 +566,6 @@ export function ProviderUpsertModal({
     ?.split(",")
     .map((value) => value.trim())
     .filter(Boolean) ?? fallbackCodexReasoningEfforts;
-
   useEffect(() => {
     if (codexTestModels.length === 0) return;
     setCodexTestValues((current) => {
@@ -1339,7 +1339,7 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "create" && createStep === 1 ? (
               quickAPIConnect ? (
-                <ProviderAPIQuickConnect api={api}
+                <><ProviderAPIQuickConnect api={api}
                   key={catalogID}
                   catalogID={catalogID}
                   entry={selectedEntry}
@@ -1357,7 +1357,7 @@ export function ProviderUpsertModal({
                   onReloadModels={reloadSelectedCatalog}
                   onTabChange={setQuickAPITab}
                   onUpdate={update} providerTypeOptions={providerTypeOptions}
-                />
+                />{quickAPITab === "connect" ? <ProviderPluginFormSections contributions={pluginUI} onUpdate={update} values={values} /> : null}</>
               ) : (
               <section className="provider-wizard-panel">
                 <div className="wizard-panel-head">
@@ -1528,7 +1528,7 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "edit" && editTab === "connect" ? (
-              <ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} />
+              <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections contributions={pluginUI} onUpdate={update} provider={provider} values={values} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
