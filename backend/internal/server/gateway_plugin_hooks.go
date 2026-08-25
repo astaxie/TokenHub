@@ -145,6 +145,73 @@ func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext
 	return nil
 }
 
+func (s *Server) runGatewayContextOptimizeHooks(ctx context.Context, call CallContext, payload any, apply func(json.RawMessage) error) error {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageContextOptimize)) == 0 {
+		return nil
+	}
+	body, ok := marshalGatewayHookData(payload)
+	if !ok {
+		return NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:     "v1",
+			Protocol:    "gateway",
+			Operation:   "context_optimize",
+			Model:       call.Model.Name,
+			RequestBody: body,
+		},
+		Data: gatewayHookCallData(call, body),
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageContextOptimize, input)
+	if err != nil {
+		return gatewayHookHTTPError(pluginmeta.StageContextOptimize, err)
+	}
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataRequestBody]
+		if !ok {
+			continue
+		}
+		if err := apply(patch.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) runGatewayChatContextOptimizeHooks(ctx context.Context, call CallContext, req *ChatCompletionRequest) error {
+	return s.runGatewayContextOptimizeHooks(ctx, call, *req, func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ChatCompletionRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		*req = patched
+		return nil
+	})
+}
+
+func (s *Server) runGatewayResponsesContextOptimizeHooks(ctx context.Context, call CallContext, req *ResponsesRequest) error {
+	return s.runGatewayContextOptimizeHooks(ctx, call, *req, func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ResponsesRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		*req = patched
+		return nil
+	})
+}
+
 func (s *Server) runGatewayRouteRankHooks(ctx context.Context, call CallContext, planned []RouteSelection) []RouteSelection {
 	if s == nil || s.gatewayHooks == nil || len(planned) < 2 {
 		return planned

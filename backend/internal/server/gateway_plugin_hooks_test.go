@@ -140,6 +140,114 @@ func TestPrivacyPreHookDenyReturnsForbidden(t *testing.T) {
 	}
 }
 
+func TestContextOptimizeHookCanRewriteChatRequestBody(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-context",
+		HookID:        "trim",
+		Stage:         pluginmeta.StageContextOptimize,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register context optimize hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Envelope.RequestBody) == 0 {
+			t.Fatal("request body was not available in the context optimize envelope")
+		}
+		return rawRequestBodyPatch(t, map[string]any{
+			"model":  "gpt-test",
+			"stream": false,
+			"messages": []map[string]any{
+				{"role": "user", "content": "[optimized]"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register context optimize handler: %v", err)
+	}
+
+	request := ChatCompletionRequest{
+		Model:    "gpt-test",
+		Messages: []ChatMessage{{Role: "user", Content: "verbose context"}},
+	}
+	err := server.runGatewayContextOptimizeHooks(context.Background(), gatewayPluginTestCall(), request, func(data json.RawMessage) error {
+		var patched ChatCompletionRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(request.Model, request.Stream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		request = patched
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run context optimize hook: %v", err)
+	}
+	if got := request.Messages[0].Content; got != "[optimized]" {
+		t.Fatalf("message content = %v, want optimized", got)
+	}
+}
+
+func TestContextOptimizeHookRewritesGatewayChatRequestBeforeUpstream(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Context Plugin App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "context-plugin-key",
+		Allowed: []string{"gpt-context"},
+		Status:  StatusActive,
+	}, "thk_context_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_context_plugin", Name: "Context Plugin", Type: "context_capture", Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-context", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_context_plugin", ModelName: "gpt-context", ProviderID: provider.ID, ProviderModel: "upstream-context", Status: StatusActive, Priority: 1, Weight: 100})
+	server := New(store)
+	adapter := &contextOptimizeCaptureAdapter{}
+	registerTestAdapter(server, "context_capture", adapter)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-context",
+		HookID:        "trim",
+		Stage:         pluginmeta.StageContextOptimize,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register context optimize hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawRequestBodyPatch(t, map[string]any{
+			"model":  "gpt-context",
+			"stream": false,
+			"messages": []map[string]any{
+				{"role": "user", "content": "[optimized]"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register context optimize handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-context",
+		"messages": []map[string]any{
+			{"role": "user", "content": "verbose context"},
+		},
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if len(adapter.seenChat.Messages) != 1 || adapter.seenChat.Messages[0].Content != "[optimized]" {
+		t.Fatalf("upstream chat request was not optimized: %+v", adapter.seenChat)
+	}
+}
+
 func TestCacheLookupHookCanShortCircuitWithProviderResponse(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{
@@ -355,4 +463,14 @@ func gatewayPluginTestCall() CallContext {
 		Key:       APIKey{ID: "key_plugin_test", ProjectID: "proj_plugin_test", Status: StatusActive},
 		Model:     Model{Name: "gpt-test"},
 	}
+}
+
+type contextOptimizeCaptureAdapter struct {
+	MockAdapter
+	seenChat ChatCompletionRequest
+}
+
+func (a *contextOptimizeCaptureAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	a.seenChat = req
+	return a.MockAdapter.Chat(ctx, provider, providerModel, req)
 }
