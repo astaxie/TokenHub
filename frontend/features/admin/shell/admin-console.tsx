@@ -904,7 +904,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           ) : activeView === "database-status" ? (
             <DatabaseStatusView api={api} isDark={theme === "dark"} />
           ) : activeView === "plugins" ? (
-            <PluginsView data={data} />
+            <PluginsView api={api} data={data} />
           ) : activeView === "settings" ? (
             <SettingsView
               data={data}

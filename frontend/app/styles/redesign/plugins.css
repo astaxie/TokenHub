@@ -1,0 +1,48 @@
+.plugin-action-runner {
+  display: grid;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.plugin-action-field {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.plugin-action-field input[type="text"],
+.plugin-action-field input[type="number"] {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 9px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.plugin-action-field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.plugin-action-button {
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plugin-action-result {
+  max-width: 420px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}

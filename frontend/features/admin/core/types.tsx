@@ -317,6 +317,8 @@ export type PluginActionDescriptor = {
   action_id: string;
   kind: "read" | "test" | "mutate" | "external_redirect" | "import_export" | string;
   title?: string;
+  capability?: string;
+  subject?: string;
   input_schema?: Record<string, unknown>;
   output_schema?: Record<string, unknown>;
 };

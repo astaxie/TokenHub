@@ -1,11 +1,20 @@
-import { Boxes, Layers3, MousePointerClick, PlugZap, ShieldCheck } from "lucide-react";
-import { type ReactNode } from "react";
-import { type AppData, type PluginDescriptor } from "../core/types";
+import { Boxes, Layers3, MousePointerClick, Play, PlugZap, ShieldCheck } from "lucide-react";
+import { type FormEvent, type ReactNode, useState } from "react";
+import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor } from "../core/types";
 import { tx } from "../i18n/runtime";
+import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 
-export function PluginsView({ data }: { data: AppData }) {
+type ActionDraft = {
+  values: Record<string, string | boolean>;
+  busy: boolean;
+  error: string;
+  result: string;
+};
+
+export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const plugins = data.plugins;
+  const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
   const providerCapabilities = plugins.reduce(
     (count, plugin) => count + plugin.capabilities.filter((capability) => capability.kind === "provider").length,
     0,
@@ -15,6 +24,42 @@ export function PluginsView({ data }: { data: AppData }) {
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
+  const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
+
+  function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
+    const key = pluginActionKey(action.plugin_id, action.action_id);
+    setActionDrafts((drafts) => ({
+      ...drafts,
+      [key]: {
+        ...emptyActionDraft(action),
+        ...drafts[key],
+        values: { ...(drafts[key]?.values ?? emptyActionValues(action)), [field]: value },
+        error: "",
+      },
+    }));
+  }
+
+  async function executeAction(action: PluginActionDescriptor, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const key = pluginActionKey(action.plugin_id, action.action_id);
+    const draft = actionDraft(action);
+    setActionDrafts((drafts) => ({ ...drafts, [key]: { ...draft, busy: true, error: "", result: "" } }));
+    try {
+      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
+        method: "POST",
+        body: JSON.stringify(actionPayload(action, draft.values)),
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("执行插件动作")));
+      const payload = await response.json();
+      setActionDrafts((drafts) => ({ ...drafts, [key]: { ...draft, busy: false, error: "", result: JSON.stringify(redactPluginActionResult(payload), null, 2) } }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setActionDrafts((drafts) => ({
+        ...drafts,
+        [key]: { ...draft, busy: false, error: reason instanceof Error ? reason.message : tx("执行插件动作失败"), result: "" },
+      }));
+    }
+  }
 
   return (
     <div className="plugins-view">
@@ -169,8 +214,9 @@ export function PluginsView({ data }: { data: AppData }) {
                     <th>{tx("插件")}</th>
                     <th>{tx("动作 ID")}</th>
                     <th>{tx("动作类型")}</th>
+                    <th>{tx("能力标识")}</th>
                     <th>{tx("标题")}</th>
-                    <th>{tx("输入")}</th>
+                    <th>{tx("执行")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -179,8 +225,16 @@ export function PluginsView({ data }: { data: AppData }) {
                       <td>{action.plugin_id}</td>
                       <td>{action.action_id}</td>
                       <td>{pluginActionKindLabel(action.kind)}</td>
+                      <td>{action.capability || action.subject || "-"}</td>
                       <td>{action.title || "-"}</td>
-                      <td>{action.input_schema ? tx("已定义") : tx("未定义")}</td>
+                      <td>
+                        <PluginActionRunner
+                          action={action}
+                          draft={actionDraft(action)}
+                          onChange={updateActionValue}
+                          onSubmit={executeAction}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -190,6 +244,51 @@ export function PluginsView({ data }: { data: AppData }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function PluginActionRunner({
+  action,
+  draft,
+  onChange,
+  onSubmit,
+}: {
+  action: PluginActionDescriptor;
+  draft: ActionDraft;
+  onChange: (action: PluginActionDescriptor, field: string, value: string | boolean) => void;
+  onSubmit: (action: PluginActionDescriptor, event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const fields = actionInputFields(action);
+  const unsupported = action.input_schema && !actionInputSchemaSupported(action.input_schema);
+  return (
+    <form className="plugin-action-runner" onSubmit={(event) => onSubmit(action, event)}>
+      {unsupported ? <p className="empty-state">{tx("暂不支持复杂输入 Schema")}</p> : null}
+      {fields.map((field) => (
+        <label className="plugin-action-field" key={field.name}>
+          <span>{field.name}{field.required ? " *" : ""}</span>
+          {field.type === "boolean" ? (
+            <input
+              checked={Boolean(draft.values[field.name])}
+              onChange={(event) => onChange(action, field.name, event.currentTarget.checked)}
+              type="checkbox"
+            />
+          ) : (
+            <input
+              onChange={(event) => onChange(action, field.name, event.currentTarget.value)}
+              required={field.required}
+              type={field.type === "number" || field.type === "integer" ? "number" : "text"}
+              value={String(draft.values[field.name] ?? "")}
+            />
+          )}
+        </label>
+      ))}
+      <button className="secondary-button plugin-action-button" disabled={draft.busy || Boolean(unsupported)} type="submit">
+        <Play size={14} />
+        <span>{tx(draft.busy ? "执行中" : "执行")}</span>
+      </button>
+      {draft.error ? <p className="provider-quota-error">{draft.error}</p> : null}
+      {draft.result ? <pre className="plugin-action-result">{draft.result}</pre> : null}
+    </form>
   );
 }
 
@@ -264,6 +363,83 @@ function pluginActionKindLabel(kind: string) {
   if (kind === "external_redirect") return tx("外部跳转");
   if (kind === "import_export") return tx("导入导出");
   return kind;
+}
+
+type ActionInputField = {
+  name: string;
+  type: "string" | "boolean" | "number" | "integer";
+  required: boolean;
+};
+
+function emptyActionDraft(action: PluginActionDescriptor): ActionDraft {
+  return { values: emptyActionValues(action), busy: false, error: "", result: "" };
+}
+
+function emptyActionValues(action: PluginActionDescriptor) {
+  const values: Record<string, string | boolean> = {};
+  for (const field of actionInputFields(action)) {
+    values[field.name] = field.type === "boolean" ? false : "";
+  }
+  return values;
+}
+
+function actionInputFields(action: PluginActionDescriptor): ActionInputField[] {
+  const schema = action.input_schema;
+  if (!schema || schema.type !== "object") return [];
+  const required = new Set(Array.isArray(schema.required) ? schema.required.filter((item): item is string => typeof item === "string") : []);
+  const properties = schema.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return [];
+  return Object.entries(properties).flatMap(([name, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const type = (value as { type?: unknown }).type;
+    if (type !== "string" && type !== "boolean" && type !== "number" && type !== "integer") return [];
+    return [{ name, type, required: required.has(name) }];
+  });
+}
+
+function actionInputSchemaSupported(schema: Record<string, unknown>) {
+  if (schema.type !== "object") return false;
+  const properties = schema.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return true;
+  return Object.values(properties).every((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const type = (value as { type?: unknown }).type;
+    return type === "string" || type === "boolean" || type === "number" || type === "integer";
+  });
+}
+
+function actionPayload(action: PluginActionDescriptor, values: Record<string, string | boolean>) {
+  const payload: Record<string, string | number | boolean> = {};
+  for (const field of actionInputFields(action)) {
+    const value = values[field.name];
+    if (field.type === "boolean") {
+      payload[field.name] = Boolean(value);
+      continue;
+    }
+    if (field.type === "number" || field.type === "integer") {
+      if (value === "") continue;
+      payload[field.name] = Number(value);
+      continue;
+    }
+    if (typeof value === "string" && value !== "") {
+      payload[field.name] = value;
+    }
+  }
+  return payload;
+}
+
+function redactPluginActionResult(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactPluginActionResult);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => {
+    if (sensitivePluginResultKey(key)) return [key, "[redacted]"];
+    return [key, redactPluginActionResult(child)];
+  }));
+}
+
+function sensitivePluginResultKey(key: string) {
+  const normalized = key.toLowerCase();
+  return normalized.includes("token") || normalized.includes("secret") || normalized === "credentials" || normalized === "credential" || normalized === "credential_blob" || normalized.includes("api_key");
 }
 
 function pluginSourceLabel(source: string) {
