@@ -105,6 +105,14 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 			Title:         "OpenAI Codex quota",
 			ProviderTypes: []string{ProviderOpenAICodex},
 			Action:        "openai_codex.quota.read",
+			Schema: map[string]any{
+				"fields": []any{
+					map[string]any{"name": "resource_status", "type": "text", "label": "Resource status", "source": "resource.status"},
+					map[string]any{"name": "account_email", "type": "text", "label": "Account email", "source": "resource.credential_summary.account_email"},
+					map[string]any{"name": "image_generation", "type": "text", "label": "Image generation", "source": "resource.options.image_generation_capability"},
+					map[string]any{"name": "resource_count", "type": "metric", "label": "Provider resources", "source": "resources.length", "format": "number"},
+				},
+			},
 		},
 	} {
 		mustRegisterAdminUIContribution(adminUI, contribution)
