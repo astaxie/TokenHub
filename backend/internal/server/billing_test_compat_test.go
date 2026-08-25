@@ -40,13 +40,13 @@ type billingRecordResponse struct {
 }
 
 func newBillingService(store *GormStore) *billing.Service {
-	return billing.NewService(store.BillingRepositoryForComposition(), billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second}))
+	return billing.NewService(ApplicationDependenciesForStore(store).Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second}))
 }
 
 // BillingRepository keeps legacy server characterization tests readable while
 // remaining test-only; production callers must use composition-owned ports.
 func (s *GormStore) BillingRepository() billing.Repository {
-	return s.BillingRepositoryForComposition()
+	return ApplicationDependenciesForStore(s).Repository
 }
 
 type billingConnectorJSON struct {

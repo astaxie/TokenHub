@@ -1,41 +1,15 @@
-package server
+package persistence
 
 import (
 	"time"
 
-	"tokenhub/backend/internal/billing"
 	"tokenhub/backend/internal/reconciliation"
 )
 
-type BillingConnector = billing.Connector
-type BillingRecord = billing.Record
-
-const (
-	BillingConnectorAliyun = billing.ConnectorAliyun
-	BillingConnectorNewAPI = billing.ConnectorNewAPI
-	BillingConnectorOneAPI = billing.ConnectorOneAPI
-)
-
-const (
-	ReconciliationGranularityDetail = reconciliation.GranularityDetail
-	ReconciliationGranularityHour   = reconciliation.GranularityHour
-	ReconciliationGranularityDay    = reconciliation.GranularityDay
-	ReconciliationGranularityMonth  = reconciliation.GranularityMonth
-
-	ReconciliationMatched        = reconciliation.Matched
-	ReconciliationProviderOnly   = reconciliation.ProviderOnly
-	ReconciliationTokenHubOnly   = reconciliation.TokenHubOnly
-	ReconciliationAmountMismatch = reconciliation.AmountMismatch
-
-	ReconciliationRunRunning   = reconciliation.RunRunning
-	ReconciliationRunSucceeded = reconciliation.RunSucceeded
-	ReconciliationRunFailed    = reconciliation.RunFailed
-)
-
-// ReconciliationRule is the mutable, scheduled configuration used to compare
-// one external billing source with TokenHub usage. Every run copies the rule
-// fields below so later edits cannot change the meaning of historical results.
-type ReconciliationRule struct {
+// RuleRow, RunRow and ItemRow are the database representations of the
+// reconciliation domain objects. Their tags intentionally preserve the
+// existing table and serializer layout.
+type RuleRow struct {
 	ID                      string                       `json:"id" gorm:"primaryKey"`
 	Name                    string                       `json:"name"`
 	ConnectorID             string                       `json:"connector_id" gorm:"index"`
@@ -64,43 +38,9 @@ type ReconciliationRule struct {
 	UpdatedAt               time.Time                    `json:"updated_at"`
 }
 
-type ReconciliationRuleRequest struct {
-	Name                    string                       `json:"name"`
-	ConnectorID             string                       `json:"connector_id"`
-	Status                  string                       `json:"status"`
-	Granularity             string                       `json:"granularity"`
-	MatchDimensions         []string                     `json:"match_dimensions"`
-	DimensionMappings       map[string]map[string]string `json:"dimension_mappings"`
-	AmountTolerance         string                       `json:"amount_tolerance"`
-	RatioTolerance          string                       `json:"ratio_tolerance"`
-	USDExchangeRate         string                       `json:"usd_exchange_rate"`
-	TimeWindowMinutes       int                          `json:"time_window_minutes"`
-	BillingDelayMinutes     int                          `json:"billing_delay_minutes"`
-	ScheduleIntervalMinutes int                          `json:"schedule_interval_minutes"`
-	Timezone                string                       `json:"timezone"`
-	Currency                string                       `json:"currency"`
-}
+func (RuleRow) TableName() string { return "reconciliation_rules" }
 
-type ReconciliationRulePatchRequest struct {
-	Name                    *string                       `json:"name"`
-	Status                  *string                       `json:"status"`
-	Granularity             *string                       `json:"granularity"`
-	MatchDimensions         *[]string                     `json:"match_dimensions"`
-	DimensionMappings       *map[string]map[string]string `json:"dimension_mappings"`
-	AmountTolerance         *string                       `json:"amount_tolerance"`
-	RatioTolerance          *string                       `json:"ratio_tolerance"`
-	USDExchangeRate         *string                       `json:"usd_exchange_rate"`
-	TimeWindowMinutes       *int                          `json:"time_window_minutes"`
-	BillingDelayMinutes     *int                          `json:"billing_delay_minutes"`
-	ScheduleIntervalMinutes *int                          `json:"schedule_interval_minutes"`
-	Timezone                *string                       `json:"timezone"`
-	Currency                *string                       `json:"currency"`
-}
-
-// ReconciliationRun is an immutable rule snapshot plus the summary generated
-// from a specific billing period. An unlocked run may be recalculated from the
-// same snapshot; locking freezes it for audit and export.
-type ReconciliationRun struct {
+type RunRow struct {
 	ID                  string                       `json:"id" gorm:"primaryKey"`
 	RuleID              string                       `json:"rule_id" gorm:"index"`
 	ConnectorID         string                       `json:"connector_id" gorm:"index"`
@@ -142,15 +82,9 @@ type ReconciliationRun struct {
 	ErrorMessage        string                       `json:"error_message,omitempty"`
 }
 
-type ReconciliationRunRequest struct {
-	PeriodStart time.Time `json:"period_start"`
-	PeriodEnd   time.Time `json:"period_end"`
-}
+func (RunRow) TableName() string { return "reconciliation_runs" }
 
-// ReconciliationItem is a traceable match bucket. ResourceAccount is retained
-// for deterministic recomputation but never serialized; API and CSV consumers
-// receive only ResourceAccountMasked.
-type ReconciliationItem struct {
+type ItemRow struct {
 	ID                    string    `json:"id" gorm:"primaryKey"`
 	RunID                 string    `json:"run_id" gorm:"index"`
 	MatchKey              string    `json:"match_key" gorm:"index"`
@@ -174,36 +108,19 @@ type ReconciliationItem struct {
 	CreatedAt             time.Time `json:"created_at"`
 }
 
-type ReconciliationDetail struct {
-	Run    ReconciliationRun    `json:"run"`
-	Items  []ReconciliationItem `json:"items"`
-	Total  int64                `json:"total"`
-	Limit  int                  `json:"limit"`
-	Offset int                  `json:"offset"`
+func (ItemRow) TableName() string { return "reconciliation_items" }
+
+func ruleFromRow(row RuleRow) reconciliation.Rule { return reconciliation.Rule(row) }
+func ruleToRow(value reconciliation.Rule) RuleRow { return RuleRow(value) }
+func runFromRow(row RunRow) reconciliation.Run    { return reconciliation.Run(row) }
+func runToRow(value reconciliation.Run) RunRow    { return RunRow(value) }
+func itemFromRow(row ItemRow) reconciliation.Item {
+	return reconciliation.Item{ID: row.ID, RunID: row.RunID, MatchKey: row.MatchKey, Status: row.Status, BucketStart: row.BucketStart, BucketEnd: row.BucketEnd, RequestID: row.RequestID, Provider: row.Provider, ResourceAccount: row.ResourceAccount, ResourceAccountMasked: row.ResourceAccountMasked, Model: row.Model, Project: row.Project, Currency: row.Currency, ProviderAmount: row.ProviderAmount, TokenHubAmount: row.TokenHubAmount, DifferenceAmount: row.DifferenceAmount, DifferenceRatio: row.DifferenceRatio, PossibleReason: row.PossibleReason, ProviderRecordIDs: row.ProviderRecordIDs, TokenHubRecordIDs: row.TokenHubRecordIDs, CreatedAt: row.CreatedAt}
+}
+func itemToRow(value reconciliation.Item) ItemRow {
+	return ItemRow{ID: value.ID, RunID: value.RunID, MatchKey: value.MatchKey, Status: value.Status, BucketStart: value.BucketStart, BucketEnd: value.BucketEnd, RequestID: value.RequestID, Provider: value.Provider, ResourceAccount: value.ResourceAccount, ResourceAccountMasked: value.ResourceAccountMasked, Model: value.Model, Project: value.Project, Currency: value.Currency, ProviderAmount: value.ProviderAmount, TokenHubAmount: value.TokenHubAmount, DifferenceAmount: value.DifferenceAmount, DifferenceRatio: value.DifferenceRatio, PossibleReason: value.PossibleReason, ProviderRecordIDs: value.ProviderRecordIDs, TokenHubRecordIDs: value.TokenHubRecordIDs, CreatedAt: value.CreatedAt}
 }
 
-type ReconciliationStore interface {
-	CreateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error)
-	ListReconciliationRules() []ReconciliationRule
-	GetReconciliationRule(id string) (ReconciliationRule, error)
-	UpdateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error)
-	BackfillReconciliationRuleConnectorSnapshot(rule ReconciliationRule) (ReconciliationRule, error)
-	ListDueReconciliationRules(now time.Time, limit int) []ReconciliationRule
-	ListReconciliationUsages(from time.Time, to time.Time, window time.Duration) ([]UsageRecord, error)
-	SaveReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
-	ReplaceReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
-	ListReconciliationRuns(ruleID string, limit int) []ReconciliationRun
-	GetReconciliationRun(id string) (ReconciliationRun, error)
-	ListReconciliationItems(runID string, status string, limit int, offset int) ([]ReconciliationItem, int64)
-	ListReconciliationItemBatch(runID string, status string, afterID string, excludeMatched bool, limit int) []ReconciliationItem
-	LockReconciliationRun(id string, actor string) (ReconciliationRun, error)
-	RecordScheduledReconciliationAudit(run ReconciliationRun)
-}
-
-// ReconciliationBillingReader is owned by the reconciliation consumer. It
-// exposes only the billing projections required to snapshot a connector and
-// calculate a run.
-type ReconciliationBillingReader interface {
-	GetBillingConnector(id string, includeCredentials bool) (BillingConnector, error)
-	ListBillingRecordsInRange(connectorID string, from, to time.Time) ([]BillingRecord, error)
+func usageFromRecord(id, requestID, projectID, modelName, providerID, resourceID string, cost, providerCost float64, createdAt time.Time) reconciliation.Usage {
+	return reconciliation.Usage{ID: id, RequestID: requestID, ProjectID: projectID, ModelName: modelName, ProviderID: providerID, ProviderResourceID: resourceID, CostUSD: cost, ProviderCostUSD: providerCost, CreatedAt: createdAt}
 }

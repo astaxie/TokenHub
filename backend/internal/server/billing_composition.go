@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"tokenhub/backend/internal/billing"
+	"tokenhub/backend/internal/reconciliation"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 )
 
 // unavailableBillingComposition keeps Store decorators that only implement the
@@ -11,28 +13,39 @@ import (
 // dependency error until the composition root supplies billing capabilities.
 type unavailableBillingComposition struct{}
 
-type billingCompositionSource interface {
-	BillingRepositoryForComposition() billing.Repository
-	BillingReaderForComposition() ReconciliationBillingReader
+// ApplicationDependenciesForStore exposes the persistence adapters selected
+// by the composition root. It accepts the concrete adapter rather than Store,
+// so domain capabilities cannot leak back into the global Store interface.
+func ApplicationDependenciesForStore(store *GormStore) ApplicationDependencies {
+	if store == nil {
+		return ApplicationDependencies{}
+	}
+	return ApplicationDependencies{
+		Repository:           store.billingRepository,
+		ReconciliationReader: store.billingPersistence,
+		ReconciliationStore:  store.reconciliationPersistence,
+	}
 }
 
-func billingDependenciesFromStore(store Store) BillingDependencies {
-	composition, ok := store.(billingCompositionSource)
+// applicationDependenciesForCompatibility preserves NewWithConfig behavior
+// for existing in-process callers. Deployed binaries use explicit injection.
+func applicationDependenciesForCompatibility(store Store) ApplicationDependencies {
+	gormStore, ok := store.(*GormStore)
 	if !ok {
-		return BillingDependencies{}
+		return ApplicationDependencies{}
 	}
-	return BillingDependencies{
-		Repository:           composition.BillingRepositoryForComposition(),
-		ReconciliationReader: composition.BillingReaderForComposition(),
-	}
+	return ApplicationDependenciesForStore(gormStore)
 }
 
-func normalizeBillingDependencies(dependencies BillingDependencies) BillingDependencies {
+func normalizeApplicationDependencies(dependencies ApplicationDependencies) ApplicationDependencies {
 	if dependencies.Repository == nil {
 		dependencies.Repository = unavailableBillingComposition{}
 	}
 	if dependencies.ReconciliationReader == nil {
 		dependencies.ReconciliationReader = unavailableBillingComposition{}
+	}
+	if dependencies.ReconciliationStore == nil {
+		dependencies.ReconciliationStore = unavailableReconciliationComposition{}
 	}
 	return dependencies
 }
@@ -84,4 +97,51 @@ func (u unavailableBillingComposition) ListBillingRecordsInRange(string, time.Ti
 }
 
 var _ billing.Repository = unavailableBillingComposition{}
-var _ ReconciliationBillingReader = unavailableBillingComposition{}
+var _ reconciliationpersistence.BillingSource = unavailableBillingComposition{}
+
+type unavailableReconciliationComposition struct{}
+
+func (u unavailableReconciliationComposition) unavailable() error {
+	return reconciliation.NewError(reconciliation.ErrorUnavailable, "reconciliation_store_unavailable", "Reconciliation persistence is unavailable")
+}
+func (u unavailableReconciliationComposition) CreateRule(reconciliation.Rule) (reconciliation.Rule, error) {
+	return reconciliation.Rule{}, u.unavailable()
+}
+func (u unavailableReconciliationComposition) GetRule(string) (reconciliation.Rule, error) {
+	return reconciliation.Rule{}, u.unavailable()
+}
+func (u unavailableReconciliationComposition) UpdateRule(reconciliation.Rule) (reconciliation.Rule, error) {
+	return reconciliation.Rule{}, u.unavailable()
+}
+func (u unavailableReconciliationComposition) BackfillRuleConnectorSnapshot(reconciliation.Rule) (reconciliation.Rule, error) {
+	return reconciliation.Rule{}, u.unavailable()
+}
+func (unavailableReconciliationComposition) ListDueRules(time.Time, int) []reconciliation.Rule {
+	return nil
+}
+func (u unavailableReconciliationComposition) ListUsages(time.Time, time.Time, time.Duration) ([]reconciliation.Usage, error) {
+	return nil, u.unavailable()
+}
+func (u unavailableReconciliationComposition) SaveRun(reconciliation.Run, []reconciliation.Item) (reconciliation.Run, error) {
+	return reconciliation.Run{}, u.unavailable()
+}
+func (u unavailableReconciliationComposition) ReplaceRun(reconciliation.Run, []reconciliation.Item) (reconciliation.Run, error) {
+	return reconciliation.Run{}, u.unavailable()
+}
+func (u unavailableReconciliationComposition) GetRun(string) (reconciliation.Run, error) {
+	return reconciliation.Run{}, u.unavailable()
+}
+func (unavailableReconciliationComposition) RecordScheduledAudit(reconciliation.Run)   {}
+func (unavailableReconciliationComposition) ListRules() []reconciliation.Rule          { return nil }
+func (unavailableReconciliationComposition) ListRuns(string, int) []reconciliation.Run { return nil }
+func (unavailableReconciliationComposition) ListItems(string, string, int, int) ([]reconciliation.Item, int64) {
+	return nil, 0
+}
+func (unavailableReconciliationComposition) ListItemBatch(string, string, string, bool, int) []reconciliation.Item {
+	return nil
+}
+func (u unavailableReconciliationComposition) SaveRunLock(reconciliation.Run) (reconciliation.Run, error) {
+	return reconciliation.Run{}, u.unavailable()
+}
+
+var _ reconciliation.Store = unavailableReconciliationComposition{}

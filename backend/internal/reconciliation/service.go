@@ -16,6 +16,7 @@ import (
 type Service struct {
 	store         Store
 	billing       BillingReader
+	runLockMu     sync.Mutex
 	mu            sync.Mutex
 	active        map[string]bool
 	schedulerOnce sync.Once
@@ -25,6 +26,67 @@ type Service struct {
 
 func NewService(store Store, billingReader BillingReader) *Service {
 	return &Service{store: store, billing: billingReader, active: map[string]bool{}}
+}
+
+func (s *Service) ListRules() []Rule { return s.store.ListRules() }
+
+func (s *Service) GetRuleForAdmin(id string) (Rule, error) { return s.store.GetRule(id) }
+
+func (s *Service) ListRuns(ruleID string, limit int) []Run { return s.store.ListRuns(ruleID, limit) }
+
+func (s *Service) GetRunDetail(id string, status string, limit, offset int) (Run, []Item, int64, error) {
+	run, err := s.store.GetRun(id)
+	if err != nil {
+		return Run{}, nil, 0, err
+	}
+	items, total := s.store.ListItems(id, status, limit, offset)
+	return run, items, total, nil
+}
+
+func (s *Service) GetRunForAdmin(id string) (Run, error) { return s.store.GetRun(id) }
+
+func (s *Service) Lock(runID, actor string) (before, after Run, err error) {
+	s.runLockMu.Lock()
+	defer s.runLockMu.Unlock()
+	before, err = s.store.GetRun(runID)
+	if err != nil {
+		return Run{}, Run{}, err
+	}
+	after, changed, err := PrepareRunLock(before, actor, time.Now().UTC())
+	if err != nil || !changed {
+		return before, after, err
+	}
+	after, err = s.store.SaveRunLock(after)
+	return before, after, err
+}
+
+func (s *Service) Export(runID, status string, limit int, start func(Run) error, each func([]Item) error) error {
+	run, err := s.store.GetRun(runID)
+	if err != nil {
+		return err
+	}
+	if err := start(run); err != nil {
+		return err
+	}
+	for after := ""; ; {
+		items := s.store.ListItemBatch(runID, status, after, status == "", limit)
+		if len(items) == 0 {
+			return nil
+		}
+		if err := each(items); err != nil {
+			return err
+		}
+		after = items[len(items)-1].ID
+	}
+}
+
+func (s *Service) RecalculateForAdmin(ctx context.Context, runID string) (before, after Run, err error) {
+	before, err = s.store.GetRun(runID)
+	if err != nil {
+		return Run{}, Run{}, err
+	}
+	after, err = s.Recalculate(ctx, runID)
+	return before, after, err
 }
 
 func (s *Service) CreateRule(request RuleInput, actor string) (Rule, error) {
