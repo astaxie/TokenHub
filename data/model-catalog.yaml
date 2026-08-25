@@ -2669,6 +2669,104 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
+  - name: "grok-4.5"
+    title: "Grok 4.5"
+    description: "Super Grok subscription model for coding, agents, and knowledge work."
+    category: "grok"
+    family: "grok"
+    modality: "chat"
+    context_window: 500000
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools"]
+    supported_parameters: ["tools", "reasoning", "image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "xai-grok-subscription"
+      provider_model_id: "grok-4.5"
+      provider_model_name: "Grok 4.5"
+      endpoints: "chat/completions,responses"
+      features: "function-calling,reasoning"
+      max_output_tokens: "65536"
+      billing_mode: "subscription"
+      provider_type: "xai_grok"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "grok-4.6"
+    title: "Grok 4.6"
+    description: "Super Grok subscription model for long-running agents and interactive work."
+    category: "grok"
+    family: "grok"
+    modality: "chat"
+    context_window: 500000
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools"]
+    supported_parameters: ["tools", "reasoning", "image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "xai-grok-subscription"
+      provider_model_id: "grok-4.6"
+      provider_model_name: "Grok 4.6"
+      endpoints: "chat/completions,responses"
+      features: "function-calling,reasoning"
+      max_output_tokens: "65536"
+      billing_mode: "subscription"
+      provider_type: "xai_grok"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+  - name: "grok-composer-2.5-fast"
+    title: "Composer 2.5 Fast"
+    description: "Super Grok Composer model for fast coding turns."
+    category: "grok"
+    family: "grok"
+    modality: "chat"
+    context_window: 200000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "tools"]
+    supported_parameters: ["tools"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "xai-grok-subscription"
+      provider_model_id: "grok-composer-2.5-fast"
+      provider_model_name: "Composer 2.5 Fast"
+      endpoints: "chat/completions,responses"
+      features: "function-calling"
+      max_output_tokens: "32768"
+      billing_mode: "subscription"
+      provider_type: "xai_grok"
+      tool_call: "true"
+      vision: "false"
+      reasoning_supported: "false"
+  - name: "grok-build-0.1"
+    title: "Grok Build 0.1"
+    description: "Grok Build coding model available through a Super Grok CLI login."
+    category: "grok"
+    family: "grok"
+    modality: "chat"
+    context_window: 256000
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "tools"]
+    supported_parameters: ["tools", "image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "xai-grok-subscription"
+      provider_model_id: "grok-build-0.1"
+      provider_model_name: "Grok Build 0.1"
+      endpoints: "chat/completions,responses"
+      features: "function-calling"
+      max_output_tokens: "256000"
+      billing_mode: "subscription"
+      provider_type: "xai_grok"
+      tool_call: "true"
+      vision: "true"
+      reasoning_supported: "false"
   - name: "grok-4-1-fast-reasoning"
     category: "grok"
     family: "grok"

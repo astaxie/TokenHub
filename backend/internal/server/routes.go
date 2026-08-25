@@ -104,7 +104,7 @@ func (s *Server) routes() {
 	// operation. Only their method patterns are explicit: the subtree handler
 	// remains the ID-aware fallback for other methods and legacy path shapes.
 	catalogMultiMethodNotAllowed := s.adminMethodNotAllowed("provider", http.MethodGet+", "+http.MethodPost)
-	for _, catalogID := range []string{codexProviderCatalogID, "custom", ProviderKronk} {
+	for _, catalogID := range []string{codexProviderCatalogID, xaiGrokProviderCatalogID, "custom", ProviderKronk} {
 		pattern := "/api/admin/provider-catalog/" + catalogID
 		s.mux.HandleFunc(http.MethodGet+" "+pattern, s.handleAdminProviderCatalogItem)
 		s.mux.HandleFunc(http.MethodPost+" "+pattern, s.handleAdminProviderCatalogItem)
@@ -116,6 +116,8 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/openai/generate-auth-url", s.handleAdminOpenAIAccountOAuthGenerateAuthURL, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/openai/exchange-code", s.handleAdminOpenAIAccountOAuthExchangeCode, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-account-oauth/openai/oauth/callback", s.handleOpenAIAccountOAuthCallbackGet, jsonMethodNotAllowed(http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/xai/start-device", s.handleAdminXAIAccountOAuthStartDevice, s.adminMethodNotAllowed("provider", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/xai/poll", s.handleAdminXAIAccountOAuthPoll, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerMethodRoutes("/api/admin/api-keys", func(allowedMethods string) http.HandlerFunc {
 		return s.adminMethodNotAllowed("api_key", allowedMethods)
 	},

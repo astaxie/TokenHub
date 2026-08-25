@@ -333,7 +333,7 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 }
 
 func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelection) (RouteSelection, error) {
-	if route.Resource == nil || !isOpenAIAccountResource(route.Resource.ResourceType) {
+	if route.Resource == nil || !isOAuthSubscriptionResource(route.Resource.ResourceType) {
 		return route, nil
 	}
 	creds, err := s.store.RefreshProviderResourceCredentials(ctx, routeResourceID(route), false)

@@ -92,6 +92,10 @@ TokenHub 使用与用量统计相同的归属顺序解析用户：先取 API Key
 
 TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照。管理员显式刷新时，系统会下载最新的 `PublicProviderConf` 目录，执行相同的完整性校验，并仅在校验通过后原子替换快照。若上游请求或校验失败，TokenHub 会回退到配置的本地目录；若本地回退也失败，刷新请求会返回错误，并继续使用最后一次有效快照。刷新响应会用 `upstream-provider-catalog` 或 `local-provider-catalog` 标明实际采用的来源。
 
+## Super Grok 订阅
+
+管理员可以把 Super Grok / Grok CLI 账号接入为 `xai_grok` Provider。授权使用 xAI 设备码，而不是 Codex 的 localhost 回调。TokenHub 会把聊天流量发到 `https://cli-chat-proxy.grok.com/v1`，并带上 Grok CLI 身份头。官方 xAI API Key 仍使用 `openai_compatible`。操作流程、支持的端点、限制，以及调用方如何使用独立 Grok CLI home，见 [通过 TokenHub 使用 Super Grok 订阅](super-grok-subscription.md)。
+
 ## Codex OAuth Token 续租
 
 对于已启用且保存了刷新 Token 的 OpenAI Codex Subscription 账号，TokenHub 会在后端启动时检查一次，之后每分钟检查一次。只有访问 Token 将在五分钟内过期时才会续租。数据库凭证租约保证集群部署中同一个账号只会由一个实例续租。在「Provider 渠道 > 高级 > 订阅额度」中，管理员可以点击「续租 Token」手动续租单个账号。手动续租用于故障恢复，不要重复点击：上游可能在续租响应中轮换刷新 Token，TokenHub 会自动保存返回的新值。如果 OpenAI 返回刷新 Token 已失效，TokenHub 会把账号标记为需要重新授权，停止后续定时续租，并向管理员显示重新授权提示。

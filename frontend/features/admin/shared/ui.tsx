@@ -419,4 +419,4 @@ export function ModelRouteProviders({ model, data }: { model: Model; data: AppDa
   );
 }
 
-export const providerTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local", "kronk"];
+export const providerTypeOptions = ["mock", "openai", "openai_codex", "xai_grok", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local", "kronk"];

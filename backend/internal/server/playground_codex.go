@@ -9,7 +9,7 @@ import (
 // playgroundResponsesRequestForRoute converts only Codex route attempts, leaving
 // other providers on their native Chat request path.
 func playgroundResponsesRequestForRoute(route RouteSelection, req ChatCompletionRequest) (ResponsesRequest, bool, error) {
-	if route.Provider.Type != ProviderOpenAICodex {
+	if route.Provider.Type != ProviderOpenAICodex && route.Provider.Type != ProviderXAIGrok {
 		return ResponsesRequest{}, false, nil
 	}
 	converted, err := playgroundChatResponsesRequest(req)

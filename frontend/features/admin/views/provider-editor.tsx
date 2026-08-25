@@ -1,4 +1,4 @@
-import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Ban, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
@@ -21,64 +21,17 @@ import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardSte
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
+import { accountCatalogSummary, accountModelCategoryForCatalog, accountProviderCatalogOptions, accountResourceTypeForCatalog, type CodexSubscriptionTestResult, codexProviderCatalogSummary, fallbackCodexReasoningEfforts, grokProviderCatalogSummary, isAccountCatalogID, isGrokAccountCatalog, type OpenAIAccountQuota, resetAccountVendorCredentials } from "./provider-account-catalog";
+import { ProviderAccountCreateAuth } from "./provider-account-create-auth";
+import { ProviderGrokDeviceOAuthModal, useGrokDeviceOAuth } from "./provider-grok-device-oauth";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
-type OpenAIAccountQuota = {
-  account_id?: string;
-  email?: string;
-  plan_type?: string;
-  rate_limit?: {
-    allowed: boolean;
-    limit_reached: boolean;
-    primary_window?: OpenAIQuotaWindow;
-    secondary_window?: OpenAIQuotaWindow;
-  };
-  additional_rate_limits?: Array<{
-    limit_name: string;
-    metered_feature: string;
-    rate_limit?: {
-      allowed: boolean;
-      limit_reached: boolean;
-      primary_window?: OpenAIQuotaWindow;
-      secondary_window?: OpenAIQuotaWindow;
-    };
-  }>;
-  rate_limit_reset_credits?: { available_count: number };
-  fetched_at: number;
-};
-type CodexSubscriptionTestResult = {
-  resource_id: string;
-  model: string;
-  reasoning_effort: string;
-  speed: "standard" | "fast";
-  upstream_service_tier?: string;
-  output_text: string;
-  latency_ms: number;
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-};
 type ProviderEditTab = "connect" | "models" | "advanced";
 type ProviderAccountConfirmation = {
   action: "enable" | "disable" | "delete";
   resource: ProviderResource;
 };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
-const codexProviderCatalogSummary: ProviderCatalogEntry = {
-  id: "openai-codex",
-  name: "OpenAI Codex",
-  display_name: "OpenAI Codex",
-  type: "openai_codex",
-  base_url: "https://chatgpt.com/backend-api/codex",
-  categories: ["codex"],
-  category_counts: { codex: 0 },
-  models_count: 0,
-  source: "openai-codex-live",
-};
-const accountProviderCatalogOptions = [codexProviderCatalogSummary];
-const fallbackCodexReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
 
 export function ProviderUpsertModal({
   mode,
@@ -116,23 +69,31 @@ export function ProviderUpsertModal({
   const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
     resource.provider_id === provider?.id && resource.resource_type === "openai_subscription",
   );
+  const editingGrokSubscription = mode === "edit" && resources.some((resource) =>
+    resource.provider_id === provider?.id && resource.resource_type === "xai_subscription",
+  );
+  const editingAccountSubscription = editingCodexSubscription || editingGrokSubscription;
   const directCredentialCatalog = useMemo(
-    () => catalog.filter((entry) => entry.id !== codexProviderCatalogSummary.id && entry.type !== "openai_codex"),
+    () => catalog.filter((entry) => !isAccountCatalogID(entry.id) && entry.type !== "openai_codex" && entry.type !== "xai_grok"),
     [catalog],
   );
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
   const availableCategories = useMemo(
-    () => catalogModelCategoryOptions(selectableProviderCatalog).filter((item) => mode !== "create" || item.key !== "codex"),
+    () => catalogModelCategoryOptions(selectableProviderCatalog).filter((item) => mode !== "create" || (item.key !== "codex" && item.key !== "grok")),
     [mode, selectableProviderCatalog],
   );
   const providerCatalogID = provider?.options?.catalog_id;
   const providerModelCategory = provider?.options?.model_category;
-  const initialCategory = editingCodexSubscription
+  const initialCategory = editingGrokSubscription
+    ? "grok"
+    : editingCodexSubscription
     ? "codex"
     : providerModelCategory || (mode === "edit" && provider
       ? "all"
       : availableCategories.find((item) => item.key !== "all")?.key || "custom");
-  const initialEntry = editingCodexSubscription
+  const initialEntry = editingGrokSubscription
+    ? grokProviderCatalogSummary
+    : editingCodexSubscription
     ? codexProviderCatalogSummary
     : mode === "edit"
       ? selectableProviderCatalog.find((entry) => entry.id === (provider?.type === "kronk" ? "kronk" : "custom")) ?? selectableProviderCatalog[0]
@@ -155,9 +116,9 @@ export function ProviderUpsertModal({
   const catalogRefreshRequested = useRef(false);
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
-    name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex" : provider?.name ?? "" : initialEntry?.display_name ?? "",
-    type: mode === "edit" ? editingCodexSubscription ? "openai_codex" : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
-    base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
+    name: mode === "edit" ? editingAccountSubscription ? (editingGrokSubscription ? "Super Grok" : "OpenAI Codex") : provider?.name ?? "" : initialEntry?.display_name ?? "",
+    type: mode === "edit" ? editingGrokSubscription ? "xai_grok" : editingCodexSubscription ? "openai_codex" : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
+    base_url: mode === "edit" ? editingAccountSubscription ? (editingGrokSubscription ? grokProviderCatalogSummary.base_url ?? "" : codexProviderCatalogSummary.base_url ?? "") : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     clear_api_key: "false",
     anthropic_auth_type: provider?.options?.anthropic_auth_type ?? "x-api-key",
@@ -170,12 +131,12 @@ export function ProviderUpsertModal({
     custom_headers: providerHeadersFormValue(provider?.headers, provider?.sensitive_headers),
     ...providerReasoningFormValues(provider?.options),
   }));
-  const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingCodexSubscription ? "account_integration" : "provider_api_key");
+  const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingAccountSubscription ? "account_integration" : "provider_api_key");
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() =>
     providerResourceDraftDefaults({
       provider_id: "",
-      name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex Codex Account" : provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
-      base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
+      name: mode === "edit" ? editingAccountSubscription ? `${editingGrokSubscription ? "Super Grok" : "OpenAI Codex"} Account` : provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
+      base_url: mode === "edit" ? editingAccountSubscription ? (editingGrokSubscription ? grokProviderCatalogSummary.base_url ?? "" : codexProviderCatalogSummary.base_url ?? "") : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     }),
   );
   const [accountOAuthCallback, setAccountOAuthCallback] = useState("");
@@ -185,6 +146,13 @@ export function ProviderUpsertModal({
   const [accountOAuthNoticeError, setAccountOAuthNoticeError] = useState("");
   const [accountOAuthCallbackModalOpen, setAccountOAuthCallbackModalOpen] = useState(false);
   const [accountOAuthCallbackModalError, setAccountOAuthCallbackModalError] = useState("");
+  const grokDeviceOAuth = useGrokDeviceOAuth({
+    api,
+    onAuthorized: (result, message) => applyProviderAccountOAuthResult(result, message),
+    setBusy: setAccountOAuthBusy,
+    setError,
+    setStatus: setAccountOAuthStatus,
+  });
   const [accountQuotaBusyIDs, setAccountQuotaBusyIDs] = useState<Record<string, boolean>>({});
   const [accountQuotaErrors, setAccountQuotaErrors] = useState<Record<string, string>>({});
   const [accountQuotas, setAccountQuotas] = useState<Record<string, OpenAIAccountQuota>>({});
@@ -192,7 +160,7 @@ export function ProviderUpsertModal({
   const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
   const [accountConfirmationError, setAccountConfirmationError] = useState("");
   const [deleteAccountConfirmation, setDeleteAccountConfirmation] = useState("");
-  const [selectedAccountID, setSelectedAccountID] = useState(editingCodexSubscription ? "all" : "");
+  const [selectedAccountID, setSelectedAccountID] = useState(editingAccountSubscription ? "all" : "");
   const [accountCatalogs, setAccountCatalogs] = useState<Record<string, ProviderCatalogEntry>>({});
   const [accountCatalogErrors, setAccountCatalogErrors] = useState<Record<string, string>>({});
   const [accountCatalogLoading, setAccountCatalogLoading] = useState(false);
@@ -219,11 +187,12 @@ export function ProviderUpsertModal({
   );
   const subscriptionResources = useMemo(
     () => resources.filter((resource) =>
-      resource.resource_type === "openai_subscription" && (mode === "create" || resource.provider_id === provider?.id),
+      (resource.resource_type === "openai_subscription" || resource.resource_type === "xai_subscription") && (mode === "create" || resource.provider_id === provider?.id),
     ),
     [mode, provider?.id, resources],
   );
-  const usesCodexCatalog = credentialMode === "account_integration" || editingCodexSubscription;
+  const usesGrokCatalog = catalogID === grokProviderCatalogSummary.id || editingGrokSubscription;
+  const usesCodexCatalog = (catalogID === codexProviderCatalogSummary.id || editingCodexSubscription) && !usesGrokCatalog;
   const selectedAccountResources = useMemo(
     () => selectedAccountID === "all"
       ? subscriptionResources
@@ -238,7 +207,7 @@ export function ProviderUpsertModal({
 
   useEffect(() => {
     if (quickAPIFlow) return;
-    if (credentialMode === "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
+    if (credentialMode === "account_integration" || isAccountCatalogID(catalogID)) return;
     if (catalogID === "custom") return;
     if (categoryCatalog.length === 0) return;
     if (!categoryCatalog.some((entry) => entry.id === catalogID)) {
@@ -478,9 +447,10 @@ export function ProviderUpsertModal({
   useEffect(() => {
     if (mode !== "edit" || editTab !== "advanced") return;
     for (const resource of selectedAccountResources) {
+      if (resource.resource_type !== "openai_subscription") continue;
       if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
     }
-    const timer = window.setInterval(() => { for (const resource of selectedAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => { for (const resource of selectedAccountResources) { if (resource.resource_type === "openai_subscription") void queryAccountQuota(resource, true); } }, 10 * 60 * 1000); return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
   }, [editTab, mode, selectedAccountResources]);
 
@@ -513,8 +483,10 @@ export function ProviderUpsertModal({
     [catalogID, effectiveDetail, modelCategory, quickAPIFlow, standardModels, usesCodexCatalog],
   );
   const listedCatalog = useMemo(
-    () => quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
-    [categoryCatalog, directCredentialCatalog, quickAPIFlow],
+    () => credentialMode === "account_integration"
+      ? accountProviderCatalogOptions
+      : quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
+    [categoryCatalog, credentialMode, directCredentialCatalog, quickAPIFlow],
   );
   const filteredCatalog = useMemo(() => {
     const normalized = catalogQuery.trim().toLowerCase();
@@ -546,8 +518,10 @@ export function ProviderUpsertModal({
   const selectedModelCount = selectedModelIDs.length;
   const selectedEntry = usesCodexCatalog
     ? codexCatalog ?? codexProviderCatalogSummary
+    : usesGrokCatalog
+      ? detail ?? grokProviderCatalogSummary
     : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
-  const showProviderCatalog = mode === "create" && createStep === 1 && credentialMode !== "account_integration";
+  const showProviderCatalog = mode === "create" && createStep === 1;
   const providerBodyClassName = !showProviderCatalog
     ? "provider-modal-body provider-wizard-single"
     : quickAPIConnect ? "provider-modal-body provider-api-quick-layout" : "provider-modal-body";
@@ -598,11 +572,20 @@ export function ProviderUpsertModal({
   }, [mode, credentialMode]);
 
   useEffect(() => {
-    if (mode !== "create" || credentialMode !== "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
+    if (mode !== "create" || credentialMode !== "account_integration" || isAccountCatalogID(catalogID)) return;
     setModelCategory("codex");
     selectCatalog(codexProviderCatalogSummary);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- catalog selection is the corrective action; including it would retrigger the correction.
   }, [credentialMode, mode, catalogID]);
+  useEffect(() => {
+    if (credentialMode !== "account_integration") return;
+    setAccountValues((current) => ({
+      ...current,
+      resource_type: accountResourceTypeForCatalog(catalogID),
+      base_url: accountCatalogSummary(catalogID).base_url || current.base_url,
+    }));
+    setModelCategory(accountModelCategoryForCatalog(catalogID));
+  }, [catalogID, credentialMode]);
 
   function update(key: string, value: string) {
     const previousProviderName = values.name;
@@ -626,7 +609,7 @@ export function ProviderUpsertModal({
         if (current.base_url && current.base_url !== previousBaseURL) return current;
         return {
           ...current,
-          base_url: value || (credentialMode === "account_integration" ? codexProviderCatalogSummary.base_url || "" : "https://api.openai.com/v1"),
+          base_url: value || (credentialMode === "account_integration" ? accountCatalogSummary(catalogID).base_url || "" : "https://api.openai.com/v1"),
         };
       });
     }
@@ -659,7 +642,7 @@ export function ProviderUpsertModal({
     }
     setAccountValues((current) => ({
       ...current,
-      resource_type: "openai_subscription",
+      resource_type: accountResourceTypeForCatalog(catalogID),
       auth_type: "oauth",
       access_token: result.access_token || current.access_token || "",
       refresh_token: result.refresh_token || current.refresh_token || "",
@@ -750,10 +733,18 @@ export function ProviderUpsertModal({
       return;
     }
     setAccountOAuthNoticeError("");
+    if (isGrokAccountCatalog(catalogID)) {
+      void grokDeviceOAuth.start();
+      return;
+    }
     setAccountOAuthNoticeOpen(true);
   }
 
   async function startProviderAccountAuthorization(action: ProviderAccountOAuthAction) {
+    if (isGrokAccountCatalog(catalogID)) {
+      await grokDeviceOAuth.start();
+      return;
+    }
     try {
       setAccountOAuthBusy(true);
       setAccountOAuthNoticeError("");
@@ -853,7 +844,7 @@ export function ProviderUpsertModal({
       selectCatalog(codexProviderCatalogSummary);
       return;
     }
-    if (modelCategory === "codex" || catalogID === codexProviderCatalogSummary.id) {
+    if (modelCategory === "codex" || modelCategory === "grok" || isAccountCatalogID(catalogID)) {
       selectCategory(availableCategories[0]?.key ?? "custom");
     }
   }
@@ -947,6 +938,9 @@ export function ProviderUpsertModal({
 
   function selectCatalog(entry: ProviderCatalogEntry) {
     if (entry.id === catalogID) return;
+    const switchingAccountVendor = credentialMode === "account_integration"
+      && isAccountCatalogID(catalogID)
+      && isAccountCatalogID(entry.id);
     loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     const nextName = entry.display_name || entry.name || values.name;
@@ -968,6 +962,17 @@ export function ProviderUpsertModal({
         : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(nextName, entry.base_url);
+    if (switchingAccountVendor) {
+      clearPendingProviderAccountOAuthSession();
+      grokDeviceOAuth.reset();
+      setAccountOAuthCallback("");
+      setAccountOAuthStatus("");
+      setAccountOAuthNoticeOpen(false);
+      setAccountOAuthCallbackModalOpen(false);
+      setAccountOAuthNoticeError("");
+      setAccountOAuthCallbackModalError("");
+      setAccountValues((current) => resetAccountVendorCredentials(current, entry.id));
+    }
   }
 
   function selectCustomCatalog() {
@@ -1086,7 +1091,7 @@ export function ProviderUpsertModal({
         catalog_id: catalogID,
         model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
-        custom_models: (catalogID === "custom" || catalogID === "kronk" || usesCodexCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
+        custom_models: (catalogID === "custom" || catalogID === "kronk" || usesCodexCatalog || usesGrokCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
@@ -1330,7 +1335,7 @@ export function ProviderUpsertModal({
                         <span><Icon size={18} /></span>
                         <strong>{tx(option.label)}</strong>
                         <em>{tx(option.description)}</em>
-                        {option.key === "account_integration" ? <small>{tx("账号资源池会选择 Codex Subscription 适配器，下一步确认 Codex Backend 地址和账号凭据。")}</small> : null}
+                        {option.key === "account_integration" ? <small>{tx("账号资源池可接入 Codex Subscription 或 Super Grok 订阅，下一步选择默认通道并完成账号授权。")}</small> : null}
                       </button>
                     );
                   })}
@@ -1427,69 +1432,21 @@ export function ProviderUpsertModal({
                   </div>
                 ) : (
                   <div className="provider-account-inline">
-                    <div className="provider-account-inline-head">
-                      <strong>{tx("账号授权")}</strong>
-                      <span>{tx("使用 OpenAI/Codex OAuth 授权账号；TokenHub 会在后端换取并保存账号 Token。")}</span>
-                    </div>
-                    <div className="provider-account-auth-grid">
-                      <label className={`field provider-account-auth-wide provider-account-name-field${accountResourceNameConflict ? " conflict" : ""}`}>
-                        <span>{tx("账号资源名称")}</span>
-                        <input
-                          aria-invalid={accountResourceNameConflict}
-                          aria-describedby={accountResourceNameConflict ? "provider-account-name-conflict" : undefined}
-                          ref={accountNameInputRef}
-                          value={accountValues.name ?? ""}
-                          onChange={(event) => updateAccountValue("name", event.target.value)}
-                          required
-                        />
-                        {accountResourceNameConflict ? (
-                          <div className="provider-account-name-conflict" id="provider-account-name-conflict" role="alert">
-                            <AlertCircle aria-hidden="true" size={18} />
-                            <div>
-                              <strong>{tx("账号资源名称已存在，请立即修改名称")}</strong>
-                              <span>{tx("当前名称已被其他账号资源占用。请先修改为新的唯一名称，再继续授权。")}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <small>{tx("账号资源名称需全局唯一，用于在资源池中区分账号。")}</small>
-                        )}
-                      </label>
-                      <label className="field provider-account-auth-wide">
-                        <span>{tx("OpenAI/Codex 授权")}</span>
-                        <div className="field-action-row">
-                          <input readOnly value={openAIAccountOAuthRedirectURI} />
-                          <button className="secondary-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
-                            <Send size={14} />
-                            {tx(accountOAuthBusy ? "授权中" : "打开授权")}
-                          </button>
-                        </div>
-                        <small>{tx("点击后由后端生成授权地址。OpenAI 固定回调到 localhost:1455；无需该端口实际启动服务。")}</small>
-                      </label>
-                      <label className="field provider-account-auth-wide">
-                        <span>{tx("回调结果")}</span>
-                        <textarea
-                          value={accountOAuthCallback}
-                          onChange={(event) => parseAccountOAuthCallback(event.target.value)}
-                          placeholder="http://localhost:1455/auth/callback?code=...&state=..."
-                        />
-                        <small>{tx("授权完成后，即使 localhost 页面显示无法访问，也请复制地址栏中的完整 callback URL 粘贴到这里。")}</small>
-                      </label>
-                      <div className="provider-account-auth-actions">
-                        <button className="secondary-button" onClick={parseAccountOAuthCallbackNow} type="button">
-                          <Check size={14} />
-                          {tx("解析回填")}
-                        </button>
-                        <button className="secondary-button" onClick={copyProviderAccountCallbackURL} type="button">
-                          <Copy size={14} />
-                          {tx("复制固定回调地址")}
-                        </button>
-                        <div className={accountTokenSummary.ready ? "provider-account-token-status ready" : "provider-account-token-status"}>
-                          {accountTokenSummary.ready ? <Check size={15} /> : <AlertCircle size={15} />}
-                          <span>{tx(accountTokenSummary.ready ? "已回填账号 Token" : "等待授权回填")}</span>
-                          {accountTokenSummary.items.map((item) => <em key={item}>{tx(item)}</em>)}
-                        </div>
-                      </div>
-                    </div>
+                    <ProviderAccountCreateAuth
+                      accountNameInputRef={accountNameInputRef}
+                      accountOAuthBusy={accountOAuthBusy}
+                      accountOAuthCallback={accountOAuthCallback}
+                      accountResourceNameConflict={accountResourceNameConflict}
+                      accountTokenItems={accountTokenSummary.items}
+                      accountTokenReady={accountTokenSummary.ready}
+                      catalogID={catalogID}
+                      name={accountValues.name ?? ""}
+                      onAuthorize={requestProviderAccountAuthorization}
+                      onCallbackChange={parseAccountOAuthCallback}
+                      onCopyCallbackURL={() => { void copyProviderAccountCallbackURL(); }}
+                      onNameChange={(value) => updateAccountValue("name", value)}
+                      onParseCallback={parseAccountOAuthCallbackNow}
+                    />
                     {accountOAuthStatus ? <p className="provider-credential-note">{accountOAuthStatus}</p> : null}
                     <details className="provider-account-runtime">
                       <summary>
@@ -1535,7 +1492,7 @@ export function ProviderUpsertModal({
                 <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} resources={resources} /> : null}
-            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && editingCodexSubscription ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("订阅额度")}</h3>
@@ -1647,7 +1604,7 @@ export function ProviderUpsertModal({
                 </div>
               </section>
             ) : null}
-            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && editingCodexSubscription ? (
               <section className="provider-quota-panel provider-codex-test-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("Codex 真实请求测试")}</h3>
@@ -1954,6 +1911,15 @@ export function ProviderUpsertModal({
         }}
         open={accountOAuthCallbackModalOpen}
         value={accountOAuthCallback}
+      />
+      <ProviderGrokDeviceOAuthModal
+        busy={accountOAuthBusy}
+        device={grokDeviceOAuth.device}
+        error=""
+        onClose={() => grokDeviceOAuth.setOpen(false)}
+        onPoll={() => { void grokDeviceOAuth.poll(); }}
+        open={grokDeviceOAuth.open}
+        status={accountOAuthStatus}
       />
     </div>
   );

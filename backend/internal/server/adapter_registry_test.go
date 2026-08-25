@@ -48,6 +48,11 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityProbe, AdapterCapabilityResponses,
 		AdapterCapabilityResponseStream,
 	},
+	ProviderXAIGrok: {
+		AdapterCapabilityModels, AdapterCapabilityOAuth, AdapterCapabilityProbe,
+		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
+		AdapterCapabilityAffinity,
+	},
 	"deepseek": {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,

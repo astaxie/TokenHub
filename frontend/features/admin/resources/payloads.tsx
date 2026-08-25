@@ -60,8 +60,12 @@ export function providerUpdatePayload(values: Record<string, string>) {
   return payload;
 }
 
+function isOAuthSubscriptionResourceType(resourceType?: string) {
+  return resourceType === "openai_subscription" || resourceType === "xai_subscription";
+}
+
 export function providerResourcePayload(values: Record<string, string>) {
-  const isOpenAIAccount = values.resource_type === "openai_subscription";
+  const isOpenAIAccount = isOAuthSubscriptionResourceType(values.resource_type);
   const credentials = isOpenAIAccount
     ? {
         auth_type: values.auth_type || "oauth",
@@ -101,7 +105,7 @@ export function providerResourcePayload(values: Record<string, string>) {
 
 export function providerResourceUpdatePayload(values: Record<string, string>) {
   const payload = providerResourcePayload(values) as Record<string, unknown>;
-  const isOpenAIAccount = values.resource_type === "openai_subscription";
+  const isOpenAIAccount = isOAuthSubscriptionResourceType(values.resource_type);
   if (isOpenAIAccount && !values.access_token?.trim()) delete payload.api_key;
   if (!isOpenAIAccount && !values.api_key?.trim()) delete payload.api_key;
   if (isOpenAIAccount && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
@@ -111,8 +115,8 @@ export function providerResourceUpdatePayload(values: Record<string, string>) {
 }
 
 export function providerResourceOptions(values: Record<string, string>) {
-  const accountOptions: Record<string, string> = values.resource_type === "openai_subscription" ? {
-    credential_source: "openai_subscription",
+  const accountOptions: Record<string, string> = isOAuthSubscriptionResourceType(values.resource_type) ? {
+    credential_source: values.resource_type,
     auth_type: values.auth_type || "oauth",
     account_email: values.account_email,
     account_id: values.account_id,

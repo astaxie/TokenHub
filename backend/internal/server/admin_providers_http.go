@@ -130,6 +130,27 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}
+	if id == xaiGrokProviderCatalogID {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			jsonMethodNotAllowed(http.MethodGet+", "+http.MethodPost)(w, r)
+			return
+		}
+		entry := xaiGrokProviderCatalog()
+		if r.Method == http.MethodPost {
+			var req ProviderCreateRequest
+			if decodeErr := s.decodeJSONOptional(w, r, &req); decodeErr != nil {
+				writeError(w, r, decodeErr)
+				return
+			}
+			if len(req.CustomModels) > 0 {
+				entry = xaiGrokProviderCatalogFromModels(req.CustomModels)
+			} else if len(req.SelectedModels) > 0 {
+				entry = s.xaiGrokProviderCatalogFromStandardModels(req.SelectedModels)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		return
+	}
 	if id == "custom" && r.Method == http.MethodPost {
 		var req ProviderCreateRequest
 		if err := s.decodeJSON(w, r, &req); err != nil {
@@ -246,6 +267,13 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 			catalog = codexProviderCatalogFromModels(req.CustomModels)
 		} else {
 			catalog = s.codexProviderCatalogFromStandardModels(req.SelectedModels)
+		}
+		catalogSource = catalog.Source
+	} else if catalogID == xaiGrokProviderCatalogID {
+		if len(req.CustomModels) > 0 {
+			catalog = xaiGrokProviderCatalogFromModels(req.CustomModels)
+		} else {
+			catalog = s.xaiGrokProviderCatalogFromStandardModels(req.SelectedModels)
 		}
 		catalogSource = catalog.Source
 	} else if catalogID != "" {

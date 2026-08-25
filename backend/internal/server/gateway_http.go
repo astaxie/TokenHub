@@ -50,7 +50,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	routed, err = compatibleChatRoutes(routed, req)
+	routed, err = compatibleChatRoutes(s, routed, req)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
@@ -210,13 +210,13 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	codexAffinityApplied := affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex)
-	if codexAffinityApplied {
+	if adapterType := subscriptionSessionAdapterType(routed.Routes); affinity != nil && adapterType != "" {
+		affinity.AdapterType = adapterType
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
 		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
 	}
-	if !codexAffinityApplied {
+	if routed.Affinity == nil {
 		affinity, err = s.responsesCacheLocalityAffinity(key.ID, r.Header, req)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)

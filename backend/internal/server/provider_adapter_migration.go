@@ -105,6 +105,12 @@ func ensureProviderResourceAdapterCompatibility(tx *gorm.DB, provider *Provider,
 	if provider == nil {
 		return NewHTTPError(404, "provider_not_found", "Provider not found")
 	}
+	if isXAIAccountResource(resourceType) {
+		if provider.Type == ProviderXAIGrok {
+			return nil
+		}
+		return NewHTTPError(409, "provider_adapter_resource_conflict", "Super Grok accounts must use a Super Grok Provider")
+	}
 	if isOpenAIAccountResource(resourceType) {
 		switch provider.Type {
 		case ProviderOpenAICodex:
@@ -137,6 +143,9 @@ func ensureProviderResourceAdapterCompatibility(tx *gorm.DB, provider *Provider,
 	if provider.Type == ProviderOpenAICodex {
 		return NewHTTPError(409, "provider_adapter_resource_conflict", "Codex Subscription Providers only accept subscription account resources")
 	}
+	if provider.Type == ProviderXAIGrok {
+		return NewHTTPError(409, "provider_adapter_resource_conflict", "Super Grok Providers only accept Super Grok subscription account resources")
+	}
 	return nil
 }
 
@@ -156,9 +165,16 @@ func validateProviderAdapterResources(tx *gorm.DB, providerID string, adapterTyp
 			if !isOpenAIAccountResource(resource.ResourceType) {
 				return NewHTTPError(409, "provider_adapter_resource_conflict", "Codex Subscription Providers only accept subscription account resources")
 			}
+		case ProviderXAIGrok:
+			if !isXAIAccountResource(resource.ResourceType) {
+				return NewHTTPError(409, "provider_adapter_resource_conflict", "Super Grok Providers only accept Super Grok subscription account resources")
+			}
 		case ProviderOpenAI:
 			if isOpenAIAccountResource(resource.ResourceType) {
 				return NewHTTPError(409, "provider_adapter_resource_conflict", "Codex Subscription accounts must use a Codex Provider")
+			}
+			if isXAIAccountResource(resource.ResourceType) {
+				return NewHTTPError(409, "provider_adapter_resource_conflict", "Super Grok accounts must use a Super Grok Provider")
 			}
 		}
 	}

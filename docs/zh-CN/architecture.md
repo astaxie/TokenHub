@@ -21,7 +21,7 @@ flowchart TB
         modelApi["模型 API\n/v1/*"]
         governance["鉴权与治理\nKey、RBAC、配额、并发、IP 白名单"]
         routing["路由编排\n候选路由、策略、权重、回退、会话亲和"]
-        adapters["适配器注册表\n通用 Provider / OpenAI Codex"]
+        adapters["适配器注册表\n通用 Provider / OpenAI Codex / Super Grok"]
         operations["运维与可观测性\n用量、审计、告警、健康检查"]
         store["GORM Store"]
 
@@ -45,6 +45,7 @@ flowchart TB
         anthropic["Anthropic"]
         gemini["Gemini"]
         codex["OpenAI Codex Subscription"]
+        grok["Super Grok Subscription"]
     end
 
     admin --> ingress --> frontend
@@ -55,6 +56,7 @@ flowchart TB
     adapters --> anthropic
     adapters --> gemini
     adapters --> codex
+    adapters --> grok
     store --> sqlite
     store --> postgres
     catalog --> store
@@ -99,7 +101,7 @@ flowchart LR
 | HTTP 服务 | `backend/internal/server/http.go` | 注册 API、执行鉴权、路由调用、写入响应和健康检查 |
 | 路由编排 | `backend/internal/server/http.go` | 为统一模型名选择候选路由，按优先级、资源优先级、策略、权重和亲和性确定尝试顺序 |
 | 适配器注册与探测 | `adapter_registry.go`、`integration_service.go` | 声明各 Provider 的能力，执行 Provider 与资源探测 |
-| Provider 适配层 | `providers.go`、`provider_account_codex.go` | 将统一请求转换为上游协议；管理 Codex 订阅资源的 OAuth、刷新与会话亲和 |
+| Provider 适配层 | `providers.go`、`provider_account_codex.go`、`provider_account_xai.go` | 将统一请求转换为上游协议；管理 Codex 与 Super Grok 订阅资源的 OAuth、刷新与会话亲和 |
 | 持久化层 | `store.go` | GORM 数据访问、配额计数、凭证加密、SQLite 备份、PostgreSQL 租约和集群锁 |
 | 模型目录 | `data/model-catalog.yaml` | 为镜像构建提供标准模型元数据，启动时同步到数据库 |
 
@@ -113,6 +115,7 @@ Provider 类型与主要能力如下：
 | `anthropic` | Chat、流式 Chat、探测 |
 | `gemini` | Chat、流式 Chat、Embeddings、探测 |
 | `openai_codex` | OpenAI Codex Subscription；Responses、Responses 流式、模型发现、额度、OAuth、会话亲和和 Compact |
+| `xai_grok` | Super Grok 订阅；Responses、Responses 流式、静态模型、OAuth 设备码登录和会话亲和 |
 | `mock` | 内置 Mock，供本地验证与测试 |
 
 ## 模型请求链路

@@ -37,29 +37,43 @@ type openAIOrganizationClaim struct {
 }
 
 func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource) {
-	if resource == nil || !isOpenAIAccountResource(resource.ResourceType) {
+	if resource == nil || !isOAuthSubscriptionResource(resource.ResourceType) {
 		return
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = openAICodexBaseURL
+		if isXAIAccountResource(resource.ResourceType) {
+			resource.BaseURL = xaiCLIChatProxyBaseURL
+		} else {
+			resource.BaseURL = openAICodexBaseURL
+		}
 	}
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
 	s.mergeOpenAIAccountCredentials(resource, nil)
+	if isXAIAccountResource(resource.ResourceType) && resource.Options != nil {
+		resource.Options["credential_source"] = ProviderResourceXAISubscription
+	}
 }
 
 func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource, patch ProviderResource) {
-	if resource == nil || !isOpenAIAccountResource(resource.ResourceType) {
+	if resource == nil || !isOAuthSubscriptionResource(resource.ResourceType) {
 		return
 	}
 	if strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = openAICodexBaseURL
+		if isXAIAccountResource(resource.ResourceType) {
+			resource.BaseURL = xaiCLIChatProxyBaseURL
+		} else {
+			resource.BaseURL = openAICodexBaseURL
+		}
 	}
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
 	s.mergeOpenAIAccountCredentials(resource, &patch)
+	if isXAIAccountResource(resource.ResourceType) && resource.Options != nil {
+		resource.Options["credential_source"] = ProviderResourceXAISubscription
+	}
 }
 
 func preserveOpenAIAccountProtectedOptions(current map[string]string, patch ProviderResource) map[string]string {
@@ -259,8 +273,19 @@ func isOpenAIAccountResource(resourceType string) bool {
 		normalized == "openai_account"
 }
 
+func isXAIAccountResource(resourceType string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(resourceType))
+	return normalized == ProviderResourceXAISubscription ||
+		normalized == "xai_oauth" ||
+		normalized == "grok_subscription"
+}
+
+func isOAuthSubscriptionResource(resourceType string) bool {
+	return isOpenAIAccountResource(resourceType) || isXAIAccountResource(resourceType)
+}
+
 func providerResourceCredentialSummary(resource ProviderResource) map[string]string {
-	if !isOpenAIAccountResource(resource.ResourceType) {
+	if !isOAuthSubscriptionResource(resource.ResourceType) {
 		return nil
 	}
 	summary := map[string]string{}
@@ -312,7 +337,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		}
 		creds := s.providerResourceCredentialsForRuntime(resource)
 		authentication := creds
-		if !isOpenAIAccountResource(resource.ResourceType) {
+		if !isOAuthSubscriptionResource(resource.ResourceType) {
 			result = creds
 			s.mu.Unlock()
 			return nil
@@ -320,7 +345,11 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		if resource.Options[openAIAccountReauthorizationRequiredOption] == "true" {
 			result = creds
 			s.mu.Unlock()
-			return NewHTTPError(409, "provider_resource_reauthorization_required", "OpenAI/Codex account session has ended. Reauthorize the account.")
+			message := "OpenAI/Codex account session has ended. Reauthorize the account."
+			if isXAIAccountResource(resource.ResourceType) {
+				message = "Super Grok account session has ended. Reauthorize the account."
+			}
+			return NewHTTPError(409, "provider_resource_reauthorization_required", message)
 		}
 		needsRefresh, expired := providerResourceCredentialsNeedRefresh(creds, openAIAccountOAuthRefreshLead)
 		if !force && !needsRefresh {
@@ -338,7 +367,15 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		}
 		s.mu.Unlock()
 
-		refreshed, err := refreshOpenAIAccountOAuthCredentials(leaseCtx, creds, s.providerUpstreamClient)
+		var (
+			refreshed ProviderResourceCredentials
+			err       error
+		)
+		if isXAIAccountResource(resource.ResourceType) {
+			refreshed, err = refreshXAIAccountOAuthCredentials(leaseCtx, creds, s.providerUpstreamClient)
+		} else {
+			refreshed, err = refreshOpenAIAccountOAuthCredentials(leaseCtx, creds, s.providerUpstreamClient)
+		}
 		if err != nil {
 			if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code == "provider_resource_reauthorization_required" {
 				persistErr := s.withClusterLease(leaseCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {
@@ -348,7 +385,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 					if loadErr := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; loadErr != nil {
 						return loadErr
 					}
-					if !isOpenAIAccountResource(current.ResourceType) ||
+					if !isOAuthSubscriptionResource(current.ResourceType) ||
 						!openAIAccountAuthenticationEqual(s.providerResourceCredentialsForRuntime(current), authentication) {
 						return nil
 					}
@@ -373,7 +410,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			if err := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; err != nil {
 				return notFound(err, "provider_resource_not_found", "Provider resource not found")
 			}
-			if !isOpenAIAccountResource(current.ResourceType) {
+			if !isOAuthSubscriptionResource(current.ResourceType) {
 				result = refreshed
 				return nil
 			}
@@ -389,6 +426,9 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			delete(current.Options, openAIAccountReauthorizationRequiredOption)
 			current.Credentials = &refreshed
 			s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
+			if isXAIAccountResource(current.ResourceType) && current.Options != nil {
+				current.Options["credential_source"] = ProviderResourceXAISubscription
+			}
 			if strings.TrimSpace(current.APIKey) != "" {
 				current.APIKey = s.encryptSecret(current.APIKey)
 			}

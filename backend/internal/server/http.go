@@ -24,6 +24,7 @@ type Server struct {
 	adapterRegistry         *AdapterRegistry
 	integrations            *IntegrationService
 	codexSubscription       *CodexSubscriptionAdapter
+	xaiGrokSubscription     *XAIGrokSubscriptionAdapter
 	providerCatalog         *providerCatalogService
 	billing                 *billing.Service
 	billingAdmin            *admin.BillingHandler
@@ -177,7 +178,16 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
 	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	registry.Register(ProviderKronk, adapters[ProviderKronk], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe)
+	xaiGrokSubscription := &XAIGrokSubscriptionAdapter{
+		Client: &http.Client{
+			Transport:     rotatingProviderUpstreamTransport(allowedProviderUpstreams, syntheticDNSPolicy, providerProxyPolicy, nil),
+			CheckRedirect: strictProviderUpstreamRedirect,
+		},
+		StreamIdleTimeout:  streamIdleTimeout,
+		RefreshCredentials: store.RefreshProviderResourceCredentials,
+	}
 	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate)
+	registry.Register(ProviderXAIGrok, xaiGrokSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityOAuth, AdapterCapabilityAffinity)
 	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
 	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
@@ -189,6 +199,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		adapterRegistry:         registry,
 		integrations:            NewIntegrationService(store, registry, client),
 		codexSubscription:       codexSubscription,
+		xaiGrokSubscription:     xaiGrokSubscription,
 		providerCatalog:         newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient),
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
 		billingAvailable:        billingAvailable,

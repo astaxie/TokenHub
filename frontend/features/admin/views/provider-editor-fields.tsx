@@ -99,7 +99,7 @@ export function providerCredentialOptions(): Array<{ key: ProviderCredentialMode
     {
       key: "account_integration",
       label: "账号资源池",
-      description: "适合 OpenAI 账号、Subscription 或多账号轮询，默认通道会自动推荐。",
+      description: "适合 Codex Subscription、Super Grok 订阅或多账号轮询。",
       icon: UserRoundCheck,
     },
   ];
@@ -134,7 +134,7 @@ export function providerCredentialModeLabel(mode: ProviderCredentialMode) {
 }
 
 export function providerAccountResourceReady(values: Record<string, string>) {
-  if (values.resource_type === "openai_subscription") {
+  if (values.resource_type === "openai_subscription" || values.resource_type === "xai_subscription") {
     return Boolean(values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim());
   }
   return Boolean(values.api_key?.trim());
