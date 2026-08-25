@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 var (
@@ -14,6 +16,7 @@ var (
 	ErrPluginBackgroundJobUnavailable    = errors.New("plugin background job handler is unavailable")
 	ErrPluginBackgroundJobInvalidPayload = errors.New("plugin background job payload is invalid")
 	ErrPluginBackgroundJobInvalidResult  = errors.New("plugin background job result is invalid")
+	ErrPluginBackgroundJobBusy           = errors.New("plugin background job concurrency limit reached")
 )
 
 type BackgroundJobRetryPolicy struct {
@@ -46,6 +49,26 @@ type BackgroundJobInvocation struct {
 type BackgroundJobResult struct {
 	Data     any               `json:"data,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+type BackgroundJobRunStatus string
+
+const (
+	BackgroundJobRunSucceeded BackgroundJobRunStatus = "succeeded"
+	BackgroundJobRunFailed    BackgroundJobRunStatus = "failed"
+	BackgroundJobRunSkipped   BackgroundJobRunStatus = "skipped"
+)
+
+type BackgroundJobRunRecord struct {
+	PluginID    string                 `json:"plugin_id"`
+	JobID       string                 `json:"job_id"`
+	Trigger     string                 `json:"trigger"`
+	Status      BackgroundJobRunStatus `json:"status"`
+	Attempts    int                    `json:"attempts"`
+	StartedAt   time.Time              `json:"started_at"`
+	CompletedAt time.Time              `json:"completed_at"`
+	Error       string                 `json:"error,omitempty"`
+	Result      BackgroundJobResult    `json:"result,omitempty"`
 }
 
 type BackgroundJobHandler interface {
@@ -218,4 +241,308 @@ func validateBackgroundJobResult(schema map[string]any, data any) error {
 		return fmt.Errorf("%w: JSON could not be decoded", ErrPluginBackgroundJobInvalidResult)
 	}
 	return validateActionSchemaValue("$.data", value, schema, ErrPluginBackgroundJobInvalidResult)
+}
+
+type BackgroundJobRunner struct {
+	broker *BackgroundJobBroker
+
+	mu            sync.Mutex
+	running       map[string]int
+	lastRuns      map[string]BackgroundJobRunRecord
+	schedulerMu   sync.Mutex
+	schedulerStop context.CancelFunc
+	schedulerDone chan struct{}
+}
+
+func NewBackgroundJobRunner(broker *BackgroundJobBroker) *BackgroundJobRunner {
+	return &BackgroundJobRunner{
+		broker:   broker,
+		running:  map[string]int{},
+		lastRuns: map[string]BackgroundJobRunRecord{},
+	}
+}
+
+func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
+	if r == nil || r.broker == nil {
+		return BackgroundJobRunRecord{}, fmt.Errorf("plugin background job runner is not configured")
+	}
+	invocation.PluginID = strings.TrimSpace(invocation.PluginID)
+	invocation.JobID = strings.TrimSpace(invocation.JobID)
+	if invocation.Trigger == "" {
+		invocation.Trigger = "manual"
+	}
+	descriptor, ok := r.broker.Describe(invocation.PluginID, invocation.JobID)
+	if !ok {
+		return BackgroundJobRunRecord{}, ErrPluginBackgroundJobNotFound
+	}
+	if !r.tryStart(descriptor) {
+		now := time.Now().UTC()
+		record := BackgroundJobRunRecord{
+			PluginID:    invocation.PluginID,
+			JobID:       invocation.JobID,
+			Trigger:     invocation.Trigger,
+			Status:      BackgroundJobRunSkipped,
+			StartedAt:   now,
+			CompletedAt: now,
+			Error:       ErrPluginBackgroundJobBusy.Error(),
+		}
+		r.recordRun(record)
+		return record, ErrPluginBackgroundJobBusy
+	}
+	defer r.finish(descriptor)
+	record, err := r.executeWithRetry(ctx, descriptor, invocation)
+	r.recordRun(record)
+	if record.Status != BackgroundJobRunSucceeded {
+		return record, err
+	}
+	return record, nil
+}
+
+func (r *BackgroundJobRunner) LastRuns() []BackgroundJobRunRecord {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := make([]BackgroundJobRunRecord, 0, len(r.lastRuns))
+	for _, record := range r.lastRuns {
+		items = append(items, record)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].PluginID != items[j].PluginID {
+			return items[i].PluginID < items[j].PluginID
+		}
+		return items[i].JobID < items[j].JobID
+	})
+	return items
+}
+
+func (r *BackgroundJobRunner) StartScheduler(interval time.Duration) {
+	if r == nil || r.broker == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	r.schedulerMu.Lock()
+	defer r.schedulerMu.Unlock()
+	if r.schedulerStop != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r.schedulerStop = cancel
+	r.schedulerDone = make(chan struct{})
+	go func() {
+		defer close(r.schedulerDone)
+		r.RunDue(ctx, time.Now().UTC(), "startup")
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				r.RunDue(ctx, now.UTC(), "schedule")
+			}
+		}
+	}()
+}
+
+func (r *BackgroundJobRunner) Shutdown(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.schedulerMu.Lock()
+	stop := r.schedulerStop
+	done := r.schedulerDone
+	r.schedulerMu.Unlock()
+	if stop == nil {
+		return nil
+	}
+	stop()
+	select {
+	case <-done:
+		r.schedulerMu.Lock()
+		if r.schedulerDone == done {
+			r.schedulerStop = nil
+			r.schedulerDone = nil
+		}
+		r.schedulerMu.Unlock()
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *BackgroundJobRunner) RunDue(ctx context.Context, now time.Time, trigger string) []BackgroundJobRunRecord {
+	if r == nil || r.broker == nil {
+		return nil
+	}
+	jobs := r.broker.List()
+	records := make([]BackgroundJobRunRecord, 0, len(jobs))
+	for _, job := range jobs {
+		if ctx.Err() != nil {
+			return records
+		}
+		last, ok := r.lastRun(job.PluginID, job.JobID)
+		if !backgroundJobDue(job.Schedule, last, ok, now) {
+			continue
+		}
+		record, _ := r.Run(ctx, BackgroundJobInvocation{
+			PluginID: job.PluginID,
+			JobID:    job.JobID,
+			Trigger:  trigger,
+		})
+		records = append(records, record)
+	}
+	return records
+}
+
+func (r *BackgroundJobRunner) executeWithRetry(ctx context.Context, descriptor BackgroundJobDescriptor, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
+	startedAt := time.Now().UTC()
+	record := BackgroundJobRunRecord{
+		PluginID:  invocation.PluginID,
+		JobID:     invocation.JobID,
+		Trigger:   invocation.Trigger,
+		StartedAt: startedAt,
+	}
+	attempts := descriptor.Retry.MaxAttempts
+	if attempts <= 0 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if ctx.Err() != nil {
+			lastErr = ctx.Err()
+			break
+		}
+		attemptCtx := ctx
+		var cancel context.CancelFunc
+		if descriptor.TimeoutMillis > 0 {
+			attemptCtx, cancel = context.WithTimeout(ctx, time.Duration(descriptor.TimeoutMillis)*time.Millisecond)
+		}
+		result, err := r.broker.Execute(attemptCtx, invocation)
+		if cancel != nil {
+			cancel()
+		}
+		record.Attempts = attempt
+		if err == nil {
+			record.Status = BackgroundJobRunSucceeded
+			record.Result = result
+			record.CompletedAt = time.Now().UTC()
+			return record, nil
+		}
+		lastErr = err
+		if attempt < attempts && descriptor.Retry.BackoffMillis > 0 {
+			select {
+			case <-time.After(time.Duration(descriptor.Retry.BackoffMillis) * time.Millisecond):
+			case <-ctx.Done():
+				lastErr = ctx.Err()
+				attempt = attempts
+			}
+		}
+	}
+	record.Status = BackgroundJobRunFailed
+	record.CompletedAt = time.Now().UTC()
+	if lastErr != nil {
+		record.Error = lastErr.Error()
+	}
+	return record, lastErr
+}
+
+func (r *BackgroundJobRunner) tryStart(descriptor BackgroundJobDescriptor) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := pluginBackgroundJobKey(descriptor.PluginID, descriptor.JobID)
+	limit := descriptor.MaxConcurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	if r.running[key] >= limit {
+		return false
+	}
+	r.running[key]++
+	return true
+}
+
+func (r *BackgroundJobRunner) finish(descriptor BackgroundJobDescriptor) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := pluginBackgroundJobKey(descriptor.PluginID, descriptor.JobID)
+	if r.running[key] <= 1 {
+		delete(r.running, key)
+		return
+	}
+	r.running[key]--
+}
+
+func (r *BackgroundJobRunner) recordRun(record BackgroundJobRunRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lastRuns[pluginBackgroundJobKey(record.PluginID, record.JobID)] = record
+}
+
+func (r *BackgroundJobRunner) lastRun(pluginID string, jobID string) (BackgroundJobRunRecord, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	record, ok := r.lastRuns[pluginBackgroundJobKey(pluginID, jobID)]
+	return record, ok
+}
+
+func backgroundJobDue(schedule string, last BackgroundJobRunRecord, hasLast bool, now time.Time) bool {
+	schedule = strings.TrimSpace(schedule)
+	if schedule == "" {
+		return false
+	}
+	if schedule == "@startup" {
+		return !hasLast
+	}
+	interval, ok := backgroundJobScheduleInterval(schedule)
+	if !ok {
+		return false
+	}
+	if !hasLast {
+		return true
+	}
+	return !last.StartedAt.Add(interval).After(now.UTC())
+}
+
+func backgroundJobScheduleInterval(schedule string) (time.Duration, bool) {
+	if interval, err := time.ParseDuration(schedule); err == nil && interval > 0 {
+		return interval, true
+	}
+	parts := strings.Fields(schedule)
+	if len(parts) != 5 || parts[0] == "" {
+		return 0, false
+	}
+	for _, part := range parts[1:] {
+		if part != "*" {
+			return 0, false
+		}
+	}
+	if !strings.HasPrefix(parts[0], "*/") {
+		return 0, false
+	}
+	minutes, err := parsePositiveInt(parts[0][2:])
+	if err != nil {
+		return 0, false
+	}
+	return time.Duration(minutes) * time.Minute, true
+}
+
+func parsePositiveInt(value string) (int, error) {
+	if value == "" {
+		return 0, fmt.Errorf("empty integer")
+	}
+	var result int
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return 0, fmt.Errorf("invalid integer %q", value)
+		}
+		result = result*10 + int(ch-'0')
+	}
+	if result <= 0 {
+		return 0, fmt.Errorf("integer must be positive")
+	}
+	return result, nil
 }

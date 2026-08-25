@@ -28,6 +28,7 @@ type Server struct {
 	adminUI                 *pluginmeta.AdminUIRegistry
 	pluginActions           *pluginmeta.ActionBroker
 	pluginBackgroundJobs    *pluginmeta.BackgroundJobBroker
+	pluginBackgroundRunner  *pluginmeta.BackgroundJobRunner
 	adapterRegistry         *AdapterRegistry
 	integrations            *IntegrationService
 	codexSubscription       *CodexSubscriptionAdapter
@@ -185,6 +186,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	adminUI := pluginmeta.NewAdminUIRegistry()
 	pluginActions := pluginmeta.NewActionBroker()
 	pluginBackgroundJobs := pluginmeta.NewBackgroundJobBroker()
+	pluginBackgroundRunner := pluginmeta.NewBackgroundJobRunner(pluginBackgroundJobs)
 	registry := NewAdapterRegistryWithPlugins(pluginRegistry)
 	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
 	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
@@ -202,6 +204,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		adminUI:                 adminUI,
 		pluginActions:           pluginActions,
 		pluginBackgroundJobs:    pluginBackgroundJobs,
+		pluginBackgroundRunner:  pluginBackgroundRunner,
 		adapterRegistry:         registry,
 		integrations:            NewIntegrationService(store, registry, client),
 		codexSubscription:       codexSubscription,
@@ -321,7 +324,10 @@ func (s *Server) handleAdminPluginBackgroundJobs(w http.ResponseWriter, r *http.
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.pluginBackgroundJobs.List()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": s.pluginBackgroundJobs.List(),
+		"runs": s.pluginBackgroundRunner.LastRuns(),
+	})
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {

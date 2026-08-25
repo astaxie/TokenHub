@@ -24,6 +24,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const backgroundJobs = data.pluginBackgroundJobs;
+  const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
 
@@ -263,25 +264,30 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                     <th>{tx("调度")}</th>
                     <th>{tx("能力标识")}</th>
                     <th>{tx("最大并发")}</th>
+                    <th>{tx("最近运行")}</th>
                     <th>{tx("重试")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {backgroundJobs.map((job) => (
-                    <tr key={`${job.plugin_id}:${job.job_id}`}>
-                      <td>{job.plugin_id}</td>
-                      <td>
-                        <div className="stacked-cell">
-                          <strong>{job.job_id}</strong>
-                          <span>{job.title || "-"}</span>
-                        </div>
-                      </td>
-                      <td>{job.schedule}</td>
-                      <td>{job.capability || job.subject || "-"}</td>
-                      <td>{job.max_concurrency}</td>
-                      <td>{backgroundJobRetryLabel(job.retry)}</td>
-                    </tr>
-                  ))}
+                  {backgroundJobs.map((job) => {
+                    const run = backgroundRuns.get(pluginBackgroundJobKey(job.plugin_id, job.job_id));
+                    return (
+                      <tr key={`${job.plugin_id}:${job.job_id}`}>
+                        <td>{job.plugin_id}</td>
+                        <td>
+                          <div className="stacked-cell">
+                            <strong>{job.job_id}</strong>
+                            <span>{job.title || "-"}</span>
+                          </div>
+                        </td>
+                        <td>{job.schedule}</td>
+                        <td>{job.capability || job.subject || "-"}</td>
+                        <td>{job.max_concurrency}</td>
+                        <td>{backgroundJobRunLabel(run)}</td>
+                        <td>{backgroundJobRetryLabel(job.retry)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -413,6 +419,22 @@ function pluginActionKindLabel(kind: string) {
 function backgroundJobRetryLabel(retry?: { max_attempts?: number; backoff_millis?: number }) {
   if (!retry?.max_attempts) return "-";
   return retry.backoff_millis ? `${retry.max_attempts} / ${retry.backoff_millis}ms` : String(retry.max_attempts);
+}
+
+function backgroundJobRunLabel(run?: { status: string; attempts: number }) {
+  if (!run) return tx("未运行");
+  return `${backgroundJobStatusLabel(run.status)} / ${run.attempts}`;
+}
+
+function backgroundJobStatusLabel(status: string) {
+  if (status === "succeeded") return tx("成功");
+  if (status === "failed") return tx("失败");
+  if (status === "skipped") return tx("跳过");
+  return status;
+}
+
+function pluginBackgroundJobKey(pluginID: string, jobID: string) {
+  return `${pluginID}:${jobID}`;
 }
 
 type ActionInputField = {

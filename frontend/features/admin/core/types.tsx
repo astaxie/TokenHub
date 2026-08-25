@@ -346,6 +346,18 @@ export type PluginBackgroundJobDescriptor = {
   output_schema?: Record<string, unknown>;
 };
 
+export type PluginBackgroundJobRunRecord = {
+  plugin_id: string;
+  job_id: string;
+  trigger: string;
+  status: "succeeded" | "failed" | "skipped" | string;
+  attempts: number;
+  started_at: string;
+  completed_at: string;
+  error?: string;
+  result?: unknown;
+};
+
 export type ProviderMonitoringSignal = {
   state: "healthy" | "degraded" | "down" | "unknown";
   source: "configuration" | "active_probe" | "gateway_request" | string;
@@ -1237,6 +1249,7 @@ export type AppData = {
   pluginUI: AdminUIContribution[];
   pluginActions: PluginActionDescriptor[];
   pluginBackgroundJobs: PluginBackgroundJobDescriptor[];
+  pluginBackgroundRuns: PluginBackgroundJobRunRecord[];
 	billingConnectors: BillingConnector[];
 	billingRecords: BillingRecord[];
 	billingSyncRuns: BillingSyncRun[];

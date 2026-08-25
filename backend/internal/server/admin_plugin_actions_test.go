@@ -626,6 +626,19 @@ capabilities:
 		t.Fatal(err)
 	}
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin", PluginDir: pluginRoot})
+	if err := server.pluginBackgroundJobs.Register(pluginmeta.BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "*/10 * * * *",
+		MaxConcurrency: 1,
+	}, pluginmeta.BackgroundJobHandlerFunc(func(context.Context, pluginmeta.BackgroundJobInvocation) (pluginmeta.BackgroundJobResult, error) {
+		return pluginmeta.BackgroundJobResult{Data: map[string]bool{"refreshed": true}}, nil
+	})); err != nil {
+		t.Fatalf("bind background job handler: %v", err)
+	}
+	if _, err := server.pluginBackgroundRunner.Run(t.Context(), pluginmeta.BackgroundJobInvocation{PluginID: "tokenhub.jobs", JobID: "quota.refresh", Trigger: "manual"}); err != nil {
+		t.Fatalf("run background job: %v", err)
+	}
 
 	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-background-jobs", nil, "plugin-action-admin")
 	if response.Code != http.StatusOK {
@@ -633,6 +646,9 @@ capabilities:
 	}
 	if !strings.Contains(response.Body, `"plugin_id":"tokenhub.jobs"`) || !strings.Contains(response.Body, `"job_id":"quota.refresh"`) {
 		t.Fatalf("GET plugin background jobs did not include external manifest job: %s", response.Body)
+	}
+	if !strings.Contains(response.Body, `"runs"`) || !strings.Contains(response.Body, `"status":"succeeded"`) {
+		t.Fatalf("GET plugin background jobs did not include last run status: %s", response.Body)
 	}
 }
 

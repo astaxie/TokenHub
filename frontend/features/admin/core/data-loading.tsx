@@ -305,6 +305,7 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     pluginUI: loaded.pluginUI ?? current.pluginUI,
     pluginActions: loaded.pluginActions ?? current.pluginActions,
     pluginBackgroundJobs: loaded.pluginBackgroundJobs ?? current.pluginBackgroundJobs,
+    pluginBackgroundRuns: loaded.pluginBackgroundRuns ?? current.pluginBackgroundRuns,
 		billingConnectors: loaded.billingConnectors ?? current.billingConnectors,
 		billingRecords: loaded.billingRecords ?? current.billingRecords,
 		billingSyncRuns: loaded.billingSyncRuns ?? current.billingSyncRuns,
