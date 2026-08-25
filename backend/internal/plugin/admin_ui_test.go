@@ -16,24 +16,32 @@ func TestParseAdminUIManifestNormalizesContributions(t *testing.T) {
 			{
 				"id": "setup",
 				"slot": "provider.form.section"
+			},
+			{
+				"id": "catalog-card",
+				"slot": "provider.catalog.card",
+				"title": "Codex"
 			}
 		]
 	}`))
 	if err != nil {
 		t.Fatalf("parse admin UI manifest: %v", err)
 	}
-	if len(manifest.Contributions) != 2 {
-		t.Fatalf("contributions = %d, want 2", len(manifest.Contributions))
+	if len(manifest.Contributions) != 3 {
+		t.Fatalf("contributions = %d, want 3", len(manifest.Contributions))
 	}
-	if manifest.Contributions[0].PluginID != "tokenhub.codex" || manifest.Contributions[0].ID != "setup" {
+	if manifest.Contributions[0].PluginID != "tokenhub.codex" || manifest.Contributions[0].ID != "catalog-card" {
 		t.Fatalf("first contribution = %+v", manifest.Contributions[0])
 	}
-	gotProviderTypes := manifest.Contributions[1].ProviderTypes
+	if manifest.Contributions[0].Slot != SlotProviderCatalogCard {
+		t.Fatalf("catalog card slot = %q, want %q", manifest.Contributions[0].Slot, SlotProviderCatalogCard)
+	}
+	gotProviderTypes := manifest.Contributions[2].ProviderTypes
 	if len(gotProviderTypes) != 1 || gotProviderTypes[0] != "openai_codex" {
 		t.Fatalf("provider types = %v, want openai_codex", gotProviderTypes)
 	}
-	if manifest.Contributions[1].Action != "codex.quota.read" {
-		t.Fatalf("action = %q, want trimmed action", manifest.Contributions[1].Action)
+	if manifest.Contributions[2].Action != "codex.quota.read" {
+		t.Fatalf("action = %q, want trimmed action", manifest.Contributions[2].Action)
 	}
 }
 
@@ -98,16 +106,17 @@ func TestAdminUIRegistryListsContributionsDeterministically(t *testing.T) {
 		{PluginID: "tokenhub.b", ID: "settings", Slot: SlotSettingsPanel},
 		{PluginID: "tokenhub.a", ID: "quota", Slot: SlotProviderResourcePanel},
 		{PluginID: "tokenhub.a", ID: "setup", Slot: SlotProviderFormSection},
+		{PluginID: "tokenhub.a", ID: "catalog-card", Slot: SlotProviderCatalogCard},
 	} {
 		if err := registry.Register(contribution); err != nil {
 			t.Fatalf("register contribution %+v: %v", contribution, err)
 		}
 	}
 	contributions := registry.List()
-	if got := contributions[0].ID; got != "setup" {
-		t.Fatalf("first contribution = %q, want setup", got)
+	if got := contributions[0].ID; got != "catalog-card" {
+		t.Fatalf("first contribution = %q, want catalog-card", got)
 	}
-	if got := contributions[2].ID; got != "settings" {
+	if got := contributions[3].ID; got != "settings" {
 		t.Fatalf("last contribution = %q, want settings", got)
 	}
 }
