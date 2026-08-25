@@ -715,6 +715,12 @@ h2 {
   font-size: 12px;
 }
 
+.route-detail-plugin-section {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -12,6 +12,7 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "admin_ui", Name: "dashboard_card", Subject: "plugin_ecosystem"},
+			{Kind: "admin_ui", Name: "route_detail_panel", Subject: "plugin_ecosystem"},
 			{Kind: "admin_ui", Name: "settings_panel", Subject: "plugin_ecosystem"},
 		},
 	})
@@ -27,6 +28,19 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 					map[string]any{"name": "gateway_hooks", "type": "metric", "label": "Gateway hooks", "source": "pluginChain.hooks.length", "format": "number"},
 					map[string]any{"name": "admin_ui_contributions", "type": "metric", "label": "UI contributions", "source": "pluginUI.length", "format": "number"},
 					map[string]any{"name": "plugin_actions", "type": "metric", "label": "Plugin actions", "source": "pluginActions.length", "format": "number"},
+				},
+			},
+		},
+		{
+			PluginID: "tokenhub.admin.plugin-ecosystem",
+			ID:       "route-context",
+			Slot:     pluginmeta.SlotRouteDetailPanel,
+			Title:    "Route Plugin Context",
+			Schema: map[string]any{
+				"fields": []any{
+					map[string]any{"name": "model", "type": "text", "label": "External model", "source": "route.model_name"},
+					map[string]any{"name": "provider_model", "type": "text", "label": "Provider model", "source": "route.provider_model"},
+					map[string]any{"name": "route_status", "type": "text", "label": "Route status", "source": "route.status"},
 				},
 			},
 		},

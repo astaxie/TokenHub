@@ -1,7 +1,7 @@
 import { Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
-import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ModalState, type Model, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
+import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ModalState, type Model, type ModelRoute, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
 import { filterRows } from "../domain/catalog";
 import { readPath, rowID, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
@@ -17,6 +17,7 @@ import { identityProviderInitialFormValues } from "../shared/auth";
 import { CrudView } from "./crud-projects";
 import { IdentityProviderEditModal } from "./modals";
 import { ModelCreateModal } from "./model-create-modal";
+import { AdminUIRouteDetailPanels } from "./admin-ui-route-detail-panels";
 import { AdminUISettingsPanels } from "./admin-ui-settings-panels";
 
 export function SettingsView({
@@ -581,6 +582,9 @@ export function EditModal<T>({
               </button>
               {proxyTestState.message ? <small className={proxyTestState.status === "error" ? "error" : "success"}>{proxyTestState.message}</small> : null}
             </div>
+          ) : null}
+          {state.config.view === "routes" && state.item ? (
+            <AdminUIRouteDetailPanels api={api} data={data} route={state.item as unknown as ModelRoute} />
           ) : null}
         </div>
         <div className="modal-actions">
