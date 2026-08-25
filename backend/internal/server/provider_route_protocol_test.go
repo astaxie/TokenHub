@@ -36,12 +36,33 @@ func TestRouteModelProtocolUsesAdapterDeclaredProtocols(t *testing.T) {
 	if !ok {
 		t.Fatal("provider descriptor was not registered")
 	}
-	if err := server.validateRouteModelProtocol(model.Name, model, providerType, descriptor); err != nil {
+	if err := server.validateRouteModelProtocol(model.Name, model, descriptor); err != nil {
 		t.Fatalf("adapter-declared protocol was rejected: %v", err)
 	}
 
 	model.Metadata["endpoints"] = "responses"
-	if err := server.validateRouteModelProtocol(model.Name, model, providerType, descriptor); AsHTTPError(err).Code != "route_protocol_mismatch" {
+	if err := server.validateRouteModelProtocol(model.Name, model, descriptor); AsHTTPError(err).Code != "route_protocol_mismatch" {
 		t.Fatalf("unexpected incompatible protocol error: %v", err)
+	}
+}
+
+func TestRouteModelProtocolUsesDescriptorPolicy(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "admin"})
+	descriptor := AdapterDescriptor{
+		Type:         "descriptor_native_protocol",
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+		ProviderPolicy: AdapterProviderPolicy{
+			RouteProtocols: []string{"descriptor/messages"},
+		},
+	}
+	model := &Model{Name: "descriptor-model", Metadata: map[string]string{"endpoints": "descriptor/messages"}}
+
+	if err := server.validateRouteModelProtocol(model.Name, model, descriptor); err != nil {
+		t.Fatalf("descriptor-declared protocol was rejected: %v", err)
+	}
+
+	model.Metadata["endpoints"] = "chat/completions"
+	if err := server.validateRouteModelProtocol(model.Name, model, descriptor); AsHTTPError(err).Code != "route_protocol_mismatch" {
+		t.Fatalf("unexpected incompatible descriptor protocol error: %v", err)
 	}
 }

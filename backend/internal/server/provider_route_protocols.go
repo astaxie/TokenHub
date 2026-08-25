@@ -19,6 +19,13 @@ func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[st
 	return protocols
 }
 
+func adapterDescriptorRouteProtocolSet(descriptor AdapterDescriptor) map[string]bool {
+	if len(descriptor.ProviderPolicy.RouteProtocols) > 0 {
+		return routeProtocolSet(descriptor.ProviderPolicy.RouteProtocols)
+	}
+	return routeProviderProtocolsFromCapabilities(descriptor)
+}
+
 func routeProtocolSet(protocols []string) map[string]bool {
 	set := map[string]bool{}
 	for _, protocol := range protocols {

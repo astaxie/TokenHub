@@ -1295,7 +1295,7 @@ func (s *Server) validateRouteAdapterForModel(route ModelRoute, pendingModel *Mo
 	if !ok {
 		return NewHTTPError(http.StatusBadRequest, "provider_adapter_missing", "Route provider adapter is not registered")
 	}
-	if err := s.validateRouteModelProtocol(route.ModelName, pendingModel, provider.Type, descriptor); err != nil {
+	if err := s.validateRouteModelProtocol(route.ModelName, pendingModel, descriptor); err != nil {
 		return err
 	}
 	if strings.TrimSpace(route.ProviderResourceID) == "" {
@@ -1310,7 +1310,7 @@ func (s *Server) validateRouteAdapterForModel(route ModelRoute, pendingModel *Mo
 
 // validateRouteModelProtocol rejects only known catalog mismatches. Models
 // without endpoint metadata remain valid so operators can route custom models.
-func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Model, providerType string, descriptor AdapterDescriptor) error {
+func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Model, descriptor AdapterDescriptor) error {
 	var model Model
 	found := pendingModel != nil && pendingModel.Name == modelName
 	if found {
@@ -1330,20 +1330,13 @@ func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Mode
 	if len(endpoints) == 0 || strings.TrimSpace(model.Metadata["endpoints"]) == "" {
 		return nil
 	}
-	compatible := s.routeProviderProtocols(providerType, descriptor)
+	compatible := adapterDescriptorRouteProtocolSet(descriptor)
 	for _, endpoint := range endpoints {
 		if compatible[strings.ToLower(strings.TrimSpace(endpoint))] {
 			return nil
 		}
 	}
 	return NewHTTPError(http.StatusBadRequest, "route_protocol_mismatch", "Model does not support the selected Provider protocol")
-}
-
-func (s *Server) routeProviderProtocols(providerType string, descriptor AdapterDescriptor) map[string]bool {
-	if protocoler, ok := resolveTypedAdapter[ProviderRouteProtocoler](s.adapterRegistry, providerType); ok {
-		return routeProtocolSet(protocoler.RouteProtocols())
-	}
-	return routeProviderProtocolsFromCapabilities(descriptor)
 }
 
 func (s *Server) validateRoutePolicy(route ModelRoute) error {
