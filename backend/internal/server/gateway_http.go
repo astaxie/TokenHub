@@ -557,6 +557,10 @@ func (s *Server) prepareAdmittedRoutedCall(ctx context.Context, call CallContext
 	if err != nil {
 		return RoutedCall{Call: call}, err
 	}
+	routes, err = s.runGatewayRouteCandidatesHooks(ctx, call, routes)
+	if err != nil {
+		return RoutedCall{Call: call}, err
+	}
 	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, nil
 }
 
@@ -625,6 +629,17 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 	}
 	routes, resolution, err := s.resolveScopedRoutingPolicy(routed.Call, routes)
 	applyRoutingPolicyResolution(&routed.Call, resolution)
+	if err != nil {
+		httpErr := AsHTTPError(err)
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: routed.Call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, requestID),
+		})
+		writeError(w, r, err)
+		return
+	}
+	routes, err = s.runGatewayRouteCandidatesHooks(r.Context(), routed.Call, routes)
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.finishRoutedCall(r, GatewayCallCompletion{

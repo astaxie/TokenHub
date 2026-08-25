@@ -88,7 +88,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			HookID:        "route_candidates",
 			Stage:         pluginmeta.StageRouteCandidates,
 			Priority:      100,
-			Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAuthContext, pluginmeta.DataProjectMetadata, pluginmeta.DataRequestBody},
+			Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAuthContext, pluginmeta.DataProjectMetadata, pluginmeta.DataRequestBody, pluginmeta.DataRouteCandidates},
 			Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
 			FailurePolicy: pluginmeta.FailurePolicyFailClosed,
 			TimeoutMillis: 0,

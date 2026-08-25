@@ -424,6 +424,56 @@ func (s *Server) runGatewayCompactRequestTransformHooks(ctx context.Context, cal
 	return body, err
 }
 
+func (s *Server) runGatewayRouteCandidatesHooks(ctx context.Context, call CallContext, routes []RouteSelection) ([]RouteSelection, error) {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(routes) == 0 || len(s.gatewayChain.Hooks(pluginmeta.StageRouteCandidates)) == 0 {
+		return routes, nil
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:   "v1",
+			Protocol:  "gateway",
+			Operation: "route_candidates",
+			Model:     call.Model.Name,
+		},
+		Data: pluginmeta.GatewayHookData{},
+	}
+	for dataClass, value := range map[pluginmeta.GatewayDataClass]any{
+		pluginmeta.DataAuthContext:     gatewayAuthContextView(call),
+		pluginmeta.DataProjectMetadata: call.Project,
+		pluginmeta.DataAPIKeyMetadata:  gatewayAPIKeyMetadataView(call.Key),
+		pluginmeta.DataRouteCandidates: gatewayRouteCandidateViews(routes),
+	} {
+		if encoded, ok := marshalGatewayHookData(value); ok {
+			input.Data[dataClass] = encoded
+		}
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageRouteCandidates, input)
+	if err != nil {
+		return nil, gatewayHookHTTPError(pluginmeta.StageRouteCandidates, err)
+	}
+	selected := routes
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataRouteCandidates]
+		if !ok {
+			continue
+		}
+		next, err := applyGatewayRouteCandidatesPatch(selected, patch.Value)
+		if err != nil {
+			if result.FailurePolicy == pluginmeta.FailurePolicyFailOpen {
+				log.Printf("[tokenhub] gateway route_candidates hook %s/%s returned invalid candidates for request %s: %v", result.PluginID, result.HookID, call.RequestID, err)
+				continue
+			}
+			return nil, NewHTTPError(http.StatusBadGateway, "gateway_hook_route_candidates_invalid", "Gateway routing plugin returned invalid route candidates")
+		}
+		selected = next
+	}
+	if len(selected) == 0 {
+		return nil, ErrProviderMissing
+	}
+	return selected, nil
+}
+
 func (s *Server) runGatewayRouteRankHooks(ctx context.Context, call CallContext, planned []RouteSelection) []RouteSelection {
 	if s == nil || s.gatewayHooks == nil || len(planned) < 2 {
 		return planned
@@ -693,6 +743,34 @@ func applyGatewayRouteOrderPatch(routes []RouteSelection, data json.RawMessage) 
 		ordered = append(ordered, route)
 	}
 	return ordered, nil
+}
+
+func applyGatewayRouteCandidatesPatch(routes []RouteSelection, data json.RawMessage) ([]RouteSelection, error) {
+	var patch gatewayRouteOrderPatch
+	if err := json.Unmarshal(data, &patch); err != nil {
+		return nil, err
+	}
+	routesByID := make(map[string]RouteSelection, len(routes))
+	for _, route := range routes {
+		if route.Route.ID == "" {
+			return nil, fmt.Errorf("route candidate has no route id")
+		}
+		routesByID[route.Route.ID] = route
+	}
+	selected := make([]RouteSelection, 0, len(patch.RouteIDs))
+	seen := make(map[string]struct{}, len(routes))
+	for _, routeID := range patch.RouteIDs {
+		if _, ok := seen[routeID]; ok {
+			return nil, fmt.Errorf("route id %s is duplicated", routeID)
+		}
+		route, ok := routesByID[routeID]
+		if !ok {
+			return nil, fmt.Errorf("route id %s is not a core-approved candidate", routeID)
+		}
+		seen[routeID] = struct{}{}
+		selected = append(selected, route)
+	}
+	return selected, nil
 }
 
 func attemptsWithAttributedUsage(call CallContext, attempts []RouteAttempt, route RouteSelection, usage Usage) []RouteAttempt {

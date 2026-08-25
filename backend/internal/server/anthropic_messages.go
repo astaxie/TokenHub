@@ -204,6 +204,12 @@ func (s *Server) prepareAnthropicRoutedCall(w http.ResponseWriter, r *http.Reque
 		return RoutedCall{}, false
 	}
 	routes = compatible.Routes
+	routes, err = s.runGatewayRouteCandidatesHooks(r.Context(), call, routes)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return RoutedCall{}, false
+	}
 	affinity, err := s.anthropicGatewayAffinity(key.ID, req.Model, r.Header, req.Raw, routes)
 	if err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)

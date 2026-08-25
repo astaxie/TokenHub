@@ -861,6 +861,122 @@ func TestCacheWriteHookReceivesRequestResponseAndUsage(t *testing.T) {
 	}
 }
 
+func TestRouteCandidatesHookCanFilterCoreApprovedCandidates(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-router",
+		HookID:        "select-b",
+		Stage:         pluginmeta.StageRouteCandidates,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register route candidates hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if _, ok := input.Data[pluginmeta.DataRouteCandidates]; !ok {
+			t.Fatal("route candidates were not available to the hook")
+		}
+		return routeRankPatchResult(t, "route_b"), nil
+	})); err != nil {
+		t.Fatalf("register route candidates handler: %v", err)
+	}
+
+	routes := []RouteSelection{
+		{Route: ModelRoute{ID: "route_a"}, Provider: Provider{ID: "prv_a"}},
+		{Route: ModelRoute{ID: "route_b"}, Provider: Provider{ID: "prv_b"}},
+	}
+	selected, err := server.runGatewayRouteCandidatesHooks(context.Background(), gatewayPluginTestCall(), routes)
+	if err != nil {
+		t.Fatalf("run route candidates hook: %v", err)
+	}
+	if got := routeIDs(selected); len(got) != 1 || got[0] != "route_b" {
+		t.Fatalf("selected route IDs = %v, want [route_b]", got)
+	}
+}
+
+func TestRouteCandidatesHookCannotAddUnapprovedCandidates(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-router",
+		HookID:        "unsafe",
+		Stage:         pluginmeta.StageRouteCandidates,
+		Priority:      2000,
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register route candidates hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return routeRankPatchResult(t, "route_unapproved"), nil
+	})); err != nil {
+		t.Fatalf("register route candidates handler: %v", err)
+	}
+
+	_, err := server.runGatewayRouteCandidatesHooks(context.Background(), gatewayPluginTestCall(), []RouteSelection{
+		{Route: ModelRoute{ID: "route_a"}, Provider: Provider{ID: "prv_a"}},
+	})
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusBadGateway || httpErr.Code != "gateway_hook_route_candidates_invalid" {
+		t.Fatalf("route candidates error = %d/%s, want 502/gateway_hook_route_candidates_invalid", httpErr.Status, httpErr.Code)
+	}
+}
+
+func TestRouteCandidatesHookFiltersGatewayChatCandidatesBeforeRouting(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Route Candidates App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "route-candidates-key",
+		Allowed: []string{"gpt-candidates"},
+		Status:  StatusActive,
+	}, "thk_route_candidates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstProvider := store.AddProvider(Provider{ID: "prv_candidates_a", Name: "Candidates A", Type: "candidate_capture", Status: StatusActive, Healthy: true})
+	secondProvider := store.AddProvider(Provider{ID: "prv_candidates_b", Name: "Candidates B", Type: "candidate_capture", Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-candidates", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_candidates_a", ModelName: "gpt-candidates", ProviderID: firstProvider.ID, ProviderModel: "upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_candidates_b", ModelName: "gpt-candidates", ProviderID: secondProvider.ID, ProviderModel: "upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	server := New(store)
+	adapter := &requestTransformCaptureAdapter{}
+	server.adapterRegistry.Register("candidate_capture", adapter, AdapterCapabilityChat)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-router",
+		HookID:        "select-second",
+		Stage:         pluginmeta.StageRouteCandidates,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register route candidates hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return routeRankPatchResult(t, "route_candidates_b"), nil
+	})); err != nil {
+		t.Fatalf("register route candidates handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-candidates",
+		"messages": []map[string]any{
+			{"role": "user", "content": "original"},
+		},
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if adapter.seenProviderID != "prv_candidates_b" {
+		t.Fatalf("provider ID = %q, want prv_candidates_b", adapter.seenProviderID)
+	}
+}
+
 func TestRouteRankHookCanReorderCoreApprovedCandidates(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{
