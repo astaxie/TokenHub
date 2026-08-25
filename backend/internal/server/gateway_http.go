@@ -81,6 +81,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				writeError(w, r, err)
 				return
 			}
+			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, resp, usage)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
 			s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, resp)
 			w.Header().Set("x-tokenhub-cache", "hit")
 			writeJSON(w, http.StatusOK, resp)
@@ -187,6 +193,13 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req, resp, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
@@ -259,6 +272,12 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		if hit {
 			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, resp, usage)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 				writeError(w, r, err)
@@ -341,6 +360,13 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req, resp, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
@@ -414,6 +440,13 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, err)
 		return
 	}
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, response, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
@@ -454,6 +487,13 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req)
+		writeError(w, r, err)
+		return
+	}
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -518,64 +558,6 @@ func (s *Server) prepareAdmittedRoutedCall(ctx context.Context, call CallContext
 		return RoutedCall{Call: call}, err
 	}
 	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, nil
-}
-
-func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
-	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
-		responsesReq, useResponses, err := playgroundResponsesRequestForRoute(route, req)
-		if err != nil {
-			return nil, Usage{}, err
-		}
-		route, err = s.prepareRouteForUpstream(ctx, route)
-		if err != nil {
-			return nil, Usage{}, err
-		}
-		if useResponses {
-			upstreamReq := responsesReq
-			if omitReasoningEffort {
-				upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
-			}
-			if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
-				return nil, Usage{}, transformErr
-			}
-			resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
-			if isCodexModelUnsupportedError(err) {
-				s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
-			}
-			return resp, usage, err
-		}
-		adapter, err := s.adapterForRoute(route)
-		if err != nil {
-			return nil, Usage{}, err
-		}
-		upstreamReq := req
-		if omitReasoningEffort {
-			upstreamReq.ReasoningEffort = nil
-		}
-		if transformErr := s.runGatewayChatRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
-			return nil, Usage{}, transformErr
-		}
-		return adapter.Chat(ctx, route.Provider, route.ProviderModel, upstreamReq)
-	})
-}
-
-func (s *Server) executeRoutedResponses(r *http.Request, routed RoutedCall, req ResponsesRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return s.executeRoutedResponsesContext(r.Context(), r.Header, routed, req)
-}
-
-func (s *Server) invokeResponsesAdapter(ctx context.Context, route RouteSelection, req ResponsesRequest, incoming http.Header) (any, Usage, error) {
-	adapter, err := s.responsesAdapterForRoute(route)
-	if err != nil {
-		return nil, Usage{}, err
-	}
-	if envelopeAdapter, ok := adapter.(ResponsesEnvelopeAdapter); ok {
-		return envelopeAdapter.ResponsesWithHeaders(ctx, route.Provider, route.ProviderModel, req, incoming)
-	}
-	if responsesAdapter, ok := adapter.(ResponsesInvoker); ok {
-		return responsesAdapter.Responses(ctx, route.Provider, route.ProviderModel, req)
-	}
-	return nil, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support Responses")
 }
 
 func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Request) {

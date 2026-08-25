@@ -477,6 +477,13 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
+		usage, invokeErr = s.runGatewayUsageAttributionHooks(ctx, routed.Call, route, response, usage)
+		if invokeErr != nil {
+			httpErr := AsHTTPError(invokeErr)
+			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 		resultJSON, marshalErr := json.Marshal(response)
 		if marshalErr != nil {
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, http.StatusInternalServerError, "response_result_invalid", "Response result could not be serialized", auditPayload, resultTTL)

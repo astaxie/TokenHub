@@ -151,6 +151,58 @@ func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallConte
 	return output, nil
 }
 
+func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage) (Usage, error) {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageUsageAttribution)) == 0 {
+		return usage, nil
+	}
+	usageBody, ok := marshalGatewayHookData(usage)
+	if !ok {
+		return Usage{}, NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:   "v1",
+			Protocol:  "gateway",
+			Operation: "usage_attribution",
+			Model:     call.Model.Name,
+		},
+		Data: pluginmeta.GatewayHookData{
+			pluginmeta.DataUsage: usageBody,
+		},
+	}
+	for dataClass, value := range map[pluginmeta.GatewayDataClass]any{
+		pluginmeta.DataAuthContext:      gatewayAuthContextView(call),
+		pluginmeta.DataProjectMetadata:  call.Project,
+		pluginmeta.DataAPIKeyMetadata:   gatewayAPIKeyMetadataView(call.Key),
+		pluginmeta.DataProviderResponse: response,
+	} {
+		if encoded, ok := marshalGatewayHookData(value); ok {
+			input.Data[dataClass] = encoded
+		}
+	}
+	if len(route.Route.ID) > 0 || len(route.Provider.ID) > 0 {
+		if routeData, ok := marshalGatewayHookData(gatewayRouteCandidateViews([]RouteSelection{route})); ok {
+			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
+		}
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageUsageAttribution, input)
+	if err != nil {
+		return Usage{}, gatewayHookHTTPError(pluginmeta.StageUsageAttribution, err)
+	}
+	output := usage
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataUsage]
+		if !ok {
+			continue
+		}
+		if err := decodeGatewayHookPayload(patch.Value, &output, "gateway_hook_usage_invalid", "Gateway plugin returned invalid usage"); err != nil {
+			return Usage{}, err
+		}
+	}
+	return output, nil
+}
+
 func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
 	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)) == 0 {
 		return nil
@@ -641,4 +693,24 @@ func applyGatewayRouteOrderPatch(routes []RouteSelection, data json.RawMessage) 
 		ordered = append(ordered, route)
 	}
 	return ordered, nil
+}
+
+func attemptsWithAttributedUsage(call CallContext, attempts []RouteAttempt, route RouteSelection, usage Usage) []RouteAttempt {
+	if len(attempts) == 0 {
+		return attempts
+	}
+	patched := append([]RouteAttempt(nil), attempts...)
+	for index := len(patched) - 1; index >= 0; index-- {
+		attempt := patched[index]
+		if !attempt.Invoked || attempt.Status < 200 || attempt.Status >= 300 {
+			continue
+		}
+		if attempt.Selection.Route.ID != route.Route.ID || attempt.Selection.Provider.ID != route.Provider.ID {
+			continue
+		}
+		attempt.Usage = priceUsageAt(call.Model, usage, call.StartedAt)
+		patched[index] = attempt
+		return patched
+	}
+	return patched
 }

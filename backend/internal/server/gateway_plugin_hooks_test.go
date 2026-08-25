@@ -656,6 +656,101 @@ func TestResponsePostHookRewritesGatewayResponsesResponseBeforeClient(t *testing
 	}
 }
 
+func TestUsageAttributionHookCanRewriteUsage(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-usage",
+		HookID:        "attribute",
+		Stage:         pluginmeta.StageUsageAttribution,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataUsage, pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register usage attribution hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if _, ok := input.Data[pluginmeta.DataProviderResponse]; !ok {
+			t.Fatal("provider response data was not available to the hook")
+		}
+		var usage Usage
+		if err := json.Unmarshal(input.Data[pluginmeta.DataUsage], &usage); err != nil {
+			t.Fatalf("decode usage: %v", err)
+		}
+		if usage.TotalTokens != 3 {
+			t.Fatalf("usage total tokens = %d, want 3", usage.TotalTokens)
+		}
+		return rawUsagePatch(t, Usage{PromptTokens: 7, CompletionTokens: 11, TotalTokens: 18}), nil
+	})); err != nil {
+		t.Fatalf("register usage attribution handler: %v", err)
+	}
+
+	usage, err := server.runGatewayUsageAttributionHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"}, Usage{TotalTokens: 3})
+	if err != nil {
+		t.Fatalf("run usage attribution hook: %v", err)
+	}
+	if usage.PromptTokens != 7 || usage.CompletionTokens != 11 || usage.TotalTokens != 18 {
+		t.Fatalf("usage = %+v, want attributed usage", usage)
+	}
+}
+
+func TestUsageAttributionHookUpdatesGatewayChatBillingAndAttemptUsage(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Usage Attribution App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "usage-attribution-key",
+		Allowed: []string{"gpt-usage"},
+		Status:  StatusActive,
+	}, "thk_usage_attribution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_usage", Name: "Usage Attribution", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-usage", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_usage", ModelName: "gpt-usage", ProviderID: provider.ID, ProviderModel: "upstream-usage", Status: StatusActive, Priority: 1, Weight: 100})
+	server := New(store)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-usage",
+		HookID:        "attribute-chat",
+		Stage:         pluginmeta.StageUsageAttribution,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataUsage, pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register usage attribution hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawUsagePatch(t, Usage{PromptTokens: 13, CompletionTokens: 17, TotalTokens: 30}), nil
+	})); err != nil {
+		t.Fatalf("register usage attribution handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-usage",
+		"messages": []map[string]any{
+			{"role": "user", "content": "short"},
+		},
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].InputTokens != 13 || records[0].OutputTokens != 17 || records[0].TotalTokens != 30 {
+		t.Fatalf("usage records = %+v, want attributed tokens", records)
+	}
+	var attempts []RouteAttemptLog
+	if err := store.db.Find(&attempts).Error; err != nil {
+		t.Fatalf("list route attempts: %v", err)
+	}
+	if len(attempts) != 1 || attempts[0].InputTokens != 13 || attempts[0].OutputTokens != 17 || attempts[0].TotalTokens != 30 {
+		t.Fatalf("route attempts = %+v, want attributed tokens", attempts)
+	}
+}
+
 func TestCacheLookupHookCanShortCircuitWithProviderResponse(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{
@@ -866,6 +961,20 @@ func rawProviderResponsePatch(t *testing.T, value any) pluginmeta.GatewayHookRes
 		Decision: pluginmeta.HookDecisionContinue,
 		Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
 			pluginmeta.DataProviderResponse: {Value: data},
+		},
+	}
+}
+
+func rawUsagePatch(t *testing.T, value Usage) pluginmeta.GatewayHookResult {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pluginmeta.GatewayHookResult{
+		Decision: pluginmeta.HookDecisionContinue,
+		Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+			pluginmeta.DataUsage: {Value: data},
 		},
 	}
 }
