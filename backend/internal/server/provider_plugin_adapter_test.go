@@ -351,6 +351,107 @@ esac
 	}
 }
 
+func TestExternalProviderPluginAdapterExecutesResponsesStreamCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"responses", "responses_stream"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"responses_stream"'*'"provider_model":"upstream-responses"'*'"stream":true'*'"api_key":"provider-secret"'*)
+    cat <<'JSON'
+{"events":[{"event":"response.output_text.delta","data":{"type":"response.output_text.delta","delta":"from plugin responses stream"}},{"event":"response.completed","data":{"type":"response.completed","response":{"id":"resp_plugin_stream","status":"completed","output":[],"usage":{"input_tokens":4,"output_tokens":5,"total_tokens":9}}}}]}
+JSON
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginmeta.NewRegistry(), pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+	descriptor, ok := registry.Describe("custom_stdio")
+	if !ok || !adapterSupports(descriptor, AdapterCapabilityResponseStream) {
+		t.Fatalf("adapter descriptor = %+v, want responses_stream", descriptor)
+	}
+	adapter, ok := resolveTypedAdapter[ResponsesStreamOpener](registry, "custom_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ResponsesStreamOpener")
+	}
+
+	opened, err := adapter.OpenResponses(context.Background(), Provider{Type: "custom_stdio", APIKey: "provider-secret"}, "upstream-responses", ResponsesRequest{Model: "gateway-responses"}, nil)
+	if err != nil {
+		t.Fatalf("open responses stream through provider plugin: %v", err)
+	}
+	defer opened.Body.Close()
+	if opened.StatusCode != http.StatusOK || !strings.Contains(opened.Header.Get("content-type"), "text/event-stream") {
+		t.Fatalf("opened response = status %d headers %+v", opened.StatusCode, opened.Header)
+	}
+	response, output, usage, err := consumeCodexResponsesStream(opened.Body, nil)
+	if err != nil {
+		t.Fatalf("consume plugin responses stream: %v", err)
+	}
+	if response["id"] != "resp_plugin_stream" || output != "from plugin responses stream" || usage.TotalTokens != 9 {
+		t.Fatalf("response=%+v output=%q usage=%+v", response, output, usage)
+	}
+}
+
+func TestExternalProviderPluginAdapterServesGatewayResponsesStream(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"responses", "responses_stream"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+cat >/dev/null
+cat <<'JSON'
+{"events":[{"event":"response.output_text.delta","data":{"type":"response.output_text.delta","delta":"gateway plugin responses stream"}},{"event":"response.completed","data":{"type":"response.completed","response":{"id":"resp_gateway_plugin_stream","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":6,"total_tokens":8}}}}]}
+JSON
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Provider Plugin Responses Stream Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Provider Plugin Responses Stream Key", Allowed: []string{"plugin-responses-stream"}, Status: StatusActive}, "thk_provider_plugin_responses_stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-responses-stream", Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{ID: "prv_plugin_responses_stream", Name: "Provider Plugin Responses Stream", Type: "custom_stdio", APIKey: "provider-secret", Status: StatusActive, Healthy: true})
+	store.AddRoute(ModelRoute{
+		ModelName:     "plugin-responses-stream",
+		ProviderID:    provider.ID,
+		ProviderModel: "plugin-upstream-responses-stream",
+		Priority:      1,
+		Weight:        100,
+		Status:        StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-admin", PluginDir: root})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
+		"model":  "plugin-responses-stream",
+		"stream": true,
+		"input":  "hello",
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("gateway responses stream through provider plugin: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "event: response.output_text.delta") || !strings.Contains(response.Body, "gateway plugin responses stream") || !strings.Contains(response.Body, `"id":"resp_gateway_plugin_stream"`) {
+		t.Fatalf("gateway responses stream did not come from provider plugin: %s", response.Body)
+	}
+}
+
 func TestExternalProviderPluginAdapterExecutesModelsAndProbe(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")

@@ -22,6 +22,7 @@ type providerPluginAdapter struct {
 	routeProtocols          []string
 	supportsProviderHeaders bool
 	supportsChatStream      bool
+	supportsResponsesStream bool
 }
 
 type providerPluginRequest struct {
@@ -70,6 +71,7 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 		routeProtocols:          providerPluginRouteProtocols(pkg.Manifest),
 		supportsProviderHeaders: providerPluginSupportsCustomHeaders(pkg.Manifest),
 		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
+		supportsResponsesStream: providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityResponseStream),
 	}
 }
 
@@ -139,6 +141,40 @@ func (a providerPluginAdapter) Responses(ctx context.Context, provider Provider,
 		return nil, Usage{}, err
 	}
 	return result.Response, result.Usage, nil
+}
+
+func (a providerPluginAdapter) OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, _ http.Header) (*http.Response, error) {
+	if !a.supportsResponsesStream {
+		return nil, providerPluginCapabilityUnsupported("streaming Responses")
+	}
+	req.Stream = true
+	var result providerPluginStreamResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:     "responses_stream",
+		Provider:      provider,
+		ProviderModel: providerModel,
+		Request:       req,
+		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+	}, &result); err != nil {
+		return nil, err
+	}
+	var body bytes.Buffer
+	for _, event := range result.Events {
+		rendered, err := renderProviderPluginStreamEvent(event)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := body.Write(rendered); err != nil {
+			return nil, err
+		}
+	}
+	header := make(http.Header)
+	header.Set("content-type", "text/event-stream")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     header,
+		Body:       io.NopCloser(bytes.NewReader(body.Bytes())),
+	}, nil
 }
 
 func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -246,7 +282,7 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe:
+		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe:
 			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}
@@ -267,7 +303,7 @@ func providerPluginDefaultRouteProtocols(capabilities []string) []string {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
 		case AdapterCapabilityChat, AdapterCapabilityChatStream:
 			protocols = append(protocols, "chat/completions")
-		case AdapterCapabilityResponses:
+		case AdapterCapabilityResponses, AdapterCapabilityResponseStream:
 			protocols = append(protocols, "responses")
 		case AdapterCapabilityEmbeddings:
 			protocols = append(protocols, "embeddings")
