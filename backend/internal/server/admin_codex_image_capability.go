@@ -28,6 +28,27 @@ type codexImageCapabilityResult struct {
 	RouteID    string `json:"route_id,omitempty"`
 }
 
+func (a CodexSubscriptionAdapter) ProviderOperationKey(provider Provider, operation ProviderAdminOperation) (string, bool) {
+	if operation != ProviderAdminOperationDeleteProvider {
+		return "", false
+	}
+	return codexImageCapabilityClusterKey(provider.ID), true
+}
+
+func (a CodexSubscriptionAdapter) ProviderResourceOperationKey(provider Provider, resource ProviderResource, operation ProviderAdminOperation) (string, bool) {
+	if operation != ProviderAdminOperationUpdateResource && operation != ProviderAdminOperationDeleteResource {
+		return "", false
+	}
+	if resource.ResourceType != ProviderResourceOpenAISubscription {
+		return "", false
+	}
+	return codexImageCapabilityClusterKey(firstNonEmpty(resource.ProviderID, provider.ID)), true
+}
+
+func codexImageCapabilityClusterKey(providerID string) string {
+	return "codex-image-capability:" + strings.TrimSpace(providerID)
+}
+
 func (s *Server) handleAdminCodexImageCapability(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	var req codexImageCapabilityRequest
 	if err := s.decodeJSON(w, r, &req); err != nil {
@@ -67,7 +88,7 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		return codexImageCapabilityResult{}, err
 	}
 	result := codexImageCapabilityResult{Enabled: enabled, ResourceID: resource.ID}
-	err = s.store.RunClusterOperation(ctx, "codex-image-capability:"+provider.ID, func(leaseCtx context.Context) error {
+	err = s.store.RunClusterOperation(ctx, codexImageCapabilityClusterKey(provider.ID), func(leaseCtx context.Context) error {
 		current, currentProvider, currentErr := s.codexImageResource(resourceID, enabled)
 		if currentErr != nil {
 			return currentErr
@@ -283,7 +304,7 @@ func backfillCodexImageRoutes(store Store) {
 			!providerHasSupportedCodexImageResource(resources, provider.ID) || codexImageRouteBackfillDone(resources, provider.ID) {
 			continue
 		}
-		err := store.RunClusterOperation(context.Background(), "codex-image-capability:"+provider.ID, func(context.Context) error {
+		err := store.RunClusterOperation(context.Background(), codexImageCapabilityClusterKey(provider.ID), func(context.Context) error {
 			currentResources := store.ListProviderResources()
 			if !providerHasSupportedCodexImageResource(currentResources, provider.ID) || codexImageRouteBackfillDone(currentResources, provider.ID) {
 				return nil

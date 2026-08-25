@@ -162,15 +162,11 @@ func (s *Server) serveAdminProviderResourcePatch(w http.ResponseWriter, r *http.
 		resource, updateErr = s.store.UpdateProviderResource(resourceID, req)
 		return updateErr
 	}
-	var err error
-	if current.ResourceType == ProviderResourceOpenAISubscription {
-		err = s.store.RunClusterOperation(r.Context(), "codex-image-capability:"+current.ProviderID, func(context.Context) error {
-			return updateResource()
-		})
-	} else {
-		err = updateResource()
+	lifecycleProvider := provider
+	if currentProvider, ok := s.store.GetProvider(current.ProviderID); ok {
+		lifecycleProvider = currentProvider
 	}
-	if err != nil {
+	if err := s.runProviderResourceAdminOperation(r.Context(), lifecycleProvider, current, ProviderAdminOperationUpdateResource, updateResource); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -185,15 +181,12 @@ func (s *Server) serveAdminProviderResourceDelete(w http.ResponseWriter, r *http
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found"))
 		return
 	}
-	var err error
-	if resource.ResourceType == ProviderResourceOpenAISubscription {
-		err = s.store.RunClusterOperation(r.Context(), "codex-image-capability:"+resource.ProviderID, func(context.Context) error {
-			return deleteResource()
-		})
-	} else {
-		err = deleteResource()
-	}
-	if err != nil {
+	if provider, ok := s.store.GetProvider(resource.ProviderID); ok {
+		if err := s.runProviderResourceAdminOperation(r.Context(), provider, resource, ProviderAdminOperationDeleteResource, deleteResource); err != nil {
+			writeError(w, r, err)
+			return
+		}
+	} else if err := deleteResource(); err != nil {
 		writeError(w, r, err)
 		return
 	}

@@ -702,16 +702,9 @@ func (s *Server) serveAdminProviderDelete(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
 		return
 	}
-	deleteProvider := func() error { return s.store.DeleteProvider(providerID) }
-	var err error
-	if provider.Type == ProviderOpenAICodex {
-		err = s.store.RunClusterOperation(r.Context(), "codex-image-capability:"+providerID, func(context.Context) error {
-			return deleteProvider()
-		})
-	} else {
-		err = deleteProvider()
-	}
-	if err != nil {
+	if err := s.runProviderAdminOperation(r.Context(), provider, ProviderAdminOperationDeleteProvider, func() error {
+		return s.store.DeleteProvider(providerID)
+	}); err != nil {
 		writeError(w, r, err)
 		return
 	}

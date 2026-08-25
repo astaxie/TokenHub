@@ -46,6 +46,19 @@ type ProviderResourceModelCataloger interface {
 	ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error)
 }
 
+type ProviderAdminOperation string
+
+const (
+	ProviderAdminOperationDeleteProvider ProviderAdminOperation = "provider.delete"
+	ProviderAdminOperationUpdateResource ProviderAdminOperation = "provider_resource.update"
+	ProviderAdminOperationDeleteResource ProviderAdminOperation = "provider_resource.delete"
+)
+
+type ProviderAdminLifecycle interface {
+	ProviderOperationKey(provider Provider, operation ProviderAdminOperation) (string, bool)
+	ProviderResourceOperationKey(provider Provider, resource ProviderResource, operation ProviderAdminOperation) (string, bool)
+}
+
 type ResponsesCompactAdapter interface {
 	CompactWithHeaders(ctx context.Context, provider Provider, providerModel string, body map[string]json.RawMessage, incoming http.Header) (any, Usage, error)
 }
