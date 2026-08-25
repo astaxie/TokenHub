@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const (
@@ -87,6 +88,35 @@ type KronkHealthResult struct {
 	Ready       bool `json:"ready"`
 	ModelReady  bool `json:"model_ready"`
 	ModelsCount int  `json:"models_count"`
+}
+
+func (a KronkAdapter) DefaultProbeRequest() ProviderProbeRequest {
+	return ProviderProbeRequest{Model: ProviderKronk, Prompt: "health"}
+}
+
+func (a KronkAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error) {
+	startedAt := time.Now()
+	effective := effectiveProviderResourceConfig(provider, &resource)
+	result, err := a.Health(ctx, effective)
+	if err != nil {
+		return ProviderProbeResult{}, err
+	}
+	return ProviderProbeResult{
+		ResourceID: resource.ID,
+		Model:      firstNonEmpty(strings.TrimSpace(request.Model), ProviderKronk),
+		OutputText: "Kronk service is live, ready, and has available local models.",
+		LatencyMS:  time.Since(startedAt).Milliseconds(),
+		Response: map[string]any{
+			"live":         result.Live,
+			"ready":        result.Ready,
+			"model_ready":  result.ModelReady,
+			"models_count": result.ModelsCount,
+		},
+	}, nil
+}
+
+func (a KronkAdapter) ProbeProvider(ctx context.Context, provider Provider) (any, error) {
+	return a.Health(ctx, provider)
 }
 
 func (a KronkAdapter) Health(ctx context.Context, provider Provider) (KronkHealthResult, error) {

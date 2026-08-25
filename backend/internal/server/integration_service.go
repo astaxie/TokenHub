@@ -44,23 +44,6 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 		return nil, err
 	}
 	descriptor, described := s.registry.Describe(provider.Type)
-	if provider.Type == ProviderKronk {
-		kronk, ok := adapter.(KronkAdapter)
-		if !ok {
-			return nil, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable")
-		}
-		effective := effectiveProviderResourceConfig(provider, &resource)
-		startedAt := time.Now()
-		result, healthErr := kronk.Health(ctx, effective)
-		s.finishProbe(ctx, provider, resource, startedAt, healthErr, Usage{})
-		if healthErr != nil {
-			return nil, healthErr
-		}
-		if _, recoverErr := s.store.RecoverProviderResource(resource.ID); recoverErr != nil {
-			return nil, recoverErr
-		}
-		return result, nil
-	}
 	prober, supported := adapter.(ProviderResourceProber)
 	supported = supported && described && adapterSupports(descriptor, AdapterCapabilityProbe)
 	if !supported {
@@ -108,15 +91,11 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		return nil, err
 	}
 	descriptor, described := s.registry.Describe(provider.Type)
-	if provider.Type == ProviderKronk {
-		kronk, ok := adapter.(KronkAdapter)
-		if !ok {
-			return nil, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable")
-		}
-		result, healthErr := kronk.Health(ctx, effectiveProviderResourceConfig(provider, nil))
-		_, _ = s.store.SetProviderHealth(providerID, healthErr == nil)
-		if healthErr != nil {
-			return nil, healthErr
+	if healthProber, supported := adapter.(ProviderHealthProber); supported && described && adapterSupports(descriptor, AdapterCapabilityProbe) {
+		result, probeErr := healthProber.ProbeProvider(ctx, effectiveProviderResourceConfig(provider, nil))
+		_, _ = s.store.SetProviderHealth(providerID, probeErr == nil)
+		if probeErr != nil {
+			return nil, probeErr
 		}
 		return result, nil
 	}

@@ -38,6 +38,10 @@ type ProviderResourceProber interface {
 	Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error)
 }
 
+type ProviderHealthProber interface {
+	ProbeProvider(ctx context.Context, provider Provider) (any, error)
+}
+
 type ProviderResourceModelCataloger interface {
 	ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error)
 }
