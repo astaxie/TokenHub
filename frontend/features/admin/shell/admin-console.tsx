@@ -912,7 +912,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onManageKeys={() => selectView("api-keys")}
             />
           ) : activeView === "usage" ? (
-            <UsageView data={data} user={currentUser} />
+            <UsageView api={api} data={data} user={currentUser} />
           ) : activeView === "billing" ? (
             <BillingView api={api} data={data} user={currentUser} loading={loading} onReload={() => load("billing")} />
           ) : activeView === "audit" ? (

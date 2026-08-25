@@ -118,6 +118,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.timeseries = true;
       plan.users = can("users") || appRole(user.role) === "team_leader";
       if (appRole(user.role) !== "user") {
+        plan.pluginUI = true;
+        plan.pluginActions = true;
         addResourceDependency(plan, "teams");
         addResourceDependency(plan, "cost-centers");
       }

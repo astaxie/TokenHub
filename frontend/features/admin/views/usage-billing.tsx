@@ -7,9 +7,10 @@ import { compactNumber, formatMoney, formatNumber } from "../domain/formatting";
 import { countWithUnit, displayText, formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
+import { AdminUIReportTemplates } from "./admin-ui-report-templates";
 import { ReconciliationManager } from "./billing-reconciliation";
 
-export function UsageView({ data, user }: { data: AppData; user: AdminUser }) {
+export function UsageView({ api, data, user }: { api: ApiContext; data: AppData; user: AdminUser }) {
   const modelBreakdown = data.breakdown.models ?? [];
   const showMemberBreakdown = appRole(user.role) === "team_leader";
   const showExecutiveReport = appRole(user.role) !== "user";
@@ -17,6 +18,7 @@ export function UsageView({ data, user }: { data: AppData; user: AdminUser }) {
     <>
       <DailyUsageSection data={data} user={user} />
       {showExecutiveReport ? <ExecutiveUsageReport data={data} /> : <PersonalUsageSummary data={data} />}
+      {showExecutiveReport ? <AdminUIReportTemplates api={api} data={data} /> : null}
       <div className="two-column">
         <DataSection title="模型用量">
           <SimpleTable
