@@ -10,6 +10,7 @@ import (
 	"tokenhub/backend/internal/billing"
 	billingpersistence "tokenhub/backend/internal/billing/persistence"
 	"tokenhub/backend/internal/guardrails"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 
 	"gorm.io/gorm"
 )
@@ -111,7 +112,6 @@ type ProviderObservation struct {
 }
 
 type Store interface {
-	ReconciliationStore
 	CreateProject(project Project) Project
 	CreateProjectChecked(project Project) (Project, error)
 	ListProjects() []Project
@@ -306,24 +306,14 @@ type GormStore struct {
 	// instanceHeartbeatID identifies the row this instance published while it
 	// still held the schema migration lock; StartInstanceHeartbeat refreshes
 	// that row instead of creating a second one.
-	instanceHeartbeatID  string
-	inFlightLeaseTTL     time.Duration
-	clusterLockTTL       time.Duration
-	imageCapabilityRetry time.Duration
-	billingRedis         *redisBillingCoordinator
-	billingRepository    billing.Repository
-	billingPersistence   *billingpersistence.Store
-}
-
-// BillingRepositoryForComposition is deliberately outside Store. Only the
-// composition root may obtain the full billing repository; domain consumers
-// receive narrower ports below.
-func (s *GormStore) BillingRepositoryForComposition() billing.Repository {
-	return s.billingRepository
-}
-
-func (s *GormStore) BillingReaderForComposition() ReconciliationBillingReader {
-	return s.billingPersistence
+	instanceHeartbeatID       string
+	inFlightLeaseTTL          time.Duration
+	clusterLockTTL            time.Duration
+	imageCapabilityRetry      time.Duration
+	billingRedis              *redisBillingCoordinator
+	billingRepository         billing.Repository
+	billingPersistence        *billingpersistence.Store
+	reconciliationPersistence *reconciliationpersistence.Store
 }
 
 type leaseHeartbeat struct {

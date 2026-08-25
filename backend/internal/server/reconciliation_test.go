@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"tokenhub/backend/internal/billing/persistence"
+	"tokenhub/backend/internal/reconciliation"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 )
 
 func TestReconciliationRunClassifiesLocksAndExportsSafely(t *testing.T) {
@@ -276,8 +278,9 @@ func TestDetailReconciliationMapsDimensionsAndMatchesPeriodBoundariesOneToOne(t 
 func TestScheduledReconciliationRespectsBillingDelay(t *testing.T) {
 	store := NewMemoryStore()
 	connector := createReconciliationTestConnector(t, store, "bcon_reconciliation_scheduled")
-	service := newReconciliationService(store, store.BillingReaderForComposition())
-	rule, err := service.CreateRule(ReconciliationRuleRequest{
+	dependencies := ApplicationDependenciesForStore(store)
+	service := reconciliation.NewService(dependencies.ReconciliationStore, reconciliationpersistence.NewBillingReader(dependencies.ReconciliationReader))
+	rule, err := service.CreateRule(reconciliation.RuleInput{
 		Name: "Scheduled daily reconciliation", ConnectorID: connector.ID, Granularity: ReconciliationGranularityDay,
 		MatchDimensions: []string{"model", "currency"}, BillingDelayMinutes: 120, ScheduleIntervalMinutes: 30, Timezone: "Asia/Shanghai",
 	}, "admin-scheduler")
@@ -299,14 +302,29 @@ func TestScheduledReconciliationRespectsBillingDelay(t *testing.T) {
 	if repeated := service.RunDue(t.Context(), now); len(repeated) != 0 {
 		t.Fatalf("scheduled rule ran twice before its next interval: %#v", repeated)
 	}
-	var scheduledAudit bool
+	var scheduledAudit AuditEvent
 	for _, event := range store.ListAuditEvents() {
 		if event.ResourceType == "billing_reconciliation" && event.ActorUserID == "system" {
-			scheduledAudit = true
+			scheduledAudit = event
 		}
 	}
-	if !scheduledAudit {
+	if scheduledAudit.ID == "" {
 		t.Fatal("scheduled reconciliation was not audited")
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal([]byte(scheduledAudit.AfterSnapshot), &snapshot); err != nil {
+		t.Fatalf("scheduled reconciliation audit snapshot is invalid JSON: %v", err)
+	}
+	for _, key := range []string{"connector_id", "connector_type", "provider_scope_configured", "trigger", "rule_version", "rule_hash", "input_hash", "period_start", "period_end", "matched_count", "started_at"} {
+		if _, ok := snapshot[key]; !ok {
+			t.Fatalf("scheduled reconciliation audit snapshot lost %q: %#v", key, snapshot)
+		}
+	}
+	if snapshot["connector_type"] != BillingConnectorOneAPI || snapshot["provider_scope_configured"] != true || snapshot["trigger"] != "scheduled" {
+		t.Fatalf("scheduled reconciliation audit snapshot changed: %#v", snapshot)
+	}
+	if _, ok := snapshot["provider_resource_id"]; ok || strings.Contains(scheduledAudit.AfterSnapshot, "internal details") {
+		t.Fatalf("scheduled reconciliation audit snapshot exposed sensitive fields: %s", scheduledAudit.AfterSnapshot)
 	}
 }
 

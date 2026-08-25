@@ -501,6 +501,16 @@ func (s *fakeStore) BackfillRuleConnectorSnapshot(rule reconciliation.Rule) (rec
 	return rule, nil
 }
 
+func (s *fakeStore) ListRules() []reconciliation.Rule {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	values := make([]reconciliation.Rule, 0, len(s.rules))
+	for _, rule := range s.rules {
+		values = append(values, rule)
+	}
+	return values
+}
+
 func (s *fakeStore) ListDueRules(time.Time, int) []reconciliation.Rule {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -547,6 +557,61 @@ func (s *fakeStore) GetRun(id string) (reconciliation.Run, error) {
 	if !ok {
 		return reconciliation.Run{}, reconciliation.NewError(reconciliation.ErrorNotFound, "reconciliation_run_not_found", "Reconciliation run not found")
 	}
+	return run, nil
+}
+
+func (s *fakeStore) ListRuns(ruleID string, limit int) []reconciliation.Run {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	values := make([]reconciliation.Run, 0, len(s.runs))
+	for _, run := range s.runs {
+		if ruleID == "" || run.RuleID == ruleID {
+			values = append(values, run)
+		}
+	}
+	return values
+}
+
+func (s *fakeStore) ListItems(runID, status string, limit, offset int) ([]reconciliation.Item, int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	values := make([]reconciliation.Item, 0, len(s.items))
+	for _, item := range s.items {
+		if item.RunID == runID && (status == "" || item.Status == status) {
+			values = append(values, item)
+		}
+	}
+	total := int64(len(values))
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(values) {
+		return nil, total
+	}
+	if limit > 0 && offset+limit < len(values) {
+		values = values[offset : offset+limit]
+	} else {
+		values = values[offset:]
+	}
+	return values, total
+}
+
+func (s *fakeStore) ListItemBatch(runID, status, afterID string, excludeMatched bool, limit int) []reconciliation.Item {
+	items, _ := s.ListItems(runID, status, limit, 0)
+	values := make([]reconciliation.Item, 0, len(items))
+	for _, item := range items {
+		if item.ID <= afterID || (excludeMatched && item.Status == reconciliation.Matched) {
+			continue
+		}
+		values = append(values, item)
+	}
+	return values
+}
+
+func (s *fakeStore) SaveRunLock(run reconciliation.Run) (reconciliation.Run, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.runs[run.ID] = run
 	return run, nil
 }
 

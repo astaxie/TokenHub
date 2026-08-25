@@ -204,9 +204,12 @@ type BillingRecord struct {
 	ExternalRequestID  string
 }
 
-// Store is the persistence port used only by reconciliation execution.
+// Store is the persistence port consumed by reconciliation application
+// services. It includes both execution and administrative projections so the
+// HTTP adapter never coordinates persistence operations itself.
 type Store interface {
 	CreateRule(Rule) (Rule, error)
+	ListRules() []Rule
 	GetRule(string) (Rule, error)
 	UpdateRule(Rule) (Rule, error)
 	BackfillRuleConnectorSnapshot(Rule) (Rule, error)
@@ -214,7 +217,11 @@ type Store interface {
 	ListUsages(time.Time, time.Time, time.Duration) ([]Usage, error)
 	SaveRun(Run, []Item) (Run, error)
 	ReplaceRun(Run, []Item) (Run, error)
+	ListRuns(string, int) []Run
 	GetRun(string) (Run, error)
+	ListItems(string, string, int, int) ([]Item, int64)
+	ListItemBatch(string, string, string, bool, int) []Item
+	SaveRunLock(Run) (Run, error)
 	RecordScheduledAudit(Run)
 }
 
@@ -231,6 +238,7 @@ const (
 	ErrorInvalidInput ErrorKind = "invalid_input"
 	ErrorConflict     ErrorKind = "conflict"
 	ErrorNotFound     ErrorKind = "not_found"
+	ErrorUnavailable  ErrorKind = "unavailable"
 )
 
 type Error struct {
