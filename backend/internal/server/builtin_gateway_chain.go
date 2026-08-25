@@ -76,7 +76,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Priority:      100,
 			Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates, pluginmeta.DataAPIKeyMetadata},
 			Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
-			FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+			FailurePolicy: pluginmeta.FailurePolicyFailOpen,
 			TimeoutMillis: 0,
 			Mandatory:     true,
 		},

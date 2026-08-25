@@ -78,13 +78,20 @@ func TestGatewayChainRegistryRejectsStageDataClassViolations(t *testing.T) {
 func TestGatewayChainRegistryRejectsStageFailurePolicyViolations(t *testing.T) {
 	registry := NewGatewayChainRegistry()
 
-	err := registry.RegisterHook(GatewayHookDescriptor{
+	if err := registry.RegisterHook(GatewayHookDescriptor{
 		PluginID:      "tokenhub.exporter",
 		HookID:        "trace",
 		Stage:         StageTraceExport,
 		FailurePolicy: FailurePolicyFailClosed,
-	})
-	if err == nil {
+	}); err == nil {
 		t.Fatal("trace_export hook was allowed to fail closed")
+	}
+	if err := registry.RegisterHook(GatewayHookDescriptor{
+		PluginID:      "tokenhub.router",
+		HookID:        "rank",
+		Stage:         StageRouteRank,
+		FailurePolicy: FailurePolicyFailClosed,
+	}); err == nil {
+		t.Fatal("route_rank hook was allowed to fail closed")
 	}
 }

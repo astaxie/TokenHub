@@ -72,13 +72,14 @@ type GatewayHookRunReport struct {
 }
 
 type GatewayHookRunResult struct {
-	PluginID      string                   `json:"plugin_id"`
-	HookID        string                   `json:"hook_id"`
-	Decision      GatewayHookDecision      `json:"decision"`
-	FailurePolicy GatewayHookFailurePolicy `json:"failure_policy"`
-	Status        GatewayHookRunStatus     `json:"status"`
-	Error         string                   `json:"error,omitempty"`
-	DurationMS    int64                    `json:"duration_ms"`
+	PluginID      string                        `json:"plugin_id"`
+	HookID        string                        `json:"hook_id"`
+	Decision      GatewayHookDecision           `json:"decision"`
+	Writes        map[GatewayDataClass]RawPatch `json:"writes,omitempty"`
+	FailurePolicy GatewayHookFailurePolicy      `json:"failure_policy"`
+	Status        GatewayHookRunStatus          `json:"status"`
+	Error         string                        `json:"error,omitempty"`
+	DurationMS    int64                         `json:"duration_ms"`
 }
 
 type GatewayHookRunStatus string
@@ -177,6 +178,7 @@ func (r *GatewayHookRunner) runHook(ctx context.Context, hook GatewayHookDescrip
 	}
 	run.Status = HookRunSucceeded
 	run.Decision = result.Decision
+	run.Writes = result.Writes
 	run.DurationMS = elapsedMillis(startedAt)
 	return run, nil
 }

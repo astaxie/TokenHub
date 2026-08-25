@@ -250,7 +250,7 @@ func GatewayStagePolicy(stage GatewayHookStage) (GatewayHookStagePolicy, bool) {
 	case StageRouteRank:
 		return GatewayHookStagePolicy{
 			DefaultFailurePolicy: FailurePolicyFailOpen,
-			AllowedFailurePolicy: []GatewayHookFailurePolicy{FailurePolicyFailOpen, FailurePolicyFailClosed},
+			AllowedFailurePolicy: []GatewayHookFailurePolicy{FailurePolicyFailOpen, FailurePolicyObserveOnly},
 			Reads:                []GatewayDataClass{DataAuthContext, DataProjectMetadata, DataAPIKeyMetadata, DataNormalizedText, DataRouteCandidates, DataUsage},
 			Writes:               []GatewayDataClass{DataRouteCandidates, DataAudit},
 		}, true

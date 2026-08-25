@@ -942,7 +942,7 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 		}
 		ordered = ordered[end:]
 	}
-	return planned
+	return s.runGatewayRouteRankHooks(context.Background(), call, planned)
 }
 
 type rendezvousRouteRanking struct {
