@@ -1640,7 +1640,7 @@ export function ProviderUpsertModal({
                             {tx(accountQuotaBusyIDs[resource.id] ? "正在自动查询该真实账号的套餐与额度信息。" : "暂未获取到该账号的套餐与额度信息，可点击查询重试。")}
                           </p>
                         )}
-                        <ProviderAccountQuotaReset api={api} quotaBusy={Boolean(accountQuotaBusyIDs[resource.id])} resource={resource} onRefreshQuota={() => queryAccountQuota(resource, true)} />
+                        <ProviderAccountQuotaReset api={api} pluginActions={pluginActions} providerType={values.type} quotaBusy={Boolean(accountQuotaBusyIDs[resource.id])} resource={resource} onRefreshQuota={() => queryAccountQuota(resource, true)} />
                         {accountQuotaErrors[resource.id] ? <p className="provider-quota-error">{accountQuotaErrors[resource.id]}</p> : null}
                       </article>
                     );

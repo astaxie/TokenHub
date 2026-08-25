@@ -1,8 +1,9 @@
 import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ApiContext, ProviderResource } from "../core/types";
+import type { ApiContext, PluginActionDescriptor, ProviderResource } from "../core/types";
 import { activeLanguage, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
+import { providerPluginActionForCapability, providerPluginActionPath, runProviderResourcePluginAction, unwrapPluginActionData } from "../resources/provider-model-config";
 import { providerResourceAccountLabel, QuotaMetric } from "./provider-account-ui";
 
 type CodexResetCredit = {
@@ -41,11 +42,15 @@ class ResetRequestError extends Error {
 
 export function ProviderAccountQuotaReset({
   api,
+  pluginActions,
+  providerType,
   quotaBusy,
   resource,
   onRefreshQuota,
 }: {
   api: ApiContext;
+  pluginActions: PluginActionDescriptor[];
+  providerType: string;
   quotaBusy: boolean;
   resource: ProviderResource;
   onRefreshQuota: () => Promise<boolean>;
@@ -60,16 +65,16 @@ export function ProviderAccountQuotaReset({
   const [resetNotice, setResetNotice] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const quotaWasBusy = useRef(quotaBusy);
-  const resourcePath = `/api/admin/provider-resources/${encodeURIComponent(resource.id)}/quota`;
+  const resetCreditsAction = useMemo(() => providerPluginActionForCapability(pluginActions, providerType, "quota.reset_credits.read"), [pluginActions, providerType]);
+  const resetAction = useMemo(() => providerPluginActionForCapability(pluginActions, providerType, "quota.reset"), [pluginActions, providerType]);
 
   const loadResetCredits = useCallback(async () => {
+    if (!resetCreditsAction) return false;
     setDetailsBusy(true);
     setDetailsError("");
     setDetails(null);
     try {
-      const resp = await adminFetch(api, `${resourcePath}/reset-credits`);
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询 Codex 重置次数")));
-      const next = (await resp.json()) as CodexResetCredits;
+      const next = await runProviderResourcePluginAction<CodexResetCredits>(api, resource, resetCreditsAction, {}, tx("查询 Codex 重置次数"));
       setDetails(next);
       setSelectedCreditID((current) => resetCreditIsUsable(next.credits, current, Date.now()) ? current : "");
       if (validPendingOperation(next.pending_operation)) {
@@ -92,7 +97,7 @@ export function ProviderAccountQuotaReset({
     } finally {
       setDetailsBusy(false);
     }
-  }, [api, resource.id, resourcePath]);
+  }, [api, resetCreditsAction, resource]);
 
   useEffect(() => {
     void loadResetCredits();
@@ -145,7 +150,7 @@ export function ProviderAccountQuotaReset({
   }
 
   async function confirmReset() {
-    if (!confirmation || resetBusy) return;
+    if (!confirmation || resetBusy || !resetAction) return;
     const operation = { ...confirmation, attempted: true };
     if (!storeResetConfirmation(resource.id, operation)) {
       setResetError(tx("无法保存本次重置的安全状态，请检查浏览器存储权限后重试。"));
@@ -155,21 +160,20 @@ export function ProviderAccountQuotaReset({
     setResetBusy(true);
     setResetError("");
     try {
-      const resp = await adminFetch(api, `${resourcePath}/reset`, {
+      const resp = await adminFetch(api, providerPluginActionPath(resetAction), {
         method: "POST",
-        headers: {
-          "idempotency-key": operation.idempotencyKey,
-          "x-tokenhub-dangerous-operation": "codex-quota-reset",
-        },
         body: JSON.stringify({
+          provider_id: resource.provider_id,
+          resource_id: resource.id,
           confirm: true,
           idempotency_key: operation.idempotencyKey,
           expected_available_count: operation.availableCount,
           credit_id: operation.creditID,
+          danger_confirmation: "codex-quota-reset",
         }),
       });
       if (!resp.ok) throw await readResetError(resp);
-      const result = await resp.json().catch(() => ({})) as { code?: string; windows_reset?: number };
+      const result = unwrapPluginActionData<{ code?: string; windows_reset?: number }>(await resp.json().catch(() => ({})));
       if (result.code !== "reset" && result.code !== "already_redeemed") {
         throw new Error(tx("重置请求返回未知结果。请保留当前弹窗并直接重试。"));
       }
@@ -200,6 +204,8 @@ export function ProviderAccountQuotaReset({
       setResetBusy(false);
     }
   }
+
+  if (!resetCreditsAction || !resetAction) return null;
 
   return (
     <div className="provider-quota-details">

@@ -186,7 +186,7 @@ export function unwrapPluginActionData<T>(payload: unknown): T {
   return payload as T;
 }
 
-function providerPluginActionPath(action: PluginActionDescriptor) {
+export function providerPluginActionPath(action: PluginActionDescriptor) {
   return `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`;
 }
 
