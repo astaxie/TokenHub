@@ -5,6 +5,7 @@ import { type AdminUser, type AppData, type AppRole, type RequestLog, type Summa
 import { findProvider, providerResourceAuditLabel } from "../domain/entities";
 import { compactNumber, formatDashboardMoney, formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
+import { AdminUIDashboardCards } from "./admin-ui-dashboard-cards";
 import { hasUsage } from "./usage-billing";
 
 export function OverviewView({
@@ -119,6 +120,8 @@ export function OverviewView({
           );
         })}
       </section>
+
+      <AdminUIDashboardCards data={data} />
 
       <section className="overview-report-grid">
         <article className="overview-panel overview-trend-panel">
