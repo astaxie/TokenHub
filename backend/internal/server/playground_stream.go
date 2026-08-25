@@ -507,7 +507,7 @@ func (s *Server) executeRoutedPlaygroundStream(
 				if omitReasoningEffort {
 					upstreamReq.ReasoningEffort = nil
 				}
-				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundChat(ctx, prepared, upstreamReq, events, routed.Call.RequestID)
+				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundChat(ctx, prepared, upstreamReq, r.Header, routed.Call, events, routed.Call.RequestID)
 			}
 			lastResult = attemptResult
 			return attemptResult, attemptUsage, attemptErr
@@ -523,6 +523,8 @@ func (s *Server) streamPlaygroundChat(
 	ctx context.Context,
 	route RouteSelection,
 	req ChatCompletionRequest,
+	headers http.Header,
+	call CallContext,
 	events *playgroundEventStream,
 	requestID string,
 ) (playgroundStreamResult, Usage, error) {
@@ -544,7 +546,7 @@ func (s *Server) streamPlaygroundChat(
 		return result, usage, classifyStreamError(ctx, invokeErr, result.Text != "")
 	}
 	sink := newPlaygroundDeltaSink(events, requestID)
-	usage, streamErr := adapter.ChatStream(ctx, route.Provider, route.ProviderModel, req, sink)
+	usage, streamErr := s.streamChatRouteWithGatewayTransforms(ctx, call, route, req, headers, sink)
 	if finishErr := sink.finish(); streamErr == nil {
 		streamErr = finishErr
 	}
