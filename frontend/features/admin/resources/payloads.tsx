@@ -767,6 +767,12 @@ function localizedAdminErrorCode(code?: string) {
       return tx("上游模型目录请求过于频繁，请稍后重试。");
     case "provider_models_upstream_error":
       return tx("上游模型目录加载失败，请检查 Provider 连接配置后重试。");
+    case "provider_models_request_failed":
+      return tx("无法连接上游模型目录，请检查 Provider 地址和网络配置后重试。");
+    case "provider_models_invalid_response":
+      return tx("上游模型目录返回了无法识别的数据，请检查 Provider 兼容性。");
+    case "provider_models_empty":
+      return tx("上游模型目录未返回任何模型，请检查 Provider 配置或稍后重试。");
     case "provider_synthetic_dns_cidrs_required":
       return tx("开启时至少填写一个 Synthetic DNS CIDR。");
     case "provider_synthetic_dns_cidrs_invalid":
