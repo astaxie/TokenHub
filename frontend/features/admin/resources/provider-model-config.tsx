@@ -1,4 +1,4 @@
-import { type ProviderAccountOAuthGenerateResponse } from "../core/session";
+import { type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult } from "../core/session";
 import { type AdminUser, type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
 import { codexLunaProbeDefaults, codexProviderType, codexSubscriptionBaseURL, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
@@ -234,6 +234,22 @@ export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: 
   });
   if (!resp.ok) throw new Error(await readAdminError(resp, tx("生成账号授权地址")));
   return (await resp.json()) as ProviderAccountOAuthGenerateResponse;
+}
+
+export async function exchangeProviderAccountOAuthCode(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, payload: { session_id: string; state: string; code: string }) {
+  const exchangeAction = providerPluginActionForCapability(actions, providerType, "oauth.exchange");
+  if (exchangeAction) {
+    return runProviderPluginAction<ProviderAccountOAuthResult>(ctx, exchangeAction, {
+      ...payload,
+      redirect_uri: openAIAccountOAuthRedirectURI,
+    }, tx("账号授权换取 Token"));
+  }
+  const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/exchange-code", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(await readAdminError(resp, tx("账号授权换取 Token")));
+  return (await resp.json()) as ProviderAccountOAuthResult;
 }
 
 export function providerResourceCredentialRefreshAction(data: AppData, item: ProviderResource): PluginActionDescriptor | undefined {

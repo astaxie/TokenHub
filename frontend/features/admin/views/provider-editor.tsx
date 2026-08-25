@@ -12,7 +12,7 @@ import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpst
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
-import { assertProviderAccountResourceReady, defaultProviderResourceName, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceDraftDefaults, runProviderResourcePluginAction } from "../resources/provider-model-config";
+import { assertProviderAccountResourceReady, defaultProviderResourceName, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceDraftDefaults, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
@@ -706,16 +706,11 @@ export function ProviderUpsertModal({
     setAccountOAuthBusy(true);
     setAccountOAuthStatus(tx("正在换取账号 Token..."));
     try {
-      const resp = await adminFetch(api, "/api/admin/provider-account-oauth/openai/exchange-code", {
-        method: "POST",
-        body: JSON.stringify({
-          session_id: sessionID,
-          state,
-          code: result.authorization_code,
-        }),
+      const tokenInfo = await exchangeProviderAccountOAuthCode(api, pluginActions, values.type, {
+        session_id: sessionID,
+        state,
+        code: result.authorization_code,
       });
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("账号授权换取 Token")));
-      const tokenInfo = (await resp.json()) as ProviderAccountOAuthResult;
       clearPendingProviderAccountOAuthSession();
       await applyProviderAccountOAuthResult(tokenInfo, message);
     } catch (err) {
