@@ -11,7 +11,7 @@ import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpst
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
-import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerResourceDraftDefaults } from "../resources/provider-model-config";
+import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceDraftDefaults, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
@@ -795,9 +795,9 @@ export function ProviderUpsertModal({
     setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: true }));
     setAccountQuotaErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
     try {
-      const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/quota${force ? "?refresh=true" : ""}`);
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询订阅额度")));
-      const quota = (await resp.json()) as OpenAIAccountQuota;
+      const action = providerPluginActionForCapability(pluginActions, values.type, "quota.read");
+      if (!action) throw new Error(tx("该插件动作尚未注册。"));
+      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: force }, tx("查询订阅额度"));
       setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
       return true;
     } catch (err) {

@@ -6,7 +6,7 @@ import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
-import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
+import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload, testProviderAvailability } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
 
 export function providerConfig(): ResourceConfig<Provider> {
@@ -151,11 +151,16 @@ export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext
 }
 
 export async function runProviderResourceCredentialRefreshPluginAction(ctx: ApiContext, item: ProviderResource, action: PluginActionDescriptor) {
-  await adminMutate(ctx, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, "POST", {
-    provider_id: item.provider_id,
-    resource_id: item.id,
-    force: true,
+  await adminMutate(ctx, providerPluginActionPath(action), "POST", providerResourcePluginPayload(item, { force: true }));
+}
+
+export async function runProviderResourcePluginAction<T>(ctx: ApiContext, item: ProviderResource, action: PluginActionDescriptor, payload: Record<string, unknown>, fallbackLabel: string): Promise<T> {
+  const resp = await adminFetch(ctx, providerPluginActionPath(action), {
+    method: "POST",
+    body: JSON.stringify(providerResourcePluginPayload(item, payload)),
   });
+  if (!resp.ok) throw new Error(await readAdminError(resp, fallbackLabel));
+  return unwrapPluginActionData<T>(await resp.json());
 }
 
 export function providerResourceCredentialRefreshAction(data: AppData, item: ProviderResource): PluginActionDescriptor | undefined {
@@ -174,6 +179,19 @@ export function providerPluginActionForCapability(actions: PluginActionDescripto
     action.capability === capability &&
     (!action.subject || action.subject === providerType),
   );
+}
+
+export function unwrapPluginActionData<T>(payload: unknown): T {
+  if (payload && typeof payload === "object" && "data" in payload) return (payload as { data: T }).data;
+  return payload as T;
+}
+
+function providerPluginActionPath(action: PluginActionDescriptor) {
+  return `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`;
+}
+
+function providerResourcePluginPayload(item: ProviderResource, payload: Record<string, unknown>) {
+  return { provider_id: item.provider_id, resource_id: item.id, ...payload };
 }
 
 export function providerCreateAccountResourceFields() {
