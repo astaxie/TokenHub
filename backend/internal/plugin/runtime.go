@@ -27,7 +27,7 @@ func (r Runtime) LoadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 	if len(adminUIRegistries) > 0 {
 		adminUI = adminUIRegistries[0]
 	}
-	return r.loadInto(plugins, chain, adminUI, nil, nil)
+	return r.loadInto(plugins, chain, adminUI, nil, nil, nil)
 }
 
 func (r Runtime) LoadIntoWithActions(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker, hookRunners ...*GatewayHookRunner) ([]Package, error) {
@@ -35,10 +35,18 @@ func (r Runtime) LoadIntoWithActions(plugins *Registry, chain *GatewayChainRegis
 	if len(hookRunners) > 0 {
 		hookRunner = hookRunners[0]
 	}
-	return r.loadInto(plugins, chain, adminUI, actions, hookRunner)
+	return r.loadInto(plugins, chain, adminUI, actions, nil, hookRunner)
 }
 
-func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker, hookRunner *GatewayHookRunner) ([]Package, error) {
+func (r Runtime) LoadIntoWithActionsAndBackground(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker, backgroundJobs *BackgroundJobBroker, hookRunners ...*GatewayHookRunner) ([]Package, error) {
+	var hookRunner *GatewayHookRunner
+	if len(hookRunners) > 0 {
+		hookRunner = hookRunners[0]
+	}
+	return r.loadInto(plugins, chain, adminUI, actions, backgroundJobs, hookRunner)
+}
+
+func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker, backgroundJobs *BackgroundJobBroker, hookRunner *GatewayHookRunner) ([]Package, error) {
 	packages, err := r.Discover()
 	if err != nil {
 		return nil, err
@@ -82,6 +90,20 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 				}
 			}
 		}
+		if backgroundJobs != nil {
+			for _, job := range pkg.Manifest.BackgroundJobs() {
+				handler := backgroundJobHandlerForPackage(pkg)
+				var err error
+				if handler == nil {
+					err = backgroundJobs.RegisterDescriptor(job)
+				} else {
+					err = backgroundJobs.Register(job, handler)
+				}
+				if err != nil {
+					return nil, fmt.Errorf("register background job %s from plugin %s: %w", job.JobID, pkg.Manifest.ID, err)
+				}
+			}
+		}
 	}
 	return packages, nil
 }
@@ -110,6 +132,19 @@ func gatewayHookHandlerForPackage(pkg Package) GatewayHookHandler {
 		return nil
 	}
 	return NewGatewayCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
+}
+
+func backgroundJobHandlerForPackage(pkg Package) BackgroundJobHandler {
+	if pkg.Manifest.Entry.Backend == nil {
+		return nil
+	}
+	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Protocol) != BackendProtocolStdioJSONV1 {
+		return nil
+	}
+	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Command) == "" {
+		return nil
+	}
+	return NewBackgroundCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
 }
 
 func (r Runtime) Discover() ([]Package, error) {

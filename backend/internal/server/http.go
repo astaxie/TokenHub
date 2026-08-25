@@ -27,6 +27,7 @@ type Server struct {
 	gatewayHooks            *pluginmeta.GatewayHookRunner
 	adminUI                 *pluginmeta.AdminUIRegistry
 	pluginActions           *pluginmeta.ActionBroker
+	pluginBackgroundJobs    *pluginmeta.BackgroundJobBroker
 	adapterRegistry         *AdapterRegistry
 	integrations            *IntegrationService
 	codexSubscription       *CodexSubscriptionAdapter
@@ -183,11 +184,12 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	gatewayHooks := pluginmeta.NewGatewayHookRunner(gatewayChain)
 	adminUI := pluginmeta.NewAdminUIRegistry()
 	pluginActions := pluginmeta.NewActionBroker()
+	pluginBackgroundJobs := pluginmeta.NewBackgroundJobBroker()
 	registry := NewAdapterRegistryWithPlugins(pluginRegistry)
 	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
 	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
 	registerBuiltinAdminUIContributions(pluginRegistry, adminUI)
-	packages, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActions(pluginRegistry, gatewayChain, adminUI, pluginActions, gatewayHooks)
+	packages, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActionsAndBackground(pluginRegistry, gatewayChain, adminUI, pluginActions, pluginBackgroundJobs, gatewayHooks)
 	if err != nil {
 		panic(fmt.Errorf("load TokenHub plugins: %w", err))
 	}
@@ -199,6 +201,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		gatewayHooks:            gatewayHooks,
 		adminUI:                 adminUI,
 		pluginActions:           pluginActions,
+		pluginBackgroundJobs:    pluginBackgroundJobs,
 		adapterRegistry:         registry,
 		integrations:            NewIntegrationService(store, registry, client),
 		codexSubscription:       codexSubscription,
@@ -312,6 +315,13 @@ func (s *Server) handleAdminPluginActions(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.pluginActions.List()})
+}
+
+func (s *Server) handleAdminPluginBackgroundJobs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.pluginBackgroundJobs.List()})
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {

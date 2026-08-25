@@ -18,6 +18,7 @@ placement:
   - presentation
   - gateway_chain
   - management_action
+  - background
 capabilities:
   provider_types:
     - openai_codex
@@ -54,6 +55,17 @@ capabilities:
         - route_candidates
       writes:
         - route_candidates
+  background_jobs:
+    - id: codex.quota.refresh
+      title: Refresh quota
+      capability: quota.refresh
+      subject: openai_codex
+      schedule: "*/10 * * * *"
+      timeout_millis: 5000
+      max_concurrency: 1
+      retry:
+        max_attempts: 2
+        backoff_millis: 1000
 permissions:
   data:
     read:
@@ -72,8 +84,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 9 {
-		t.Fatalf("descriptor capabilities = %v, want 9 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 10 {
+		t.Fatalf("descriptor capabilities = %v, want 10 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -106,6 +118,13 @@ permissions:
 	}
 	if actions[0].InputSchema["type"] != "object" {
 		t.Fatalf("action input schema = %+v", actions[0].InputSchema)
+	}
+	jobs := manifest.BackgroundJobs()
+	if len(jobs) != 1 || jobs[0].JobID != "codex.quota.refresh" || jobs[0].Schedule != "*/10 * * * *" {
+		t.Fatalf("background jobs = %+v", jobs)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "background_job", Name: "codex.quota.refresh", Subject: "openai_codex", Value: "quota.refresh"}) {
+		t.Fatalf("descriptor is missing background job capability: %+v", descriptor.Capabilities)
 	}
 }
 
@@ -197,6 +216,29 @@ capabilities:
 `))
 	if err == nil {
 		t.Fatal("manifest with action but no management_action placement parsed successfully")
+	}
+}
+
+func TestParseManifestRejectsBackgroundJobWithoutBackgroundPlacement(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.job
+name: Job Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - management_action
+capabilities:
+  background_jobs:
+    - id: quota.refresh
+      schedule: "*/10 * * * *"
+      max_concurrency: 1
+`))
+	if err == nil {
+		t.Fatal("manifest with background job but no background placement parsed successfully")
 	}
 }
 

@@ -597,6 +597,45 @@ capabilities:
 	assertResponseBodyJSONError(t, execute, http.StatusNotImplemented, "plugin_action_unavailable")
 }
 
+func TestAdminPluginBackgroundJobsLoadsExternalManifestJobs(t *testing.T) {
+	pluginRoot := t.TempDir()
+	pluginDir := filepath.Join(pluginRoot, "jobs")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.yaml"), []byte(`
+schema_version: 1
+id: tokenhub.jobs
+name: Jobs Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - background
+capabilities:
+  background_jobs:
+    - id: quota.refresh
+      title: Refresh quota
+      capability: quota.refresh
+      subject: openai_codex
+      schedule: "*/10 * * * *"
+      max_concurrency: 1
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin", PluginDir: pluginRoot})
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-background-jobs", nil, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET plugin background jobs: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"plugin_id":"tokenhub.jobs"`) || !strings.Contains(response.Body, `"job_id":"quota.refresh"`) {
+		t.Fatalf("GET plugin background jobs did not include external manifest job: %s", response.Body)
+	}
+}
+
 func TestAdminPluginActionRejectsUnknownPlugin(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
 

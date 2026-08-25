@@ -34,6 +34,7 @@ export function emptyData(): AppData {
     pluginChain: { hooks: [] },
     pluginUI: [],
     pluginActions: [],
+    pluginBackgroundJobs: [],
 		billingConnectors: [],
 		billingRecords: [],
 		billingSyncRuns: [],

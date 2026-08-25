@@ -42,13 +42,14 @@ type ManifestFrontendEntry struct {
 }
 
 type ManifestCapabilities struct {
-	ProviderTypes []string              `yaml:"provider_types"`
-	ResourceTypes []string              `yaml:"provider_resource_types"`
-	Provider      ManifestProvider      `yaml:"provider"`
-	Gateway       []string              `yaml:"gateway"`
-	AdminUI       []string              `yaml:"admin_ui"`
-	Hooks         []GatewayHookManifest `yaml:"hooks"`
-	Actions       []ActionManifest      `yaml:"actions"`
+	ProviderTypes []string                `yaml:"provider_types"`
+	ResourceTypes []string                `yaml:"provider_resource_types"`
+	Provider      ManifestProvider        `yaml:"provider"`
+	Gateway       []string                `yaml:"gateway"`
+	AdminUI       []string                `yaml:"admin_ui"`
+	Hooks         []GatewayHookManifest   `yaml:"hooks"`
+	Actions       []ActionManifest        `yaml:"actions"`
+	Background    []BackgroundJobManifest `yaml:"background_jobs"`
 }
 
 type ManifestProvider struct {
@@ -74,6 +75,19 @@ type ActionManifest struct {
 	Subject      string         `yaml:"subject"`
 	InputSchema  map[string]any `yaml:"input_schema"`
 	OutputSchema map[string]any `yaml:"output_schema"`
+}
+
+type BackgroundJobManifest struct {
+	ID             string                   `yaml:"id"`
+	Title          string                   `yaml:"title"`
+	Capability     string                   `yaml:"capability"`
+	Subject        string                   `yaml:"subject"`
+	Schedule       string                   `yaml:"schedule"`
+	TimeoutMillis  int                      `yaml:"timeout_millis"`
+	MaxConcurrency int                      `yaml:"max_concurrency"`
+	Retry          BackgroundJobRetryPolicy `yaml:"retry"`
+	InputSchema    map[string]any           `yaml:"input_schema"`
+	OutputSchema   map[string]any           `yaml:"output_schema"`
 }
 
 type ManifestPermissions struct {
@@ -174,6 +188,42 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("plugin action %s requires management_action placement", descriptor.ActionID)
 		}
 	}
+	for _, job := range m.Capabilities.Background {
+		descriptor := NormalizeBackgroundJobDescriptor(BackgroundJobDescriptor{
+			PluginID:       m.ID,
+			JobID:          job.ID,
+			Title:          job.Title,
+			Capability:     job.Capability,
+			Subject:        job.Subject,
+			Schedule:       job.Schedule,
+			TimeoutMillis:  job.TimeoutMillis,
+			MaxConcurrency: job.MaxConcurrency,
+			Retry:          job.Retry,
+			InputSchema:    job.InputSchema,
+			OutputSchema:   job.OutputSchema,
+		})
+		if descriptor.JobID == "" {
+			return fmt.Errorf("plugin background job id is required")
+		}
+		if descriptor.Schedule == "" {
+			return fmt.Errorf("plugin background job %s schedule is required", descriptor.JobID)
+		}
+		if descriptor.TimeoutMillis < 0 {
+			return fmt.Errorf("plugin background job %s timeout_millis cannot be negative", descriptor.JobID)
+		}
+		if descriptor.MaxConcurrency <= 0 {
+			return fmt.Errorf("plugin background job %s max_concurrency must be positive", descriptor.JobID)
+		}
+		if descriptor.Retry.MaxAttempts < 0 {
+			return fmt.Errorf("plugin background job %s retry max_attempts cannot be negative", descriptor.JobID)
+		}
+		if descriptor.Retry.BackoffMillis < 0 {
+			return fmt.Errorf("plugin background job %s retry backoff_millis cannot be negative", descriptor.JobID)
+		}
+		if !manifestHasPlacement(m.Placement, PlacementBackground) {
+			return fmt.Errorf("plugin background job %s requires background placement", descriptor.JobID)
+		}
+	}
 	return nil
 }
 
@@ -244,6 +294,14 @@ func (m Manifest) Descriptor() Descriptor {
 			Name: strings.TrimSpace(action.ID),
 		})
 	}
+	for _, job := range m.Capabilities.Background {
+		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+			Kind:    "background_job",
+			Name:    strings.TrimSpace(job.ID),
+			Subject: strings.TrimSpace(job.Subject),
+			Value:   strings.TrimSpace(job.Capability),
+		})
+	}
 	return NormalizeDescriptor(descriptor)
 }
 
@@ -279,6 +337,26 @@ func (m Manifest) Actions() []ActionDescriptor {
 		}))
 	}
 	return actions
+}
+
+func (m Manifest) BackgroundJobs() []BackgroundJobDescriptor {
+	jobs := make([]BackgroundJobDescriptor, 0, len(m.Capabilities.Background))
+	for _, job := range m.Capabilities.Background {
+		jobs = append(jobs, NormalizeBackgroundJobDescriptor(BackgroundJobDescriptor{
+			PluginID:       m.ID,
+			JobID:          job.ID,
+			Title:          job.Title,
+			Capability:     job.Capability,
+			Subject:        job.Subject,
+			Schedule:       job.Schedule,
+			TimeoutMillis:  job.TimeoutMillis,
+			MaxConcurrency: job.MaxConcurrency,
+			Retry:          job.Retry,
+			InputSchema:    job.InputSchema,
+			OutputSchema:   job.OutputSchema,
+		}))
+	}
+	return jobs
 }
 
 func validKind(kind Kind) bool {

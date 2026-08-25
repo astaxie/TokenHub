@@ -254,6 +254,74 @@ printf '{"data":{"status":"started"}}'
 	}
 }
 
+func TestRuntimeLoadIntoWithActionsAndBackgroundRegistersJobs(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "jobs")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.jobs
+name: Jobs Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - background
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: job.sh
+capabilities:
+  background_jobs:
+    - id: quota.refresh
+      title: Refresh quota
+      capability: quota.refresh
+      subject: openai_codex
+      schedule: "*/10 * * * *"
+      timeout_millis: 5000
+      max_concurrency: 1
+      input_schema:
+        type: object
+        required:
+          - resource_id
+        properties:
+          resource_id:
+            type: string
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "job.sh"), []byte(`#!/bin/sh
+cat >/dev/null
+printf '{"data":{"refreshed":true}}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	jobs := NewBackgroundJobBroker()
+
+	if _, err := NewRuntime(root).LoadIntoWithActionsAndBackground(NewRegistry(), NewGatewayChainRegistry(), nil, nil, jobs); err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	descriptor, ok := jobs.Describe("tokenhub.jobs", "quota.refresh")
+	if !ok {
+		t.Fatal("background job descriptor was not registered")
+	}
+	if descriptor.Schedule != "*/10 * * * *" || descriptor.Capability != "quota.refresh" || descriptor.Subject != "openai_codex" {
+		t.Fatalf("background job descriptor = %+v", descriptor)
+	}
+	result, err := jobs.Execute(t.Context(), BackgroundJobInvocation{
+		PluginID: "tokenhub.jobs",
+		JobID:    "quota.refresh",
+		Trigger:  "manual",
+		Payload:  json.RawMessage(`{"resource_id":"res_1"}`),
+	})
+	if err != nil {
+		t.Fatalf("execute background job: %v", err)
+	}
+	data := result.Data.(map[string]any)
+	if data["refreshed"] != true {
+		t.Fatalf("background job result = %+v, want refreshed", data)
+	}
+}
+
 func TestRuntimeLoadIntoWithActionsBindsGatewayHookCommand(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "hook")

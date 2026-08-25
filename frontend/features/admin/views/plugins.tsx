@@ -1,4 +1,4 @@
-import { Boxes, Layers3, MousePointerClick, Play, PlugZap, ShieldCheck } from "lucide-react";
+import { Boxes, Clock3, Layers3, MousePointerClick, Play, PlugZap, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor } from "../core/types";
 import { tx } from "../i18n/runtime";
@@ -23,6 +23,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const uiPlugins = plugins.filter((plugin) => plugin.placements.includes("presentation") || plugin.kinds.includes("admin_ui") || plugin.kinds.includes("sim")).length;
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
+  const backgroundJobs = data.pluginBackgroundJobs;
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
 
@@ -69,6 +70,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
         <PluginMetric icon={<Layers3 size={18} />} label={tx("链路插件")} value={gatewayPlugins} />
         <PluginMetric icon={<ShieldCheck size={18} />} label={tx("界面插件")} value={uiPlugins} />
         <PluginMetric icon={<MousePointerClick size={18} />} label={tx("插件动作")} value={pluginActions.length} />
+        <PluginMetric icon={<Clock3 size={18} />} label={tx("后台任务")} value={backgroundJobs.length} />
       </div>
 
       <section className="section">
@@ -243,6 +245,49 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
           )}
         </div>
       </section>
+
+      <section className="section">
+        <div className="section-header">
+          <h2>{tx("后台任务清单")}</h2>
+        </div>
+        <div className="section-body">
+          {backgroundJobs.length === 0 ? (
+            <p className="empty-state">{tx("暂无后台任务")}</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{tx("插件")}</th>
+                    <th>{tx("任务 ID")}</th>
+                    <th>{tx("调度")}</th>
+                    <th>{tx("能力标识")}</th>
+                    <th>{tx("最大并发")}</th>
+                    <th>{tx("重试")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backgroundJobs.map((job) => (
+                    <tr key={`${job.plugin_id}:${job.job_id}`}>
+                      <td>{job.plugin_id}</td>
+                      <td>
+                        <div className="stacked-cell">
+                          <strong>{job.job_id}</strong>
+                          <span>{job.title || "-"}</span>
+                        </div>
+                      </td>
+                      <td>{job.schedule}</td>
+                      <td>{job.capability || job.subject || "-"}</td>
+                      <td>{job.max_concurrency}</td>
+                      <td>{backgroundJobRetryLabel(job.retry)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -363,6 +408,11 @@ function pluginActionKindLabel(kind: string) {
   if (kind === "external_redirect") return tx("外部跳转");
   if (kind === "import_export") return tx("导入导出");
   return kind;
+}
+
+function backgroundJobRetryLabel(retry?: { max_attempts?: number; backoff_millis?: number }) {
+  if (!retry?.max_attempts) return "-";
+  return retry.backoff_millis ? `${retry.max_attempts} / ${retry.backoff_millis}ms` : String(retry.max_attempts);
 }
 
 type ActionInputField = {
