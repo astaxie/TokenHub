@@ -248,6 +248,72 @@ func TestAdminProviderTestRouteUsesPluginAction(t *testing.T) {
 	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "test", "provider", provider.ID)
 }
 
+func TestAdminProviderCatalogRouteUsesProviderModelsAction(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "provider_models_plugin"
+	provider := store.AddProvider(Provider{
+		ID: "prv_provider_models_plugin", Name: "Provider Models Plugin", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_provider_models_plugin", ProviderID: provider.ID, Name: "Provider Models Plugin Resource",
+		ResourceType: providerType, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.provider-models-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Provider Models Plugin", []string{providerType}, []string{string(AdapterCapabilityModels)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register provider models plugin: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "models.read",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "models.read",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode provider models payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || invocation.Actor.ID != "dev_admin" {
+			t.Fatalf("unexpected provider models invocation: payload=%+v actor=%+v", payload, invocation.Actor)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"id":           "provider-models-plugin",
+			"name":         "Provider Models Plugin",
+			"display_name": "Provider Models Plugin",
+			"type":         providerType,
+			"models_count": 1,
+			"source":       "plugin-live",
+			"models": []map[string]any{
+				{"id": "plugin-live-model", "name": "plugin-live-model", "type": "chat"},
+			},
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register provider models action: %v", err)
+	}
+
+	response := methodRoutingRequest(server.Handler(), http.MethodGet, "/api/admin/provider-catalog/"+codexProviderCatalogID+"?resource_id="+resource.ID, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET provider catalog through models action: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if actionCalls != 1 || !strings.Contains(response.Body.String(), `"source":"plugin-live"`) ||
+		!strings.Contains(response.Body.String(), `"id":"plugin-live-model"`) {
+		t.Fatalf("provider catalog route did not use models action: calls=%d body=%s", actionCalls, response.Body.String())
+	}
+}
+
 func TestAdminProviderCatalogRoutesPreserveCodexQueriesCredentialsAndHeaders(t *testing.T) {
 	config := ConfigFromEnv()
 	config.AdminToken = "dev_admin_token"

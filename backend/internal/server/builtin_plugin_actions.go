@@ -309,6 +309,49 @@ func registerBuiltinPluginActions(server *Server) {
 	}))
 	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "openai_codex.models.read",
+		Kind:       pluginmeta.ActionKindRead,
+		Title:      "Read OpenAI Codex resource models",
+		Capability: "models.read",
+		Subject:    ProviderOpenAICodex,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"id", "models_count", "models"}, map[string]string{
+			"id":              "string",
+			"name":            "string",
+			"display_name":    "string",
+			"type":            "string",
+			"base_url":        "string",
+			"doc_url":         "string",
+			"categories":      "array",
+			"category_counts": "object",
+			"models_count":    "integer",
+			"source":          "string",
+			"etag":            "string",
+			"models":          "array",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+		}
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		catalog, err := server.queryOpenAICodexModels(ctx, payload.ResourceID)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: catalog}, nil
+	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.image_capability.configure",
 		Kind:       pluginmeta.ActionKindMutate,
 		Title:      "Configure OpenAI Codex image capability",

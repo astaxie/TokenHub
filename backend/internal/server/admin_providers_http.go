@@ -79,7 +79,8 @@ func (s *Server) handleAdminProviderCatalogGet(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
+	user, ok := s.requireAdmin(w, r, "provider", r.Method)
+	if !ok {
 		return
 	}
 	rawID := strings.Trim(strings.TrimPrefix(r.URL.EscapedPath(), "/api/admin/provider-catalog/"), "/")
@@ -115,7 +116,11 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				writeError(w, r, NewHTTPError(http.StatusConflict, "codex_account_required", "Connect an OpenAI Codex subscription account before loading its models"))
 				return
 			}
-			entry, err = s.queryOpenAICodexModels(r.Context(), resourceID)
+			var supported bool
+			entry, supported, err = s.executeProviderResourceModelsAction(r.Context(), user, resourceID)
+			if !supported {
+				entry, err = s.queryOpenAICodexModels(r.Context(), resourceID)
+			}
 		case http.MethodPost:
 			var credentials ProviderResourceCredentials
 			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {

@@ -124,11 +124,13 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.probe.run"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.provider.probe.run"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.models.read"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.image_capability.configure"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.credentials.refresh"`) ||
 		!strings.Contains(body, `"capability":"quota.reset_credits.read"`) ||
 		!strings.Contains(body, `"capability":"quota.reset"`) ||
 		!strings.Contains(body, `"capability":"provider.probe.run"`) ||
+		!strings.Contains(body, `"capability":"models.read"`) ||
 		!strings.Contains(body, `"capability":"image.capability.configure"`) ||
 		!strings.Contains(body, `"capability":"credentials.refresh"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
@@ -375,6 +377,62 @@ func TestAdminPluginActionRunsOpenAICodexProviderProbe(t *testing.T) {
 	}
 	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.provider.probe.run" {
 		t.Fatalf("provider probe action audit events = %+v", events)
+	}
+}
+
+func TestAdminPluginActionReadsOpenAICodexModels(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_plugin_models",
+		Name:    "Plugin Models",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_plugin_models",
+		ProviderID:   provider.ID,
+		Name:         "Plugin Models Account",
+		ResourceType: ProviderResourceOpenAISubscription,
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials:  &ProviderResourceCredentials{AccessToken: "plugin-models-secret", AccountID: "plugin-models-account"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin", SecretKey: "plugin-models-secret-key"})
+	server.codexSubscription.ModelsURL = "https://chatgpt.example/backend-api/codex/models"
+	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Header.Get("authorization") != "Bearer plugin-models-secret" || req.Header.Get("chatgpt-account-id") != "plugin-models-account" {
+			t.Fatalf("models action missing Codex credentials: %#v", req.Header)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"models":[{"slug":"gpt-plugin-model","display_name":"GPT Plugin Model","visibility":"list","supported_in_api":true,"priority":1}]}`,
+			)),
+			Request: req,
+		}, nil
+	})}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.models.read", map[string]any{
+		"resource_id": resource.ID,
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST models action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"gpt-plugin-model"`) ||
+		!strings.Contains(response.Body, `"source":"openai-codex-live"`) ||
+		!strings.Contains(response.Body, `"models_count":1`) {
+		t.Fatalf("models action response = %s", response.Body)
+	}
+	if strings.Contains(response.Body, "plugin-models-secret") {
+		t.Fatalf("models action leaked credentials: %s", response.Body)
+	}
+	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.models.read" {
+		t.Fatalf("models action audit events = %+v", events)
 	}
 }
 
