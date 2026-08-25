@@ -110,6 +110,66 @@ printf '{"response":{"id":"chatcmpl_stdio","object":"chat.completion","choices":
 	}
 }
 
+func TestExternalProviderPluginAdapterExecutesResponsesAndEmbeddings(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"chat", "responses", "embeddings"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"responses"'*)
+    printf '{"response":{"id":"resp_plugin","object":"response","output_text":"response plugin"},"usage":{"prompt_tokens":5,"completion_tokens":6,"total_tokens":11}}'
+    ;;
+  *'"operation":"embeddings"'*)
+    printf '{"response":{"object":"list","data":[{"embedding":[0.1,0.2]}]},"usage":{"prompt_tokens":7,"total_tokens":7}}'
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginmeta.NewRegistry(), pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+	descriptor, ok := registry.Describe("custom_stdio")
+	if !ok {
+		t.Fatal("external provider descriptor was not registered")
+	}
+	for _, capability := range []AdapterCapability{AdapterCapabilityChat, AdapterCapabilityResponses, AdapterCapabilityEmbeddings} {
+		if !adapterSupports(descriptor, capability) {
+			t.Fatalf("descriptor capabilities = %+v, want %s", descriptor.Capabilities, capability)
+		}
+	}
+	adapter, ok := resolveTypedAdapter[ProviderAdapter](registry, "custom_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderAdapter")
+	}
+
+	response, usage, err := adapter.Responses(context.Background(), Provider{Type: "custom_stdio", APIKey: "provider-secret"}, "upstream-responses", ResponsesRequest{Model: "gateway-responses"})
+	if err != nil {
+		t.Fatalf("responses through provider plugin: %v", err)
+	}
+	if response.(map[string]any)["id"] != "resp_plugin" || usage.TotalTokens != 11 {
+		t.Fatalf("responses result = %+v usage=%+v", response, usage)
+	}
+	response, usage, err = adapter.Embeddings(context.Background(), Provider{Type: "custom_stdio", APIKey: "provider-secret"}, "upstream-embed", EmbeddingsRequest{Model: "gateway-embed", Input: "hello"})
+	if err != nil {
+		t.Fatalf("embeddings through provider plugin: %v", err)
+	}
+	if response.(map[string]any)["object"] != "list" || usage.TotalTokens != 7 {
+		t.Fatalf("embeddings result = %+v usage=%+v", response, usage)
+	}
+}
+
 func TestExternalProviderPluginAdapterRequiresCredentialPermission(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")
@@ -135,6 +195,11 @@ printf '{"response":{},"usage":{}}'
 }
 
 func writeProviderPluginManifest(t *testing.T, dir string, includeCredentials bool) {
+	t.Helper()
+	writeProviderPluginManifestWithCapabilities(t, dir, includeCredentials, []string{"chat"})
+}
+
+func writeProviderPluginManifestWithCapabilities(t *testing.T, dir string, includeCredentials bool, capabilities []string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -167,8 +232,18 @@ capabilities:
   provider_types:
     - custom_stdio
   gateway:
-    - chat
-`+permissions), 0o644); err != nil {
+`+providerPluginGatewayCapabilityYAML(capabilities)+
+		permissions), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func providerPluginGatewayCapabilityYAML(capabilities []string) string {
+	var builder strings.Builder
+	for _, capability := range capabilities {
+		builder.WriteString("    - ")
+		builder.WriteString(capability)
+		builder.WriteByte('\n')
+	}
+	return builder.String()
 }

@@ -22,7 +22,7 @@ type providerPluginRequest struct {
 	Operation     string                    `json:"operation"`
 	Provider      Provider                  `json:"provider"`
 	ProviderModel string                    `json:"provider_model"`
-	Request       ChatCompletionRequest     `json:"request"`
+	Request       any                       `json:"request"`
 	Credentials   providerPluginCredentials `json:"credentials,omitempty"`
 }
 
@@ -62,12 +62,33 @@ func (a providerPluginAdapter) ChatStream(context.Context, Provider, string, Cha
 	return Usage{}, providerPluginCapabilityUnsupported("chat streaming")
 }
 
-func (a providerPluginAdapter) Responses(context.Context, Provider, string, ResponsesRequest) (any, Usage, error) {
-	return nil, Usage{}, providerPluginCapabilityUnsupported("Responses")
+func (a providerPluginAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
+	req.Stream = false
+	var result providerPluginResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:     "responses",
+		Provider:      provider,
+		ProviderModel: providerModel,
+		Request:       req,
+		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+	}, &result); err != nil {
+		return nil, Usage{}, err
+	}
+	return result.Response, result.Usage, nil
 }
 
-func (a providerPluginAdapter) Embeddings(context.Context, Provider, string, EmbeddingsRequest) (any, Usage, error) {
-	return nil, Usage{}, providerPluginCapabilityUnsupported("embeddings")
+func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
+	var result providerPluginResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:     "embeddings",
+		Provider:      provider,
+		ProviderModel: providerModel,
+		Request:       req,
+		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+	}, &result); err != nil {
+		return nil, Usage{}, err
+	}
+	return result.Response, result.Usage, nil
 }
 
 func registerExternalProviderPluginAdapters(registry *AdapterRegistry, packages []pluginmeta.Package) {
@@ -114,8 +135,9 @@ func manifestAllowsProviderCredentials(manifest pluginmeta.Manifest) bool {
 func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapability {
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
-		if AdapterCapability(strings.TrimSpace(capability)) == AdapterCapabilityChat {
-			supported = append(supported, AdapterCapabilityChat)
+		switch AdapterCapability(strings.TrimSpace(capability)) {
+		case AdapterCapabilityChat, AdapterCapabilityResponses, AdapterCapabilityEmbeddings:
+			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}
 	return supported
