@@ -1,5 +1,6 @@
 import { type AdminUser, type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
+import { codexLunaProbeDefaults, codexProviderType, codexSubscriptionBaseURL } from "../domain/codex-provider-profile";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
@@ -156,7 +157,7 @@ export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?
       resourceTypes.add(capability.name);
     }
   }
-  if ((providerType === "openai_codex" || isOpenAISubscriptionResourceType(values?.resource_type)) && !resourceTypes.has(providerResourceOpenAISubscriptionType)) {
+  if ((providerType === codexProviderType || isOpenAISubscriptionResourceType(values?.resource_type)) && !resourceTypes.has(providerResourceOpenAISubscriptionType)) {
     resourceTypes.add(providerResourceOpenAISubscriptionType);
   }
   return Array.from(resourceTypes)
@@ -176,12 +177,7 @@ export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Pro
   if (subscription) {
     const action = providerPluginActionForCapability(data.pluginActions, provider.type, "probe.run");
     if (action) {
-      await runProviderResourcePluginAction(ctx, subscription, action, {
-        model: "gpt-5.6-luna",
-        reasoning_effort: "medium",
-        speed: "standard",
-        prompt: "请用一句话确认 Codex 连接正常。",
-      }, tx("Codex Luna 中等推理标准测试"));
+      await runProviderResourcePluginAction(ctx, subscription, action, codexLunaProbeDefaults, tx("Codex Luna 中等推理标准测试"));
       return;
     }
     await legacyProviderResourceProbe(ctx, subscription);
@@ -249,10 +245,7 @@ async function legacyProviderResourceProbe(ctx: ApiContext, resource: ProviderRe
   const resp = await adminFetch(ctx, `/api/admin/provider-resources/${resource.id}/test`, {
     method: "POST",
     body: JSON.stringify({
-      model: "gpt-5.6-luna",
-      reasoning_effort: "medium",
-      speed: "standard",
-      prompt: "请用一句话确认 Codex 连接正常。",
+      ...codexLunaProbeDefaults,
     }),
   });
   if (!resp.ok) throw new Error(await readAdminError(resp, tx("Codex Luna 中等推理标准测试")));
@@ -297,7 +290,7 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     resource_type: providerResourceOpenAISubscriptionType,
     auth_type: "oauth",
     authorization_url: "",
-    base_url: provider.base_url || "https://chatgpt.com/backend-api/codex",
+    base_url: provider.base_url || codexSubscriptionBaseURL,
     group: "default",
     priority: "1",
     weight: "100",

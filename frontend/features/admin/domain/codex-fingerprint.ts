@@ -1,3 +1,5 @@
+import { isOpenAISubscriptionResourceType } from "./provider-resource-types";
+
 export const codexFingerprintModeOption = "codex_fingerprint_mode";
 
 export type CodexFingerprintMode = "off" | "device" | "session" | "full";
@@ -11,7 +13,7 @@ export function normalizeCodexFingerprintMode(value?: string): CodexFingerprintM
 }
 
 export function applyCodexFingerprintOption(options: Record<string, string>, values: Record<string, string>) {
-  if (values.resource_type !== "openai_subscription") {
+  if (!isOpenAISubscriptionResourceType(values.resource_type)) {
     delete options[codexFingerprintModeOption];
     return options;
   }

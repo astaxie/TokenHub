@@ -1,7 +1,6 @@
 import { type ModelRoute, type ProviderResource } from "../core/types";
-
-export const codexImageModelName = "codex-gpt-image-2";
-export const codexImageUpstreamModel = "gpt-image-2";
+import { codexImageModelName, codexImageUpstreamModel } from "./codex-provider-profile";
+import { isOpenAISubscriptionResource } from "./provider-resource-types";
 
 export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string) {
   return routes.some((route) =>
@@ -14,7 +13,7 @@ export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string)
 
 export function codexImageResources(resources: ProviderResource[], providerID: string) {
   return resources.filter((resource) =>
-    resource.provider_id === providerID && resource.resource_type === "openai_subscription",
+    resource.provider_id === providerID && isOpenAISubscriptionResource(resource),
   );
 }
 

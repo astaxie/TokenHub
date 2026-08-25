@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
+import { accountProviderCatalogOptions, codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
@@ -23,8 +24,8 @@ import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning
 import { ProviderPluginPanels } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
+import { isOpenAISubscriptionResource, providerResourceOpenAISubscriptionType } from "../domain/provider-resource-types";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
-const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
 type OpenAIAccountQuota = {
   account_id?: string;
   email?: string;
@@ -68,19 +69,6 @@ type ProviderAccountConfirmation = {
   resource: ProviderResource;
 };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
-const codexProviderCatalogSummary: ProviderCatalogEntry = {
-  id: "openai-codex",
-  name: "OpenAI Codex",
-  display_name: "OpenAI Codex",
-  type: "openai_codex",
-  base_url: "https://chatgpt.com/backend-api/codex",
-  categories: ["codex"],
-  category_counts: { codex: 0 },
-  models_count: 0,
-  source: "openai-codex-live",
-};
-const accountProviderCatalogOptions = [codexProviderCatalogSummary];
-const fallbackCodexReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
 export function ProviderUpsertModal({
   mode,
   provider,
@@ -115,10 +103,10 @@ export function ProviderUpsertModal({
   setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[];
 }) {
   const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
-    resource.provider_id === provider?.id && resource.resource_type === "openai_subscription",
+    resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource),
   );
   const directCredentialCatalog = useMemo(
-    () => catalog.filter((entry) => entry.id !== codexProviderCatalogSummary.id && entry.type !== "openai_codex"),
+    () => catalog.filter((entry) => entry.id !== codexProviderCatalogSummary.id && entry.type !== codexProviderType),
     [catalog],
   );
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
@@ -157,7 +145,7 @@ export function ProviderUpsertModal({
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
     name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex" : provider?.name ?? "" : initialEntry?.display_name ?? "",
-    type: mode === "edit" ? editingCodexSubscription ? "openai_codex" : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
+    type: mode === "edit" ? editingCodexSubscription ? codexProviderType : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
     base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     clear_api_key: "false",
@@ -197,7 +185,7 @@ export function ProviderUpsertModal({
   const [accountCatalogs, setAccountCatalogs] = useState<Record<string, ProviderCatalogEntry>>({});
   const [accountCatalogErrors, setAccountCatalogErrors] = useState<Record<string, string>>({});
   const [accountCatalogLoading, setAccountCatalogLoading] = useState(false);
-  const [codexTestValues, setCodexTestValues] = useState({ model: "gpt-5.6-luna", reasoning_effort: "medium", speed: "standard", prompt: "" });
+  const [codexTestValues, setCodexTestValues] = useState({ ...codexLunaProbeDefaults, prompt: "" });
   const [codexTestBusyID, setCodexTestBusyID] = useState("");
   const [codexTestErrors, setCodexTestErrors] = useState<Record<string, string>>({});
   const [codexTestResults, setCodexTestResults] = useState<Record<string, CodexSubscriptionTestResult>>({});
@@ -220,7 +208,7 @@ export function ProviderUpsertModal({
   );
   const subscriptionResources = useMemo(
     () => resources.filter((resource) =>
-      resource.resource_type === "openai_subscription" && (mode === "create" || resource.provider_id === provider?.id),
+      isOpenAISubscriptionResource(resource) && (mode === "create" || resource.provider_id === provider?.id),
     ),
     [mode, provider?.id, resources],
   );
@@ -537,7 +525,7 @@ export function ProviderUpsertModal({
       .slice(0, 80);
   }, [models, modelQuery]);
   const importedModels = useMemo(
-    () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!editingCodexSubscription || model.upstream_model !== "gpt-image-2")) : [],
+    () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!editingCodexSubscription || model.upstream_model !== codexImageUpstreamModel)) : [],
     [editingCodexSubscription, provider, providerModels],
   );
   const importedModelIDs = useMemo(() => new Set(importedModels.map((model) => model.upstream_model)), [importedModels]);
@@ -571,7 +559,7 @@ export function ProviderUpsertModal({
     setCodexTestValues((current) => {
       const nextModel = codexTestModels.some((model) => model.id === current.model)
         ? current.model
-        : codexTestModels.find((model) => model.id === "gpt-5.6-luna")?.id ?? codexTestModels[0].id;
+        : codexTestModels.find((model) => model.id === codexLunaProbeDefaults.model)?.id ?? codexTestModels[0].id;
       const model = codexTestModels.find((item) => item.id === nextModel);
       const efforts = model?.metadata?.supported_reasoning_levels?.split(",").filter(Boolean) ?? fallbackCodexReasoningEfforts;
       const nextEffort = efforts.includes(current.reasoning_effort)
@@ -659,7 +647,7 @@ export function ProviderUpsertModal({
     }
     setAccountValues((current) => ({
       ...current,
-      resource_type: "openai_subscription",
+      resource_type: providerResourceOpenAISubscriptionType,
       auth_type: "oauth",
       access_token: result.access_token || current.access_token || "",
       refresh_token: result.refresh_token || current.refresh_token || "",
@@ -843,7 +831,7 @@ export function ProviderUpsertModal({
     if (nextMode === "account_integration") {
       setAccountValues((current) => ({
         ...current,
-        resource_type: "openai_subscription",
+        resource_type: providerResourceOpenAISubscriptionType,
         auth_type: "oauth",
       }));
       setModelCategory("codex");
