@@ -1,4 +1,4 @@
-import { Box, Check, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, Pause, Play, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
+import { Database, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, ReceiptText, Route, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { savePendingOAuthLogin } from "../core/session";
 import { type LoginIdentityProvider, viewRoutes } from "../core/types";
@@ -522,11 +522,13 @@ export function loginIdentityProviderIconConfig(key: string): { key: string; ico
 }
 
 function LoginUtilityActions({
+  showBrand = false,
   language,
   theme,
   onLanguageChange,
   onThemeToggle,
 }: {
+  showBrand?: boolean;
   language: AppLanguage;
   theme: "light" | "dark";
   onLanguageChange: (language: AppLanguage) => void;
@@ -534,10 +536,23 @@ function LoginUtilityActions({
 }) {
   return (
     <div className="login-utility-actions">
-      <LanguageSelect className="login-language-select" language={language} onChange={onLanguageChange} />
-      <button className="login-theme-toggle" onClick={onThemeToggle} title={tx("切换主题")} type="button">
-        {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-      </button>
+      {showBrand ? (
+        <div className="login-brand-lockup">
+          <span className="login-brand-mark" aria-hidden="true">
+            <img src="/brand/tokenhub-logo.png" alt="" />
+          </span>
+          <span className="login-brand-copy">
+            <strong>Token<span>Hub</span></strong>
+            <small>{tx("企业 AI 网关")}</small>
+          </span>
+        </div>
+      ) : null}
+      <div className="login-utility-controls">
+        <LanguageSelect className="login-language-select" language={language} onChange={onLanguageChange} />
+        <button className="login-theme-toggle" onClick={onThemeToggle} title={tx("切换主题")} type="button">
+          {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+        </button>
+      </div>
     </div>
   );
 }
@@ -568,7 +583,6 @@ export function LoginView({
   const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [heroPaused, setHeroPaused] = useState(false);
   const [ssoLoading, setSSOLoading] = useState(false);
   const [ssoError, setSSOError] = useState("");
   const ssoStarting = useRef(false);
@@ -583,90 +597,84 @@ export function LoginView({
     identityProviders.length > 1 ? "multi" : "",
     identityProviders.length > 1 ? `count-${Math.min(identityProviders.length, 3)}` : "",
   ].filter(Boolean).join(" ");
+  const headlineParts = tx("统一管理企业 {ai} Token").split("{ai}");
+  const dashboardPreviewSrc =
+    theme === "dark"
+      ? "/brand/login-dashboard-dark.png"
+      : language === "zh-CN"
+        ? "/brand/login-dashboard-zh.png"
+        : "/brand/login-dashboard-en.png";
+  const featureCards = [
+    { title: tx("智能路由"), detail: tx("选对模型，效果更优"), className: "route", icon: <Route size={31} strokeWidth={2.25} /> },
+    { title: tx("权限管控"), detail: tx("精细分配，安全可控"), className: "shield", icon: <ShieldCheck size={32} strokeWidth={2.15} /> },
+    { title: tx("成本优化"), detail: tx("缓存加速，节省开支"), className: "cost", icon: <Database size={31} strokeWidth={2.2} /> },
+    { title: tx("对账透明"), detail: tx("账单核对，清晰准确"), className: "ledger", icon: <ReceiptText size={31} strokeWidth={2.2} /> },
+  ];
 
   return (
-    <main className="login-shell" data-theme={theme}>
+    <main className="login-shell login-home-shell" data-theme={theme}>
       <LoginUtilityActions
+        showBrand
         language={language}
         theme={theme}
         onLanguageChange={onLanguageChange}
         onThemeToggle={onThemeToggle}
       />
       <section className="login-stage">
-        <aside className={`login-hero-panel${heroPaused ? " is-paused" : ""}`} aria-label="TokenHub">
-          <div className="login-brand-lockup">
-            <span className="login-brand-mark" aria-hidden="true">
-              <img src="/brand/tokenhub-logo.png" alt="" />
-            </span>
-            <span className="login-brand-copy">
-              <strong>Token<span>Hub</span></strong>
-              <small>{tx("企业 AI 网关")}</small>
-            </span>
+        <aside className="login-hero-panel" aria-label="TokenHub">
+          <div className="login-hero-copy">
+            <h1>
+              <span>{headlineParts[0]}</span>
+              <span className="login-headline-ai">AI</span>
+              <span>{headlineParts.slice(1).join("{ai}")}</span>
+            </h1>
+            <p>
+              <strong>{tx("更可控")}</strong>
+              <span>·</span>
+              <strong>{tx("更节省")}</strong>
+              <span>·</span>
+              <strong>{tx("更透明")}</strong>
+            </p>
           </div>
 
-          <div className="login-route-scene" aria-hidden="true">
-            <svg className="login-route-svg" viewBox="0 0 460 240">
-              <path className="login-route-line inbound" d="M 96 130 H 168" pathLength="1" />
-              <path className="login-route-line outbound top" d="M 296 130 H 334 V 72 H 372" pathLength="1" />
-              <path className="login-route-line outbound middle" d="M 296 130 H 372" pathLength="1" />
-              <path className="login-route-line outbound bottom" d="M 296 130 H 334 V 188 H 372" pathLength="1" />
-            </svg>
-
-            <div className="login-route-user">
-              <span className="login-route-icon"><UserRound size={19} strokeWidth={1.8} /></span>
-              <strong>{tx("用户")}</strong>
-              <small>{tx("发起 API 请求")}</small>
-            </div>
-
-            <span className="login-route-label request-label">{tx("携带 API Key")}</span>
-            <span className="login-route-packet inbound-packet"><KeyRound size={10} strokeWidth={2.5} /></span>
-
-            <div className="login-route-auth">
-              <span className="login-route-icon auth"><KeyRound size={21} strokeWidth={2} /></span>
-              <strong>API Key</strong>
-              <small>{tx("验证身份与权限")}</small>
-              <span className="login-route-auth-status"><Check size={12} strokeWidth={2.7} />{tx("鉴权通过")}</span>
-            </div>
-
-            <span className="login-route-label access-label">{tx("允许访问")}</span>
-            <span className="login-route-packet route-one" />
-            <span className="login-route-packet route-two" />
-            <span className="login-route-packet route-three" />
-
-            <div className="login-route-models">
-              {["A", "B", "C"].map((model, index) => (
-                <div className={`login-route-model model-${index + 1}`} key={model}>
-                  <span><Box size={15} strokeWidth={1.8} /></span>
-                  <strong>{tx(`模型 ${model}`)}</strong>
-                </div>
-              ))}
-            </div>
+          <div className="login-feature-grid" aria-hidden="true">
+            {featureCards.map((card) => (
+              <div className="login-feature-card" key={card.title}>
+                <span className={`login-feature-icon ${card.className}`}>{card.icon}</span>
+                <strong>{card.title}</strong>
+                <small>{card.detail}</small>
+              </div>
+            ))}
           </div>
 
-          <button
-            aria-label={tx(heroPaused ? "播放动画" : "暂停动画")}
-            aria-pressed={heroPaused}
-            className="login-motion-toggle"
-            onClick={() => setHeroPaused((current) => !current)}
-            title={tx(heroPaused ? "播放动画" : "暂停动画")}
-            type="button"
-          >
-            {heroPaused ? <Play size={14} /> : <Pause size={14} />}
-          </button>
+          <div className="login-dashboard-scene" aria-hidden="true">
+            <img className="login-dashboard-image" src={dashboardPreviewSrc} alt="" />
+          </div>
         </aside>
 
         <form className="login-card" onSubmit={submit}>
           <div className="login-card-head">
-            <h1>{tx("登录控制台")}</h1>
+            <h1>{tx("欢迎回来")}</h1>
+            <p>{tx("登录 TokenHub 控制台")}</p>
           </div>
           <label className="field">
             <span>{tx("账号 / 邮箱")}</span>
-            <input value={identity} onChange={(event) => setIdentity(event.target.value)} required />
+            <span className="login-input-field">
+              <UserRound aria-hidden="true" size={18} />
+              <input
+                placeholder={tx("请输入账号或邮箱")}
+                value={identity}
+                onChange={(event) => setIdentity(event.target.value)}
+                required
+              />
+            </span>
           </label>
           <label className="field">
             <span>{tx("密码")}</span>
             <span className="password-field">
+              <LockKeyhole aria-hidden="true" className="password-leading-icon" size={18} />
               <input
+                placeholder={tx("请输入密码")}
                 value={password}
                 type={passwordVisible ? "text" : "password"}
                 onChange={(event) => setPassword(event.target.value)}
@@ -683,12 +691,7 @@ export function LoginView({
             </span>
           </label>
           <div className="login-helper-row">
-            <span>
-              <span className="login-checkmark">
-                <Check size={13} />
-              </span>
-              {tx("保持登录")}
-            </span>
+            <span />
             <button type="button">{tx("忘记密码？")}</button>
           </div>
           {error || ssoError ? <div className="login-error">{error || ssoError}</div> : null}
@@ -733,7 +736,7 @@ export function LoginView({
                     >
                       <LoginIdentityProviderIcon provider={provider} />
                       <span className="login-sso-label">
-                        {identityProviders.length > 1 ? displayName : `${tx("使用")} ${displayName} ${tx("登录")}`}
+                        {displayName}
                       </span>
                     </a>
                   );

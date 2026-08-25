@@ -101,6 +101,7 @@ curl --request POST \
 | `model` | はい | `GET /v1/models` の ID |
 | `messages` | はい | `system`、`user`、`assistant` のメッセージ配列 |
 | `max_tokens` | いいえ | 最大生成 tokens |
+| `max_completion_tokens` | いいえ | OpenAI 互換の最大生成 tokens。両方の出力トークン上限フィールドがある場合、TokenHub は大きい値を使用します |
 | `temperature` | いいえ | サンプリング温度 |
 | `reasoning_effort` | いいえ | 対応するモデルとルートで使用する推論強度 |
 | `stream` | いいえ | `true` の場合 SSE stream |
