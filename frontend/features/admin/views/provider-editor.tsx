@@ -1,6 +1,6 @@
 import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
+import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { accountProviderCatalogOptions, codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
@@ -12,7 +12,7 @@ import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpst
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
-import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceDraftDefaults, runProviderResourcePluginAction } from "../resources/provider-model-config";
+import { assertProviderAccountResourceReady, defaultProviderResourceName, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceDraftDefaults, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
@@ -745,12 +745,7 @@ export function ProviderUpsertModal({
     try {
       setAccountOAuthBusy(true);
       setAccountOAuthNoticeError("");
-      const resp = await adminFetch(api, "/api/admin/provider-account-oauth/openai/generate-auth-url", {
-        method: "POST",
-        body: JSON.stringify({ return_url: accountCallbackURL }),
-      });
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("生成账号授权地址")));
-      const generated = (await resp.json()) as ProviderAccountOAuthGenerateResponse;
+      const generated = await generateProviderAccountOAuthURL(api, pluginActions, values.type, accountCallbackURL);
       savePendingProviderAccountOAuthSession({ session_id: generated.session_id, state: generated.state });
       await launchProviderAccountAuthorization(action, generated.auth_url);
       setAccountOAuthNoticeOpen(false);

@@ -1,6 +1,7 @@
+import { type ProviderAccountOAuthGenerateResponse } from "../core/session";
 import { type AdminUser, type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { codexLunaProbeDefaults, codexProviderType, codexSubscriptionBaseURL } from "../domain/codex-provider-profile";
+import { codexLunaProbeDefaults, codexProviderType, codexSubscriptionBaseURL, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
@@ -208,6 +209,31 @@ export async function runProviderResourcePluginAction<T>(ctx: ApiContext, item: 
   });
   if (!resp.ok) throw new Error(await readAdminError(resp, fallbackLabel));
   return unwrapPluginActionData<T>(await resp.json());
+}
+
+export async function runProviderPluginAction<T>(ctx: ApiContext, action: PluginActionDescriptor, payload: Record<string, unknown>, fallbackLabel: string): Promise<T> {
+  const resp = await adminFetch(ctx, providerPluginActionPath(action), {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(await readAdminError(resp, fallbackLabel));
+  return unwrapPluginActionData<T>(await resp.json());
+}
+
+export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, returnURL: string) {
+  const oauthAction = providerPluginActionForCapability(actions, providerType, "oauth.start");
+  if (oauthAction) {
+    return runProviderPluginAction<ProviderAccountOAuthGenerateResponse>(ctx, oauthAction, {
+      redirect_uri: openAIAccountOAuthRedirectURI,
+      return_url: returnURL,
+    }, tx("生成账号授权地址"));
+  }
+  const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/generate-auth-url", {
+    method: "POST",
+    body: JSON.stringify({ return_url: returnURL }),
+  });
+  if (!resp.ok) throw new Error(await readAdminError(resp, tx("生成账号授权地址")));
+  return (await resp.json()) as ProviderAccountOAuthGenerateResponse;
 }
 
 export function providerResourceCredentialRefreshAction(data: AppData, item: ProviderResource): PluginActionDescriptor | undefined {

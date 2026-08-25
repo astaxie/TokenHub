@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
-import { providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { generateProviderAccountOAuthURL, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("shows credential refresh only when a provider plugin action is registered", async () => {
@@ -89,6 +89,93 @@ describe("providerResourceConfig", () => {
       resource_id: "rsrc_codex",
       refresh: true,
     });
+  });
+
+  it("runs provider-level plugin actions without a resource envelope", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { auth_url: "https://provider.example/oauth", state: "state-1" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await runProviderPluginAction<{ auth_url: string; state: string }>(
+      { baseURL: "http://localhost:8080", adminToken: "admin-token" },
+      {
+        plugin_id: "tokenhub.provider.openai-codex",
+        action_id: "openai_codex.oauth.start",
+        kind: "external_redirect",
+        capability: "oauth.start",
+        subject: "openai_codex",
+      },
+      { return_url: "http://localhost:3000/providers/callback" },
+      "Start OAuth",
+    );
+
+    expect(result).toEqual({ auth_url: "https://provider.example/oauth", state: "state-1" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.oauth.start");
+    expect(JSON.parse(String(init.body))).toEqual({ return_url: "http://localhost:3000/providers/callback" });
+  });
+
+  it("generates provider account OAuth URLs through plugin actions first", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        auth_url: "https://provider.example/oauth",
+        session_id: "session-1",
+        state: "state-1",
+        redirect_uri: "http://localhost:1455/auth/callback",
+        expires_at: "2026-01-01T00:00:00Z",
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateProviderAccountOAuthURL(
+      { baseURL: "http://localhost:8080", adminToken: "admin-token" },
+      [{
+        plugin_id: "tokenhub.provider.openai-codex",
+        action_id: "openai_codex.oauth.start",
+        kind: "external_redirect",
+        capability: "oauth.start",
+        subject: "openai_codex",
+      }],
+      "openai_codex",
+      "http://localhost:3000/providers/callback",
+    );
+
+    expect(result.auth_url).toBe("https://provider.example/oauth");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.oauth.start");
+    expect(JSON.parse(String(init.body))).toEqual({
+      redirect_uri: "http://localhost:1455/auth/callback",
+      return_url: "http://localhost:3000/providers/callback",
+    });
+  });
+
+  it("falls back to the legacy OpenAI account OAuth endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      auth_url: "https://legacy.example/oauth",
+      session_id: "session-legacy",
+      state: "state-legacy",
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateProviderAccountOAuthURL(
+      { baseURL: "http://localhost:8080", adminToken: "admin-token" },
+      [],
+      "openai_codex",
+      "http://localhost:3000/providers/callback",
+    );
+
+    expect(result.auth_url).toBe("https://legacy.example/oauth");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/provider-account-oauth/openai/generate-auth-url");
+    expect(JSON.parse(String(init.body))).toEqual({ return_url: "http://localhost:3000/providers/callback" });
   });
 
   it("unwraps plugin action envelopes", () => {
