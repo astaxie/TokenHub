@@ -1322,7 +1322,7 @@ func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Mode
 	if len(endpoints) == 0 || strings.TrimSpace(model.Metadata["endpoints"]) == "" {
 		return nil
 	}
-	compatible := routeProviderProtocols(providerType, descriptor)
+	compatible := s.routeProviderProtocols(providerType, descriptor)
 	for _, endpoint := range endpoints {
 		if compatible[strings.ToLower(strings.TrimSpace(endpoint))] {
 			return nil
@@ -1331,13 +1331,14 @@ func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Mode
 	return NewHTTPError(http.StatusBadRequest, "route_protocol_mismatch", "Model does not support the selected Provider protocol")
 }
 
-func routeProviderProtocols(providerType string, descriptor AdapterDescriptor) map[string]bool {
-	if providerType == ProviderAnthropic {
-		return map[string]bool{"anthropic": true}
+func (s *Server) routeProviderProtocols(providerType string, descriptor AdapterDescriptor) map[string]bool {
+	if protocoler, ok := resolveTypedAdapter[ProviderRouteProtocoler](s.adapterRegistry, providerType); ok {
+		return routeProtocolSet(protocoler.RouteProtocols())
 	}
-	if providerType == ProviderGemini {
-		return map[string]bool{"gemini": true}
-	}
+	return routeProviderProtocolsFromCapabilities(descriptor)
+}
+
+func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[string]bool {
 	protocols := map[string]bool{}
 	if adapterSupports(descriptor, AdapterCapabilityChat) {
 		protocols["chat/completions"] = true
@@ -1349,6 +1350,17 @@ func routeProviderProtocols(providerType string, descriptor AdapterDescriptor) m
 		protocols["embeddings"] = true
 	}
 	return protocols
+}
+
+func routeProtocolSet(protocols []string) map[string]bool {
+	set := map[string]bool{}
+	for _, protocol := range protocols {
+		protocol = strings.ToLower(strings.TrimSpace(protocol))
+		if protocol != "" {
+			set[protocol] = true
+		}
+	}
+	return set
 }
 
 func (s *Server) validateRoutePolicy(route ModelRoute) error {

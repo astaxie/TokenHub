@@ -59,6 +59,10 @@ type ProviderAdminLifecycle interface {
 	ProviderResourceOperationKey(provider Provider, resource ProviderResource, operation ProviderAdminOperation) (string, bool)
 }
 
+type ProviderRouteProtocoler interface {
+	RouteProtocols() []string
+}
+
 type ResponsesCompactAdapter interface {
 	CompactWithHeaders(ctx context.Context, provider Provider, providerModel string, body map[string]json.RawMessage, incoming http.Header) (any, Usage, error)
 }
@@ -447,6 +451,10 @@ type AnthropicAdapter struct {
 	StreamIdleTimeout time.Duration
 }
 
+func (a AnthropicAdapter) RouteProtocols() []string {
+	return []string{"anthropic"}
+}
+
 const (
 	anthropicAuthTypeOption = "anthropic_auth_type"
 	anthropicAuthTypeAPIKey = "x-api-key"
@@ -599,6 +607,10 @@ type GeminiAdapter struct {
 	// Streaming calls fall back to Client when it is unset.
 	StreamClient      *http.Client
 	StreamIdleTimeout time.Duration
+}
+
+func (a GeminiAdapter) RouteProtocols() []string {
+	return []string{"gemini"}
 }
 
 func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
