@@ -63,6 +63,87 @@ esac
 	if !ok || descriptor.PluginID != "tokenhub.provider.custom-stdio" || !adapterSupports(descriptor, AdapterCapabilityChat) {
 		t.Fatalf("adapter descriptor = %+v", descriptor)
 	}
+	protocoler, ok := resolved.(ProviderRouteProtocoler)
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderRouteProtocoler")
+	}
+	protocols := protocoler.RouteProtocols()
+	if len(protocols) != 1 || protocols[0] != "chat/completions" {
+		t.Fatalf("default route protocols = %v", protocols)
+	}
+}
+
+func TestExternalProviderPluginAdapterUsesManifestProviderPolicy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.yaml"), []byte(`
+schema_version: 1
+id: tokenhub.provider.native-stdio
+name: Native stdio Provider
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: provider.sh
+capabilities:
+  provider_types:
+    - native_stdio
+  provider:
+    route_protocols:
+      - native/messages
+      - native/messages
+    supports_custom_headers: false
+  gateway:
+    - chat
+permissions:
+  data:
+    read:
+      - provider_credentials
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+printf '{"response":{},"usage":{}}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginmeta.NewRegistry(), pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+
+	protocoler, ok := resolveTypedAdapter[ProviderRouteProtocoler](registry, "native_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderRouteProtocoler")
+	}
+	protocols := protocoler.RouteProtocols()
+	if len(protocols) != 1 || protocols[0] != "native/messages" {
+		t.Fatalf("route protocols = %v", protocols)
+	}
+	policyer, ok := resolveTypedAdapter[ProviderHeaderPolicyer](registry, "native_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderHeaderPolicyer")
+	}
+	if policyer.SupportsProviderHeaders() {
+		t.Fatal("provider header policy was not loaded from manifest")
+	}
+	if err := validateProviderHeaderSupportWithRegistry(registry, "native_stdio", map[string]string{"X-Tenant": "tenant"}); AsHTTPError(err).Code != "provider_headers_unsupported" {
+		t.Fatalf("header validation error = %v", err)
+	}
 }
 
 func TestExternalProviderPluginAdapterServesGatewayChat(t *testing.T) {

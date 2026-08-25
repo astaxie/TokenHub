@@ -43,10 +43,16 @@ type ManifestFrontendEntry struct {
 
 type ManifestCapabilities struct {
 	ProviderTypes []string              `yaml:"provider_types"`
+	Provider      ManifestProvider      `yaml:"provider"`
 	Gateway       []string              `yaml:"gateway"`
 	AdminUI       []string              `yaml:"admin_ui"`
 	Hooks         []GatewayHookManifest `yaml:"hooks"`
 	Actions       []ActionManifest      `yaml:"actions"`
+}
+
+type ManifestProvider struct {
+	RouteProtocols        []string `yaml:"route_protocols"`
+	SupportsCustomHeaders *bool    `yaml:"supports_custom_headers"`
 }
 
 type GatewayHookManifest struct {

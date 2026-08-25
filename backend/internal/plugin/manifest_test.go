@@ -21,6 +21,10 @@ placement:
 capabilities:
   provider_types:
     - openai_codex
+  provider:
+    route_protocols:
+      - codex/responses
+    supports_custom_headers: false
   gateway:
     - responses
     - responses_stream
@@ -68,6 +72,12 @@ permissions:
 	}
 	if len(descriptor.Capabilities) != 6 {
 		t.Fatalf("descriptor capabilities = %v, want 6 entries", descriptor.Capabilities)
+	}
+	if len(manifest.Capabilities.Provider.RouteProtocols) != 1 || manifest.Capabilities.Provider.RouteProtocols[0] != "codex/responses" {
+		t.Fatalf("provider route protocols = %+v", manifest.Capabilities.Provider.RouteProtocols)
+	}
+	if manifest.Capabilities.Provider.SupportsCustomHeaders == nil || *manifest.Capabilities.Provider.SupportsCustomHeaders {
+		t.Fatalf("provider custom header policy = %+v", manifest.Capabilities.Provider.SupportsCustomHeaders)
 	}
 	hooks := manifest.GatewayHooks()
 	if len(hooks) != 1 {

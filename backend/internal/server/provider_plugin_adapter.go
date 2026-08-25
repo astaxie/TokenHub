@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,9 +14,11 @@ import (
 const providerPluginCommandTimeout = 120 * time.Second
 
 type providerPluginAdapter struct {
-	dir     string
-	command string
-	timeout time.Duration
+	dir                     string
+	command                 string
+	timeout                 time.Duration
+	routeProtocols          []string
+	supportsProviderHeaders bool
 }
 
 type providerPluginRequest struct {
@@ -48,10 +51,20 @@ type providerPluginProbeResponse struct {
 
 func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 	return providerPluginAdapter{
-		dir:     pkg.Dir,
-		command: pkg.Manifest.Entry.Backend.Command,
-		timeout: providerPluginCommandTimeout,
+		dir:                     pkg.Dir,
+		command:                 pkg.Manifest.Entry.Backend.Command,
+		timeout:                 providerPluginCommandTimeout,
+		routeProtocols:          providerPluginRouteProtocols(pkg.Manifest),
+		supportsProviderHeaders: providerPluginSupportsCustomHeaders(pkg.Manifest),
 	}
+}
+
+func (a providerPluginAdapter) RouteProtocols() []string {
+	return append([]string(nil), a.routeProtocols...)
+}
+
+func (a providerPluginAdapter) SupportsProviderHeaders() bool {
+	return a.supportsProviderHeaders
 }
 
 func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -198,6 +211,53 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 		}
 	}
 	return supported
+}
+
+func providerPluginRouteProtocols(manifest pluginmeta.Manifest) []string {
+	protocols := manifest.Capabilities.Provider.RouteProtocols
+	if len(protocols) == 0 {
+		protocols = providerPluginDefaultRouteProtocols(manifest.Capabilities.Gateway)
+	}
+	return normalizedProviderPluginProtocols(protocols)
+}
+
+func providerPluginDefaultRouteProtocols(capabilities []string) []string {
+	protocols := []string{}
+	for _, capability := range capabilities {
+		switch AdapterCapability(strings.TrimSpace(capability)) {
+		case AdapterCapabilityChat:
+			protocols = append(protocols, "chat/completions")
+		case AdapterCapabilityResponses:
+			protocols = append(protocols, "responses")
+		case AdapterCapabilityEmbeddings:
+			protocols = append(protocols, "embeddings")
+		case AdapterCapabilityImageGenerate:
+			protocols = append(protocols, "images/generations")
+		}
+	}
+	return protocols
+}
+
+func normalizedProviderPluginProtocols(protocols []string) []string {
+	seen := map[string]bool{}
+	normalized := make([]string, 0, len(protocols))
+	for _, protocol := range protocols {
+		protocol = strings.ToLower(strings.TrimSpace(protocol))
+		if protocol == "" || seen[protocol] {
+			continue
+		}
+		seen[protocol] = true
+		normalized = append(normalized, protocol)
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
+func providerPluginSupportsCustomHeaders(manifest pluginmeta.Manifest) bool {
+	if manifest.Capabilities.Provider.SupportsCustomHeaders == nil {
+		return true
+	}
+	return *manifest.Capabilities.Provider.SupportsCustomHeaders
 }
 
 func providerPluginCapabilityUnsupported(capability string) error {
