@@ -500,6 +500,79 @@ func TestAdminProviderResourceRefreshTokenRoutePreservesRefreshMaskingAndAudit(t
 	}
 }
 
+func TestAdminProviderResourceImageCapabilityRouteUsesPluginAction(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "image_capability_plugin"
+	provider := store.AddProvider(Provider{
+		ID: "prv_image_capability_plugin", Name: "Image Capability Plugin Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_image_capability_plugin", ProviderID: provider.ID, Name: "Image Capability Plugin Resource",
+		ResourceType: providerType, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.image-capability-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Image Capability Plugin", []string{providerType}, []string{string(AdapterCapabilityImageGenerate)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityImageGenerate},
+	}); err != nil {
+		t.Fatalf("register image capability plugin: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Enabled    bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode image capability payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || !payload.Enabled || invocation.Actor.ID != "dev_admin" {
+			t.Fatalf("unexpected image capability invocation: payload=%+v actor=%+v", payload, invocation.Actor)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"enabled":     payload.Enabled,
+			"tested":      false,
+			"capability":  "plugin-supported",
+			"resource_id": payload.ResourceID,
+			"route_id":    "route_plugin_image",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register image capability action: %v", err)
+	}
+	app := server.Handler()
+
+	missingEnabled := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]any{}, "dev_admin_token")
+	assertJSONError(t, missingEnabled, http.StatusBadRequest, "codex_image_enabled_required")
+	if actionCalls != 0 {
+		t.Fatalf("missing enabled request reached image capability action: %d", actionCalls)
+	}
+
+	response := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]any{
+		"enabled": true,
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST plugin image capability: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if actionCalls != 1 || !strings.Contains(response.Body.String(), `"capability":"plugin-supported"`) ||
+		!strings.Contains(response.Body.String(), `"route_id":"route_plugin_image"`) {
+		t.Fatalf("image capability route did not use action: calls=%d body=%s", actionCalls, response.Body.String())
+	}
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "configure_codex_image", "provider_resource", resource.ID)
+}
+
 func TestAdminProviderResourceRoutesKeepStaticPathsAheadOfResourceIDs(t *testing.T) {
 	store, app := newMethodRoutingAdminServer(t, "provider-resource-static-password")
 	adminToken, _ := loginMethodRoutingAdmin(t, app, "provider-resource-static-password")

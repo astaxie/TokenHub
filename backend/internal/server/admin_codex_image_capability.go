@@ -39,7 +39,10 @@ func (s *Server) handleAdminCodexImageCapability(w http.ResponseWriter, r *http.
 		return
 	}
 	enabled := *req.Enabled
-	result, err := s.configureCodexImageCapability(r.Context(), resourceID, enabled)
+	result, supported, err := s.executeProviderResourceImageCapabilityAction(r.Context(), user, resourceID, enabled)
+	if !supported {
+		result, err = s.configureCodexImageCapability(r.Context(), resourceID, enabled)
+	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.recordAdminAuditWithStatus(r, user, "configure_codex_image", "provider_resource", resourceID, "failed", httpErr.Code, "", map[string]any{

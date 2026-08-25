@@ -428,6 +428,46 @@ func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, us
 	return reset, true, nil
 }
 
+func (s *Server) executeProviderResourceImageCapabilityAction(ctx context.Context, user AdminUser, resourceID string, enabled bool) (codexImageCapabilityResult, bool, error) {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return codexImageCapabilityResult{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return codexImageCapabilityResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityImageGenerate, "image.capability.configure")
+	if !ok {
+		return codexImageCapabilityResult{}, false, nil
+	}
+	payload, err := json.Marshal(map[string]any{
+		"resource_id": resourceID,
+		"enabled":     enabled,
+	})
+	if err != nil {
+		return codexImageCapabilityResult{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
+		PluginID: pluginID,
+		ActionID: actionID,
+		Actor: pluginmeta.ActionActor{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return codexImageCapabilityResult{}, true, pluginActionHTTPError(err)
+	}
+	imageCapability, ok := codexImageCapabilityResultFromActionData(result.Data)
+	if !ok {
+		return codexImageCapabilityResult{}, true, NewHTTPError(http.StatusInternalServerError, "provider_image_capability_invalid_result", "Provider image capability returned an invalid result")
+	}
+	return imageCapability, true, nil
+}
+
 func (s *Server) executeProviderResourceProbeAction(ctx context.Context, user AdminUser, resourceID string, req ProviderProbeRequest) (any, bool, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
@@ -499,6 +539,21 @@ func openAIAccountQuotaResetResultFromActionData(data any) (openAIAccountQuotaRe
 		return openAIAccountQuotaResetResult{}, false
 	}
 	return result, strings.TrimSpace(result.Code) != ""
+}
+
+func codexImageCapabilityResultFromActionData(data any) (codexImageCapabilityResult, bool) {
+	if result, ok := data.(codexImageCapabilityResult); ok {
+		return result, strings.TrimSpace(result.ResourceID) != ""
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return codexImageCapabilityResult{}, false
+	}
+	var result codexImageCapabilityResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return codexImageCapabilityResult{}, false
+	}
+	return result, strings.TrimSpace(result.ResourceID) != ""
 }
 
 func (s *Server) executeProviderResourceCredentialRefreshAction(ctx context.Context, user AdminUser, resourceID string, force bool) (pluginmeta.ActionResult, error) {

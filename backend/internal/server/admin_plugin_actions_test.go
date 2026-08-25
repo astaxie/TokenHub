@@ -123,9 +123,11 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.probe.run"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.image_capability.configure"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.credentials.refresh"`) ||
 		!strings.Contains(body, `"capability":"quota.reset_credits.read"`) ||
 		!strings.Contains(body, `"capability":"quota.reset"`) ||
+		!strings.Contains(body, `"capability":"image.capability.configure"`) ||
 		!strings.Contains(body, `"capability":"credentials.refresh"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
 	}
@@ -266,6 +268,47 @@ func TestAdminPluginActionRunsOpenAICodexQuotaResetActions(t *testing.T) {
 	}
 	if !sawCreditsAudit || !sawResetAudit {
 		t.Fatalf("quota reset action audit events = %+v", store.ListAuditEvents())
+	}
+}
+
+func TestAdminPluginActionConfiguresOpenAICodexImageCapability(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	upstreamCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		var request codexSubscriptionImageRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode capability request: %v", err)
+		}
+		if r.URL.Path != "/backend-api/codex/images/generations" || request.Model != codexImageUpstreamModel {
+			t.Fatalf("unexpected image capability request path=%s body=%+v", r.URL.Path, request)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{{"b64_json": encodeBase64(imageBytes)}},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
+	server.codexSubscription.Client = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.image_capability.configure", map[string]any{
+		"resource_id": resource.ID,
+		"enabled":     true,
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST image capability action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if upstreamCalls != 1 || !strings.Contains(response.Body, `"tested":true`) ||
+		!strings.Contains(response.Body, `"capability":"supported"`) ||
+		!strings.Contains(response.Body, `"resource_id":"`+resource.ID+`"`) {
+		t.Fatalf("image capability action response/calls: calls=%d body=%s", upstreamCalls, response.Body)
+	}
+	updated, ok := store.GetProviderResource(resource.ID)
+	if !ok || updated.Options[codexImageCapabilityOption] != codexImageCapabilitySupported {
+		t.Fatalf("image capability action did not record support: %+v", updated.Options)
+	}
+	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.image_capability.configure" {
+		t.Fatalf("image capability action audit events = %+v", events)
 	}
 }
 
