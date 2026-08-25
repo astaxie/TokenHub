@@ -9,7 +9,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
-import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
+import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerResourceDraftDefaults } from "../resources/provider-model-config";
 import { ReviewItem } from "./modals";
@@ -1793,7 +1793,7 @@ export function ProviderUpsertModal({
             <div className="provider-model-head">
               <div>
                 <strong>{tx("Provider 模型目录")}</strong>
-                <span>{effectiveCatalogError ? tx("加载失败") : effectiveCatalogLoading ? tx("加载中") : effectiveDetail ? countWithUnit(models.length, "个可引入模型", "importable model", "件の取り込み可能モデル", "importable models") : tx("加载中")}</span>
+                <span>{effectiveCatalogError ? tx("加载失败") : effectiveCatalogLoading ? tx("加载中") : effectiveDetail ? countRatioWithUnit(models.length, effectiveDetail.models_count, "个可引入模型", "importable model", "件の取り込み可能モデル", "importable models") : tx("加载中")}</span>
               </div>
               <div className="provider-model-tools">
                 <input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tx("搜索模型、能力、参数")} />

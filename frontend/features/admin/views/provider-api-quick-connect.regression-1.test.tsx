@@ -33,10 +33,10 @@ describe("Provider model catalog error state", () => {
   });
 
   it.each<[AppLanguage, string]>([
-    ["zh-CN", "2 个待引入模型"],
-    ["en", "2 models to import"],
-    ["ja", "2 件の取り込み予定モデル"],
-  ])("renders the model summary as a complete %s count label", (language, expected) => {
+    ["zh-CN", "2/3 个待引入模型"],
+    ["en", "2/3 models to import"],
+    ["ja", "2/3 件の取り込み予定モデル"],
+  ])("renders the model summary as a complete %s count ratio", (language, expected) => {
     setActiveLanguage(language);
     const { container } = render(
       <ProviderAPIQuickConnect
