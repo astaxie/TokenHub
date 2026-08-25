@@ -92,3 +92,25 @@ export function accountResourceTypeForCatalog(catalogID?: string) {
 export function accountModelCategoryForCatalog(catalogID?: string) {
   return isGrokAccountCatalog(catalogID) ? "grok" : "codex";
 }
+
+const accountVendorCredentialKeys = [
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "account_email",
+  "account_id",
+  "organization_id",
+  "plan_type",
+  "token_type",
+  "expires_at",
+  "scopes",
+] as const;
+
+export function resetAccountVendorCredentials(values: Record<string, string>, catalogID: string) {
+  const next: Record<string, string> = { ...values, auth_type: "oauth" };
+  for (const key of accountVendorCredentialKeys) next[key] = "";
+  next.resource_type = accountResourceTypeForCatalog(catalogID);
+  const baseURL = accountCatalogSummary(catalogID).base_url;
+  if (baseURL) next.base_url = baseURL;
+  return next;
+}

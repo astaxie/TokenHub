@@ -80,7 +80,12 @@ export function useGrokDeviceOAuth({
     }
   }
 
-  return { device, open, poll, setOpen, start };
+  function reset() {
+    setDevice(null);
+    setOpen(false);
+  }
+
+  return { device, open, poll, reset, setOpen, start };
 }
 
 export function ProviderGrokDeviceOAuthModal({

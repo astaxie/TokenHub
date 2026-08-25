@@ -1,4 +1,4 @@
-import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Ban, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
@@ -22,7 +22,8 @@ import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningForm
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
-import { accountCatalogSummary, accountModelCategoryForCatalog, accountProviderCatalogOptions, accountResourceTypeForCatalog, type CodexSubscriptionTestResult, codexProviderCatalogSummary, fallbackCodexReasoningEfforts, grokProviderCatalogSummary, isAccountCatalogID, isGrokAccountCatalog, type OpenAIAccountQuota } from "./provider-account-catalog";
+import { accountCatalogSummary, accountModelCategoryForCatalog, accountProviderCatalogOptions, accountResourceTypeForCatalog, type CodexSubscriptionTestResult, codexProviderCatalogSummary, fallbackCodexReasoningEfforts, grokProviderCatalogSummary, isAccountCatalogID, isGrokAccountCatalog, type OpenAIAccountQuota, resetAccountVendorCredentials } from "./provider-account-catalog";
+import { ProviderAccountCreateAuth } from "./provider-account-create-auth";
 import { ProviderGrokDeviceOAuthModal, useGrokDeviceOAuth } from "./provider-grok-device-oauth";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
 type ProviderEditTab = "connect" | "models" | "advanced";
@@ -843,7 +844,7 @@ export function ProviderUpsertModal({
       selectCatalog(codexProviderCatalogSummary);
       return;
     }
-    if (modelCategory === "codex" || catalogID === codexProviderCatalogSummary.id) {
+    if (modelCategory === "codex" || modelCategory === "grok" || isAccountCatalogID(catalogID)) {
       selectCategory(availableCategories[0]?.key ?? "custom");
     }
   }
@@ -937,6 +938,9 @@ export function ProviderUpsertModal({
 
   function selectCatalog(entry: ProviderCatalogEntry) {
     if (entry.id === catalogID) return;
+    const switchingAccountVendor = credentialMode === "account_integration"
+      && isAccountCatalogID(catalogID)
+      && isAccountCatalogID(entry.id);
     loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     const nextName = entry.display_name || entry.name || values.name;
@@ -958,6 +962,17 @@ export function ProviderUpsertModal({
         : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(nextName, entry.base_url);
+    if (switchingAccountVendor) {
+      clearPendingProviderAccountOAuthSession();
+      grokDeviceOAuth.reset();
+      setAccountOAuthCallback("");
+      setAccountOAuthStatus("");
+      setAccountOAuthNoticeOpen(false);
+      setAccountOAuthCallbackModalOpen(false);
+      setAccountOAuthNoticeError("");
+      setAccountOAuthCallbackModalError("");
+      setAccountValues((current) => resetAccountVendorCredentials(current, entry.id));
+    }
   }
 
   function selectCustomCatalog() {
@@ -1417,69 +1432,21 @@ export function ProviderUpsertModal({
                   </div>
                 ) : (
                   <div className="provider-account-inline">
-                    <div className="provider-account-inline-head">
-                      <strong>{tx("账号授权")}</strong>
-                      <span>{tx("使用 OpenAI/Codex OAuth 授权账号；TokenHub 会在后端换取并保存账号 Token。")}</span>
-                    </div>
-                    <div className="provider-account-auth-grid">
-                      <label className={`field provider-account-auth-wide provider-account-name-field${accountResourceNameConflict ? " conflict" : ""}`}>
-                        <span>{tx("账号资源名称")}</span>
-                        <input
-                          aria-invalid={accountResourceNameConflict}
-                          aria-describedby={accountResourceNameConflict ? "provider-account-name-conflict" : undefined}
-                          ref={accountNameInputRef}
-                          value={accountValues.name ?? ""}
-                          onChange={(event) => updateAccountValue("name", event.target.value)}
-                          required
-                        />
-                        {accountResourceNameConflict ? (
-                          <div className="provider-account-name-conflict" id="provider-account-name-conflict" role="alert">
-                            <AlertCircle aria-hidden="true" size={18} />
-                            <div>
-                              <strong>{tx("账号资源名称已存在，请立即修改名称")}</strong>
-                              <span>{tx("当前名称已被其他账号资源占用。请先修改为新的唯一名称，再继续授权。")}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <small>{tx("账号资源名称需全局唯一，用于在资源池中区分账号。")}</small>
-                        )}
-                      </label>
-                      <label className="field provider-account-auth-wide">
-                        <span>{tx("OpenAI/Codex 授权")}</span>
-                        <div className="field-action-row">
-                          <input readOnly value={openAIAccountOAuthRedirectURI} />
-                          <button className="secondary-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
-                            <Send size={14} />
-                            {tx(accountOAuthBusy ? "授权中" : "打开授权")}
-                          </button>
-                        </div>
-                        <small>{tx("点击后由后端生成授权地址。OpenAI 固定回调到 localhost:1455；无需该端口实际启动服务。")}</small>
-                      </label>
-                      <label className="field provider-account-auth-wide">
-                        <span>{tx("回调结果")}</span>
-                        <textarea
-                          value={accountOAuthCallback}
-                          onChange={(event) => parseAccountOAuthCallback(event.target.value)}
-                          placeholder="http://localhost:1455/auth/callback?code=...&state=..."
-                        />
-                        <small>{tx("授权完成后，即使 localhost 页面显示无法访问，也请复制地址栏中的完整 callback URL 粘贴到这里。")}</small>
-                      </label>
-                      <div className="provider-account-auth-actions">
-                        <button className="secondary-button" onClick={parseAccountOAuthCallbackNow} type="button">
-                          <Check size={14} />
-                          {tx("解析回填")}
-                        </button>
-                        <button className="secondary-button" onClick={copyProviderAccountCallbackURL} type="button">
-                          <Copy size={14} />
-                          {tx("复制固定回调地址")}
-                        </button>
-                        <div className={accountTokenSummary.ready ? "provider-account-token-status ready" : "provider-account-token-status"}>
-                          {accountTokenSummary.ready ? <Check size={15} /> : <AlertCircle size={15} />}
-                          <span>{tx(accountTokenSummary.ready ? "已回填账号 Token" : "等待授权回填")}</span>
-                          {accountTokenSummary.items.map((item) => <em key={item}>{tx(item)}</em>)}
-                        </div>
-                      </div>
-                    </div>
+                    <ProviderAccountCreateAuth
+                      accountNameInputRef={accountNameInputRef}
+                      accountOAuthBusy={accountOAuthBusy}
+                      accountOAuthCallback={accountOAuthCallback}
+                      accountResourceNameConflict={accountResourceNameConflict}
+                      accountTokenItems={accountTokenSummary.items}
+                      accountTokenReady={accountTokenSummary.ready}
+                      catalogID={catalogID}
+                      name={accountValues.name ?? ""}
+                      onAuthorize={requestProviderAccountAuthorization}
+                      onCallbackChange={parseAccountOAuthCallback}
+                      onCopyCallbackURL={() => { void copyProviderAccountCallbackURL(); }}
+                      onNameChange={(value) => updateAccountValue("name", value)}
+                      onParseCallback={parseAccountOAuthCallbackNow}
+                    />
                     {accountOAuthStatus ? <p className="provider-credential-note">{accountOAuthStatus}</p> : null}
                     <details className="provider-account-runtime">
                       <summary>

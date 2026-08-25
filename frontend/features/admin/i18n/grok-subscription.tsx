@@ -17,6 +17,9 @@ export const grokSubscriptionTranslations = {
     "查询 Super Grok 授权失败": "Failed to check Super Grok authorization",
     "已完成 Super Grok 授权。": "Super Grok authorization completed.",
     "适合 Codex Subscription、Super Grok 订阅或多账号轮询。": "Use for Codex Subscription, Super Grok subscriptions, or multi-account rotation.",
+    "使用 Super Grok 设备码授权账号；TokenHub 会换取并保存订阅 Token。": "Authorize a Super Grok account with an xAI device code. TokenHub exchanges and stores the subscription token.",
+    "Super Grok 授权": "Super Grok authorization",
+    "点击后由后端开始 xAI 设备码授权。在 xAI 页面确认用户码；无需 localhost 回调。": "TokenHub starts xAI device authorization. Confirm the user code on the xAI page; no localhost callback is required.",
   },
   ja: {
     "账号资源池可接入 Codex Subscription 或 Super Grok 订阅，下一步选择默认通道并完成账号授权。": "アカウントプールでは Codex Subscription または Super Grok サブスクリプションを接続できます。次に既定チャネルを選び、アカウント認可を完了してください。",
@@ -36,5 +39,8 @@ export const grokSubscriptionTranslations = {
     "查询 Super Grok 授权失败": "Super Grok 認可の確認に失敗しました",
     "已完成 Super Grok 授权。": "Super Grok 認可が完了しました。",
     "适合 Codex Subscription、Super Grok 订阅或多账号轮询。": "Codex Subscription、Super Grok サブスクリプション、または複数アカウントのローテーションに適しています。",
+    "使用 Super Grok 设备码授权账号；TokenHub 会换取并保存订阅 Token。": "Super Grok アカウントを xAI デバイスコードで認可します。TokenHub がサブスクリプション Token を交換して保存します。",
+    "Super Grok 授权": "Super Grok 認可",
+    "点击后由后端开始 xAI 设备码授权。在 xAI 页面确认用户码；无需 localhost 回调。": "TokenHub が xAI デバイス認可を開始します。xAI のページでユーザーコードを確認してください。localhost コールバックは不要です。",
   },
 };
