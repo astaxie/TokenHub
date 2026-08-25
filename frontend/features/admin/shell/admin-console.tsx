@@ -34,6 +34,7 @@ import { RouteStrategyView } from "../views/model-catalog";
 import { modelRoutePolicyPayload } from "../views/model-routing-policy";
 import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
+import { PluginPageView } from "../views/admin-ui-plugin-pages";
 import { PluginsView } from "../views/plugins";
 import { ProviderUpsertModal } from "../views/provider-editor";
 import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
@@ -62,6 +63,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     Object.fromEntries(allNavGroupTitles.map((title) => [title, true])),
   );
   const [activeView, setActiveView] = useState<ViewKey>(routeView);
+  const [activePluginPageKey, setActivePluginPageKey] = useState(() => pluginPageKeyFromLocation());
   const [data, setData] = useState<AppData>(emptyData());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -99,7 +101,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setTheme((value) => (value === "light" ? "dark" : "light"));
   }
 
-  const selectView = useCallback((view: ViewKey, options: { replace?: boolean; routeModelQuery?: string } = {}) => {
+  const selectView = useCallback((view: ViewKey, options: { replace?: boolean; routeModelQuery?: string; pluginPageKey?: string } = {}) => {
     if (view !== activeView) {
       setNotice("");
       setError("");
@@ -107,18 +109,23 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setModelCategoryFilter(view === "notification-channels" ? "webhook" : "all");
     }
     if (view === "routes") setRouteModelQuery(options.routeModelQuery ?? "");
+    setActivePluginPageKey(view === "plugin-pages" ? options.pluginPageKey ?? activePluginPageKey : "");
     if (view !== "projects") setProjectWorkspace(null);
     setActiveView(view);
     const nextPath = viewRoutes[view];
-    if (pathname === nextPath) return;
-    const suffix = typeof window === "undefined" ? "" : `${window.location.search}${window.location.hash}`;
+    const suffix = pluginPageURLSuffix(view, options.pluginPageKey);
+    if (pathname === nextPath && suffix === currentLocationSuffix()) return;
     const nextURL = `${nextPath}${suffix}`;
     if (options.replace) {
       router.replace(nextURL);
     } else {
       router.push(nextURL);
     }
-  }, [activeView, pathname, router]);
+  }, [activePluginPageKey, activeView, pathname, router]);
+
+  const selectPluginPage = useCallback((key: string) => {
+    selectView("plugin-pages", { pluginPageKey: key });
+  }, [selectView]);
 
   function openRoutes(model?: Model) {
     selectView("routes", { routeModelQuery: model?.name ?? "" });
@@ -302,6 +309,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setError("");
     setModelCategoryFilter(routeView === "notification-channels" ? "webhook" : "all");
     setActiveView(routeView);
+    setActivePluginPageKey(routeView === "plugin-pages" ? pluginPageKeyFromLocation() : "");
   }, [routeView]);
 
   useEffect(() => {
@@ -847,7 +855,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         activeView={activeView}
         onSelect={selectView}
         user={currentUser}
+        data={data}
+        activePluginPageKey={activePluginPageKey}
         onLogout={() => void logout()}
+        onSelectPluginPage={selectPluginPage}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
         openGroups={openNavGroups}
@@ -910,6 +921,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             <DatabaseStatusView api={api} isDark={theme === "dark"} />
           ) : activeView === "plugins" ? (
             <PluginsView api={api} data={data} />
+          ) : activeView === "plugin-pages" ? (
+            <PluginPageView activePageKey={activePluginPageKey} api={api} data={data} onSelectPage={selectPluginPage} />
           ) : activeView === "settings" ? (
             <SettingsView
               api={api}
@@ -1280,4 +1293,24 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setLoading(false);
     }
   }
+}
+
+function pluginPageKeyFromLocation() {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("plugin_page") ?? "";
+}
+
+function pluginPageURLSuffix(view: ViewKey, pluginPageKey?: string) {
+  if (typeof window === "undefined") return "";
+  const hash = window.location.hash;
+  if (view !== "plugin-pages") return hash;
+  const params = new URLSearchParams();
+  if (pluginPageKey) params.set("plugin_page", pluginPageKey);
+  const query = params.toString();
+  return `${query ? `?${query}` : ""}${hash}`;
+}
+
+function currentLocationSuffix() {
+  if (typeof window === "undefined") return "";
+  return `${window.location.search}${window.location.hash}`;
 }

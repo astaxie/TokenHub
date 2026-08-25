@@ -721,6 +721,66 @@ h2 {
   padding-top: 16px;
 }
 
+.plugin-page-view {
+  display: grid;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.plugin-page-list {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  background: var(--surface);
+}
+
+.plugin-page-list button {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-page-list button.active {
+  border-color: var(--border);
+  background: var(--surface-3);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.plugin-page-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.plugin-page-panel .section-body {
+  display: grid;
+  gap: 14px;
+}
+
+.plugin-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.plugin-page-heading span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: 1fr 1fr;

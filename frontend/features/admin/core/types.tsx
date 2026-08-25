@@ -1019,6 +1019,7 @@ export type ViewKey =
   | "gateway"
   | "providers"
   | "plugins"
+  | "plugin-pages"
   | "models"
   | "routes"
   | "routing-policies"
@@ -1053,6 +1054,7 @@ export const viewRoutes: Record<ViewKey, string> = {
   gateway: "/gateway",
   providers: "/providers",
   plugins: "/plugins",
+  "plugin-pages": "/plugin-pages",
   models: "/models",
   routes: "/routes",
   "routing-policies": "/routing-policies",

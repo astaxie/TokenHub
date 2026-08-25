@@ -2,6 +2,8 @@ export const pluginTranslations: Record<"en" | "ja", Record<string, string>> = {
   en: {
     "插件管理": "Plugin Management",
     "查看当前已注册的内置与外部插件能力，为 Provider、链路注入和界面模板化扩展提供基础。": "View registered built-in and external plugin capabilities for Provider, gateway-chain, and UI template extensions.",
+    "插件扩展": "Plugin Extensions",
+    "打开插件贡献的管理页面和操作面板。": "Open management pages and action panels contributed by plugins.",
     "已注册插件": "Registered Plugins",
     "Provider 能力": "Provider Capabilities",
     "链路插件": "Gateway-Chain Plugins",
@@ -70,6 +72,8 @@ export const pluginTranslations: Record<"en" | "ja", Record<string, string>> = {
   ja: {
     "插件管理": "プラグイン管理",
     "查看当前已注册的内置与外部插件能力，为 Provider、链路注入和界面模板化扩展提供基础。": "登録済みの組み込み・外部プラグイン機能を確認し、Provider、ゲートウェイチェーン、UI テンプレート拡張の基盤にします。",
+    "插件扩展": "プラグイン拡張",
+    "打开插件贡献的管理页面和操作面板。": "プラグインが提供する管理ページと操作パネルを開きます。",
     "已注册插件": "登録済みプラグイン",
     "Provider 能力": "Provider 機能",
     "链路插件": "ゲートウェイチェーンプラグイン",

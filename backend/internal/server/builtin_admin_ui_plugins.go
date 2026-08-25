@@ -12,11 +12,27 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "admin_ui", Name: "dashboard_card", Subject: "plugin_ecosystem"},
+			{Kind: "admin_ui", Name: "nav_section", Subject: "plugin_ecosystem"},
 			{Kind: "admin_ui", Name: "route_detail_panel", Subject: "plugin_ecosystem"},
 			{Kind: "admin_ui", Name: "settings_panel", Subject: "plugin_ecosystem"},
 		},
 	})
 	for _, contribution := range []pluginmeta.AdminUIContribution{
+		{
+			PluginID: "tokenhub.admin.plugin-ecosystem",
+			ID:       "ecosystem-page",
+			Slot:     pluginmeta.SlotNavigationSection,
+			Title:    "Plugin Ecosystem",
+			Schema: map[string]any{
+				"description": "Inspect the plugin registry, Admin UI contributions, gateway hooks, and plugin actions.",
+				"fields": []any{
+					map[string]any{"name": "registered_plugins", "type": "metric", "label": "Registered plugins", "source": "plugins.length", "format": "number"},
+					map[string]any{"name": "gateway_hooks", "type": "metric", "label": "Gateway hooks", "source": "pluginChain.hooks.length", "format": "number"},
+					map[string]any{"name": "admin_ui_contributions", "type": "metric", "label": "UI contributions", "source": "pluginUI.length", "format": "number"},
+					map[string]any{"name": "plugin_actions", "type": "metric", "label": "Plugin actions", "source": "pluginActions.length", "format": "number"},
+				},
+			},
+		},
 		{
 			PluginID: "tokenhub.admin.plugin-ecosystem",
 			ID:       "overview",

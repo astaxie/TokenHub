@@ -209,6 +209,10 @@ export const standaloneViewMeta: Partial<Record<ViewKey, { title: string; descri
     title: "插件管理",
     description: "查看当前已注册的内置与外部插件能力，为 Provider、链路注入和界面模板化扩展提供基础。",
   },
+  "plugin-pages": {
+    title: "插件扩展",
+    description: "打开插件贡献的管理页面和操作面板。",
+  },
 };
 
 export const roleViewAccess: Record<AppRole, ViewKey[]> = {

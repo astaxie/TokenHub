@@ -86,6 +86,10 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.overview = true;
       plan.breakdown = true;
       plan.timeseries = true;
+      plan.plugins = true;
+      plan.pluginChain = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
       plan.logs = can("audit");
       plan.users = appRole(user.role) === "team_leader";
       if (appRole(user.role) === "team_leader") {
@@ -151,11 +155,13 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.providerMonitoring = true;
       break;
     case "plugins":
+    case "plugin-pages":
       plan.plugins = true;
       plan.providerAdapters = true;
       plan.pluginChain = true;
       plan.pluginUI = true;
       plan.pluginActions = true;
+      plan.overview = view === "plugin-pages";
       break;
     case "models":
       plan.overview = true;
@@ -167,6 +173,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.overview = true;
       plan.routes = true;
       plan.providerModels = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
       break;
     case "routing-policies":
       plan.overview = true;
@@ -209,7 +217,11 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "role-configs");
       break;
     case "settings":
-	  plan.providers = true;
+      plan.providers = true;
+      plan.plugins = true;
+      plan.pluginChain = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
       addResourceDependency(plan, "settings");
       addResourceDependency(plan, "role-configs");
       addResourceDependency(plan, "identity-providers");
