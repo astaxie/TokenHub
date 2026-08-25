@@ -106,6 +106,51 @@ func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext
 	}
 }
 
+func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallContext, route RouteSelection, response any) (any, error) {
+	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageResponsePost)) == 0 {
+		return response, nil
+	}
+	body, ok := marshalGatewayHookData(response)
+	if !ok {
+		return nil, NewHTTPError(http.StatusInternalServerError, "gateway_hook_input_invalid", "Gateway plugin input could not be encoded")
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:     "v1",
+			Protocol:    "gateway",
+			Operation:   "response_post",
+			Model:       call.Model.Name,
+			RequestBody: body,
+		},
+		Data: pluginmeta.GatewayHookData{
+			pluginmeta.DataProviderResponse: body,
+		},
+	}
+	if len(route.Route.ID) > 0 || len(route.Provider.ID) > 0 {
+		if routeData, ok := marshalGatewayHookData(gatewayRouteCandidateViews([]RouteSelection{route})); ok {
+			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
+		}
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageResponsePost, input)
+	if err != nil {
+		return nil, gatewayHookHTTPError(pluginmeta.StageResponsePost, err)
+	}
+	output := response
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataProviderResponse]
+		if !ok {
+			continue
+		}
+		var patched any
+		if err := decodeGatewayHookPayload(patch.Value, &patched, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response"); err != nil {
+			return nil, err
+		}
+		output = patched
+	}
+	return output, nil
+}
+
 func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
 	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)) == 0 {
 		return nil

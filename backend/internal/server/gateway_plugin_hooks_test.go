@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -505,6 +506,156 @@ func TestRequestTransformHookRewritesGatewayResponsesRequestBeforeUpstream(t *te
 	}
 }
 
+func TestResponsePostHookCanRewriteProviderResponse(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-response",
+		HookID:        "rewrite",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register response post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Envelope.RequestBody) == 0 {
+			t.Fatal("provider response was not available in the hook envelope")
+		}
+		if _, ok := input.Data[pluginmeta.DataProviderResponse]; !ok {
+			t.Fatal("provider response data was not available to the hook")
+		}
+		return rawProviderResponsePatch(t, map[string]any{"id": "post_processed"}), nil
+	})); err != nil {
+		t.Fatalf("register response post handler: %v", err)
+	}
+
+	response, err := server.runGatewayResponsePostHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"})
+	if err != nil {
+		t.Fatalf("run response post hook: %v", err)
+	}
+	body, ok := response.(map[string]any)
+	if !ok || body["id"] != "post_processed" {
+		t.Fatalf("provider response = %#v, want post_processed", response)
+	}
+}
+
+func TestResponsePostHookRewritesGatewayChatResponseBeforeClient(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Response Post Chat App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "response-post-chat-key",
+		Allowed: []string{"gpt-response-post"},
+		Status:  StatusActive,
+	}, "thk_response_post_chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_response_post_chat", Name: "Response Post Chat", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-response-post", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_response_post_chat", ModelName: "gpt-response-post", ProviderID: provider.ID, ProviderModel: "upstream-chat", Status: StatusActive, Priority: 1, Weight: 100})
+	server := New(store)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-response",
+		HookID:        "shape-chat",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register response post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderResponsePatch(t, map[string]any{
+			"id":      "chat_post_processed",
+			"object":  "chat.completion",
+			"created": float64(1),
+			"model":   "gpt-response-post",
+			"choices": []map[string]any{{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": "[post-processed]",
+				},
+				"finish_reason": "stop",
+			}},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register response post handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-response-post",
+		"messages": []map[string]any{
+			{"role": "user", "content": "original"},
+		},
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, "[post-processed]") || !strings.Contains(resp.Body, "chat_post_processed") {
+		t.Fatalf("response body was not post processed: %s", resp.Body)
+	}
+}
+
+func TestResponsePostHookRewritesGatewayResponsesResponseBeforeClient(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Response Post Responses App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "response-post-responses-key",
+		Allowed: []string{"gpt-response-post-responses"},
+		Status:  StatusActive,
+	}, "thk_response_post_responses")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_response_post_responses", Name: "Response Post Responses", Type: "transform_capture", Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-response-post-responses", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_response_post_responses", ModelName: "gpt-response-post-responses", ProviderID: provider.ID, ProviderModel: "upstream-responses", Status: StatusActive, Priority: 1, Weight: 100})
+	server := New(store)
+	server.adapterRegistry.Register("transform_capture", &requestTransformCaptureAdapter{}, AdapterCapabilityChat, AdapterCapabilityResponses)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-response",
+		HookID:        "shape-responses",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register response post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderResponsePatch(t, map[string]any{
+			"id":          "resp_post_processed",
+			"object":      "response",
+			"created_at":  float64(1),
+			"model":       "gpt-response-post-responses",
+			"output_text": "[responses-post-processed]",
+		}), nil
+	})); err != nil {
+		t.Fatalf("register response post handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
+		"model": "gpt-response-post-responses",
+		"input": "original",
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, "[responses-post-processed]") || !strings.Contains(resp.Body, "resp_post_processed") {
+		t.Fatalf("response body was not post processed: %s", resp.Body)
+	}
+}
+
 func TestCacheLookupHookCanShortCircuitWithProviderResponse(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{
@@ -701,6 +852,20 @@ func rawProviderRequestPatch(t *testing.T, value any) pluginmeta.GatewayHookResu
 		Decision: pluginmeta.HookDecisionContinue,
 		Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
 			pluginmeta.DataProviderRequest: {Value: data},
+		},
+	}
+}
+
+func rawProviderResponsePatch(t *testing.T, value any) pluginmeta.GatewayHookResult {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pluginmeta.GatewayHookResult{
+		Decision: pluginmeta.HookDecisionContinue,
+		Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+			pluginmeta.DataProviderResponse: {Value: data},
 		},
 	}
 }

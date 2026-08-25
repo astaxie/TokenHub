@@ -231,6 +231,8 @@ func applyGatewayHookWritesToInput(input *GatewayHookInput, writes map[GatewayDa
 			input.Envelope.RequestBody = cloneRawMessage(value)
 		case DataProviderRequest:
 			input.Envelope.RequestBody = cloneRawMessage(value)
+		case DataProviderResponse:
+			input.Envelope.RequestBody = cloneRawMessage(value)
 		case DataNormalizedText:
 			var segments []TextSegment
 			if json.Unmarshal(value, &segments) == nil {
@@ -258,6 +260,8 @@ func clipGatewayHookInput(input GatewayHookInput, reads []GatewayDataClass) Gate
 	if _, ok := allowed[DataRequestBody]; ok {
 		clipped.Envelope.RequestBody = cloneRawMessage(input.Envelope.RequestBody)
 	} else if _, ok := allowed[DataProviderRequest]; ok {
+		clipped.Envelope.RequestBody = cloneRawMessage(input.Envelope.RequestBody)
+	} else if _, ok := allowed[DataProviderResponse]; ok {
 		clipped.Envelope.RequestBody = cloneRawMessage(input.Envelope.RequestBody)
 	}
 	if _, ok := allowed[DataNormalizedText]; ok {
