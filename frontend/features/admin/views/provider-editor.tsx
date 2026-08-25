@@ -1,7 +1,7 @@
 import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type ApiContext, type Model, type ModelRoute, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
+import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
@@ -20,6 +20,7 @@ import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
+import { ProviderPluginPanels } from "./provider-plugin-panels";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 const openAIAccountOAuthRedirectURI = "http://localhost:1455/auth/callback";
@@ -79,7 +80,6 @@ const codexProviderCatalogSummary: ProviderCatalogEntry = {
 };
 const accountProviderCatalogOptions = [codexProviderCatalogSummary];
 const fallbackCodexReasoningEfforts = ["low", "medium", "high", "xhigh", "max"];
-
 export function ProviderUpsertModal({
   mode,
   provider,
@@ -95,7 +95,7 @@ export function ProviderUpsertModal({
   onAccountsChanged,
   setLoading,
   setError,
-  setNotice, providerTypeOptions,
+  setNotice, providerTypeOptions, pluginUI = [], pluginActions = [],
 }: {
   mode: "create" | "edit";
   provider?: Provider;
@@ -111,7 +111,7 @@ export function ProviderUpsertModal({
   onAccountsChanged?: () => Promise<void>;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
-  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string }>;
+  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[];
 }) {
   const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
     resource.provider_id === provider?.id && resource.resource_type === "openai_subscription",
@@ -1535,6 +1535,7 @@ export function ProviderUpsertModal({
                 <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} resources={resources} /> : null}
+            {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} /> : null}
             {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
@@ -1998,7 +1999,6 @@ function intersectProviderCatalogs(catalogs: ProviderCatalogEntry[]): ProviderCa
     category_counts: { ...(first.category_counts ?? {}), codex: models.length },
   };
 }
-
 function intersectStringLists(lists: string[][]) {
   if (lists.length === 0) return [];
   return lists[0].filter((value) => lists.slice(1).every((list) => list.includes(value)));

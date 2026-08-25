@@ -135,6 +135,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "providers":
       plan.providers = true;
       plan.plugins = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
       plan.providerResources = true;
       plan.overview = true;
       plan.routes = true;

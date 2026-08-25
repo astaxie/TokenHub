@@ -1083,6 +1083,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           standardModels={data.models}
           providerModels={data.providerModels}
           resources={data.providerResources}
+          pluginUI={data.pluginUI}
+          pluginActions={data.pluginActions}
           providerTypeOptions={providerTypeOptions}
           loading={loading}
           onClose={() => setProviderCreateOpen(false)}
@@ -1106,6 +1108,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}
+          pluginUI={data.pluginUI}
+          pluginActions={data.pluginActions}
           providerTypeOptions={providerTypeOptions}
           loading={loading}
           onClose={() => setProviderEditItem(null)}
