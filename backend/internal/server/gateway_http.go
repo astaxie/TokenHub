@@ -167,7 +167,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("x-request-id", routed.Call.RequestID)
 					s.writeRouteHeaders(w, routed.Call, prepared, attempt)
 				}
-				streamUsage, err := s.streamChatRoute(ctx, prepared, upstreamReq, r.Header, tracker)
+				streamUsage, err := s.streamChatRouteWithGatewayTransforms(ctx, routed.Call, prepared, upstreamReq, r.Header, tracker)
 				return struct{}{}, streamUsage, classifyStreamError(ctx, err, tracker.Wrote())
 			})
 
