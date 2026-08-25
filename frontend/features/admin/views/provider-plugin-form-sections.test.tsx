@@ -97,4 +97,66 @@ describe("ProviderPluginFormSections", () => {
       cache_enabled: "false",
     });
   });
+
+  it("hydrates plugin form defaults into the provider options payload", async () => {
+    const updateSpy = vi.fn();
+    const tenantKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "tenant_id");
+    const modeKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "routing_mode");
+    const enabledKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "cache_enabled");
+
+    function Harness() {
+      const [values, setValues] = useState<Record<string, string>>({ type: "plugin_provider" });
+      function onUpdate(key: string, value: string) {
+        updateSpy(key, value);
+        setValues((current) => ({ ...current, [key]: value }));
+      }
+      return (
+        <ProviderPluginFormSections
+          contributions={[{
+            plugin_id: "tokenhub.provider.plugin",
+            id: "defaults",
+            slot: "provider.form.section",
+            title: "Plugin Defaults",
+            provider_types: ["plugin_provider"],
+            schema: {
+              fields: [
+                { name: "tenant_id", type: "text", label: "Tenant ID", default: "tenant-default" },
+                { name: "routing_mode", type: "select", label: "Routing Mode", options: ["balanced", "strict"], default_value: "balanced" },
+                { name: "cache_enabled", type: "switch", label: "Cache Enabled", default: true },
+              ],
+            },
+          }]}
+          onUpdate={onUpdate}
+          values={values}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith(tenantKey, "tenant-default");
+      expect(updateSpy).toHaveBeenCalledWith(modeKey, "balanced");
+      expect(updateSpy).toHaveBeenCalledWith(enabledKey, "true");
+    });
+
+    const payload = providerPayload({
+      id: "prv_plugin",
+      name: "Plugin Provider",
+      type: "plugin_provider",
+      status: "active",
+      healthy: "true",
+      priority: "10",
+      base_url: "https://provider.example/v1",
+      api_key: "secret",
+      [tenantKey]: "tenant-default",
+      [modeKey]: "balanced",
+      [enabledKey]: "true",
+    });
+    expect(payload.options).toMatchObject({
+      tenant_id: "tenant-default",
+      routing_mode: "balanced",
+      cache_enabled: "true",
+    });
+  });
 });

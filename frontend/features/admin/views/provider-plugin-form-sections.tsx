@@ -12,6 +12,7 @@ type PluginFormField = {
   placeholder?: string;
   required?: boolean;
   help?: string;
+  defaultValue?: string;
 };
 
 export function ProviderPluginFormSections({
@@ -36,11 +37,11 @@ export function ProviderPluginFormSections({
     [contributions, values.type],
   );
   useEffect(() => {
-    if (!provider?.options) return;
     for (const { contribution, fields } of sections) {
       for (const field of fields) {
         const key = providerPluginOptionFieldKey(contribution.plugin_id, field.name);
-        const value = provider.options[field.name];
+        const existingValue = provider?.options?.[field.name];
+        const value = existingValue ?? field.defaultValue;
         if (values[key] === undefined && value !== undefined) onUpdate(key, value);
       }
     }
@@ -64,7 +65,7 @@ export function ProviderPluginFormSections({
                   field={{ ...field, key }}
                   key={key}
                   onChange={(value) => onUpdate(key, value)}
-                  value={values[key] ?? provider?.options?.[field.name] ?? defaultPluginFieldValue(field)}
+                  value={values[key] ?? provider?.options?.[field.name] ?? field.defaultValue ?? defaultPluginFieldValue(field)}
                   values={values}
                 />
               );
@@ -94,6 +95,7 @@ function pluginFormFields(contribution: AdminUIContribution): PluginFormField[] 
       placeholder: schemaString(field.placeholder),
       required: field.required === true,
       help: schemaString(field.help),
+      defaultValue: schemaDefaultValue(field.default ?? field.default_value),
     }];
   });
 }
@@ -126,4 +128,10 @@ function schemaString(value: unknown) {
 
 function schemaStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
+}
+
+function schemaDefaultValue(value: unknown) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
 }
