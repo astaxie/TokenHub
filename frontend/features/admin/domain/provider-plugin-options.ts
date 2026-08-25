@@ -14,3 +14,15 @@ export function providerPluginOptionValues(values: Record<string, string>) {
   }
   return options;
 }
+
+export function providerPluginOptionValuesForPlugin(values: Record<string, string>, pluginID: string) {
+  const options: Record<string, string> = {};
+  const prefix = `${providerPluginOptionPrefix}${pluginID}:`;
+  for (const [key, value] of Object.entries(values)) {
+    if (!key.startsWith(prefix)) continue;
+    const optionKey = key.slice(prefix.length).trim();
+    if (!optionKey) continue;
+    options[optionKey] = value;
+  }
+  return options;
+}

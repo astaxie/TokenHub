@@ -1,12 +1,17 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { providerPluginOptionFieldKey } from "../domain/provider-plugin-options";
 import { providerPayload } from "../resources/payloads";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 
 describe("ProviderPluginFormSections", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("renders matching provider form sections and preserves existing provider options", async () => {
     const user = userEvent.setup();
     const updateSpy = vi.fn();
@@ -158,5 +163,124 @@ describe("ProviderPluginFormSections", () => {
       routing_mode: "balanced",
       cache_enabled: "true",
     });
+  });
+
+  it("runs plugin form action buttons with provider context and scoped plugin options", async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { status: "queued" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const tenantKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "tenant_id");
+    const otherKey = providerPluginOptionFieldKey("tokenhub.provider.other", "tenant_id");
+
+    render(
+      <ProviderPluginFormSections
+        actions={[{
+          plugin_id: "tokenhub.provider.plugin",
+          action_id: "plugin.sync",
+          kind: "mutate",
+          capability: "provider.sync",
+          subject: "plugin_provider",
+        }]}
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        contributions={[{
+          plugin_id: "tokenhub.provider.plugin",
+          id: "actions",
+          slot: "provider.form.section",
+          title: "Plugin Actions",
+          provider_types: ["plugin_provider"],
+          schema: {
+            fields: [
+              { name: "tenant_id", type: "text", label: "Tenant ID" },
+              { name: "sync", type: "action_button", label: "Sync Catalog", action: "plugin.sync" },
+            ],
+          },
+        }]}
+        onUpdate={updateSpy}
+        provider={{
+          id: "prv_plugin",
+          name: "Plugin Provider",
+          type: "plugin_provider",
+          base_url: "https://provider.example/v1",
+          status: "active",
+          healthy: true,
+          priority: 10,
+        }}
+        values={{
+          id: "draft-id",
+          name: "Draft Provider",
+          type: "plugin_provider",
+          base_url: "https://draft.example/v1",
+          api_key: "must-not-leak",
+          [tenantKey]: "tenant-001",
+          [otherKey]: "tenant-other",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Sync Catalog" }));
+
+    await waitFor(() => expect(screen.getByText(/queued/u)).toBeInTheDocument());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.plugin/actions/plugin.sync");
+    expect(JSON.parse(String(init.body))).toEqual({
+      provider_id: "prv_plugin",
+      provider_type: "plugin_provider",
+      provider: {
+        id: "prv_plugin",
+        name: "Draft Provider",
+        type: "plugin_provider",
+        base_url: "https://draft.example/v1",
+      },
+      options: { tenant_id: "tenant-001" },
+    });
+    expect(String(init.body)).not.toContain("must-not-leak");
+    expect(String(init.body)).not.toContain("tenant-other");
+  });
+
+  it("opens plugin OAuth action redirect URLs", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { auth_url: "https://provider.example/oauth" },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderPluginFormSections
+        actions={[{
+          plugin_id: "tokenhub.provider.plugin",
+          action_id: "plugin.oauth.start",
+          kind: "external_redirect",
+          capability: "oauth.start",
+          subject: "plugin_provider",
+        }]}
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        contributions={[{
+          plugin_id: "tokenhub.provider.plugin",
+          id: "oauth",
+          slot: "provider.form.section",
+          title: "Plugin OAuth",
+          provider_types: ["plugin_provider"],
+          schema: {
+            fields: [
+              { name: "oauth", type: "oauth_button", label: "Authorize Account", action: "plugin.oauth.start" },
+            ],
+          },
+        }]}
+        onUpdate={vi.fn()}
+        values={{ type: "plugin_provider" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Authorize Account" }));
+
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://provider.example/oauth", "_blank", "noopener,noreferrer"));
   });
 });

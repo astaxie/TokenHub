@@ -212,12 +212,17 @@ export async function runProviderResourcePluginAction<T>(ctx: ApiContext, item: 
 }
 
 export async function runProviderPluginAction<T>(ctx: ApiContext, action: PluginActionDescriptor, payload: Record<string, unknown>, fallbackLabel: string): Promise<T> {
+  const result = await runProviderPluginActionEnvelope<T>(ctx, action, payload, fallbackLabel);
+  return unwrapPluginActionData<T>(result);
+}
+
+export async function runProviderPluginActionEnvelope<T>(ctx: ApiContext, action: PluginActionDescriptor, payload: Record<string, unknown>, fallbackLabel: string): Promise<{ data?: T; redirect_url?: string; metadata?: Record<string, string> }> {
   const resp = await adminFetch(ctx, providerPluginActionPath(action), {
     method: "POST",
     body: JSON.stringify(payload),
   });
   if (!resp.ok) throw new Error(await readAdminError(resp, fallbackLabel));
-  return unwrapPluginActionData<T>(await resp.json());
+  return await resp.json() as { data?: T; redirect_url?: string; metadata?: Record<string, string> };
 }
 
 export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, returnURL: string) {

@@ -1,31 +1,51 @@
-import { useEffect, useMemo } from "react";
-import { type AdminUIContribution, type Provider } from "../core/types";
-import { providerPluginOptionFieldKey } from "../domain/provider-plugin-options";
+import { ExternalLink, Play } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type Provider } from "../core/types";
+import { providerPluginOptionFieldKey, providerPluginOptionValuesForPlugin } from "../domain/provider-plugin-options";
 import { tx } from "../i18n/runtime";
+import { runProviderPluginActionEnvelope } from "../resources/provider-model-config";
 import { ProviderInlineField } from "./provider-editor-fields";
 
-type PluginFormField = {
+type PluginFormInputType = "text" | "password" | "textarea" | "select" | "boolean";
+type PluginFormActionType = "action_button" | "oauth_button";
+
+type PluginFormBaseField = {
   name: string;
-  type: "text" | "password" | "textarea" | "select" | "boolean";
   label: string;
   options?: string[];
   placeholder?: string;
   required?: boolean;
   help?: string;
   defaultValue?: string;
+  action?: string;
+};
+
+type PluginFormInputField = PluginFormBaseField & { type: PluginFormInputType };
+type PluginFormActionField = PluginFormBaseField & { type: PluginFormActionType };
+type PluginFormField = PluginFormInputField | PluginFormActionField;
+
+type PluginFormActionState = {
+  busy: boolean;
+  error: string;
+  result: string;
 };
 
 export function ProviderPluginFormSections({
+  api,
   provider,
   values,
   contributions,
+  actions = [],
   onUpdate,
 }: {
+  api?: ApiContext;
   provider?: Provider;
   values: Record<string, string>;
   contributions: AdminUIContribution[];
+  actions?: PluginActionDescriptor[];
   onUpdate: (key: string, value: string) => void;
 }) {
+  const [actionStates, setActionStates] = useState<Record<string, PluginFormActionState>>({});
   const sections = useMemo(
     () => contributions
       .filter((contribution) =>
@@ -36,9 +56,11 @@ export function ProviderPluginFormSections({
       .filter((section) => section.fields.length > 0),
     [contributions, values.type],
   );
+  const actionDescriptors = useMemo(() => new Map(actions.map((action) => [pluginFormActionKey(action.plugin_id, action.action_id), action])), [actions]);
   useEffect(() => {
     for (const { contribution, fields } of sections) {
       for (const field of fields) {
+        if (pluginFormFieldIsAction(field)) continue;
         const key = providerPluginOptionFieldKey(contribution.plugin_id, field.name);
         const existingValue = provider?.options?.[field.name];
         const value = existingValue ?? field.defaultValue;
@@ -48,6 +70,30 @@ export function ProviderPluginFormSections({
   }, [onUpdate, provider?.options, sections, values]);
 
   if (sections.length === 0) return null;
+
+  function updateActionState(key: string, patch: Partial<PluginFormActionState>) {
+    setActionStates((current) => ({
+      ...current,
+      [key]: { ...(current[key] ?? { busy: false, error: "", result: "" }), ...patch },
+    }));
+  }
+
+  async function runFormAction(contribution: AdminUIContribution, field: PluginFormField) {
+    if (!api) return;
+    const actionID = field.action || contribution.action || "";
+    const descriptor = actionDescriptors.get(pluginFormActionKey(contribution.plugin_id, actionID));
+    if (!descriptor) return;
+    const key = pluginFormFieldStateKey(contribution, field);
+    updateActionState(key, { busy: true, error: "", result: "" });
+    try {
+      const result = await runProviderPluginActionEnvelope(api, descriptor, providerFormActionPayload(provider, values, contribution.plugin_id), field.label);
+      const redirectURL = result.redirect_url || schemaString((result.data as Record<string, unknown> | undefined)?.auth_url);
+      if (field.type === "oauth_button" && redirectURL) window.open(redirectURL, "_blank", "noopener,noreferrer");
+      updateActionState(key, { busy: false, result: JSON.stringify(result.data ?? result.metadata ?? {}, null, 2) });
+    } catch (err) {
+      updateActionState(key, { busy: false, error: err instanceof Error ? err.message : tx("插件动作执行失败") });
+    }
+  }
 
   return (
     <>
@@ -59,6 +105,21 @@ export function ProviderPluginFormSections({
           </div>
           <div className="provider-form-grid">
             {fields.map((field) => {
+              const stateKey = pluginFormFieldStateKey(contribution, field);
+              if (pluginFormFieldIsAction(field)) {
+                const actionID = field.action || contribution.action || "";
+                return (
+                  <ProviderPluginFormAction
+                    busy={actionStates[stateKey]?.busy ?? false}
+                    error={actionStates[stateKey]?.error ?? ""}
+                    field={field}
+                    key={field.name}
+                    registered={Boolean(api && actionDescriptors.has(pluginFormActionKey(contribution.plugin_id, actionID)))}
+                    result={actionStates[stateKey]?.result ?? ""}
+                    onRun={() => void runFormAction(contribution, field)}
+                  />
+                );
+              }
               const key = providerPluginOptionFieldKey(contribution.plugin_id, field.name);
               return (
                 <ProviderInlineField
@@ -74,6 +135,37 @@ export function ProviderPluginFormSections({
         </section>
       ))}
     </>
+  );
+}
+
+function ProviderPluginFormAction({
+  busy,
+  error,
+  field,
+  registered,
+  result,
+  onRun,
+}: {
+  busy: boolean;
+  error: string;
+  field: PluginFormActionField;
+  registered: boolean;
+  result: string;
+  onRun: () => void;
+}) {
+  const Icon = field.type === "oauth_button" ? ExternalLink : Play;
+  return (
+    <div className="field provider-plugin-action-field" data-field-key={field.name}>
+      <span>{tx(field.label)}</span>
+      <button className="secondary-button" disabled={busy || !registered} onClick={onRun} type="button">
+        <Icon size={14} />
+        {tx(busy ? "执行中" : field.label)}
+      </button>
+      {field.help ? <small>{tx(field.help)}</small> : null}
+      {!registered ? <small>{tx("该插件动作尚未注册。")}</small> : null}
+      {error ? <small className="provider-quota-error">{error}</small> : null}
+      {result && result !== "{}" ? <pre className="plugin-action-result">{result}</pre> : null}
+    </div>
   );
 }
 
@@ -96,6 +188,7 @@ function pluginFormFields(contribution: AdminUIContribution): PluginFormField[] 
       required: field.required === true,
       help: schemaString(field.help),
       defaultValue: schemaDefaultValue(field.default ?? field.default_value),
+      action: schemaString(field.action),
     }];
   });
 }
@@ -113,6 +206,9 @@ function pluginFormFieldType(type: string): PluginFormField["type"] | "" {
       return "select";
     case "switch":
       return "boolean";
+    case "action_button":
+    case "oauth_button":
+      return type;
     default:
       return "";
   }
@@ -120,6 +216,32 @@ function pluginFormFieldType(type: string): PluginFormField["type"] | "" {
 
 function defaultPluginFieldValue(field: PluginFormField) {
   return field.type === "boolean" ? "false" : "";
+}
+
+function pluginFormFieldIsAction(field: PluginFormField): field is PluginFormActionField {
+  return field.type === "action_button" || field.type === "oauth_button";
+}
+
+function pluginFormFieldStateKey(contribution: AdminUIContribution, field: PluginFormField) {
+  return `${contribution.plugin_id}:${contribution.id}:${field.name}`;
+}
+
+function pluginFormActionKey(pluginID: string, actionID: string) {
+  return `${pluginID}:${actionID}`;
+}
+
+function providerFormActionPayload(provider: Provider | undefined, values: Record<string, string>, pluginID: string) {
+  return {
+    provider_id: provider?.id || values.id || undefined,
+    provider_type: values.type || provider?.type || "",
+    provider: {
+      id: provider?.id || values.id || "",
+      name: values.name || provider?.name || "",
+      type: values.type || provider?.type || "",
+      base_url: values.base_url || provider?.base_url || "",
+    },
+    options: providerPluginOptionValuesForPlugin(values, pluginID),
+  };
 }
 
 function schemaString(value: unknown) {

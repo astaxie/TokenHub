@@ -1335,7 +1335,7 @@ export function ProviderUpsertModal({
                   onReloadModels={reloadSelectedCatalog}
                   onTabChange={setQuickAPITab}
                   onUpdate={update} providerTypeOptions={providerTypeOptions}
-                />{quickAPITab === "connect" ? <ProviderPluginFormSections contributions={pluginUI} onUpdate={update} values={values} /> : null}</>
+                />{quickAPITab === "connect" ? <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} values={values} /> : null}</>
               ) : (
               <section className="provider-wizard-panel">
                 <div className="wizard-panel-head">
@@ -1506,7 +1506,7 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "edit" && editTab === "connect" ? (
-              <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections contributions={pluginUI} onUpdate={update} provider={provider} values={values} /></>
+              <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
