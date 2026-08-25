@@ -64,6 +64,37 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, err)
 		return
 	}
+	response, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), call, request)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	if hit {
+		response, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, response, usage)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		response, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, response)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, response, usage)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, response)
+		w.Header().Set("x-request-id", call.RequestID)
+		w.Header().Set("x-tokenhub-cache", "hit")
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
 	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
 	if !ok {
 		return
@@ -107,6 +138,7 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, request, response, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
