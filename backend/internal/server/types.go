@@ -1315,6 +1315,11 @@ type CallContext struct {
 	// Stream records whether the client asked for a streamed response. It only
 	// labels observability output and never influences routing.
 	Stream bool
+	// GatewayAuthMetadata carries plugin-provided authentication context
+	// annotations. Plugins may enrich downstream gateway hooks with these values,
+	// but they cannot change core authentication facts such as project, key,
+	// model, or stream mode.
+	GatewayAuthMetadata map[string]json.RawMessage
 	// RouteAttempts carries the per-candidate outcomes for observability output.
 	// It is filled from the completion's Attempts just before FinishCall and never
 	// influences routing.

@@ -423,6 +423,14 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 
+	if err := s.runGatewayAuthContextHooks(ctx, &call, envelope.Headers); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, request, resultTTL)
+		return
+	}
 	if err := s.runGatewayResponsesDecodeNormalizeHooks(ctx, call, envelope.Headers, &request); err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return

@@ -29,6 +29,50 @@ type gatewayRouteOrderPatch struct {
 	RouteIDs []string `json:"route_ids"`
 }
 
+func (s *Server) runGatewayAuthContextHooks(ctx context.Context, call *CallContext, headers http.Header) error {
+	if s == nil || call == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageAuthContext)) == 0 {
+		return nil
+	}
+	input := pluginmeta.GatewayHookInput{
+		RequestID: call.RequestID,
+		Envelope: pluginmeta.GatewayEnvelope{
+			Version:   "v1",
+			Protocol:  "gateway",
+			Operation: "auth_context",
+			Model:     call.Model.Name,
+		},
+		Data: pluginmeta.GatewayHookData{},
+	}
+	for dataClass, value := range map[pluginmeta.GatewayDataClass]any{
+		pluginmeta.DataAuthContext:     gatewayAuthContextView(*call),
+		pluginmeta.DataProjectMetadata: call.Project,
+		pluginmeta.DataAPIKeyMetadata:  gatewayAPIKeyMetadataView(call.Key),
+		pluginmeta.DataRequestHeaders:  sanitizedGatewayHookHeaders(headers),
+	} {
+		if encoded, ok := marshalGatewayHookData(value); ok {
+			input.Data[dataClass] = encoded
+		}
+	}
+	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageAuthContext, input)
+	if err != nil {
+		return gatewayHookHTTPError(pluginmeta.StageAuthContext, err)
+	}
+	for _, result := range report.Results {
+		patch, ok := result.Writes[pluginmeta.DataAuthContext]
+		if !ok {
+			continue
+		}
+		if err := applyGatewayAuthContextPatch(call, patch.Value); err != nil {
+			if result.FailurePolicy == pluginmeta.FailurePolicyFailOpen {
+				log.Printf("[tokenhub] gateway auth_context hook %s/%s returned invalid auth context for request %s: %v", result.PluginID, result.HookID, call.RequestID, err)
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContext, payload any) (any, Usage, bool, error) {
 	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageCacheLookup)) == 0 {
 		return nil, Usage{}, false, nil
@@ -1087,12 +1131,16 @@ func gatewayRouteCandidateViews(routes []RouteSelection) []gatewayRouteCandidate
 }
 
 func gatewayAuthContextView(call CallContext) map[string]any {
-	return map[string]any{
+	view := map[string]any{
 		"project_id": call.Project.ID,
 		"api_key_id": call.Key.ID,
 		"model":      call.Model.Name,
 		"stream":     call.Stream,
 	}
+	if len(call.GatewayAuthMetadata) > 0 {
+		view["metadata"] = call.GatewayAuthMetadata
+	}
+	return view
 }
 
 func gatewayAPIKeyMetadataView(key APIKey) map[string]any {
@@ -1107,6 +1155,75 @@ func gatewayAPIKeyMetadataView(key APIKey) map[string]any {
 		"token_limit_tpm":   key.TokenLimitTPM,
 		"metadata":          key.Metadata,
 	}
+}
+
+func applyGatewayAuthContextPatch(call *CallContext, data json.RawMessage) error {
+	if call == nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_auth_context_invalid", "Gateway auth plugin returned an invalid auth context")
+	}
+	var patch map[string]json.RawMessage
+	if err := decodeGatewayHookPayload(data, &patch, "gateway_hook_auth_context_invalid", "Gateway auth plugin returned an invalid auth context"); err != nil {
+		return err
+	}
+	if err := validateGatewayAuthStringInvariant(patch, "project_id", call.Project.ID); err != nil {
+		return err
+	}
+	if err := validateGatewayAuthStringInvariant(patch, "api_key_id", call.Key.ID); err != nil {
+		return err
+	}
+	if err := validateGatewayAuthStringInvariant(patch, "model", call.Model.Name); err != nil {
+		return err
+	}
+	if err := validateGatewayAuthBoolInvariant(patch, "stream", call.Stream); err != nil {
+		return err
+	}
+	metadataRaw, ok := patch["metadata"]
+	if !ok {
+		return nil
+	}
+	var metadata map[string]json.RawMessage
+	if err := json.Unmarshal(metadataRaw, &metadata); err != nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_auth_context_invalid", "Gateway auth plugin returned invalid metadata")
+	}
+	if call.GatewayAuthMetadata == nil {
+		call.GatewayAuthMetadata = map[string]json.RawMessage{}
+	}
+	for key, value := range metadata {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return NewHTTPError(http.StatusBadGateway, "gateway_hook_auth_context_invalid", "Gateway auth plugin returned an empty metadata key")
+		}
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			delete(call.GatewayAuthMetadata, key)
+			continue
+		}
+		call.GatewayAuthMetadata[key] = append(json.RawMessage(nil), value...)
+	}
+	return nil
+}
+
+func validateGatewayAuthStringInvariant(patch map[string]json.RawMessage, key string, expected string) error {
+	raw, ok := patch[key]
+	if !ok {
+		return nil
+	}
+	var actual string
+	if err := json.Unmarshal(raw, &actual); err != nil || strings.TrimSpace(actual) != expected {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_auth_context_invalid", "Gateway auth plugin cannot change core authentication context")
+	}
+	return nil
+}
+
+func validateGatewayAuthBoolInvariant(patch map[string]json.RawMessage, key string, expected bool) error {
+	raw, ok := patch[key]
+	if !ok {
+		return nil
+	}
+	var actual bool
+	if err := json.Unmarshal(raw, &actual); err != nil || actual != expected {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_auth_context_invalid", "Gateway auth plugin cannot change core authentication context")
+	}
+	return nil
 }
 
 func applyGatewayRouteOrderPatch(routes []RouteSelection, data json.RawMessage) ([]RouteSelection, error) {
