@@ -68,7 +68,7 @@ func TestParseAdminUIManifestValidatesContributionSchema(t *testing.T) {
 					"fields": [
 						{"name": "base_url", "type": "url"},
 						{"name": "credential", "type": "secret"},
-						{"name": "connect", "type": "oauth_button"}
+						{"name": "connect", "type": "oauth_button", "action": "oauth.start"}
 					]
 				}
 			}
@@ -87,6 +87,7 @@ func TestParseAdminUIManifestRejectsUnsafeContributionSchema(t *testing.T) {
 		`{"fields":[{"name":"script","type":"remote_script"}]}`,
 		`{"remote_script_url":"https://plugins.example/plugin.js"}`,
 		`{"fields":[{"type":"text"}]}`,
+		`{"fields":[{"name":"connect","type":"oauth_button"}]}`,
 	} {
 		_, err := ParseAdminUIManifest("tokenhub.bad-schema", []byte(`{
 			"schema_version": 1,

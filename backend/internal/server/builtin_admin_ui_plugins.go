@@ -97,6 +97,11 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 			Title:         "OpenAI Codex account setup",
 			ProviderTypes: []string{ProviderOpenAICodex},
 			Action:        "openai_codex.oauth.start",
+			Schema: map[string]any{
+				"fields": []any{
+					map[string]any{"name": "oauth_start", "type": "oauth_button", "label": "Start OpenAI Codex OAuth", "action": "openai_codex.oauth.start"},
+				},
+			},
 		},
 		{
 			PluginID:      "tokenhub.provider.openai-codex",

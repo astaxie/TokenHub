@@ -173,7 +173,7 @@ func validateAdminUIContributionSchema(contribution AdminUIContribution) error {
 		}
 	}
 	if fields, ok := contribution.Schema["fields"]; ok {
-		if err := validateAdminUIFields(fields); err != nil {
+		if err := validateAdminUIFields(fields, contribution.Action); err != nil {
 			return err
 		}
 	}
@@ -189,7 +189,7 @@ func allowedAdminUISchemaKey(key string) bool {
 	}
 }
 
-func validateAdminUIFields(raw any) error {
+func validateAdminUIFields(raw any, contributionAction string) error {
 	fields, ok := raw.([]any)
 	if !ok {
 		return fmt.Errorf("schema fields must be an array")
@@ -207,8 +207,15 @@ func validateAdminUIFields(raw any) error {
 		if !allowedAdminUIControlType(controlType) {
 			return fmt.Errorf("schema field %s has unsupported type %q", name, controlType)
 		}
+		if adminUIControlRequiresAction(controlType) && strings.TrimSpace(schemaString(field["action"])) == "" && strings.TrimSpace(contributionAction) == "" {
+			return fmt.Errorf("schema field %s action is required for %s controls", name, controlType)
+		}
 	}
 	return nil
+}
+
+func adminUIControlRequiresAction(controlType string) bool {
+	return controlType == "action_button" || controlType == "oauth_button"
 }
 
 func allowedAdminUIControlType(controlType string) bool {
