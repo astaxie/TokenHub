@@ -21,7 +21,9 @@ type providerPluginAdapter struct {
 type providerPluginRequest struct {
 	Operation     string                    `json:"operation"`
 	Provider      Provider                  `json:"provider"`
+	Resource      *ProviderResource         `json:"resource,omitempty"`
 	ProviderModel string                    `json:"provider_model"`
+	ETag          string                    `json:"etag,omitempty"`
 	Request       any                       `json:"request"`
 	Credentials   providerPluginCredentials `json:"credentials,omitempty"`
 }
@@ -33,6 +35,15 @@ type providerPluginCredentials struct {
 type providerPluginResponse struct {
 	Response any   `json:"response"`
 	Usage    Usage `json:"usage,omitempty"`
+}
+
+type providerPluginModelsResponse struct {
+	Catalog ProviderCatalogEntry `json:"catalog"`
+	Status  int                  `json:"status,omitempty"`
+}
+
+type providerPluginProbeResponse struct {
+	Result ProviderProbeResult `json:"result"`
 }
 
 func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
@@ -91,6 +102,52 @@ func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider
 	return result.Response, result.Usage, nil
 }
 
+func (a providerPluginAdapter) ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error) {
+	effective := effectiveProviderResourceConfig(provider, &resource)
+	var result providerPluginModelsResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:   "models",
+		Provider:    effective,
+		Resource:    &resource,
+		ETag:        etag,
+		Credentials: providerPluginCredentials{APIKey: effective.APIKey},
+	}, &result); err != nil {
+		return ProviderCatalogEntry{}, 0, err
+	}
+	status := result.Status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	return result.Catalog, status, nil
+}
+
+func (a providerPluginAdapter) DefaultProbeRequest() ProviderProbeRequest {
+	return ProviderProbeRequest{
+		Prompt: "Reply with exactly one short sentence confirming that the provider connection works.",
+	}
+}
+
+func (a providerPluginAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, req ProviderProbeRequest) (ProviderProbeResult, error) {
+	effective := effectiveProviderResourceConfig(provider, &resource)
+	var result providerPluginProbeResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:   "probe",
+		Provider:    effective,
+		Resource:    &resource,
+		Request:     req,
+		Credentials: providerPluginCredentials{APIKey: effective.APIKey},
+	}, &result); err != nil {
+		return ProviderProbeResult{}, err
+	}
+	if result.Result.ResourceID == "" {
+		result.Result.ResourceID = resource.ID
+	}
+	if result.Result.Model == "" {
+		result.Result.Model = req.Model
+	}
+	return result.Result, nil
+}
+
 func registerExternalProviderPluginAdapters(registry *AdapterRegistry, packages []pluginmeta.Package) {
 	for _, pkg := range packages {
 		if !externalProviderPackageHasBackend(pkg) {
@@ -136,7 +193,7 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityResponses, AdapterCapabilityEmbeddings:
+		case AdapterCapabilityChat, AdapterCapabilityResponses, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe:
 			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}

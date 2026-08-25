@@ -38,6 +38,10 @@ type ProviderResourceProber interface {
 	Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error)
 }
 
+type ProviderResourceModelCataloger interface {
+	ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error)
+}
+
 type ResponsesCompactAdapter interface {
 	CompactWithHeaders(ctx context.Context, provider Provider, providerModel string, body map[string]json.RawMessage, incoming http.Header) (any, Usage, error)
 }

@@ -170,6 +170,71 @@ esac
 	}
 }
 
+func TestExternalProviderPluginAdapterExecutesModelsAndProbe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"chat", "models", "probe"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"models"'*'"etag":"etag-old"'*'"api_key":"resource-secret"'*)
+    printf '{"status":200,"catalog":{"id":"custom-stdio","name":"Custom stdio","display_name":"Custom stdio","type":"custom_stdio","models_count":1,"source":"plugin-live","etag":"etag-new","models":[{"id":"plugin-model","name":"plugin-model","type":"chat"}]}}'
+    ;;
+  *'"operation":"probe"'*'"id":"rsrc_plugin"'*'"api_key":"resource-secret"'*)
+    printf '{"result":{"model":"plugin-model","output_text":"plugin probe ok","usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3},"latency_ms":4}}'
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginmeta.NewRegistry(), pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+	descriptor, ok := registry.Describe("custom_stdio")
+	if !ok {
+		t.Fatal("external provider descriptor was not registered")
+	}
+	for _, capability := range []AdapterCapability{AdapterCapabilityChat, AdapterCapabilityModels, AdapterCapabilityProbe} {
+		if !adapterSupports(descriptor, capability) {
+			t.Fatalf("descriptor capabilities = %+v, want %s", descriptor.Capabilities, capability)
+		}
+	}
+	adapter, ok := resolveTypedAdapter[ProviderResourceModelCataloger](registry, "custom_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderResourceModelCataloger")
+	}
+	provider := Provider{Type: "custom_stdio", APIKey: "provider-secret"}
+	resource := ProviderResource{ID: "rsrc_plugin", ProviderID: "prv_plugin", APIKey: "resource-secret"}
+	catalog, status, err := adapter.ResourceModels(context.Background(), provider, resource, "etag-old")
+	if err != nil {
+		t.Fatalf("models through provider plugin: %v", err)
+	}
+	if status != http.StatusOK || catalog.ETag != "etag-new" || catalog.ModelsCount != 1 || catalog.Models[0].ID != "plugin-model" {
+		t.Fatalf("catalog = %+v status=%d, want plugin catalog", catalog, status)
+	}
+	prober, ok := resolveTypedAdapter[ProviderResourceProber](registry, "custom_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ProviderResourceProber")
+	}
+	result, err := prober.Probe(context.Background(), provider, resource, ProviderProbeRequest{Model: "plugin-model", Prompt: "ping"})
+	if err != nil {
+		t.Fatalf("probe through provider plugin: %v", err)
+	}
+	if result.ResourceID != resource.ID || result.OutputText != "plugin probe ok" || result.Usage.TotalTokens != 3 {
+		t.Fatalf("probe result = %+v, want plugin probe result", result)
+	}
+}
+
 func TestExternalProviderPluginAdapterRequiresCredentialPermission(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")

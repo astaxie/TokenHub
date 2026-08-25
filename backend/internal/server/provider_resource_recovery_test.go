@@ -116,6 +116,40 @@ func TestProbeFailureLeavesResourceUnhealthy(t *testing.T) {
 	}
 }
 
+func TestProbeMethodRequiresDeclaredCapability(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_probe_undeclared",
+		Name:    "Undeclared Probe Provider",
+		Type:    ProviderMock,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_probe_undeclared",
+		ProviderID:   provider.ID,
+		Name:         "Undeclared Probe Instance",
+		ResourceType: "mock",
+		Status:       StatusActive,
+		Healthy:      true,
+		Priority:     1,
+		Weight:       100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	calls := 0
+	server.adapterRegistry.Register(ProviderMock, recoveryProbeAdapter{calls: &calls})
+
+	if _, err := server.integrations.TestProviderResource(context.Background(), resource.ID, nil); err != nil {
+		t.Fatalf("fallback probe should still succeed: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("probe method was called %d times without declared probe capability", calls)
+	}
+}
+
 // A resource an admin disabled must stay disabled even if the upstream answers.
 func TestProbeSuccessLeavesDisabledResourceUnhealthy(t *testing.T) {
 	store, server, resourceID := newProbeRecoveryServer(t, nil, nil)

@@ -217,9 +217,22 @@ func (s *Server) serveAdminProviderResourceHealth(w http.ResponseWriter, r *http
 
 func (s *Server) serveAdminProviderResourceTest(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	resource, resourceOK := s.providerResourceByID(resourceID)
-	provider, providerOK := s.providerByID(resource.ProviderID)
-	adapter, adapterErr := s.adapterRegistry.Resolve(provider.Type)
-	_, usesStructuredProbe := adapter.(ProviderResourceProber)
+	var (
+		provider            Provider
+		providerOK          bool
+		adapter             any
+		adapterErr          error
+		usesStructuredProbe bool
+	)
+	if resourceOK {
+		provider, providerOK = s.providerByID(resource.ProviderID)
+	}
+	if providerOK {
+		adapter, adapterErr = s.adapterRegistry.Resolve(provider.Type)
+		descriptor, described := s.adapterRegistry.Describe(provider.Type)
+		_, usesStructuredProbe = adapter.(ProviderResourceProber)
+		usesStructuredProbe = usesStructuredProbe && described && adapterSupports(descriptor, AdapterCapabilityProbe)
+	}
 	if resourceOK && providerOK && adapterErr == nil && usesStructuredProbe {
 		var req codexSubscriptionTestRequest
 		if err := s.decodeJSON(w, r, &req); err != nil {

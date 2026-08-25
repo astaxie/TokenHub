@@ -43,6 +43,7 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	if err != nil {
 		return nil, err
 	}
+	descriptor, described := s.registry.Describe(provider.Type)
 	if provider.Type == ProviderKronk {
 		kronk, ok := adapter.(KronkAdapter)
 		if !ok {
@@ -61,6 +62,7 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 		return result, nil
 	}
 	prober, supported := adapter.(ProviderResourceProber)
+	supported = supported && described && adapterSupports(descriptor, AdapterCapabilityProbe)
 	if !supported {
 		if provider.Type == ProviderMock {
 			return s.store.TestProviderResource(resourceID)
@@ -105,6 +107,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	if err != nil {
 		return nil, err
 	}
+	descriptor, described := s.registry.Describe(provider.Type)
 	if provider.Type == ProviderKronk {
 		kronk, ok := adapter.(KronkAdapter)
 		if !ok {
@@ -117,7 +120,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		}
 		return result, nil
 	}
-	if _, supported := adapter.(ProviderResourceProber); !supported {
+	if _, supported := adapter.(ProviderResourceProber); !supported || !described || !adapterSupports(descriptor, AdapterCapabilityProbe) {
 		if provider.Type == ProviderMock {
 			return s.store.TestProvider(providerID)
 		}

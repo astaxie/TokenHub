@@ -114,6 +114,13 @@ func (a CodexSubscriptionAdapter) ModelsWithETag(ctx context.Context, resourceID
 	return a.modelsWithCredentials(ctx, credentials, etag)
 }
 
+func (a CodexSubscriptionAdapter) ResourceModels(ctx context.Context, _ Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error) {
+	if !isOpenAIAccountResource(resource.ResourceType) {
+		return ProviderCatalogEntry{}, 0, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Codex models are only available for OpenAI subscription resources")
+	}
+	return a.ModelsWithETag(ctx, resource.ID, etag)
+}
+
 func (a CodexSubscriptionAdapter) modelsWithCredentials(ctx context.Context, creds ProviderResourceCredentials, etag string) (ProviderCatalogEntry, int, error) {
 	accessToken := strings.TrimSpace(creds.AccessToken)
 	accountID := strings.TrimSpace(creds.AccountID)
@@ -281,19 +288,32 @@ func (s *Server) queryOpenAICodexModels(ctx context.Context, resourceID string) 
 	if !ok {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
 	}
-	if !isOpenAIAccountResource(resource.ResourceType) {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Codex models are only available for OpenAI subscription resources")
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	descriptor, ok := s.adapterRegistry.Describe(provider.Type)
+	if !ok || !adapterSupports(descriptor, AdapterCapabilityModels) {
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Provider resource models are not available for this provider")
+	}
+	adapter, err := s.adapterRegistry.Resolve(provider.Type)
+	if err != nil {
+		return ProviderCatalogEntry{}, err
+	}
+	modeler, ok := adapter.(ProviderResourceModelCataloger)
+	if !ok {
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Provider resource models are not available for this provider")
 	}
 	etag := ""
 	if resource.Options != nil {
 		etag = strings.TrimSpace(resource.Options[codexResourceModelsETagOption])
 	}
-	catalog, status, err := s.codexSubscription.ModelsWithETag(ctx, resourceID, etag)
+	catalog, status, err := modeler.ResourceModels(ctx, provider, resource, etag)
 	if err == nil && status == http.StatusNotModified {
 		if cached, ok := codexResourceCachedCatalog(&resource); ok {
 			return cached, nil
 		}
-		catalog, err = s.codexSubscription.Models(ctx, resourceID)
+		catalog, _, err = modeler.ResourceModels(ctx, provider, resource, "")
 	}
 	if err == nil {
 		if persistErr := s.persistCodexResourceModels(resourceID, catalog.Models, time.Now().UTC()); persistErr != nil {
