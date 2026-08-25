@@ -430,6 +430,42 @@ describe("providerResourceConfig", () => {
     });
   });
 
+  it("tests plugin account Providers through resource probe plugin actions", async () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    data.providerResources = [{
+      id: "rsrc_kimi",
+      provider_id: "prv_kimi",
+      name: "Kimi Account",
+      resource_type: "kimi_oauth_account",
+      status: "active",
+      healthy: true,
+      priority: 1,
+      weight: 100,
+    }];
+    data.pluginActions = [{
+      plugin_id: "tokenhub.provider.kimi",
+      action_id: "kimi.probe.run",
+      kind: "test",
+      capability: "probe.run",
+      subject: "kimi_subscription",
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { healthy: true } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runProviderAvailabilityTest({ baseURL: "http://localhost:8080", adminToken: "admin-token" }, data.providers[0], data);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.kimi/actions/kimi.probe.run");
+    expect(JSON.parse(String(init.body))).toEqual({
+      provider_id: "prv_kimi",
+      resource_id: "rsrc_kimi",
+    });
+  });
+
   it("tests direct Providers through provider probe plugin actions", async () => {
     const data = emptyData();
     data.providers = [{ id: "prv_plugin", name: "Plugin Provider", type: "plugin_provider", status: "active", healthy: true, priority: 1 }];

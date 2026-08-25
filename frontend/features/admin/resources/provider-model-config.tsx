@@ -7,7 +7,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeMetadataForResource, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResource, isProviderAccountResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeMetadataForResource, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -184,15 +184,17 @@ function providerTypeForResourceValues(data: AppData, values?: Record<string, st
 }
 
 export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Provider, data: AppData) {
-  const subscription = data.providerResources.find((resource) => resource.provider_id === provider.id && isOpenAISubscriptionResource(resource) && resource.status === "active");
-  if (subscription) {
+  const accountResource = data.providerResources.find((resource) => resource.provider_id === provider.id && isProviderAccountResource(resource) && resource.status === "active");
+  if (accountResource) {
     const action = providerPluginActionForCapability(data.pluginActions, provider.type, "probe.run");
     if (action) {
-      await runProviderResourcePluginAction(ctx, subscription, action, codexLunaProbeDefaults, tx("Codex Luna 中等推理标准测试"));
+      await runProviderResourcePluginAction(ctx, accountResource, action, providerAccountProbePayload(accountResource), providerAccountProbeFallbackLabel(accountResource));
       return;
     }
-    await legacyProviderResourceProbe(ctx, subscription);
-    return;
+    if (isOpenAISubscriptionResource(accountResource)) {
+      await legacyProviderResourceProbe(ctx, accountResource);
+      return;
+    }
   }
   const action = providerPluginActionForCapability(data.pluginActions, provider.type, "provider.probe.run");
   if (action) {
@@ -200,6 +202,14 @@ export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Pro
     return;
   }
   await adminMutate(ctx, `/api/admin/providers/${provider.id}/test`, "POST", {});
+}
+
+function providerAccountProbePayload(resource: ProviderResource) {
+  return isOpenAISubscriptionResource(resource) ? codexLunaProbeDefaults : {};
+}
+
+function providerAccountProbeFallbackLabel(resource: ProviderResource) {
+  return isOpenAISubscriptionResource(resource) ? tx("Codex Luna 中等推理标准测试") : tx("账号资源测试");
 }
 
 export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext, item: ProviderResource, data: AppData) {
