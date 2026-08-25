@@ -93,6 +93,10 @@ func SchemaMigrationRegistry() []dbschema.Migration {
 			Dialect:          dbschema.DialectSQLite,
 			Go:               addGranularBillingColumnsSQLite,
 			ChecksumOverride: "tokenhub-schema-granular-billing-sqlite-v1",
+			// Every missing column requires a PRAGMA probe and an ALTER TABLE.
+			// The full migration currently covers 26 columns (52 operations), so
+			// retain a small margin above that worst-case budget.
+			StatementBudget: 60,
 		},
 		{
 			Version: 3,
