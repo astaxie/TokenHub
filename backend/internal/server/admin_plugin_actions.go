@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -44,9 +45,105 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
+	if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
+		result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
+		if err != nil {
+			s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", err.Error())
+			writeError(w, r, err)
+			return
+		}
+	}
 	result = sanitizePluginActionResult(result)
 	s.recordPluginActionAudit(r, user, pluginID, actionID, "success", "")
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
+	if strings.TrimSpace(descriptor.Capability) != "credentials.refresh" {
+		return result, nil
+	}
+	credentials, ok := pluginActionResultCredentials(result.Data)
+	if !ok {
+		return result, nil
+	}
+	var request struct {
+		ResourceID string `json:"resource_id"`
+	}
+	if len(payload) > 0 {
+		if err := json.Unmarshal(payload, &request); err != nil {
+			return result, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+		}
+	}
+	resourceID := strings.TrimSpace(request.ResourceID)
+	if resourceID == "" {
+		return result, NewHTTPError(http.StatusBadGateway, "plugin_credentials_refresh_missing_resource", "Credentials refresh action returned credentials without a resource_id target")
+	}
+	resource, ok := s.store.GetProviderResource(resourceID)
+	if !ok {
+		return result, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return result, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	if descriptor.Subject != "" && descriptor.Subject != provider.Type {
+		return result, NewHTTPError(http.StatusForbidden, "plugin_action_subject_mismatch", "Plugin action subject does not match the Provider type")
+	}
+	updated, err := s.store.UpdateProviderResource(resourceID, providerResourceCredentialPatch(resource, credentials))
+	if err != nil {
+		return result, err
+	}
+	result.Data = pluginActionResultWithCredentialSummary(result.Data, updated.CredentialSummary)
+	return result, nil
+}
+
+func pluginActionResultCredentials(data any) (*ProviderResourceCredentials, bool) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, false
+	}
+	var envelope struct {
+		Credentials *ProviderResourceCredentials `json:"credentials"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil || envelope.Credentials == nil {
+		return nil, false
+	}
+	return envelope.Credentials, true
+}
+
+func providerResourceCredentialPatch(resource ProviderResource, credentials *ProviderResourceCredentials) ProviderResource {
+	return ProviderResource{
+		ProviderID:     resource.ProviderID,
+		Name:           resource.Name,
+		ResourceType:   resource.ResourceType,
+		BaseURL:        resource.BaseURL,
+		Group:          resource.Group,
+		Region:         resource.Region,
+		Environment:    resource.Environment,
+		Status:         resource.Status,
+		Healthy:        resource.Healthy,
+		Priority:       resource.Priority,
+		Weight:         resource.Weight,
+		RateLimitRPM:   resource.RateLimitRPM,
+		TokenLimitTPM:  resource.TokenLimitTPM,
+		MaxConcurrency: resource.MaxConcurrency,
+		Options:        resource.Options,
+		Credentials:    credentials,
+	}
+}
+
+func pluginActionResultWithCredentialSummary(data any, summary map[string]string) any {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return map[string]any{"credential_summary": summary}
+	}
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return map[string]any{"credential_summary": summary}
+	}
+	delete(result, "credentials")
+	result["credential_summary"] = summary
+	return result
 }
 
 func sanitizePluginActionResult(result pluginmeta.ActionResult) pluginmeta.ActionResult {

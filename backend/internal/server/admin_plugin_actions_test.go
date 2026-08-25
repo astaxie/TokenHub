@@ -86,6 +86,74 @@ func TestAdminPluginActionSanitizesResultSecrets(t *testing.T) {
 	}
 }
 
+func TestAdminPluginActionPersistsCredentialRefreshResult(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_refresh", Name: "Kimi", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_refresh",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Account",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials:  &ProviderResourceCredentials{AuthType: "oauth", AccessToken: "old-access", RefreshToken: "old-refresh"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginRegistry.Register(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.kimi",
+		Name:    "Kimi",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+	}); err != nil {
+		t.Fatalf("register plugin descriptor: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi",
+		ActionID:   "kimi.credentials.refresh",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "credentials.refresh",
+		Subject:    "kimi_subscription",
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"credentials": map[string]string{
+				"auth_type":     "personal_access_token",
+				"access_token":  "new-access",
+				"refresh_token": "new-refresh",
+				"email":         "owner@example.com",
+			},
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register plugin action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.kimi/actions/kimi.credentials.refresh", map[string]any{
+		"resource_id": resource.ID,
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST credential refresh action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if strings.Contains(response.Body, "new-access") || strings.Contains(response.Body, "new-refresh") || strings.Contains(response.Body, "credentials") {
+		t.Fatalf("credential refresh response leaked secrets: %s", response.Body)
+	}
+	if !strings.Contains(response.Body, `"credential_source":"kimi_oauth_account"`) ||
+		!strings.Contains(response.Body, `"has_refresh_token":"true"`) ||
+		!strings.Contains(response.Body, `"account_email":"owner@example.com"`) {
+		t.Fatalf("credential refresh response missing summary: %s", response.Body)
+	}
+	stored, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("refreshed resource was not found")
+	}
+	credentials := store.providerResourceCredentialsForRuntime(stored)
+	if credentials.AccessToken != "new-access" || credentials.RefreshToken != "new-refresh" || credentials.AuthType != "personal_access_token" {
+		t.Fatalf("stored credentials = %+v", credentials)
+	}
+}
+
 func TestAdminPluginActionRejectsInvalidResultSchema(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
 	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
