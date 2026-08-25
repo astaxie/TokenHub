@@ -73,7 +73,7 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 	}
 	response, route, usage, attempts, err := s.executeRoutedCompact(r, routed, request)
 	if err != nil {

@@ -222,7 +222,7 @@ func (s *Server) prepareAnthropicRoutedCall(w http.ResponseWriter, r *http.Reque
 	}
 	compatible, err := compatibleAnthropicRoutes(RoutedCall{
 		Call:   call,
-		Routes: s.planRouteOrder(call, routes),
+		Routes: s.planRouteOrderWithContext(r.Context(), call, routes),
 	}, req)
 	if err != nil {
 		httpErr := AsHTTPError(err)
@@ -245,7 +245,7 @@ func (s *Server) prepareAnthropicRoutedCall(w http.ResponseWriter, r *http.Reque
 		return RoutedCall{}, false
 	}
 	call.Affinity = affinity
-	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes), Affinity: affinity}, true
+	return RoutedCall{Call: call, Routes: s.planRouteOrderWithContext(r.Context(), call, routes), Affinity: affinity}, true
 }
 func (s *Server) executeRoutedAnthropicMessages(
 	r *http.Request,

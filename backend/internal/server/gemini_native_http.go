@@ -171,7 +171,7 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 	if affinity != nil {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 	}
 	if stream {
 		s.handleStreamingGemini(w, r, routed, request, payload, reverseNames)

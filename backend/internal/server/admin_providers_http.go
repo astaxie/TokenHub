@@ -1202,7 +1202,7 @@ func (s *Server) serveAdminRouteExplain(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	call := CallContext{RequestID: NewID("exp"), Project: Project{ID: r.URL.Query().Get("project_id")}, Key: APIKey{ID: r.URL.Query().Get("api_key_id")}}
-	planned := s.planRouteOrder(call, routes)
+	planned := s.planRouteOrderWithContext(r.Context(), call, routes)
 	steps := make([]RouteExplainStep, 0, len(planned))
 	for _, route := range planned {
 		steps = append(steps, RouteExplainStep{

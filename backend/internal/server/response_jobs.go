@@ -474,7 +474,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, routed.Call, RouteSelection{}, Usage{}, nil, http.StatusNotImplemented, "provider_capability_not_supported", "Responses are not supported", auditPayload, resultTTL)
 		return
 	}
-	if err := s.applyResponseJobAffinity(&routed, key, envelope.Headers, request); err != nil {
+	if err := s.applyResponseJobAffinity(ctx, &routed, key, envelope.Headers, request); err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
 		}
@@ -619,7 +619,7 @@ func (s *Server) watchResponseJobCancellation(ctx context.Context, cancel contex
 	}
 }
 
-func (s *Server) applyResponseJobAffinity(routed *RoutedCall, key APIKey, headers http.Header, request ResponsesRequest) error {
+func (s *Server) applyResponseJobAffinity(ctx context.Context, routed *RoutedCall, key APIKey, headers http.Header, request ResponsesRequest) error {
 	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, headers, request)
 	if err != nil {
 		return err
@@ -627,7 +627,7 @@ func (s *Server) applyResponseJobAffinity(routed *RoutedCall, key APIKey, header
 	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routed.Routes)
 		return nil
 	}
 	affinity, err = s.responsesCacheLocalityAffinity(key.ID, headers, request)
@@ -637,7 +637,7 @@ func (s *Server) applyResponseJobAffinity(routed *RoutedCall, key APIKey, header
 	if affinity != nil {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routed.Routes)
 	}
 	return nil
 }

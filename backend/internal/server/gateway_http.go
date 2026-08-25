@@ -135,7 +135,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if affinity != nil {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 	}
 
 	if req.Stream {
@@ -375,7 +375,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	if codexAffinityApplied {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 	}
 	if !codexAffinityApplied {
 		affinity, err = s.responsesCacheLocalityAffinity(key.ID, r.Header, req)
@@ -387,7 +387,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		if affinity != nil {
 			routed.Affinity = affinity
 			routed.Call.Affinity = affinity
-			routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+			routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 		}
 	}
 	if req.Stream {
@@ -495,7 +495,7 @@ func (s *Server) prepareAdmittedRoutedCall(ctx context.Context, call CallContext
 	if err != nil {
 		return RoutedCall{Call: call}, err
 	}
-	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes)}, nil
+	return RoutedCall{Call: call, Routes: s.planRouteOrderWithContext(ctx, call, routes)}, nil
 }
 
 func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Request) {
@@ -626,7 +626,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		writeError(w, r, err)
 		return
 	}
-	routed.Routes = s.planRouteOrder(routed.Call, routes)
+	routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routes)
 	resp, route, usage, attempts, err := s.executeRoutedPlaygroundChat(r, routed, req)
 	if err != nil {
 		httpErr := AsHTTPError(err)
@@ -916,6 +916,13 @@ func (s *Server) routeSupportsAdapterCapability(route RouteSelection, capability
 }
 
 func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []RouteSelection {
+	return s.planRouteOrderWithContext(context.Background(), call, routes)
+}
+
+func (s *Server) planRouteOrderWithContext(ctx context.Context, call CallContext, routes []RouteSelection) []RouteSelection {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ordered := make([]RouteSelection, 0, len(routes))
 	for _, route := range routes {
 		if routeMatchesProject(route.Route, call.Project.ID) {
@@ -998,7 +1005,7 @@ func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []Rou
 		}
 		ordered = ordered[end:]
 	}
-	return s.runGatewayRouteRankHooks(context.Background(), call, planned)
+	return s.runGatewayRouteRankHooks(ctx, call, planned)
 }
 
 type rendezvousRouteRanking struct {

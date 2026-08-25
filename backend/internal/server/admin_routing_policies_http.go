@@ -91,7 +91,7 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		writeError(w, r, err)
 		return
 	}
-	planned := s.planRouteOrder(call, filtered)
+	planned := s.planRouteOrderWithContext(r.Context(), call, filtered)
 	if len(planned) > 0 {
 		resolution.SelectedRouteID = planned[0].Route.ID
 	}

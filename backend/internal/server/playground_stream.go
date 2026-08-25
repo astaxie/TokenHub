@@ -453,7 +453,7 @@ func (s *Server) preparePlaygroundRoutedCall(ctx context.Context, req ChatComple
 	if err != nil {
 		return routed, err
 	}
-	routed.Routes = s.planRouteOrder(routed.Call, routes)
+	routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routes)
 	return routed, nil
 }
 
