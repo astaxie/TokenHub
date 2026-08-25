@@ -187,6 +187,34 @@ func TestBuiltinProviderPluginsExposeAdapterCapabilities(t *testing.T) {
 	}
 }
 
+func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
+	server := New(NewMemoryStore())
+	descriptor, ok := server.adapterRegistry.plugins.Describe("tokenhub.provider.openai-codex")
+	if !ok {
+		t.Fatal("Codex provider plugin is missing")
+	}
+	var value string
+	for _, capability := range descriptor.Capabilities {
+		if capability.Kind == "provider_resource_type" && capability.Name == ProviderResourceOpenAISubscription && capability.Subject == ProviderOpenAICodex {
+			value = capability.Value
+			break
+		}
+	}
+	if value == "" {
+		t.Fatalf("Codex provider plugin resource type metadata is missing: %+v", descriptor.Capabilities)
+	}
+	var resourceType pluginmeta.ManifestProviderResourceType
+	if err := json.Unmarshal([]byte(value), &resourceType); err != nil {
+		t.Fatalf("decode Codex resource type metadata: %v", err)
+	}
+	if resourceType.Type != ProviderResourceOpenAISubscription || !resourceType.Default || resourceType.Defaults["base_url"] != openAICodexBaseURL || resourceType.Defaults["max_concurrency"] != "3" {
+		t.Fatalf("Codex resource type metadata = %+v", resourceType)
+	}
+	if !reflect.DeepEqual(resourceType.AuthModes, []string{"oauth", "personal_access_token"}) {
+		t.Fatalf("Codex resource type auth modes = %+v", resourceType.AuthModes)
+	}
+}
+
 func TestBuiltinGatewayChainPluginPlansCoreHooks(t *testing.T) {
 	server := New(NewMemoryStore())
 

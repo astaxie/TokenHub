@@ -5,7 +5,7 @@ import pluginmeta "tokenhub/backend/internal/plugin"
 type builtinProviderAdapter struct {
 	providerType  string
 	adapter       any
-	resourceTypes []string
+	resourceTypes []pluginmeta.ManifestProviderResourceType
 	capabilities  []AdapterCapability
 }
 
@@ -59,9 +59,19 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
-		providerType:  ProviderOpenAICodex,
-		adapter:       codexSubscription,
-		resourceTypes: []string{ProviderResourceOpenAISubscription},
+		providerType: ProviderOpenAICodex,
+		adapter:      codexSubscription,
+		resourceTypes: []pluginmeta.ManifestProviderResourceType{{
+			Type:        ProviderResourceOpenAISubscription,
+			DisplayName: "OpenAI Codex Subscription",
+			AuthModes:   []string{"oauth", "personal_access_token"},
+			Default:     true,
+			Defaults: map[string]string{
+				"auth_type":       "oauth",
+				"base_url":        openAICodexBaseURL,
+				"max_concurrency": "3",
+			},
+		}},
 		capabilities: []AdapterCapability{
 			AdapterCapabilityResponses,
 			AdapterCapabilityResponseStream,
@@ -135,5 +145,5 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 	for _, capability := range adapter.capabilities {
 		capabilities = append(capabilities, string(capability))
 	}
-	return pluginmeta.BuiltInProviderWithResourceTypes(pluginID, name, []string{adapter.providerType}, adapter.resourceTypes, capabilities)
+	return pluginmeta.BuiltInProviderWithResourceTypeMetadata(pluginID, name, []string{adapter.providerType}, adapter.resourceTypes, capabilities)
 }

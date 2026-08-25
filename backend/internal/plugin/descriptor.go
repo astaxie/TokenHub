@@ -50,13 +50,22 @@ func BuiltInProvider(id string, name string, providerTypes []string, capabilitie
 }
 
 func BuiltInProviderWithResourceTypes(id string, name string, providerTypes []string, resourceTypes []string, capabilities []string) Descriptor {
+	typedResourceTypes := make([]ManifestProviderResourceType, 0, len(resourceTypes))
+	for _, resourceType := range resourceTypes {
+		typedResourceTypes = append(typedResourceTypes, ManifestProviderResourceType{Type: resourceType})
+	}
+	return BuiltInProviderWithResourceTypeMetadata(id, name, providerTypes, typedResourceTypes, capabilities)
+}
+
+func BuiltInProviderWithResourceTypeMetadata(id string, name string, providerTypes []string, resourceTypes []ManifestProviderResourceType, capabilities []string) Descriptor {
 	descriptors := make([]CapabilityDescriptor, 0, len(providerTypes)*len(capabilities))
 	for _, providerType := range providerTypes {
 		for _, resourceType := range resourceTypes {
 			descriptors = append(descriptors, CapabilityDescriptor{
 				Kind:    "provider_resource_type",
-				Name:    resourceType,
+				Name:    resourceType.Type,
 				Subject: providerType,
+				Value:   resourceType.CapabilityValue(),
 			})
 		}
 		for _, capability := range capabilities {
