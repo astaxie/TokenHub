@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -102,6 +103,28 @@ func TestGatewayHookRunnerAppliesFailurePolicyForMissingHandlers(t *testing.T) {
 	}
 	if len(closedReport.Results) != 1 || closedReport.Results[0].Status != HookRunFailed {
 		t.Fatalf("fail-closed report = %+v", closedReport)
+	}
+}
+
+func TestGatewayHookRunnerReportsSkipRouteFailurePolicy(t *testing.T) {
+	chain := NewGatewayChainRegistry()
+	hook := GatewayHookDescriptor{PluginID: "tokenhub.transform", HookID: "shape", Stage: StageRequestTransform, FailurePolicy: FailurePolicySkipRoute}
+	if err := chain.RegisterHook(hook); err != nil {
+		t.Fatalf("register hook: %v", err)
+	}
+	runner := NewGatewayHookRunner(chain)
+	if err := runner.RegisterHandler(hook, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+		return GatewayHookResult{}, errors.New("provider-specific transform failed")
+	})); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	report, err := runner.RunStage(context.Background(), StageRequestTransform, GatewayHookInput{})
+	if !IsGatewayHookRouteSkipped(err) {
+		t.Fatalf("error = %v, want gateway hook route skipped", err)
+	}
+	if len(report.Results) != 1 || report.Results[0].Status != HookRunFailed {
+		t.Fatalf("report = %+v", report)
 	}
 }
 

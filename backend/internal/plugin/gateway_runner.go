@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrGatewayHookDenied         = errors.New("gateway hook denied the request")
+	ErrGatewayHookRouteSkipped   = errors.New("gateway hook skipped the route")
 	ErrGatewayHookShortCircuited = errors.New("gateway hook short-circuited the request")
 )
 
@@ -228,6 +229,8 @@ func applyGatewayHookWritesToInput(input *GatewayHookInput, writes map[GatewayDa
 		switch dataClass {
 		case DataRequestBody:
 			input.Envelope.RequestBody = cloneRawMessage(value)
+		case DataProviderRequest:
+			input.Envelope.RequestBody = cloneRawMessage(value)
 		case DataNormalizedText:
 			var segments []TextSegment
 			if json.Unmarshal(value, &segments) == nil {
@@ -254,6 +257,8 @@ func clipGatewayHookInput(input GatewayHookInput, reads []GatewayDataClass) Gate
 	}
 	if _, ok := allowed[DataRequestBody]; ok {
 		clipped.Envelope.RequestBody = cloneRawMessage(input.Envelope.RequestBody)
+	} else if _, ok := allowed[DataProviderRequest]; ok {
+		clipped.Envelope.RequestBody = cloneRawMessage(input.Envelope.RequestBody)
 	}
 	if _, ok := allowed[DataNormalizedText]; ok {
 		clipped.Envelope.NormalizedText = append([]TextSegment(nil), input.Envelope.NormalizedText...)
@@ -279,6 +284,8 @@ func applyGatewayHookFailure(run GatewayHookRunResult, hook GatewayHookDescripto
 	case FailurePolicyFailOpen, FailurePolicyObserveOnly:
 		run.Status = HookRunSkipped
 		return run, nil
+	case FailurePolicySkipRoute:
+		return run, fmt.Errorf("%w: %w", ErrGatewayHookRouteSkipped, err)
 	default:
 		return run, err
 	}
@@ -296,6 +303,10 @@ func IsGatewayHookTimeout(err error) bool {
 
 func IsGatewayHookDenied(err error) bool {
 	return errors.Is(err, ErrGatewayHookDenied)
+}
+
+func IsGatewayHookRouteSkipped(err error) bool {
+	return errors.Is(err, ErrGatewayHookRouteSkipped)
 }
 
 func IsGatewayHookShortCircuited(err error) bool {

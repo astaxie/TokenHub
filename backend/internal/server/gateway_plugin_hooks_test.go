@@ -248,6 +248,263 @@ func TestContextOptimizeHookRewritesGatewayChatRequestBeforeUpstream(t *testing.
 	}
 }
 
+func TestRequestTransformHookCanRewriteChatProviderRequest(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-transform",
+		HookID:        "shape",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest, pluginmeta.DataProviderCredentials},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Envelope.RequestBody) == 0 {
+			t.Fatal("provider request was not available in the hook envelope")
+		}
+		var credentials map[string]any
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderCredentials], &credentials); err != nil {
+			t.Fatalf("decode provider credentials: %v", err)
+		}
+		provider, ok := credentials["provider"].(map[string]any)
+		if !ok || provider["api_key"] != "provider-secret" {
+			t.Fatalf("provider credentials = %#v, want provider api key", credentials)
+		}
+		return rawProviderRequestPatch(t, map[string]any{
+			"model":  "gpt-test",
+			"stream": false,
+			"messages": []map[string]any{
+				{"role": "user", "content": "[provider-shaped]"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	request := ChatCompletionRequest{
+		Model:    "gpt-test",
+		Messages: []ChatMessage{{Role: "user", Content: "original"}},
+	}
+	err := server.runGatewayChatRequestTransformHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{
+		Provider: Provider{ID: "prv_transform", Type: "transform_capture", APIKey: "provider-secret"},
+	}, &request)
+	if err != nil {
+		t.Fatalf("run request transform hook: %v", err)
+	}
+	if got := request.Messages[0].Content; got != "[provider-shaped]" {
+		t.Fatalf("message content = %v, want provider-shaped", got)
+	}
+}
+
+func TestRequestTransformHookCannotChangeRequestedModel(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-transform",
+		HookID:        "reroute",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      2000,
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderRequestPatch(t, map[string]any{
+			"model":  "gpt-other",
+			"stream": false,
+			"messages": []map[string]any{
+				{"role": "user", "content": "original"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	request := ChatCompletionRequest{
+		Model:    "gpt-test",
+		Messages: []ChatMessage{{Role: "user", Content: "original"}},
+	}
+	err := server.runGatewayChatRequestTransformHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, &request)
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusBadGateway || httpErr.Code != "gateway_hook_patch_invalid" {
+		t.Fatalf("request transform error = %d/%s, want 502/gateway_hook_patch_invalid", httpErr.Status, httpErr.Code)
+	}
+}
+
+func TestRequestTransformHookCanSkipRouteAndRewriteNextChatAttempt(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Request Transform App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "request-transform-key",
+		Allowed: []string{"gpt-transform"},
+		Status:  StatusActive,
+	}, "thk_request_transform")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstProvider := store.AddProvider(Provider{ID: "prv_transform_a", Name: "Transform A", Type: "transform_capture", Status: StatusActive, Healthy: true, Priority: 1})
+	secondProvider := store.AddProvider(Provider{ID: "prv_transform_b", Name: "Transform B", Type: "transform_capture", Status: StatusActive, Healthy: true, Priority: 1})
+	store.AddModel(Model{Name: "gpt-transform", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_transform_a", ModelName: "gpt-transform", ProviderID: firstProvider.ID, ProviderModel: "upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_transform_b", ModelName: "gpt-transform", ProviderID: secondProvider.ID, ProviderModel: "upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	server := New(store)
+	adapter := &requestTransformCaptureAdapter{}
+	server.adapterRegistry.Register("transform_capture", adapter, AdapterCapabilityChat, AdapterCapabilityResponses)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID: "tokenhub.test-transform",
+		HookID:   "skip-and-shape",
+		Stage:    pluginmeta.StageRequestTransform,
+		Priority: 2000,
+		Reads:    []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest, pluginmeta.DataProviderCredentials},
+		Writes:   []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var credentials map[string]any
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderCredentials], &credentials); err != nil {
+			t.Fatalf("decode provider credentials: %v", err)
+		}
+		provider, _ := credentials["provider"].(map[string]any)
+		if provider["id"] == "prv_transform_a" {
+			return pluginmeta.GatewayHookResult{}, NewHTTPError(http.StatusBadGateway, "plugin_route_rejected", "skip this provider")
+		}
+		return rawProviderRequestPatch(t, map[string]any{
+			"model":  "gpt-transform",
+			"stream": false,
+			"messages": []map[string]any{
+				{"role": "user", "content": "[second-provider-shaped]"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-transform",
+		"messages": []map[string]any{
+			{"role": "user", "content": "original"},
+		},
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if adapter.seenProviderID != "prv_transform_b" {
+		t.Fatalf("provider ID = %q, want prv_transform_b", adapter.seenProviderID)
+	}
+	if len(adapter.seenChat.Messages) != 1 || adapter.seenChat.Messages[0].Content != "[second-provider-shaped]" {
+		t.Fatalf("upstream chat request was not transformed: %+v", adapter.seenChat)
+	}
+}
+
+func TestRequestTransformFailClosedStopsRouteFailover(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Request Transform Fail Closed App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "request-transform-fail-closed-key",
+		Allowed: []string{"gpt-transform-closed"},
+		Status:  StatusActive,
+	}, "thk_request_transform_closed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstProvider := store.AddProvider(Provider{ID: "prv_transform_closed_a", Name: "Closed A", Type: "transform_capture", Status: StatusActive, Healthy: true, Priority: 1})
+	secondProvider := store.AddProvider(Provider{ID: "prv_transform_closed_b", Name: "Closed B", Type: "transform_capture", Status: StatusActive, Healthy: true, Priority: 1})
+	store.AddModel(Model{Name: "gpt-transform-closed", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_transform_closed_a", ModelName: "gpt-transform-closed", ProviderID: firstProvider.ID, ProviderModel: "upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_transform_closed_b", ModelName: "gpt-transform-closed", ProviderID: secondProvider.ID, ProviderModel: "upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	server := New(store)
+	adapter := &requestTransformCaptureAdapter{}
+	server.adapterRegistry.Register("transform_capture", adapter, AdapterCapabilityChat, AdapterCapabilityResponses)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-transform",
+		HookID:        "closed",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      2000,
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{}, NewHTTPError(http.StatusBadGateway, "plugin_failed_closed", "closed")
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-transform-closed",
+		"messages": []map[string]any{
+			{"role": "user", "content": "original"},
+		},
+	}, secret)
+	if resp.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", resp.Code, resp.Body)
+	}
+	if adapter.seenProviderID != "" {
+		t.Fatalf("adapter was invoked for provider %q after fail-closed transform", adapter.seenProviderID)
+	}
+}
+
+func TestRequestTransformHookRewritesGatewayResponsesRequestBeforeUpstream(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Responses Transform App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "responses-transform-key",
+		Allowed: []string{"gpt-responses-transform"},
+		Status:  StatusActive,
+	}, "thk_responses_transform")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_responses_transform", Name: "Responses Transform", Type: "transform_capture", Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-responses-transform", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_responses_transform", ModelName: "gpt-responses-transform", ProviderID: provider.ID, ProviderModel: "upstream-responses", Status: StatusActive, Priority: 1, Weight: 100})
+	server := New(store)
+	adapter := &requestTransformCaptureAdapter{}
+	server.adapterRegistry.Register("transform_capture", adapter, AdapterCapabilityChat, AdapterCapabilityResponses)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-transform",
+		HookID:        "shape-responses",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderRequestPatch(t, map[string]any{
+			"model": "gpt-responses-transform",
+			"input": "[responses-shaped]",
+		}), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
+		"model": "gpt-responses-transform",
+		"input": "original",
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if adapter.seenResponses.Input != "[responses-shaped]" {
+		t.Fatalf("upstream responses request input = %#v, want responses-shaped", adapter.seenResponses.Input)
+	}
+}
+
 func TestCacheLookupHookCanShortCircuitWithProviderResponse(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{
@@ -434,6 +691,20 @@ func rawRequestBodyPatch(t *testing.T, value any) pluginmeta.GatewayHookResult {
 	}
 }
 
+func rawProviderRequestPatch(t *testing.T, value any) pluginmeta.GatewayHookResult {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pluginmeta.GatewayHookResult{
+		Decision: pluginmeta.HookDecisionContinue,
+		Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+			pluginmeta.DataProviderRequest: {Value: data},
+		},
+	}
+}
+
 func routeRankPatchResult(t *testing.T, routeIDs ...string) pluginmeta.GatewayHookResult {
 	t.Helper()
 	data, err := json.Marshal(map[string]any{"route_ids": routeIDs})
@@ -473,4 +744,23 @@ type contextOptimizeCaptureAdapter struct {
 func (a *contextOptimizeCaptureAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
 	a.seenChat = req
 	return a.MockAdapter.Chat(ctx, provider, providerModel, req)
+}
+
+type requestTransformCaptureAdapter struct {
+	MockAdapter
+	seenProviderID string
+	seenChat       ChatCompletionRequest
+	seenResponses  ResponsesRequest
+}
+
+func (a *requestTransformCaptureAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	a.seenProviderID = provider.ID
+	a.seenChat = req
+	return a.MockAdapter.Chat(ctx, provider, providerModel, req)
+}
+
+func (a *requestTransformCaptureAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
+	a.seenProviderID = provider.ID
+	a.seenResponses = req
+	return a.MockAdapter.Responses(ctx, provider, providerModel, req)
 }

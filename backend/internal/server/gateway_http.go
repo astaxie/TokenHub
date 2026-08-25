@@ -118,6 +118,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				if omitReasoningEffort {
 					upstreamReq.ReasoningEffort = nil
 				}
+				if transformErr := s.runGatewayChatRequestTransformHooks(ctx, routed.Call, prepared, &upstreamReq); transformErr != nil {
+					return struct{}{}, Usage{}, transformErr
+				}
 				// Defer the response headers until the first byte is written, at
 				// which point prepared is the route that actually served it.
 				tracker.onFirstWrite = func() {
@@ -497,6 +500,9 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 			if omitReasoningEffort {
 				upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
 			}
+			if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
+				return nil, Usage{}, transformErr
+			}
 			resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
 			if isCodexModelUnsupportedError(err) {
 				s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
@@ -510,6 +516,9 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 		upstreamReq := req
 		if omitReasoningEffort {
 			upstreamReq.ReasoningEffort = nil
+		}
+		if transformErr := s.runGatewayChatRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
+			return nil, Usage{}, transformErr
 		}
 		return adapter.Chat(ctx, route.Provider, route.ProviderModel, upstreamReq)
 	})
@@ -551,6 +560,10 @@ func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, reques
 		for key, value := range request {
 			body[key] = append(json.RawMessage(nil), value...)
 		}
+		body, err = s.runGatewayCompactRequestTransformHooks(ctx, routed.Call, prepared, body)
+		if err != nil {
+			return nil, Usage{}, err
+		}
 		return compactAdapter.CompactWithHeaders(ctx, prepared.Provider, prepared.ProviderModel, body, r.Header)
 	})
 }
@@ -565,7 +578,11 @@ func (s *Server) executeRoutedEmbeddings(r *http.Request, routed RoutedCall, req
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return adapter.Embeddings(ctx, route.Provider, route.ProviderModel, req)
+		upstreamReq := req
+		if transformErr := s.runGatewayEmbeddingsRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
+			return nil, Usage{}, transformErr
+		}
+		return adapter.Embeddings(ctx, route.Provider, route.ProviderModel, upstreamReq)
 	})
 }
 
@@ -1340,6 +1357,8 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 	case ProviderErrorTransientSame:
 		return !routeIsBound
 	case ProviderErrorQuotaExhausted, ProviderErrorAuthBroken, ProviderErrorResourceBroken:
+		return true
+	case ProviderErrorRouteSkipped:
 		return true
 	case ProviderErrorModelUnsupported:
 		return !routeIsBound

@@ -73,6 +73,9 @@ func (s *Server) executeRoutedChat(
 		if omitReasoningEffort {
 			upstreamReq.ReasoningEffort = nil
 		}
+		if transformErr := s.runGatewayChatRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
+			return nil, Usage{}, transformErr
+		}
 		return s.executeChatRoute(ctx, route, upstreamReq, r.Header)
 	})
 }

@@ -16,6 +16,7 @@ const (
 	ProviderErrorModelUnsupported ProviderErrorDisposition = "model_unsupported"
 	ProviderErrorResourceBroken   ProviderErrorDisposition = "resource_broken"
 	ProviderErrorEgress           ProviderErrorDisposition = "proxy_egress_failure"
+	ProviderErrorRouteSkipped     ProviderErrorDisposition = "route_skipped"
 	ProviderErrorStreamCommitted  ProviderErrorDisposition = "stream_failed_committed"
 )
 
@@ -93,7 +94,7 @@ func providerAttemptOutcome(err error) AttemptOutcome {
 		return AttemptSucceeded
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorModelUnsupported, ProviderErrorEgress:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorModelUnsupported, ProviderErrorEgress, ProviderErrorRouteSkipped:
 		return AttemptNeutral
 	default:
 		if isCodexModelUnsupportedError(err) {
