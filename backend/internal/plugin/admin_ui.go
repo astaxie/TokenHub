@@ -19,6 +19,8 @@ const (
 	SlotRouteDetailPanel            AdminUISlot = "route.detail.panel"
 	SlotSettingsPanel               AdminUISlot = "settings.panel"
 	SlotReportTemplate              AdminUISlot = "report.template"
+	SlotThemeTokens                 AdminUISlot = "theme.tokens"
+	SlotLayoutPreset                AdminUISlot = "layout.preset"
 )
 
 type AdminUIManifest struct {
@@ -143,7 +145,7 @@ func normalizeAdminUIManifest(pluginID string, manifest AdminUIManifest) AdminUI
 
 func validAdminUISlot(slot AdminUISlot) bool {
 	switch slot {
-	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderResourceFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate:
+	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderResourceFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate, SlotThemeTokens, SlotLayoutPreset:
 		return true
 	default:
 		return false
@@ -171,7 +173,7 @@ func validateAdminUIContributionSchema(contribution AdminUIContribution) error {
 		return nil
 	}
 	for key := range contribution.Schema {
-		if !allowedAdminUISchemaKey(key) {
+		if !allowedAdminUISchemaKey(contribution.Slot, key) {
 			return fmt.Errorf("unsupported schema key %q", key)
 		}
 	}
@@ -180,16 +182,131 @@ func validateAdminUIContributionSchema(contribution AdminUIContribution) error {
 			return err
 		}
 	}
+	if tokens, ok := contribution.Schema["tokens"]; ok {
+		if err := validateAdminUIThemeTokens(tokens); err != nil {
+			return err
+		}
+	}
+	if mode, ok := contribution.Schema["mode"]; ok {
+		if err := validateAdminUIThemeMode(mode); err != nil {
+			return err
+		}
+	}
+	if defaultValue, ok := contribution.Schema["default"]; ok {
+		if _, valid := defaultValue.(bool); !valid {
+			return fmt.Errorf("theme default must be a boolean")
+		}
+	}
+	if preset, ok := contribution.Schema["preset"]; ok {
+		if err := validateAdminUILayoutPreset(preset); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func allowedAdminUISchemaKey(key string) bool {
+func allowedAdminUISchemaKey(slot AdminUISlot, key string) bool {
 	switch key {
 	case "fields", "layout", "description", "empty_state", "refreshable":
+		return true
+	case "tokens", "mode":
+		return slot == SlotThemeTokens
+	case "default":
+		return slot == SlotThemeTokens || slot == SlotLayoutPreset
+	case "preset":
+		return slot == SlotLayoutPreset
+	default:
+		return false
+	}
+}
+
+func validateAdminUIThemeTokens(raw any) error {
+	tokens, ok := raw.(map[string]any)
+	if !ok {
+		return fmt.Errorf("theme tokens must be an object")
+	}
+	for rawName, rawValue := range tokens {
+		name := strings.TrimPrefix(strings.TrimSpace(rawName), "--")
+		if !allowedAdminUIThemeToken(name) {
+			return fmt.Errorf("unsupported theme token %q", rawName)
+		}
+		value := strings.TrimSpace(schemaString(rawValue))
+		if value == "" {
+			return fmt.Errorf("theme token %s value is required", rawName)
+		}
+		if !safeAdminUICSSValue(value) {
+			return fmt.Errorf("theme token %s value is unsafe", rawName)
+		}
+	}
+	return nil
+}
+
+func validateAdminUIThemeMode(raw any) error {
+	mode := strings.TrimSpace(schemaString(raw))
+	switch mode {
+	case "", "all", "light", "dark":
+		return nil
+	default:
+		return fmt.Errorf("theme mode %q is unsupported", mode)
+	}
+}
+
+func validateAdminUILayoutPreset(raw any) error {
+	preset, ok := raw.(map[string]any)
+	if !ok {
+		return fmt.Errorf("layout preset must be an object")
+	}
+	for key, value := range preset {
+		switch strings.TrimSpace(key) {
+		case "navigation":
+			if !oneOfSchemaStrings(value, "sidebar") {
+				return fmt.Errorf("layout preset navigation is unsupported")
+			}
+		case "density":
+			if !oneOfSchemaStrings(value, "compact", "comfortable", "spacious") {
+				return fmt.Errorf("layout preset density is unsupported")
+			}
+		case "content_width":
+			if !oneOfSchemaStrings(value, "fluid", "comfortable") {
+				return fmt.Errorf("layout preset content_width is unsupported")
+			}
+		default:
+			return fmt.Errorf("unsupported layout preset key %q", key)
+		}
+	}
+	return nil
+}
+
+func allowedAdminUIThemeToken(name string) bool {
+	switch name {
+	case "bg", "surface", "surface-2", "surface-3", "border", "border-2", "border-strong", "ink", "ink-2", "ink-3", "ink-4", "accent", "accent-2", "accent-weak", "accent-weak-2", "accent-ink", "pos", "pos-weak", "warn", "warn-weak", "red", "chart-grid", "page", "shell", "surface-soft", "text", "muted", "muted-strong", "blue", "green", "amber", "shadow-sm", "shadow-md", "shadow-lg", "shadow":
 		return true
 	default:
 		return false
 	}
+}
+
+func safeAdminUICSSValue(value string) bool {
+	if len(value) > 180 {
+		return false
+	}
+	normalized := strings.ToLower(value)
+	for _, blocked := range []string{"url(", "@import", "expression(", "javascript:", "<", ">", "{", "}", ";"} {
+		if strings.Contains(normalized, blocked) {
+			return false
+		}
+	}
+	return true
+}
+
+func oneOfSchemaStrings(raw any, allowed ...string) bool {
+	value := strings.TrimSpace(schemaString(raw))
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAdminUIFields(raw any, contributionAction string) error {

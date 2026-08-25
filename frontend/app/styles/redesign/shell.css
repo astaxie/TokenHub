@@ -835,6 +835,14 @@
   box-shadow: none;
 }
 
+.app-shell[data-layout-density="compact"] .content-panel {
+  padding: 20px 24px 36px;
+}
+
+.app-shell[data-layout-density="spacious"] .content-panel {
+  padding: 34px 40px 54px;
+}
+
 .playground-content-panel {
   padding: 0;
 }

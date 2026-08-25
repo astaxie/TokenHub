@@ -34,4 +34,40 @@ describe("PluginsView", () => {
     expect(screen.getByText("成功 / 1")).toBeInTheDocument();
     expect(screen.getByText("2 / 1000ms")).toBeInTheDocument();
   });
+
+  it("renders SIM theme and layout contributions", () => {
+    const data = emptyData();
+    data.pluginUI = [
+      {
+        plugin_id: "tokenhub.sim.enterprise",
+        id: "enterprise-theme",
+        slot: "theme.tokens",
+        title: "Enterprise Theme",
+        schema: {
+          mode: "dark",
+          tokens: {
+            accent: "#2563eb",
+            surface: "#ffffff",
+          },
+        },
+      },
+      {
+        plugin_id: "tokenhub.sim.enterprise",
+        id: "ops-layout",
+        slot: "layout.preset",
+        title: "Ops Layout",
+        schema: {
+          preset: { density: "compact" },
+        },
+      },
+    ];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(screen.getByText("SIM 与主题贡献")).toBeInTheDocument();
+    expect(screen.getAllByText("Enterprise Theme").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ops Layout").length).toBeGreaterThan(0);
+    expect(screen.getByText("深色")).toBeInTheDocument();
+    expect(screen.getByText("紧凑")).toBeInTheDocument();
+  });
 });

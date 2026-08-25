@@ -13,6 +13,7 @@ import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/formatting";
 import { reportDatasetLabel } from "../domain/labels";
 import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
+import { pluginShellPresentation } from "../domain/plugin-theme";
 import { resourceCreateTarget } from "../domain/resource-create-target";
 import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
 import { createKeyWithCapture } from "../resources/generic-config";
@@ -91,6 +92,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const providerTypeOptions = useMemo(() => providerTypeOptionsFromData(data), [data]);
   const activeConfig = resourceConfigFor(activeView);
   const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
+  const shellPresentation = useMemo(() => pluginShellPresentation(data.pluginUI, theme), [data.pluginUI, theme]);
   setActiveLanguage(language);
 
   function changeLanguage(nextLanguage: AppLanguage) {
@@ -855,7 +857,12 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   }
 
   return (
-    <main className={sidebarCollapsed ? "app-shell sidebar-collapsed" : "app-shell"} data-theme={theme}>
+    <main
+      className={sidebarCollapsed ? "app-shell sidebar-collapsed" : "app-shell"}
+      data-layout-density={shellPresentation.density}
+      data-theme={theme}
+      style={shellPresentation.style}
+    >
       <Sidebar
         activeView={activeView}
         onSelect={selectView}

@@ -1,4 +1,4 @@
-import { Boxes, Clock3, Layers3, MousePointerClick, Play, PlugZap, ShieldCheck } from "lucide-react";
+import { Boxes, Clock3, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor } from "../core/types";
 import { tx } from "../i18n/runtime";
@@ -24,6 +24,8 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const backgroundJobs = data.pluginBackgroundJobs;
+  const themeContributions = uiContributions.filter((contribution) => contribution.slot === "theme.tokens");
+  const layoutContributions = uiContributions.filter((contribution) => contribution.slot === "layout.preset");
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
@@ -70,6 +72,8 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
         <PluginMetric icon={<Boxes size={18} />} label={tx("Provider 能力")} value={providerCapabilities} />
         <PluginMetric icon={<Layers3 size={18} />} label={tx("链路插件")} value={gatewayPlugins} />
         <PluginMetric icon={<ShieldCheck size={18} />} label={tx("界面插件")} value={uiPlugins} />
+        <PluginMetric icon={<Palette size={18} />} label={tx("主题贡献")} value={themeContributions.length} />
+        <PluginMetric icon={<PanelsTopLeft size={18} />} label={tx("布局预设")} value={layoutContributions.length} />
         <PluginMetric icon={<MousePointerClick size={18} />} label={tx("插件动作")} value={pluginActions.length} />
         <PluginMetric icon={<Clock3 size={18} />} label={tx("后台任务")} value={backgroundJobs.length} />
       </div>
@@ -193,6 +197,49 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                       <td>
                         <ContributionAction action={contribution.action} registered={pluginActionKeys.has(pluginActionKey(contribution.plugin_id, contribution.action))} />
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-header">
+          <h2>{tx("SIM 与主题贡献")}</h2>
+        </div>
+        <div className="section-body">
+          {themeContributions.length === 0 && layoutContributions.length === 0 ? (
+            <p className="empty-state">{tx("暂无 SIM 贡献")}</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{tx("类型")}</th>
+                    <th>{tx("贡献")}</th>
+                    <th>{tx("插件")}</th>
+                    <th>{tx("模式")}</th>
+                    <th>{tx("Token")}</th>
+                    <th>{tx("布局密度")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...themeContributions, ...layoutContributions].map((contribution) => (
+                    <tr key={`${contribution.plugin_id}:${contribution.slot}:${contribution.id}`}>
+                      <td>{presentationContributionTypeLabel(contribution.slot)}</td>
+                      <td>
+                        <div className="stacked-cell">
+                          <strong>{contribution.title || contribution.id}</strong>
+                          <span>{contribution.id}</span>
+                        </div>
+                      </td>
+                      <td>{contribution.plugin_id}</td>
+                      <td>{themeModeLabel(contribution.schema?.mode)}</td>
+                      <td>{themeTokenCount(contribution.schema?.tokens)}</td>
+                      <td>{layoutDensityLabel(contribution.schema?.preset)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -414,6 +461,33 @@ function pluginActionKindLabel(kind: string) {
   if (kind === "external_redirect") return tx("外部跳转");
   if (kind === "import_export") return tx("导入导出");
   return kind;
+}
+
+function presentationContributionTypeLabel(slot: string) {
+  if (slot === "theme.tokens") return tx("主题 Token");
+  if (slot === "layout.preset") return tx("布局预设");
+  return slot;
+}
+
+function themeModeLabel(value: unknown) {
+  if (value === "light") return tx("浅色");
+  if (value === "dark") return tx("深色");
+  if (value === "all") return tx("全部");
+  return "-";
+}
+
+function themeTokenCount(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "-";
+  return String(Object.keys(value).length);
+}
+
+function layoutDensityLabel(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "-";
+  const density = (value as { density?: unknown }).density;
+  if (density === "compact") return tx("紧凑");
+  if (density === "spacious") return tx("宽松");
+  if (density === "comfortable") return tx("舒适");
+  return "-";
 }
 
 function backgroundJobRetryLabel(retry?: { max_attempts?: number; backoff_millis?: number }) {

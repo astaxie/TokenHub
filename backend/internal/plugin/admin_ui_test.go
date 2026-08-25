@@ -98,6 +98,8 @@ func TestParseAdminUIManifestRejectsUnsafeContributionSchema(t *testing.T) {
 		`{"remote_script_url":"https://plugins.example/plugin.js"}`,
 		`{"fields":[{"type":"text"}]}`,
 		`{"fields":[{"name":"connect","type":"oauth_button"}]}`,
+		`{"tokens":{"accent":"#2563eb"}}`,
+		`{"preset":{"density":"compact"}}`,
 	} {
 		_, err := ParseAdminUIManifest("tokenhub.bad-schema", []byte(`{
 			"schema_version": 1,
@@ -108,6 +110,78 @@ func TestParseAdminUIManifestRejectsUnsafeContributionSchema(t *testing.T) {
 		if err == nil {
 			t.Fatalf("admin UI manifest with unsafe schema parsed successfully: %s", payload)
 		}
+	}
+}
+
+func TestParseAdminUIManifestAcceptsThemeAndLayoutContributions(t *testing.T) {
+	manifest, err := ParseAdminUIManifest("tokenhub.sim.enterprise", []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "enterprise-theme",
+				"slot": "theme.tokens",
+				"title": "Enterprise Theme",
+				"schema": {
+					"mode": "light",
+					"default": true,
+					"tokens": {
+						"accent": "#2563eb",
+						"--surface": "#ffffff",
+						"accent-weak": "color-mix(in srgb, #2563eb 12%, transparent)"
+					}
+				}
+			},
+			{
+				"id": "operator-layout",
+				"slot": "layout.preset",
+				"title": "Operator Layout",
+				"schema": {
+					"default": true,
+					"preset": {
+						"navigation": "sidebar",
+						"density": "compact",
+						"content_width": "fluid"
+					}
+				}
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("parse admin UI theme/layout manifest: %v", err)
+	}
+	if len(manifest.Contributions) != 2 {
+		t.Fatalf("contributions = %d, want 2", len(manifest.Contributions))
+	}
+	if manifest.Contributions[1].Slot != SlotThemeTokens {
+		t.Fatalf("theme contribution slot = %q, want %q", manifest.Contributions[1].Slot, SlotThemeTokens)
+	}
+}
+
+func TestParseAdminUIManifestRejectsUnsafeThemeAndLayoutContributions(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		slot    string
+		payload string
+	}{
+		{name: "unknown token", slot: "theme.tokens", payload: `{"tokens":{"unknown":"#111111"}}`},
+		{name: "remote asset", slot: "theme.tokens", payload: `{"tokens":{"accent":"url(https://example.test/theme.css)"}}`},
+		{name: "css injection", slot: "theme.tokens", payload: `{"tokens":{"accent":"#111111; color: red"}}`},
+		{name: "invalid mode", slot: "theme.tokens", payload: `{"mode":"system","tokens":{"accent":"#111111"}}`},
+		{name: "invalid default", slot: "theme.tokens", payload: `{"default":"yes","tokens":{"accent":"#111111"}}`},
+		{name: "invalid density", slot: "layout.preset", payload: `{"preset":{"density":"dense"}}`},
+		{name: "extra layout key", slot: "layout.preset", payload: `{"preset":{"density":"compact","script":"load"}}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := ParseAdminUIManifest("tokenhub.bad-sim", []byte(`{
+				"schema_version": 1,
+				"contributions": [
+					{"id": "bad", "slot": "`+testCase.slot+`", "schema": `+testCase.payload+`}
+				]
+			}`))
+			if err == nil {
+				t.Fatalf("admin UI manifest with unsafe %s schema parsed successfully", testCase.slot)
+			}
+		})
 	}
 }
 
