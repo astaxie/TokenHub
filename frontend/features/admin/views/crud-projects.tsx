@@ -10,7 +10,7 @@ import { providerLatencyLabel, providerPerformanceExplanation, providerQualitySc
 import { enumValueLabel, providerTypeLabel, reportDatasetLabel, roleLabel } from "../domain/labels";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { reportExportDefinitions } from "../resources/governance-config";
-import { adminFetch, readAdminError } from "../resources/payloads";
+import { providerPluginActionForCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
 import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
@@ -287,9 +287,9 @@ export function ProviderChannelTable({
     if (!api) return;
     setQuotaRefreshing((current) => ({ ...current, [resource.id]: true }));
     try {
-      const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/quota?refresh=true`);
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询 Codex 套餐")));
-      const quota = (await resp.json()) as OpenAIAccountQuota;
+      const action = providerQuotaReadAction(data, resource);
+      if (!action) throw new Error(tx("该插件动作尚未注册。"));
+      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: true }, tx("查询 Codex 套餐"));
       const snapshot = data.providerMonitoring.find((item) => item.provider.id === resource.provider_id);
       if (snapshot) {
         setQuotaOverrides((current) => ({
@@ -454,6 +454,11 @@ export function ProviderChannelTable({
       </div>
     </section>
   );
+}
+
+export function providerQuotaReadAction(data: AppData, resource: ProviderResource) {
+  const providerType = data.providers.find((provider) => provider.id === resource.provider_id)?.type ?? "";
+  return providerPluginActionForCapability(data.pluginActions, providerType, "quota.read");
 }
 
 export function ProviderCodexQuota({
