@@ -1233,7 +1233,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setError("");
     setNotice("");
     try {
-      await action.run(api, item);
+      await action.run(api, item, appData);
       setNotice(tx(action.doneMessage?.(item) ?? "操作已完成"));
       await load();
     } catch (err) {

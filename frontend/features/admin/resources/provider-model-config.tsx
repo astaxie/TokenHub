@@ -1,4 +1,4 @@
-import { type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
+import { type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
@@ -131,8 +131,8 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
       {
         label: "续租 Token",
         title: "使用保存的 refresh token 续租账号访问 Token",
-        visible: (item) => item.resource_type === "openai_subscription" && item.credential_summary?.has_refresh_token === "true",
-        run: (ctx, item) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}/refresh-token`, "POST", {}),
+        visible: (item, _currentUser, data) => Boolean(providerResourceCredentialRefreshAction(data, item)),
+        run: runProviderResourceCredentialRefreshAction,
         doneMessage: (item) => formatTranslationTemplate(tx("{name} Token 已续租"), { name: item.name }),
       },
     ],
@@ -142,6 +142,26 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
 
 export function openAIAccountFieldVisible(values: Record<string, string>) {
   return values.resource_type === "openai_subscription";
+}
+
+export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext, item: ProviderResource, data: AppData) {
+  const action = providerResourceCredentialRefreshAction(data, item);
+  if (!action) throw new Error(tx("该插件动作尚未注册。"));
+  await adminMutate(ctx, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, "POST", {
+    provider_id: item.provider_id,
+    resource_id: item.id,
+    force: true,
+  });
+}
+
+export function providerResourceCredentialRefreshAction(data: AppData, item: ProviderResource): PluginActionDescriptor | undefined {
+  if (item.credential_summary?.has_refresh_token !== "true") return undefined;
+  const provider = findProvider(data, item.provider_id);
+  if (!provider) return undefined;
+  return data.pluginActions.find((action) =>
+    action.capability === "credentials.refresh" &&
+    (!action.subject || action.subject === provider.type),
+  );
 }
 
 export function providerCreateAccountResourceFields() {
