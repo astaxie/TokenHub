@@ -689,7 +689,10 @@ func (s *Server) serveAdminProviderDelete(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) serveAdminProviderTest(w http.ResponseWriter, r *http.Request, user AdminUser, providerID string) {
-	result, err := s.integrations.TestProvider(r.Context(), providerID)
+	result, supported, err := s.executeProviderProbeAction(r.Context(), user, providerID)
+	if !supported {
+		result, err = s.integrations.TestProvider(r.Context(), providerID)
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return

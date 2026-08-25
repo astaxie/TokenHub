@@ -123,10 +123,12 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.probe.run"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.provider.probe.run"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.image_capability.configure"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.credentials.refresh"`) ||
 		!strings.Contains(body, `"capability":"quota.reset_credits.read"`) ||
 		!strings.Contains(body, `"capability":"quota.reset"`) ||
+		!strings.Contains(body, `"capability":"provider.probe.run"`) ||
 		!strings.Contains(body, `"capability":"image.capability.configure"`) ||
 		!strings.Contains(body, `"capability":"credentials.refresh"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
@@ -309,6 +311,70 @@ func TestAdminPluginActionConfiguresOpenAICodexImageCapability(t *testing.T) {
 	}
 	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.image_capability.configure" {
 		t.Fatalf("image capability action audit events = %+v", events)
+	}
+}
+
+func TestAdminPluginActionRunsOpenAICodexProviderProbe(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_plugin_provider_probe",
+		Name:    "Plugin Provider Probe",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_plugin_provider_probe",
+		ProviderID:   provider.ID,
+		Name:         "Plugin Provider Probe Account",
+		ResourceType: ProviderResourceOpenAISubscription,
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials:  &ProviderResourceCredentials{AccessToken: "plugin-provider-probe-secret", AccountID: "plugin-provider-probe-account"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin", SecretKey: "plugin-provider-probe-secret-key"})
+	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		var payload map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["model"] != openAICodexDefaultProbeModel {
+			t.Fatalf("unexpected provider probe payload: %#v", payload)
+		}
+		stream := strings.Join([]string{
+			"event: response.output_text.delta",
+			`data: {"type":"response.output_text.delta","delta":"Codex provider works."}`,
+			"",
+			"event: response.completed",
+			`data: {"type":"response.completed","response":{"id":"resp_probe","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(stream)),
+			Request:    req,
+		}, nil
+	})}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.provider.probe.run", map[string]any{
+		"provider_id": provider.ID,
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST provider probe action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"provider_id":"`+provider.ID+`"`) ||
+		!strings.Contains(response.Body, `"succeeded":1`) ||
+		!strings.Contains(response.Body, `"healthy":true`) {
+		t.Fatalf("provider probe action response = %s", response.Body)
+	}
+	if strings.Contains(response.Body, "plugin-provider-probe-secret") {
+		t.Fatalf("provider probe action leaked credentials: %s", response.Body)
+	}
+	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.provider.probe.run" {
+		t.Fatalf("provider probe action audit events = %+v", events)
 	}
 }
 

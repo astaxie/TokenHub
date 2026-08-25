@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type adminProviderMethodRoute struct {
@@ -188,6 +191,61 @@ func TestAdminProviderMethodRoutesReachCatalogHandlers(t *testing.T) {
 	assertJSONError(t, codexPOST, http.StatusBadRequest, "openai_account_token_missing")
 	unknown := methodRoutingRequest(app, http.MethodGet, "/api/admin/provider-catalog/not-configured", adminToken)
 	assertJSONError(t, unknown, http.StatusNotFound, "provider_catalog_not_found")
+}
+
+func TestAdminProviderTestRouteUsesPluginAction(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "provider_probe_plugin"
+	provider := store.AddProvider(Provider{
+		ID: "prv_provider_probe_plugin", Name: "Provider Probe Plugin", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	server := New(store)
+	pluginID := "tokenhub.provider.provider-probe-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Provider Probe Plugin", []string{providerType}, []string{string(AdapterCapabilityProbe)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityProbe},
+	}); err != nil {
+		t.Fatalf("register provider probe plugin: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "provider_probe.run",
+		Kind:       pluginmeta.ActionKindTest,
+		Capability: "provider.probe.run",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var payload struct {
+			ProviderID string `json:"provider_id"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode provider probe payload: %v", err)
+		}
+		if payload.ProviderID != provider.ID || invocation.Actor.ID != "dev_admin" {
+			t.Fatalf("unexpected provider probe invocation: payload=%+v actor=%+v", payload, invocation.Actor)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"provider_id": payload.ProviderID,
+			"healthy":     true,
+			"succeeded":   1,
+			"failed":      0,
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register provider probe action: %v", err)
+	}
+
+	response := methodRoutingRequest(server.Handler(), http.MethodPost, "/api/admin/providers/"+provider.ID+"/test", "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST provider probe action route: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if actionCalls != 1 || !strings.Contains(response.Body.String(), `"provider_id":"`+provider.ID+`"`) ||
+		!strings.Contains(response.Body.String(), `"succeeded":1`) {
+		t.Fatalf("provider test route did not use action: calls=%d body=%s", actionCalls, response.Body.String())
+	}
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "test", "provider", provider.ID)
 }
 
 func TestAdminProviderCatalogRoutesPreserveCodexQueriesCredentialsAndHeaders(t *testing.T) {

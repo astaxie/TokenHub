@@ -272,6 +272,43 @@ func registerBuiltinPluginActions(server *Server) {
 	}))
 	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "openai_codex.provider.probe.run",
+		Kind:       pluginmeta.ActionKindTest,
+		Title:      "Test OpenAI Codex provider",
+		Capability: "provider.probe.run",
+		Subject:    ProviderOpenAICodex,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"provider_id"},
+			"properties": map[string]any{
+				"provider_id": map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"provider_id", "healthy", "succeeded", "failed"}, map[string]string{
+			"provider_id": "string",
+			"healthy":     "boolean",
+			"succeeded":   "integer",
+			"failed":      "integer",
+			"results":     "array",
+			"errors":      "array",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ProviderID string `json:"provider_id"`
+		}
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		result, err := server.integrations.TestProvider(ctx, payload.ProviderID)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: result}, nil
+	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.image_capability.configure",
 		Kind:       pluginmeta.ActionKindMutate,
 		Title:      "Configure OpenAI Codex image capability",
