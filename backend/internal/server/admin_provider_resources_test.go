@@ -456,6 +456,62 @@ func TestPluginAccountResourceStoresCredentialEnvelope(t *testing.T) {
 	}
 }
 
+func TestPluginAccountResourceUpdatePreservesCredentialSummary(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_update", Name: "Kimi Plugin", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_update",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Account",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      map[string]string{"operator_note": "before"},
+		Credentials: &ProviderResourceCredentials{
+			AuthType:       "oauth",
+			AccessToken:    "kimi-access-token",
+			RefreshToken:   "kimi-refresh-token",
+			AccountID:      "kimi-account",
+			Email:          "owner@example.com",
+			OrganizationID: "kimi-org",
+			ExpiresAt:      "2099-01-01T00:00:00Z",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.UpdateProviderResource(resource.ID, ProviderResource{
+		ProviderID:   provider.ID,
+		Name:         "Kimi Account Updated",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Weight:       100,
+		Options:      map[string]string{"operator_note": "after"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Options["operator_note"] != "after" ||
+		updated.CredentialSummary["credential_source"] != "kimi_oauth_account" ||
+		updated.CredentialSummary["auth_type"] != "oauth" ||
+		updated.CredentialSummary["account_email"] != "owner@example.com" ||
+		updated.CredentialSummary["account_id"] != "kimi-account" ||
+		updated.CredentialSummary["organization_id"] != "kimi-org" ||
+		updated.CredentialSummary["token_expires_at"] != "2099-01-01T00:00:00Z" ||
+		updated.CredentialSummary["has_refresh_token"] != "true" {
+		t.Fatalf("plugin account update lost credential summary: options=%+v summary=%+v", updated.Options, updated.CredentialSummary)
+	}
+	var persisted ProviderResource
+	if err := store.db.First(&persisted, "id = ?", resource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	credentials := store.providerResourceCredentialsForRuntime(persisted)
+	if credentials.AccessToken != "kimi-access-token" || credentials.RefreshToken != "kimi-refresh-token" {
+		t.Fatalf("plugin account update lost encrypted credentials: %+v", credentials)
+	}
+}
+
 func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {

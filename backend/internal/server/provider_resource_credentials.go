@@ -10,12 +10,23 @@ import (
 
 const openAIAccountReauthorizationRequiredOption = "oauth_reauthorization_required"
 
+var providerAccountProtectedOptions = []string{
+	"credential_source",
+	"auth_type",
+	"token_expires_at",
+	"account_id",
+	"account_email",
+	"user_id",
+	"organization_id",
+	"plan_type",
+	"has_refresh_token",
+	openAIAccountReauthorizationRequiredOption,
+}
+
 var openAIAccountProtectedOptions = []string{
 	codexImageCapabilityOption,
 	codexImageCapabilityCheckedAtOption,
 	codexImageRouteBackfillOption,
-	"has_refresh_token",
-	openAIAccountReauthorizationRequiredOption,
 }
 
 type openAIIDTokenClaims struct {
@@ -49,7 +60,7 @@ func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource)
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
-	s.mergeOpenAIAccountCredentials(resource, nil)
+	s.mergeProviderAccountCredentials(resource, nil)
 }
 
 func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource, patch ProviderResource) {
@@ -65,15 +76,16 @@ func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource,
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
-	s.mergeOpenAIAccountCredentials(resource, &patch)
+	s.mergeProviderAccountCredentials(resource, &patch)
 }
 
-func preserveOpenAIAccountProtectedOptions(current map[string]string, patch ProviderResource) map[string]string {
-	options := make(map[string]string, len(patch.Options)+len(openAIAccountProtectedOptions))
+func preserveProviderAccountProtectedOptions(current map[string]string, patch ProviderResource, resourceType string) map[string]string {
+	protectedOptions := providerAccountProtectedOptionKeys(resourceType)
+	options := make(map[string]string, len(patch.Options)+len(protectedOptions))
 	for key, value := range patch.Options {
 		options[key] = value
 	}
-	for _, key := range openAIAccountProtectedOptions {
+	for _, key := range protectedOptions {
 		if openAIAccountAuthenticationPatch(patch.Credentials) && (key == "has_refresh_token" || key == openAIAccountReauthorizationRequiredOption) {
 			delete(options, key)
 			continue
@@ -87,7 +99,15 @@ func preserveOpenAIAccountProtectedOptions(current map[string]string, patch Prov
 	return options
 }
 
-func (s *GormStore) mergeOpenAIAccountCredentials(resource *ProviderResource, patch *ProviderResource) {
+func providerAccountProtectedOptionKeys(resourceType string) []string {
+	options := append([]string{}, providerAccountProtectedOptions...)
+	if isOpenAIAccountResource(resourceType) {
+		options = append(options, openAIAccountProtectedOptions...)
+	}
+	return options
+}
+
+func (s *GormStore) mergeProviderAccountCredentials(resource *ProviderResource, patch *ProviderResource) {
 	if patch != nil && patch.Credentials == nil && strings.TrimSpace(patch.APIKey) == "" {
 		resource.Credentials = nil
 		return
@@ -409,7 +429,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			}
 			delete(current.Options, openAIAccountReauthorizationRequiredOption)
 			current.Credentials = &refreshed
-			s.mergeOpenAIAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
+			s.mergeProviderAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
 			if strings.TrimSpace(current.APIKey) != "" {
 				current.APIKey = s.encryptSecret(current.APIKey)
 			}

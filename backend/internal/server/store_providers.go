@@ -468,8 +468,8 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		resource.SensitiveHeaders = sensitive
 	}
 	if patch.Options != nil {
-		if isOpenAIAccountResource(resource.ResourceType) {
-			resource.Options = preserveOpenAIAccountProtectedOptions(resource.Options, patch)
+		if isProviderAccountResource(resource.ResourceType) {
+			resource.Options = preserveProviderAccountProtectedOptions(resource.Options, patch, resource.ResourceType)
 		} else {
 			resource.Options = patch.Options
 		}
