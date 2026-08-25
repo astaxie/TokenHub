@@ -49,6 +49,49 @@ func TestParseAdminUIManifestRejectsUnsupportedSlot(t *testing.T) {
 	}
 }
 
+func TestParseAdminUIManifestValidatesContributionSchema(t *testing.T) {
+	manifest, err := ParseAdminUIManifest("tokenhub.forms", []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "setup",
+				"slot": "provider.form.section",
+				"schema": {
+					"fields": [
+						{"name": "base_url", "type": "url"},
+						{"name": "credential", "type": "secret"},
+						{"name": "connect", "type": "oauth_button"}
+					]
+				}
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("parse admin UI manifest with schema: %v", err)
+	}
+	if len(manifest.Contributions) != 1 || len(manifest.Contributions[0].Schema) == 0 {
+		t.Fatalf("schema was not preserved: %+v", manifest.Contributions)
+	}
+}
+
+func TestParseAdminUIManifestRejectsUnsafeContributionSchema(t *testing.T) {
+	for _, payload := range []string{
+		`{"fields":[{"name":"script","type":"remote_script"}]}`,
+		`{"remote_script_url":"https://plugins.example/plugin.js"}`,
+		`{"fields":[{"type":"text"}]}`,
+	} {
+		_, err := ParseAdminUIManifest("tokenhub.bad-schema", []byte(`{
+			"schema_version": 1,
+			"contributions": [
+				{"id": "setup", "slot": "provider.form.section", "schema": `+payload+`}
+			]
+		}`))
+		if err == nil {
+			t.Fatalf("admin UI manifest with unsafe schema parsed successfully: %s", payload)
+		}
+	}
+}
+
 func TestAdminUIRegistryListsContributionsDeterministically(t *testing.T) {
 	registry := NewAdminUIRegistry()
 	for _, contribution := range []AdminUIContribution{

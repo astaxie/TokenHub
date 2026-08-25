@@ -65,6 +65,9 @@ func (m AdminUIManifest) Validate(pluginID string) error {
 		if strings.TrimSpace(contribution.PluginID) != strings.TrimSpace(pluginID) {
 			return fmt.Errorf("admin UI contribution %s has plugin_id %q, want %q", contribution.ID, contribution.PluginID, pluginID)
 		}
+		if err := validateAdminUIContributionSchema(contribution); err != nil {
+			return fmt.Errorf("admin UI contribution %s schema is invalid: %w", contribution.ID, err)
+		}
 	}
 	return nil
 }
@@ -82,6 +85,9 @@ func (r *AdminUIRegistry) Register(contribution AdminUIContribution) error {
 	}
 	if !validAdminUISlot(contribution.Slot) {
 		return fmt.Errorf("unsupported admin UI slot %q", contribution.Slot)
+	}
+	if err := validateAdminUIContributionSchema(contribution); err != nil {
+		return fmt.Errorf("admin UI contribution %s schema is invalid: %w", contribution.ID, err)
 	}
 	r.contributions[adminUIContributionKey(contribution)] = contribution
 	return nil
@@ -154,6 +160,63 @@ func sortAdminUIContributions(items []AdminUIContribution) {
 
 func adminUIContributionKey(contribution AdminUIContribution) string {
 	return contribution.PluginID + "\x00" + string(contribution.Slot) + "\x00" + contribution.ID
+}
+
+func validateAdminUIContributionSchema(contribution AdminUIContribution) error {
+	if len(contribution.Schema) == 0 {
+		return nil
+	}
+	for key := range contribution.Schema {
+		if !allowedAdminUISchemaKey(key) {
+			return fmt.Errorf("unsupported schema key %q", key)
+		}
+	}
+	if fields, ok := contribution.Schema["fields"]; ok {
+		if err := validateAdminUIFields(fields); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func allowedAdminUISchemaKey(key string) bool {
+	switch key {
+	case "fields", "layout", "description", "empty_state", "refreshable":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateAdminUIFields(raw any) error {
+	fields, ok := raw.([]any)
+	if !ok {
+		return fmt.Errorf("schema fields must be an array")
+	}
+	for index, rawField := range fields {
+		field, ok := rawField.(map[string]any)
+		if !ok {
+			return fmt.Errorf("schema field %d must be an object", index)
+		}
+		name := strings.TrimSpace(schemaString(field["name"]))
+		if name == "" {
+			return fmt.Errorf("schema field %d name is required", index)
+		}
+		controlType := strings.TrimSpace(schemaString(field["type"]))
+		if !allowedAdminUIControlType(controlType) {
+			return fmt.Errorf("schema field %s has unsupported type %q", name, controlType)
+		}
+	}
+	return nil
+}
+
+func allowedAdminUIControlType(controlType string) bool {
+	switch controlType {
+	case "text", "secret", "url", "select", "multi_select", "switch", "segmented", "metric", "table", "log_viewer", "code_viewer", "action_button", "oauth_button", "file_import":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeStrings(items []string) []string {
