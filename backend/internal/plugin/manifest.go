@@ -43,20 +43,50 @@ type ManifestFrontendEntry struct {
 }
 
 type ManifestCapabilities struct {
-	ProviderTypes []string                `yaml:"provider_types"`
-	ResourceTypes []string                `yaml:"provider_resource_types"`
-	Provider      ManifestProvider        `yaml:"provider"`
-	Gateway       []string                `yaml:"gateway"`
-	AdminUI       []string                `yaml:"admin_ui"`
-	Hooks         []GatewayHookManifest   `yaml:"hooks"`
-	Actions       []ActionManifest        `yaml:"actions"`
-	Background    []BackgroundJobManifest `yaml:"background_jobs"`
+	ProviderTypes []string                       `yaml:"provider_types"`
+	ResourceTypes []ManifestProviderResourceType `yaml:"provider_resource_types"`
+	Provider      ManifestProvider               `yaml:"provider"`
+	Gateway       []string                       `yaml:"gateway"`
+	AdminUI       []string                       `yaml:"admin_ui"`
+	Hooks         []GatewayHookManifest          `yaml:"hooks"`
+	Actions       []ActionManifest               `yaml:"actions"`
+	Background    []BackgroundJobManifest        `yaml:"background_jobs"`
 }
 
 type ManifestProvider struct {
 	RouteProtocols        []string                `yaml:"route_protocols"`
 	SupportsCustomHeaders *bool                   `yaml:"supports_custom_headers"`
 	Catalog               ManifestProviderCatalog `yaml:"catalog"`
+}
+
+type ManifestProviderResourceType struct {
+	Type        string            `json:"type" yaml:"type"`
+	DisplayName string            `json:"display_name,omitempty" yaml:"display_name"`
+	AuthModes   []string          `json:"auth_modes,omitempty" yaml:"auth_modes"`
+	Defaults    map[string]string `json:"defaults,omitempty" yaml:"defaults"`
+	Default     bool              `json:"default,omitempty" yaml:"default"`
+}
+
+func (resourceType *ManifestProviderResourceType) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		resourceType.Type = strings.TrimSpace(value.Value)
+		return nil
+	case yaml.MappingNode:
+		type alias ManifestProviderResourceType
+		var parsed alias
+		if err := value.Decode(&parsed); err != nil {
+			return err
+		}
+		*resourceType = ManifestProviderResourceType(parsed)
+		resourceType.Type = strings.TrimSpace(resourceType.Type)
+		resourceType.DisplayName = strings.TrimSpace(resourceType.DisplayName)
+		resourceType.AuthModes = normalizeStrings(resourceType.AuthModes)
+		resourceType.Defaults = normalizeStringMap(resourceType.Defaults)
+		return nil
+	default:
+		return fmt.Errorf("provider resource type must be a string or object")
+	}
 }
 
 type ManifestProviderCatalog struct {
@@ -179,6 +209,11 @@ func (m Manifest) Validate() error {
 	for _, kind := range m.Kinds {
 		if !validKind(kind) {
 			return fmt.Errorf("unsupported plugin kind %q", kind)
+		}
+	}
+	for _, resourceType := range m.Capabilities.ResourceTypes {
+		if strings.TrimSpace(resourceType.Type) == "" {
+			return fmt.Errorf("provider resource type is required")
 		}
 	}
 	if err := m.validateProviderCatalog(); err != nil {
@@ -341,8 +376,9 @@ func (m Manifest) Descriptor() Descriptor {
 		for _, resourceType := range m.Capabilities.ResourceTypes {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
 				Kind:    "provider_resource_type",
-				Name:    resourceType,
+				Name:    resourceType.Type,
 				Subject: providerType,
+				Value:   resourceType.CapabilityValue(),
 			})
 		}
 		for _, capability := range m.Capabilities.Gateway {
@@ -388,6 +424,39 @@ func (m Manifest) Descriptor() Descriptor {
 		})
 	}
 	return NormalizeDescriptor(descriptor)
+}
+
+func (resourceType ManifestProviderResourceType) CapabilityValue() string {
+	if strings.TrimSpace(resourceType.DisplayName) == "" && len(resourceType.AuthModes) == 0 && len(resourceType.Defaults) == 0 && !resourceType.Default {
+		return ""
+	}
+	resourceType.Type = strings.TrimSpace(resourceType.Type)
+	resourceType.DisplayName = strings.TrimSpace(resourceType.DisplayName)
+	resourceType.AuthModes = normalizeStrings(resourceType.AuthModes)
+	resourceType.Defaults = normalizeStringMap(resourceType.Defaults)
+	data, err := json.Marshal(resourceType)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func normalizeStringMap(items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	normalized := make(map[string]string, len(items))
+	for key, value := range items {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		normalized[key] = strings.TrimSpace(value)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func (catalog ManifestProviderCatalog) Configured() bool {

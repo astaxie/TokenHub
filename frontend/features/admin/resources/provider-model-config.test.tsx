@@ -262,13 +262,24 @@ describe("providerResourceConfig", () => {
       placements: ["gateway_chain", "management_action"],
       capabilities: [
         { kind: "provider_type", name: "kimi_subscription" },
-        { kind: "provider_resource_type", name: "kimi_oauth_account", subject: "kimi_subscription" },
+        {
+          kind: "provider_resource_type",
+          name: "kimi_oauth_account",
+          subject: "kimi_subscription",
+          value: JSON.stringify({
+            type: "kimi_oauth_account",
+            display_name: "Kimi OAuth Account",
+            auth_modes: ["oauth", "personal_access_token"],
+            default: true,
+            defaults: { auth_type: "oauth", base_url: "https://api.moonshot.cn/v1" },
+          }),
+        },
       ],
     }];
 
-    expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_kimi" }).map((option) => option.value)).toEqual([
-      "api_key",
-      "kimi_oauth_account",
+    expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_kimi" })).toEqual([
+      { value: "api_key", label: "API Key" },
+      { value: "kimi_oauth_account", label: "Kimi OAuth Account" },
     ]);
     expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_codex" }).map((option) => option.value)).toEqual([
       "openai_subscription",

@@ -7,7 +7,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, providerResourceAPIKeyType, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -149,22 +149,28 @@ export function openAIAccountFieldVisible(values: Record<string, string>) {
 
 export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
   const providerType = providerTypeForResourceValues(data, values);
-  const resourceTypes = new Set([providerResourceAPIKeyType]);
+  const resourceTypes = new Map<string, string | undefined>([[providerResourceAPIKeyType, undefined]]);
   for (const plugin of data.plugins) {
     for (const capability of plugin.capabilities) {
       if (capability.kind !== providerResourceTypeCapabilityKind) continue;
       if (capability.subject && providerType && capability.subject !== providerType) continue;
       if (capability.subject && !providerType && values?.resource_type !== capability.name) continue;
-      resourceTypes.add(capability.name);
+      const metadata = parseProviderResourceTypeCapabilityMetadata(capability);
+      const resourceType = metadata?.type || capability.name.trim();
+      if (!resourceType) continue;
+      const label = metadata?.displayName;
+      if (!resourceTypes.has(resourceType) || label) {
+        resourceTypes.set(resourceType, label);
+      }
     }
   }
   if ((providerType === codexProviderType || isOpenAISubscriptionResourceType(values?.resource_type)) && !resourceTypes.has(providerResourceOpenAISubscriptionType)) {
-    resourceTypes.add(providerResourceOpenAISubscriptionType);
+    resourceTypes.set(providerResourceOpenAISubscriptionType, undefined);
   }
-  return Array.from(resourceTypes)
-    .filter(Boolean)
-    .sort((left, right) => providerResourceTypeOptionOrder(left) - providerResourceTypeOptionOrder(right) || left.localeCompare(right))
-    .map((value) => ({ value, label: resourceTypeLabel(value) }));
+  return Array.from(resourceTypes.entries())
+    .filter(([value]) => Boolean(value))
+    .sort(([left], [right]) => providerResourceTypeOptionOrder(left) - providerResourceTypeOptionOrder(right) || left.localeCompare(right))
+    .map(([value, label]) => ({ value, label: label || resourceTypeLabel(value) }));
 }
 
 function providerTypeForResourceValues(data: AppData, values?: Record<string, string>) {

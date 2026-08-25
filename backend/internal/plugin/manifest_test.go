@@ -140,6 +140,112 @@ func descriptorHasCapability(descriptor Descriptor, capability CapabilityDescrip
 	return false
 }
 
+func TestParseManifestBuildsLegacyProviderResourceTypeCapability(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.legacy-resource
+name: Legacy Resource
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - legacy_provider
+  provider_resource_types:
+    - openai_subscription
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	descriptor := manifest.Descriptor()
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "legacy_provider"}) {
+		t.Fatalf("descriptor is missing legacy provider resource type capability: %+v", descriptor.Capabilities)
+	}
+}
+
+func TestParseManifestBuildsProviderResourceTypeMetadataCapability(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.kimi
+name: Kimi Provider
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - kimi_subscription
+  provider_resource_types:
+    - type: kimi_oauth_account
+      display_name: Kimi OAuth Account
+      auth_modes:
+        - oauth
+        - personal_access_token
+      default: true
+      defaults:
+        auth_type: oauth
+        base_url: https://api.moonshot.cn/v1
+        max_concurrency: "3"
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	descriptor := manifest.Descriptor()
+	var resourceValue string
+	for _, capability := range descriptor.Capabilities {
+		if capability.Kind == "provider_resource_type" && capability.Name == "kimi_oauth_account" && capability.Subject == "kimi_subscription" {
+			resourceValue = capability.Value
+			break
+		}
+	}
+	if resourceValue == "" {
+		t.Fatalf("descriptor is missing provider resource type metadata: %+v", descriptor.Capabilities)
+	}
+	var resourceType ManifestProviderResourceType
+	if err := json.Unmarshal([]byte(resourceValue), &resourceType); err != nil {
+		t.Fatalf("decode provider resource type capability: %v", err)
+	}
+	if resourceType.Type != "kimi_oauth_account" || resourceType.DisplayName != "Kimi OAuth Account" || !resourceType.Default {
+		t.Fatalf("provider resource type capability = %+v", resourceType)
+	}
+	if len(resourceType.AuthModes) != 2 || resourceType.AuthModes[0] != "oauth" || resourceType.AuthModes[1] != "personal_access_token" {
+		t.Fatalf("provider resource type auth modes = %+v", resourceType.AuthModes)
+	}
+	if resourceType.Defaults["auth_type"] != "oauth" || resourceType.Defaults["base_url"] != "https://api.moonshot.cn/v1" || resourceType.Defaults["max_concurrency"] != "3" {
+		t.Fatalf("provider resource type defaults = %+v", resourceType.Defaults)
+	}
+}
+
+func TestParseManifestRejectsProviderResourceTypeWithoutType(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.bad-resource
+name: Bad Resource
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - bad_provider
+  provider_resource_types:
+    - display_name: Missing Type
+`))
+	if err == nil {
+		t.Fatal("manifest with missing provider resource type parsed successfully")
+	}
+}
+
 func TestParseManifestBuildsProviderCatalogCapability(t *testing.T) {
 	manifest, err := ParseManifest([]byte(`
 schema_version: 1
