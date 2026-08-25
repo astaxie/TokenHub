@@ -60,13 +60,33 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 		}
 		if actions != nil {
 			for _, action := range pkg.Manifest.Actions() {
-				if err := actions.RegisterDescriptor(action); err != nil {
+				handler := actionHandlerForPackage(pkg)
+				var err error
+				if handler == nil {
+					err = actions.RegisterDescriptor(action)
+				} else {
+					err = actions.Register(action, handler)
+				}
+				if err != nil {
 					return nil, fmt.Errorf("register action %s from plugin %s: %w", action.ActionID, pkg.Manifest.ID, err)
 				}
 			}
 		}
 	}
 	return packages, nil
+}
+
+func actionHandlerForPackage(pkg Package) ActionHandler {
+	if pkg.Manifest.Entry.Backend == nil {
+		return nil
+	}
+	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Protocol) != BackendProtocolStdioJSONV1 {
+		return nil
+	}
+	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Command) == "" {
+		return nil
+	}
+	return NewActionCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
 }
 
 func (r Runtime) Discover() ([]Package, error) {

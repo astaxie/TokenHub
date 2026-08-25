@@ -105,6 +105,12 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.TokenHub.PluginAPI) == "" {
 		return fmt.Errorf("tokenhub.plugin_api is required")
 	}
+	if m.Entry.Backend != nil {
+		protocol := strings.TrimSpace(m.Entry.Backend.Protocol)
+		if protocol != "" && protocol != BackendProtocolStdioJSONV1 {
+			return fmt.Errorf("unsupported backend protocol %q", m.Entry.Backend.Protocol)
+		}
+	}
 	if len(NormalizeDescriptor(Descriptor{Kinds: m.Kinds}).Kinds) == 0 {
 		return fmt.Errorf("at least one plugin kind is required")
 	}

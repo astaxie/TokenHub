@@ -205,6 +205,50 @@ capabilities:
 	}
 }
 
+func TestRuntimeLoadIntoWithActionsBindsBackendCommand(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "action")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.action
+name: Action Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - management_action
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: action.sh
+capabilities:
+  actions:
+    - id: sync.run
+      kind: mutate
+      title: Run sync
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "action.sh"), []byte(`#!/bin/sh
+printf '{"data":{"status":"started"}}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	actions := NewActionBroker()
+
+	if _, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), NewGatewayChainRegistry(), nil, actions); err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	result, err := actions.Execute(t.Context(), ActionInvocation{PluginID: "tokenhub.action", ActionID: "sync.run"})
+	if err != nil {
+		t.Fatalf("execute runtime-bound action: %v", err)
+	}
+	data := result.Data.(map[string]any)
+	if data["status"] != "started" {
+		t.Fatalf("action result = %+v, want started", data)
+	}
+}
+
 func TestRuntimeRejectsAdminUISchemaPathOutsidePluginDirectory(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, filepath.Join(root, "bad-ui"), `
