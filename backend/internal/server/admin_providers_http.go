@@ -144,6 +144,25 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		return
 	}
 	if entry, ok := s.pluginProviderCatalogEntry(id); ok {
+		if r.Method == http.MethodPost {
+			var credentials ProviderResourceCredentials
+			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {
+				writeError(w, r, decodeErr)
+				return
+			}
+			var supported bool
+			entry, supported, err = s.executeProviderCredentialModelsAction(r.Context(), user, entry.Type, credentials)
+			if !supported {
+				jsonMethodNotAllowed(http.MethodGet)(w, r)
+				return
+			}
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+			return
+		}
 		if r.Method != http.MethodGet {
 			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
