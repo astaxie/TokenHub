@@ -21,6 +21,37 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	resp, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), routed.Call, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, req)
+		writeError(w, r, err)
+		return
+	}
+	if hit {
+		resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, RouteSelection{}, resp, usage)
+		if err != nil {
+			s.finishFailedRoutedCall(r, routed, nil, usage, err, req)
+			writeError(w, r, err)
+			return
+		}
+		resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, RouteSelection{}, resp)
+		if err != nil {
+			s.finishFailedRoutedCall(r, routed, nil, usage, err, req)
+			writeError(w, r, err)
+			return
+		}
+		usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, RouteSelection{}, resp, usage)
+		if err != nil {
+			s.finishFailedRoutedCall(r, routed, nil, usage, err, req)
+			writeError(w, r, err)
+			return
+		}
+		s.finishSuccessfulRoutedCall(r, routed, RouteSelection{}, usage, nil, req, resp)
+		w.Header().Set("x-request-id", routed.Call.RequestID)
+		w.Header().Set("x-tokenhub-cache", "hit")
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
 	resp, route, usage, attempts, err := s.executeRoutedEmbeddings(r, routed, req)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req)
@@ -48,6 +79,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req, resp, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
