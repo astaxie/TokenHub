@@ -27,14 +27,18 @@ func (r Runtime) LoadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 	if len(adminUIRegistries) > 0 {
 		adminUI = adminUIRegistries[0]
 	}
-	return r.loadInto(plugins, chain, adminUI, nil)
+	return r.loadInto(plugins, chain, adminUI, nil, nil)
 }
 
-func (r Runtime) LoadIntoWithActions(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker) ([]Package, error) {
-	return r.loadInto(plugins, chain, adminUI, actions)
+func (r Runtime) LoadIntoWithActions(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker, hookRunners ...*GatewayHookRunner) ([]Package, error) {
+	var hookRunner *GatewayHookRunner
+	if len(hookRunners) > 0 {
+		hookRunner = hookRunners[0]
+	}
+	return r.loadInto(plugins, chain, adminUI, actions, hookRunner)
 }
 
-func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker) ([]Package, error) {
+func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminUI *AdminUIRegistry, actions *ActionBroker, hookRunner *GatewayHookRunner) ([]Package, error) {
 	packages, err := r.Discover()
 	if err != nil {
 		return nil, err
@@ -48,9 +52,15 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 		if err := plugins.Register(pkg.Manifest.Descriptor()); err != nil {
 			return nil, fmt.Errorf("register plugin %s: %w", pkg.Manifest.ID, err)
 		}
+		hookHandler := gatewayHookHandlerForPackage(pkg)
 		for _, hook := range pkg.Manifest.GatewayHooks() {
 			if err := chain.RegisterHook(hook); err != nil {
 				return nil, fmt.Errorf("register gateway hook %s from plugin %s: %w", hook.HookID, pkg.Manifest.ID, err)
+			}
+			if hookRunner != nil && hookHandler != nil {
+				if err := hookRunner.RegisterHandler(hook, hookHandler); err != nil {
+					return nil, fmt.Errorf("register gateway hook handler %s from plugin %s: %w", hook.HookID, pkg.Manifest.ID, err)
+				}
 			}
 		}
 		if adminUI != nil {
@@ -87,6 +97,19 @@ func actionHandlerForPackage(pkg Package) ActionHandler {
 		return nil
 	}
 	return NewActionCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
+}
+
+func gatewayHookHandlerForPackage(pkg Package) GatewayHookHandler {
+	if pkg.Manifest.Entry.Backend == nil {
+		return nil
+	}
+	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Protocol) != BackendProtocolStdioJSONV1 {
+		return nil
+	}
+	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Command) == "" {
+		return nil
+	}
+	return NewGatewayCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
 }
 
 func (r Runtime) Discover() ([]Package, error) {

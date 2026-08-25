@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -43,9 +44,13 @@ capabilities:
       failure_policy: observe_only
       reads:
         - audit
+      writes:
+        - audit
 permissions:
   data:
     read:
+      - audit
+    write:
       - audit
 `)
 
@@ -246,6 +251,64 @@ printf '{"data":{"status":"started"}}'
 	data := result.Data.(map[string]any)
 	if data["status"] != "started" {
 		t.Fatalf("action result = %+v, want started", data)
+	}
+}
+
+func TestRuntimeLoadIntoWithActionsBindsGatewayHookCommand(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "hook")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.hook
+name: Hook Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: hook.sh
+capabilities:
+  hooks:
+    - id: trace
+      stage: trace_export
+      priority: 2300
+      failure_policy: observe_only
+      reads:
+        - audit
+permissions:
+ data:
+    read:
+      - audit
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "hook.sh"), []byte(`#!/bin/sh
+cat >/dev/null
+printf '{"decision":"continue"}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chain := NewGatewayChainRegistry()
+	runner := NewGatewayHookRunner(chain)
+
+	if _, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	report, err := runner.RunStage(t.Context(), StageTraceExport, GatewayHookInput{
+		RequestID: "req_1",
+		Stage:     StageTraceExport,
+		Data: GatewayHookData{
+			DataAudit: json.RawMessage(`{"request_id":"req_1"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("run trace export: %v", err)
+	}
+	if len(report.Results) != 1 || report.Results[0].Status != HookRunSucceeded {
+		t.Fatalf("run report = %+v", report)
 	}
 }
 

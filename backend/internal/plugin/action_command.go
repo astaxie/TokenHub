@@ -31,27 +31,34 @@ func NewActionCommandRunner(dir string, command string) ActionCommandRunner {
 }
 
 func (r ActionCommandRunner) ExecutePluginAction(ctx context.Context, invocation ActionInvocation) (ActionResult, error) {
-	if strings.TrimSpace(r.Command) == "" {
-		return ActionResult{}, ErrPluginActionUnavailable
-	}
-	commandPath, err := packageRelativePath(r.Dir, r.Command)
-	if err != nil {
+	var result ActionResult
+	if err := runPluginCommandJSON(ctx, r.Dir, r.Command, r.Timeout, invocation, &result); err != nil {
 		return ActionResult{}, err
 	}
-	timeout := r.Timeout
+	return result, nil
+}
+
+func runPluginCommandJSON(ctx context.Context, dir string, command string, timeout time.Duration, input any, output any) error {
+	if strings.TrimSpace(command) == "" {
+		return ErrPluginActionUnavailable
+	}
+	commandPath, err := packageRelativePath(dir, command)
+	if err != nil {
+		return err
+	}
 	if timeout <= 0 {
 		timeout = defaultActionCommandTimeout
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	input, err := json.Marshal(invocation)
+	payload, err := json.Marshal(input)
 	if err != nil {
-		return ActionResult{}, fmt.Errorf("encode plugin action invocation: %w", err)
+		return fmt.Errorf("encode plugin command input: %w", err)
 	}
 	cmd := exec.CommandContext(runCtx, commandPath)
-	cmd.Dir = r.Dir
-	cmd.Stdin = bytes.NewReader(input)
+	cmd.Dir = dir
+	cmd.Stdin = bytes.NewReader(payload)
 	var stdout cappedBuffer
 	var stderr cappedBuffer
 	stdout.limit = maxActionCommandOutputBytes
@@ -60,26 +67,25 @@ func (r ActionCommandRunner) ExecutePluginAction(ctx context.Context, invocation
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if runCtx.Err() != nil {
-			return ActionResult{}, runCtx.Err()
+			return runCtx.Err()
 		}
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()
 		}
-		return ActionResult{}, fmt.Errorf("plugin action command failed: %s", message)
+		return fmt.Errorf("plugin command failed: %s", message)
 	}
 	if stdout.overflow {
-		return ActionResult{}, fmt.Errorf("plugin action command output exceeded %d bytes", maxActionCommandOutputBytes)
+		return fmt.Errorf("plugin command output exceeded %d bytes", maxActionCommandOutputBytes)
 	}
-	output := bytes.TrimSpace(stdout.bytes)
-	if len(output) == 0 {
-		return ActionResult{}, nil
+	rawOutput := bytes.TrimSpace(stdout.bytes)
+	if len(rawOutput) == 0 || output == nil {
+		return nil
 	}
-	var result ActionResult
-	if err := json.Unmarshal(output, &result); err != nil {
-		return ActionResult{}, fmt.Errorf("decode plugin action command output: %w", err)
+	if err := json.Unmarshal(rawOutput, output); err != nil {
+		return fmt.Errorf("decode plugin command output: %w", err)
 	}
-	return result, nil
+	return nil
 }
 
 type cappedBuffer struct {
