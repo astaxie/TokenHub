@@ -84,7 +84,7 @@ func main() {
 		log.Fatalf("record startup guard success: %v", err)
 	}
 
-	app := server.NewWithConfig(store, config)
+	app := server.NewWithConfigAndDependencies(store, config, server.ApplicationDependenciesForStore(store))
 	app.StartBillingScheduler()
 	catalogInitCtx, cancelCatalogInit := context.WithTimeout(context.Background(), 30*time.Second)
 	if initialized, initErr := app.InitializeProviderCatalog(catalogInitCtx); initErr != nil {

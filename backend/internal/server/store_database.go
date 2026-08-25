@@ -20,6 +20,7 @@ import (
 	billingpersistence "tokenhub/backend/internal/billing/persistence"
 	"tokenhub/backend/internal/dbschema"
 	"tokenhub/backend/internal/guardrails"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -329,6 +330,7 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 	}
 	store.billingPersistence = billingpersistence.NewStore(db, store.mu, config.SecretKey, store.recordScheduledBillingAudit)
 	store.billingRepository = store.billingPersistence
+	store.reconciliationPersistence = reconciliationpersistence.NewStore(db, store.mu, store.recordScheduledReconciliationAudit)
 	return store, nil
 }
 
@@ -937,6 +939,9 @@ func (s *GormStore) WithContext(ctx context.Context) *GormStore {
 	}
 	contextual := *s
 	contextual.db = s.db.WithContext(ctx)
+	if s.reconciliationPersistence != nil {
+		contextual.reconciliationPersistence = s.reconciliationPersistence.WithContext(ctx)
+	}
 	return &contextual
 }
 
@@ -945,7 +950,7 @@ func (s *GormStore) WithContext(ctx context.Context) *GormStore {
 func schemaModels() []any {
 	return []any{
 		&billingpersistence.ConnectorRow{}, &billingpersistence.RecordRow{}, &billingpersistence.RawSnapshotRow{}, &billingpersistence.SyncRunRow{},
-		&ReconciliationRule{}, &ReconciliationRun{}, &ReconciliationItem{},
+		&reconciliationpersistence.RuleRow{}, &reconciliationpersistence.RunRow{}, &reconciliationpersistence.ItemRow{},
 		&Project{},
 		&ProjectTeam{},
 		&guardrails.Policy{},
