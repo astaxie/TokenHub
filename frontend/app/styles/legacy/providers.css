@@ -110,6 +110,13 @@
   font-weight: 720;
 }
 
+.provider-model-head > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
 .provider-catalog-head span,
 .provider-model-head span,
 .provider-import-hint {

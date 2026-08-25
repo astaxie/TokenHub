@@ -639,3 +639,7 @@ h2 {
   gap: 14px;
   margin-top: 14px;
 }
+
+.two-column > .section + .section {
+  margin-top: 0;
+}

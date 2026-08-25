@@ -127,6 +127,13 @@ export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaU
   return `${formatted} ${zhUnit}`;
 }
 
+export function countRatioWithUnit(current: number, total: number, zhUnit: string, enUnit: string, jaUnit: string, enPluralUnit = `${enUnit}s`) {
+  const ratio = `${formatLocaleNumber(current)}/${formatLocaleNumber(total)}`;
+  if (activeLanguage === "en") return `${ratio} ${current === 1 ? enUnit : enPluralUnit}`;
+  if (activeLanguage === "ja") return `${ratio} ${jaUnit}`;
+  return `${ratio} ${zhUnit}`;
+}
+
 export function guardrailDetectionItemName(index: number) {
   const formatted = formatLocaleNumber(index);
   if (activeLanguage === "en") return `Detection item ${formatted}`;

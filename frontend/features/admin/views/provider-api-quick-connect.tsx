@@ -5,7 +5,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
 import { formatModelPrice } from "../domain/formatting";
 import { providerAnthropicAuthType, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
-import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
+import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerTypeOptions } from "../shared/ui";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
@@ -175,7 +175,7 @@ export function ProviderAPIQuickConnect({
           <h3>{name}</h3>
           <p>{values.base_url || tx("填写 Base URL 后连接上游")}</p>
         </div>
-        <strong>{countWithUnit(selectedModelCount, "个待引入模型", "model to import", "件の取り込み予定モデル")}</strong>
+        <strong>{countWithUnit(selectedModelCount, "个待引入模型", "model to import", "件の取り込み予定モデル", "models to import")}</strong>
       </div>
 
       <div className="provider-editor-tabs provider-quick-tabs" role="tablist" aria-label={tx("Provider 编辑区")}>
@@ -262,7 +262,7 @@ export function ProviderAPIQuickConnect({
             <>
               <div className="provider-quick-model-summary">
                 <strong>{tx("模型列表")}</strong>
-                <span>{selectedModelCount}/{modelCount} {tx("待引入")}</span>
+                <span>{modelsError ? tx("加载失败") : modelsLoading ? tx("加载中") : countRatioWithUnit(selectedModelCount, modelCount, "个待引入模型", "model to import", "件の取り込み予定モデル", "models to import")}</span>
               </div>
               <div className="provider-quick-model-tools">
                 <div className="provider-template-search provider-quick-model-search">
