@@ -97,6 +97,7 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 	if !strings.Contains(body, `"action_id":"openai_codex.quota.read"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.probe.run"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.credentials.refresh"`) ||
 		!strings.Contains(body, `"capability":"credentials.refresh"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
@@ -194,6 +195,81 @@ func TestAdminPluginActionRefreshesOpenAICodexCredentials(t *testing.T) {
 	}
 	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.credentials.refresh" {
 		t.Fatalf("plugin action audit events = %+v", events)
+	}
+}
+
+func TestAdminProviderResourceTestRouteUsesProbeAction(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})
+	providerType := "probe_action_provider"
+	pluginID := "tokenhub.provider.probe-action"
+	adapterCalls := 0
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Probe Action Provider", []string{providerType}, []string{string(AdapterCapabilityProbe)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      recoveryProbeAdapter{calls: &adapterCalls},
+		Capabilities: []AdapterCapability{AdapterCapabilityProbe},
+	}); err != nil {
+		t.Fatalf("register probe action provider: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "probe_action.run",
+		Kind:       pluginmeta.ActionKindTest,
+		Capability: "probe.run",
+		Subject:    providerType,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+				"model":       map[string]any{"type": "string"},
+			},
+		},
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Model      string `json:"model"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode probe action payload: %v", err)
+		}
+		return pluginmeta.ActionResult{Data: ProviderProbeResult{
+			ResourceID: payload.ResourceID,
+			Model:      payload.Model,
+			OutputText: "from action",
+			LatencyMS:  7,
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register probe action: %v", err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_probe_action", Name: "Probe Action Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_probe_action", ProviderID: provider.ID, Name: "Probe Action Resource",
+		ResourceType: ProviderResourceAPIKey, APIKey: "resource-secret", Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/test", map[string]any{
+		"model": "probe-model",
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST provider resource test: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if actionCalls != 1 || adapterCalls != 0 {
+		t.Fatalf("probe action calls=%d adapter calls=%d, want action only", actionCalls, adapterCalls)
+	}
+	if !strings.Contains(response.Body, `"output_text":"from action"`) || !strings.Contains(response.Body, `"latency_ms":7`) {
+		t.Fatalf("provider resource test did not return action probe result: %s", response.Body)
+	}
+	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "test" || events[0].ResourceID != resource.ID {
+		t.Fatalf("provider resource test audit events = %+v", events)
 	}
 }
 

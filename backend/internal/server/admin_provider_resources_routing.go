@@ -243,7 +243,10 @@ func (s *Server) serveAdminProviderResourceTest(w http.ResponseWriter, r *http.R
 			return
 		}
 		startedAt := time.Now()
-		rawResult, err := s.integrations.TestProviderResource(r.Context(), resourceID, &req)
+		rawResult, supported, err := s.executeProviderResourceProbeAction(r.Context(), user, resourceID, ProviderProbeRequest(req))
+		if !supported {
+			rawResult, err = s.integrations.TestProviderResource(r.Context(), resourceID, &req)
+		}
 		if err != nil {
 			httpErr := AsHTTPError(err)
 			s.recordAdminAuditWithStatus(r, user, "test", "provider_resource", resourceID, "failed", httpErr.Code, "", map[string]any{
@@ -342,6 +345,49 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	return result, nil
 }
 
+func (s *Server) executeProviderResourceProbeAction(ctx context.Context, user AdminUser, resourceID string, req ProviderProbeRequest) (any, bool, error) {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return nil, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return nil, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityProbe, "probe.run")
+	if !ok {
+		return nil, false, nil
+	}
+	payload, err := json.Marshal(map[string]any{
+		"resource_id":      resourceID,
+		"model":            req.Model,
+		"reasoning_effort": req.ReasoningEffort,
+		"speed":            req.Speed,
+		"prompt":           req.Prompt,
+	})
+	if err != nil {
+		return nil, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
+		PluginID: pluginID,
+		ActionID: actionID,
+		Actor: pluginmeta.ActionActor{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return nil, true, pluginActionHTTPError(err)
+	}
+	probe, ok := providerProbeResultFromActionData(result.Data)
+	if !ok {
+		return nil, true, NewHTTPError(http.StatusInternalServerError, "provider_probe_invalid_result", "Provider probe returned an invalid result")
+	}
+	return probe, true, nil
+}
+
 func (s *Server) executeProviderResourceCredentialRefreshAction(ctx context.Context, user AdminUser, resourceID string, force bool) (pluginmeta.ActionResult, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
@@ -392,6 +438,21 @@ func (s *Server) providerResourcePanelAction(providerType string, panelID string
 		}
 	}
 	return "", "", false
+}
+
+func providerProbeResultFromActionData(data any) (ProviderProbeResult, bool) {
+	if result, ok := data.(ProviderProbeResult); ok {
+		return result, true
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return ProviderProbeResult{}, false
+	}
+	var result ProviderProbeResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return ProviderProbeResult{}, false
+	}
+	return result, strings.TrimSpace(result.ResourceID) != ""
 }
 
 func (s *Server) providerPluginCapabilityAction(providerType string, capability AdapterCapability, actionCapability string) (string, string, bool) {

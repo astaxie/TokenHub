@@ -99,6 +99,48 @@ func registerBuiltinPluginActions(server *Server) {
 	}))
 	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "openai_codex.probe.run",
+		Kind:       pluginmeta.ActionKindTest,
+		Title:      "Test OpenAI Codex account resource",
+		Capability: "probe.run",
+		Subject:    ProviderOpenAICodex,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id"},
+			"properties": map[string]any{
+				"resource_id":      map[string]any{"type": "string"},
+				"model":            map[string]any{"type": "string"},
+				"reasoning_effort": map[string]any{"type": "string"},
+				"speed":            map[string]any{"type": "string"},
+				"prompt":           map[string]any{"type": "string"},
+			},
+		},
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ResourceID      string `json:"resource_id"`
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"reasoning_effort"`
+			Speed           string `json:"speed"`
+			Prompt          string `json:"prompt"`
+		}
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		result, err := server.integrations.TestProviderResource(ctx, payload.ResourceID, &ProviderProbeRequest{
+			Model:           payload.Model,
+			ReasoningEffort: payload.ReasoningEffort,
+			Speed:           payload.Speed,
+			Prompt:          payload.Prompt,
+		})
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: result}, nil
+	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.credentials.refresh",
 		Kind:       pluginmeta.ActionKindMutate,
 		Title:      "Refresh OpenAI Codex account credentials",
