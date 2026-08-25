@@ -86,6 +86,29 @@ func TestAdminPluginActionSanitizesResultSecrets(t *testing.T) {
 	}
 }
 
+func TestAdminPluginActionRejectsInvalidResultSchema(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID: "tokenhub.provider.openai-codex",
+		ActionID: "test.invalid-result",
+		Kind:     pluginmeta.ActionKindRead,
+		OutputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"healthy"},
+			"properties": map[string]any{
+				"healthy": map[string]any{"type": "boolean"},
+			},
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{Data: map[string]any{"healthy": "yes"}}, nil
+	})); err != nil {
+		t.Fatalf("register plugin action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/test.invalid-result", map[string]any{}, "plugin-action-admin")
+	assertResponseBodyJSONError(t, response, http.StatusBadGateway, "invalid_plugin_action_result")
+}
+
 func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
 

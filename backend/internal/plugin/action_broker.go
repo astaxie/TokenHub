@@ -15,6 +15,7 @@ var (
 	ErrPluginActionNotFound       = errors.New("plugin action is not registered")
 	ErrPluginActionUnavailable    = errors.New("plugin action handler is unavailable")
 	ErrPluginActionInvalidPayload = errors.New("plugin action payload is invalid")
+	ErrPluginActionInvalidResult  = errors.New("plugin action result is invalid")
 )
 
 type ActionKind string
@@ -134,7 +135,14 @@ func (b *ActionBroker) Execute(ctx context.Context, invocation ActionInvocation)
 	if err := validateActionInvocationPayload(entry.descriptor.InputSchema, invocation.Payload); err != nil {
 		return ActionResult{}, err
 	}
-	return entry.handler.ExecutePluginAction(ctx, invocation)
+	result, err := entry.handler.ExecutePluginAction(ctx, invocation)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if err := validateActionResultData(entry.descriptor.OutputSchema, result.Data); err != nil {
+		return ActionResult{}, err
+	}
+	return result, nil
 }
 
 func (b *ActionBroker) Describe(pluginID string, actionID string) (ActionDescriptor, bool) {
@@ -202,16 +210,34 @@ func validateActionInvocationPayload(schema map[string]any, payload json.RawMess
 	} else if err := json.Unmarshal(payload, &value); err != nil {
 		return fmt.Errorf("%w: JSON could not be decoded", ErrPluginActionInvalidPayload)
 	}
-	if err := validateActionSchemaValue("$", value, schema); err != nil {
+	if err := validateActionSchemaValue("$", value, schema, ErrPluginActionInvalidPayload); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validateActionSchemaValue(path string, value any, schema map[string]any) error {
+func validateActionResultData(schema map[string]any, data any) error {
+	if len(schema) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("%w: JSON could not be encoded", ErrPluginActionInvalidResult)
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fmt.Errorf("%w: JSON could not be decoded", ErrPluginActionInvalidResult)
+	}
+	if err := validateActionSchemaValue("$.data", value, schema, ErrPluginActionInvalidResult); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateActionSchemaValue(path string, value any, schema map[string]any, kind error) error {
 	schemaType := schemaString(schema["type"])
 	if schemaType != "" && !actionSchemaTypeMatches(value, schemaType) {
-		return fmt.Errorf("%w: %s must be %s", ErrPluginActionInvalidPayload, path, schemaType)
+		return fmt.Errorf("%w: %s must be %s", kind, path, schemaType)
 	}
 	if schemaType != "" && schemaType != "object" {
 		return nil
@@ -219,13 +245,13 @@ func validateActionSchemaValue(path string, value any, schema map[string]any) er
 	object, ok := value.(map[string]any)
 	if !ok {
 		if schemaType == "object" {
-			return fmt.Errorf("%w: %s must be object", ErrPluginActionInvalidPayload, path)
+			return fmt.Errorf("%w: %s must be object", kind, path)
 		}
 		return nil
 	}
 	for _, field := range schemaStringList(schema["required"]) {
 		if _, ok := object[field]; !ok {
-			return fmt.Errorf("%w: %s.%s is required", ErrPluginActionInvalidPayload, path, field)
+			return fmt.Errorf("%w: %s.%s is required", kind, path, field)
 		}
 	}
 	for name, childSchema := range schemaObjectProperties(schema["properties"]) {
@@ -233,7 +259,7 @@ func validateActionSchemaValue(path string, value any, schema map[string]any) er
 		if !ok {
 			continue
 		}
-		if err := validateActionSchemaValue(path+"."+name, child, childSchema); err != nil {
+		if err := validateActionSchemaValue(path+"."+name, child, childSchema, kind); err != nil {
 			return err
 		}
 	}

@@ -178,6 +178,58 @@ func TestActionBrokerValidatesInputSchemaBeforeHandler(t *testing.T) {
 	}
 }
 
+func TestActionBrokerValidatesOutputSchemaAfterHandler(t *testing.T) {
+	broker := NewActionBroker()
+	calls := 0
+	descriptor := ActionDescriptor{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+		Kind:     ActionKindRead,
+		OutputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id", "remaining"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+				"remaining":   map[string]any{"type": "integer"},
+			},
+		},
+	}
+	if err := broker.Register(descriptor, ActionHandlerFunc(func(context.Context, ActionInvocation) (ActionResult, error) {
+		calls++
+		return ActionResult{Data: map[string]any{"resource_id": "res_1", "remaining": "many"}}, nil
+	})); err != nil {
+		t.Fatalf("register action: %v", err)
+	}
+
+	_, err := broker.Execute(context.Background(), ActionInvocation{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+	})
+	if !errors.Is(err, ErrPluginActionInvalidResult) {
+		t.Fatalf("error = %v, want ErrPluginActionInvalidResult", err)
+	}
+	if calls != 1 {
+		t.Fatalf("handler calls = %d, want 1", calls)
+	}
+
+	broker = NewActionBroker()
+	if err := broker.Register(descriptor, ActionHandlerFunc(func(context.Context, ActionInvocation) (ActionResult, error) {
+		return ActionResult{Data: map[string]any{"resource_id": "res_1", "remaining": float64(3)}}, nil
+	})); err != nil {
+		t.Fatalf("register valid action: %v", err)
+	}
+	result, err := broker.Execute(context.Background(), ActionInvocation{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+	})
+	if err != nil {
+		t.Fatalf("execute valid action: %v", err)
+	}
+	if data := result.Data.(map[string]any); data["remaining"] != float64(3) {
+		t.Fatalf("result data = %+v", result.Data)
+	}
+}
+
 func TestActionBrokerRejectsInvalidDescriptor(t *testing.T) {
 	err := NewActionBroker().Register(ActionDescriptor{
 		PluginID: "tokenhub.test",
