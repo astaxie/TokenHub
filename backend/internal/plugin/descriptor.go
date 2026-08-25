@@ -45,8 +45,19 @@ type Descriptor struct {
 }
 
 func BuiltInProvider(id string, name string, providerTypes []string, capabilities []string) Descriptor {
+	return BuiltInProviderWithResourceTypes(id, name, providerTypes, nil, capabilities)
+}
+
+func BuiltInProviderWithResourceTypes(id string, name string, providerTypes []string, resourceTypes []string, capabilities []string) Descriptor {
 	descriptors := make([]CapabilityDescriptor, 0, len(providerTypes)*len(capabilities))
 	for _, providerType := range providerTypes {
+		for _, resourceType := range resourceTypes {
+			descriptors = append(descriptors, CapabilityDescriptor{
+				Kind:    "provider_resource_type",
+				Name:    resourceType,
+				Subject: providerType,
+			})
+		}
 		for _, capability := range capabilities {
 			descriptors = append(descriptors, CapabilityDescriptor{
 				Kind:    "provider",

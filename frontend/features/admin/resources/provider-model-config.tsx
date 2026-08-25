@@ -1,4 +1,4 @@
-import { type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
+import { type AdminUser, type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
@@ -72,7 +72,7 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
   return [
     { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true, readOnlyOnEdit: Boolean(provider) },
     { key: "name", label: "名称", required: true },
-    { key: "resource_type", label: "账号类型", type: "select", options: ["openai_subscription", "api_key"], required: true },
+    { key: "resource_type", label: "账号类型", type: "select", optionsFromData: providerResourceTypeOptionsFromData, required: true },
     { key: "auth_type", label: "认证方式", type: "select", options: ["oauth", "personal_access_token", "api_key"], visible: openAIAccountFieldVisible },
     { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "OpenAI subscription / Codex OAuth access token 或 PAT；保存后不会再次显示。" },
     { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
@@ -142,6 +142,38 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
 
 export function openAIAccountFieldVisible(values: Record<string, string>) {
   return values.resource_type === "openai_subscription";
+}
+
+export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
+  const providerType = providerTypeForResourceValues(data, values);
+  const resourceTypes = new Set(["api_key"]);
+  for (const plugin of data.plugins) {
+    for (const capability of plugin.capabilities) {
+      if (capability.kind !== "provider_resource_type") continue;
+      if (capability.subject && providerType && capability.subject !== providerType) continue;
+      if (capability.subject && !providerType && values?.resource_type !== capability.name) continue;
+      resourceTypes.add(capability.name);
+    }
+  }
+  if ((providerType === "openai_codex" || values?.resource_type === "openai_subscription") && !resourceTypes.has("openai_subscription")) {
+    resourceTypes.add("openai_subscription");
+  }
+  return Array.from(resourceTypes)
+    .filter(Boolean)
+    .sort((left, right) => resourceTypeOptionOrder(left) - resourceTypeOptionOrder(right) || left.localeCompare(right))
+    .map((value) => ({ value, label: resourceTypeLabel(value) }));
+}
+
+function providerTypeForResourceValues(data: AppData, values?: Record<string, string>) {
+  const providerID = values?.provider_id?.trim();
+  if (!providerID) return "";
+  return data.providers.find((provider) => provider.id === providerID)?.type ?? "";
+}
+
+function resourceTypeOptionOrder(value: string) {
+  if (value === "openai_subscription") return 0;
+  if (value === "api_key") return 1;
+  return 2;
 }
 
 export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Provider, data: AppData) {

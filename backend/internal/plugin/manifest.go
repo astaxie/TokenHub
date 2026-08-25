@@ -43,6 +43,7 @@ type ManifestFrontendEntry struct {
 
 type ManifestCapabilities struct {
 	ProviderTypes []string              `yaml:"provider_types"`
+	ResourceTypes []string              `yaml:"provider_resource_types"`
 	Provider      ManifestProvider      `yaml:"provider"`
 	Gateway       []string              `yaml:"gateway"`
 	AdminUI       []string              `yaml:"admin_ui"`
@@ -190,6 +191,13 @@ func (m Manifest) Descriptor() Descriptor {
 			Kind: "provider_type",
 			Name: providerType,
 		})
+		for _, resourceType := range m.Capabilities.ResourceTypes {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_resource_type",
+				Name:    resourceType,
+				Subject: providerType,
+			})
+		}
 		for _, capability := range m.Capabilities.Gateway {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
 				Kind:    "provider",

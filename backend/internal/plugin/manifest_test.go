@@ -21,6 +21,8 @@ placement:
 capabilities:
   provider_types:
     - openai_codex
+  provider_resource_types:
+    - openai_subscription
   provider:
     route_protocols:
       - codex/responses
@@ -70,8 +72,11 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 6 {
-		t.Fatalf("descriptor capabilities = %v, want 6 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 7 {
+		t.Fatalf("descriptor capabilities = %v, want 7 entries", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
+		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
 	}
 	if len(manifest.Capabilities.Provider.RouteProtocols) != 1 || manifest.Capabilities.Provider.RouteProtocols[0] != "codex/responses" {
 		t.Fatalf("provider route protocols = %+v", manifest.Capabilities.Provider.RouteProtocols)
@@ -96,6 +101,15 @@ permissions:
 	if actions[0].InputSchema["type"] != "object" {
 		t.Fatalf("action input schema = %+v", actions[0].InputSchema)
 	}
+}
+
+func descriptorHasCapability(descriptor Descriptor, capability CapabilityDescriptor) bool {
+	for _, candidate := range descriptor.Capabilities {
+		if candidate == capability {
+			return true
+		}
+	}
+	return false
 }
 
 func TestParseManifestRejectsUnsupportedHookStage(t *testing.T) {

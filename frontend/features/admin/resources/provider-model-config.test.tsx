@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
-import { providerResourceConfig, providerResourceCredentialRefreshAction, runProviderAvailabilityTest, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("shows credential refresh only when a provider plugin action is registered", async () => {
@@ -94,6 +94,35 @@ describe("providerResourceConfig", () => {
   it("unwraps plugin action envelopes", () => {
     expect(unwrapPluginActionData<{ ok: boolean }>({ data: { ok: true } })).toEqual({ ok: true });
     expect(unwrapPluginActionData<{ ok: boolean }>({ ok: false })).toEqual({ ok: false });
+  });
+
+  it("builds resource type options from provider plugin capabilities", () => {
+    const data = emptyData();
+    data.providers = [
+      { id: "prv_codex", name: "Codex", type: "openai_codex", status: "active", healthy: true, priority: 1 },
+      { id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 2 },
+    ];
+    data.plugins = [{
+      id: "tokenhub.provider.kimi",
+      name: "Kimi Subscription",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain", "management_action"],
+      capabilities: [
+        { kind: "provider_type", name: "kimi_subscription" },
+        { kind: "provider_resource_type", name: "kimi_oauth_account", subject: "kimi_subscription" },
+      ],
+    }];
+
+    expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_kimi" }).map((option) => option.value)).toEqual([
+      "api_key",
+      "kimi_oauth_account",
+    ]);
+    expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_codex" }).map((option) => option.value)).toEqual([
+      "openai_subscription",
+      "api_key",
+    ]);
   });
 
   it("tests subscription-backed Providers through resource probe plugin actions", async () => {

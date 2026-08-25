@@ -3,9 +3,10 @@ package server
 import pluginmeta "tokenhub/backend/internal/plugin"
 
 type builtinProviderAdapter struct {
-	providerType string
-	adapter      any
-	capabilities []AdapterCapability
+	providerType  string
+	adapter       any
+	resourceTypes []string
+	capabilities  []AdapterCapability
 }
 
 func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]ProviderAdapter, codexSubscription *CodexSubscriptionAdapter) {
@@ -58,8 +59,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
-		providerType: ProviderOpenAICodex,
-		adapter:      codexSubscription,
+		providerType:  ProviderOpenAICodex,
+		adapter:       codexSubscription,
+		resourceTypes: []string{ProviderResourceOpenAISubscription},
 		capabilities: []AdapterCapability{
 			AdapterCapabilityResponses,
 			AdapterCapabilityResponseStream,
@@ -133,5 +135,5 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 	for _, capability := range adapter.capabilities {
 		capabilities = append(capabilities, string(capability))
 	}
-	return pluginmeta.BuiltInProvider(pluginID, name, []string{adapter.providerType}, capabilities)
+	return pluginmeta.BuiltInProviderWithResourceTypes(pluginID, name, []string{adapter.providerType}, adapter.resourceTypes, capabilities)
 }
