@@ -191,6 +191,14 @@ func (m Manifest) Descriptor() Descriptor {
 			Kind: "provider_type",
 			Name: providerType,
 		})
+		if m.Capabilities.Provider.SupportsCustomHeaders != nil {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "supports_custom_headers",
+				Subject: providerType,
+				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.SupportsCustomHeaders),
+			})
+		}
 		for _, resourceType := range m.Capabilities.ResourceTypes {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
 				Kind:    "provider_resource_type",

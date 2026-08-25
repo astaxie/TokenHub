@@ -278,6 +278,7 @@ export type PluginCapabilityDescriptor = {
   kind: string;
   name: string;
   subject?: string;
+  value?: string;
 };
 
 export type PluginDescriptor = {

@@ -72,11 +72,14 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 7 {
-		t.Fatalf("descriptor capabilities = %v, want 7 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 8 {
+		t.Fatalf("descriptor capabilities = %v, want 8 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "supports_custom_headers", Subject: "openai_codex", Value: "false"}) {
+		t.Fatalf("descriptor is missing provider policy capability: %+v", descriptor.Capabilities)
 	}
 	if len(manifest.Capabilities.Provider.RouteProtocols) != 1 || manifest.Capabilities.Provider.RouteProtocols[0] != "codex/responses" {
 		t.Fatalf("provider route protocols = %+v", manifest.Capabilities.Provider.RouteProtocols)

@@ -32,6 +32,7 @@ type CapabilityDescriptor struct {
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Subject string `json:"subject,omitempty"`
+	Value   string `json:"value,omitempty"`
 }
 
 type Descriptor struct {

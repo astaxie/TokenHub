@@ -63,4 +63,24 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(false);
     expect(providerTypeSupportsCustomHeaders(options, "openai_codex")).toBe(false);
   });
+
+  it("carries provider header policy from plugin capabilities", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.oauth-subscription",
+      name: "OAuth Subscription",
+      version: "1.0.0",
+      source: "local_file",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [
+        { kind: "provider", name: "responses", subject: "oauth_subscription" },
+        { kind: "provider_policy", name: "supports_custom_headers", subject: "oauth_subscription", value: "false" },
+      ],
+    }];
+
+    const options = providerTypeOptionsFromData(data);
+
+    expect(providerTypeSupportsCustomHeaders(options, "oauth_subscription")).toBe(false);
+  });
 });

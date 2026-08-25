@@ -439,9 +439,16 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   }
   for (const plugin of data.plugins ?? []) {
     for (const capability of plugin.capabilities ?? []) {
-      if (capability.kind !== "provider") continue;
-      const providerType = String(capability.subject || capability.name || "").trim();
-      if (providerType) types.add(providerType);
+      if (capability.kind === "provider") {
+        const providerType = String(capability.subject || capability.name || "").trim();
+        if (providerType) types.add(providerType);
+      }
+      if (capability.kind === "provider_policy" && capability.name === "supports_custom_headers") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        policyByType.set(providerType, capability.value !== "false");
+      }
     }
   }
   for (const entry of data.providerCatalog ?? []) {
