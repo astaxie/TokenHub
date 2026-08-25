@@ -1025,6 +1025,17 @@ func (r ChatCompletionRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(raw)
 }
 
+func (r ChatCompletionRequest) requestedMaxTokens() int64 {
+	maximum := int64(r.MaxTokens)
+	if raw := r.raw["max_completion_tokens"]; len(raw) > 0 {
+		var compatibleMaximum int64
+		if json.Unmarshal(raw, &compatibleMaximum) == nil && compatibleMaximum > maximum {
+			maximum = compatibleMaximum
+		}
+	}
+	return maximum
+}
+
 type PlaygroundChatResponse struct {
 	Response  any                      `json:"response"`
 	Route     PlaygroundRouteSummary   `json:"route"`

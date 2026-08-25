@@ -101,6 +101,7 @@ curl --request POST \
 | `model` | 是 | 必须来自 `GET /v1/models` |
 | `messages` | 是 | `system`、`user`、`assistant` 消息数组 |
 | `max_tokens` | 否 | 最大生成 tokens |
+| `max_completion_tokens` | 否 | OpenAI 兼容的最大生成 tokens；两个输出 Token 上限字段同时存在时，TokenHub 使用较大值 |
 | `temperature` | 否 | 采样温度 |
 | `reasoning_effort` | 否 | 支持该参数的模型和路由所使用的推理强度 |
 | `stream` | 否 | `true` 时返回 SSE 流 |

@@ -51,14 +51,7 @@ func estimateChatMessagesTokens(messages []ChatMessage) int64 {
 }
 
 func chatMaximumOutputTokens(request ChatCompletionRequest) int64 {
-	maximum := int64(request.MaxTokens)
-	if raw := request.raw["max_completion_tokens"]; len(raw) > 0 {
-		var compatibleMaximum int64
-		if json.Unmarshal(raw, &compatibleMaximum) == nil && compatibleMaximum > maximum {
-			maximum = compatibleMaximum
-		}
-	}
-	return maximum
+	return request.requestedMaxTokens()
 }
 
 func anthropicTokenReservation(request anthropicMessagesRequest) int64 {

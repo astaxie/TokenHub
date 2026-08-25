@@ -175,6 +175,7 @@ export function gatewayChineseLLMUsageDocs(stats: GatewayDocStats, role: AppRole
                 ["model", "string", "是", `来自 /v1/models 的模型 ID，例如 ${stats.sampleModel}。`],
                 ["messages", "array", "是", "由 system、user、assistant 组成的消息数组。"],
                 ["max_tokens", "integer", "否", "最大生成 token 数。"],
+                ["max_completion_tokens", "integer", "否", "OpenAI 兼容的最大生成 token 数；两个输出 Token 上限字段同时存在时，TokenHub 使用较大值。"],
                 ["temperature", "number", "否", "采样温度。"],
                 ["reasoning_effort", "string", "否", "推理强度；当前路由不支持时省略。"],
                 ["stream", "boolean", "否", "true 时返回 SSE 流，结束标记为 data: [DONE]。"],

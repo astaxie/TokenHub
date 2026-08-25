@@ -16,6 +16,21 @@ func mustBuildAnthropic(t *testing.T, req ChatCompletionRequest) map[string]any 
 	return payload
 }
 
+func TestAnthropicRequestUsesCompatibleMaxCompletionTokens(t *testing.T) {
+	var req ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{
+		"messages":[{"role":"user","content":"hi"}],
+		"max_completion_tokens":4096
+	}`), &req); err != nil {
+		t.Fatal(err)
+	}
+
+	payload := mustBuildAnthropic(t, req)
+	if payload["max_tokens"] != int64(4096) {
+		t.Fatalf("max_completion_tokens must map to Anthropic max_tokens, got %v", payload["max_tokens"])
+	}
+}
+
 func TestAnthropicRequestMapsToolDefinitions(t *testing.T) {
 	payload := mustBuildAnthropic(t, ChatCompletionRequest{
 		Messages: []ChatMessage{{Role: "user", Content: "weather?"}},
