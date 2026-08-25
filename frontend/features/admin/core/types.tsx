@@ -267,6 +267,49 @@ export type ReconciliationDetail = {
 export type AdapterDescriptor = {
   type: string;
   capabilities: string[];
+  plugin_id?: string;
+};
+
+export type PluginCapabilityDescriptor = {
+  kind: string;
+  name: string;
+  subject?: string;
+};
+
+export type PluginDescriptor = {
+  id: string;
+  name: string;
+  version: string;
+  source: "built_in" | "marketplace" | "local_file" | string;
+  kinds: string[];
+  placements: string[];
+  capabilities: PluginCapabilityDescriptor[];
+};
+
+export type GatewayHookDescriptor = {
+  plugin_id: string;
+  hook_id: string;
+  stage: string;
+  priority: number;
+  reads?: string[];
+  writes?: string[];
+  failure_policy: string;
+  timeout_millis: number;
+  mandatory: boolean;
+};
+
+export type GatewayChainPlan = {
+  hooks: GatewayHookDescriptor[];
+};
+
+export type AdminUIContribution = {
+  plugin_id: string;
+  id: string;
+  slot: string;
+  title?: string;
+  provider_types?: string[];
+  action?: string;
+  schema?: Record<string, unknown>;
 };
 
 export type ProviderMonitoringSignal = {
@@ -960,6 +1003,7 @@ export type ViewKey =
   | "playground"
   | "gateway"
   | "providers"
+  | "plugins"
   | "models"
   | "routes"
   | "routing-policies"
@@ -993,6 +1037,7 @@ export const viewRoutes: Record<ViewKey, string> = {
   playground: "/playground",
   gateway: "/gateway",
   providers: "/providers",
+  plugins: "/plugins",
   models: "/models",
   routes: "/routes",
   "routing-policies": "/routing-policies",
@@ -1150,6 +1195,9 @@ export type AppData = {
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];
   providerMonitoring: ProviderMonitoringSnapshot[];
+  plugins: PluginDescriptor[];
+  pluginChain: GatewayChainPlan;
+  pluginUI: AdminUIContribution[];
 	billingConnectors: BillingConnector[];
 	billingRecords: BillingRecord[];
 	billingSyncRuns: BillingSyncRun[];

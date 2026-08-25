@@ -17,10 +17,15 @@ import (
 	"tokenhub/backend/internal/billing"
 	billingadapters "tokenhub/backend/internal/billing/adapters"
 	"tokenhub/backend/internal/guardrails"
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type Server struct {
 	store                   Store
+	pluginRegistry          *pluginmeta.Registry
+	gatewayChain            *pluginmeta.GatewayChainRegistry
+	gatewayHooks            *pluginmeta.GatewayHookRunner
+	adminUI                 *pluginmeta.AdminUIRegistry
 	adapterRegistry         *AdapterRegistry
 	integrations            *IntegrationService
 	codexSubscription       *CodexSubscriptionAdapter
@@ -172,20 +177,23 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 	}
-	registry := NewAdapterRegistry()
-	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
-	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
-	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderKronk, adapters[ProviderKronk], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe)
-	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate)
-	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
-	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
-		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	pluginRegistry := pluginmeta.NewRegistry()
+	gatewayChain := pluginmeta.NewGatewayChainRegistry()
+	gatewayHooks := pluginmeta.NewGatewayHookRunner(gatewayChain)
+	adminUI := pluginmeta.NewAdminUIRegistry()
+	registry := NewAdapterRegistryWithPlugins(pluginRegistry)
+	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
+	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
+	registerBuiltinAdminUIContributions(pluginRegistry, adminUI)
+	if _, err := pluginmeta.NewRuntime(config.PluginDir).LoadInto(pluginRegistry, gatewayChain, adminUI); err != nil {
+		panic(fmt.Errorf("load TokenHub plugins: %w", err))
 	}
 	s := &Server{
 		store:                   store,
+		pluginRegistry:          pluginRegistry,
+		gatewayChain:            gatewayChain,
+		gatewayHooks:            gatewayHooks,
+		adminUI:                 adminUI,
 		adapterRegistry:         registry,
 		integrations:            NewIntegrationService(store, registry, client),
 		codexSubscription:       codexSubscription,
@@ -270,6 +278,27 @@ func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.adapterRegistry.List()})
+}
+
+func (s *Server) handleAdminPlugins(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.pluginRegistry.List()})
+}
+
+func (s *Server) handleAdminPluginChain(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.gatewayChain.Plan()})
+}
+
+func (s *Server) handleAdminPluginUIManifest(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.adminUI.List()})
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {

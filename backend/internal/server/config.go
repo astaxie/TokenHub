@@ -25,6 +25,7 @@ type Config struct {
 	SQLiteBackupDir          string
 	ModelCatalogFile         string
 	ProviderCatalogFile      string
+	PluginDir                string
 	SecretKey                string
 	TrustedProxyCIDRs        []string
 	CORSAllowedOrigins       []string

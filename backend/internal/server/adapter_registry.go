@@ -3,6 +3,8 @@ package server
 import (
 	"fmt"
 	"sort"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type AdapterCapability string
@@ -26,6 +28,7 @@ const (
 type AdapterDescriptor struct {
 	Type         string              `json:"type"`
 	Capabilities []AdapterCapability `json:"capabilities"`
+	PluginID     string              `json:"plugin_id,omitempty"`
 }
 
 // AdapterRegistry is the single source of truth for which adapter serves a
@@ -36,16 +39,48 @@ type AdapterDescriptor struct {
 type AdapterRegistry struct {
 	adapters    map[string]any
 	descriptors map[string]AdapterDescriptor
+	plugins     *pluginmeta.Registry
 }
 
 func NewAdapterRegistry() *AdapterRegistry {
+	return NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+}
+
+func NewAdapterRegistryWithPlugins(plugins *pluginmeta.Registry) *AdapterRegistry {
+	if plugins == nil {
+		plugins = pluginmeta.NewRegistry()
+	}
 	return &AdapterRegistry{
 		adapters:    map[string]any{},
 		descriptors: map[string]AdapterDescriptor{},
+		plugins:     plugins,
 	}
 }
 
 func (r *AdapterRegistry) Register(adapterType string, adapter any, capabilities ...AdapterCapability) {
+	r.register(adapterType, adapter, "", capabilities...)
+}
+
+type AdapterRegistration struct {
+	Type         string
+	Adapter      any
+	Capabilities []AdapterCapability
+}
+
+func (r *AdapterRegistry) RegisterPlugin(descriptor pluginmeta.Descriptor, registrations ...AdapterRegistration) error {
+	if r == nil {
+		return fmt.Errorf("adapter registry is not configured")
+	}
+	if err := r.plugins.Register(descriptor); err != nil {
+		return err
+	}
+	for _, registration := range registrations {
+		r.register(registration.Type, registration.Adapter, descriptor.ID, registration.Capabilities...)
+	}
+	return nil
+}
+
+func (r *AdapterRegistry) register(adapterType string, adapter any, pluginID string, capabilities ...AdapterCapability) {
 	if r == nil {
 		return
 	}
@@ -61,7 +96,7 @@ func (r *AdapterRegistry) Register(adapterType string, adapter any, capabilities
 		normalized = append(normalized, capability)
 	}
 	sort.Slice(normalized, func(i, j int) bool { return normalized[i] < normalized[j] })
-	r.descriptors[adapterType] = AdapterDescriptor{Type: adapterType, Capabilities: normalized}
+	r.descriptors[adapterType] = AdapterDescriptor{Type: adapterType, Capabilities: normalized, PluginID: pluginID}
 }
 
 func (r *AdapterRegistry) Resolve(adapterType string) (any, error) {
@@ -117,4 +152,11 @@ func (r *AdapterRegistry) List() []AdapterDescriptor {
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Type < items[j].Type })
 	return items
+}
+
+func (r *AdapterRegistry) ListPlugins() []pluginmeta.Descriptor {
+	if r == nil {
+		return nil
+	}
+	return r.plugins.List()
 }

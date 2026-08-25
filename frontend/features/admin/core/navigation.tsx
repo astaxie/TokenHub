@@ -1,4 +1,4 @@
-import { Activity, AlertCircle, BarChart3, Bell, Boxes, Database, FileText, Gauge, KeyRound, LayoutDashboard, Send, Server, Settings, ShieldCheck, Sparkles, Users, WalletCards } from "lucide-react";
+import { Activity, AlertCircle, BarChart3, Bell, Boxes, Database, FileText, Gauge, KeyRound, LayoutDashboard, Puzzle, Send, Server, Settings, ShieldCheck, Sparkles, Users, WalletCards } from "lucide-react";
 import { type AdminUser, type AppData, type AppRole, type NavItem, type NavLeafItem, type NavParentItem, recentViewsStorageKey, type TopSearchItem, type ViewKey, viewRoutes } from "./types";
 import { modelCapabilitySummary } from "../domain/entities";
 import { tx } from "../i18n/runtime";
@@ -76,6 +76,7 @@ export const adminNavGroups: NavGroup[] = [
     title: "AI 资源",
     items: [
       { view: "providers", label: "Provider 渠道", icon: Server },
+      { view: "plugins", label: "插件管理", icon: Puzzle },
       { view: "models", label: "模型目录", icon: Boxes },
       { view: "routes", label: "路由策略", icon: Gauge },
       { view: "playground", label: "模型演练场", icon: Send },
@@ -203,6 +204,10 @@ export const standaloneViewMeta: Partial<Record<ViewKey, { title: string; descri
   "routing-policies": {
     title: "作用域路由策略",
     description: "按 API Key、项目和全局优先级限制 Provider、资源、模型、标签与部署边界。",
+  },
+  plugins: {
+    title: "插件管理",
+    description: "查看当前已注册的内置与外部插件能力，为 Provider、链路注入和界面模板化扩展提供基础。",
   },
 };
 

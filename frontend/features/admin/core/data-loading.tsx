@@ -20,6 +20,9 @@ export type LoadPlan = {
   users: boolean;
   providerCatalog: boolean;
   providerMonitoring: boolean;
+  plugins: boolean;
+  pluginChain: boolean;
+  pluginUI: boolean;
 	billingConnectors: boolean;
 	billingRecords: boolean;
 	billingSyncRuns: boolean;
@@ -52,6 +55,9 @@ export function emptyLoadPlan(): LoadPlan {
     users: false,
     providerCatalog: false,
     providerMonitoring: false,
+    plugins: false,
+    pluginChain: false,
+    pluginUI: false,
 		billingConnectors: false,
 		billingRecords: false,
 		billingSyncRuns: false,
@@ -126,6 +132,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       break;
     case "providers":
       plan.providers = true;
+      plan.plugins = true;
       plan.providerResources = true;
       plan.overview = true;
       plan.routes = true;
@@ -135,6 +142,11 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.providerCatalog = true;
       plan.providerModels = true;
       plan.providerMonitoring = true;
+      break;
+    case "plugins":
+      plan.plugins = true;
+      plan.pluginChain = true;
+      plan.pluginUI = true;
       break;
     case "models":
       plan.overview = true;
@@ -256,6 +268,9 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     keys: loaded.keys ?? current.keys,
     providerCatalog: loaded.providerCatalog ?? current.providerCatalog,
     providerMonitoring: loaded.providerMonitoring ?? current.providerMonitoring,
+    plugins: loaded.plugins ?? current.plugins,
+    pluginChain: loaded.pluginChain ?? current.pluginChain,
+    pluginUI: loaded.pluginUI ?? current.pluginUI,
 		billingConnectors: loaded.billingConnectors ?? current.billingConnectors,
 		billingRecords: loaded.billingRecords ?? current.billingRecords,
 		billingSyncRuns: loaded.billingSyncRuns ?? current.billingSyncRuns,

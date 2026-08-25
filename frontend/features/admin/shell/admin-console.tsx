@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { type AdminResource, type AdminUIContribution, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, type GatewayChainPlan, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type PluginDescriptor, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
@@ -34,6 +34,7 @@ import { RouteStrategyView } from "../views/model-catalog";
 import { modelRoutePolicyPayload } from "../views/model-routing-policy";
 import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
+import { PluginsView } from "../views/plugins";
 import { ProviderUpsertModal } from "../views/provider-editor";
 import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
 import { RoutingPolicySimulator } from "../views/routing-policy-simulator";
@@ -373,6 +374,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.users, "users", "/api/admin/users");
       queue(plan.providerCatalog, "provider-catalog", "/api/admin/provider-catalog");
       queue(plan.providerMonitoring, "provider-monitoring", "/api/admin/providers/monitoring");
+      queue(plan.plugins, "plugins", "/api/admin/plugins");
+      queue(plan.pluginChain, "plugin-chain", "/api/admin/plugin-chain");
+      queue(plan.pluginUI, "plugin-ui", "/api/admin/plugin-ui-manifest");
 			queue(plan.billingConnectors, "billing-connectors", "/api/admin/billing/connectors");
 			queue(plan.billingRecords, "billing-records", "/api/admin/billing/records");
 			queue(plan.billingSyncRuns, "billing-sync-runs", "/api/admin/billing/sync-runs");
@@ -457,6 +461,15 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         } else if (name === "provider-monitoring") {
           const payload = (await resp.json()) as { data: ProviderMonitoringSnapshot[] };
           loaded.providerMonitoring = payload.data ?? [];
+        } else if (name === "plugins") {
+          const payload = (await resp.json()) as { data: PluginDescriptor[] };
+          loaded.plugins = payload.data ?? [];
+        } else if (name === "plugin-chain") {
+          const payload = (await resp.json()) as { data: GatewayChainPlan };
+          loaded.pluginChain = payload.data ?? { hooks: [] };
+        } else if (name === "plugin-ui") {
+          const payload = (await resp.json()) as { data: AdminUIContribution[] };
+          loaded.pluginUI = payload.data ?? [];
 				} else if (name === "billing-connectors") {
 					const payload = (await resp.json()) as { data: BillingConnector[] };
 					loaded.billingConnectors = payload.data ?? [];
@@ -886,6 +899,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             <AuditView api={api} data={data} user={currentUser} />
           ) : activeView === "database-status" ? (
             <DatabaseStatusView api={api} isDark={theme === "dark"} />
+          ) : activeView === "plugins" ? (
+            <PluginsView data={data} />
           ) : activeView === "settings" ? (
             <SettingsView
               data={data}
