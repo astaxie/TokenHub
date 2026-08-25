@@ -16,6 +16,7 @@ import { configuredPriceEntered } from "../domain/configured-pricing";
 import { providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
 import { providerEgressTestPayload } from "../domain/provider-egress";
 import { providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
+import { isOpenAISubscriptionResourceType, providerResourceAPIKeyType, providerResourceOpenAISubscriptionType } from "../domain/provider-resource-types";
 import { modelPricingPeriodsInvalidPeriodError, modelPricingPeriodsJSONError, modelPricingPeriodsObjectArrayError, parseModelPricingPeriods } from "../domain/model-pricing-periods";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
@@ -62,7 +63,7 @@ export function providerUpdatePayload(values: Record<string, string>) {
 }
 
 export function providerResourcePayload(values: Record<string, string>) {
-  const isOpenAIAccount = values.resource_type === "openai_subscription";
+  const isOpenAIAccount = isOpenAISubscriptionResourceType(values.resource_type);
   const credentials = isOpenAIAccount
     ? {
         auth_type: values.auth_type || "oauth",
@@ -81,7 +82,7 @@ export function providerResourcePayload(values: Record<string, string>) {
   return {
     provider_id: values.provider_id,
     name: values.name,
-    resource_type: values.resource_type || "api_key",
+    resource_type: values.resource_type || providerResourceAPIKeyType,
     base_url: values.base_url,
     api_key: isOpenAIAccount ? values.access_token : values.api_key,
     group: values.group || "default",
@@ -102,7 +103,7 @@ export function providerResourcePayload(values: Record<string, string>) {
 
 export function providerResourceUpdatePayload(values: Record<string, string>) {
   const payload = providerResourcePayload(values) as Record<string, unknown>;
-  const isOpenAIAccount = values.resource_type === "openai_subscription";
+  const isOpenAIAccount = isOpenAISubscriptionResourceType(values.resource_type);
   if (isOpenAIAccount && !values.access_token?.trim()) delete payload.api_key;
   if (!isOpenAIAccount && !values.api_key?.trim()) delete payload.api_key;
   if (isOpenAIAccount && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
@@ -112,8 +113,8 @@ export function providerResourceUpdatePayload(values: Record<string, string>) {
 }
 
 export function providerResourceOptions(values: Record<string, string>) {
-  const accountOptions: Record<string, string> = values.resource_type === "openai_subscription" ? {
-    credential_source: "openai_subscription",
+  const accountOptions: Record<string, string> = isOpenAISubscriptionResourceType(values.resource_type) ? {
+    credential_source: providerResourceOpenAISubscriptionType,
     auth_type: values.auth_type || "oauth",
     account_email: values.account_email,
     account_id: values.account_id,
@@ -483,7 +484,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "provider_id") values[field.key] = firstActiveProvider(data)?.id ?? "";
     if (field.key === "model_name") values[field.key] = firstActiveModel(data)?.name ?? "";
     if (field.key === "group") values[field.key] = "default";
-    if (field.key === "resource_type") values[field.key] = "api_key";
+    if (field.key === "resource_type") values[field.key] = providerResourceAPIKeyType;
     if (field.key === "environment") values[field.key] = "prod";
     if (field.key === "project_id") values[field.key] = config.view === "api-keys" ? firstIssueableProject(data, currentUser) : (firstActiveProject(data)?.id ?? "");
     if (field.key === "owner_user_id" && config.view === "api-keys") values[field.key] = currentUser && appRole(currentUser.role) !== "admin" ? currentUser.id : "";
@@ -499,7 +500,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "max_concurrency") values[field.key] = "20";
     if (field.key === "modality") values[field.key] = "chat";
     if (field.key === "type") values[field.key] = "openai_compatible";
-    if (field.key === "auth_type") values[field.key] = "api_key";
+    if (field.key === "auth_type") values[field.key] = providerResourceAPIKeyType;
     if (field.key === "scope") values[field.key] = "project";
     if (field.key === "period") values[field.key] = "monthly";
     if (field.key === "enforcement") values[field.key] = "block";
@@ -810,29 +811,6 @@ export async function testProviderEgress(ctx: ApiContext, providerID: string, va
   });
   if (!resp.ok) throw new Error(await readAdminError(resp, tx("代理连接测试失败")));
   return await resp.json() as { ok: boolean; latency_ms?: number; target_host?: string };
-}
-
-export async function testProviderAvailability(ctx: ApiContext, provider: { id: string }) {
-  const resourcesResp = await adminFetch(ctx, "/api/admin/provider-resources");
-  if (!resourcesResp.ok) throw new Error(await readAdminError(resourcesResp, tx("读取 Provider 账号资源")));
-  const payload = (await resourcesResp.json()) as { data?: ProviderResource[] };
-  const subscription = (payload.data ?? []).find((resource) =>
-    resource.provider_id === provider.id && resource.resource_type === "openai_subscription" && resource.status === "active",
-  );
-  if (!subscription) {
-    await adminMutate(ctx, `/api/admin/providers/${provider.id}/test`, "POST", {});
-    return;
-  }
-  const testResp = await adminFetch(ctx, `/api/admin/provider-resources/${subscription.id}/test`, {
-    method: "POST",
-    body: JSON.stringify({
-      model: "gpt-5.6-luna",
-      reasoning_effort: "medium",
-      speed: "standard",
-      prompt: "请用一句话确认 Codex 连接正常。",
-    }),
-  });
-  if (!testResp.ok) throw new Error(await readAdminError(testResp, tx("Codex Luna 中等推理标准测试")));
 }
 
 export async function adminDelete(ctx: ApiContext, path: string) {

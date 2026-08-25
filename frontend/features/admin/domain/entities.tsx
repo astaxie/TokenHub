@@ -3,6 +3,7 @@ import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabel, roleLabel, splitList } from "./labels";
+import { isOpenAISubscriptionResource } from "./provider-resource-types";
 import { tx } from "../i18n/runtime";
 import { preferredModelCategories } from "./model-categories";
 
@@ -569,7 +570,7 @@ export function providerRouteSummary(provider: Provider, data: AppData) {
 }
 
 export function providerAccountResourceSummary(provider: Provider, data: AppData) {
-  const resources = data.providerResources.filter((resource) => resource.provider_id === provider.id && resource.resource_type === "openai_subscription");
+  const resources = data.providerResources.filter((resource) => resource.provider_id === provider.id && isOpenAISubscriptionResource(resource));
   if (resources.length === 0) return <span className="muted-inline">-</span>;
   const active = resources.filter((resource) => resource.status === "active" && resource.healthy).length;
   const first = resources[0]?.credential_summary;

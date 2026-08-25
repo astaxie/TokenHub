@@ -4,6 +4,7 @@ import { formatMoney } from "./formatting";
 import { compactList } from "./labels";
 import { tx } from "../i18n/runtime";
 import { modelCategoryLabels, preferredModelCategories } from "./model-categories";
+import { isOpenAISubscriptionResource } from "./provider-resource-types";
 
 export function emptyData(): AppData {
   return {
@@ -373,7 +374,7 @@ export function modelCategory(model: Model | ProviderCatalogModel | undefined) {
 
 export function providerCategories(provider: Provider, data: AppData) {
   if (data.providerResources.some((resource) =>
-    resource.provider_id === provider.id && resource.resource_type === "openai_subscription",
+    resource.provider_id === provider.id && isOpenAISubscriptionResource(resource),
   )) {
     return ["codex"];
   }

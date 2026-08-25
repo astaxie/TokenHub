@@ -1,6 +1,7 @@
 import { Boxes, KeyRound, Search, Server, UserRoundCheck } from "lucide-react";
 import { type FieldConfig, type ProviderCredentialMode } from "../core/types";
 import { enumOptionLabel } from "../domain/labels";
+import { isOpenAISubscriptionResourceType } from "../domain/provider-resource-types";
 import { clearCustomValidity, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 
 export function ProviderInlineField({
@@ -134,7 +135,7 @@ export function providerCredentialModeLabel(mode: ProviderCredentialMode) {
 }
 
 export function providerAccountResourceReady(values: Record<string, string>) {
-  if (values.resource_type === "openai_subscription") {
+  if (isOpenAISubscriptionResourceType(values.resource_type)) {
     return Boolean(values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim());
   }
   return Boolean(values.api_key?.trim());
