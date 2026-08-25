@@ -64,10 +64,7 @@ type CodexSubscriptionTestResult = {
   };
 };
 type ProviderEditTab = "connect" | "models" | "advanced";
-type ProviderAccountConfirmation = {
-  action: "enable" | "disable" | "delete";
-  resource: ProviderResource;
-};
+type ProviderAccountConfirmation = { action: "enable" | "disable" | "delete"; resource: ProviderResource };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
 export function ProviderUpsertModal({
   mode,
@@ -1469,6 +1466,7 @@ export function ProviderUpsertModal({
                       </div>
                     </div>
                     {accountOAuthStatus ? <p className="provider-credential-note">{accountOAuthStatus}</p> : null}
+                    <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={updateAccountValue} providerType={values.type} resourceType={accountValues.resource_type} slot="provider.resource.form.section" values={accountValues} />
                     <details className="provider-account-runtime">
                       <summary>
                         <strong>{tx("资源调度")}</strong>

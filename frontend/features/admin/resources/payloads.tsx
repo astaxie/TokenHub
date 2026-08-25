@@ -129,7 +129,7 @@ export function providerResourceOptions(values: Record<string, string>) {
   } else {
     delete options.claude_code_attribution_policy;
   }
-  return applyCodexFingerprintOption(options, values);
+  return { ...applyCodexFingerprintOption(options, values), ...providerPluginOptionValues(values) };
 }
 
 export function providerResourceToForm(item: ProviderResource, providerOptions?: Record<string, string>) {

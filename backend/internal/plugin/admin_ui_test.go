@@ -18,6 +18,12 @@ func TestParseAdminUIManifestNormalizesContributions(t *testing.T) {
 				"slot": "provider.form.section"
 			},
 			{
+				"id": "resource-setup",
+				"slot": "provider.resource.form.section",
+				"provider_types": ["openai_codex"],
+				"resource_types": ["openai_subscription", "openai_subscription", " "]
+			},
+			{
 				"id": "catalog-card",
 				"slot": "provider.catalog.card",
 				"title": "Codex"
@@ -27,8 +33,8 @@ func TestParseAdminUIManifestNormalizesContributions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse admin UI manifest: %v", err)
 	}
-	if len(manifest.Contributions) != 3 {
-		t.Fatalf("contributions = %d, want 3", len(manifest.Contributions))
+	if len(manifest.Contributions) != 4 {
+		t.Fatalf("contributions = %d, want 4", len(manifest.Contributions))
 	}
 	if manifest.Contributions[0].PluginID != "tokenhub.codex" || manifest.Contributions[0].ID != "catalog-card" {
 		t.Fatalf("first contribution = %+v", manifest.Contributions[0])
@@ -36,12 +42,16 @@ func TestParseAdminUIManifestNormalizesContributions(t *testing.T) {
 	if manifest.Contributions[0].Slot != SlotProviderCatalogCard {
 		t.Fatalf("catalog card slot = %q, want %q", manifest.Contributions[0].Slot, SlotProviderCatalogCard)
 	}
-	gotProviderTypes := manifest.Contributions[2].ProviderTypes
+	gotProviderTypes := manifest.Contributions[3].ProviderTypes
 	if len(gotProviderTypes) != 1 || gotProviderTypes[0] != "openai_codex" {
 		t.Fatalf("provider types = %v, want openai_codex", gotProviderTypes)
 	}
-	if manifest.Contributions[2].Action != "codex.quota.read" {
-		t.Fatalf("action = %q, want trimmed action", manifest.Contributions[2].Action)
+	if manifest.Contributions[3].Action != "codex.quota.read" {
+		t.Fatalf("action = %q, want trimmed action", manifest.Contributions[3].Action)
+	}
+	gotResourceTypes := manifest.Contributions[2].ResourceTypes
+	if len(gotResourceTypes) != 1 || gotResourceTypes[0] != "openai_subscription" {
+		t.Fatalf("resource types = %v, want openai_subscription", gotResourceTypes)
 	}
 }
 

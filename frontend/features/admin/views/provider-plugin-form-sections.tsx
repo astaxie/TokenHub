@@ -1,6 +1,6 @@
 import { ExternalLink, Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type Provider } from "../core/types";
+import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
 import { providerPluginOptionFieldKey, providerPluginOptionValuesForPlugin } from "../domain/provider-plugin-options";
 import { tx } from "../i18n/runtime";
 import { runProviderPluginActionEnvelope } from "../resources/provider-model-config";
@@ -33,6 +33,10 @@ type PluginFormActionState = {
 export function ProviderPluginFormSections({
   api,
   provider,
+  resource,
+  slot = "provider.form.section",
+  providerType,
+  resourceType,
   values,
   contributions,
   actions = [],
@@ -40,6 +44,10 @@ export function ProviderPluginFormSections({
 }: {
   api?: ApiContext;
   provider?: Provider;
+  resource?: ProviderResource;
+  slot?: "provider.form.section" | "provider.resource.form.section";
+  providerType?: string;
+  resourceType?: string;
   values: Record<string, string>;
   contributions: AdminUIContribution[];
   actions?: PluginActionDescriptor[];
@@ -49,12 +57,12 @@ export function ProviderPluginFormSections({
   const sections = useMemo(
     () => contributions
       .filter((contribution) =>
-        contribution.slot === "provider.form.section" &&
-        (contribution.provider_types?.length ? contribution.provider_types.includes(values.type) : true),
+        contribution.slot === slot &&
+        pluginFormContributionMatches(contribution, providerType || values.type, resourceType || values.resource_type),
       )
       .map((contribution) => ({ contribution, fields: pluginFormFields(contribution) }))
       .filter((section) => section.fields.length > 0),
-    [contributions, values.type],
+    [contributions, providerType, resourceType, slot, values.resource_type, values.type],
   );
   const actionDescriptors = useMemo(() => new Map(actions.map((action) => [pluginFormActionKey(action.plugin_id, action.action_id), action])), [actions]);
   useEffect(() => {
@@ -62,12 +70,12 @@ export function ProviderPluginFormSections({
       for (const field of fields) {
         if (pluginFormFieldIsAction(field)) continue;
         const key = providerPluginOptionFieldKey(contribution.plugin_id, field.name);
-        const existingValue = provider?.options?.[field.name];
+        const existingValue = resource?.options?.[field.name] ?? provider?.options?.[field.name];
         const value = existingValue ?? field.defaultValue;
         if (values[key] === undefined && value !== undefined) onUpdate(key, value);
       }
     }
-  }, [onUpdate, provider?.options, sections, values]);
+  }, [onUpdate, provider?.options, resource?.options, sections, values]);
 
   if (sections.length === 0) return null;
 
@@ -86,7 +94,7 @@ export function ProviderPluginFormSections({
     const key = pluginFormFieldStateKey(contribution, field);
     updateActionState(key, { busy: true, error: "", result: "" });
     try {
-      const result = await runProviderPluginActionEnvelope(api, descriptor, providerFormActionPayload(provider, values, contribution.plugin_id), field.label);
+      const result = await runProviderPluginActionEnvelope(api, descriptor, providerFormActionPayload(provider, resource, values, contribution.plugin_id, providerType, resourceType), field.label);
       const redirectURL = result.redirect_url || schemaString((result.data as Record<string, unknown> | undefined)?.auth_url);
       if (field.type === "oauth_button" && redirectURL) window.open(redirectURL, "_blank", "noopener,noreferrer");
       updateActionState(key, { busy: false, result: JSON.stringify(result.data ?? result.metadata ?? {}, null, 2) });
@@ -126,7 +134,7 @@ export function ProviderPluginFormSections({
                   field={{ ...field, key }}
                   key={key}
                   onChange={(value) => onUpdate(key, value)}
-                  value={values[key] ?? provider?.options?.[field.name] ?? field.defaultValue ?? defaultPluginFieldValue(field)}
+                  value={values[key] ?? resource?.options?.[field.name] ?? provider?.options?.[field.name] ?? field.defaultValue ?? defaultPluginFieldValue(field)}
                   values={values}
                 />
               );
@@ -193,6 +201,11 @@ function pluginFormFields(contribution: AdminUIContribution): PluginFormField[] 
   });
 }
 
+function pluginFormContributionMatches(contribution: AdminUIContribution, providerType: string, resourceType: string) {
+  return (!contribution.provider_types?.length || contribution.provider_types.includes(providerType)) &&
+    (!contribution.resource_types?.length || contribution.resource_types.includes(resourceType));
+}
+
 function pluginFormFieldType(type: string): PluginFormField["type"] | "" {
   switch (type) {
     case "":
@@ -230,16 +243,30 @@ function pluginFormActionKey(pluginID: string, actionID: string) {
   return `${pluginID}:${actionID}`;
 }
 
-function providerFormActionPayload(provider: Provider | undefined, values: Record<string, string>, pluginID: string) {
+function providerFormActionPayload(provider: Provider | undefined, resource: ProviderResource | undefined, values: Record<string, string>, pluginID: string, explicitProviderType?: string, explicitResourceType?: string) {
+  const providerID = provider?.id || values.provider_id || values.id || undefined;
+  const effectiveProviderType = explicitProviderType || values.type || provider?.type || "";
+  const effectiveResourceType = explicitResourceType || values.resource_type || resource?.resource_type || "";
   return {
-    provider_id: provider?.id || values.id || undefined,
-    provider_type: values.type || provider?.type || "",
+    provider_id: providerID,
+    provider_type: effectiveProviderType,
+    resource_id: resource?.id || undefined,
+    resource_type: effectiveResourceType,
     provider: {
-      id: provider?.id || values.id || "",
-      name: values.name || provider?.name || "",
-      type: values.type || provider?.type || "",
-      base_url: values.base_url || provider?.base_url || "",
+      id: providerID || "",
+      name: provider?.name || values.name || "",
+      type: effectiveProviderType,
+      base_url: provider?.base_url || (resource ? "" : values.base_url) || "",
     },
+    resource: resource ? {
+      id: resource.id,
+      name: values.name || resource.name,
+      resource_type: effectiveResourceType,
+      base_url: values.base_url || resource.base_url || "",
+      group: values.group || resource.group || "",
+      region: values.region || resource.region || "",
+      environment: values.environment || resource.environment || "",
+    } : undefined,
     options: providerPluginOptionValuesForPlugin(values, pluginID),
   };
 }

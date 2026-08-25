@@ -313,6 +313,7 @@ export type AdminUIContribution = {
   slot: string;
   title?: string;
   provider_types?: string[];
+  resource_types?: string[];
   action?: string;
   schema?: Record<string, unknown>;
 };

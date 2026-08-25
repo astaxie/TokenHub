@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { providerPluginOptionFieldKey } from "../domain/provider-plugin-options";
-import { providerPayload } from "../resources/payloads";
+import { providerPayload, providerResourcePayload } from "../resources/payloads";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 
 describe("ProviderPluginFormSections", () => {
@@ -165,6 +165,84 @@ describe("ProviderPluginFormSections", () => {
     });
   });
 
+  it("renders provider resource form sections and writes plugin options into resource payloads", async () => {
+    const updateSpy = vi.fn();
+    const tenantKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "resource_tenant");
+    const modeKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "account_mode");
+
+    function Harness() {
+      const [values, setValues] = useState<Record<string, string>>({
+        provider_id: "prv_plugin",
+        name: "Plugin Account",
+        resource_type: "plugin_oauth_account",
+        status: "active",
+        healthy: "true",
+      });
+      function onUpdate(key: string, value: string) {
+        updateSpy(key, value);
+        setValues((current) => ({ ...current, [key]: value }));
+      }
+      return (
+        <ProviderPluginFormSections
+          contributions={[
+            {
+              plugin_id: "tokenhub.provider.plugin",
+              id: "resource-account",
+              slot: "provider.resource.form.section",
+              title: "Plugin Resource",
+              provider_types: ["plugin_provider"],
+              resource_types: ["plugin_oauth_account"],
+              schema: {
+                fields: [
+                  { name: "resource_tenant", type: "text", label: "Resource Tenant", default: "tenant-default" },
+                  { name: "account_mode", type: "select", label: "Account Mode", options: ["standard", "strict"], default: "standard" },
+                ],
+              },
+            },
+            {
+              plugin_id: "tokenhub.provider.plugin",
+              id: "other-resource",
+              slot: "provider.resource.form.section",
+              title: "Other Resource",
+              provider_types: ["plugin_provider"],
+              resource_types: ["other_account"],
+              schema: { fields: [{ name: "ignored", type: "text", label: "Ignored" }] },
+            },
+          ]}
+          onUpdate={onUpdate}
+          providerType="plugin_provider"
+          resourceType="plugin_oauth_account"
+          slot="provider.resource.form.section"
+          values={values}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    expect(screen.getByText("Plugin Resource")).toBeInTheDocument();
+    expect(screen.queryByText("Other Resource")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith(tenantKey, "tenant-default");
+      expect(updateSpy).toHaveBeenCalledWith(modeKey, "standard");
+    });
+
+    const payload = providerResourcePayload({
+      provider_id: "prv_plugin",
+      name: "Plugin Account",
+      resource_type: "plugin_oauth_account",
+      status: "active",
+      healthy: "true",
+      [tenantKey]: "tenant-default",
+      [modeKey]: "standard",
+    });
+
+    expect(payload.options).toMatchObject({
+      resource_tenant: "tenant-default",
+      account_mode: "standard",
+    });
+  });
+
   it("runs plugin form action buttons with provider context and scoped plugin options", async () => {
     const user = userEvent.setup();
     const updateSpy = vi.fn();
@@ -229,11 +307,12 @@ describe("ProviderPluginFormSections", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       provider_id: "prv_plugin",
       provider_type: "plugin_provider",
+      resource_type: "",
       provider: {
         id: "prv_plugin",
-        name: "Draft Provider",
+        name: "Plugin Provider",
         type: "plugin_provider",
-        base_url: "https://draft.example/v1",
+        base_url: "https://provider.example/v1",
       },
       options: { tenant_id: "tenant-001" },
     });

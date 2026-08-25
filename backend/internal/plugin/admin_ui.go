@@ -10,14 +10,15 @@ import (
 type AdminUISlot string
 
 const (
-	SlotNavigationSection     AdminUISlot = "nav.section"
-	SlotDashboardCard         AdminUISlot = "dashboard.card"
-	SlotProviderCatalogCard   AdminUISlot = "provider.catalog.card"
-	SlotProviderFormSection   AdminUISlot = "provider.form.section"
-	SlotProviderResourcePanel AdminUISlot = "provider.resource.panel"
-	SlotRouteDetailPanel      AdminUISlot = "route.detail.panel"
-	SlotSettingsPanel         AdminUISlot = "settings.panel"
-	SlotReportTemplate        AdminUISlot = "report.template"
+	SlotNavigationSection           AdminUISlot = "nav.section"
+	SlotDashboardCard               AdminUISlot = "dashboard.card"
+	SlotProviderCatalogCard         AdminUISlot = "provider.catalog.card"
+	SlotProviderFormSection         AdminUISlot = "provider.form.section"
+	SlotProviderResourceFormSection AdminUISlot = "provider.resource.form.section"
+	SlotProviderResourcePanel       AdminUISlot = "provider.resource.panel"
+	SlotRouteDetailPanel            AdminUISlot = "route.detail.panel"
+	SlotSettingsPanel               AdminUISlot = "settings.panel"
+	SlotReportTemplate              AdminUISlot = "report.template"
 )
 
 type AdminUIManifest struct {
@@ -31,6 +32,7 @@ type AdminUIContribution struct {
 	Slot          AdminUISlot    `json:"slot"`
 	Title         string         `json:"title,omitempty"`
 	ProviderTypes []string       `json:"provider_types,omitempty"`
+	ResourceTypes []string       `json:"resource_types,omitempty"`
 	Action        string         `json:"action,omitempty"`
 	Schema        map[string]any `json:"schema,omitempty"`
 }
@@ -124,6 +126,7 @@ func NormalizeAdminUIContribution(contribution AdminUIContribution) AdminUIContr
 	contribution.Title = strings.TrimSpace(contribution.Title)
 	contribution.Action = strings.TrimSpace(contribution.Action)
 	contribution.ProviderTypes = normalizeStrings(contribution.ProviderTypes)
+	contribution.ResourceTypes = normalizeStrings(contribution.ResourceTypes)
 	return contribution
 }
 
@@ -140,7 +143,7 @@ func normalizeAdminUIManifest(pluginID string, manifest AdminUIManifest) AdminUI
 
 func validAdminUISlot(slot AdminUISlot) bool {
 	switch slot {
-	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate:
+	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderResourceFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate:
 		return true
 	default:
 		return false
