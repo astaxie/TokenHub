@@ -22,7 +22,7 @@ func NewGatewayCommandRunner(dir string, command string) GatewayCommandRunner {
 
 func (r GatewayCommandRunner) ExecuteGatewayHook(ctx context.Context, input GatewayHookInput) (GatewayHookResult, error) {
 	var result GatewayHookResult
-	if err := runPluginCommandJSON(ctx, r.Dir, r.Command, r.Timeout, input, &result); err != nil {
+	if err := RunCommandJSON(ctx, r.Dir, r.Command, r.Timeout, input, &result); err != nil {
 		return GatewayHookResult{}, err
 	}
 	return result, nil

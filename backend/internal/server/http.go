@@ -187,9 +187,11 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
 	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
 	registerBuiltinAdminUIContributions(pluginRegistry, adminUI)
-	if _, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActions(pluginRegistry, gatewayChain, adminUI, pluginActions, gatewayHooks); err != nil {
+	packages, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActions(pluginRegistry, gatewayChain, adminUI, pluginActions, gatewayHooks)
+	if err != nil {
 		panic(fmt.Errorf("load TokenHub plugins: %w", err))
 	}
+	registerExternalProviderPluginAdapters(registry, packages)
 	s := &Server{
 		store:                   store,
 		pluginRegistry:          pluginRegistry,

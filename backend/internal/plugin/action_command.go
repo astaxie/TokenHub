@@ -32,13 +32,13 @@ func NewActionCommandRunner(dir string, command string) ActionCommandRunner {
 
 func (r ActionCommandRunner) ExecutePluginAction(ctx context.Context, invocation ActionInvocation) (ActionResult, error) {
 	var result ActionResult
-	if err := runPluginCommandJSON(ctx, r.Dir, r.Command, r.Timeout, invocation, &result); err != nil {
+	if err := RunCommandJSON(ctx, r.Dir, r.Command, r.Timeout, invocation, &result); err != nil {
 		return ActionResult{}, err
 	}
 	return result, nil
 }
 
-func runPluginCommandJSON(ctx context.Context, dir string, command string, timeout time.Duration, input any, output any) error {
+func RunCommandJSON(ctx context.Context, dir string, command string, timeout time.Duration, input any, output any) error {
 	if strings.TrimSpace(command) == "" {
 		return ErrPluginActionUnavailable
 	}
