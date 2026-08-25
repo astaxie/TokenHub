@@ -303,6 +303,130 @@ func TestAdminProviderResourceQuotaResetCreditsRoutePreservesHeadersAndAudit(t *
 	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota_reset_credits", "provider_resource", quotaResetTestResourceID)
 }
 
+func TestAdminProviderResourceQuotaResetRoutesUsePluginActions(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "quota_reset_plugin"
+	provider := store.AddProvider(Provider{
+		ID: "prv_quota_reset_plugin", Name: "Quota Reset Plugin Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_quota_reset_plugin", ProviderID: provider.ID, Name: "Quota Reset Plugin Resource",
+		ResourceType: providerType, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.quota-reset-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Quota Reset Plugin", []string{providerType}, []string{string(AdapterCapabilityQuota)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityQuota},
+	}); err != nil {
+		t.Fatalf("register quota reset plugin: %v", err)
+	}
+	resetCreditCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "quota_reset.credits",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "quota.reset_credits.read",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		resetCreditCalls++
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode quota reset credits payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || invocation.Actor.ID != "dev_admin" {
+			t.Fatalf("unexpected quota reset credits invocation: payload=%+v actor=%+v", payload, invocation.Actor)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"available_count": 3,
+			"credits": []map[string]any{
+				{"id": "plugin-credit", "status": "available"},
+			},
+			"fetched_at": int64(12345),
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register quota reset credits action: %v", err)
+	}
+	resetCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "quota_reset.consume",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "quota.reset",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		resetCalls++
+		var payload struct {
+			ResourceID             string `json:"resource_id"`
+			Confirm                bool   `json:"confirm"`
+			IdempotencyKey         string `json:"idempotency_key"`
+			ExpectedAvailableCount int    `json:"expected_available_count"`
+			CreditID               string `json:"credit_id"`
+			DangerConfirmation     string `json:"danger_confirmation"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode quota reset payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || !payload.Confirm || payload.IdempotencyKey != "plugin-reset-1" ||
+			payload.ExpectedAvailableCount != 3 || payload.CreditID != "plugin-credit" ||
+			payload.DangerConfirmation != openAIAccountQuotaResetDangerValue {
+			t.Fatalf("unexpected quota reset payload: %+v", payload)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"code":          "plugin_reset",
+			"windows_reset": 4,
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register quota reset action: %v", err)
+	}
+	app := server.Handler()
+
+	credits := methodRoutingRequest(app, http.MethodGet, "/api/admin/provider-resources/"+resource.ID+"/quota/reset-credits", "dev_admin_token")
+	if credits.Code != http.StatusOK {
+		t.Fatalf("GET plugin reset credits: expected 200, got %d: %s", credits.Code, credits.Body.String())
+	}
+	if resetCreditCalls != 1 || !strings.Contains(credits.Body.String(), `"available_count":3`) || !strings.Contains(credits.Body.String(), `"id":"plugin-credit"`) {
+		t.Fatalf("reset credits route did not use action: calls=%d body=%s", resetCreditCalls, credits.Body.String())
+	}
+
+	missingDanger := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/quota/reset", map[string]any{
+		"confirm": true, "idempotency_key": "plugin-reset-1", "expected_available_count": 3, "credit_id": "plugin-credit",
+	}, "dev_admin_token")
+	assertJSONError(t, missingDanger, http.StatusBadRequest, "quota_reset_danger_confirmation_required")
+	if resetCalls != 0 {
+		t.Fatalf("unsafe plugin quota reset reached action: %d", resetCalls)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"confirm": true, "idempotency_key": "plugin-reset-1", "expected_available_count": 3, "credit_id": "plugin-credit",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetRequest := httptest.NewRequest(http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/quota/reset", strings.NewReader(string(body)))
+	resetRequest.Header.Set("authorization", "Bearer dev_admin_token")
+	resetRequest.Header.Set("content-type", "application/json")
+	resetRequest.Header.Set("idempotency-key", "plugin-reset-1")
+	resetRequest.Header.Set(openAIAccountQuotaResetDangerHeader, openAIAccountQuotaResetDangerValue)
+	reset := httptest.NewRecorder()
+	app.ServeHTTP(reset, resetRequest)
+	if reset.Code != http.StatusOK {
+		t.Fatalf("POST plugin quota reset: expected 200, got %d: %s", reset.Code, reset.Body.String())
+	}
+	if resetCalls != 1 || !strings.Contains(reset.Body.String(), `"code":"plugin_reset"`) || !strings.Contains(reset.Body.String(), `"windows_reset":4`) {
+		t.Fatalf("quota reset route did not use action: calls=%d body=%s", resetCalls, reset.Body.String())
+	}
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota_reset_credits", "provider_resource", resource.ID)
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "reset_quota", "provider_resource", resource.ID)
+}
+
 func TestAdminProviderResourceRefreshTokenRoutePreservesRefreshMaskingAndAudit(t *testing.T) {
 	tokenCalls := 0
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

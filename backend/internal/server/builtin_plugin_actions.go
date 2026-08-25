@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -125,6 +126,97 @@ func registerBuiltinPluginActions(server *Server) {
 			return pluginmeta.ActionResult{}, err
 		}
 		return pluginmeta.ActionResult{Data: quota}, nil
+	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "openai_codex.quota.reset_credits.read",
+		Kind:       pluginmeta.ActionKindRead,
+		Title:      "Read OpenAI Codex quota reset credits",
+		Capability: "quota.reset_credits.read",
+		Subject:    ProviderOpenAICodex,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"available_count", "credits", "fetched_at"}, map[string]string{
+			"available_count":   "integer",
+			"credits":           "array",
+			"fetched_at":        "integer",
+			"pending_operation": "object",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+		}
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		credits, err := server.queryOpenAIAccountQuotaResetCredits(ctx, payload.ResourceID)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: credits}, nil
+	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "openai_codex.quota.reset",
+		Kind:       pluginmeta.ActionKindMutate,
+		Title:      "Reset OpenAI Codex quota",
+		Capability: "quota.reset",
+		Subject:    ProviderOpenAICodex,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id", "confirm", "idempotency_key", "expected_available_count", "credit_id", "danger_confirmation"},
+			"properties": map[string]any{
+				"resource_id":              map[string]any{"type": "string"},
+				"confirm":                  map[string]any{"type": "boolean"},
+				"idempotency_key":          map[string]any{"type": "string"},
+				"expected_available_count": map[string]any{"type": "integer"},
+				"credit_id":                map[string]any{"type": "string"},
+				"danger_confirmation":      map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"code", "windows_reset"}, map[string]string{
+			"code":          "string",
+			"windows_reset": "integer",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ResourceID             string `json:"resource_id"`
+			Confirm                bool   `json:"confirm"`
+			IdempotencyKey         string `json:"idempotency_key"`
+			ExpectedAvailableCount int    `json:"expected_available_count"`
+			CreditID               string `json:"credit_id"`
+			DangerConfirmation     string `json:"danger_confirmation"`
+		}
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		if strings.TrimSpace(payload.DangerConfirmation) != openAIAccountQuotaResetDangerValue {
+			return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "quota_reset_danger_confirmation_required", "The dangerous operation confirmation header is required")
+		}
+		creditID := payload.CreditID
+		req := openAIAccountQuotaResetRequest{
+			Confirm:                payload.Confirm,
+			IdempotencyKey:         payload.IdempotencyKey,
+			ExpectedAvailableCount: &payload.ExpectedAvailableCount,
+			CreditID:               &creditID,
+		}
+		if err := validateOpenAIAccountQuotaResetRequest(req, payload.IdempotencyKey); err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		result, err := server.resetOpenAIAccountQuota(ctx, payload.ResourceID, req)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: result}, nil
 	}))
 	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",

@@ -80,7 +80,10 @@ type openAIAccountQuotaResetOperation struct {
 }
 
 func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	details, err := s.queryOpenAIAccountQuotaResetCredits(r.Context(), resourceID)
+	details, supported, err := s.executeProviderResourceQuotaResetCreditsAction(r.Context(), user, resourceID)
+	if !supported {
+		details, err = s.queryOpenAIAccountQuotaResetCredits(r.Context(), resourceID)
+	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.recordAdminAuditWithStatus(r, user, "query_quota_reset_credits", "provider_resource", resourceID, "failed", httpErr.Code, "", map[string]any{"error_code": httpErr.Code})
@@ -108,7 +111,10 @@ func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *htt
 		writeError(w, r, err)
 		return
 	}
-	result, err := s.resetOpenAIAccountQuota(r.Context(), resourceID, req)
+	result, supported, err := s.executeProviderResourceQuotaResetAction(r.Context(), user, resourceID, req)
+	if !supported {
+		result, err = s.resetOpenAIAccountQuota(r.Context(), resourceID, req)
+	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, httpErr.Code)

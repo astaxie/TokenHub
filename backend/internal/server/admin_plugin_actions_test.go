@@ -118,10 +118,14 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 	}
 	body := response.Body
 	if !strings.Contains(body, `"action_id":"openai_codex.quota.read"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.quota.reset_credits.read"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.quota.reset"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.probe.run"`) ||
 		!strings.Contains(body, `"action_id":"openai_codex.credentials.refresh"`) ||
+		!strings.Contains(body, `"capability":"quota.reset_credits.read"`) ||
+		!strings.Contains(body, `"capability":"quota.reset"`) ||
 		!strings.Contains(body, `"capability":"credentials.refresh"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
 	}
@@ -218,6 +222,50 @@ func TestAdminPluginActionRefreshesOpenAICodexCredentials(t *testing.T) {
 	}
 	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.credentials.refresh" {
 		t.Fatalf("plugin action audit events = %+v", events)
+	}
+}
+
+func TestAdminPluginActionRunsOpenAICodexQuotaResetActions(t *testing.T) {
+	upstream := &quotaResetUpstream{availableCount: 1, creditID: "plugin-reset-credit"}
+	server, store, _ := newQuotaResetTestServer(t, upstream, quotaResetTestCredentials())
+
+	credits := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.quota.reset_credits.read", map[string]any{
+		"resource_id": quotaResetTestResourceID,
+	}, "dev_admin_token")
+	if credits.Code != http.StatusOK {
+		t.Fatalf("POST quota reset credits action: expected 200, got %d: %s", credits.Code, credits.Body)
+	}
+	if !strings.Contains(credits.Body, `"available_count":1`) || !strings.Contains(credits.Body, `"id":"plugin-reset-credit"`) {
+		t.Fatalf("quota reset credits action response = %s", credits.Body)
+	}
+	if strings.Contains(credits.Body, "access_initial") {
+		t.Fatalf("quota reset credits action leaked access token: %s", credits.Body)
+	}
+
+	reset := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.quota.reset", map[string]any{
+		"resource_id":              quotaResetTestResourceID,
+		"confirm":                  true,
+		"idempotency_key":          "plugin-action-reset-1",
+		"expected_available_count": 1,
+		"credit_id":                "plugin-reset-credit",
+		"danger_confirmation":      openAIAccountQuotaResetDangerValue,
+	}, "dev_admin_token")
+	if reset.Code != http.StatusOK {
+		t.Fatalf("POST quota reset action: expected 200, got %d: %s", reset.Code, reset.Body)
+	}
+	if !strings.Contains(reset.Body, `"code":"reset"`) || !strings.Contains(reset.Body, `"windows_reset":2`) {
+		t.Fatalf("quota reset action response = %s", reset.Body)
+	}
+	if upstream.getCalls != 2 || upstream.consumeCalls != 1 {
+		t.Fatalf("quota reset action upstream calls: gets=%d consumes=%d", upstream.getCalls, upstream.consumeCalls)
+	}
+	var sawCreditsAudit, sawResetAudit bool
+	for _, event := range store.ListAuditEvents() {
+		sawCreditsAudit = sawCreditsAudit || event.Action == "plugin.action.openai_codex.quota.reset_credits.read"
+		sawResetAudit = sawResetAudit || event.Action == "plugin.action.openai_codex.quota.reset"
+	}
+	if !sawCreditsAudit || !sawResetAudit {
+		t.Fatalf("quota reset action audit events = %+v", store.ListAuditEvents())
 	}
 }
 

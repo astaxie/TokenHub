@@ -345,6 +345,89 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	return result, nil
 }
 
+func (s *Server) executeProviderResourceQuotaResetCreditsAction(ctx context.Context, user AdminUser, resourceID string) (openAIAccountQuotaResetCredits, bool, error) {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return openAIAccountQuotaResetCredits{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return openAIAccountQuotaResetCredits{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityQuota, "quota.reset_credits.read")
+	if !ok {
+		return openAIAccountQuotaResetCredits{}, false, nil
+	}
+	payload, err := json.Marshal(map[string]any{
+		"resource_id": resourceID,
+	})
+	if err != nil {
+		return openAIAccountQuotaResetCredits{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
+		PluginID: pluginID,
+		ActionID: actionID,
+		Actor: pluginmeta.ActionActor{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return openAIAccountQuotaResetCredits{}, true, pluginActionHTTPError(err)
+	}
+	credits, ok := openAIAccountQuotaResetCreditsFromActionData(result.Data)
+	if !ok {
+		return openAIAccountQuotaResetCredits{}, true, NewHTTPError(http.StatusInternalServerError, "provider_quota_reset_credits_invalid_result", "Provider quota reset credits returned an invalid result")
+	}
+	return credits, true, nil
+}
+
+func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, user AdminUser, resourceID string, req openAIAccountQuotaResetRequest) (openAIAccountQuotaResetResult, bool, error) {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return openAIAccountQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return openAIAccountQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityQuota, "quota.reset")
+	if !ok {
+		return openAIAccountQuotaResetResult{}, false, nil
+	}
+	payload, err := json.Marshal(map[string]any{
+		"resource_id":              resourceID,
+		"confirm":                  req.Confirm,
+		"idempotency_key":          req.IdempotencyKey,
+		"expected_available_count": req.ExpectedAvailableCount,
+		"credit_id":                req.CreditID,
+		"danger_confirmation":      openAIAccountQuotaResetDangerValue,
+	})
+	if err != nil {
+		return openAIAccountQuotaResetResult{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
+		PluginID: pluginID,
+		ActionID: actionID,
+		Actor: pluginmeta.ActionActor{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		},
+		Payload: payload,
+	})
+	if err != nil {
+		return openAIAccountQuotaResetResult{}, true, pluginActionHTTPError(err)
+	}
+	reset, ok := openAIAccountQuotaResetResultFromActionData(result.Data)
+	if !ok {
+		return openAIAccountQuotaResetResult{}, true, NewHTTPError(http.StatusInternalServerError, "provider_quota_reset_invalid_result", "Provider quota reset returned an invalid result")
+	}
+	return reset, true, nil
+}
+
 func (s *Server) executeProviderResourceProbeAction(ctx context.Context, user AdminUser, resourceID string, req ProviderProbeRequest) (any, bool, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
@@ -386,6 +469,36 @@ func (s *Server) executeProviderResourceProbeAction(ctx context.Context, user Ad
 		return nil, true, NewHTTPError(http.StatusInternalServerError, "provider_probe_invalid_result", "Provider probe returned an invalid result")
 	}
 	return probe, true, nil
+}
+
+func openAIAccountQuotaResetCreditsFromActionData(data any) (openAIAccountQuotaResetCredits, bool) {
+	if result, ok := data.(openAIAccountQuotaResetCredits); ok {
+		return result, true
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return openAIAccountQuotaResetCredits{}, false
+	}
+	var result openAIAccountQuotaResetCredits
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return openAIAccountQuotaResetCredits{}, false
+	}
+	return result, result.FetchedAt > 0
+}
+
+func openAIAccountQuotaResetResultFromActionData(data any) (openAIAccountQuotaResetResult, bool) {
+	if result, ok := data.(openAIAccountQuotaResetResult); ok {
+		return result, true
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return openAIAccountQuotaResetResult{}, false
+	}
+	var result openAIAccountQuotaResetResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return openAIAccountQuotaResetResult{}, false
+	}
+	return result, strings.TrimSpace(result.Code) != ""
 }
 
 func (s *Server) executeProviderResourceCredentialRefreshAction(ctx context.Context, user AdminUser, resourceID string, force bool) (pluginmeta.ActionResult, error) {
