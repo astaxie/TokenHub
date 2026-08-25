@@ -44,8 +44,79 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
+	result = sanitizePluginActionResult(result)
 	s.recordPluginActionAudit(r, user, pluginID, actionID, "success", "")
 	writeJSON(w, http.StatusOK, result)
+}
+
+func sanitizePluginActionResult(result pluginmeta.ActionResult) pluginmeta.ActionResult {
+	result.Data = sanitizePluginActionValue(result.Data)
+	if len(result.Metadata) > 0 {
+		metadata := map[string]string{}
+		for key, value := range result.Metadata {
+			if sensitivePluginActionResultKey(key) {
+				metadata[key] = "[redacted]"
+				continue
+			}
+			metadata[key] = value
+		}
+		result.Metadata = metadata
+	}
+	return result
+}
+
+func sanitizePluginActionValue(value any) any {
+	if value == nil {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	var decoded any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return value
+	}
+	return redactPluginActionValue(decoded)
+}
+
+func redactPluginActionValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		result := map[string]any{}
+		for key, child := range typed {
+			if sensitivePluginActionResultKey(key) {
+				result[key] = "[redacted]"
+				continue
+			}
+			result[key] = redactPluginActionValue(child)
+		}
+		return result
+	case []any:
+		for index := range typed {
+			typed[index] = redactPluginActionValue(typed[index])
+		}
+		return typed
+	default:
+		return value
+	}
+}
+
+func sensitivePluginActionResultKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	return normalized == "access_token" ||
+		normalized == "refresh_token" ||
+		normalized == "id_token" ||
+		strings.Contains(normalized, "secret") ||
+		normalized == "api_key" ||
+		strings.HasSuffix(normalized, "_api_key") ||
+		strings.Contains(normalized, "password") ||
+		strings.Contains(normalized, "authorization") ||
+		strings.Contains(normalized, "cookie") ||
+		normalized == "credential" ||
+		normalized == "credentials" ||
+		normalized == "credential_blob" ||
+		strings.Contains(normalized, "private_key")
 }
 
 func (s *Server) recordPluginActionAudit(r *http.Request, user AdminUser, pluginID string, actionID string, status string, message string) {

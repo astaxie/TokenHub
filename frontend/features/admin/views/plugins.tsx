@@ -439,7 +439,7 @@ function redactPluginActionResult(value: unknown): unknown {
 
 function sensitivePluginResultKey(key: string) {
   const normalized = key.toLowerCase();
-  return normalized.includes("token") || normalized.includes("secret") || normalized === "credentials" || normalized === "credential" || normalized === "credential_blob" || normalized.includes("api_key");
+  return normalized === "access_token" || normalized === "refresh_token" || normalized === "id_token" || normalized.includes("secret") || normalized === "credentials" || normalized === "credential" || normalized === "credential_blob" || normalized === "api_key" || normalized.endsWith("_api_key");
 }
 
 function pluginSourceLabel(source: string) {

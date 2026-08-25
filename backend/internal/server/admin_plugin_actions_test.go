@@ -51,6 +51,41 @@ func TestAdminPluginActionExecutesThroughBroker(t *testing.T) {
 	}
 }
 
+func TestAdminPluginActionSanitizesResultSecrets(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID: "tokenhub.provider.openai-codex",
+		ActionID: "test.secrets",
+		Kind:     pluginmeta.ActionKindRead,
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{
+			Data: map[string]any{
+				"access_token":       "access-secret",
+				"credential_summary": map[string]string{"has_refresh_token": "true"},
+				"nested":             map[string]any{"api_key": "key-secret", "status": "ok"},
+			},
+			Metadata: map[string]string{"refresh_token": "refresh-secret", "status": "ok"},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register plugin action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/test.secrets", map[string]any{}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST secret action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	for _, secret := range []string{"access-secret", "key-secret", "refresh-secret"} {
+		if strings.Contains(response.Body, secret) {
+			t.Fatalf("plugin action response leaked %q: %s", secret, response.Body)
+		}
+	}
+	for _, expected := range []string{`"access_token":"[redacted]"`, `"api_key":"[redacted]"`, `"refresh_token":"[redacted]"`, `"has_refresh_token":"true"`} {
+		if !strings.Contains(response.Body, expected) {
+			t.Fatalf("plugin action response missing %s: %s", expected, response.Body)
+		}
+	}
+}
+
 func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
 
