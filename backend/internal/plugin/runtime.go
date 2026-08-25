@@ -57,7 +57,7 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 			return nil, fmt.Errorf("duplicate plugin id %s in %s and %s", pkg.Manifest.ID, previousDir, pkg.Dir)
 		}
 		packageDirsByID[pkg.Manifest.ID] = pkg.Dir
-		if err := plugins.Register(pkg.Manifest.Descriptor()); err != nil {
+		if err := plugins.Register(descriptorWithAdminUIContributions(pkg.Manifest.Descriptor(), pkg.AdminUI)); err != nil {
 			return nil, fmt.Errorf("register plugin %s: %w", pkg.Manifest.ID, err)
 		}
 		hookHandler := gatewayHookHandlerForPackage(pkg)
@@ -106,6 +106,21 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 		}
 	}
 	return packages, nil
+}
+
+func descriptorWithAdminUIContributions(descriptor Descriptor, adminUI AdminUIManifest) Descriptor {
+	for _, contribution := range adminUI.Contributions {
+		if strings.TrimSpace(string(contribution.Slot)) == "" || strings.TrimSpace(contribution.ID) == "" {
+			continue
+		}
+		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+			Kind:    "admin_ui",
+			Name:    string(contribution.Slot),
+			Subject: contribution.ID,
+			Value:   contribution.Action,
+		})
+	}
+	return NormalizeDescriptor(descriptor)
 }
 
 func actionHandlerForPackage(pkg Package) ActionHandler {

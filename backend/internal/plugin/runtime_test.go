@@ -173,6 +173,58 @@ capabilities:
 	}
 }
 
+func TestRuntimeLoadIntoReflectsAdminUIContributionsInDescriptor(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "sim")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.sim.enterprise
+name: Enterprise SIM
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - sim
+placement:
+  - presentation
+entry:
+  frontend:
+    schema: admin-ui.schema.json
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "admin-ui.schema.json"), []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "enterprise-theme",
+				"slot": "theme.tokens",
+				"schema": {"tokens": {"accent": "#2563eb"}}
+			},
+			{
+				"id": "ops-layout",
+				"slot": "layout.preset",
+				"schema": {"preset": {"density": "compact"}}
+			}
+		]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+
+	if _, err := NewRuntime(root).LoadInto(registry, NewGatewayChainRegistry(), NewAdminUIRegistry()); err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	descriptor, ok := registry.Describe("tokenhub.sim.enterprise")
+	if !ok {
+		t.Fatal("plugin descriptor was not registered")
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "admin_ui", Name: "theme.tokens", Subject: "enterprise-theme"}) {
+		t.Fatalf("descriptor does not include theme contribution: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "admin_ui", Name: "layout.preset", Subject: "ops-layout"}) {
+		t.Fatalf("descriptor does not include layout contribution: %+v", descriptor.Capabilities)
+	}
+}
+
 func TestRuntimeLoadIntoWithActionsRegistersActionDescriptors(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, filepath.Join(root, "action"), `
