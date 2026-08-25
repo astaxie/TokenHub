@@ -26,6 +26,7 @@ type Server struct {
 	gatewayChain            *pluginmeta.GatewayChainRegistry
 	gatewayHooks            *pluginmeta.GatewayHookRunner
 	adminUI                 *pluginmeta.AdminUIRegistry
+	pluginActions           *pluginmeta.ActionBroker
 	adapterRegistry         *AdapterRegistry
 	integrations            *IntegrationService
 	codexSubscription       *CodexSubscriptionAdapter
@@ -181,6 +182,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	gatewayChain := pluginmeta.NewGatewayChainRegistry()
 	gatewayHooks := pluginmeta.NewGatewayHookRunner(gatewayChain)
 	adminUI := pluginmeta.NewAdminUIRegistry()
+	pluginActions := pluginmeta.NewActionBroker()
 	registry := NewAdapterRegistryWithPlugins(pluginRegistry)
 	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
 	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
@@ -194,6 +196,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		gatewayChain:            gatewayChain,
 		gatewayHooks:            gatewayHooks,
 		adminUI:                 adminUI,
+		pluginActions:           pluginActions,
 		adapterRegistry:         registry,
 		integrations:            NewIntegrationService(store, registry, client),
 		codexSubscription:       codexSubscription,
@@ -225,6 +228,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
 	}
+	registerBuiltinPluginActions(s)
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,
 		DecodeJSONOptional: s.decodeJSONOptional,
@@ -299,6 +303,13 @@ func (s *Server) handleAdminPluginUIManifest(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.adminUI.List()})
+}
+
+func (s *Server) handleAdminPluginActions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.pluginActions.List()})
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {

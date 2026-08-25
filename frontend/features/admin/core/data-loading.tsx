@@ -23,6 +23,7 @@ export type LoadPlan = {
   plugins: boolean;
   pluginChain: boolean;
   pluginUI: boolean;
+  pluginActions: boolean;
 	billingConnectors: boolean;
 	billingRecords: boolean;
 	billingSyncRuns: boolean;
@@ -58,6 +59,7 @@ export function emptyLoadPlan(): LoadPlan {
     plugins: false,
     pluginChain: false,
     pluginUI: false,
+    pluginActions: false,
 		billingConnectors: false,
 		billingRecords: false,
 		billingSyncRuns: false,
@@ -147,6 +149,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.plugins = true;
       plan.pluginChain = true;
       plan.pluginUI = true;
+      plan.pluginActions = true;
       break;
     case "models":
       plan.overview = true;
@@ -271,6 +274,7 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     plugins: loaded.plugins ?? current.plugins,
     pluginChain: loaded.pluginChain ?? current.pluginChain,
     pluginUI: loaded.pluginUI ?? current.pluginUI,
+    pluginActions: loaded.pluginActions ?? current.pluginActions,
 		billingConnectors: loaded.billingConnectors ?? current.billingConnectors,
 		billingRecords: loaded.billingRecords ?? current.billingRecords,
 		billingSyncRuns: loaded.billingSyncRuns ?? current.billingSyncRuns,

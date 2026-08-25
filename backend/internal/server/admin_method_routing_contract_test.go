@@ -74,6 +74,7 @@ func TestAdminGETMethodRoutesRejectHEADAfterAuthorization(t *testing.T) {
 		"/api/admin/plugins",
 		"/api/admin/plugin-chain",
 		"/api/admin/plugin-ui-manifest",
+		"/api/admin/plugin-actions",
 		"/api/admin/providers/monitoring",
 		"/api/admin/provider-models",
 	}
@@ -259,6 +260,8 @@ func adminMethodRouteContracts() []adminMethodRouteContract {
 		{name: "plugins", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugins", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "plugin_chain", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugin-chain", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "plugin_ui_manifest", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugin-ui-manifest", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_actions", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugin-actions", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_action", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.quota.read", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "openai_oauth_generate", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/provider-account-oauth/openai/generate-auth-url", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "openai_oauth_exchange", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/provider-account-oauth/openai/exchange-code", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "provider_monitoring", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/providers/monitoring", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},

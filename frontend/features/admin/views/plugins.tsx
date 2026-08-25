@@ -1,4 +1,4 @@
-import { Boxes, Layers3, PlugZap, ShieldCheck } from "lucide-react";
+import { Boxes, Layers3, MousePointerClick, PlugZap, ShieldCheck } from "lucide-react";
 import { type ReactNode } from "react";
 import { type AppData, type PluginDescriptor } from "../core/types";
 import { tx } from "../i18n/runtime";
@@ -13,6 +13,7 @@ export function PluginsView({ data }: { data: AppData }) {
   const gatewayPlugins = plugins.filter((plugin) => plugin.placements.includes("gateway_chain")).length;
   const uiPlugins = plugins.filter((plugin) => plugin.placements.includes("presentation") || plugin.kinds.includes("admin_ui") || plugin.kinds.includes("sim")).length;
   const uiContributions = data.pluginUI;
+  const pluginActions = data.pluginActions;
 
   return (
     <div className="plugins-view">
@@ -21,6 +22,7 @@ export function PluginsView({ data }: { data: AppData }) {
         <PluginMetric icon={<Boxes size={18} />} label={tx("Provider 能力")} value={providerCapabilities} />
         <PluginMetric icon={<Layers3 size={18} />} label={tx("链路插件")} value={gatewayPlugins} />
         <PluginMetric icon={<ShieldCheck size={18} />} label={tx("界面插件")} value={uiPlugins} />
+        <PluginMetric icon={<MousePointerClick size={18} />} label={tx("插件动作")} value={pluginActions.length} />
       </div>
 
       <section className="section">
@@ -148,6 +150,42 @@ export function PluginsView({ data }: { data: AppData }) {
           )}
         </div>
       </section>
+
+      <section className="section">
+        <div className="section-header">
+          <h2>{tx("动作清单")}</h2>
+        </div>
+        <div className="section-body">
+          {pluginActions.length === 0 ? (
+            <p className="empty-state">{tx("暂无插件动作")}</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{tx("插件")}</th>
+                    <th>{tx("动作 ID")}</th>
+                    <th>{tx("动作类型")}</th>
+                    <th>{tx("标题")}</th>
+                    <th>{tx("输入")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pluginActions.map((action) => (
+                    <tr key={`${action.plugin_id}:${action.action_id}`}>
+                      <td>{action.plugin_id}</td>
+                      <td>{action.action_id}</td>
+                      <td>{pluginActionKindLabel(action.kind)}</td>
+                      <td>{action.title || "-"}</td>
+                      <td>{action.input_schema ? tx("已定义") : tx("未定义")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -200,6 +238,15 @@ function pluginPlacementLabel(placement: string) {
   if (placement === "background") return tx("Background");
   if (placement === "management_action") return tx("Management Action");
   return placement;
+}
+
+function pluginActionKindLabel(kind: string) {
+  if (kind === "read") return tx("读取");
+  if (kind === "test") return tx("测试");
+  if (kind === "mutate") return tx("变更");
+  if (kind === "external_redirect") return tx("外部跳转");
+  if (kind === "import_export") return tx("导入导出");
+  return kind;
 }
 
 function pluginSourceLabel(source: string) {

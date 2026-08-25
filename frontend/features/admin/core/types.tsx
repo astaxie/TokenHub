@@ -312,6 +312,15 @@ export type AdminUIContribution = {
   schema?: Record<string, unknown>;
 };
 
+export type PluginActionDescriptor = {
+  plugin_id: string;
+  action_id: string;
+  kind: "read" | "test" | "mutate" | "external_redirect" | "import_export" | string;
+  title?: string;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+};
+
 export type ProviderMonitoringSignal = {
   state: "healthy" | "degraded" | "down" | "unknown";
   source: "configuration" | "active_probe" | "gateway_request" | string;
@@ -1198,6 +1207,7 @@ export type AppData = {
   plugins: PluginDescriptor[];
   pluginChain: GatewayChainPlan;
   pluginUI: AdminUIContribution[];
+  pluginActions: PluginActionDescriptor[];
 	billingConnectors: BillingConnector[];
 	billingRecords: BillingRecord[];
 	billingSyncRuns: BillingSyncRun[];
