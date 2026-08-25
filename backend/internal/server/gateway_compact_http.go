@@ -99,6 +99,17 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	routed.Routes = s.routesWithAdapterCapability(routed.Routes, AdapterCapabilityCompact)
+	if len(routed.Routes) == 0 {
+		err := NewHTTPError(
+			http.StatusNotImplemented,
+			"provider_capability_not_supported",
+			"Responses compact is not supported",
+		)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 	affinityRequest := ResponsesRequest{Model: model, raw: request}
 	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, affinityRequest)
 	if err != nil {

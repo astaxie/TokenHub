@@ -24,6 +24,7 @@ type providerPluginAdapter struct {
 	supportsChatStream      bool
 	supportsResponsesStream bool
 	supportsImageGenerate   bool
+	supportsCompact         bool
 }
 
 type providerPluginRequest struct {
@@ -79,6 +80,7 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
 		supportsResponsesStream: providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityResponseStream),
 		supportsImageGenerate:   providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityImageGenerate),
+		supportsCompact:         providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityCompact),
 	}
 }
 
@@ -182,6 +184,23 @@ func (a providerPluginAdapter) OpenResponses(ctx context.Context, provider Provi
 		Header:     header,
 		Body:       io.NopCloser(bytes.NewReader(body.Bytes())),
 	}, nil
+}
+
+func (a providerPluginAdapter) CompactWithHeaders(ctx context.Context, provider Provider, providerModel string, body map[string]json.RawMessage, _ http.Header) (any, Usage, error) {
+	if !a.supportsCompact {
+		return nil, Usage{}, providerPluginCapabilityUnsupported("Responses compact")
+	}
+	var result providerPluginResponse
+	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+		Operation:     "responses_compact",
+		Provider:      provider,
+		ProviderModel: providerModel,
+		Request:       body,
+		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+	}, &result); err != nil {
+		return nil, Usage{}, err
+	}
+	return result.Response, result.Usage, nil
 }
 
 func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -318,7 +337,7 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityImageGenerate:
+		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityImageGenerate, AdapterCapabilityCompact:
 			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}
@@ -339,7 +358,7 @@ func providerPluginDefaultRouteProtocols(capabilities []string) []string {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
 		case AdapterCapabilityChat, AdapterCapabilityChatStream:
 			protocols = append(protocols, "chat/completions")
-		case AdapterCapabilityResponses, AdapterCapabilityResponseStream:
+		case AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityCompact:
 			protocols = append(protocols, "responses")
 		case AdapterCapabilityEmbeddings:
 			protocols = append(protocols, "embeddings")

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -449,6 +450,107 @@ JSON
 	}
 	if !strings.Contains(response.Body, "event: response.output_text.delta") || !strings.Contains(response.Body, "gateway plugin responses stream") || !strings.Contains(response.Body, `"id":"resp_gateway_plugin_stream"`) {
 		t.Fatalf("gateway responses stream did not come from provider plugin: %s", response.Body)
+	}
+}
+
+func TestExternalProviderPluginAdapterExecutesResponsesCompactCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"responses_compact"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"responses_compact"'*'"provider_model":"upstream-compact"'*'"model":"gateway-compact"'*'"api_key":"provider-secret"'*)
+    printf '{"response":{"id":"resp_compact_plugin","status":"completed","output_text":"compacted by plugin"},"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}'
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginmeta.NewRegistry(), pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+	descriptor, ok := registry.Describe("custom_stdio")
+	if !ok || !adapterSupports(descriptor, AdapterCapabilityCompact) {
+		t.Fatalf("adapter descriptor = %+v, want responses_compact", descriptor)
+	}
+	adapter, ok := resolveTypedAdapter[ResponsesCompactAdapter](registry, "custom_stdio")
+	if !ok {
+		t.Fatal("external provider adapter was not a ResponsesCompactAdapter")
+	}
+
+	body := map[string]json.RawMessage{
+		"model": json.RawMessage(`"gateway-compact"`),
+		"input": json.RawMessage(`"hello"`),
+	}
+	response, usage, err := adapter.CompactWithHeaders(context.Background(), Provider{Type: "custom_stdio", APIKey: "provider-secret"}, "upstream-compact", body, nil)
+	if err != nil {
+		t.Fatalf("compact responses through provider plugin: %v", err)
+	}
+	payload := response.(map[string]any)
+	if payload["id"] != "resp_compact_plugin" || usage.TotalTokens != 6 {
+		t.Fatalf("compact response=%+v usage=%+v", response, usage)
+	}
+}
+
+func TestExternalProviderPluginAdapterServesGatewayResponsesCompact(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"responses_compact"})
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"responses_compact"'*'"provider_model":"plugin-upstream-compact"'*'"model":"plugin-compact"'*'"api_key":"provider-secret"'*)
+    printf '{"response":{"id":"resp_gateway_compact_plugin","status":"completed","output_text":"gateway compacted by plugin"},"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}'
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Provider Plugin Compact Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Provider Plugin Compact Key", Allowed: []string{"plugin-compact"}, Status: StatusActive}, "thk_provider_plugin_compact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-compact", Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{ID: "prv_plugin_compact", Name: "Provider Plugin Compact", Type: "custom_stdio", APIKey: "provider-secret", Status: StatusActive, Healthy: true})
+	store.AddRoute(ModelRoute{
+		ModelName:     "plugin-compact",
+		ProviderID:    provider.ID,
+		ProviderModel: "plugin-upstream-compact",
+		Priority:      1,
+		Weight:        100,
+		Status:        StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-admin", PluginDir: root})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses/compact", map[string]any{
+		"model": "plugin-compact",
+		"input": "hello",
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("gateway compact responses through provider plugin: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"resp_gateway_compact_plugin"`) || !strings.Contains(response.Body, "gateway compacted by plugin") {
+		t.Fatalf("gateway compact response did not come from provider plugin: %s", response.Body)
 	}
 }
 
