@@ -70,6 +70,9 @@ func pluginActionHTTPError(err error) error {
 	if errors.Is(err, pluginmeta.ErrPluginActionUnavailable) {
 		return NewHTTPError(http.StatusNotImplemented, "plugin_action_unavailable", "Plugin action handler is unavailable")
 	}
+	if errors.Is(err, pluginmeta.ErrPluginActionInvalidPayload) {
+		return NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", err.Error())
+	}
 	httpErr := AsHTTPError(err)
 	if httpErr.Code != "internal_error" {
 		return httpErr

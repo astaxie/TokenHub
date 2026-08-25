@@ -123,6 +123,61 @@ func TestActionBrokerBindsHandlerAfterDescriptor(t *testing.T) {
 	}
 }
 
+func TestActionBrokerValidatesInputSchemaBeforeHandler(t *testing.T) {
+	broker := NewActionBroker()
+	calls := 0
+	descriptor := ActionDescriptor{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+		Kind:     ActionKindRead,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+				"refresh":     map[string]any{"type": "boolean"},
+			},
+		},
+	}
+	if err := broker.Register(descriptor, ActionHandlerFunc(func(context.Context, ActionInvocation) (ActionResult, error) {
+		calls++
+		return ActionResult{Data: "ok"}, nil
+	})); err != nil {
+		t.Fatalf("register action: %v", err)
+	}
+
+	for _, payload := range []json.RawMessage{
+		json.RawMessage(`{}`),
+		json.RawMessage(`{"resource_id":7}`),
+		json.RawMessage(`{"resource_id":"res_1","refresh":"yes"}`),
+		json.RawMessage(`not-json`),
+	} {
+		_, err := broker.Execute(context.Background(), ActionInvocation{
+			PluginID: "tokenhub.test",
+			ActionID: "quota.read",
+			Payload:  payload,
+		})
+		if !errors.Is(err, ErrPluginActionInvalidPayload) {
+			t.Fatalf("payload %s error = %v, want ErrPluginActionInvalidPayload", payload, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("handler was called %d times for invalid payloads", calls)
+	}
+
+	result, err := broker.Execute(context.Background(), ActionInvocation{
+		PluginID: "tokenhub.test",
+		ActionID: "quota.read",
+		Payload:  json.RawMessage(`{"resource_id":"res_1","refresh":true}`),
+	})
+	if err != nil {
+		t.Fatalf("execute valid action: %v", err)
+	}
+	if result.Data != "ok" || calls != 1 {
+		t.Fatalf("valid action result=%+v calls=%d, want ok and one call", result, calls)
+	}
+}
+
 func TestActionBrokerRejectsInvalidDescriptor(t *testing.T) {
 	err := NewActionBroker().Register(ActionDescriptor{
 		PluginID: "tokenhub.test",

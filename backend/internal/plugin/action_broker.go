@@ -1,17 +1,20 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 )
 
 var (
-	ErrPluginActionNotFound    = errors.New("plugin action is not registered")
-	ErrPluginActionUnavailable = errors.New("plugin action handler is unavailable")
+	ErrPluginActionNotFound       = errors.New("plugin action is not registered")
+	ErrPluginActionUnavailable    = errors.New("plugin action handler is unavailable")
+	ErrPluginActionInvalidPayload = errors.New("plugin action payload is invalid")
 )
 
 type ActionKind string
@@ -126,6 +129,9 @@ func (b *ActionBroker) Execute(ctx context.Context, invocation ActionInvocation)
 	if !ok {
 		return ActionResult{}, ErrPluginActionNotFound
 	}
+	if err := validateActionInvocationPayload(entry.descriptor.InputSchema, invocation.Payload); err != nil {
+		return ActionResult{}, err
+	}
 	return entry.handler.ExecutePluginAction(ctx, invocation)
 }
 
@@ -180,4 +186,117 @@ func pluginActionKey(pluginID string, actionID string) string {
 func isUnavailableActionHandler(handler ActionHandler) bool {
 	_, ok := handler.(unavailableActionHandler)
 	return ok
+}
+
+func validateActionInvocationPayload(schema map[string]any, payload json.RawMessage) error {
+	if len(schema) == 0 {
+		return nil
+	}
+	var value any
+	if len(bytes.TrimSpace(payload)) == 0 {
+		value = map[string]any{}
+	} else if err := json.Unmarshal(payload, &value); err != nil {
+		return fmt.Errorf("%w: JSON could not be decoded", ErrPluginActionInvalidPayload)
+	}
+	if err := validateActionSchemaValue("$", value, schema); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateActionSchemaValue(path string, value any, schema map[string]any) error {
+	schemaType := schemaString(schema["type"])
+	if schemaType != "" && !actionSchemaTypeMatches(value, schemaType) {
+		return fmt.Errorf("%w: %s must be %s", ErrPluginActionInvalidPayload, path, schemaType)
+	}
+	if schemaType != "" && schemaType != "object" {
+		return nil
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		if schemaType == "object" {
+			return fmt.Errorf("%w: %s must be object", ErrPluginActionInvalidPayload, path)
+		}
+		return nil
+	}
+	for _, field := range schemaStringList(schema["required"]) {
+		if _, ok := object[field]; !ok {
+			return fmt.Errorf("%w: %s.%s is required", ErrPluginActionInvalidPayload, path, field)
+		}
+	}
+	for name, childSchema := range schemaObjectProperties(schema["properties"]) {
+		child, ok := object[name]
+		if !ok {
+			continue
+		}
+		if err := validateActionSchemaValue(path+"."+name, child, childSchema); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func actionSchemaTypeMatches(value any, schemaType string) bool {
+	switch schemaType {
+	case "string":
+		_, ok := value.(string)
+		return ok
+	case "boolean":
+		_, ok := value.(bool)
+		return ok
+	case "number":
+		_, ok := value.(float64)
+		return ok
+	case "integer":
+		number, ok := value.(float64)
+		return ok && math.Trunc(number) == number
+	case "object":
+		_, ok := value.(map[string]any)
+		return ok
+	case "array":
+		_, ok := value.([]any)
+		return ok
+	default:
+		return true
+	}
+}
+
+func schemaString(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
+}
+
+func schemaStringList(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return normalizeStrings(typed)
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text := schemaString(item); text != "" {
+				result = append(result, text)
+			}
+		}
+		return normalizeStrings(result)
+	default:
+		return nil
+	}
+}
+
+func schemaObjectProperties(value any) map[string]map[string]any {
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := map[string]map[string]any{}
+	for name, child := range raw {
+		childSchema, ok := child.(map[string]any)
+		if !ok {
+			continue
+		}
+		if field := strings.TrimSpace(name); field != "" {
+			result[field] = childSchema
+		}
+	}
+	return result
 }
