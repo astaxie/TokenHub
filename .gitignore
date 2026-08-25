@@ -38,6 +38,7 @@ data/*
 !data/model-catalog.yaml
 !data/provider-catalog.json
 backend/data/
+backend/internal/server/data/
 
 # Environment
 .env
