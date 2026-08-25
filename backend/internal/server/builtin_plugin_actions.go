@@ -14,8 +14,53 @@ func registerBuiltinPluginActions(server *Server) {
 		ActionID: "openai_codex.oauth.start",
 		Kind:     pluginmeta.ActionKindExternalRedirect,
 		Title:    "Start OpenAI Codex account OAuth",
-	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
-		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotImplemented, "plugin_action_not_implemented", "Plugin action is not implemented yet")
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"redirect_uri": map[string]any{"type": "string"},
+				"return_url":   map[string]any{"type": "string"},
+			},
+		},
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload providerAccountOAuthGenerateRequest
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		response, err := server.generateOpenAIAccountOAuth(payload, nil)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: response, RedirectURL: response.AuthURL}, nil
+	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID: "tokenhub.provider.openai-codex",
+		ActionID: "openai_codex.oauth.exchange",
+		Kind:     pluginmeta.ActionKindMutate,
+		Title:    "Exchange OpenAI Codex account OAuth code",
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"session_id", "state", "code"},
+			"properties": map[string]any{
+				"session_id":   map[string]any{"type": "string"},
+				"state":        map[string]any{"type": "string"},
+				"code":         map[string]any{"type": "string"},
+				"redirect_uri": map[string]any{"type": "string"},
+			},
+		},
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload providerAccountOAuthExchangeRequest
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		info, err := server.exchangeOpenAIAccountOAuth(ctx, payload)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: info}, nil
 	}))
 	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
 		PluginID: "tokenhub.provider.openai-codex",

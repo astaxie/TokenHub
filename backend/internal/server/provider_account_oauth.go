@@ -196,29 +196,35 @@ func (s *Server) handleAdminOpenAIAccountOAuthGenerateAuthURL(w http.ResponseWri
 		writeError(w, r, err)
 		return
 	}
+	response, err := s.generateOpenAIAccountOAuth(req, r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	s.recordAdminAudit(r, user, "generate_oauth_url", "provider_account", "openai", "", map[string]any{"redirect_uri": response.RedirectURI})
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) generateOpenAIAccountOAuth(req providerAccountOAuthGenerateRequest, r *http.Request) (providerAccountOAuthGenerateResponse, error) {
 	redirectURI := strings.TrimSpace(req.RedirectURI)
 	if redirectURI == "" {
 		redirectURI = openAIAccountOAuthRedirectURI
 	}
 	if err := validateAbsoluteHTTPURL(redirectURI, "invalid_redirect_uri", "OAuth callback URL must be an absolute http or https URL"); err != nil {
-		writeError(w, r, err)
-		return
+		return providerAccountOAuthGenerateResponse{}, err
 	}
 	returnURL := s.safeOAuthReturnURL(req.ReturnURL, r)
 	state, err := randomHex(32)
 	if err != nil {
-		writeError(w, r, err)
-		return
+		return providerAccountOAuthGenerateResponse{}, err
 	}
 	codeVerifier, err := openAICodeVerifier()
 	if err != nil {
-		writeError(w, r, err)
-		return
+		return providerAccountOAuthGenerateResponse{}, err
 	}
 	sessionID, err := randomHex(16)
 	if err != nil {
-		writeError(w, r, err)
-		return
+		return providerAccountOAuthGenerateResponse{}, err
 	}
 	expiresAt := time.Now().UTC().Add(openAIAccountOAuthSessionTTL)
 	session := providerAccountOAuthSession{
@@ -231,22 +237,19 @@ func (s *Server) handleAdminOpenAIAccountOAuthGenerateAuthURL(w http.ResponseWri
 		CreatedAt:    time.Now().UTC(),
 	}
 	if err := s.store.SaveProviderAccountOAuthSession(session); err != nil {
-		writeError(w, r, err)
-		return
+		return providerAccountOAuthGenerateResponse{}, err
 	}
 	authURL, err := buildOpenAIAccountOAuthAuthorizeURL(state, openAICodeChallenge(codeVerifier), redirectURI)
 	if err != nil {
-		writeError(w, r, err)
-		return
+		return providerAccountOAuthGenerateResponse{}, err
 	}
-	s.recordAdminAudit(r, user, "generate_oauth_url", "provider_account", "openai", "", map[string]any{"redirect_uri": redirectURI})
-	writeJSON(w, http.StatusOK, providerAccountOAuthGenerateResponse{
+	return providerAccountOAuthGenerateResponse{
 		AuthURL:     authURL,
 		SessionID:   sessionID,
 		State:       state,
 		RedirectURI: redirectURI,
 		ExpiresAt:   expiresAt.Format(time.RFC3339),
-	})
+	}, nil
 }
 
 func (s *Server) handleOpenAIAccountOAuthCallbackGet(w http.ResponseWriter, r *http.Request) {
@@ -293,43 +296,46 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 		writeError(w, r, err)
 		return
 	}
-	if strings.TrimSpace(req.State) == "" {
-		writeError(w, r, NewHTTPError(400, "invalid_oauth_state", "OAuth state is invalid or expired"))
-		return
-	}
-	code := strings.TrimSpace(req.Code)
-	if code == "" {
-		writeError(w, r, NewHTTPError(400, "missing_oauth_code", "OAuth authorization code is required"))
-		return
-	}
-	session, ok, err := s.store.ConsumeProviderAccountOAuthSession(req.SessionID, req.State)
+	info, err := s.exchangeOpenAIAccountOAuth(r.Context(), req)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
+	s.recordAdminAudit(r, user, "exchange_oauth_code", "provider_account", "openai", "", providerAccountCredentialSummary(info.ToCredentials()))
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) exchangeOpenAIAccountOAuth(ctx context.Context, req providerAccountOAuthExchangeRequest) (providerAccountOAuthTokenInfo, error) {
+	if strings.TrimSpace(req.State) == "" {
+		return providerAccountOAuthTokenInfo{}, NewHTTPError(400, "invalid_oauth_state", "OAuth state is invalid or expired")
+	}
+	code := strings.TrimSpace(req.Code)
+	if code == "" {
+		return providerAccountOAuthTokenInfo{}, NewHTTPError(400, "missing_oauth_code", "OAuth authorization code is required")
+	}
+	session, ok, err := s.store.ConsumeProviderAccountOAuthSession(req.SessionID, req.State)
+	if err != nil {
+		return providerAccountOAuthTokenInfo{}, err
+	}
 	if !ok {
-		writeError(w, r, NewHTTPError(400, "oauth_session_not_found", "OAuth session was not found or has expired"))
-		return
+		return providerAccountOAuthTokenInfo{}, NewHTTPError(400, "oauth_session_not_found", "OAuth session was not found or has expired")
 	}
 	redirectURI := session.RedirectURI
 	if strings.TrimSpace(req.RedirectURI) != "" {
 		redirectURI = strings.TrimSpace(req.RedirectURI)
 	}
-	token, err := exchangeOpenAIAccountOAuthCode(r.Context(), code, session.CodeVerifier, redirectURI, session.ClientID, s.upstreamClient)
+	token, err := exchangeOpenAIAccountOAuthCode(ctx, code, session.CodeVerifier, redirectURI, session.ClientID, s.upstreamClient)
 	if err != nil {
 		// Preserve retryability when the token endpoint fails before consuming
 		// the authorization code. Concurrent exchanges are still serialized by
 		// the atomic session consume operation.
 		if restoreErr := s.store.SaveProviderAccountOAuthSession(session); restoreErr != nil {
-			writeError(w, r, fmt.Errorf("restore OAuth session after token exchange failure: %w", restoreErr))
-			return
+			return providerAccountOAuthTokenInfo{}, fmt.Errorf("restore OAuth session after token exchange failure: %w", restoreErr)
 		}
-		writeError(w, r, err)
-		return
+		return providerAccountOAuthTokenInfo{}, err
 	}
 	info := openAIAccountOAuthTokenInfoFromResponse(token, session.ClientID, ProviderResourceCredentials{})
-	s.recordAdminAudit(r, user, "exchange_oauth_code", "provider_account", "openai", "", providerAccountCredentialSummary(info.ToCredentials()))
-	writeJSON(w, http.StatusOK, info)
+	return info, nil
 }
 
 func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelection) (RouteSelection, error) {

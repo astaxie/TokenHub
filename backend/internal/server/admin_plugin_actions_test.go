@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,8 +57,45 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 		t.Fatalf("GET plugin actions: expected 200, got %d: %s", response.Code, response.Body)
 	}
 	body := response.Body
-	if !strings.Contains(body, `"action_id":"openai_codex.quota.read"`) || !strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) {
+	if !strings.Contains(body, `"action_id":"openai_codex.quota.read"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.oauth.start"`) ||
+		!strings.Contains(body, `"action_id":"openai_codex.oauth.exchange"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
+	}
+}
+
+func TestAdminPluginActionStartsOpenAICodexOAuth(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{
+		AdminToken:         "plugin-action-admin",
+		CORSAllowedOrigins: []string{"http://localhost:3001"},
+	})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.oauth.start", map[string]any{
+		"return_url": "http://localhost:3001/providers",
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST OAuth action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var result struct {
+		Data        providerAccountOAuthGenerateResponse `json:"data"`
+		RedirectURL string                               `json:"redirect_url"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Data.AuthURL == "" || result.RedirectURL != result.Data.AuthURL || result.Data.SessionID == "" || result.Data.State == "" {
+		t.Fatalf("unexpected OAuth action result: %+v", result)
+	}
+	authURL, err := url.Parse(result.Data.AuthURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authURL.Query().Get("client_id") != openAIAccountOAuthClientID || authURL.Query().Get("state") != result.Data.State {
+		t.Fatalf("unexpected OAuth action auth URL: %s", result.Data.AuthURL)
+	}
+	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.openai_codex.oauth.start" {
+		t.Fatalf("plugin action audit events = %+v", events)
 	}
 }
 
