@@ -35,13 +35,17 @@ describe("providerTypeOptionsFromData", () => {
       healthy: true,
     }];
 
-    const options = providerTypeOptionsFromData(data, { type: "draft_subscription" }).map((option) => option.value);
+    const options = providerTypeOptionsFromData(data, { type: "draft_subscription" });
+    const values = options.map((option) => option.value);
 
-    expect(options.slice(0, 3)).toEqual(["mock", "openai", "openai_codex"]);
-    expect(options).toContain("kimi_subscription");
-    expect(options).toContain("glm_subscription");
-    expect(options).toContain("existing_subscription");
-    expect(options).toContain("draft_subscription");
+    expect(values.slice(0, 3)).toEqual(["mock", "openai", "openai_codex"]);
+    expect(values).toContain("kimi_subscription");
+    expect(values).toContain("glm_subscription");
+    expect(values).toContain("existing_subscription");
+    expect(values).toContain("draft_subscription");
+    expect(options.find((option) => option.value === "kimi_subscription")?.label).toBe("Kimi Subscription");
+    expect(options.find((option) => option.value === "glm_subscription")?.label).toBe("GLM Subscription");
+    expect(options.find((option) => option.value === "openai")?.label).toBe("OpenAI 官方");
   });
 
   it("carries provider header policy from adapter descriptors", () => {

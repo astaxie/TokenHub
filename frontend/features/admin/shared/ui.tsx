@@ -432,6 +432,7 @@ export type ProviderTypeOption = {
 
 export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">, values?: Record<string, string>) {
   const types = new Set(legacyProviderTypeOptions);
+  const labelByType = new Map<string, string>();
   const policyByType = new Map<string, boolean>();
   const routeProtocolsByType = new Map<string, Set<string>>();
   for (const adapter of data.providerAdapters ?? []) {
@@ -447,6 +448,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
       if (capability.kind === "provider") {
         const providerType = String(capability.subject || capability.name || "").trim();
         if (providerType) types.add(providerType);
+        if (providerType && plugin.name) labelByType.set(providerType, plugin.name);
       }
       if (capability.kind === "provider_policy" && capability.name === "supports_custom_headers") {
         const providerType = String(capability.subject || "").trim();
@@ -463,7 +465,10 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     }
   }
   for (const entry of data.providerCatalog ?? []) {
-    if (entry.type) types.add(entry.type);
+    if (!entry.type) continue;
+    types.add(entry.type);
+    const label = String(entry.display_name || entry.name || entry.type).trim();
+    if (label) labelByType.set(entry.type, label);
   }
   for (const provider of data.providers ?? []) {
     if (provider.type) types.add(provider.type);
@@ -471,10 +476,15 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   if (values?.type) types.add(values.type);
   return [...types].sort(providerTypeSort).map((value) => ({
     value,
-    label: providerTypeLabel(value),
+    label: providerTypeOptionLabel(value, labelByType),
     supportsCustomHeaders: policyByType.get(value) ?? legacyProviderTypeSupportsCustomHeaders(value),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
   }));
+}
+
+function providerTypeOptionLabel(providerType: string, labels: Map<string, string>) {
+  if (legacyProviderTypeOptions.includes(providerType)) return providerTypeLabel(providerType);
+  return labels.get(providerType) ?? providerTypeLabel(providerType);
 }
 
 export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {
