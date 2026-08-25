@@ -718,12 +718,8 @@ func TestGatewayRetriesWithoutRejectedReasoningEffort(t *testing.T) {
 		t.Fatalf("expected audited effort fallback attempts, got %#v", routeAttempts)
 	}
 
-	var bucket ProviderResourceBucket
-	if err := store.db.First(&bucket, "resource_id = ?", resource.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if bucket.Requests != 2 {
-		t.Fatalf("expected both physical requests to count toward RPM, got %d", bucket.Requests)
+	if requests := providerResourceRequestTotal(t, store, resource.ID); requests != 2 {
+		t.Fatalf("expected both physical requests to count toward RPM, got %d", requests)
 	}
 }
 
@@ -1022,12 +1018,8 @@ func TestEffortFallbackTracksResponsesAndStreamingPhysicalAttempts(t *testing.T)
 				t.Fatalf("expected the original concurrency lease to remain held during retry, calls=%d err=%v", probe.calls, probe.probeErr)
 			}
 
-			var bucket ProviderResourceBucket
-			if err := store.db.First(&bucket, "resource_id = ?", resource.ID).Error; err != nil {
-				t.Fatal(err)
-			}
-			if bucket.Requests != 2 {
-				t.Fatalf("expected both physical requests to count toward RPM, got %d", bucket.Requests)
+			if requests := providerResourceRequestTotal(t, store, resource.ID); requests != 2 {
+				t.Fatalf("expected both physical requests to count toward RPM, got %d", requests)
 			}
 			var attempts []RouteAttemptLog
 			if err := store.db.Order("attempt_index asc").Find(&attempts).Error; err != nil {
@@ -1133,12 +1125,8 @@ func TestStreamingEffortFallbackSurfacesPreStreamErrors(t *testing.T) {
 			if upstreamCalls != test.wantUpstreamCall {
 				t.Fatalf("expected %d upstream calls, got %d", test.wantUpstreamCall, upstreamCalls)
 			}
-			var bucket ProviderResourceBucket
-			if err := store.db.First(&bucket, "resource_id = ?", resource.ID).Error; err != nil {
-				t.Fatal(err)
-			}
-			if bucket.Requests != test.wantRequests {
-				t.Fatalf("expected %d counted requests, got %d", test.wantRequests, bucket.Requests)
+			if requests := providerResourceRequestTotal(t, store, resource.ID); requests != test.wantRequests {
+				t.Fatalf("expected %d counted requests, got %d", test.wantRequests, requests)
 			}
 		})
 	}

@@ -423,7 +423,7 @@ export function inferModelCategoryText(value: string) {
   if (normalized.includes("ernie")) return "ernie";
   if (normalized.includes("baichuan")) return "baichuan";
   if (normalized.includes("minimax") || normalized.includes("hailuo")) return "minimax";
-  if (normalized.includes("step-")) return "stepfun";
+  if (normalized.includes("step-") || normalized.includes("stepaudio")) return "stepfun";
   if (normalized.includes("wanx")) return "wanx";
   if (normalized.includes("paddleocr")) return "paddlepaddle";
   if (normalized.includes("phi-")) return "microsoft";
