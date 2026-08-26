@@ -237,6 +237,51 @@ describe("PluginsView", () => {
     expect(screen.getByText("2 / 1000ms")).toBeInTheDocument();
   });
 
+  it("runs plugin background jobs through the admin endpoint", async () => {
+    const data = emptyData();
+    data.pluginBackgroundJobs = [{
+      plugin_id: "tokenhub.jobs",
+      job_id: "quota.refresh",
+      title: "Refresh quota",
+      capability: "quota.refresh",
+      subject: "openai_codex",
+      schedule: "*/10 * * * *",
+      max_concurrency: 1,
+      input_schema: {
+        type: "object",
+        required: ["resource_id"],
+        properties: {
+          resource_id: { type: "string" },
+        },
+      },
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        plugin_id: "tokenhub.jobs",
+        job_id: "quota.refresh",
+        trigger: "manual",
+        status: "succeeded",
+        attempts: 1,
+        started_at: "2026-08-26T10:00:00Z",
+        completed_at: "2026-08-26T10:00:01Z",
+        result: { data: { resource_id: "rsrc_1", access_token: "[redacted]" } },
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.change(screen.getByLabelText(/resource_id/), { target: { value: "rsrc_1" } });
+    fireEvent.click(screen.getByRole("button", { name: "运行任务" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ resource_id: "rsrc_1" });
+    await waitFor(() => expect(screen.getByText(/\"status\": \"succeeded\"/)).toBeInTheDocument());
+    expect(screen.getByText(/\"access_token\": \"\[redacted\]\"/)).toBeInTheDocument();
+  });
+
   it("renders SIM theme and layout contributions", () => {
     const data = emptyData();
     data.pluginUI = [

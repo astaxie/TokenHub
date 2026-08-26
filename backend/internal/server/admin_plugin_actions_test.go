@@ -782,6 +782,113 @@ capabilities:
 	}
 }
 
+func TestAdminPluginBackgroundJobRunExecutesThroughRunner(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginRegistry.Register(pluginmeta.Descriptor{
+		ID:      "tokenhub.jobs",
+		Name:    "Jobs Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindExtension},
+	}); err != nil {
+		t.Fatalf("register plugin descriptor: %v", err)
+	}
+	if err := server.pluginBackgroundJobs.Register(pluginmeta.BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+			},
+		},
+	}, pluginmeta.BackgroundJobHandlerFunc(func(_ context.Context, invocation pluginmeta.BackgroundJobInvocation) (pluginmeta.BackgroundJobResult, error) {
+		var payload map[string]string
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode background payload: %v", err)
+		}
+		return pluginmeta.BackgroundJobResult{Data: map[string]any{
+			"actor_id":     invocation.Actor.ID,
+			"resource_id":  payload["resource_id"],
+			"access_token": "secret-access",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run", map[string]any{
+		"resource_id": "rsrc_1",
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST plugin background job: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	for _, expected := range []string{`"status":"succeeded"`, `"trigger":"manual"`, `"actor_id":"dev_admin"`, `"resource_id":"rsrc_1"`, `"access_token":"[redacted]"`} {
+		if !strings.Contains(response.Body, expected) {
+			t.Fatalf("POST plugin background job response missing %s: %s", expected, response.Body)
+		}
+	}
+	if strings.Contains(response.Body, "secret-access") {
+		t.Fatalf("POST plugin background job response leaked secret: %s", response.Body)
+	}
+	events := store.ListAuditEvents()
+	if len(events) == 0 || events[0].Action != "plugin.background_job.quota.refresh" || events[0].ResourceID != "tokenhub.jobs" {
+		t.Fatalf("plugin background job audit events = %+v", events)
+	}
+
+	list := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-background-jobs", nil, "plugin-action-admin")
+	if strings.Contains(list.Body, "secret-access") || !strings.Contains(list.Body, `"access_token":"[redacted]"`) {
+		t.Fatalf("GET plugin background jobs did not sanitize last run: %s", list.Body)
+	}
+}
+
+func TestAdminPluginBackgroundJobRunMapsErrors(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginRegistry.Register(pluginmeta.Descriptor{
+		ID:      "tokenhub.jobs",
+		Name:    "Jobs Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindExtension},
+	}); err != nil {
+		t.Fatalf("register plugin descriptor: %v", err)
+	}
+	if err := server.pluginBackgroundJobs.RegisterDescriptor(pluginmeta.BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register background job descriptor: %v", err)
+	}
+
+	missingPlugin := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.missing/background-jobs/quota.refresh/run", map[string]any{}, "plugin-action-admin")
+	assertResponseBodyJSONError(t, missingPlugin, http.StatusNotFound, "plugin_not_found")
+
+	missingJob := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/missing/run", map[string]any{}, "plugin-action-admin")
+	assertResponseBodyJSONError(t, missingJob, http.StatusNotFound, "plugin_background_job_not_found")
+
+	invalidPayload := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run", map[string]any{
+		"resource_id": 7,
+	}, "plugin-action-admin")
+	assertResponseBodyJSONError(t, invalidPayload, http.StatusBadRequest, "invalid_plugin_background_job_payload")
+
+	unavailable := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run", map[string]any{
+		"resource_id": "rsrc_1",
+	}, "plugin-action-admin")
+	assertResponseBodyJSONError(t, unavailable, http.StatusNotImplemented, "plugin_background_job_unavailable")
+}
+
 func TestAdminPluginActionRejectsUnknownPlugin(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
 

@@ -49,6 +49,43 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) handleAdminPluginBackgroundJobRunPost(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAdmin(w, r, "providers", r.Method)
+	if !ok {
+		return
+	}
+	pluginID := strings.TrimSpace(r.PathValue("plugin_id"))
+	jobID := strings.TrimSpace(r.PathValue("job_id"))
+	if pluginID == "" || jobID == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_background_job_not_found", "Plugin background job not found"))
+		return
+	}
+	if _, ok := s.pluginRegistry.Describe(pluginID); !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	var payload json.RawMessage
+	if err := s.decodeJSONOptional(w, r, &payload); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	record, err := s.pluginBackgroundRunner.Run(r.Context(), pluginmeta.BackgroundJobInvocation{
+		PluginID: pluginID,
+		JobID:    jobID,
+		Trigger:  "manual",
+		Actor:    pluginActionActor(user),
+		Payload:  payload,
+	})
+	record = sanitizePluginBackgroundJobRunRecord(record)
+	if err != nil {
+		s.recordPluginBackgroundJobAudit(r, user, pluginID, jobID, "failed", err.Error())
+		writeError(w, r, pluginBackgroundJobHTTPError(err))
+		return
+	}
+	s.recordPluginBackgroundJobAudit(r, user, pluginID, jobID, "success", "")
+	writeJSON(w, http.StatusOK, map[string]any{"data": record})
+}
+
 func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
 	switch strings.TrimSpace(descriptor.Capability) {
 	case "credentials.refresh":
@@ -217,6 +254,68 @@ func sensitivePluginActionResultKey(key string) bool {
 		normalized == "credentials" ||
 		normalized == "credential_blob" ||
 		strings.Contains(normalized, "private_key")
+}
+
+func sanitizePluginBackgroundJobRunRecord(record pluginmeta.BackgroundJobRunRecord) pluginmeta.BackgroundJobRunRecord {
+	record.Result.Data = sanitizePluginActionValue(record.Result.Data)
+	if len(record.Result.Metadata) > 0 {
+		metadata := map[string]string{}
+		for key, value := range record.Result.Metadata {
+			if sensitivePluginActionResultKey(key) {
+				metadata[key] = "[redacted]"
+				continue
+			}
+			metadata[key] = value
+		}
+		record.Result.Metadata = metadata
+	}
+	return record
+}
+
+func sanitizePluginBackgroundJobRunRecords(records []pluginmeta.BackgroundJobRunRecord) []pluginmeta.BackgroundJobRunRecord {
+	sanitized := make([]pluginmeta.BackgroundJobRunRecord, 0, len(records))
+	for _, record := range records {
+		sanitized = append(sanitized, sanitizePluginBackgroundJobRunRecord(record))
+	}
+	return sanitized
+}
+
+func (s *Server) recordPluginBackgroundJobAudit(r *http.Request, user AdminUser, pluginID string, jobID string, status string, message string) {
+	s.store.RecordAuditEvent(AuditEvent{
+		ActorUserID:  user.ID,
+		ActorName:    user.Name,
+		ActorRole:    user.Role,
+		Action:       "plugin.background_job." + jobID,
+		ResourceType: "plugin",
+		ResourceID:   pluginID,
+		Status:       status,
+		Message:      message,
+		IP:           s.clientIP(r),
+		UserAgent:    r.UserAgent(),
+	})
+}
+
+func pluginBackgroundJobHTTPError(err error) error {
+	if errors.Is(err, pluginmeta.ErrPluginBackgroundJobNotFound) {
+		return NewHTTPError(http.StatusNotFound, "plugin_background_job_not_found", "Plugin background job not found")
+	}
+	if errors.Is(err, pluginmeta.ErrPluginBackgroundJobUnavailable) {
+		return NewHTTPError(http.StatusNotImplemented, "plugin_background_job_unavailable", "Plugin background job handler is unavailable")
+	}
+	if errors.Is(err, pluginmeta.ErrPluginBackgroundJobInvalidPayload) {
+		return NewHTTPError(http.StatusBadRequest, "invalid_plugin_background_job_payload", err.Error())
+	}
+	if errors.Is(err, pluginmeta.ErrPluginBackgroundJobInvalidResult) {
+		return NewHTTPError(http.StatusBadGateway, "invalid_plugin_background_job_result", err.Error())
+	}
+	if errors.Is(err, pluginmeta.ErrPluginBackgroundJobBusy) {
+		return NewHTTPError(http.StatusConflict, "plugin_background_job_busy", "Plugin background job concurrency limit reached")
+	}
+	httpErr := AsHTTPError(err)
+	if httpErr.Code != "internal_error" {
+		return httpErr
+	}
+	return NewHTTPError(http.StatusInternalServerError, "plugin_background_job_failed", "Plugin background job failed")
 }
 
 func (s *Server) recordPluginActionAudit(r *http.Request, user AdminUser, pluginID string, actionID string, status string, message string) {

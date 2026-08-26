@@ -1,6 +1,6 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, Power, PowerOff, ShieldCheck, Trash2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
+import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
@@ -41,12 +41,20 @@ type PluginDeleteDraft = {
   result: string;
 };
 
+type PluginBackgroundJobDraft = {
+  values: Record<string, string | boolean>;
+  busy: boolean;
+  error: string;
+  result: string;
+};
+
 export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const plugins = data.plugins;
   const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
   const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
   const [pluginUpdateDrafts, setPluginUpdateDrafts] = useState<Record<string, PluginUpdateDraft>>({});
   const [pluginDeleteDrafts, setPluginDeleteDrafts] = useState<Record<string, PluginDeleteDraft>>({});
+  const [backgroundJobDrafts, setBackgroundJobDrafts] = useState<Record<string, PluginBackgroundJobDraft>>({});
   const [marketplaceDrafts, setMarketplaceDrafts] = useState<Record<string, PluginInstallDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
   const providerCapabilities = plugins.reduce(
@@ -67,6 +75,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const marketplaceInstallDraft = (plugin: PluginDescriptor) => marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
+  const backgroundJobDraft = (job: PluginBackgroundJobDescriptor) => backgroundJobDrafts[pluginBackgroundJobKey(job.plugin_id, job.job_id)] ?? emptyBackgroundJobDraft(job);
 
   function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
     const key = pluginActionKey(action.plugin_id, action.action_id);
@@ -75,7 +84,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
       [key]: {
         ...emptyActionDraft(action),
         ...drafts[key],
-        values: { ...(drafts[key]?.values ?? emptyActionValues(action)), [field]: value },
+        values: { ...(drafts[key]?.values ?? emptyInputValues(action)), [field]: value },
         error: "",
       },
     }));
@@ -89,7 +98,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
     try {
       const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
         method: "POST",
-        body: JSON.stringify(actionPayload(action, draft.values)),
+        body: JSON.stringify(inputPayload(action, draft.values)),
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("执行插件动作")));
       const payload = await response.json();
@@ -99,6 +108,44 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
       setActionDrafts((drafts) => ({
         ...drafts,
         [key]: { ...draft, busy: false, error: reason instanceof Error ? reason.message : tx("执行插件动作失败"), result: "" },
+      }));
+    }
+  }
+
+  function updateBackgroundJobValue(job: PluginBackgroundJobDescriptor, field: string, value: string | boolean) {
+    const key = pluginBackgroundJobKey(job.plugin_id, job.job_id);
+    setBackgroundJobDrafts((drafts) => ({
+      ...drafts,
+      [key]: {
+        ...emptyBackgroundJobDraft(job),
+        ...drafts[key],
+        values: { ...(drafts[key]?.values ?? emptyInputValues(job)), [field]: value },
+        error: "",
+      },
+    }));
+  }
+
+  async function runBackgroundJob(job: PluginBackgroundJobDescriptor, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const key = pluginBackgroundJobKey(job.plugin_id, job.job_id);
+    const draft = backgroundJobDraft(job);
+    setBackgroundJobDrafts((drafts) => ({ ...drafts, [key]: { ...draft, busy: true, error: "", result: "" } }));
+    try {
+      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(job.plugin_id)}/background-jobs/${encodeURIComponent(job.job_id)}/run`, {
+        method: "POST",
+        body: JSON.stringify(inputPayload(job, draft.values)),
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("运行后台任务")));
+      const payload = await response.json();
+      setBackgroundJobDrafts((drafts) => ({
+        ...drafts,
+        [key]: { ...draft, busy: false, error: "", result: JSON.stringify(redactPluginActionResult(payload), null, 2) },
+      }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setBackgroundJobDrafts((drafts) => ({
+        ...drafts,
+        [key]: { ...draft, busy: false, error: reason instanceof Error ? reason.message : tx("运行后台任务失败"), result: "" },
       }));
     }
   }
@@ -665,6 +712,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                     <th>{tx("最大并发")}</th>
                     <th>{tx("最近运行")}</th>
                     <th>{tx("重试")}</th>
+                    <th>{tx("操作")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -684,6 +732,14 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                         <td>{job.max_concurrency}</td>
                         <td>{backgroundJobRunLabel(run)}</td>
                         <td>{backgroundJobRetryLabel(job.retry)}</td>
+                        <td>
+                          <PluginBackgroundJobRunner
+                            draft={backgroundJobDraft(job)}
+                            job={job}
+                            onChange={updateBackgroundJobValue}
+                            onSubmit={runBackgroundJob}
+                          />
+                        </td>
                       </tr>
                     );
                   })}
@@ -708,8 +764,8 @@ function PluginActionRunner({
   onChange: (action: PluginActionDescriptor, field: string, value: string | boolean) => void;
   onSubmit: (action: PluginActionDescriptor, event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const fields = actionInputFields(action);
-  const unsupported = action.input_schema && !actionInputSchemaSupported(action.input_schema);
+  const fields = inputFields(action);
+  const unsupported = action.input_schema && !inputSchemaSupported(action.input_schema);
   return (
     <form className="plugin-action-runner" onSubmit={(event) => onSubmit(action, event)}>
       {unsupported ? <p className="empty-state">{tx("暂不支持复杂输入 Schema")}</p> : null}
@@ -735,6 +791,51 @@ function PluginActionRunner({
       <button className="secondary-button plugin-action-button" disabled={draft.busy || Boolean(unsupported)} type="submit">
         <Play size={14} />
         <span>{tx(draft.busy ? "执行中" : "执行")}</span>
+      </button>
+      {draft.error ? <p className="provider-quota-error">{draft.error}</p> : null}
+      {draft.result ? <pre className="plugin-action-result">{draft.result}</pre> : null}
+    </form>
+  );
+}
+
+function PluginBackgroundJobRunner({
+  job,
+  draft,
+  onChange,
+  onSubmit,
+}: {
+  job: PluginBackgroundJobDescriptor;
+  draft: PluginBackgroundJobDraft;
+  onChange: (job: PluginBackgroundJobDescriptor, field: string, value: string | boolean) => void;
+  onSubmit: (job: PluginBackgroundJobDescriptor, event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const fields = inputFields(job);
+  const unsupported = job.input_schema && !inputSchemaSupported(job.input_schema);
+  return (
+    <form className="plugin-action-runner" onSubmit={(event) => onSubmit(job, event)}>
+      {unsupported ? <p className="empty-state">{tx("暂不支持复杂输入 Schema")}</p> : null}
+      {fields.map((field) => (
+        <label className="plugin-action-field" key={field.name}>
+          <span>{field.name}{field.required ? " *" : ""}</span>
+          {field.type === "boolean" ? (
+            <input
+              checked={Boolean(draft.values[field.name])}
+              onChange={(event) => onChange(job, field.name, event.currentTarget.checked)}
+              type="checkbox"
+            />
+          ) : (
+            <input
+              onChange={(event) => onChange(job, field.name, event.currentTarget.value)}
+              required={field.required}
+              type={field.type === "number" || field.type === "integer" ? "number" : "text"}
+              value={String(draft.values[field.name] ?? "")}
+            />
+          )}
+        </label>
+      ))}
+      <button className="secondary-button plugin-action-button" disabled={draft.busy || Boolean(unsupported)} type="submit">
+        <Play size={14} />
+        <span>{tx(draft.busy ? "运行中" : "运行任务")}</span>
       </button>
       {draft.error ? <p className="provider-quota-error">{draft.error}</p> : null}
       {draft.result ? <pre className="plugin-action-result">{draft.result}</pre> : null}
@@ -1038,24 +1139,32 @@ type ActionInputField = {
   required: boolean;
 };
 
+type InputSchemaHost = {
+  input_schema?: Record<string, unknown>;
+};
+
 function emptyActionDraft(action: PluginActionDescriptor): ActionDraft {
-  return { values: emptyActionValues(action), busy: false, error: "", result: "" };
+  return { values: emptyInputValues(action), busy: false, error: "", result: "" };
+}
+
+function emptyBackgroundJobDraft(job: PluginBackgroundJobDescriptor): PluginBackgroundJobDraft {
+  return { values: emptyInputValues(job), busy: false, error: "", result: "" };
 }
 
 function emptyInstallDraft(): PluginInstallDraft {
   return { downloadURL: "", checksumSHA256: "", replace: false, enable: false, busy: false, error: "", result: "" };
 }
 
-function emptyActionValues(action: PluginActionDescriptor) {
+function emptyInputValues(target: InputSchemaHost) {
   const values: Record<string, string | boolean> = {};
-  for (const field of actionInputFields(action)) {
+  for (const field of inputFields(target)) {
     values[field.name] = field.type === "boolean" ? false : "";
   }
   return values;
 }
 
-function actionInputFields(action: PluginActionDescriptor): ActionInputField[] {
-  const schema = action.input_schema;
+function inputFields(target: InputSchemaHost): ActionInputField[] {
+  const schema = target.input_schema;
   if (!schema || schema.type !== "object") return [];
   const required = new Set(Array.isArray(schema.required) ? schema.required.filter((item): item is string => typeof item === "string") : []);
   const properties = schema.properties;
@@ -1068,7 +1177,7 @@ function actionInputFields(action: PluginActionDescriptor): ActionInputField[] {
   });
 }
 
-function actionInputSchemaSupported(schema: Record<string, unknown>) {
+function inputSchemaSupported(schema: Record<string, unknown>) {
   if (schema.type !== "object") return false;
   const properties = schema.properties;
   if (!properties || typeof properties !== "object" || Array.isArray(properties)) return true;
@@ -1079,9 +1188,9 @@ function actionInputSchemaSupported(schema: Record<string, unknown>) {
   });
 }
 
-function actionPayload(action: PluginActionDescriptor, values: Record<string, string | boolean>) {
+function inputPayload(target: InputSchemaHost, values: Record<string, string | boolean>) {
   const payload: Record<string, string | number | boolean> = {};
-  for (const field of actionInputFields(action)) {
+  for (const field of inputFields(target)) {
     const value = values[field.name];
     if (field.type === "boolean") {
       payload[field.name] = Boolean(value);

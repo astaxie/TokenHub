@@ -340,7 +340,7 @@ func (s *Server) handleAdminPluginBackgroundJobs(w http.ResponseWriter, r *http.
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"data": s.pluginBackgroundJobs.List(),
-		"runs": s.pluginBackgroundRunner.LastRuns(),
+		"runs": sanitizePluginBackgroundJobRunRecords(s.pluginBackgroundRunner.LastRuns()),
 	})
 }
 

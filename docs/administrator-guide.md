@@ -13,6 +13,7 @@ This guide is for platform administrators, security operators, and infrastructur
 | Routing Policies | Fine-tune Provider mappings, priority, weight, project scope, and failover strategy |
 | Projects and Teams | Define ownership boundaries for keys, quota, and cost attribution |
 | Identity Sources | Configure OAuth or OIDC login providers for enterprise sign-in |
+| Plugin Management | Install, update, enable, disable, uninstall, and operate plugin-contributed capabilities |
 | Security and Audit | Review request logs, admin events, key rotation, and policy changes |
 
 ## Production Setup Order
@@ -27,6 +28,12 @@ This guide is for platform administrators, security operators, and infrastructur
 8. Review usage attribution before issuing keys broadly.
 
 Anthropic Providers use `x-api-key` authentication by default. If an Anthropic-compatible upstream requires `Authorization: Bearer`, open the Provider's **Advanced** tab, keep **Provider Type** set to **Claude / Anthropic**, and select **Authorization Bearer** under **Anthropic Authentication**. TokenHub derives either header from the encrypted Provider API Key and sends only the selected authentication header; do not duplicate the credential in custom headers.
+
+## Plugin Management
+
+Open **Plugin Extensions** to inspect built-in and installed plugins, gateway-chain hooks, Admin UI contributions, management actions, and background jobs. Marketplace and local package installs are validated by checksum, written to `TOKENHUB_PLUGIN_DIR`, and become active after a backend restart. Non-built-in plugins can be enabled, disabled, updated, or uninstalled from the same page.
+
+Background jobs declared by plugins can be run manually from the background job manifest table. Manual runs use the same Core runner as scheduled jobs, including input schema validation, retry settings, timeout handling, concurrency limits, last-run tracking, result sanitization, and admin audit events. TokenHub redacts secret-looking fields such as access tokens, refresh tokens, API keys, passwords, cookies, and private keys before returning run results to the console.
 
 ## Model Playground Diagnostics
 

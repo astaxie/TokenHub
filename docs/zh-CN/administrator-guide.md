@@ -13,6 +13,7 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 | Routing Policies | 细调 Provider 映射、优先级、权重、项目作用域和故障转移策略 |
 | Projects and Teams | 定义 Key、额度和成本归因的组织边界 |
 | Identity Sources | 配置 OAuth 或 OIDC 企业登录 |
+| 插件管理 | 安装、更新、启用、禁用、卸载并运行插件贡献的能力 |
 | Security and Audit | 审查请求日志、后台操作、Key 轮换和策略变更 |
 
 ## 生产上线顺序
@@ -27,6 +28,12 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 8. 在大规模发放 Key 前检查用量归因。
 
 Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上游要求 `Authorization: Bearer`，请打开 Provider 的「高级」页签，保持「渠道商类型」为「Claude / Anthropic」，并在「Anthropic 认证方式」中选择「Authorization Bearer」。TokenHub 会从加密保存的 Provider API Key 生成对应 Header，并且只发送所选的认证 Header；不要在自定义 Headers 中重复填写凭据。
+
+## 插件管理
+
+打开「插件扩展」可以查看内置与已安装插件、链路 Hook、Admin UI 贡献、管理动作和后台任务。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并在后端重启后生效。非内置插件可以在同一页面启用、禁用、更新或卸载。
+
+插件声明的后台任务可以在后台任务清单中手动运行。手动运行会使用与定时任务相同的 Core runner，包括输入 Schema 校验、重试设置、超时处理、并发限制、最近运行记录、结果脱敏和管理员审计事件。TokenHub 在把运行结果返回给控制台前，会遮蔽 access token、refresh token、API key、密码、cookie、私钥等疑似敏感字段。
 
 ## 模型演练场诊断
 

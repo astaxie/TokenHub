@@ -13,6 +13,7 @@ Language: [English](../administrator-guide.md) | [简体中文](../zh-CN/adminis
 | Routing Policies | Provider マッピング、優先度、重み、プロジェクトスコープ、フェイルオーバー戦略を調整します |
 | Projects and Teams | Key、クォータ、コスト配賦の組織境界を定義します |
 | Identity Sources | OAuth または OIDC の企業ログインを設定します |
+| Plugin Management | プラグイン提供の機能をインストール、更新、有効化、無効化、アンインストール、実行します |
 | Security and Audit | リクエストログ、管理操作、Key ローテーション、ポリシー変更を確認します |
 
 ## 本番設定順序
@@ -27,6 +28,12 @@ Language: [English](../administrator-guide.md) | [简体中文](../zh-CN/adminis
 8. Key を広く発行する前に利用量配賦を確認します。
 
 Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic 互換の上流サービスが `Authorization: Bearer` を要求する場合は、Provider の **詳細** タブを開き、**Provider タイプ**を **Claude / Anthropic** にしたまま、**Anthropic 認証方式**で **Authorization Bearer** を選択します。TokenHub は暗号化して保存された Provider API Key から選択した Header を生成し、認証 Header は 1 種類だけ送信します。カスタム Header に同じ認証情報を重複して設定しないでください。
+
+## プラグイン管理
+
+**Plugin Extensions** では、組み込みおよびインストール済みプラグイン、ゲートウェイチェーン Hook、Admin UI 貢献、管理アクション、バックグラウンドジョブを確認できます。Marketplace またはローカルパッケージからのインストールは checksum で検証され、`TOKENHUB_PLUGIN_DIR` に書き込まれ、バックエンド再起動後に有効になります。組み込み以外のプラグインは同じ画面で有効化、無効化、更新、アンインストールできます。
+
+プラグインが宣言したバックグラウンドジョブは、バックグラウンドジョブマニフェスト表から手動実行できます。手動実行はスケジュール実行と同じ Core runner を使い、入力 Schema 検証、再試行設定、タイムアウト処理、同時実行制限、最新実行記録、結果のサニタイズ、管理者監査イベントを適用します。TokenHub は実行結果をコンソールへ返す前に、access token、refresh token、API key、パスワード、cookie、秘密鍵などの機密らしいフィールドをマスクします。
 
 ## Model Playground の診断
 
