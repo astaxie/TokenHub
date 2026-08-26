@@ -381,7 +381,7 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     rate_limit_rpm: "",
     token_limit_tpm: "",
     max_concurrency: metadataDefaults.max_concurrency || "3",
-    codex_fingerprint_mode: "session",
+    codex_fingerprint_mode: "",
     claude_code_attribution_policy: "inherit",
     token_type: "",
     expires_at: "",

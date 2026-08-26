@@ -462,6 +462,7 @@ describe("providerResourceConfig", () => {
       max_concurrency: "5",
       group: "kimi",
     });
+    expect(providerResourceDraftDefaults({ provider_id: "prv_kimi", name: "Kimi", type: "kimi_subscription" }, data).codex_fingerprint_mode).toBe("");
     expect(providerResourceAuthTypeOptionsFromData(data, null, { provider_id: "prv_kimi", resource_type: "kimi_oauth_account" })).toEqual([
       { value: "oauth", label: "OAuth" },
       { value: "personal_access_token", label: "Personal Access Token" },
@@ -505,6 +506,7 @@ describe("providerResourceConfig", () => {
           defaults: {
             auth_type: "oauth",
             base_url: "https://chatgpt.com/backend-api/codex",
+            codex_fingerprint_mode: "session",
             max_concurrency: "3",
           },
         }),
@@ -517,6 +519,7 @@ describe("providerResourceConfig", () => {
       resource_type: "openai_subscription",
       auth_type: "oauth",
       base_url: "https://chatgpt.com/backend-api/codex",
+      codex_fingerprint_mode: "session",
       max_concurrency: "3",
     });
   });
