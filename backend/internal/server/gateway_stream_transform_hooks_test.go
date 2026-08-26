@@ -183,6 +183,63 @@ func TestAnthropicNativeStreamTransformHookCanRewriteSSEEventData(t *testing.T) 
 	}
 }
 
+func TestAnthropicOpenAIStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("unexpected upstream path %q", r.URL.Path)
+		}
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_anthropic_stream_transform\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_anthropic_stream_transform\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OpenAI bridge stream\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_anthropic_stream_transform\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderOpenAICompatible)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-stream",
+		HookID:        "rewrite-openai-anthropic",
+		Stage:         pluginmeta.StageStreamTransform,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var event gatewayStreamEventView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataStreamEvents], &event); err != nil {
+			t.Fatalf("decode stream event: %v", err)
+		}
+		if !strings.Contains(event.Data, "OpenAI bridge stream") {
+			return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+		}
+		return streamEventPatchResult(t, map[string]any{
+			"data": strings.Replace(event.Data, "OpenAI bridge stream", "Plugin bridge stream", 1),
+		}), nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"stream":     true,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "stream"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "Plugin bridge stream") || strings.Contains(resp.Body.String(), "OpenAI bridge stream") {
+		t.Fatalf("OpenAI-backed Anthropic stream body was not transformed: %s", resp.Body)
+	}
+}
+
 func TestPlaygroundChatStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {

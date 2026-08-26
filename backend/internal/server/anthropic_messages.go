@@ -1001,19 +1001,30 @@ func (s *Server) handleAnthropicMessagesStream(
 
 			var streamUsage Usage
 			var streamErr error
+			streamWriter := io.Writer(tracker)
+			var transformer *gatewayStreamTransformWriter
+			if s.hasGatewayStreamTransformHooks() {
+				transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, tracker)
+				streamWriter = transformer
+			}
 			switch {
 			case prepared.Provider.Type == ProviderAnthropic:
-				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, routed.Call, prepared, attemptReq, r.Header, tracker)
+				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, attemptReq, r.Header, streamWriter)
 			case prepared.Provider.Type == ProviderOpenAICodex:
-				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, attemptReq, r.Header, tracker)
+				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, attemptReq, r.Header, streamWriter)
 			case openAIMessageProvider(prepared.Provider.Type):
-				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, attemptReq, tracker)
+				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, attemptReq, streamWriter)
 			default:
 				streamErr = NewHTTPError(
 					http.StatusNotImplemented,
 					"provider_capability_not_supported",
 					"Provider does not support the Anthropic Messages gateway",
 				)
+			}
+			if transformer != nil {
+				if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
+					streamErr = closeErr
+				}
 			}
 			return struct{}{}, streamUsage, classifyStreamError(ctx, streamErr, tracker.Wrote())
 		})
