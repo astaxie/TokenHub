@@ -86,6 +86,7 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "admin_ui", Name: "provider_form", Subject: ProviderOpenAICodex},
+			{Kind: "admin_ui", Name: "provider_model_panel", Subject: ProviderOpenAICodex},
 			{Kind: "admin_ui", Name: "provider_resource_panel", Subject: ProviderOpenAICodex},
 		},
 	})
@@ -101,6 +102,17 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 				"fields": []any{
 					map[string]any{"name": "oauth_start", "type": "oauth_button", "label": "Start OpenAI Codex OAuth", "action": "openai_codex.oauth.start"},
 				},
+			},
+		},
+		{
+			PluginID:      "tokenhub.provider.openai-codex",
+			ID:            "image-capability",
+			Slot:          pluginmeta.SlotProviderModelPanel,
+			Title:         "OpenAI Codex image capability",
+			ProviderTypes: []string{ProviderOpenAICodex},
+			Action:        "openai_codex.image_capability.configure",
+			Schema: map[string]any{
+				"layout": "image_capability",
 			},
 		},
 		{

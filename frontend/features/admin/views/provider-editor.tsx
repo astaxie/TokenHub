@@ -4,7 +4,7 @@ import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountO
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
-import { imageCapabilityProfileFromAction } from "../domain/codex-image-capability";
+import { providerImageCapabilityProfile } from "../domain/codex-image-capability";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
@@ -523,7 +523,7 @@ export function ProviderUpsertModal({
       .filter((model) => JSON.stringify(model).toLowerCase().includes(normalized))
       .slice(0, 80);
   }, [models, modelQuery]);
-  const imageCapabilityProfile = useMemo(() => imageCapabilityProfileFromAction(providerPluginActionForCapability(pluginActions, provider?.type ?? values.type, "image.capability.configure")), [pluginActions, provider?.type, values.type]);
+  const imageCapabilityProfile = useMemo(() => providerImageCapabilityProfile(pluginUI, pluginActions, provider?.type ?? values.type), [pluginActions, pluginUI, provider?.type, values.type]);
   const importedModels = useMemo(
     () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!imageCapabilityProfile || model.upstream_model !== imageCapabilityProfile.upstreamModel)) : [],
     [imageCapabilityProfile, provider, providerModels],

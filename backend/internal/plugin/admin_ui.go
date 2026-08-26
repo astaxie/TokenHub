@@ -14,6 +14,7 @@ const (
 	SlotDashboardCard               AdminUISlot = "dashboard.card"
 	SlotProviderCatalogCard         AdminUISlot = "provider.catalog.card"
 	SlotProviderFormSection         AdminUISlot = "provider.form.section"
+	SlotProviderModelPanel          AdminUISlot = "provider.model.panel"
 	SlotProviderResourceFormSection AdminUISlot = "provider.resource.form.section"
 	SlotProviderResourcePanel       AdminUISlot = "provider.resource.panel"
 	SlotRouteDetailPanel            AdminUISlot = "route.detail.panel"
@@ -145,7 +146,7 @@ func normalizeAdminUIManifest(pluginID string, manifest AdminUIManifest) AdminUI
 
 func validAdminUISlot(slot AdminUISlot) bool {
 	switch slot {
-	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderResourceFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate, SlotThemeTokens, SlotLayoutPreset:
+	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderModelPanel, SlotProviderResourceFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate, SlotThemeTokens, SlotLayoutPreset:
 		return true
 	default:
 		return false

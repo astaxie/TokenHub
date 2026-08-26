@@ -92,6 +92,27 @@ func TestParseAdminUIManifestValidatesContributionSchema(t *testing.T) {
 	}
 }
 
+func TestParseAdminUIManifestAcceptsProviderModelPanel(t *testing.T) {
+	manifest, err := ParseAdminUIManifest("tokenhub.images", []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "image-capability",
+				"slot": "provider.model.panel",
+				"provider_types": ["kimi_subscription"],
+				"action": "kimi.image_capability.configure",
+				"schema": {"layout": "image_capability"}
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("parse provider model panel contribution: %v", err)
+	}
+	if len(manifest.Contributions) != 1 || manifest.Contributions[0].Slot != SlotProviderModelPanel {
+		t.Fatalf("provider model panel contribution was not preserved: %+v", manifest.Contributions)
+	}
+}
+
 func TestParseAdminUIManifestRejectsUnsafeContributionSchema(t *testing.T) {
 	for _, payload := range []string{
 		`{"fields":[{"name":"script","type":"remote_script"}]}`,

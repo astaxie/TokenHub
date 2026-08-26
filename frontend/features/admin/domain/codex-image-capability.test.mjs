@@ -8,6 +8,8 @@ const {
   codexImageRouteEnabled,
   defaultCodexImageResourceID,
   imageCapabilityProfileFromAction,
+  providerImageCapabilityContribution,
+  providerImageCapabilityProfile,
 } = await importTypeScript(new URL("./codex-image-capability.ts", import.meta.url));
 
 const route = { model_name: "codex-gpt-image-2", provider_id: "provider-1", provider_model: "gpt-image-2", status: "active" };
@@ -64,4 +66,18 @@ test("image capability profile follows plugin metadata for resources and routes"
     ], "provider-1", profile).map((item) => item.id),
     ["kimi"],
   );
+});
+
+test("image capability panel requires a matching Admin UI contribution", () => {
+  const action = { plugin_id: "tokenhub.provider.kimi", action_id: "kimi.image_capability.configure" };
+  assert.equal(providerImageCapabilityContribution([
+    { plugin_id: "tokenhub.provider.kimi", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
+    { plugin_id: "tokenhub.provider.kimi", id: "quota", slot: "provider.resource.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
+  ], "kimi_subscription", action)?.id, "image");
+  assert.equal(providerImageCapabilityContribution([
+    { plugin_id: "tokenhub.provider.other", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
+  ], "kimi_subscription", action), undefined);
+  assert.equal(providerImageCapabilityProfile([
+    { plugin_id: "tokenhub.provider.kimi", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
+  ], [{ ...action, capability: "image.capability.configure", subject: "kimi_subscription", metadata: { public_model: "kimi-image", upstream_model: "moonshot-image" } }], "kimi_subscription")?.publicModel, "kimi-image");
 });

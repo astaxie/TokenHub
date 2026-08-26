@@ -1,4 +1,4 @@
-import { type ModelRoute, type PluginActionDescriptor, type ProviderResource } from "../core/types";
+import { type AdminUIContribution, type ModelRoute, type PluginActionDescriptor, type ProviderResource } from "../core/types";
 import { codexImageModelName, codexImageUpstreamModel } from "./codex-provider-profile";
 import { isProviderAccountResource } from "./provider-resource-types";
 
@@ -24,6 +24,21 @@ export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescr
     upstreamModel: action.metadata?.upstream_model?.trim() || defaultImageCapabilityProfile.upstreamModel,
     resourceType: action.metadata?.provider_resource_type?.trim() || action.metadata?.resource_type?.trim() || undefined,
   };
+}
+
+export function providerImageCapabilityContribution(contributions: AdminUIContribution[], providerType: string, action?: PluginActionDescriptor) {
+  if (!action) return undefined;
+  return contributions.find((contribution) =>
+    contribution.slot === "provider.model.panel" &&
+    contribution.action === action.action_id &&
+    contribution.plugin_id === action.plugin_id &&
+    (!contribution.provider_types?.length || contribution.provider_types.includes(providerType)),
+  );
+}
+
+export function providerImageCapabilityProfile(contributions: AdminUIContribution[], actions: PluginActionDescriptor[], providerType: string) {
+  const action = actions.find((item) => item.capability === "image.capability.configure" && (!item.subject || item.subject === providerType));
+  return providerImageCapabilityContribution(contributions, providerType, action) ? imageCapabilityProfileFromAction(action) : null;
 }
 
 export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string, profile?: ImageCapabilityProfile | null) {
