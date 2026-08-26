@@ -67,4 +67,25 @@ describe("ProviderAccountTokenRenewal", () => {
 
     expect(screen.queryByRole("button", { name: "续租 Token" })).not.toBeInTheDocument();
   });
+
+  it("shows a provider-neutral reauthorization notice", () => {
+    render(
+      <ProviderAccountTokenRenewal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={[{
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.credentials.refresh",
+          kind: "mutate",
+          capability: "credentials.refresh",
+          subject: "kimi_subscription",
+        }]}
+        providerType="kimi_subscription"
+        resource={{ ...resource, credential_summary: { has_refresh_token: "true", oauth_reauthorization_required: "true" } }}
+        onRenewed={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("账号会话已失效，请重新进行账号授权。")).toBeInTheDocument();
+    expect(screen.queryByText(/OpenAI\/Codex/)).not.toBeInTheDocument();
+  });
 });

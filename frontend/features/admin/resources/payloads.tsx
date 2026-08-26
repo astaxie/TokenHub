@@ -748,7 +748,7 @@ export async function readAdminError(resp: Response, fallback: string) {
     const parsed = JSON.parse(body) as { error?: { code?: string; message?: string }; message?: string };
     const localized = localizedAdminErrorCode(parsed.error?.code);
     if (localized) return localized;
-    if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("OpenAI/Codex 账号会话已失效，请重新进行账号授权。");
+    if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("账号会话已失效，请重新进行账号授权。");
     if (parsed.error?.code === "codex_image_forbidden") return tx("所选 Codex 账号不支持生图，无法创建图片。可更换账号后重试。");
     if (parsed.error?.code === "codex_rate_limited") return tx("Codex 生图测试被限流，请稍后重试；本次结果不会标记为不支持。");
     if (["codex_upstream_unavailable", "codex_upstream_timeout", "codex_image_request_failed", "codex_image_response_failed"].includes(parsed.error?.code ?? "")) {
