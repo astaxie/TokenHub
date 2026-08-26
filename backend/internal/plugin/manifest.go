@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -15,6 +16,7 @@ type Manifest struct {
 	Version       string                `yaml:"version"`
 	Description   string                `yaml:"description"`
 	TokenHub      ManifestCompatibility `yaml:"tokenhub"`
+	Distribution  ManifestDistribution  `yaml:"distribution"`
 	Kinds         []Kind                `yaml:"kinds"`
 	Placement     []Placement           `yaml:"placement"`
 	Entry         ManifestEntry         `yaml:"entry"`
@@ -26,6 +28,16 @@ type ManifestCompatibility struct {
 	PluginAPI string `yaml:"plugin_api"`
 	MinCore   string `yaml:"min_core"`
 	MaxCore   string `yaml:"max_core"`
+}
+
+type ManifestDistribution struct {
+	MarketplaceURL string `json:"marketplace_url,omitempty" yaml:"marketplace_url"`
+	RepositoryURL  string `json:"repository_url,omitempty" yaml:"repository_url"`
+	DownloadURL    string `json:"download_url,omitempty" yaml:"download_url"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty" yaml:"checksum_sha256"`
+	SignatureURL   string `json:"signature_url,omitempty" yaml:"signature_url"`
+	HomepageURL    string `json:"homepage_url,omitempty" yaml:"homepage_url"`
+	License        string `json:"license,omitempty" yaml:"license"`
 }
 
 type ManifestEntry struct {
@@ -198,6 +210,9 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.TokenHub.PluginAPI) == "" {
 		return fmt.Errorf("tokenhub.plugin_api is required")
 	}
+	if err := m.Distribution.Validate(); err != nil {
+		return err
+	}
 	if m.Entry.Backend != nil {
 		protocol := strings.TrimSpace(m.Entry.Backend.Protocol)
 		if protocol != "" && protocol != BackendProtocolStdioJSONV1 {
@@ -343,12 +358,13 @@ func (m Manifest) hasFrontendSchema() bool {
 
 func (m Manifest) Descriptor() Descriptor {
 	descriptor := Descriptor{
-		ID:         m.ID,
-		Name:       m.Name,
-		Version:    m.Version,
-		Source:     SourceLocalFile,
-		Kinds:      m.Kinds,
-		Placements: m.Placement,
+		ID:           m.ID,
+		Name:         m.Name,
+		Version:      m.Version,
+		Source:       SourceLocalFile,
+		Distribution: m.Distribution.Descriptor(),
+		Kinds:        m.Kinds,
+		Placements:   m.Placement,
 	}
 	for _, providerType := range m.Capabilities.ProviderTypes {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
@@ -426,6 +442,80 @@ func (m Manifest) Descriptor() Descriptor {
 		})
 	}
 	return NormalizeDescriptor(descriptor)
+}
+
+func (distribution ManifestDistribution) Descriptor() *Distribution {
+	distribution = distribution.Normalized()
+	if distribution.MarketplaceURL == "" && distribution.RepositoryURL == "" && distribution.DownloadURL == "" &&
+		distribution.ChecksumSHA256 == "" && distribution.SignatureURL == "" && distribution.HomepageURL == "" && distribution.License == "" {
+		return nil
+	}
+	return &Distribution{
+		MarketplaceURL: distribution.MarketplaceURL,
+		RepositoryURL:  distribution.RepositoryURL,
+		DownloadURL:    distribution.DownloadURL,
+		ChecksumSHA256: distribution.ChecksumSHA256,
+		SignatureURL:   distribution.SignatureURL,
+		HomepageURL:    distribution.HomepageURL,
+		License:        distribution.License,
+	}
+}
+
+func (distribution ManifestDistribution) Normalized() ManifestDistribution {
+	return ManifestDistribution{
+		MarketplaceURL: strings.TrimSpace(distribution.MarketplaceURL),
+		RepositoryURL:  strings.TrimSpace(distribution.RepositoryURL),
+		DownloadURL:    strings.TrimSpace(distribution.DownloadURL),
+		ChecksumSHA256: strings.ToLower(strings.TrimSpace(distribution.ChecksumSHA256)),
+		SignatureURL:   strings.TrimSpace(distribution.SignatureURL),
+		HomepageURL:    strings.TrimSpace(distribution.HomepageURL),
+		License:        strings.TrimSpace(distribution.License),
+	}
+}
+
+func (distribution *ManifestDistribution) Validate() error {
+	*distribution = distribution.Normalized()
+	for label, value := range map[string]string{
+		"marketplace_url": distribution.MarketplaceURL,
+		"repository_url":  distribution.RepositoryURL,
+		"download_url":    distribution.DownloadURL,
+		"signature_url":   distribution.SignatureURL,
+		"homepage_url":    distribution.HomepageURL,
+	} {
+		if value == "" {
+			continue
+		}
+		if err := validatePluginDistributionURL(label, value); err != nil {
+			return err
+		}
+	}
+	if distribution.ChecksumSHA256 != "" && !isHexSHA256(distribution.ChecksumSHA256) {
+		return fmt.Errorf("distribution.checksum_sha256 must be a lowercase SHA-256 hex digest")
+	}
+	return nil
+}
+
+func validatePluginDistributionURL(label string, value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("distribution.%s must be an absolute URL", label)
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("distribution.%s must use HTTPS", label)
+	}
+	return nil
+}
+
+func isHexSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (resourceType ManifestProviderResourceType) CapabilityValue() string {

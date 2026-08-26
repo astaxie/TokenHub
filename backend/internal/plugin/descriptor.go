@@ -35,11 +35,22 @@ type CapabilityDescriptor struct {
 	Value   string `json:"value,omitempty"`
 }
 
+type Distribution struct {
+	MarketplaceURL string `json:"marketplace_url,omitempty"`
+	RepositoryURL  string `json:"repository_url,omitempty"`
+	DownloadURL    string `json:"download_url,omitempty"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
+	SignatureURL   string `json:"signature_url,omitempty"`
+	HomepageURL    string `json:"homepage_url,omitempty"`
+	License        string `json:"license,omitempty"`
+}
+
 type Descriptor struct {
 	ID           string                 `json:"id"`
 	Name         string                 `json:"name"`
 	Version      string                 `json:"version"`
 	Source       Source                 `json:"source"`
+	Distribution *Distribution          `json:"distribution,omitempty"`
 	Kinds        []Kind                 `json:"kinds"`
 	Placements   []Placement            `json:"placements"`
 	Capabilities []CapabilityDescriptor `json:"capabilities"`

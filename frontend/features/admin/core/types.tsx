@@ -281,11 +281,22 @@ export type PluginCapabilityDescriptor = {
   value?: string;
 };
 
+export type PluginDistribution = {
+  marketplace_url?: string;
+  repository_url?: string;
+  download_url?: string;
+  checksum_sha256?: string;
+  signature_url?: string;
+  homepage_url?: string;
+  license?: string;
+};
+
 export type PluginDescriptor = {
   id: string;
   name: string;
   version: string;
   source: "built_in" | "marketplace" | "local_file" | string;
+  distribution?: PluginDistribution;
   kinds: string[];
   placements: string[];
   capabilities: PluginCapabilityDescriptor[];

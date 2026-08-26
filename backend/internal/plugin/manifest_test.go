@@ -13,6 +13,14 @@ name: OpenAI Codex Subscription
 version: 1.0.0
 tokenhub:
   plugin_api: v1
+distribution:
+  marketplace_url: https://plugins.example/tokenhub.openai-codex
+  repository_url: https://github.com/example/tokenhub-openai-codex
+  download_url: https://plugins.example/tokenhub.openai-codex/1.0.0/plugin.tar.gz
+  checksum_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  signature_url: https://plugins.example/tokenhub.openai-codex/1.0.0/plugin.tar.gz.sig
+  homepage_url: https://example.com/tokenhub-openai-codex
+  license: Apache-2.0
 kinds:
   - provider
   - admin_ui
@@ -131,6 +139,13 @@ permissions:
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "background_job", Name: "codex.quota.refresh", Subject: "openai_codex", Value: "quota.refresh"}) {
 		t.Fatalf("descriptor is missing background job capability: %+v", descriptor.Capabilities)
 	}
+	if descriptor.Distribution == nil ||
+		descriptor.Distribution.MarketplaceURL != "https://plugins.example/tokenhub.openai-codex" ||
+		descriptor.Distribution.DownloadURL != "https://plugins.example/tokenhub.openai-codex/1.0.0/plugin.tar.gz" ||
+		descriptor.Distribution.ChecksumSHA256 != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ||
+		descriptor.Distribution.License != "Apache-2.0" {
+		t.Fatalf("descriptor distribution = %+v", descriptor.Distribution)
+	}
 }
 
 func descriptorHasCapability(descriptor Descriptor, capability CapabilityDescriptor) bool {
@@ -245,6 +260,29 @@ capabilities:
 `))
 	if err == nil {
 		t.Fatal("manifest with missing provider resource type parsed successfully")
+	}
+}
+
+func TestParseManifestRejectsUnsafeDistributionURL(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.unsafe-distribution
+name: Unsafe Distribution
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+distribution:
+  download_url: http://plugins.example/plugin.tar.gz
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - unsafe_provider
+`))
+	if err == nil {
+		t.Fatal("manifest with insecure distribution URL parsed successfully")
 	}
 }
 
