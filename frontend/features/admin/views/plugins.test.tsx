@@ -4,6 +4,37 @@ import { emptyData } from "../domain/catalog";
 import { PluginsView } from "./plugins";
 
 describe("PluginsView", () => {
+  it("renders plugin distribution metadata", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.kimi",
+      name: "Kimi Provider",
+      version: "1.2.3",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [{ kind: "provider", name: "kimi_subscription" }],
+      distribution: {
+        marketplace_url: "https://plugins.tokenhub.example/kimi",
+        repository_url: "https://github.com/tokenhub/kimi-provider",
+        download_url: "https://plugins.tokenhub.example/kimi/1.2.3.zip",
+        checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        signature_url: "https://plugins.tokenhub.example/kimi/1.2.3.sig",
+        homepage_url: "https://tokenhub.example/plugins/kimi",
+        license: "Apache-2.0",
+      },
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(screen.getByText("分发")).toBeInTheDocument();
+    expect(screen.getByText("许可证 Apache-2.0")).toBeInTheDocument();
+    expect(screen.getByText("SHA-256 0123456789ab...cdef")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /市场/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi");
+    expect(screen.getByRole("link", { name: /仓库/ })).toHaveAttribute("href", "https://github.com/tokenhub/kimi-provider");
+    expect(screen.getByRole("link", { name: /下载/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi/1.2.3.zip");
+  });
+
   it("renders background job descriptors", () => {
     const data = emptyData();
     data.pluginBackgroundJobs = [{

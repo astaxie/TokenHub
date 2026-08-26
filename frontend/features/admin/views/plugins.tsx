@@ -1,4 +1,4 @@
-import { Boxes, Clock3, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, ShieldCheck } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor } from "../core/types";
 import { tx } from "../i18n/runtime";
@@ -94,6 +94,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                     <th>{tx("来源")}</th>
                     <th>{tx("类型")}</th>
                     <th>{tx("运行位置")}</th>
+                    <th>{tx("分发")}</th>
                     <th>{tx("能力")}</th>
                   </tr>
                 </thead>
@@ -108,6 +109,9 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                       </td>
                       <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
                       <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
+                      <td>
+                        <DistributionMetadata plugin={plugin} />
+                      </td>
                       <td>
                         <CapabilityList plugin={plugin} />
                       </td>
@@ -436,6 +440,41 @@ function CapabilityList({ plugin }: { plugin: PluginDescriptor }) {
       {remaining > 0 ? <span className="tag">+{remaining}</span> : null}
     </div>
   );
+}
+
+function DistributionMetadata({ plugin }: { plugin: PluginDescriptor }) {
+  const distribution = plugin.distribution;
+  if (!distribution) return <span className="muted">{tx("未声明")}</span>;
+  const candidates: Array<{ href?: string; label: string; icon: ReactNode }> = [
+    { href: distribution.marketplace_url, label: tx("市场"), icon: <ExternalLink size={13} /> },
+    { href: distribution.repository_url, label: tx("仓库"), icon: <GitBranch size={13} /> },
+    { href: distribution.download_url, label: tx("下载"), icon: <Download size={13} /> },
+    { href: distribution.homepage_url, label: tx("主页"), icon: <ExternalLink size={13} /> },
+    { href: distribution.signature_url, label: tx("签名"), icon: <ShieldCheck size={13} /> },
+  ];
+  const links = candidates.flatMap((link) => (link.href ? [{ ...link, href: link.href }] : []));
+  return (
+    <div className="stacked-cell">
+      {links.length > 0 ? (
+        <div className="tag-list">
+          {links.map((link) => (
+            <a className="tag" href={link.href} key={`${plugin.id}:${link.label}`} rel="noreferrer" target="_blank">
+              {link.icon}
+              <span>{link.label}</span>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <span className="muted">{tx("无下载来源")}</span>
+      )}
+      <span>{distribution.license ? `${tx("许可证")} ${distribution.license}` : tx("未声明许可证")}</span>
+      {distribution.checksum_sha256 ? <span>{tx("SHA-256")} {shortChecksum(distribution.checksum_sha256)}</span> : null}
+    </div>
+  );
+}
+
+function shortChecksum(value: string) {
+  return value.length > 16 ? `${value.slice(0, 12)}...${value.slice(-4)}` : value;
 }
 
 function pluginKindLabel(kind: string) {
