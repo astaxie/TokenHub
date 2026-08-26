@@ -143,4 +143,39 @@ describe("ProviderUpsertModal", () => {
 
     expect(await screen.findByText("2/3 个可引入模型")).toBeInTheDocument();
   });
+
+  it("shows the provider OAuth callback from plugin action metadata", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[catalogEntry]}
+        loading={false}
+        mode="create"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        pluginActions={[{
+          plugin_id: "tokenhub.provider.openai-codex",
+          action_id: "openai_codex.oauth.start",
+          kind: "external_redirect",
+          capability: "oauth.start",
+          subject: "openai_codex",
+          metadata: { oauth_redirect_uri: "https://callback.example/provider/oauth" },
+        }]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+        standardModels={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole("radio", { name: /账号资源池/ }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByDisplayValue("https://callback.example/provider/oauth")).toBeInTheDocument();
+  });
 });

@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
-import { accountProviderCatalogOptions, codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
+import { accountProviderCatalogOptions, codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
@@ -194,6 +194,7 @@ export function ProviderUpsertModal({
   const createSteps = useMemo(() => providerCreateWizardSteps(credentialMode), [credentialMode]);
   const lastCreateStep = createSteps.length - 1;
   const accountCallbackURL = useMemo(() => providerAccountOAuthCallbackURL(), []);
+  const accountOAuthRedirectURI = useMemo(() => providerPluginActionForCapability(pluginActions, values.type, "oauth.start")?.metadata?.oauth_redirect_uri?.trim() || accountCallbackURL, [accountCallbackURL, pluginActions, values.type]);
   const modalRef = useRef<HTMLFormElement | null>(null);
   const preserveCatalogValuesOnReload = useRef(false);
   const loadedCustomConnection = useRef("");
@@ -744,7 +745,7 @@ export function ProviderUpsertModal({
       setAccountOAuthCallback("");
       setAccountOAuthCallbackModalError("");
       setAccountOAuthCallbackModalOpen(true);
-      setAccountOAuthStatus(tx(action === "copy" ? "已复制 OpenAI/Codex 授权链接。请在新标签页打开链接并完成授权。" : "已打开 OpenAI/Codex 授权页。授权后请复制浏览器地址栏中的完整 localhost callback URL，并粘贴到回调结果。"));
+      setAccountOAuthStatus(tx(action === "copy" ? "已复制账号授权链接。请在新标签页打开链接并完成授权。" : "已打开账号授权页。授权后请复制浏览器地址栏中的完整 callback URL，并粘贴到回调结果。"));
       setError("");
     } catch (err) {
       if (isAuthExpiredError(err)) return;
@@ -758,11 +759,11 @@ export function ProviderUpsertModal({
   }
 
   async function copyProviderAccountCallbackURL() {
-    if (await copyText(openAIAccountOAuthRedirectURI)) {
-      setAccountOAuthStatus(tx("已复制 OpenAI 固定回调地址。"));
+    if (await copyText(accountOAuthRedirectURI)) {
+      setAccountOAuthStatus(tx("已复制账号授权回调地址。"));
     } else {
-      setAccountOAuthCallback(openAIAccountOAuthRedirectURI);
-      setAccountOAuthStatus(openAIAccountOAuthRedirectURI);
+      setAccountOAuthCallback(accountOAuthRedirectURI);
+      setAccountOAuthStatus(accountOAuthRedirectURI);
     }
   }
 
@@ -1401,7 +1402,7 @@ export function ProviderUpsertModal({
                   <div className="provider-account-inline">
                     <div className="provider-account-inline-head">
                       <strong>{tx("账号授权")}</strong>
-                      <span>{tx("使用 OpenAI/Codex OAuth 授权账号；TokenHub 会在后端换取并保存账号 Token。")}</span>
+                      <span>{tx("使用账号 OAuth 授权；TokenHub 会在后端换取并保存账号 Token。")}</span>
                     </div>
                     <div className="provider-account-auth-grid">
                       <label className={`field provider-account-auth-wide provider-account-name-field${accountResourceNameConflict ? " conflict" : ""}`}>
@@ -1427,15 +1428,15 @@ export function ProviderUpsertModal({
                         )}
                       </label>
                       <label className="field provider-account-auth-wide">
-                        <span>{tx("OpenAI/Codex 授权")}</span>
+                        <span>{tx("账号 OAuth 授权")}</span>
                         <div className="field-action-row">
-                          <input readOnly value={openAIAccountOAuthRedirectURI} />
+                          <input readOnly value={accountOAuthRedirectURI} />
                           <button className="secondary-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
                             <Send size={14} />
                             {tx(accountOAuthBusy ? "授权中" : "打开授权")}
                           </button>
                         </div>
-                        <small>{tx("点击后由后端生成授权地址。OpenAI 固定回调到 localhost:1455；无需该端口实际启动服务。")}</small>
+                        <small>{tx("点击后由后端生成授权地址；授权完成后复制完整 callback URL 回填。")}</small>
                       </label>
                       <label className="field provider-account-auth-wide">
                         <span>{tx("回调结果")}</span>
