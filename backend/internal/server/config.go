@@ -141,6 +141,7 @@ func ConfigFromEnv() Config {
 		SQLiteBackupDir:                  getenv("TOKENHUB_SQLITE_BACKUP_DIR", defaultSQLiteBackupDir()),
 		ModelCatalogFile:                 getenv("TOKENHUB_MODEL_CATALOG_FILE", defaultModelCatalogFile()),
 		ProviderCatalogFile:              getenv("TOKENHUB_PROVIDER_CATALOG_FILE", defaultProviderCatalogFile()),
+		PluginDir:                        getenv("TOKENHUB_PLUGIN_DIR", defaultPluginDir()),
 		PluginMarketplaceURL:             getenv("TOKENHUB_PLUGIN_MARKETPLACE_URL", ""),
 		SecretKey:                        getenv("TOKENHUB_SECRET_KEY", "dev_tokenhub_secret_key"),
 		TrustedProxyCIDRs:                getenvList("TOKENHUB_TRUSTED_PROXY_CIDRS"),
@@ -377,6 +378,28 @@ func defaultProviderCatalogFile() string {
 		}
 	}
 	return "data/provider-catalog.json"
+}
+
+func DefaultPluginDir(deploymentType string, installRoot string) string {
+	switch strings.ToLower(strings.TrimSpace(deploymentType)) {
+	case containerDeploymentType:
+		return "/app/plugins"
+	case nativeDeploymentType:
+		root := strings.TrimSpace(installRoot)
+		if root == "" {
+			root = defaultNativeInstallRoot
+		}
+		return filepath.Join(root, "plugins")
+	default:
+		if pathExists("backend/data") {
+			return "backend/data/plugins"
+		}
+		return "data/plugins"
+	}
+}
+
+func defaultPluginDir() string {
+	return DefaultPluginDir(os.Getenv("TOKENHUB_DEPLOYMENT_TYPE"), os.Getenv("TOKENHUB_INSTALL_ROOT"))
 }
 
 func pathExists(path string) bool {

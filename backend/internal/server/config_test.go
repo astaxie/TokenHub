@@ -64,6 +64,47 @@ func TestConfigDefaultDatabaseURLUsesLocalDataFromBackendDir(t *testing.T) {
 	}
 }
 
+func TestConfigDefaultPluginDirUsesBackendDataFromRepoRoot(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, "backend", "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	withWorkingDir(t, tmp)
+	t.Setenv("TOKENHUB_PLUGIN_DIR", "")
+	t.Setenv("TOKENHUB_DEPLOYMENT_TYPE", "")
+
+	config := ConfigFromEnv()
+	if config.PluginDir != "backend/data/plugins" {
+		t.Fatalf("expected backend data plugin dir, got %q", config.PluginDir)
+	}
+}
+
+func TestConfigParsesPluginDir(t *testing.T) {
+	t.Setenv("TOKENHUB_PLUGIN_DIR", "/srv/tokenhub/plugins")
+
+	config := ConfigFromEnv()
+	if config.PluginDir != "/srv/tokenhub/plugins" {
+		t.Fatalf("unexpected plugin dir: %q", config.PluginDir)
+	}
+}
+
+func TestConfigDefaultPluginDirUsesContainerRuntimePath(t *testing.T) {
+	t.Setenv("TOKENHUB_PLUGIN_DIR", "")
+	t.Setenv("TOKENHUB_DEPLOYMENT_TYPE", containerDeploymentType)
+
+	config := ConfigFromEnv()
+	if config.PluginDir != "/app/plugins" {
+		t.Fatalf("expected container plugin dir, got %q", config.PluginDir)
+	}
+}
+
+func TestDefaultPluginDirUsesNativeInstallRoot(t *testing.T) {
+	got := DefaultPluginDir(nativeDeploymentType, "/srv/tokenhub")
+	if got != "/srv/tokenhub/plugins" {
+		t.Fatalf("expected native plugin dir under install root, got %q", got)
+	}
+}
+
 func TestConfigParsesTrustedProxyCIDRs(t *testing.T) {
 	t.Setenv("TOKENHUB_TRUSTED_PROXY_CIDRS", "127.0.0.1, 10.0.0.0/8;2001:db8::/32")
 

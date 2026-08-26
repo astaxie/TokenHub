@@ -39,6 +39,7 @@ services:
       TOKENHUB_HTTP_ADDR: :8080
       TOKENHUB_PUBLIC_BASE_URL: ${TOKENHUB_PUBLIC_BASE_URL:-http://localhost:8080}
       TOKENHUB_RELEASE_REPOSITORY: ${TOKENHUB_RELEASE_REPOSITORY:-astaxie/TokenHub}
+      TOKENHUB_PLUGIN_DIR: ${TOKENHUB_PLUGIN_DIR:-/app/plugins}
       TOKENHUB_PLUGIN_MARKETPLACE_URL: ${TOKENHUB_PLUGIN_MARKETPLACE_URL:-}
       TOKENHUB_TRUSTED_PROXY_CIDRS: ${TOKENHUB_TRUSTED_PROXY_CIDRS:-}
       TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS: ${TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS:-}
@@ -101,6 +102,7 @@ services:
       - "${TOKENHUB_BACKEND_PORT:-8080}:8080"
       - "${TOKENHUB_FRONTEND_PORT:-3000}:3000"
     volumes:
+      - tokenhub-plugins:/app/plugins
       - tokenhub-releases:/opt/tokenhub
     depends_on:
       tokenhub-postgres:
@@ -122,6 +124,8 @@ services:
 volumes:
   tokenhub-postgres-data:
     name: tokenhub-postgres-data
+  tokenhub-plugins:
+    name: tokenhub-plugins
   tokenhub-releases:
     name: tokenhub-releases
 
