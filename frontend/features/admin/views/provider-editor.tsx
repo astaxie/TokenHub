@@ -25,7 +25,7 @@ import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning
 import { ProviderPluginPanels } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { isOpenAISubscriptionResource, providerResourceOpenAISubscriptionType } from "../domain/provider-resource-types";
+import { isOpenAISubscriptionResource } from "../domain/provider-resource-types";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 type OpenAIAccountQuota = {
   account_id?: string;
@@ -644,10 +644,11 @@ export function ProviderUpsertModal({
       setError(tx("未在回调结果中识别到 Token。"));
       return;
     }
+    const defaults = providerResourceDraftDefaults({ name: selectedEntry?.display_name || selectedEntry?.name || values.name, base_url: selectedEntry?.base_url || values.base_url, type: values.type || selectedEntry?.type }, { plugins });
     setAccountValues((current) => ({
       ...current,
-      resource_type: providerResourceOpenAISubscriptionType,
-      auth_type: "oauth",
+      resource_type: current.resource_type || defaults.resource_type,
+      auth_type: current.auth_type || defaults.auth_type,
       access_token: result.access_token || current.access_token || "",
       refresh_token: result.refresh_token || current.refresh_token || "",
       id_token: result.id_token || current.id_token || "",
