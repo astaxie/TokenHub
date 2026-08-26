@@ -79,8 +79,8 @@ func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource,
 	s.mergeProviderAccountCredentials(resource, &patch)
 }
 
-func preserveProviderAccountProtectedOptions(current map[string]string, patch ProviderResource, resourceType string) map[string]string {
-	protectedOptions := providerAccountProtectedOptionKeys(resourceType)
+func (s *GormStore) preserveProviderAccountProtectedOptions(current map[string]string, patch ProviderResource, resourceType string) map[string]string {
+	protectedOptions := s.providerAccountProtectedOptionKeys(resourceType)
 	options := make(map[string]string, len(patch.Options)+len(protectedOptions))
 	for key, value := range patch.Options {
 		options[key] = value
@@ -99,12 +99,20 @@ func preserveProviderAccountProtectedOptions(current map[string]string, patch Pr
 	return options
 }
 
-func providerAccountProtectedOptionKeys(resourceType string) []string {
+func (s *GormStore) providerAccountProtectedOptionKeys(resourceType string) []string {
 	options := append([]string{}, providerAccountProtectedOptions...)
 	if isOpenAIAccountResource(resourceType) {
 		options = append(options, openAIAccountProtectedOptions...)
 	}
-	return options
+	normalizedResourceType := strings.TrimSpace(resourceType)
+	for _, profile := range s.providerImageCapabilityRouteProfiles() {
+		if profile.ResourceType != "" && profile.ResourceType != normalizedResourceType {
+			continue
+		}
+		profile.withDefaults()
+		options = append(options, profile.CapabilityOption, profile.CapabilityCheckedAtOption, profile.RouteBackfillOption)
+	}
+	return uniqueStrings(options)
 }
 
 func (s *GormStore) mergeProviderAccountCredentials(resource *ProviderResource, patch *ProviderResource) {

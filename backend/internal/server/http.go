@@ -237,6 +237,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		providerProxyPolicy: providerProxyPolicy,
 	}
 	registerBuiltinPluginActions(s)
+	s.syncProviderImageCapabilityRouteProfiles()
 	s.credentialRefresh.pluginRefresh = s.refreshProviderResourceCredentialsWithPluginAction
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,

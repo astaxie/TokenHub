@@ -156,6 +156,7 @@ func (s *Server) serveAdminProviderResourcePatch(w http.ResponseWriter, r *http.
 		writeError(w, r, err)
 		return
 	}
+	s.syncProviderImageCapabilityRouteProfiles()
 	var resource ProviderResource
 	updateResource := func() error {
 		var updateErr error
@@ -175,6 +176,7 @@ func (s *Server) serveAdminProviderResourcePatch(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) serveAdminProviderResourceDelete(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
+	s.syncProviderImageCapabilityRouteProfiles()
 	deleteResource := func() error { return s.store.DeleteProviderResource(resourceID) }
 	resource, found := s.store.GetProviderResource(resourceID)
 	if !found {

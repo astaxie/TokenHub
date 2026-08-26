@@ -108,6 +108,36 @@ func providerImageCapabilityRouteProfileFromAction(descriptor pluginmeta.ActionD
 	return profile, profile.PublicModel != "" && profile.UpstreamModel != ""
 }
 
+func providerImageCapabilityRouteProfilesFromActions(actions []pluginmeta.ActionDescriptor) []providerImageCapabilityRouteProfile {
+	profiles := make([]providerImageCapabilityRouteProfile, 0, len(actions))
+	for _, action := range actions {
+		if action.Capability != "image.capability.configure" {
+			continue
+		}
+		profile, ok := providerImageCapabilityRouteProfileFromAction(action)
+		if !ok {
+			continue
+		}
+		profiles = append(profiles, profile)
+	}
+	return dedupeProviderImageCapabilityRouteProfiles(profiles)
+}
+
+type providerImageCapabilityProfileStore interface {
+	setProviderImageCapabilityRouteProfiles([]providerImageCapabilityRouteProfile)
+}
+
+func (s *Server) syncProviderImageCapabilityRouteProfiles() {
+	if s == nil || s.pluginActions == nil {
+		return
+	}
+	store, ok := s.store.(providerImageCapabilityProfileStore)
+	if !ok {
+		return
+	}
+	store.setProviderImageCapabilityRouteProfiles(providerImageCapabilityRouteProfilesFromActions(s.pluginActions.List()))
+}
+
 func imageCapabilityActionResourceID(payload json.RawMessage, fallback string) (string, error) {
 	resourceID := strings.TrimSpace(fallback)
 	if resourceID != "" {
@@ -184,6 +214,7 @@ func (s *Server) setProviderImageCapabilityRoutesStatus(providerID string, profi
 }
 
 func providerImageCapabilityRouteMatches(route ModelRoute, providerID string, profile providerImageCapabilityRouteProfile) bool {
+	profile.withDefaults()
 	return strings.TrimSpace(route.ModelName) == profile.PublicModel &&
 		strings.TrimSpace(route.ProviderID) == strings.TrimSpace(providerID) &&
 		strings.TrimSpace(route.ProviderModel) == profile.UpstreamModel
@@ -225,4 +256,48 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
 	p.withDefaults()
 	return strings.TrimSpace(capability) == p.CapabilitySupportedValue
+}
+
+func (p providerImageCapabilityRouteProfile) key() string {
+	p.withDefaults()
+	return strings.Join([]string{
+		p.ProviderType,
+		p.ResourceType,
+		p.PublicModel,
+		p.UpstreamModel,
+		p.CapabilityOption,
+		p.CapabilityCheckedAtOption,
+		p.CapabilitySupportedValue,
+		p.RouteBackfillOption,
+		p.RouteBackfillValue,
+	}, "\x00")
+}
+
+func dedupeProviderImageCapabilityRouteProfiles(profiles []providerImageCapabilityRouteProfile) []providerImageCapabilityRouteProfile {
+	if len(profiles) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	deduped := make([]providerImageCapabilityRouteProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		profile.withDefaults()
+		key := profile.key()
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		deduped = append(deduped, profile)
+	}
+	return deduped
+}
+
+func providerImageCapabilityProfileMatchesResource(profile providerImageCapabilityRouteProfile, provider Provider, resource ProviderResource) bool {
+	profile.withDefaults()
+	if profile.ProviderType != "" && strings.TrimSpace(provider.Type) != profile.ProviderType {
+		return false
+	}
+	if profile.ResourceType != "" && strings.TrimSpace(resource.ResourceType) != profile.ResourceType {
+		return false
+	}
+	return true
 }
