@@ -11,15 +11,16 @@ import (
 )
 
 type providerImageCapabilityRouteProfile struct {
-	ProviderType              string
-	ResourceType              string
-	PublicModel               string
-	UpstreamModel             string
-	CapabilityOption          string
-	CapabilityCheckedAtOption string
-	CapabilitySupportedValue  string
-	RouteBackfillOption       string
-	RouteBackfillValue        string
+	ProviderType               string
+	ResourceType               string
+	PublicModel                string
+	UpstreamModel              string
+	CapabilityOption           string
+	CapabilityCheckedAtOption  string
+	CapabilitySupportedValue   string
+	CapabilityUnsupportedValue string
+	RouteBackfillOption        string
+	RouteBackfillValue         string
 }
 
 func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
@@ -94,6 +95,10 @@ func providerImageCapabilityRouteProfileFromAction(descriptor pluginmeta.ActionD
 		CapabilitySupportedValue: strings.TrimSpace(firstNonEmpty(
 			descriptor.Metadata["capability_supported_value"],
 			descriptor.Metadata["supported_value"],
+		)),
+		CapabilityUnsupportedValue: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["capability_unsupported_value"],
+			descriptor.Metadata["unsupported_value"],
 		)),
 		RouteBackfillOption: strings.TrimSpace(firstNonEmpty(
 			descriptor.Metadata["route_backfill_option"],
@@ -245,6 +250,9 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if p.CapabilitySupportedValue == "" {
 		p.CapabilitySupportedValue = "supported"
 	}
+	if p.CapabilityUnsupportedValue == "" {
+		p.CapabilityUnsupportedValue = "unsupported"
+	}
 	if p.RouteBackfillOption == "" {
 		p.RouteBackfillOption = "image_capability_route_backfill_v1"
 	}
@@ -258,6 +266,11 @@ func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability st
 	return strings.TrimSpace(capability) == p.CapabilitySupportedValue
 }
 
+func (p providerImageCapabilityRouteProfile) capabilityIsUnsupported(capability string) bool {
+	p.withDefaults()
+	return strings.TrimSpace(capability) == p.CapabilityUnsupportedValue
+}
+
 func (p providerImageCapabilityRouteProfile) key() string {
 	p.withDefaults()
 	return strings.Join([]string{
@@ -268,6 +281,7 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.CapabilityOption,
 		p.CapabilityCheckedAtOption,
 		p.CapabilitySupportedValue,
+		p.CapabilityUnsupportedValue,
 		p.RouteBackfillOption,
 		p.RouteBackfillValue,
 	}, "\x00")

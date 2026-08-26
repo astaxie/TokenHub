@@ -257,15 +257,16 @@ func defaultCodexImageRoute(providerID string) ModelRoute {
 
 func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 	return providerImageCapabilityRouteProfile{
-		ProviderType:              ProviderOpenAICodex,
-		ResourceType:              ProviderResourceOpenAISubscription,
-		PublicModel:               codexImageModelName,
-		UpstreamModel:             codexImageUpstreamModel,
-		CapabilityOption:          codexImageCapabilityOption,
-		CapabilityCheckedAtOption: codexImageCapabilityCheckedAtOption,
-		CapabilitySupportedValue:  codexImageCapabilitySupported,
-		RouteBackfillOption:       codexImageRouteBackfillOption,
-		RouteBackfillValue:        codexImageRouteBackfillCompleted,
+		ProviderType:               ProviderOpenAICodex,
+		ResourceType:               ProviderResourceOpenAISubscription,
+		PublicModel:                codexImageModelName,
+		UpstreamModel:              codexImageUpstreamModel,
+		CapabilityOption:           codexImageCapabilityOption,
+		CapabilityCheckedAtOption:  codexImageCapabilityCheckedAtOption,
+		CapabilitySupportedValue:   codexImageCapabilitySupported,
+		CapabilityUnsupportedValue: codexImageCapabilityUnsupported,
+		RouteBackfillOption:        codexImageRouteBackfillOption,
+		RouteBackfillValue:         codexImageRouteBackfillCompleted,
 	}
 }
 

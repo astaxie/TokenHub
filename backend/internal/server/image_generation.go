@@ -88,7 +88,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		request.Model = codexImageModelName
 		request.ResponseFormat = "b64_json"
 	}
-	if err := normalizeImageGenerationRequest(&request); err != nil {
+	if err := s.normalizeImageGenerationRequest(&request); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -243,7 +243,7 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := normalizeImageGenerationRequest(&request); err != nil {
+	if err := s.normalizeImageGenerationRequest(&request); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -703,8 +703,8 @@ func (s *Server) processImageJob(work imageJobWork) {
 		return
 	}
 	routes = s.planRouteOrderWithContext(ctx, work.call, routes)
-	if job.Model == codexImageModelName {
-		routes = s.filterAndPrioritizeCodexImageRoutes(routes)
+	if profile, ok := s.providerImageCapabilityRouteProfileForModel(job.Model); ok {
+		routes = s.filterAndPrioritizeProviderImageCapabilityRoutes(routes, profile)
 	}
 	if len(routes) == 0 {
 		err = NewHTTPError(http.StatusServiceUnavailable, "image_provider_unavailable", "No image provider route is available")
@@ -715,7 +715,7 @@ func (s *Server) processImageJob(work imageJobWork) {
 	routed := RoutedCall{Call: work.call, Routes: routes}
 	result, route, usage, attempts, invokeErr := executeRoutedWithStore(ctx, s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (imageRunResult, Usage, error) {
 		release := func() {}
-		if job.Model == codexImageModelName {
+		if profile, ok := s.providerImageCapabilityRouteProfileForModel(job.Model); ok && route.Resource != nil && isProviderAccountResource(profile.ResourceType) {
 			var err error
 			release, err = s.acquireImageAccount(ctx, routeResourceID(route))
 			if err != nil {
@@ -1103,11 +1103,33 @@ func normalizedImageOption(value string, fallback string) string {
 }
 
 func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
+	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName})
+}
+
+func (s *Server) normalizeImageGenerationRequest(request *imageGenerationRequest) error {
+	models := []string{codexImageModelName, openAIImageModelName}
+	if s == nil || s.pluginActions == nil {
+		return normalizeImageGenerationRequestForModels(request, models)
+	}
+	for _, action := range s.pluginActions.List() {
+		if action.Capability != "image.capability.configure" {
+			continue
+		}
+		profile, ok := providerImageCapabilityRouteProfileFromAction(action)
+		if !ok {
+			continue
+		}
+		models = append(models, profile.PublicModel)
+	}
+	return normalizeImageGenerationRequestForModels(request, uniqueStrings(models))
+}
+
+func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string) error {
 	request.Model = strings.TrimSpace(request.Model)
 	if request.Model == "" {
 		request.Model = codexImageModelName
 	}
-	if request.Model != codexImageModelName && request.Model != openAIImageModelName {
+	if !imageModelIsSupported(request.Model, supportedModels) {
 		return NewHTTPError(http.StatusBadRequest, "unsupported_image_model", "Only codex-gpt-image-2 and gpt-image-2 are supported")
 	}
 	request.Prompt = strings.TrimSpace(request.Prompt)
@@ -1133,6 +1155,15 @@ func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 		return NewHTTPError(http.StatusBadRequest, "invalid_response_format", "response_format must be url or b64_json")
 	}
 	return nil
+}
+
+func imageModelIsSupported(model string, supportedModels []string) bool {
+	for _, supported := range supportedModels {
+		if strings.TrimSpace(supported) == model {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) imageRunnerForRoute(job ImageJob, route RouteSelection) func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
@@ -1199,21 +1230,17 @@ func (s *Server) providerImageGenerationRequest(route RouteSelection, job ImageJ
 }
 
 func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
-	if model == codexImageModelName {
-		routes, err := s.store.SelectRouteCandidates(codexImageModelName)
+	if profile, ok := s.providerImageCapabilityRouteProfileForModel(model); ok {
+		routes, err := s.store.SelectRouteCandidates(profile.PublicModel)
 		if err != nil {
 			return nil, err
 		}
-		filtered := make([]RouteSelection, 0, len(routes))
-		for _, route := range routes {
-			if route.Provider.Type == ProviderOpenAICodex &&
-				route.ProviderModel == codexImageUpstreamModel &&
-				route.Resource != nil && isOpenAIAccountResource(route.Resource.ResourceType) {
-				filtered = append(filtered, route)
-			}
-		}
+		filtered := s.filterProviderImageCapabilityRouteCandidates(routes, profile)
 		if len(filtered) == 0 {
 			return nil, ErrProviderMissing
+		}
+		if profile.ProviderType != ProviderOpenAICodex {
+			filtered = s.routesWithAdapterCapability(filtered, AdapterCapabilityImageGenerate)
 		}
 		return filtered, nil
 	}
@@ -1228,6 +1255,23 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 		}
 	}
 	return s.routesWithAdapterCapability(filtered, AdapterCapabilityImageGenerate), nil
+}
+
+func (s *Server) filterProviderImageCapabilityRouteCandidates(routes []RouteSelection, profile providerImageCapabilityRouteProfile) []RouteSelection {
+	filtered := make([]RouteSelection, 0, len(routes))
+	for _, route := range routes {
+		if !providerImageCapabilityRouteMatches(route.Route, route.Route.ProviderID, profile) {
+			continue
+		}
+		if profile.ProviderType != "" && route.Provider.Type != profile.ProviderType {
+			continue
+		}
+		if profile.ResourceType != "" && (route.Resource == nil || route.Resource.ResourceType != profile.ResourceType) {
+			continue
+		}
+		filtered = append(filtered, route)
+	}
+	return filtered
 }
 
 func validGPTImage2Size(value string) bool {
@@ -1255,23 +1299,27 @@ func validGPTImage2Size(value string) bool {
 }
 
 func (s *Server) filterAndPrioritizeCodexImageRoutes(routes []RouteSelection) []RouteSelection {
+	return s.filterAndPrioritizeProviderImageCapabilityRoutes(routes, codexImageCapabilityRouteProfile())
+}
+
+func (s *Server) filterAndPrioritizeProviderImageCapabilityRoutes(routes []RouteSelection, profile providerImageCapabilityRouteProfile) []RouteSelection {
 	supported := make([]RouteSelection, 0, len(routes))
 	recoveryDue := make([]RouteSelection, 0, len(routes))
 	unknown := make([]RouteSelection, 0, len(routes))
 	for _, route := range routes {
 		capability := ""
 		if route.Resource != nil {
-			capability = strings.TrimSpace(route.Resource.Options[codexImageCapabilityOption])
+			capability = strings.TrimSpace(route.Resource.Options[profile.CapabilityOption])
 		}
-		switch capability {
-		case codexImageCapabilityUnsupported:
-			checkedAt, err := time.Parse(time.RFC3339Nano, route.Resource.Options[codexImageCapabilityCheckedAtOption])
+		switch {
+		case profile.capabilityIsUnsupported(capability):
+			checkedAt, err := time.Parse(time.RFC3339Nano, route.Resource.Options[profile.CapabilityCheckedAtOption])
 			retryAfter := time.Duration(s.config.ImageCapabilityRetrySecs) * time.Second
 			if err == nil && retryAfter > 0 && time.Since(checkedAt) < retryAfter {
 				continue
 			}
 			recoveryDue = append(recoveryDue, route)
-		case codexImageCapabilitySupported:
+		case profile.capabilityIsSupported(capability):
 			supported = append(supported, route)
 		default:
 			unknown = append(unknown, route)

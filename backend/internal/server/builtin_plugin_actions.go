@@ -435,6 +435,7 @@ func registerBuiltinPluginActions(server *Server) {
 			"capability_option":            codexImageCapabilityOption,
 			"capability_checked_at_option": codexImageCapabilityCheckedAtOption,
 			"capability_supported_value":   codexImageCapabilitySupported,
+			"capability_unsupported_value": codexImageCapabilityUnsupported,
 			"route_backfill_option":        codexImageRouteBackfillOption,
 			"route_backfill_value":         codexImageRouteBackfillCompleted,
 		},
