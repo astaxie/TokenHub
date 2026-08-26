@@ -69,7 +69,7 @@ export function ProviderCodexImageCapability({
       return;
     }
     if (!targetResourceID) {
-      setError(tx("没有可用于生图测试的 Codex 账号，请先启用账号。"));
+      setError(tx("没有可用于生图测试的账号，请先启用账号。"));
       return;
     }
     setBusy(enabledValue ? "enable" : "disable");
@@ -79,14 +79,14 @@ export function ProviderCodexImageCapability({
         method: "POST",
         body: JSON.stringify({ provider_id: provider.id, resource_id: targetResourceID, enabled: enabledValue }),
       });
-      if (!response.ok) throw new Error(await readAdminError(response, tx("配置 Codex 订阅生图")));
+      if (!response.ok) throw new Error(await readAdminError(response, tx("配置订阅生图")));
       const result = unwrapCodexImageCapabilityResult(await response.json());
       setNotice(tx(result.enabled ? "订阅生图测试通过并已启用。" : "订阅生图已停用；能力测试结果已保留。"));
       await onChanged().catch(() => undefined);
       setDialogOpen(false);
     } catch (caught) {
       if (isAuthExpiredError(caught)) return;
-      setError(caught instanceof Error ? caught.message : tx("Codex 订阅生图配置失败"));
+      setError(caught instanceof Error ? caught.message : tx("订阅生图配置失败"));
       await onChanged().catch(() => undefined);
     } finally {
       setBusy("");
@@ -125,11 +125,11 @@ export function ProviderCodexImageCapability({
             <div className="provider-codex-image-modal-title">
               <ImageIcon aria-hidden="true" size={20} />
               <div>
-                <p className="eyebrow">{tx("Codex 订阅模型")}</p>
+                <p className="eyebrow">{tx("订阅模型")}</p>
                 <h2 id="codex-image-capability-title">{tx("测试并启用生图能力")}</h2>
               </div>
             </div>
-            <p>{tx("TokenHub 将立即向所选真实 Codex 账号发送一次低质量生图请求。只有收到有效图片后才会添加线路；本次测试会消耗少量订阅额度。")}</p>
+            <p>{tx("TokenHub 将立即向所选真实账号发送一次低质量生图请求。只有收到有效图片后才会添加线路；本次测试会消耗少量订阅额度。")}</p>
             <label className="field">
               <span>{tx("测试账号")}</span>
               <select disabled={busy === "enable"} onChange={(event) => { setResourceID(event.target.value); setError(""); }} value={resourceID}>
@@ -145,7 +145,7 @@ export function ProviderCodexImageCapability({
             {busy === "enable" ? (
               <div className="provider-codex-image-testing" role="status">
                 <LoaderCircle aria-hidden="true" className="spin" size={20} />
-                <div><strong>{tx("正在测试生图能力")}</strong><span>{tx("正在等待真实 Codex 上游返回图片，请勿关闭弹窗。")}</span></div>
+                <div><strong>{tx("正在测试生图能力")}</strong><span>{tx("正在等待真实上游返回图片，请勿关闭弹窗。")}</span></div>
               </div>
             ) : null}
             {error ? <div className="provider-codex-image-error" role="alert"><AlertCircle aria-hidden="true" size={18} /><span>{error}</span></div> : null}
