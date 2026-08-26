@@ -79,7 +79,7 @@ func TestProviderResourceModelUnsupportedErrorRemovesPluginAccountModel(t *testi
 		t.Fatal("plugin account resource disappeared")
 	}
 	models, _, cached := providerResourceCachedModels(&updated)
-	if !cached || codexModelInList("plugin-missing-model", models) || !codexModelInList("plugin-other-model", models) {
+	if !cached || providerResourceModelInList("plugin-missing-model", models) || !providerResourceModelInList("plugin-other-model", models) {
 		t.Fatalf("unsupported plugin model was not removed from resource cache: cached=%v models=%v", cached, models)
 	}
 	if updated.FailureCount != 0 {

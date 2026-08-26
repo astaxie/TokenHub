@@ -519,7 +519,7 @@ func codexResourceCachedModels(resource *ProviderResource) ([]string, time.Time,
 	return providerResourceCachedModels(resource)
 }
 
-func codexModelInList(modelName string, models []string) bool {
+func providerResourceModelInList(modelName string, models []string) bool {
 	lookupName := normalizeModelLookupName(modelName)
 	for _, candidate := range models {
 		if normalizeModelLookupName(candidate) == lookupName {
@@ -527,6 +527,10 @@ func codexModelInList(modelName string, models []string) bool {
 		}
 	}
 	return false
+}
+
+func codexModelInList(modelName string, models []string) bool {
+	return providerResourceModelInList(modelName, models)
 }
 
 func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, routes []RouteSelection) ([]RouteSelection, error) {
@@ -555,7 +559,7 @@ func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []R
 			codexOnly = false
 		}
 		upstreamModel := firstNonEmpty(route.ProviderModel, modelName)
-		if codexModelInList(upstreamModel, cachedModels) {
+		if providerResourceModelInList(upstreamModel, cachedModels) {
 			filtered = append(filtered, route)
 		}
 	}
