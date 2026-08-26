@@ -50,6 +50,14 @@ describe("ProviderAPIQuickConnect", () => {
             source: "plugin:local_file",
           },
           {
+            id: "plugin-zhipu",
+            name: "Zhipu Plugin",
+            display_name: "Zhipu Plugin",
+            type: "zhipu_subscription",
+            models_count: 3,
+            source: "plugin:local_file",
+          },
+          {
             id: "openai",
             name: "OpenAI",
             display_name: "OpenAI",
@@ -81,14 +89,15 @@ describe("ProviderAPIQuickConnect", () => {
         ]}
         query=""
         selectedID="plugin-kimi"
-        total={2}
+        total={3}
       />,
     );
 
     expect(screen.getByText("Kimi Subscription")).toBeInTheDocument();
     expect(screen.getByText("Connect a Kimi account from the plugin marketplace.")).toBeInTheDocument();
+    expect(screen.getByText(/Zhipu Plugin · 3/)).toBeInTheDocument();
     expect(screen.queryByText("Other Subscription")).not.toBeInTheDocument();
-    expect(screen.getByText(/OpenAI 兼容/)).toBeInTheDocument();
+    expect(screen.getByText(/OpenAI · 2/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Kimi Subscription/ }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "plugin-kimi", type: "kimi_subscription" }));

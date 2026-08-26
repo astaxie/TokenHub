@@ -60,7 +60,7 @@ export function ProviderAPIQuickCatalog({
               <span className="provider-quick-catalog-avatar">{title.slice(0, 1).toUpperCase()}</span>
               <span className="provider-quick-catalog-copy">
                 <strong>{title}</strong>
-                <em>{description || `${providerTypeLabel(entry.type)} · ${countWithUnit(entry.models_count, "个模型", "model", "モデル")}`}</em>
+                <em>{description || `${providerCatalogTypeLabel(entry)} · ${countWithUnit(entry.models_count, "个模型", "model", "モデル")}`}</em>
               </span>
               {active ? <Check size={15} /> : null}
             </button>
@@ -85,6 +85,10 @@ function providerCatalogCardContribution(entry: ProviderCatalogEntry, contributi
 
 function schemaString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function providerCatalogTypeLabel(entry: ProviderCatalogEntry) {
+  return String(entry.display_name || entry.name || "").trim() || providerTypeLabel(entry.type);
 }
 
 export function ProviderAPIQuickConnect({
