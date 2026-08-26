@@ -148,9 +148,10 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 		},
 		ProviderModel: openAIImageModelName,
 	}
-	generated, revisedPrompt, usage, err := server.executeOpenAIImage(context.Background(), route, ImageJob{
+	generationJob := ImageJob{
 		Action: "generate", Prompt: "platform generation", Quality: "low", Size: "1024x1024",
-	})
+	}
+	generated, revisedPrompt, usage, err := server.imageRunnerForRoute(generationJob, route)(context.Background(), route, generationJob)
 	if err != nil {
 		t.Fatal(err)
 	}

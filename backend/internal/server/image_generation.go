@@ -1173,9 +1173,6 @@ func (s *Server) imageRunnerForRoute(job ImageJob, route RouteSelection) func(co
 	if _, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, route.Provider.Type); ok {
 		return s.executeProviderImage
 	}
-	if route.Provider.Type == ProviderOpenAI {
-		return s.executeOpenAIImage
-	}
 	return s.executeUnsupportedProviderImage
 }
 

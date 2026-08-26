@@ -3,13 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -37,21 +36,30 @@ func (s *Server) executeOpenAIImage(ctx context.Context, route RouteSelection, j
 	if err != nil {
 		return nil, "", Usage{}, err
 	}
-	adapter, ok := resolveTypedAdapter[OpenAICompatibleAdapter](s.adapterRegistry, ProviderOpenAI)
+	adapter, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, prepared.Provider.Type)
 	if !ok {
 		return nil, "", Usage{}, NewHTTPError(http.StatusServiceUnavailable, "image_provider_unavailable", "OpenAI image adapter is unavailable")
 	}
-	if adapter.Client != nil {
-		client := *adapter.Client
+	request, err := s.providerImageGenerationRequest(prepared, job)
+	if err != nil {
+		return nil, "", Usage{}, err
+	}
+	return adapter.GenerateImage(ctx, prepared.Provider, prepared.ProviderModel, request)
+}
+
+func (a OpenAICompatibleAdapter) GenerateImage(ctx context.Context, provider Provider, providerModel string, req ProviderImageGenerationRequest) ([]byte, string, Usage, error) {
+	if a.Client != nil {
+		client := *a.Client
 		client.Timeout = 0
-		adapter.Client = &client
+		a.Client = &client
 	}
 	var response openAIImageResponse
 	var headers http.Header
-	if job.Action == "edit" {
-		response, headers, err = s.executeOpenAIImageEdit(ctx, adapter, prepared, job)
+	var err error
+	if req.Action == "edit" {
+		response, headers, err = executeOpenAIImageEdit(ctx, a, provider, providerModel, req)
 	} else {
-		response, headers, err = executeOpenAIImageGeneration(ctx, adapter, prepared, job)
+		response, headers, err = executeOpenAIImageGeneration(ctx, a, provider, providerModel, req)
 	}
 	if err != nil {
 		return nil, "", Usage{}, err
@@ -65,7 +73,7 @@ func (s *Server) executeOpenAIImage(ctx context.Context, route RouteSelection, j
 	}
 	usage := usageFromMap(map[string]any{"usage": response.Usage})
 	usage.Transport = "http_json"
-	usage.ServedModel = firstNonEmpty(strings.TrimSpace(route.ProviderModel), openAIImageModelName)
+	usage.ServedModel = firstNonEmpty(strings.TrimSpace(providerModel), strings.TrimSpace(req.Model), openAIImageModelName)
 	usage.UpstreamRequestID = strings.TrimSpace(headers.Get("x-request-id"))
 	return imageBytes, response.Data[0].RevisedPrompt, usage, nil
 }
@@ -73,18 +81,19 @@ func (s *Server) executeOpenAIImage(ctx context.Context, route RouteSelection, j
 func executeOpenAIImageGeneration(
 	ctx context.Context,
 	adapter OpenAICompatibleAdapter,
-	route RouteSelection,
-	job ImageJob,
+	provider Provider,
+	providerModel string,
+	req ProviderImageGenerationRequest,
 ) (openAIImageResponse, http.Header, error) {
 	payload := openAIImageGenerationRequest{
-		Model:        firstNonEmpty(strings.TrimSpace(route.ProviderModel), openAIImageModelName),
-		Prompt:       job.Prompt,
+		Model:        firstNonEmpty(strings.TrimSpace(providerModel), strings.TrimSpace(req.Model), openAIImageModelName),
+		Prompt:       req.Prompt,
 		N:            1,
-		Quality:      normalizedImageOption(job.Quality, "auto"),
-		Size:         normalizedImageOption(job.Size, "auto"),
+		Quality:      normalizedImageOption(req.Quality, "auto"),
+		Size:         normalizedImageOption(req.Size, "auto"),
 		OutputFormat: "png",
 	}
-	resp, err := adapter.doRaw(ctx, route.Provider, http.MethodPost, "/images/generations", payload, false)
+	resp, err := adapter.doRaw(ctx, provider, http.MethodPost, "/images/generations", payload, false)
 	if err != nil {
 		return openAIImageResponse{}, nil, err
 	}
@@ -93,20 +102,21 @@ func executeOpenAIImageGeneration(
 	return response, resp.Header.Clone(), err
 }
 
-func (s *Server) executeOpenAIImageEdit(
+func executeOpenAIImageEdit(
 	ctx context.Context,
 	adapter OpenAICompatibleAdapter,
-	route RouteSelection,
-	job ImageJob,
+	provider Provider,
+	providerModel string,
+	req ProviderImageGenerationRequest,
 ) (openAIImageResponse, http.Header, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for key, value := range map[string]string{
-		"model":         firstNonEmpty(strings.TrimSpace(route.ProviderModel), openAIImageModelName),
-		"prompt":        job.Prompt,
+		"model":         firstNonEmpty(strings.TrimSpace(providerModel), strings.TrimSpace(req.Model), openAIImageModelName),
+		"prompt":        req.Prompt,
 		"n":             "1",
-		"quality":       normalizedImageOption(job.Quality, "auto"),
-		"size":          normalizedImageOption(job.Size, "auto"),
+		"quality":       normalizedImageOption(req.Quality, "auto"),
+		"size":          normalizedImageOption(req.Size, "auto"),
 		"output_format": "png",
 	} {
 		if err := writer.WriteField(key, value); err != nil {
@@ -115,30 +125,23 @@ func (s *Server) executeOpenAIImageEdit(
 	}
 	inputCount := 0
 	fileIndex := 0
-	for _, asset := range s.store.ListImageAssets(job.ID) {
-		if asset.Role != "input" && asset.Role != "mask" {
+	for _, image := range req.Images {
+		role := strings.TrimSpace(image.Role)
+		if role != "input" && role != "mask" {
 			continue
 		}
-		path, err := s.imageAssetPath(asset.RelativePath)
+		raw, err := base64.StdEncoding.DecodeString(image.DataBase64)
 		if err != nil {
-			return openAIImageResponse{}, nil, err
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return openAIImageResponse{}, nil, err
+			return openAIImageResponse{}, nil, NewHTTPError(http.StatusBadRequest, "invalid_input_image", "Image edit input image is not valid base64")
 		}
 		field := "image[]"
-		if asset.Role == "mask" {
+		if role == "mask" {
 			field = "mask"
 		} else {
 			inputCount++
 		}
 		fileIndex++
-		extension := filepath.Ext(path)
-		if extension == "" {
-			extension = ".png"
-		}
-		part, err := writer.CreateFormFile(field, fmt.Sprintf("%s-%d%s", asset.Role, fileIndex, extension))
+		part, err := writer.CreateFormFile(field, fmt.Sprintf("%s-%d.png", role, fileIndex))
 		if err != nil {
 			return openAIImageResponse{}, nil, err
 		}
@@ -152,7 +155,7 @@ func (s *Server) executeOpenAIImageEdit(
 	if err := writer.Close(); err != nil {
 		return openAIImageResponse{}, nil, err
 	}
-	resp, err := adapter.doMultipartRaw(ctx, route.Provider, "/images/edits", writer.FormDataContentType(), &body)
+	resp, err := adapter.doMultipartRaw(ctx, provider, "/images/edits", writer.FormDataContentType(), &body)
 	if err != nil {
 		return openAIImageResponse{}, nil, err
 	}
