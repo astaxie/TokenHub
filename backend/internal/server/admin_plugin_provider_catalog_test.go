@@ -147,6 +147,14 @@ func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
+			{Kind: "provider_resource_type", Name: "policy_subscription_account", Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
+				Type:        "policy_subscription_account",
+				DisplayName: "Policy Subscription Account",
+				Default:     true,
+				Defaults: map[string]string{
+					"base_url": "https://policy-subscription.example/v1",
+				},
+			}.CapabilityValue()},
 		},
 	}, AdapterRegistration{
 		Type:    providerType,
@@ -173,9 +181,15 @@ func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 	if payload.Provider.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource {
 		t.Fatalf("provider credentials scope options = %+v", payload.Provider.Options)
 	}
+	if payload.Provider.BaseURL != "https://policy-subscription.example/v1" {
+		t.Fatalf("provider base URL = %q, want plugin resource default", payload.Provider.BaseURL)
+	}
 	stored, ok := store.GetProvider(payload.Provider.ID)
 	if !ok {
 		t.Fatal("created provider was not persisted")
+	}
+	if stored.BaseURL != "https://policy-subscription.example/v1" {
+		t.Fatalf("stored provider base URL = %q, want plugin resource default", stored.BaseURL)
 	}
 	if !providerRouteRequiresResource(stored) {
 		t.Fatalf("stored provider policy = %+v", stored.Options)

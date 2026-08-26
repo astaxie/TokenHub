@@ -370,6 +370,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	if provider.Priority == 0 {
 		provider.Priority = 10
 	}
+	applyProviderDescriptorDefaults(&provider, adapterDescriptor)
 	provider.BaseURL = normalizeProviderBaseURL(provider.ID, provider.BaseURL)
 	// SSRF guard at the admin persistence boundary: admin create and update both
 	// flow through here, so those untrusted entry points cannot save a base URL

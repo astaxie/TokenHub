@@ -32,6 +32,32 @@ func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor)
 	}
 }
 
+func applyProviderDescriptorDefaults(provider *Provider, descriptor AdapterDescriptor) {
+	if provider == nil || strings.TrimSpace(provider.BaseURL) != "" {
+		return
+	}
+	if baseURL := providerDescriptorDefaultBaseURL(descriptor); baseURL != "" {
+		provider.BaseURL = baseURL
+	}
+}
+
+func providerDescriptorDefaultBaseURL(descriptor AdapterDescriptor) string {
+	for _, resourceType := range descriptor.ResourceTypes {
+		if !resourceType.Default {
+			continue
+		}
+		if baseURL := strings.TrimSpace(resourceType.Defaults["base_url"]); baseURL != "" {
+			return baseURL
+		}
+	}
+	for _, resourceType := range descriptor.ResourceTypes {
+		if baseURL := strings.TrimSpace(resourceType.Defaults["base_url"]); baseURL != "" {
+			return baseURL
+		}
+	}
+	return ""
+}
+
 type providerPluginPolicyReconciler interface {
 	ReconcileProviderPluginPolicies(registry *AdapterRegistry) (int, error)
 }
