@@ -483,7 +483,6 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
 }
 
 function providerTypeOptionLabel(providerType: string, labels: Map<string, string>) {
-  if (legacyProviderTypeOptions.includes(providerType)) return providerTypeLabel(providerType);
   return labels.get(providerType) ?? providerTypeLabel(providerType);
 }
 

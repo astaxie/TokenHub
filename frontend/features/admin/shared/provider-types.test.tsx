@@ -18,14 +18,24 @@ describe("providerTypeOptionsFromData", () => {
         { kind: "gateway", name: "responses", subject: "kimi_subscription" },
       ],
     }];
-    data.providerCatalog = [{
-      id: "glm-subscription",
-      name: "GLM Subscription",
-      display_name: "GLM Subscription",
-      type: "glm_subscription",
-      models_count: 0,
-      source: "plugin",
-    }];
+    data.providerCatalog = [
+      {
+        id: "glm-subscription",
+        name: "GLM Subscription",
+        display_name: "GLM Subscription",
+        type: "glm_subscription",
+        models_count: 0,
+        source: "plugin",
+      },
+      {
+        id: "openai-codex-subscription",
+        name: "OpenAI Codex Subscription",
+        display_name: "OpenAI Codex Subscription",
+        type: "openai_codex",
+        models_count: 0,
+        source: "plugin",
+      },
+    ];
     data.providers = [{
       id: "prv_existing",
       name: "Existing Subscription",
@@ -46,6 +56,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(values).toContain("draft_subscription");
     expect(options.find((option) => option.value === "kimi_subscription")?.label).toBe("Kimi Subscription");
     expect(options.find((option) => option.value === "glm_subscription")?.label).toBe("GLM Subscription");
+    expect(options.find((option) => option.value === "openai_codex")?.label).toBe("OpenAI Codex Subscription");
     expect(options.find((option) => option.value === "openai")?.label).toBe("OpenAI 官方");
   });
 

@@ -8,7 +8,7 @@ import { providerDisplayBaseURL, providerDisplayName, providerDisplayType, provi
 import { formatNumber, formatTime } from "../domain/formatting";
 import { providerLatencyLabel, providerPerformanceExplanation, providerQualityScoreLabel } from "../domain/provider-monitoring";
 import { isProviderAccountResource } from "../domain/provider-resource-types";
-import { enumValueLabel, providerTypeLabel, reportDatasetLabel, roleLabel } from "../domain/labels";
+import { enumValueLabel, providerTypeLabelFromData, reportDatasetLabel, roleLabel } from "../domain/labels";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { reportExportDefinitions } from "../resources/governance-config";
 import { providerPluginActionForCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
@@ -365,7 +365,7 @@ export function ProviderChannelTable({
                     <div>
                       <strong>{providerDisplayName(row.provider, row.resources)}</strong>
                       <span title={providerDisplayBaseURL(row.provider, row.resources)}>
-                        {providerTypeLabel(providerDisplayType(row.provider, row.resources))} · {providerDisplayBaseURL(row.provider, row.resources)}
+                        {providerTypeLabelFromData(data, providerDisplayType(row.provider, row.resources))} · {providerDisplayBaseURL(row.provider, row.resources)}
                       </span>
                     </div>
                   </div>
