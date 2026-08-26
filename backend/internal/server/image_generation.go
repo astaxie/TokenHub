@@ -1247,11 +1247,34 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 	}
 	filtered := make([]RouteSelection, 0, len(routes))
 	for _, route := range routes {
-		if route.Provider.Type != ProviderOpenAICodex {
+		if !s.routeMatchesProviderImageCapabilityProfile(route) {
 			filtered = append(filtered, route)
 		}
 	}
 	return s.routesWithAdapterCapability(filtered, AdapterCapabilityImageGenerate), nil
+}
+
+func (s *Server) routeMatchesProviderImageCapabilityProfile(route RouteSelection) bool {
+	for _, profile := range s.providerImageCapabilityRouteProfiles() {
+		if providerImageCapabilityProfileMatchesRoute(route, profile) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) providerImageCapabilityRouteProfiles() []providerImageCapabilityRouteProfile {
+	if s == nil || s.pluginActions == nil {
+		return nil
+	}
+	return providerImageCapabilityRouteProfilesFromActions(s.pluginActions.List())
+}
+
+func providerImageCapabilityProfileMatchesRoute(route RouteSelection, profile providerImageCapabilityRouteProfile) bool {
+	if profile.ProviderType != "" && route.Provider.Type == profile.ProviderType {
+		return true
+	}
+	return profile.ResourceType != "" && route.Resource != nil && route.Resource.ResourceType == profile.ResourceType
 }
 
 func (s *Server) filterProviderImageCapabilityRouteCandidates(routes []RouteSelection, profile providerImageCapabilityRouteProfile) []RouteSelection {

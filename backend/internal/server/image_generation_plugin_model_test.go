@@ -85,6 +85,67 @@ func TestPluginImagePublicModelUsesActionMetadataRoute(t *testing.T) {
 	}
 }
 
+func TestOpenAIImageModelSkipsPluginImageCapabilityRoutes(t *testing.T) {
+	store := NewMemoryStore()
+	openAIProvider := store.AddProvider(Provider{
+		ID: "prv_openai_image_default", Name: "OpenAI Image Default", Type: ProviderOpenAI,
+		Status: StatusActive, Healthy: true,
+	})
+	pluginProvider := store.AddProvider(Provider{
+		ID: "prv_kimi_image_default", Name: "Kimi Image Default", Type: "kimi_subscription",
+		Status: StatusActive, Healthy: true,
+	})
+	pluginResource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_kimi_image_default", ProviderID: pluginProvider.ID, Name: "Kimi Image Account",
+		ResourceType: "kimi_subscription_account", Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID: "route_openai_image_default", ModelName: openAIImageModelName, ProviderID: openAIProvider.ID,
+		ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100,
+	})
+	store.AddRoute(ModelRoute{
+		ID: "route_kimi_image_default", ModelName: openAIImageModelName, ProviderID: pluginProvider.ID, ProviderResourceID: pluginResource.ID,
+		ProviderModel: "moonshot-image", Status: StatusActive, Priority: 1, Weight: 100,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-image-admin"})
+	pluginID := "tokenhub.provider.kimi-image-default"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Kimi Image Default", []string{"kimi_subscription"}, []string{string(AdapterCapabilityImageGenerate)}), AdapterRegistration{
+		Type:         "kimi_subscription",
+		Adapter:      pluginPublicImageAdapter{image: realPNGFixture(t)},
+		Capabilities: []AdapterCapability{AdapterCapabilityImageGenerate},
+	}); err != nil {
+		t.Fatalf("register plugin image adapter: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "kimi.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "kimi_subscription",
+		Metadata: map[string]string{
+			"provider_resource_type": "kimi_subscription_account",
+			"public_model":           "kimi-image",
+			"upstream_model":         "moonshot-image",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatalf("register plugin image action: %v", err)
+	}
+
+	routes, err := server.imageRouteCandidates(openAIImageModelName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(routes) != 1 || routes[0].Provider.ID != openAIProvider.ID {
+		t.Fatalf("OpenAI image routes should skip plugin image capability routes: %+v", routes)
+	}
+}
+
 func TestPluginImagePublicModelAppearsInModelsList(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Plugin Image Models Project", Status: StatusActive})
