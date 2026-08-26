@@ -691,7 +691,7 @@ func (s *Server) watchResponseJobCancellation(ctx context.Context, cancel contex
 
 func (s *Server) applyResponseJobAffinity(ctx context.Context, routed *RoutedCall, key APIKey, headers http.Header, request ResponsesRequest) error {
 	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
-		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, providerSessionAffinityKind(adapterType), headers, request)
+		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), headers, request)
 		if err != nil {
 			return err
 		}

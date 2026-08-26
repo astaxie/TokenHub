@@ -70,6 +70,7 @@ type ManifestProvider struct {
 	SupportsCustomHeaders *bool                   `yaml:"supports_custom_headers"`
 	RouteRequiresResource *bool                   `yaml:"route_requires_resource"`
 	CredentialsScope      string                  `yaml:"credentials_scope"`
+	SessionAffinityKind   string                  `yaml:"session_affinity_kind"`
 	Catalog               ManifestProviderCatalog `yaml:"catalog"`
 }
 
@@ -334,17 +335,24 @@ func (m Manifest) Validate() error {
 
 func (m Manifest) validateProviderPolicy() error {
 	scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope)
-	if scope == "" {
+	affinityKind := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityKind)
+	if scope == "" && affinityKind == "" {
 		return nil
 	}
-	if scope != "provider" && scope != "resource" {
-		return fmt.Errorf("provider credentials_scope must be provider or resource")
-	}
 	if len(m.Capabilities.ProviderTypes) == 0 {
-		return fmt.Errorf("provider credentials_scope requires at least one provider type")
+		return fmt.Errorf("provider policy requires at least one provider type")
 	}
 	if !manifestHasKind(m.Kinds, KindProvider) {
-		return fmt.Errorf("provider credentials_scope requires provider kind")
+		return fmt.Errorf("provider policy requires provider kind")
+	}
+	if scope != "" && scope != "provider" && scope != "resource" {
+		return fmt.Errorf("provider credentials_scope must be provider or resource")
+	}
+	if affinityKind == "" {
+		return nil
+	}
+	if affinityKind != "provider_session" && affinityKind != "codex_session" {
+		return fmt.Errorf("provider session_affinity_kind must be provider_session or codex_session")
 	}
 	return nil
 }
@@ -416,6 +424,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "credentials_scope",
 				Subject: providerType,
 				Value:   scope,
+			})
+		}
+		if kind := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityKind); kind != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "session_affinity_kind",
+				Subject: providerType,
+				Value:   kind,
 			})
 		}
 		for _, protocol := range m.Capabilities.Provider.RouteProtocols {

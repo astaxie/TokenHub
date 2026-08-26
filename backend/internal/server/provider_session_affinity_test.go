@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestProviderSessionAffinityKindKeepsCodexCompatibility(t *testing.T) {
@@ -194,5 +196,39 @@ func TestChatGatewayAffinityUsesAdapterCapability(t *testing.T) {
 	expected := deriveSessionAffinityKey(server.config.SecretKey, "key_sticky", codexBridgeProtocolChat+"\x00sticky-session")
 	if affinity.KeyHash != expected {
 		t.Fatalf("provider affinity key = %q, want %q", affinity.KeyHash, expected)
+	}
+}
+
+func TestChatGatewayAffinityUsesPluginPolicyKind(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "legacy_sticky_provider"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.legacy-sticky",
+		Name:    "Legacy Sticky Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat, AdapterCapabilityAffinity},
+	}); err != nil {
+		t.Fatalf("register plugin adapter: %v", err)
+	}
+	headers := make(http.Header)
+	headers.Set("x-tokenhub-session-id", "sticky-session")
+	routes := []RouteSelection{{
+		Provider: Provider{ID: "prv_legacy_sticky", Type: providerType},
+	}}
+
+	affinity, err := server.chatGatewayAffinity("key_sticky", headers, ChatCompletionRequest{Model: "sticky-model"}, routes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil || affinity.AdapterType != providerType || affinity.Kind != AffinityKindCodexSession {
+		t.Fatalf("provider affinity metadata = %+v", affinity)
 	}
 }

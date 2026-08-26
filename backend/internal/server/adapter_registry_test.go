@@ -154,6 +154,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if codex.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
 		t.Fatalf("OpenAI Codex credentials scope = %q, want resource", codex.ProviderPolicy.CredentialsScope)
 	}
+	if codex.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
+		t.Fatalf("OpenAI Codex session affinity kind = %q, want codex session", codex.ProviderPolicy.SessionAffinityKind)
+	}
 
 	compatible, ok := server.adapterRegistry.Describe(ProviderOpenAICompatible)
 	if !ok {
@@ -164,6 +167,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	}
 	if compatible.ProviderPolicy.CredentialsScope != providerCredentialsScopeProvider {
 		t.Fatalf("OpenAI-compatible credentials scope = %q, want provider", compatible.ProviderPolicy.CredentialsScope)
+	}
+	if compatible.ProviderPolicy.SessionAffinityKind != AffinityKindProviderSession {
+		t.Fatalf("OpenAI-compatible session affinity kind = %q, want provider session", compatible.ProviderPolicy.SessionAffinityKind)
 	}
 	if !compatible.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("OpenAI-compatible should support custom headers")
@@ -211,6 +217,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
+			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 		},
 	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
 		t.Fatalf("register plugin adapter: %v", err)
@@ -225,6 +232,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
 		t.Fatalf("plugin provider credentials scope = %+v, want resource", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
+		t.Fatalf("plugin provider session affinity kind = %+v, want codex session", descriptor.ProviderPolicy)
 	}
 }
 
@@ -249,6 +259,9 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	}
 	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "credentials_scope", Subject: ProviderOpenAICodex, Value: providerCredentialsScopeResource}) {
 		t.Fatalf("Codex provider plugin credentials scope policy is missing: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "session_affinity_kind", Subject: ProviderOpenAICodex, Value: AffinityKindCodexSession}) {
+		t.Fatalf("Codex provider plugin session affinity policy is missing: %+v", descriptor.Capabilities)
 	}
 	var resourceType pluginmeta.ManifestProviderResourceType
 	if err := json.Unmarshal([]byte(value), &resourceType); err != nil {

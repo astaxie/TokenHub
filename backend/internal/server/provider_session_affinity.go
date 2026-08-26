@@ -52,6 +52,11 @@ func providerSessionAffinityKind(adapterType string) string {
 	return AffinityKindProviderSession
 }
 
+func validProviderSessionAffinityKind(kind string) bool {
+	kind = strings.TrimSpace(kind)
+	return kind == AffinityKindCodexSession || kind == AffinityKindProviderSession
+}
+
 func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType string, affinityKind string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
 	canonical, ok := codexSessionIdentifier(headers, request)
 	if !ok {

@@ -162,7 +162,7 @@ func (s *Server) anthropicGatewayAffinity(
 	identifier, scope := anthropicSessionIdentifier(headers, raw)
 	if scope == sessionScopeSession {
 		if adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity); adapterType != "" {
-			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, codexBridgeProtocolAnthropic, identifier)
+			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), codexBridgeProtocolAnthropic, identifier)
 		}
 	}
 	return s.anthropicCacheLocalityAffinity(apiKeyID, model, headers, raw)
@@ -177,7 +177,7 @@ func (s *Server) chatGatewayAffinity(
 	identifier, scope := chatCompletionSessionIdentifier(headers, request)
 	if scope == sessionScopeSession {
 		if adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity); adapterType != "" {
-			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, codexBridgeProtocolChat, identifier)
+			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), codexBridgeProtocolChat, identifier)
 		}
 	}
 	return s.chatCacheLocalityAffinity(apiKeyID, headers, request)
@@ -189,13 +189,14 @@ func resolveCodexBridgeAffinity(
 	protocol string,
 	identifier string,
 ) (*RequestAffinity, error) {
-	return resolveProviderBridgeAffinity(secret, apiKeyID, ProviderOpenAICodex, protocol, identifier)
+	return resolveProviderBridgeAffinity(secret, apiKeyID, ProviderOpenAICodex, AffinityKindCodexSession, protocol, identifier)
 }
 
 func resolveProviderBridgeAffinity(
 	secret string,
 	apiKeyID string,
 	adapterType string,
+	affinityKind string,
 	protocol string,
 	identifier string,
 ) (*RequestAffinity, error) {
@@ -210,10 +211,7 @@ func resolveProviderBridgeAffinity(
 	if adapterType == "" {
 		return nil, nil
 	}
-	kind := AffinityKindProviderSession
-	if adapterType == ProviderOpenAICodex {
-		kind = AffinityKindCodexSession
-	}
+	kind := firstNonEmpty(strings.TrimSpace(affinityKind), providerSessionAffinityKind(adapterType))
 	return &RequestAffinity{
 		AdapterType: adapterType,
 		Kind:        kind,

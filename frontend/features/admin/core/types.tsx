@@ -273,6 +273,7 @@ export type AdapterDescriptor = {
     supports_custom_headers: boolean;
     route_requires_resource?: boolean;
     credentials_scope?: string;
+    session_affinity_kind?: string;
   };
 };
 

@@ -7,6 +7,7 @@ type builtinProviderAdapter struct {
 	adapter               any
 	credentialsScope      string
 	routeRequiresResource bool
+	sessionAffinityKind   string
 	resourceTypes         []pluginmeta.ManifestProviderResourceType
 	capabilities          []AdapterCapability
 }
@@ -65,6 +66,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		adapter:               codexSubscription,
 		credentialsScope:      providerCredentialsScopeResource,
 		routeRequiresResource: true,
+		sessionAffinityKind:   AffinityKindCodexSession,
 		resourceTypes: []pluginmeta.ManifestProviderResourceType{{
 			Type:        ProviderResourceOpenAISubscription,
 			DisplayName: "OpenAI Codex Subscription",
@@ -166,6 +168,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "credentials_scope",
 			Subject: adapter.providerType,
 			Value:   adapter.credentialsScope,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.sessionAffinityKind != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "session_affinity_kind",
+			Subject: adapter.providerType,
+			Value:   adapter.sessionAffinityKind,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

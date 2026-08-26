@@ -38,6 +38,7 @@ type AdapterProviderPolicy struct {
 	SupportsCustomHeaders bool     `json:"supports_custom_headers"`
 	RouteRequiresResource bool     `json:"route_requires_resource"`
 	CredentialsScope      string   `json:"credentials_scope,omitempty"`
+	SessionAffinityKind   string   `json:"session_affinity_kind,omitempty"`
 }
 
 // AdapterRegistry is the single source of truth for which adapter serves a
@@ -172,6 +173,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		SupportsCustomHeaders: adapterSupportsProviderHeaders(r, descriptor.Type),
 		RouteRequiresResource: adapterRequiresRouteResource(r, descriptor.Type),
 		CredentialsScope:      adapterCredentialsScope(r, descriptor.Type),
+		SessionAffinityKind:   adapterSessionAffinityKind(r, descriptor.Type),
 	}
 	return descriptor
 }
@@ -205,6 +207,13 @@ func adapterCredentialsScope(registry *AdapterRegistry, providerType string) str
 		return providerCredentialsScopeResource
 	}
 	return providerCredentialsScopeProvider
+}
+
+func adapterSessionAffinityKind(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, "session_affinity_kind"); ok && validProviderSessionAffinityKind(value) {
+		return value
+	}
+	return providerSessionAffinityKind(providerType)
 }
 
 func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string, name string) (bool, bool) {
