@@ -30,6 +30,7 @@ export function providerImageCapabilityContribution(contributions: AdminUIContri
   if (!action) return undefined;
   return contributions.find((contribution) =>
     contribution.slot === "provider.model.panel" &&
+    adminUIContributionLayout(contribution) === "image_capability" &&
     contribution.action === action.action_id &&
     contribution.plugin_id === action.plugin_id &&
     (!contribution.provider_types?.length || contribution.provider_types.includes(providerType)),
@@ -39,6 +40,11 @@ export function providerImageCapabilityContribution(contributions: AdminUIContri
 export function providerImageCapabilityProfile(contributions: AdminUIContribution[], actions: PluginActionDescriptor[], providerType: string) {
   const action = actions.find((item) => item.capability === "image.capability.configure" && (!item.subject || item.subject === providerType));
   return providerImageCapabilityContribution(contributions, providerType, action) ? imageCapabilityProfileFromAction(action) : null;
+}
+
+function adminUIContributionLayout(contribution: AdminUIContribution) {
+  const layout = contribution.schema?.layout;
+  return typeof layout === "string" ? layout.trim() : "";
 }
 
 export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string, profile?: ImageCapabilityProfile | null) {

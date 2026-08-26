@@ -71,13 +71,14 @@ test("image capability profile follows plugin metadata for resources and routes"
 test("image capability panel requires a matching Admin UI contribution", () => {
   const action = { plugin_id: "tokenhub.provider.kimi", action_id: "kimi.image_capability.configure" };
   assert.equal(providerImageCapabilityContribution([
-    { plugin_id: "tokenhub.provider.kimi", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
+    { plugin_id: "tokenhub.provider.kimi", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"], schema: { layout: "image_capability" } },
     { plugin_id: "tokenhub.provider.kimi", id: "quota", slot: "provider.resource.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
   ], "kimi_subscription", action)?.id, "image");
   assert.equal(providerImageCapabilityContribution([
-    { plugin_id: "tokenhub.provider.other", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
+    { plugin_id: "tokenhub.provider.kimi", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"], schema: { layout: "quota" } },
+    { plugin_id: "tokenhub.provider.other", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"], schema: { layout: "image_capability" } },
   ], "kimi_subscription", action), undefined);
   assert.equal(providerImageCapabilityProfile([
-    { plugin_id: "tokenhub.provider.kimi", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"] },
+    { plugin_id: "tokenhub.provider.kimi", id: "image", slot: "provider.model.panel", action: "kimi.image_capability.configure", provider_types: ["kimi_subscription"], schema: { layout: "image_capability" } },
   ], [{ ...action, capability: "image.capability.configure", subject: "kimi_subscription", metadata: { public_model: "kimi-image", upstream_model: "moonshot-image" } }], "kimi_subscription")?.publicModel, "kimi-image");
 });
