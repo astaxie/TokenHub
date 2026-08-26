@@ -6,15 +6,15 @@ import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/pay
 import { providerPluginActionForCapability, providerPluginActionPath, runProviderResourcePluginAction, unwrapPluginActionData } from "../resources/provider-model-config";
 import { providerResourceAccountLabel, QuotaMetric } from "./provider-account-ui";
 
-type CodexResetCredit = {
+type ProviderResetCredit = {
   id?: string;
   status?: string;
   expires_at?: string | null;
 };
 
-type CodexResetCredits = {
+type ProviderResetCredits = {
   available_count: number;
-  credits?: CodexResetCredit[];
+  credits?: ProviderResetCredit[];
   fetched_at?: number;
   pending_operation?: {
     idempotency_key: string;
@@ -55,7 +55,7 @@ export function ProviderAccountQuotaReset({
   resource: ProviderResource;
   onRefreshQuota: () => Promise<boolean>;
 }) {
-  const [details, setDetails] = useState<CodexResetCredits | null>(null);
+  const [details, setDetails] = useState<ProviderResetCredits | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
   const [detailsError, setDetailsError] = useState("");
   const [selectedCreditID, setSelectedCreditID] = useState("");
@@ -74,7 +74,7 @@ export function ProviderAccountQuotaReset({
     setDetailsError("");
     setDetails(null);
     try {
-      const next = await runProviderResourcePluginAction<CodexResetCredits>(api, resource, resetCreditsAction, {}, tx("查询 Codex 重置次数"));
+      const next = await runProviderResourcePluginAction<ProviderResetCredits>(api, resource, resetCreditsAction, {}, tx("查询重置次数"));
       setDetails(next);
       setSelectedCreditID((current) => resetCreditIsUsable(next.credits, current, Date.now()) ? current : "");
       if (validPendingOperation(next.pending_operation)) {
@@ -92,7 +92,7 @@ export function ProviderAccountQuotaReset({
       return true;
     } catch (error) {
       if (isAuthExpiredError(error)) return false;
-      setDetailsError(error instanceof Error ? error.message : tx("查询 Codex 重置次数失败"));
+      setDetailsError(error instanceof Error ? error.message : tx("查询重置次数失败"));
       return false;
     } finally {
       setDetailsBusy(false);
@@ -199,7 +199,7 @@ export function ProviderAccountQuotaReset({
         clearStoredResetConfirmation(resource.id);
         setConfirmation((current) => current ? { ...current, attempted: false } : current);
       }
-      setResetError(error instanceof Error ? error.message : tx("重置 Codex 用量窗口失败"));
+      setResetError(error instanceof Error ? error.message : tx("重置用量窗口失败"));
     } finally {
       setResetBusy(false);
     }
@@ -252,16 +252,16 @@ export function ProviderAccountQuotaReset({
             <div aria-labelledby="provider-quota-reset-progress-title" aria-modal="true" className="confirm-modal provider-account-reset-progress-modal" role="dialog">
               <RotateCcw aria-hidden="true" className="provider-account-reset-spinner" size={64} />
               <div>
-                <p className="eyebrow">{tx("Codex 额度安全操作")}</p>
-                <h2 id="provider-quota-reset-progress-title">{tx("正在重置 Codex 套餐")}</h2>
+                <p className="eyebrow">{tx("账号额度安全操作")}</p>
+                <h2 id="provider-quota-reset-progress-title">{tx("正在重置账号套餐")}</h2>
                 <p>{tx("正在提交重置并刷新用量与重置次数，请勿关闭页面或重复操作。")}</p>
               </div>
             </div>
           ) : (
             <div aria-labelledby="provider-quota-reset-confirmation-title" aria-modal="true" className="confirm-modal provider-account-confirmation-modal" role="dialog">
               <div>
-                <p className="eyebrow">{tx("Codex 额度安全操作")}</p>
-                <h2 id="provider-quota-reset-confirmation-title">{tx("确认重置 Codex 用量窗口")}</h2>
+                <p className="eyebrow">{tx("账号额度安全操作")}</p>
+                <h2 id="provider-quota-reset-confirmation-title">{tx("确认重置用量窗口")}</h2>
               </div>
               <div className="provider-account-confirmation-target">
                 <span>{resource.name} · {resource.id}</span>
@@ -272,7 +272,7 @@ export function ProviderAccountQuotaReset({
                 <QuotaMetric label="选中次数过期" value={formatResetCreditExpiry(confirmation.expiresAt, now)} />
                 <QuotaMetric label="选中次数过期时间" value={formatResetCreditDate(confirmation.expiresAt)} />
               </div>
-              <p>{tx("确认后将消耗 1 次重置次数，并立即重置当前 Codex 用量窗口；不会更改账号套餐类型。")}</p>
+              <p>{tx("确认后将消耗 1 次重置次数，并立即重置当前用量窗口；不会更改账号套餐类型。")}</p>
               <p className="provider-quota-error">{tx("已使用的重置次数无法恢复。")}</p>
               {confirmation.attempted ? <p className="provider-quota-error">{tx("该操作已经提交。为避免重复消耗，请保留本弹窗并使用同一次操作重试，直到获得确定结果。")}</p> : null}
               {!confirmation.attempted && confirmationExpired ? <p className="provider-quota-error">{tx("选中的重置次数已经过期，请取消并刷新额度。")}</p> : null}
@@ -291,14 +291,14 @@ export function ProviderAccountQuotaReset({
   );
 }
 
-function selectAvailableCredits(credits: CodexResetCredit[] | undefined, now: number) {
+function selectAvailableCredits(credits: ProviderResetCredit[] | undefined, now: number) {
   const available = (credits ?? []).filter((credit) => credit.status?.trim().toLowerCase() === "available");
   const usable = available.filter((credit) => !hasExpiryValue(credit.expires_at) || (validExpiry(credit.expires_at) && Date.parse(credit.expires_at!) > now));
   usable.sort((left, right) => expirySortValue(left.expires_at) - expirySortValue(right.expires_at));
-  return usable.filter((credit): credit is CodexResetCredit & { id: string } => Boolean(credit.id));
+  return usable.filter((credit): credit is ProviderResetCredit & { id: string } => Boolean(credit.id));
 }
 
-function resetCreditIsUsable(credits: CodexResetCredit[] | undefined, creditID: string, now: number) {
+function resetCreditIsUsable(credits: ProviderResetCredit[] | undefined, creditID: string, now: number) {
   return Boolean(creditID && selectAvailableCredits(credits, now).some((credit) => credit.id === creditID));
 }
 
@@ -348,7 +348,7 @@ function quotaResetDangerConfirmation(action: PluginActionDescriptor) {
 
 async function readResetError(resp: Response) {
   const payload = await resp.clone().json().catch(() => null) as { code?: string; error?: { code?: string } } | null;
-  const message = await readAdminError(resp, tx("重置 Codex 用量窗口"));
+  const message = await readAdminError(resp, tx("重置用量窗口"));
   const code = payload?.error?.code || payload?.code;
   const rendered = code === "openai_quota_reset_outcome_unknown"
     ? `${message} ${tx("上游结果未知。请保留当前弹窗并直接重试，系统会复用同一个幂等键和重置次数。")}`
@@ -405,6 +405,6 @@ function readStoredResetConfirmation(resourceID: string): ResetConfirmation | nu
   }
 }
 
-function validPendingOperation(value: CodexResetCredits["pending_operation"]): value is NonNullable<CodexResetCredits["pending_operation"]> {
+function validPendingOperation(value: ProviderResetCredits["pending_operation"]): value is NonNullable<ProviderResetCredits["pending_operation"]> {
   return Boolean(value && (value.state === "pending" || value.state === "unknown") && typeof value.idempotency_key === "string" && value.idempotency_key && typeof value.credit_id === "string" && value.credit_id && typeof value.expected_available_count === "number" && Number.isFinite(value.expected_available_count));
 }

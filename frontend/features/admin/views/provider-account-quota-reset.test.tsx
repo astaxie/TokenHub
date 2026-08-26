@@ -87,6 +87,8 @@ describe("ProviderAccountQuotaReset", () => {
 
     await user.click(screen.getByRole("radio", { name: /重置次数 1/ }));
     await user.click(screen.getByRole("button", { name: "重置套餐" }));
+    expect(screen.getByRole("heading", { name: "确认重置用量窗口" })).toBeInTheDocument();
+    expect(screen.queryByText(/Codex 额度安全操作|确认重置 Codex/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认重置" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
