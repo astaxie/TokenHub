@@ -16,6 +16,16 @@ const catalogEntry: ProviderCatalogEntry = {
   source: "component-test",
 };
 
+const codexAccountCatalogEntry: ProviderCatalogEntry = {
+  ...catalogEntry,
+  id: "openai-codex",
+  name: "OpenAI Codex",
+  display_name: "OpenAI Codex",
+  type: "openai_codex",
+  base_url: "https://chatgpt.com/backend-api/codex",
+  categories: ["codex"],
+};
+
 describe("ProviderUpsertModal", () => {
   afterEach(() => {
     setActiveLanguage("en");
@@ -151,11 +161,20 @@ describe("ProviderUpsertModal", () => {
     render(
       <ProviderUpsertModal
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
-        catalog={[catalogEntry]}
+        catalog={[codexAccountCatalogEntry]}
         loading={false}
         mode="create"
         onClose={vi.fn()}
         onSaved={vi.fn().mockResolvedValue(undefined)}
+        plugins={[{
+          id: "tokenhub.provider.openai-codex",
+          name: "OpenAI Codex Subscription",
+          version: "built-in",
+          source: "built_in",
+          kinds: ["provider"],
+          placements: [],
+          capabilities: [{ kind: "provider_resource_type", name: "openai_subscription", subject: "openai_codex" }],
+        }]}
         pluginActions={[{
           plugin_id: "tokenhub.provider.openai-codex",
           action_id: "openai_codex.oauth.start",

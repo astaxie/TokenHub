@@ -3,6 +3,7 @@ import test from "node:test";
 import { importTypeScript } from "./typescript-test-loader.mjs";
 
 const {
+  accountProviderCatalogEntryFromProvider,
   accountProviderCatalogOptionsFromPlugins,
   directProviderCatalogOptions,
 } = await importTypeScript(new URL("./provider-account-catalog.ts", import.meta.url));
@@ -31,8 +32,8 @@ test("account Provider catalog options come from plugin resource type capabiliti
   assert.deepEqual(directProviderCatalogOptions(catalog, accountCatalog).map((entry) => entry.id), ["openai"]);
 });
 
-test("account Provider catalog options keep the legacy Codex fallback only when needed", () => {
-  assert.deepEqual(accountProviderCatalogOptionsFromPlugins([], []).map((entry) => entry.id), ["openai-codex"]);
+test("account Provider catalog options are empty without plugin resource type capabilities", () => {
+  assert.deepEqual(accountProviderCatalogOptionsFromPlugins([], []).map((entry) => entry.id), []);
 
   const plugins = [{
     id: "tokenhub.provider.kimi",
@@ -46,4 +47,27 @@ test("account Provider catalog options keep the legacy Codex fallback only when 
     ],
   }];
   assert.deepEqual(accountProviderCatalogOptionsFromPlugins([], plugins), []);
+});
+
+test("account Provider catalog entry can be synthesized from an existing Provider", () => {
+  assert.deepEqual(accountProviderCatalogEntryFromProvider({
+    id: "prv_existing",
+    name: "Existing Account Pool",
+    type: "kimi_subscription",
+    base_url: "https://kimi.example/api",
+    status: "active",
+    healthy: true,
+    priority: 10,
+    options: { catalog_id: "kimi-subscription", model_category: "chat" },
+  }), {
+    id: "kimi-subscription",
+    name: "Existing Account Pool",
+    display_name: "Existing Account Pool",
+    type: "kimi_subscription",
+    base_url: "https://kimi.example/api",
+    categories: ["chat"],
+    category_counts: {},
+    models_count: 0,
+    source: "provider",
+  });
 });

@@ -1,5 +1,4 @@
-import { type PluginDescriptor, type ProviderCatalogEntry } from "../core/types";
-import { accountProviderCatalogOptions } from "./codex-provider-profile";
+import { type PluginDescriptor, type Provider, type ProviderCatalogEntry } from "../core/types";
 import { isProviderAccountResourceType, providerResourceTypeCapabilityKind } from "./provider-resource-types";
 
 export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalogEntry[], plugins: PluginDescriptor[]) {
@@ -16,12 +15,6 @@ export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalo
   for (const entry of candidates) {
     merged.set(entry.id, entry);
   }
-  const legacyFallbacks = accountProviderTypes.size === 0
-    ? accountProviderCatalogOptions
-    : accountProviderCatalogOptions.filter((entry) => accountProviderTypes.has(entry.type));
-  for (const entry of legacyFallbacks) {
-    if (!merged.has(entry.id)) merged.set(entry.id, entry);
-  }
   return Array.from(merged.values()).sort((left, right) => {
     const leftName = left.display_name || left.name || left.id;
     const rightName = right.display_name || right.name || right.id;
@@ -37,6 +30,20 @@ export function directProviderCatalogOptions(catalog: ProviderCatalogEntry[], ac
 
 export function accountProviderCatalogCategory(entry: ProviderCatalogEntry) {
   return entry.categories?.[0] ?? "all";
+}
+
+export function accountProviderCatalogEntryFromProvider(provider: Provider): ProviderCatalogEntry {
+  return {
+    id: provider.options?.catalog_id || provider.type,
+    name: provider.name || provider.type,
+    display_name: provider.name || provider.type,
+    type: provider.type,
+    base_url: provider.base_url,
+    categories: provider.options?.model_category ? [provider.options.model_category] : ["all"],
+    category_counts: {},
+    models_count: 0,
+    source: "provider",
+  };
 }
 
 export function accountProviderResourceDefaultPatch(defaults: Record<string, string>) {

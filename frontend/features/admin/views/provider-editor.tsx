@@ -3,12 +3,11 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
-import { codexProviderCatalogSummary } from "../domain/codex-provider-profile";
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
-import { accountProviderCatalogCategory, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
+import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
@@ -90,9 +89,9 @@ export function ProviderUpsertModal({
   setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins), [catalog, plugins]);
-  const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0] ?? codexProviderCatalogSummary;
+  const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0];
   const editingAccountProvider = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResource(resource));
-  const editingAccountProviderCatalogEntry = accountProviderCatalogOptions.find((entry) => entry.type === provider?.type) ?? defaultAccountProviderCatalogEntry;
+  const editingAccountProviderCatalogEntry = useMemo(() => accountProviderCatalogOptions.find((entry) => entry.type === provider?.type) ?? (provider ? accountProviderCatalogEntryFromProvider(provider) : defaultAccountProviderCatalogEntry), [accountProviderCatalogOptions, defaultAccountProviderCatalogEntry, provider]);
   const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
   const availableCategories = useMemo(
@@ -398,7 +397,7 @@ export function ProviderUpsertModal({
   ]);
 
   useEffect(() => {
-    if (mode !== "edit" || !editingAccountProvider || selectedAccountResources.length === 0) {
+    if (mode !== "edit" || !editingAccountProvider || !editingAccountProviderCatalogEntry?.id || selectedAccountResources.length === 0) {
       setAccountCatalogs({});
       setAccountCatalogErrors({});
       return;
@@ -428,7 +427,7 @@ export function ProviderUpsertModal({
     return () => {
       cancelled = true;
     };
-  }, [api, editingAccountProvider, editingAccountProviderCatalogEntry.id, mode, selectedAccountResources]);
+  }, [api, editingAccountProvider, editingAccountProviderCatalogEntry?.id, mode, selectedAccountResources]);
 
   useEffect(() => {
     if (mode === "create") {
@@ -546,7 +545,7 @@ export function ProviderUpsertModal({
   }, [mode, credentialMode]);
 
   useEffect(() => {
-    if (mode !== "create" || credentialMode !== "account_integration" || accountProviderCatalogOptions.some((entry) => entry.id === catalogID)) return;
+    if (mode !== "create" || credentialMode !== "account_integration" || !defaultAccountProviderCatalogEntry || accountProviderCatalogOptions.some((entry) => entry.id === catalogID)) return;
     setModelCategory(accountProviderCatalogCategory(defaultAccountProviderCatalogEntry));
     selectCatalog(defaultAccountProviderCatalogEntry);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- catalog selection is the corrective action; including it would retrigger the correction.
@@ -752,6 +751,7 @@ export function ProviderUpsertModal({
   }
 
   function selectCredentialMode(nextMode: ProviderCredentialMode) {
+    if (nextMode === "account_integration" && !defaultAccountProviderCatalogEntry) return;
     setCredentialMode(nextMode);
     if (nextMode === "account_integration") {
       const defaults = providerResourceDraftDefaults({ name: defaultAccountProviderCatalogEntry.display_name || defaultAccountProviderCatalogEntry.name, base_url: defaultAccountProviderCatalogEntry.base_url, type: defaultAccountProviderCatalogEntry.type }, { plugins });
@@ -1219,10 +1219,10 @@ export function ProviderUpsertModal({
               <section className="provider-wizard-panel provider-access-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("选择接入方式")}</h3>
-                  <p>{tx("选择使用上游 API Key，或接入 OpenAI 账号资源池。")}</p>
+                  <p>{tx("选择使用上游 API Key，或接入插件账号资源池。")}</p>
                 </div>
                 <div className="provider-access-options" role="radiogroup" aria-label={tx("选择接入方式")}>
-                  {providerCredentialOptions().map((option) => {
+                  {providerCredentialOptions(accountProviderCatalogOptions.length > 0).map((option) => {
                     const Icon = option.icon;
                     const active = credentialMode === option.key;
                     return (
@@ -1231,7 +1231,7 @@ export function ProviderUpsertModal({
                         className={active ? "provider-access-card active" : "provider-access-card"}
                         key={option.key}
                         onClick={() => selectCredentialMode(option.key)}
-                        role="radio"
+                        role="radio" disabled={option.disabled}
                         type="button"
                       >
                         <span><Icon size={18} /></span>
