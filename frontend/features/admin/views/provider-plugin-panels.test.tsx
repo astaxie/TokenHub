@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ProviderPluginPanels, providerPanelFields, providerPanelFieldValue } from "./provider-plugin-panels";
+import { ProviderPluginPanels, providerPanelFields, providerPanelFieldValue, providerPanelResources } from "./provider-plugin-panels";
 
 describe("ProviderPluginPanels", () => {
   it("runs provider resource panel actions through the plugin action endpoint", async () => {
@@ -19,7 +19,9 @@ describe("ProviderPluginPanels", () => {
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
         provider={{ id: "prv_plugin", name: "Plugin Provider", type: "plugin_provider", status: "active", healthy: true, priority: 10 }}
         resources={[
-          { id: "rsrc_plugin", provider_id: "prv_plugin", name: "Plugin Account", resource_type: "api_key", status: "active", healthy: true, priority: 10, weight: 1 },
+          { id: "rsrc_plugin", provider_id: "prv_plugin", name: "Plugin Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1 },
+          { id: "rsrc_key", provider_id: "prv_plugin", name: "Plugin API Key", resource_type: "api_key", status: "active", healthy: true, priority: 10, weight: 1 },
+          { id: "rsrc_other_provider", provider_id: "prv_other", name: "Other Provider Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1 },
         ]}
         contributions={[
           {
@@ -28,6 +30,7 @@ describe("ProviderPluginPanels", () => {
             slot: "provider.resource.panel",
             title: "Plugin Quota",
             provider_types: ["plugin_provider"],
+            resource_types: ["plugin_account"],
             action: "quota.read",
             schema: {
               fields: [
@@ -49,7 +52,10 @@ describe("ProviderPluginPanels", () => {
     expect(screen.getByText("Provider type")).toBeInTheDocument();
     expect(screen.getByText("plugin_provider")).toBeInTheDocument();
     expect(screen.getByText("Resources")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByText("Resource status")).toBeInTheDocument();
+    expect(screen.queryByText("Plugin API Key")).not.toBeInTheDocument();
+    expect(screen.queryByText("Other Provider Account")).not.toBeInTheDocument();
     expect(screen.queryByText("Other Quota")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /执行插件面板/ }));
 
@@ -92,5 +98,18 @@ describe("ProviderPluginPanels", () => {
       resource: { id: "rsrc_plugin", provider_id: "prv_plugin", name: "Plugin Account", resource_type: "api_key", status: "active", healthy: true, priority: 10, weight: 1 },
       resources: [],
     }, fields[2])).toContain("rsrc_plugin");
+  });
+
+  it("scopes provider resource panel resources by Provider and declared resource types", () => {
+    expect(providerPanelResources({
+      plugin_id: "tokenhub.provider.plugin",
+      id: "quota",
+      slot: "provider.resource.panel",
+      resource_types: ["plugin_account"],
+    }, [
+      { id: "rsrc_plugin", provider_id: "prv_plugin", name: "Plugin Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1 },
+      { id: "rsrc_key", provider_id: "prv_plugin", name: "Plugin API Key", resource_type: "api_key", status: "active", healthy: true, priority: 10, weight: 1 },
+      { id: "rsrc_other", provider_id: "prv_other", name: "Other Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1 },
+    ], "prv_plugin").map((resource) => resource.id)).toEqual(["rsrc_plugin"]);
   });
 });

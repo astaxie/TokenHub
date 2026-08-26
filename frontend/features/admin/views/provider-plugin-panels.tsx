@@ -41,30 +41,29 @@ export function ProviderPluginPanels({
         contribution.slot === "provider.resource.panel" &&
         (contribution.provider_types?.length ? contribution.provider_types.includes(provider.type) : true),
       )
-      .map((contribution) => ({ contribution, fields: providerPanelFields(contribution) }))
+      .map((contribution) => ({ contribution, fields: providerPanelFields(contribution), resources: providerPanelResources(contribution, resources, provider.id) }))
       .filter((panel) => panel.fields.length > 0 || Boolean(panel.contribution.action)),
-    [contributions, provider.type],
+    [contributions, provider.id, provider.type, resources],
   );
   const actionKeys = useMemo(() => new Set(actions.map((action) => actionKey(action.plugin_id, action.action_id))), [actions]);
-  const activeResources = resources.filter((resource) => resource.status === "active");
   const [states, setStates] = useState<Record<string, PanelState>>({});
   if (panels.length === 0) return null;
 
-  function stateFor(contribution: AdminUIContribution): PanelState {
-    return states[contributionKey(contribution)] ?? defaultPanelState(activeResources, resources);
+  function stateFor(contribution: AdminUIContribution, panelResources: ProviderResource[]): PanelState {
+    return states[contributionKey(contribution)] ?? defaultPanelState(panelResources);
   }
 
-  function updateState(contribution: AdminUIContribution, patch: Partial<PanelState>) {
+  function updateState(contribution: AdminUIContribution, panelResources: ProviderResource[], patch: Partial<PanelState>) {
     setStates((current) => {
       const key = contributionKey(contribution);
-      return { ...current, [key]: { ...(current[key] ?? defaultPanelState(activeResources, resources)), ...patch } };
+      return { ...current, [key]: { ...(current[key] ?? defaultPanelState(panelResources)), ...patch } };
     });
   }
 
-  async function runPanel(contribution: AdminUIContribution) {
-    const state = stateFor(contribution);
+  async function runPanel(contribution: AdminUIContribution, panelResources: ProviderResource[]) {
+    const state = stateFor(contribution, panelResources);
     if (!contribution.action || !state.resourceID) return;
-    updateState(contribution, { busy: true, error: "", result: "" });
+    updateState(contribution, panelResources, { busy: true, error: "", result: "" });
     try {
       const resp = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(contribution.plugin_id)}/actions/${encodeURIComponent(contribution.action)}`, {
         method: "POST",
@@ -72,9 +71,9 @@ export function ProviderPluginPanels({
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("插件面板执行失败")));
       const payload = await resp.json();
-      updateState(contribution, { busy: false, result: JSON.stringify(redactPanelResult(payload), null, 2) });
+      updateState(contribution, panelResources, { busy: false, result: JSON.stringify(redactPanelResult(payload), null, 2) });
     } catch (err) {
-      updateState(contribution, { busy: false, error: err instanceof Error ? err.message : tx("插件面板执行失败") });
+      updateState(contribution, panelResources, { busy: false, error: err instanceof Error ? err.message : tx("插件面板执行失败") });
     }
   }
 
@@ -84,9 +83,9 @@ export function ProviderPluginPanels({
         <h3>{tx("插件面板")}</h3>
       </div>
       <div className="provider-quota-list">
-        {panels.map(({ contribution, fields }) => {
-          const state = stateFor(contribution);
-          const selectedResource = resources.find((resource) => resource.id === state.resourceID);
+        {panels.map(({ contribution, fields, resources: panelResources }) => {
+          const state = stateFor(contribution, panelResources);
+          const selectedResource = panelResources.find((resource) => resource.id === state.resourceID);
           const registered = !contribution.action || actionKeys.has(actionKey(contribution.plugin_id, contribution.action));
           return (
             <article className="provider-quota-card" key={contributionKey(contribution)}>
@@ -96,13 +95,13 @@ export function ProviderPluginPanels({
                   <strong>{contribution.plugin_id}</strong>
                 </div>
                 <div className="provider-quota-card-actions">
-                  {resources.length > 0 ? (
-                    <select disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, { resourceID: event.target.value, error: "", result: "" })}>
-                      {resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name || resource.id}</option>)}
+                  {panelResources.length > 0 ? (
+                    <select disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, panelResources, { resourceID: event.target.value, error: "", result: "" })}>
+                      {panelResources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name || resource.id}</option>)}
                     </select>
                   ) : null}
                   {contribution.action ? (
-                    <button className="secondary-button" disabled={state.busy || !registered || !state.resourceID} onClick={() => void runPanel(contribution)} type="button">
+                    <button className="secondary-button" disabled={state.busy || !registered || !state.resourceID} onClick={() => void runPanel(contribution, panelResources)} type="button">
                       <Play size={14} />
                       {tx(state.busy ? "执行中" : "执行插件面板")}
                     </button>
@@ -113,7 +112,7 @@ export function ProviderPluginPanels({
                 <div className="system-settings-plugin-fields">
                   {fields.map((field) => (
                     <ProviderPanelFieldView
-                      context={{ provider, resource: selectedResource, resources }}
+                      context={{ provider, resource: selectedResource, resources: panelResources }}
                       field={field}
                       key={field.name}
                     />
@@ -183,6 +182,13 @@ type ProviderPanelContext = {
   resources: ProviderResource[];
 };
 
+export function providerPanelResources(contribution: AdminUIContribution, resources: ProviderResource[], providerID: string) {
+  return resources.filter((resource) =>
+    resource.provider_id === providerID &&
+    (!contribution.resource_types?.length || contribution.resource_types.includes(resource.resource_type)),
+  );
+}
+
 export function providerPanelFieldValue(context: ProviderPanelContext, field: PanelField) {
   const rawValue = field.value ?? providerPanelSourceValue(context, field.source);
   if (rawValue === undefined || rawValue === null || rawValue === "") return "-";
@@ -225,7 +231,8 @@ function providerPanelSourceValue(context: ProviderPanelContext, source?: string
   return current;
 }
 
-function defaultPanelState(activeResources: ProviderResource[], resources: ProviderResource[]): PanelState {
+function defaultPanelState(resources: ProviderResource[]): PanelState {
+  const activeResources = resources.filter((resource) => resource.status === "active");
   return { resourceID: activeResources[0]?.id ?? resources[0]?.id ?? "", busy: false, error: "", result: "" };
 }
 

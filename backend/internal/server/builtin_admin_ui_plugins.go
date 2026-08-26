@@ -121,6 +121,7 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 			Slot:          pluginmeta.SlotProviderResourcePanel,
 			Title:         "OpenAI Codex quota",
 			ProviderTypes: []string{ProviderOpenAICodex},
+			ResourceTypes: []string{ProviderResourceOpenAISubscription},
 			Action:        "openai_codex.quota.read",
 			Schema: map[string]any{
 				"fields": []any{
