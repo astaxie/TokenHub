@@ -38,7 +38,7 @@ func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, reques
 func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall, req ChatCompletionRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
 	allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
 	return executeRoutedWithStore(r.Context(), s.store, routed, allowEffortFallback, func(ctx context.Context, route RouteSelection, omitReasoningEffort bool, _ int) (any, Usage, error) {
-		responsesReq, useResponses, err := playgroundResponsesRequestForRoute(route, req)
+		responsesReq, useResponses, err := playgroundResponsesRequestForRoute(s.adapterRegistry, route, req)
 		if err != nil {
 			return nil, Usage{}, err
 		}

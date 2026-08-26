@@ -4,11 +4,31 @@ import "testing"
 
 func TestPlaygroundResponsesRequestForRouteSkipsNonCodexProviders(t *testing.T) {
 	request, useResponses, err := playgroundResponsesRequestForRoute(
+		NewAdapterRegistry(),
 		RouteSelection{Provider: Provider{Type: ProviderOpenAI}},
 		ChatCompletionRequest{Messages: []ChatMessage{{Role: "tool", Content: "not valid for Codex"}}},
 	)
 	if err != nil || useResponses || request.Input != nil {
 		t.Fatalf("non-Codex route unexpectedly converted request: request=%+v use_responses=%t err=%v", request, useResponses, err)
+	}
+}
+
+func TestPlaygroundResponsesRequestForRouteUsesPluginProtocol(t *testing.T) {
+	registry := NewAdapterRegistry()
+	const providerType = "plugin_codex_responses"
+	registry.Register(providerType, routeProtocolTestAdapter{protocols: []string{providerRouteProtocolCodexResponses}}, AdapterCapabilityResponses)
+
+	request, useResponses, err := playgroundResponsesRequestForRoute(
+		registry,
+		RouteSelection{Provider: Provider{Type: providerType}},
+		ChatCompletionRequest{Model: "plugin-model", Messages: []ChatMessage{{Role: "user", Content: "hello"}}},
+	)
+	if err != nil || !useResponses {
+		t.Fatalf("plugin Codex protocol route was not converted: request=%+v use_responses=%t err=%v", request, useResponses, err)
+	}
+	input, ok := request.Input.([]map[string]any)
+	if !ok || request.Model != "plugin-model" || len(input) != 1 {
+		t.Fatalf("unexpected converted request: %+v", request)
 	}
 }
 

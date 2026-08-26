@@ -482,7 +482,7 @@ func (s *Server) executeRoutedPlaygroundStream(
 	result, route, usage, attempts, err := executeRoutedWithStore(
 		r.Context(), s.store, routed, allowEffortFallback,
 		func(ctx context.Context, candidate RouteSelection, omitReasoningEffort bool, _ int) (playgroundStreamResult, Usage, error) {
-			responsesReq, useResponses, conversionErr := playgroundResponsesRequestForRoute(candidate, req)
+			responsesReq, useResponses, conversionErr := playgroundResponsesRequestForRoute(s.adapterRegistry, candidate, req)
 			if conversionErr != nil {
 				return playgroundStreamResult{}, Usage{}, conversionErr
 			}
