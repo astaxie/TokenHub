@@ -94,7 +94,7 @@ export function ProviderImageCapability({
     }
   }
 
-  if (!action) return null;
+  if (!action || !imageProfile) return null;
 
   return (
     <>
@@ -137,8 +137,9 @@ export function ProviderImageCapability({
                 <option value="">{tx("请选择可用账号")}</option>
                 {providerResources.map((resource) => {
                   const available = resource.status === "active" && resource.healthy !== false;
+                  const capability = resource.options?.[imageProfile.capabilityOption];
                   return <option disabled={!available} key={resource.id} value={resource.id}>
-                    {resource.name} · {providerResourceAccountLabel(resource)} · {tx(available ? formatImageGenerationCapabilityTag(resource.options?.image_generation_capability) : "账号不可用")}
+                    {resource.name} · {providerResourceAccountLabel(resource)} · {tx(available ? formatImageGenerationCapabilityTag(capability, imageProfile.capabilitySupportedValue, imageProfile.capabilityUnsupportedValue) : "账号不可用")}
                   </option>;
                 })}
               </select>
@@ -150,10 +151,10 @@ export function ProviderImageCapability({
               </div>
             ) : null}
             {error ? <div className="provider-image-capability-error" role="alert"><AlertCircle aria-hidden="true" size={18} /><span>{error}</span></div> : null}
-            {selectedResource?.options?.image_generation_capability ? (
+            {selectedResource?.options?.[imageProfile.capabilityOption] ? (
               <p className="provider-credential-note">
                 {formatTranslationTemplate(tx("该账号上次测试结果：{result}"), {
-                  result: tx(formatImageGenerationCapabilityTag(selectedResource.options.image_generation_capability)),
+                  result: tx(formatImageGenerationCapabilityTag(selectedResource.options[imageProfile.capabilityOption], imageProfile.capabilitySupportedValue, imageProfile.capabilityUnsupportedValue)),
                 })}
               </p>
             ) : null}

@@ -504,7 +504,7 @@ export function imageCapabilityCapableResources(data: AppData, providerID: strin
     resource.provider_id === providerID &&
     resource.status === "active" &&
     resource.healthy !== false &&
-    resource.options?.image_generation_capability === "supported" &&
+    resource.options?.[profile.capabilityOption] === profile.capabilitySupportedValue &&
     (profile.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResource(resource)),
   );
 }

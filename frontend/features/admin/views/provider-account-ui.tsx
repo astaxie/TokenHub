@@ -75,15 +75,15 @@ export function ProviderAccountDetails({ resource }: { resource: ProviderResourc
   );
 }
 
-export function formatImageGenerationCapability(value?: string) {
-  if (value === "supported") return "支持";
-  if (value === "unsupported") return "不支持";
+export function formatImageGenerationCapability(value?: string, supportedValue = "supported", unsupportedValue = "unsupported") {
+  if (value === supportedValue) return "支持";
+  if (value === unsupportedValue) return "不支持";
   return "未检测";
 }
 
-export function formatImageGenerationCapabilityTag(value?: string) {
-  if (value === "supported") return "支持生图";
-  if (value === "unsupported") return "不支持生图";
+export function formatImageGenerationCapabilityTag(value?: string, supportedValue = "supported", unsupportedValue = "unsupported") {
+  if (value === supportedValue) return "支持生图";
+  if (value === unsupportedValue) return "不支持生图";
   return "生图未检测";
 }
 

@@ -50,6 +50,9 @@ test("image capability profile follows plugin metadata for resources and routes"
       provider_resource_type: "kimi_subscription_account",
       public_model: "kimi-image",
       upstream_model: "moonshot-image",
+      capability_option: "kimi_image_capability",
+      capability_supported_value: "available",
+      capability_unsupported_value: "blocked",
     },
   });
   assert.deepEqual(profile, {
@@ -57,15 +60,25 @@ test("image capability profile follows plugin metadata for resources and routes"
     publicModel: "kimi-image",
     upstreamModel: "moonshot-image",
     resourceType: "kimi_subscription_account",
+    capabilityOption: "kimi_image_capability",
+    capabilitySupportedValue: "available",
+    capabilityUnsupportedValue: "blocked",
   });
   assert.equal(providerImageRouteEnabled([{ ...route, model_name: "kimi-image", provider_model: "moonshot-image" }], "provider-1", profile), true);
   assert.deepEqual(
     providerImageCapabilityResources([
       resource("codex", "supported"),
-      resource("kimi", "supported", "active", "kimi_subscription_account"),
+      { ...resource("kimi", undefined, "active", "kimi_subscription_account"), options: { kimi_image_capability: "available" } },
     ], "provider-1", profile).map((item) => item.id),
     ["kimi"],
   );
+  assert.equal(defaultProviderImageCapabilityResourceID([
+    { ...resource("unknown", undefined, "active", "kimi_subscription_account"), options: { kimi_image_capability: "blocked" } },
+    { ...resource("kimi", undefined, "active", "kimi_subscription_account"), options: { kimi_image_capability: "available" } },
+  ], "provider-1", "all", profile), "kimi");
+  assert.equal(providerImageCapabilityState([
+    { ...resource("kimi", undefined, "active", "kimi_subscription_account"), options: { kimi_image_capability: "available" } },
+  ], "provider-1", true, profile), "enabled");
 });
 
 test("image capability panel requires a matching Admin UI contribution", () => {

@@ -7,22 +7,33 @@ export type ImageCapabilityProfile = {
   publicModel: string;
   upstreamModel: string;
   resourceType?: string;
+  capabilityOption: string;
+  capabilitySupportedValue: string;
+  capabilityUnsupportedValue: string;
 };
 
 export const defaultImageCapabilityProfile: ImageCapabilityProfile = {
   displayName: "订阅生图",
   publicModel: codexImageModelName,
   upstreamModel: codexImageUpstreamModel,
+  capabilityOption: "image_generation_capability",
+  capabilitySupportedValue: "supported",
+  capabilityUnsupportedValue: "unsupported",
 };
 
 export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescriptor, "metadata" | "title"> | null): ImageCapabilityProfile | null {
   if (!action) return null;
+  const publicModel = action.metadata?.public_model?.trim() ?? "";
+  const upstreamModel = action.metadata?.upstream_model?.trim() ?? "";
+  if (!publicModel || !upstreamModel) return null;
   return {
-    ...defaultImageCapabilityProfile,
     displayName: action.metadata?.display_name?.trim() || action.title?.trim() || defaultImageCapabilityProfile.displayName,
-    publicModel: action.metadata?.public_model?.trim() || defaultImageCapabilityProfile.publicModel,
-    upstreamModel: action.metadata?.upstream_model?.trim() || defaultImageCapabilityProfile.upstreamModel,
+    publicModel,
+    upstreamModel,
     resourceType: action.metadata?.provider_resource_type?.trim() || action.metadata?.resource_type?.trim() || undefined,
+    capabilityOption: action.metadata?.capability_option?.trim() || action.metadata?.provider_capability_option?.trim() || "image_capability",
+    capabilitySupportedValue: action.metadata?.capability_supported_value?.trim() || action.metadata?.supported_value?.trim() || "supported",
+    capabilityUnsupportedValue: action.metadata?.capability_unsupported_value?.trim() || action.metadata?.unsupported_value?.trim() || "unsupported",
   };
 }
 
@@ -77,17 +88,19 @@ export function providerImageCapabilityResources(resources: ProviderResource[], 
 }
 
 export function defaultProviderImageCapabilityResourceID(resources: ProviderResource[], providerID: string, selectedAccountID: string, profile?: ImageCapabilityProfile | null) {
-  const candidates = providerImageCapabilityResources(resources, providerID, profile);
+  const imageProfile = profile ?? defaultImageCapabilityProfile;
+  const candidates = providerImageCapabilityResources(resources, providerID, imageProfile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
   if (selectedAccountID !== "all" && available.some((resource) => resource.id === selectedAccountID)) return selectedAccountID;
-  return available.find((resource) => resource.options?.image_generation_capability === "supported")?.id ?? available[0]?.id ?? "";
+  return available.find((resource) => resource.options?.[imageProfile.capabilityOption] === imageProfile.capabilitySupportedValue)?.id ?? available[0]?.id ?? "";
 }
 
 export function providerImageCapabilityState(resources: ProviderResource[], providerID: string, routeEnabled: boolean, profile?: ImageCapabilityProfile | null) {
-  const candidates = providerImageCapabilityResources(resources, providerID, profile);
+  const imageProfile = profile ?? defaultImageCapabilityProfile;
+  const candidates = providerImageCapabilityResources(resources, providerID, imageProfile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
-  const supported = available.filter((resource) => resource.options?.image_generation_capability === "supported").length;
-  const unsupported = available.filter((resource) => resource.options?.image_generation_capability === "unsupported").length;
+  const supported = available.filter((resource) => resource.options?.[imageProfile.capabilityOption] === imageProfile.capabilitySupportedValue).length;
+  const unsupported = available.filter((resource) => resource.options?.[imageProfile.capabilityOption] === imageProfile.capabilityUnsupportedValue).length;
   if (routeEnabled && supported > 0) return "enabled";
   if (routeEnabled) return "enabled_without_account";
   if (available.length > 0 && unsupported === available.length) return "unsupported";

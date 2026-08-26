@@ -1525,7 +1525,7 @@ export function ProviderUpsertModal({
                     const secondary = quota?.rate_limit?.secondary_window;
                     const accountEmail = providerResourceAccountLabel(resource);
                     const quotaStatus = quota?.rate_limit?.limit_reached ? "已达上限" : quota?.rate_limit?.allowed ? "可用" : "不可用";
-                    const imageCapability = resource.options?.image_generation_capability;
+                    const imageCapability = imageCapabilityProfile ? resource.options?.[imageCapabilityProfile.capabilityOption] : resource.options?.image_generation_capability;
                     const usagePercent = quotaUsagePercent(primary);
                     return (
                       <article className="provider-quota-card" key={resource.id}>
@@ -1537,7 +1537,7 @@ export function ProviderUpsertModal({
                           <div className="provider-quota-card-actions">
                             {quota ? <span className={`provider-quota-status ${quotaStatus === "可用" ? "available" : "limited"}`}>{tx(quotaStatus)}</span> : null}
                             <span className={`provider-image-capability ${imageCapability || "unknown"}`}>
-                              {tx(formatImageGenerationCapabilityTag(imageCapability))}
+                              {tx(formatImageGenerationCapabilityTag(imageCapability, imageCapabilityProfile?.capabilitySupportedValue, imageCapabilityProfile?.capabilityUnsupportedValue))}
                             </span>
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}

@@ -25,6 +25,8 @@ function pluginImageData(): AppData {
       provider_resource_type: "kimi_subscription_account",
       public_model: "kimi-image",
       upstream_model: "moonshot-image",
+      capability_option: "kimi_image_capability",
+      capability_supported_value: "available",
     },
   }];
   data.providers = [
@@ -54,7 +56,7 @@ describe("plugin image capability routing", () => {
   it("checks route health against the plugin resource type", () => {
     const data = pluginImageData();
     data.providerResources = [
-      resource("rsrc_wrong", "prv_kimi", "openai_subscription", "supported"),
+      resource("rsrc_wrong", "prv_kimi", "openai_subscription", "available"),
     ];
 
     expect(modelAvailabilitySummary(data.models[0], data)).toMatchObject({
@@ -62,7 +64,7 @@ describe("plugin image capability routing", () => {
       healthyRoutes: 0,
     });
 
-    data.providerResources.push(resource("rsrc_kimi", "prv_kimi", "kimi_subscription_account", "supported"));
+    data.providerResources.push(resource("rsrc_kimi", "prv_kimi", "kimi_subscription_account", "available"));
     expect(modelAvailabilitySummary(data.models[0], data)).toMatchObject({
       tone: "ready",
       healthyRoutes: 1,
@@ -100,6 +102,6 @@ function resource(id: string, providerID: string, resourceType: string, imageCap
     healthy: true,
     priority: 1,
     weight: 100,
-    options: { image_generation_capability: imageCapability },
+    options: { kimi_image_capability: imageCapability },
   };
 }
