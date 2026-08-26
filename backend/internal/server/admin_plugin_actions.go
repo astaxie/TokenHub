@@ -30,16 +30,7 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, err)
 		return
 	}
-	result, err := s.pluginActions.Execute(r.Context(), pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
+	result, err := s.executeRawPluginAction(r.Context(), user, pluginID, actionID, payload)
 	if err != nil {
 		s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", err.Error())
 		writeError(w, r, pluginActionHTTPError(err))

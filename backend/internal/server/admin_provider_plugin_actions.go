@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-
-	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func (s *Server) executeProviderProbeAction(ctx context.Context, user AdminUser, providerID string) (any, bool, error) {
@@ -14,28 +12,14 @@ func (s *Server) executeProviderProbeAction(ctx context.Context, user AdminUser,
 	if !ok {
 		return nil, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityProbe, "provider.probe.run")
-	if !ok {
-		return nil, false, nil
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityProbe, "provider.probe.run", map[string]any{
 		"provider_id": providerID,
-	})
+	}, providerPluginActionOptions{})
 	if err != nil {
-		return nil, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return nil, true, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return nil, true, pluginActionHTTPError(err)
+	if !handled {
+		return nil, false, nil
 	}
 	return result.Data, true, nil
 }
@@ -49,28 +33,14 @@ func (s *Server) executeProviderResourceModelsAction(ctx context.Context, user A
 	if !ok {
 		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityModels, "models.read")
-	if !ok {
-		return ProviderCatalogEntry{}, false, nil
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityModels, "models.read", map[string]any{
 		"resource_id": resourceID,
-	})
+	}, providerPluginActionOptions{})
 	if err != nil {
-		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return ProviderCatalogEntry{}, true, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return ProviderCatalogEntry{}, true, pluginActionHTTPError(err)
+	if !handled {
+		return ProviderCatalogEntry{}, false, nil
 	}
 	catalog, ok := providerCatalogEntryFromActionData(result.Data)
 	if !ok {
@@ -80,26 +50,12 @@ func (s *Server) executeProviderResourceModelsAction(ctx context.Context, user A
 }
 
 func (s *Server) executeProviderCredentialModelsAction(ctx context.Context, user AdminUser, providerType string, credentials ProviderResourceCredentials) (ProviderCatalogEntry, bool, error) {
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(providerType, AdapterCapabilityModels, "models.preview")
-	if !ok {
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, providerType, AdapterCapabilityModels, "models.preview", credentials, providerPluginActionOptions{})
+	if err != nil {
+		return ProviderCatalogEntry{}, true, err
+	}
+	if !handled {
 		return ProviderCatalogEntry{}, false, nil
-	}
-	payload, err := json.Marshal(credentials)
-	if err != nil {
-		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
-	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return ProviderCatalogEntry{}, true, pluginActionHTTPError(err)
 	}
 	catalog, ok := providerCatalogEntryFromActionData(result.Data)
 	if !ok {

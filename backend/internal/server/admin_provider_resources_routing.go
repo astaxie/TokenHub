@@ -311,29 +311,15 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	if !ok {
 		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerResourcePanelAction(provider.Type, "quota", AdapterCapabilityQuota)
-	if !ok {
-		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_unsupported", "Quota is not available for this provider resource")
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderPanelAction(ctx, user, provider.Type, "quota", AdapterCapabilityQuota, map[string]any{
 		"resource_id": resourceID,
 		"refresh":     refresh,
-	})
+	}, providerPluginActionOptions{})
 	if err != nil {
-		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return pluginmeta.ActionResult{}, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return pluginmeta.ActionResult{}, pluginActionHTTPError(err)
+	if !handled {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_unsupported", "Quota is not available for this provider resource")
 	}
 	return result, nil
 }
@@ -347,28 +333,14 @@ func (s *Server) executeProviderResourceQuotaResetCreditsAction(ctx context.Cont
 	if !ok {
 		return openAIAccountQuotaResetCredits{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityQuota, "quota.reset_credits.read")
-	if !ok {
-		return openAIAccountQuotaResetCredits{}, false, nil
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityQuota, "quota.reset_credits.read", map[string]any{
 		"resource_id": resourceID,
-	})
+	}, providerPluginActionOptions{})
 	if err != nil {
-		return openAIAccountQuotaResetCredits{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return openAIAccountQuotaResetCredits{}, true, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return openAIAccountQuotaResetCredits{}, true, pluginActionHTTPError(err)
+	if !handled {
+		return openAIAccountQuotaResetCredits{}, false, nil
 	}
 	credits, ok := openAIAccountQuotaResetCreditsFromActionData(result.Data)
 	if !ok {
@@ -386,33 +358,19 @@ func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, us
 	if !ok {
 		return openAIAccountQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityQuota, "quota.reset")
-	if !ok {
-		return openAIAccountQuotaResetResult{}, false, nil
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityQuota, "quota.reset", map[string]any{
 		"resource_id":              resourceID,
 		"confirm":                  req.Confirm,
 		"idempotency_key":          req.IdempotencyKey,
 		"expected_available_count": req.ExpectedAvailableCount,
 		"credit_id":                req.CreditID,
 		"danger_confirmation":      openAIAccountQuotaResetDangerValue,
-	})
+	}, providerPluginActionOptions{})
 	if err != nil {
-		return openAIAccountQuotaResetResult{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return openAIAccountQuotaResetResult{}, true, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return openAIAccountQuotaResetResult{}, true, pluginActionHTTPError(err)
+	if !handled {
+		return openAIAccountQuotaResetResult{}, false, nil
 	}
 	reset, ok := openAIAccountQuotaResetResultFromActionData(result.Data)
 	if !ok {
@@ -430,29 +388,15 @@ func (s *Server) executeProviderResourceImageCapabilityAction(ctx context.Contex
 	if !ok {
 		return codexImageCapabilityResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityImageGenerate, "image.capability.configure")
-	if !ok {
-		return codexImageCapabilityResult{}, false, nil
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityImageGenerate, "image.capability.configure", map[string]any{
 		"resource_id": resourceID,
 		"enabled":     enabled,
-	})
+	}, providerPluginActionOptions{})
 	if err != nil {
-		return codexImageCapabilityResult{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return codexImageCapabilityResult{}, true, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return codexImageCapabilityResult{}, true, pluginActionHTTPError(err)
+	if !handled {
+		return codexImageCapabilityResult{}, false, nil
 	}
 	imageCapability, ok := codexImageCapabilityResultFromActionData(result.Data)
 	if !ok {
@@ -470,32 +414,18 @@ func (s *Server) executeProviderResourceProbeAction(ctx context.Context, user Ad
 	if !ok {
 		return nil, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityProbe, "probe.run")
-	if !ok {
-		return nil, false, nil
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityProbe, "probe.run", map[string]any{
 		"resource_id":      resourceID,
 		"model":            req.Model,
 		"reasoning_effort": req.ReasoningEffort,
 		"speed":            req.Speed,
 		"prompt":           req.Prompt,
-	})
+	}, providerPluginActionOptions{})
 	if err != nil {
-		return nil, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return nil, true, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return nil, true, pluginActionHTTPError(err)
+	if !handled {
+		return nil, false, nil
 	}
 	probe, ok := providerProbeResultFromActionData(result.Data)
 	if !ok {
@@ -558,35 +488,15 @@ func (s *Server) executeProviderResourceCredentialRefreshAction(ctx context.Cont
 	if !ok {
 		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityOAuth, "credentials.refresh")
-	if !ok {
-		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_resource_refresh_unsupported", "Credential refresh is not available for this provider resource")
-	}
-	payload, err := json.Marshal(map[string]any{
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityOAuth, "credentials.refresh", map[string]any{
 		"resource_id": resourceID,
 		"force":       force,
-	})
+	}, providerPluginActionOptions{ApplySideEffects: true})
 	if err != nil {
-		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+		return pluginmeta.ActionResult{}, err
 	}
-	result, err := s.pluginActions.Execute(ctx, pluginmeta.ActionInvocation{
-		PluginID: pluginID,
-		ActionID: actionID,
-		Actor: pluginmeta.ActionActor{
-			ID:   user.ID,
-			Name: user.Name,
-			Role: user.Role,
-		},
-		Payload: payload,
-	})
-	if err != nil {
-		return pluginmeta.ActionResult{}, pluginActionHTTPError(err)
-	}
-	if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
-		result, err = s.applyPluginActionSideEffects(ctx, descriptor, payload, result)
-		if err != nil {
-			return pluginmeta.ActionResult{}, err
-		}
+	if !handled {
+		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_resource_refresh_unsupported", "Credential refresh is not available for this provider resource")
 	}
 	return result, nil
 }
