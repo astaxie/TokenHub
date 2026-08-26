@@ -169,7 +169,7 @@ export function ProviderAccountQuotaReset({
           idempotency_key: operation.idempotencyKey,
           expected_available_count: operation.availableCount,
           credit_id: operation.creditID,
-          danger_confirmation: "codex-quota-reset",
+          danger_confirmation: quotaResetDangerConfirmation(resetAction),
         }),
       });
       if (!resp.ok) throw await readResetError(resp);
@@ -340,6 +340,10 @@ function formatResetCreditExpiry(value: string | null | undefined, now: number) 
 function formatResetCreditDate(value?: string | null) {
   if (!validExpiry(value)) return "-";
   return new Date(value!).toLocaleString(languageLocale());
+}
+
+function quotaResetDangerConfirmation(action: PluginActionDescriptor) {
+  return action.metadata?.danger_confirmation?.trim() || "codex-quota-reset";
 }
 
 async function readResetError(resp: Response) {

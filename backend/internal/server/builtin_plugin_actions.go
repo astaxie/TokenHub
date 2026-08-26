@@ -169,6 +169,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Reset OpenAI Codex quota",
 		Capability: "quota.reset",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"danger_confirmation": openAIAccountQuotaResetDangerValue,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"resource_id", "confirm", "idempotency_key", "expected_available_count", "credit_id", "danger_confirmation"},

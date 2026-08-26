@@ -27,6 +27,7 @@ const pluginActions = [
     kind: "mutate",
     capability: "quota.reset",
     subject: "openai_codex",
+    metadata: { danger_confirmation: "plugin-danger-confirmation" },
   },
 ];
 
@@ -97,7 +98,7 @@ describe("ProviderAccountQuotaReset", () => {
       idempotency_key: "reset-operation-id",
       expected_available_count: 1,
       credit_id: "credit-1",
-      danger_confirmation: "codex-quota-reset",
+      danger_confirmation: "plugin-danger-confirmation",
     });
     expect(onRefreshQuota).toHaveBeenCalledTimes(1);
   });
