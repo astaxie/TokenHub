@@ -1379,17 +1379,17 @@ func (s *Server) validateRoutePolicy(route ModelRoute) error {
 func (s *Server) validateImportedProviderModel(route ModelRoute) error {
 	providerID := strings.TrimSpace(route.ProviderID)
 	upstreamModel := strings.TrimSpace(route.ProviderModel)
-	if strings.TrimSpace(route.ModelName) == codexImageModelName {
-		provider, ok := s.providerByID(providerID)
-		if !ok || provider.Type != ProviderOpenAICodex {
-			return NewHTTPError(http.StatusBadRequest, "codex_image_provider_required", "The Codex subscription image model must use an OpenAI Codex Provider")
+	if profile, ok := s.providerImageCapabilityRouteProfileForModel(route.ModelName); ok {
+		provider, providerOK := s.providerByID(providerID)
+		if !providerOK || (profile.ProviderType != "" && provider.Type != profile.ProviderType) {
+			return providerImageCapabilityRouteError(profile, "provider")
 		}
-		if upstreamModel != codexImageUpstreamModel {
-			return NewHTTPError(http.StatusBadRequest, "codex_image_upstream_model_invalid", "The Codex subscription image route must use gpt-image-2 as its upstream model")
+		if upstreamModel != profile.UpstreamModel {
+			return providerImageCapabilityRouteError(profile, "upstream_model")
 		}
 		status := strings.TrimSpace(route.Status)
-		if (status == "" || status == StatusActive) && !codexImageRouteHasSupportedResource(route, s.store.ListProviderResources()) {
-			return NewHTTPError(http.StatusConflict, "codex_image_capability_required", "Test image generation with an eligible Codex subscription account before activating this route")
+		if (status == "" || status == StatusActive) && !providerImageCapabilityRouteHasSupportedResource(route, s.store.ListProviderResources(), profile) {
+			return providerImageCapabilityRouteError(profile, "capability")
 		}
 		return nil
 	}
@@ -1399,6 +1399,42 @@ func (s *Server) validateImportedProviderModel(route ModelRoute) error {
 		}
 	}
 	return NewHTTPError(http.StatusConflict, "provider_model_not_imported", "Import the upstream model for this Provider before creating a route")
+}
+
+func (s *Server) providerImageCapabilityRouteProfileForModel(modelName string) (providerImageCapabilityRouteProfile, bool) {
+	modelName = strings.TrimSpace(modelName)
+	for _, action := range s.pluginActions.List() {
+		if action.Capability != "image.capability.configure" {
+			continue
+		}
+		profile, ok := providerImageCapabilityRouteProfileFromAction(action)
+		if ok && profile.PublicModel == modelName {
+			return profile, true
+		}
+	}
+	return providerImageCapabilityRouteProfile{}, false
+}
+
+func providerImageCapabilityRouteError(profile providerImageCapabilityRouteProfile, kind string) error {
+	switch kind {
+	case "provider":
+		if profile.PublicModel == codexImageModelName {
+			return NewHTTPError(http.StatusBadRequest, "codex_image_provider_required", "The Codex subscription image model must use an OpenAI Codex Provider")
+		}
+		return NewHTTPError(http.StatusBadRequest, "provider_image_capability_provider_required", "The image capability route must use the Provider declared by its plugin")
+	case "upstream_model":
+		if profile.PublicModel == codexImageModelName {
+			return NewHTTPError(http.StatusBadRequest, "codex_image_upstream_model_invalid", "The Codex subscription image route must use gpt-image-2 as its upstream model")
+		}
+		return NewHTTPError(http.StatusBadRequest, "provider_image_capability_upstream_model_invalid", "The image capability route must use the upstream model declared by its plugin")
+	case "capability":
+		if profile.PublicModel == codexImageModelName {
+			return NewHTTPError(http.StatusConflict, "codex_image_capability_required", "Test image generation with an eligible Codex subscription account before activating this route")
+		}
+		return NewHTTPError(http.StatusConflict, "provider_image_capability_required", "Test image generation with an eligible provider resource before activating this route")
+	default:
+		return NewHTTPError(http.StatusConflict, "provider_image_capability_required", "Test image generation with an eligible provider resource before activating this route")
+	}
 }
 
 func modelRouteMappingExists(candidate ModelRoute, routes []ModelRoute, excludeID string) bool {
