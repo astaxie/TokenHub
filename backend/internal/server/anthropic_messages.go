@@ -78,6 +78,46 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
+	if !req.Stream {
+		resp, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), call, req.Raw)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+			writeAnthropicError(w, r, err)
+			return
+		}
+		if hit {
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, body, usage)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, body)
+			w.Header().Set("x-request-id", call.RequestID)
+			w.Header().Set("x-tokenhub-cache", "hit")
+			writeJSON(w, http.StatusOK, body)
+			return
+		}
+	}
 	routed, ok := s.prepareAnthropicRoutedCall(w, r, call, key, req, auditPayload)
 	if !ok {
 		return
@@ -127,6 +167,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req.Raw, resp, usage)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))

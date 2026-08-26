@@ -326,6 +326,133 @@ func TestAnthropicMessagesRunsContextOptimizeHookBeforeProviderCall(t *testing.T
 	}
 }
 
+func TestAnthropicMessagesCacheLookupHookCanShortCircuitProviderCall(t *testing.T) {
+	upstreamCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderOpenAICompatible)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-anthropic-cache",
+		HookID:        "lookup",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyReturnFallback,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register Anthropic cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Envelope.RequestBody) == 0 {
+			t.Fatal("Anthropic request body was not available to cache lookup")
+		}
+		response, err := json.Marshal(map[string]any{
+			"id":            "msg_cached",
+			"type":          "message",
+			"role":          "assistant",
+			"model":         "claude-tokenhub-test",
+			"content":       []map[string]any{{"type": "text", "text": "cached anthropic"}},
+			"stop_reason":   "end_turn",
+			"stop_sequence": nil,
+			"usage":         map[string]any{"input_tokens": 4, "output_tokens": 5},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		usage, err := json.Marshal(Usage{PromptTokens: 4, CompletionTokens: 5, TotalTokens: 9})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pluginmeta.GatewayHookResult{
+			Decision: pluginmeta.HookDecisionShortCircuit,
+			Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+				pluginmeta.DataProviderResponse: {Value: response},
+				pluginmeta.DataUsage:            {Value: usage},
+			},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register Anthropic cache lookup handler: %v", err)
+	}
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "cache me"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("cache lookup reached upstream %d times", upstreamCalls)
+	}
+	if resp.Header().Get("x-tokenhub-cache") != "hit" || !strings.Contains(resp.Body.String(), "cached anthropic") {
+		t.Fatalf("unexpected cached Anthropic response: cache=%q body=%s", resp.Header().Get("x-tokenhub-cache"), resp.Body.String())
+	}
+}
+
+func TestAnthropicMessagesCacheWriteHookReceivesFinalResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_cache_write","choices":[{"index":0,"message":{"role":"assistant","content":"write me"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`)
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderOpenAICompatible)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-anthropic-cache",
+		HookID:        "write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody, pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register Anthropic cache write hook: %v", err)
+	}
+	var sawRequest, sawResponse, sawUsage bool
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var request map[string]any
+		if err := json.Unmarshal(input.Data[pluginmeta.DataRequestBody], &request); err != nil {
+			t.Fatalf("decode cache write request: %v", err)
+		}
+		var response map[string]any
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
+			t.Fatalf("decode cache write response: %v", err)
+		}
+		var usage Usage
+		if err := json.Unmarshal(input.Data[pluginmeta.DataUsage], &usage); err != nil {
+			t.Fatalf("decode cache write usage: %v", err)
+		}
+		sawRequest = request["model"] == "claude-tokenhub-test"
+		sawResponse = response["type"] == "message" && response["id"] == "chatcmpl_cache_write"
+		sawUsage = usage.TotalTokens == 7
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register Anthropic cache write handler: %v", err)
+	}
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "store me"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if !sawRequest || !sawResponse || !sawUsage {
+		t.Fatalf("cache write saw request=%v response=%v usage=%v, want all true", sawRequest, sawResponse, sawUsage)
+	}
+}
+
 func TestAnthropicMessagesOmitsEmptyToolCallsForOpenAI(t *testing.T) {
 	var mu sync.Mutex
 	var upstreamRequests []map[string]any
