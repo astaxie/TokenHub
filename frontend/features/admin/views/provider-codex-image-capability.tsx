@@ -4,7 +4,7 @@ import { type ApiContext, type ModelRoute, type PluginActionDescriptor, type Pro
 import { codexImageModelState, codexImageResources, codexImageRouteEnabled, defaultCodexImageResourceID } from "../domain/codex-image-capability";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { providerPluginActionForCapability } from "../resources/provider-model-config";
+import { providerPluginActionForCapability, providerPluginActionPath } from "../resources/provider-model-config";
 import { formatImageGenerationCapabilityTag, providerResourceAccountLabel } from "./provider-account-ui";
 
 type CodexImageCapabilityResult = {
@@ -72,7 +72,7 @@ export function ProviderCodexImageCapability({
     setBusy(enabledValue ? "enable" : "disable");
     setError("");
     try {
-      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
+      const response = await adminFetch(api, providerPluginActionPath(action), {
         method: "POST",
         body: JSON.stringify({ provider_id: provider.id, resource_id: targetResourceID, enabled: enabledValue }),
       });
