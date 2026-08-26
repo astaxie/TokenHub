@@ -284,25 +284,43 @@ func (a CodexSubscriptionAdapter) modelsWithCredentials(ctx context.Context, cre
 }
 
 func (s *Server) queryOpenAICodexModels(ctx context.Context, resourceID string) (ProviderCatalogEntry, error) {
-	resource, ok := s.providerResourceByID(resourceID)
-	if !ok {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
-	}
-	provider, ok := s.providerByID(resource.ProviderID)
-	if !ok {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
-	}
-	descriptor, ok := s.adapterRegistry.Describe(provider.Type)
-	if !ok || !adapterSupports(descriptor, AdapterCapabilityModels) {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Provider resource models are not available for this provider")
-	}
-	adapter, err := s.adapterRegistry.Resolve(provider.Type)
+	return s.queryProviderResourceModels(ctx, resourceID)
+}
+
+func (s *Server) queryProviderResourceModels(ctx context.Context, resourceID string) (ProviderCatalogEntry, error) {
+	entry, supported, err := s.queryProviderResourceModelsForCatalog(ctx, "", resourceID)
 	if err != nil {
 		return ProviderCatalogEntry{}, err
 	}
+	if !supported {
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Provider resource models are not available for this provider")
+	}
+	return entry, nil
+}
+
+func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, catalogProviderType string, resourceID string) (ProviderCatalogEntry, bool, error) {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	if catalogProviderType = strings.TrimSpace(catalogProviderType); catalogProviderType != "" && provider.Type != catalogProviderType {
+		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusBadRequest, "provider_resource_catalog_mismatch", "Provider resource does not belong to this provider catalog")
+	}
+	descriptor, ok := s.adapterRegistry.Describe(provider.Type)
+	if !ok || !adapterSupports(descriptor, AdapterCapabilityModels) {
+		return ProviderCatalogEntry{}, false, nil
+	}
+	adapter, err := s.adapterRegistry.Resolve(provider.Type)
+	if err != nil {
+		return ProviderCatalogEntry{}, true, err
+	}
 	modeler, ok := adapter.(ProviderResourceModelCataloger)
 	if !ok {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Provider resource models are not available for this provider")
+		return ProviderCatalogEntry{}, false, nil
 	}
 	etag := ""
 	if resource.Options != nil {
@@ -310,17 +328,45 @@ func (s *Server) queryOpenAICodexModels(ctx context.Context, resourceID string) 
 	}
 	catalog, status, err := modeler.ResourceModels(ctx, provider, resource, etag)
 	if err == nil && status == http.StatusNotModified {
-		if cached, ok := codexResourceCachedCatalog(&resource); ok {
-			return cached, nil
+		if cached, ok := providerResourceCachedCatalog(provider, &resource); ok {
+			return cached, true, nil
 		}
 		catalog, _, err = modeler.ResourceModels(ctx, provider, resource, "")
 	}
 	if err == nil {
 		if persistErr := s.persistCodexResourceModels(resourceID, catalog.Models, time.Now().UTC()); persistErr != nil {
-			return ProviderCatalogEntry{}, persistErr
+			return ProviderCatalogEntry{}, true, persistErr
 		}
 	}
-	return catalog, err
+	return catalog, true, err
+}
+
+func providerResourceCachedCatalog(provider Provider, resource *ProviderResource) (ProviderCatalogEntry, bool) {
+	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
+		return codexResourceCachedCatalog(resource)
+	}
+	if resource == nil || resource.Options == nil {
+		return ProviderCatalogEntry{}, false
+	}
+	var models []ProviderCatalogModel
+	if json.Unmarshal([]byte(resource.Options[codexResourceModelCatalogOption]), &models) != nil || len(models) == 0 {
+		return ProviderCatalogEntry{}, false
+	}
+	categories, counts := catalogCategorySummary(models)
+	name := firstNonEmpty(strings.TrimSpace(provider.Name), strings.TrimSpace(provider.Type))
+	return ProviderCatalogEntry{
+		ID:             provider.Type,
+		Name:           name,
+		DisplayName:    name,
+		Type:           provider.Type,
+		BaseURL:        provider.BaseURL,
+		Categories:     categories,
+		CategoryCounts: counts,
+		ModelsCount:    len(models),
+		Source:         "provider-resource-cache",
+		ETag:           resource.Options[codexResourceModelsETagOption],
+		Models:         models,
+	}, true
 }
 
 func (s *Server) persistCodexResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {

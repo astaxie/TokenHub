@@ -119,7 +119,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 			var supported bool
 			entry, supported, err = s.executeProviderResourceModelsAction(r.Context(), user, resourceID)
 			if !supported {
-				entry, err = s.queryOpenAICodexModels(r.Context(), resourceID)
+				entry, err = s.queryProviderResourceModels(r.Context(), resourceID)
 			}
 		case http.MethodPost:
 			var credentials ProviderResourceCredentials
@@ -169,6 +169,15 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		}
 		if resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id")); resourceID != "" {
 			pluginEntry, supported, actionErr := s.executeProviderResourceModelsActionForCatalog(r.Context(), user, entry.Type, resourceID)
+			if actionErr != nil {
+				writeError(w, r, actionErr)
+				return
+			}
+			if supported {
+				writeJSON(w, http.StatusOK, map[string]any{"data": pluginEntry, "source": pluginEntry.Source})
+				return
+			}
+			pluginEntry, supported, actionErr = s.queryProviderResourceModelsForCatalog(r.Context(), entry.Type, resourceID)
 			if actionErr != nil {
 				writeError(w, r, actionErr)
 				return
