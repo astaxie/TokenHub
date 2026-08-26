@@ -74,6 +74,60 @@ esac
 	}
 }
 
+func TestProviderPluginCredentialsFromRuntimeIncludesAccountMetadata(t *testing.T) {
+	credentials := providerPluginCredentialsFromRuntime(Provider{
+		APIKey: "provider-access",
+		Options: map[string]string{
+			"auth_type":        "oauth",
+			"token_expires_at": "2026-09-01T00:00:00Z",
+			"account_id":       "account-provider",
+			"user_id":          "user-provider",
+			"account_email":    "provider@example.com",
+			"organization_id":  "org-provider",
+			"plan_type":        "pro",
+			"scopes":           "read write",
+		},
+	}, nil)
+
+	if credentials.AuthType != "oauth" || credentials.APIKey != "provider-access" || credentials.AccessToken != "provider-access" ||
+		credentials.ExpiresAt != "2026-09-01T00:00:00Z" || credentials.AccountID != "account-provider" ||
+		credentials.UserID != "user-provider" || credentials.Email != "provider@example.com" ||
+		credentials.OrganizationID != "org-provider" || credentials.PlanType != "pro" || credentials.Scopes != "read write" {
+		t.Fatalf("credentials = %+v, want provider account metadata", credentials)
+	}
+}
+
+func TestProviderPluginCredentialsFromRuntimeUsesResourceCredentials(t *testing.T) {
+	credentials := providerPluginCredentialsFromRuntime(Provider{
+		APIKey:  "provider-access",
+		Options: map[string]string{"auth_type": "api_key", "account_id": "provider-account"},
+	}, &ProviderResource{Credentials: &ProviderResourceCredentials{
+		AuthType:       "oauth",
+		AccessToken:    "resource-access",
+		RefreshToken:   "resource-refresh",
+		IDToken:        "resource-id-token",
+		ClientID:       "resource-client",
+		Scopes:         "account.read",
+		TokenType:      "bearer",
+		ExpiresAt:      "2026-09-02T00:00:00Z",
+		AccountID:      "resource-account",
+		UserID:         "resource-user",
+		Email:          "resource@example.com",
+		OrganizationID: "resource-org",
+		PlanType:       "team",
+	}})
+
+	if credentials.AuthType != "oauth" || credentials.APIKey != "resource-access" || credentials.AccessToken != "resource-access" ||
+		credentials.RefreshToken != "resource-refresh" || credentials.IDToken != "resource-id-token" ||
+		credentials.ClientID != "resource-client" || credentials.Scopes != "account.read" ||
+		credentials.TokenType != "bearer" || credentials.ExpiresAt != "2026-09-02T00:00:00Z" ||
+		credentials.AccountID != "resource-account" || credentials.UserID != "resource-user" ||
+		credentials.Email != "resource@example.com" || credentials.OrganizationID != "resource-org" ||
+		credentials.PlanType != "team" {
+		t.Fatalf("credentials = %+v, want resource account credentials", credentials)
+	}
+}
+
 func TestExternalProviderPluginAdapterExecutesChatStreamCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")
@@ -241,6 +295,78 @@ printf '{"response":{"id":"chatcmpl_stdio","object":"chat.completion","choices":
 	}
 	if !strings.Contains(response.Body, `"id":"chatcmpl_stdio"`) || !strings.Contains(response.Body, "served by plugin") {
 		t.Fatalf("gateway chat response did not come from provider plugin: %s", response.Body)
+	}
+}
+
+func TestExternalProviderPluginAdapterReceivesAccountResourceCredentials(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifest(t, pluginDir, true)
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"chat"'*'"auth_type":"oauth"'*'"api_key":"resource-access"'*'"access_token":"resource-access"'*'"expires_at":"2026-09-03T00:00:00Z"'*'"account_id":"resource-account"'*'"email":"resource@example.com"'*)
+    printf '{"response":{"id":"chatcmpl_account_stdio","object":"chat.completion","choices":[{"message":{"role":"assistant","content":"served with account credentials"}}]},"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}'
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Provider Plugin Account Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Provider Plugin Account Key", Allowed: []string{"plugin-account-chat"}, Status: StatusActive}, "thk_provider_plugin_account")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-account-chat", Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{ID: "prv_plugin_account", Name: "Provider Plugin Account", Type: "custom_stdio", APIKey: "provider-secret", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_plugin_account",
+		ProviderID:   provider.ID,
+		Name:         "Provider Plugin OAuth Account",
+		ResourceType: "custom_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType:    "oauth",
+			AccessToken: "resource-access",
+			ExpiresAt:   "2026-09-03T00:00:00Z",
+			AccountID:   "resource-account",
+			Email:       "resource@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddRoute(ModelRoute{
+		ModelName:          "plugin-account-chat",
+		ProviderID:         provider.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      "plugin-upstream-account-chat",
+		Priority:           1,
+		Weight:             100,
+		Status:             StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-admin", PluginDir: root})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "plugin-account-chat",
+		"messages": []map[string]any{
+			{"role": "user", "content": "hello"},
+		},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("gateway chat through provider account plugin: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"chatcmpl_account_stdio"`) || !strings.Contains(response.Body, "served with account credentials") {
+		t.Fatalf("gateway chat response did not come from provider account plugin: %s", response.Body)
 	}
 }
 

@@ -38,7 +38,20 @@ type providerPluginRequest struct {
 }
 
 type providerPluginCredentials struct {
-	APIKey string `json:"api_key,omitempty"`
+	AuthType       string `json:"auth_type,omitempty"`
+	APIKey         string `json:"api_key,omitempty"`
+	AccessToken    string `json:"access_token,omitempty"`
+	RefreshToken   string `json:"refresh_token,omitempty"`
+	IDToken        string `json:"id_token,omitempty"`
+	ClientID       string `json:"client_id,omitempty"`
+	Scopes         string `json:"scopes,omitempty"`
+	TokenType      string `json:"token_type,omitempty"`
+	ExpiresAt      string `json:"expires_at,omitempty"`
+	AccountID      string `json:"account_id,omitempty"`
+	UserID         string `json:"user_id,omitempty"`
+	Email          string `json:"email,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	PlanType       string `json:"plan_type,omitempty"`
 }
 
 type providerPluginResponse struct {
@@ -100,7 +113,7 @@ func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, prov
 		Provider:      provider,
 		ProviderModel: providerModel,
 		Request:       req,
-		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
 	}, &result); err != nil {
 		return nil, Usage{}, err
 	}
@@ -118,7 +131,7 @@ func (a providerPluginAdapter) ChatStream(ctx context.Context, provider Provider
 		Provider:      provider,
 		ProviderModel: providerModel,
 		Request:       req,
-		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
 	}, &result); err != nil {
 		return Usage{}, err
 	}
@@ -145,7 +158,7 @@ func (a providerPluginAdapter) Responses(ctx context.Context, provider Provider,
 		Provider:      provider,
 		ProviderModel: providerModel,
 		Request:       req,
-		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
 	}, &result); err != nil {
 		return nil, Usage{}, err
 	}
@@ -163,7 +176,7 @@ func (a providerPluginAdapter) OpenResponses(ctx context.Context, provider Provi
 		Provider:      provider,
 		ProviderModel: providerModel,
 		Request:       req,
-		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
 	}, &result); err != nil {
 		return nil, err
 	}
@@ -196,7 +209,7 @@ func (a providerPluginAdapter) CompactWithHeaders(ctx context.Context, provider 
 		Provider:      provider,
 		ProviderModel: providerModel,
 		Request:       body,
-		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
 	}, &result); err != nil {
 		return nil, Usage{}, err
 	}
@@ -210,7 +223,7 @@ func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider
 		Provider:      provider,
 		ProviderModel: providerModel,
 		Request:       req,
-		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
 	}, &result); err != nil {
 		return nil, Usage{}, err
 	}
@@ -227,7 +240,7 @@ func (a providerPluginAdapter) GenerateImage(ctx context.Context, provider Provi
 		Provider:      provider,
 		ProviderModel: providerModel,
 		Request:       req,
-		Credentials:   providerPluginCredentials{APIKey: provider.APIKey},
+		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
 	}, &result); err != nil {
 		return nil, "", Usage{}, err
 	}
@@ -254,7 +267,7 @@ func (a providerPluginAdapter) ResourceModels(ctx context.Context, provider Prov
 		Provider:    effective,
 		Resource:    &resource,
 		ETag:        etag,
-		Credentials: providerPluginCredentials{APIKey: effective.APIKey},
+		Credentials: providerPluginCredentialsFromRuntime(effective, &resource),
 	}, &result); err != nil {
 		return ProviderCatalogEntry{}, 0, err
 	}
@@ -279,7 +292,7 @@ func (a providerPluginAdapter) Probe(ctx context.Context, provider Provider, res
 		Provider:    effective,
 		Resource:    &resource,
 		Request:     req,
-		Credentials: providerPluginCredentials{APIKey: effective.APIKey},
+		Credentials: providerPluginCredentialsFromRuntime(effective, &resource),
 	}, &result); err != nil {
 		return ProviderProbeResult{}, err
 	}
@@ -398,6 +411,44 @@ func providerPluginSupportsCustomHeaders(manifest pluginmeta.Manifest) bool {
 		return true
 	}
 	return *manifest.Capabilities.Provider.SupportsCustomHeaders
+}
+
+func providerPluginCredentialsFromRuntime(provider Provider, resource *ProviderResource) providerPluginCredentials {
+	credentials := providerPluginCredentials{
+		APIKey:      strings.TrimSpace(provider.APIKey),
+		AccessToken: strings.TrimSpace(provider.APIKey),
+	}
+	if provider.Options != nil {
+		credentials.AuthType = strings.TrimSpace(provider.Options["auth_type"])
+		credentials.ExpiresAt = strings.TrimSpace(provider.Options["token_expires_at"])
+		credentials.AccountID = strings.TrimSpace(provider.Options["account_id"])
+		credentials.UserID = strings.TrimSpace(provider.Options["user_id"])
+		credentials.Email = strings.TrimSpace(provider.Options["account_email"])
+		credentials.OrganizationID = strings.TrimSpace(provider.Options["organization_id"])
+		credentials.PlanType = strings.TrimSpace(provider.Options["plan_type"])
+		credentials.Scopes = strings.TrimSpace(provider.Options["scopes"])
+	}
+	if resource != nil && resource.Credentials != nil {
+		source := *resource.Credentials
+		credentials.AuthType = firstNonEmpty(source.AuthType, credentials.AuthType)
+		credentials.APIKey = firstNonEmpty(source.AccessToken, credentials.APIKey)
+		credentials.AccessToken = firstNonEmpty(source.AccessToken, credentials.AccessToken)
+		credentials.RefreshToken = firstNonEmpty(source.RefreshToken, credentials.RefreshToken)
+		credentials.IDToken = firstNonEmpty(source.IDToken, credentials.IDToken)
+		credentials.ClientID = firstNonEmpty(source.ClientID, credentials.ClientID)
+		credentials.Scopes = firstNonEmpty(source.Scopes, credentials.Scopes)
+		credentials.TokenType = firstNonEmpty(source.TokenType, credentials.TokenType)
+		credentials.ExpiresAt = firstNonEmpty(source.ExpiresAt, credentials.ExpiresAt)
+		credentials.AccountID = firstNonEmpty(source.AccountID, credentials.AccountID)
+		credentials.UserID = firstNonEmpty(source.UserID, credentials.UserID)
+		credentials.Email = firstNonEmpty(source.Email, credentials.Email)
+		credentials.OrganizationID = firstNonEmpty(source.OrganizationID, credentials.OrganizationID)
+		credentials.PlanType = firstNonEmpty(source.PlanType, credentials.PlanType)
+	}
+	if credentials.AuthType == "" && credentials.APIKey != "" {
+		credentials.AuthType = "api_key"
+	}
+	return credentials
 }
 
 func renderProviderPluginStreamEvent(event providerPluginStreamEvent) ([]byte, error) {
