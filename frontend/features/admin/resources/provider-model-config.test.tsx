@@ -412,6 +412,22 @@ describe("providerResourceConfig", () => {
     ]);
   });
 
+  it("uses neutral resource defaults for plugin providers without resource metadata", () => {
+    const defaults = providerResourceDraftDefaults({
+      provider_id: "prv_custom_plugin",
+      name: "Custom Plugin",
+      type: "custom_plugin",
+    }, emptyData());
+
+    expect(defaults).toMatchObject({
+      provider_id: "prv_custom_plugin",
+      name: "Custom Plugin Account",
+      resource_type: "api_key",
+      auth_type: "",
+      base_url: "",
+    });
+  });
+
   it("renders plugin resource type display names in account resource tables", () => {
     const data = emptyData();
     data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];

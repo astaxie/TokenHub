@@ -366,15 +366,16 @@ export function defaultProviderResourceName(providerName?: string) {
 export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string; type?: string }, data?: Pick<AppData, "plugins">) {
   const metadata = data && provider.type ? defaultProviderResourceTypeMetadata(data, provider.type) : null;
   const metadataDefaults = metadata?.defaults ?? {};
-  const resourceType = metadata?.type || providerResourceOpenAISubscriptionType;
-  const authType = metadataDefaults.auth_type || metadata?.authModes[0] || "oauth";
+  const codexProvider = provider.type === codexProviderType;
+  const resourceType = metadata?.type || (codexProvider ? providerResourceOpenAISubscriptionType : providerResourceAPIKeyType);
+  const authType = metadataDefaults.auth_type || metadata?.authModes[0] || (codexProvider ? "oauth" : "");
   const defaults = {
     provider_id: provider.provider_id ?? "",
     name: defaultProviderResourceName(provider.name),
     resource_type: resourceType,
     auth_type: authType,
     authorization_url: "",
-    base_url: metadataDefaults.base_url || provider.base_url || codexSubscriptionBaseURL,
+    base_url: metadataDefaults.base_url || provider.base_url || (codexProvider ? codexSubscriptionBaseURL : ""),
     group: "default",
     priority: "1",
     weight: "100",
