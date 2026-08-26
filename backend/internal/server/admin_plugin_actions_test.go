@@ -154,6 +154,65 @@ func TestAdminPluginActionPersistsCredentialRefreshResult(t *testing.T) {
 	}
 }
 
+func TestAdminPluginActionCredentialRefreshRejectsWrongResourceType(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_refresh_type", Name: "Kimi", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_refresh_type",
+		ProviderID:   provider.ID,
+		Name:         "Kimi API Key",
+		ResourceType: "kimi_api_key",
+		Status:       StatusActive,
+		Healthy:      true,
+		APIKey:       "old-key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginRegistry.Register(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.kimi",
+		Name:    "Kimi",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+	}); err != nil {
+		t.Fatalf("register plugin descriptor: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi",
+		ActionID:   "kimi.credentials.refresh",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "credentials.refresh",
+		Subject:    "kimi_subscription",
+		Metadata:   map[string]string{"provider_resource_type": "kimi_oauth_account"},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"credentials": map[string]string{
+				"auth_type":    "personal_access_token",
+				"access_token": "new-access",
+			},
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register plugin action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.kimi/actions/kimi.credentials.refresh", map[string]any{
+		"resource_id": resource.ID,
+	}, "plugin-action-admin")
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body, "plugin_action_resource_type_mismatch") {
+		t.Fatalf("POST credential refresh action: expected 403 resource mismatch, got %d: %s", response.Code, response.Body)
+	}
+	stored, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("resource was not found")
+	}
+	credentials := store.providerResourceCredentialsForRuntime(stored)
+	if stored.APIKey != "old-key" || credentials.AccessToken != "old-key" {
+		t.Fatalf("stored credentials changed after rejected refresh: resource=%+v credentials=%+v", stored, credentials)
+	}
+}
+
 func TestAdminPluginActionRejectsInvalidResultSchema(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
 	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{

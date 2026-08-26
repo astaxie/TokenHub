@@ -88,6 +88,10 @@ func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, d
 	if descriptor.Subject != "" && descriptor.Subject != provider.Type {
 		return result, NewHTTPError(http.StatusForbidden, "plugin_action_subject_mismatch", "Plugin action subject does not match the Provider type")
 	}
+	expectedResourceType := strings.TrimSpace(firstNonEmpty(descriptor.Metadata["provider_resource_type"], descriptor.Metadata["resource_type"]))
+	if expectedResourceType != "" && resource.ResourceType != expectedResourceType {
+		return result, NewHTTPError(http.StatusForbidden, "plugin_action_resource_type_mismatch", "Plugin action resource type does not match the Provider resource")
+	}
 	updated, err := s.store.UpdateProviderResource(resourceID, providerResourceCredentialPatch(resource, credentials))
 	if err != nil {
 		return result, err
