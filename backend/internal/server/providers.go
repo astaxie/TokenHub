@@ -489,7 +489,7 @@ const (
 	anthropicAuthTypeBearer = "bearer"
 )
 
-func configureAnthropicProviderAuth(provider *Provider, requested string) error {
+func configureAnthropicProviderAuth(provider *Provider, requested string, supportedModes ...string) error {
 	if provider == nil || provider.Type != ProviderAnthropic {
 		return nil
 	}
@@ -503,7 +503,7 @@ func configureAnthropicProviderAuth(provider *Provider, requested string) error 
 	if authType == "" {
 		return nil
 	}
-	if authType != anthropicAuthTypeAPIKey && authType != anthropicAuthTypeBearer {
+	if !anthropicProviderAuthModeAllowed(authType, supportedModes) {
 		return NewHTTPError(
 			http.StatusBadRequest,
 			"provider_anthropic_auth_type_invalid",
@@ -512,6 +512,18 @@ func configureAnthropicProviderAuth(provider *Provider, requested string) error 
 	}
 	provider.Options[anthropicAuthTypeOption] = authType
 	return nil
+}
+
+func anthropicProviderAuthModeAllowed(authType string, supportedModes []string) bool {
+	if len(supportedModes) == 0 {
+		supportedModes = []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer}
+	}
+	for _, supported := range supportedModes {
+		if authType == strings.ToLower(strings.TrimSpace(supported)) {
+			return true
+		}
+	}
+	return false
 }
 
 func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
