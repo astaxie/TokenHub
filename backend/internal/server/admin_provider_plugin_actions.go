@@ -42,7 +42,7 @@ func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Conte
 	}
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityModels, "models.read", map[string]any{
 		"resource_id": resourceID,
-	}, providerPluginActionOptions{})
+	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
 		return ProviderCatalogEntry{}, true, err
 	}

@@ -102,6 +102,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Read OpenAI Codex account quota",
 		Capability: "quota.read",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"provider_resource_type": ProviderResourceOpenAISubscription,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"resource_id"},
@@ -140,6 +143,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Read OpenAI Codex quota reset credits",
 		Capability: "quota.reset_credits.read",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"provider_resource_type": ProviderResourceOpenAISubscription,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"resource_id"},
@@ -176,7 +182,8 @@ func registerBuiltinPluginActions(server *Server) {
 		Capability: "quota.reset",
 		Subject:    ProviderOpenAICodex,
 		Metadata: map[string]string{
-			"danger_confirmation": openAIAccountQuotaResetDangerValue,
+			"provider_resource_type": ProviderResourceOpenAISubscription,
+			"danger_confirmation":    openAIAccountQuotaResetDangerValue,
 		},
 		InputSchema: map[string]any{
 			"type":     "object",
@@ -235,7 +242,8 @@ func registerBuiltinPluginActions(server *Server) {
 		Capability: "probe.run",
 		Subject:    ProviderOpenAICodex,
 		Metadata: map[string]string{
-			"default_payload_json": `{"model":"` + openAICodexDefaultProbeModel + `","reasoning_effort":"medium","speed":"standard","prompt":"Please respond with one short sentence confirming the Codex connection works."}`,
+			"provider_resource_type": ProviderResourceOpenAISubscription,
+			"default_payload_json":   `{"model":"` + openAICodexDefaultProbeModel + `","reasoning_effort":"medium","speed":"standard","prompt":"Please respond with one short sentence confirming the Codex connection works."}`,
 		},
 		InputSchema: map[string]any{
 			"type":     "object",
@@ -326,6 +334,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Read OpenAI Codex resource models",
 		Capability: "models.read",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"provider_resource_type": ProviderResourceOpenAISubscription,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"resource_id"},
@@ -455,6 +466,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Refresh OpenAI Codex account credentials",
 		Capability: "credentials.refresh",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"provider_resource_type": ProviderResourceOpenAISubscription,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"resource_id"},

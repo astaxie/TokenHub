@@ -314,7 +314,7 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	result, handled, err := s.executeProviderPanelAction(ctx, user, provider.Type, "quota", AdapterCapabilityQuota, map[string]any{
 		"resource_id": resourceID,
 		"refresh":     refresh,
-	}, providerPluginActionOptions{})
+	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
 		return pluginmeta.ActionResult{}, err
 	}
@@ -335,7 +335,7 @@ func (s *Server) executeProviderResourceQuotaResetCreditsAction(ctx context.Cont
 	}
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityQuota, "quota.reset_credits.read", map[string]any{
 		"resource_id": resourceID,
-	}, providerPluginActionOptions{})
+	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
 		return openAIAccountQuotaResetCredits{}, true, err
 	}
@@ -365,7 +365,7 @@ func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, us
 		"expected_available_count": req.ExpectedAvailableCount,
 		"credit_id":                req.CreditID,
 		"danger_confirmation":      openAIAccountQuotaResetDangerValue,
-	}, providerPluginActionOptions{})
+	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
 		return openAIAccountQuotaResetResult{}, true, err
 	}
@@ -391,7 +391,7 @@ func (s *Server) executeProviderResourceImageCapabilityAction(ctx context.Contex
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityImageGenerate, "image.capability.configure", map[string]any{
 		"resource_id": resourceID,
 		"enabled":     enabled,
-	}, providerPluginActionOptions{})
+	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
 		return codexImageCapabilityResult{}, true, err
 	}
@@ -420,7 +420,7 @@ func (s *Server) executeProviderResourceProbeAction(ctx context.Context, user Ad
 		"reasoning_effort": req.ReasoningEffort,
 		"speed":            req.Speed,
 		"prompt":           req.Prompt,
-	}, providerPluginActionOptions{})
+	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
 		return nil, true, err
 	}
@@ -491,7 +491,7 @@ func (s *Server) executeProviderResourceCredentialRefreshAction(ctx context.Cont
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityOAuth, "credentials.refresh", map[string]any{
 		"resource_id": resourceID,
 		"force":       force,
-	}, providerPluginActionOptions{ApplySideEffects: true})
+	}, providerPluginActionOptions{ApplySideEffects: true, ResourceType: resource.ResourceType})
 	if err != nil {
 		return pluginmeta.ActionResult{}, err
 	}
@@ -506,7 +506,7 @@ func (s *Server) refreshProviderResourceCredentialsWithPluginAction(ctx context.
 	if !ok {
 		return true, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	if _, _, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityOAuth, "credentials.refresh"); !ok {
+	if _, _, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityOAuth, "credentials.refresh", resource.ResourceType); !ok {
 		return false, nil
 	}
 	result, err := s.executeProviderResourceCredentialRefreshAction(ctx, AdminUser{
@@ -521,7 +521,7 @@ func (s *Server) refreshProviderResourceCredentialsWithPluginAction(ctx context.
 	return true, nil
 }
 
-func (s *Server) providerResourcePanelAction(providerType string, panelID string, capability AdapterCapability) (string, string, bool) {
+func (s *Server) providerResourcePanelAction(providerType string, panelID string, capability AdapterCapability, resourceType string) (string, string, bool) {
 	descriptor, ok := s.adapterRegistry.Describe(providerType)
 	if !ok || descriptor.PluginID == "" || !adapterSupports(descriptor, capability) {
 		return "", "", false
@@ -531,6 +531,12 @@ func (s *Server) providerResourcePanelAction(providerType string, panelID string
 			continue
 		}
 		if len(contribution.ProviderTypes) == 0 || stringInList(providerType, contribution.ProviderTypes) {
+			if len(contribution.ResourceTypes) > 0 && !stringInList(resourceType, contribution.ResourceTypes) {
+				continue
+			}
+			if action, ok := s.pluginActions.Describe(contribution.PluginID, contribution.Action); ok && !providerPluginActionMatchesResourceType(action, resourceType) {
+				continue
+			}
 			return contribution.PluginID, contribution.Action, true
 		}
 	}
@@ -552,7 +558,7 @@ func providerProbeResultFromActionData(data any) (ProviderProbeResult, bool) {
 	return result, strings.TrimSpace(result.ResourceID) != ""
 }
 
-func (s *Server) providerPluginCapabilityAction(providerType string, capability AdapterCapability, actionCapability string) (string, string, bool) {
+func (s *Server) providerPluginCapabilityAction(providerType string, capability AdapterCapability, actionCapability string, resourceType string) (string, string, bool) {
 	descriptor, ok := s.adapterRegistry.Describe(providerType)
 	if !ok || descriptor.PluginID == "" || !adapterSupports(descriptor, capability) {
 		return "", "", false
@@ -562,6 +568,9 @@ func (s *Server) providerPluginCapabilityAction(providerType string, capability 
 			continue
 		}
 		if action.Subject != "" && action.Subject != providerType {
+			continue
+		}
+		if !providerPluginActionMatchesResourceType(action, resourceType) {
 			continue
 		}
 		return action.PluginID, action.ActionID, true

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type providerPluginActionOptions struct {
 	ApplySideEffects bool
+	ResourceType     string
 }
 
 func pluginActionActor(user AdminUser) pluginmeta.ActionActor {
@@ -50,7 +52,7 @@ func (s *Server) executeEncodedPluginAction(ctx context.Context, user AdminUser,
 }
 
 func (s *Server) executeProviderCapabilityAction(ctx context.Context, user AdminUser, providerType string, capability AdapterCapability, actionCapability string, payload any, opts providerPluginActionOptions) (pluginmeta.ActionResult, bool, error) {
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(providerType, capability, actionCapability)
+	pluginID, actionID, ok := s.providerPluginCapabilityAction(providerType, capability, actionCapability, opts.ResourceType)
 	if !ok {
 		return pluginmeta.ActionResult{}, false, nil
 	}
@@ -59,10 +61,15 @@ func (s *Server) executeProviderCapabilityAction(ctx context.Context, user Admin
 }
 
 func (s *Server) executeProviderPanelAction(ctx context.Context, user AdminUser, providerType string, panelID string, capability AdapterCapability, payload any, opts providerPluginActionOptions) (pluginmeta.ActionResult, bool, error) {
-	pluginID, actionID, ok := s.providerResourcePanelAction(providerType, panelID, capability)
+	pluginID, actionID, ok := s.providerResourcePanelAction(providerType, panelID, capability, opts.ResourceType)
 	if !ok {
 		return pluginmeta.ActionResult{}, false, nil
 	}
 	result, err := s.executeEncodedPluginAction(ctx, user, pluginID, actionID, payload, opts)
 	return result, true, err
+}
+
+func providerPluginActionMatchesResourceType(action pluginmeta.ActionDescriptor, resourceType string) bool {
+	expected := firstNonEmpty(action.Metadata["provider_resource_type"], action.Metadata["resource_type"])
+	return strings.TrimSpace(expected) == "" || strings.TrimSpace(resourceType) == "" || strings.TrimSpace(expected) == strings.TrimSpace(resourceType)
 }
