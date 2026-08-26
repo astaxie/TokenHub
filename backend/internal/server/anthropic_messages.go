@@ -1003,7 +1003,7 @@ func (s *Server) handleAnthropicMessagesStream(
 			var streamErr error
 			switch {
 			case prepared.Provider.Type == ProviderAnthropic:
-				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, attemptReq, r.Header, tracker)
+				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, routed.Call, prepared, attemptReq, r.Header, tracker)
 			case prepared.Provider.Type == ProviderOpenAICodex:
 				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, attemptReq, r.Header, tracker)
 			case openAIMessageProvider(prepared.Provider.Type):

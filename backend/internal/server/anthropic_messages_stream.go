@@ -12,6 +12,7 @@ import (
 
 func (s *Server) streamNativeAnthropicMessages(
 	ctx context.Context,
+	call CallContext,
 	route RouteSelection,
 	req anthropicMessagesRequest,
 	headers http.Header,
@@ -25,7 +26,19 @@ func (s *Server) streamNativeAnthropicMessages(
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyNativeAnthropicStreamForProvider(writer, resp.Body, req.Model, route.Provider)
+	streamWriter := writer
+	var transformer *gatewayStreamTransformWriter
+	if s.hasGatewayStreamTransformHooks() {
+		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, writer)
+		streamWriter = transformer
+	}
+	usage, err := copyNativeAnthropicStreamForProvider(streamWriter, resp.Body, req.Model, route.Provider)
+	if transformer != nil {
+		if closeErr := transformer.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}
+	return usage, err
 }
 
 // copyNativeAnthropicStream forwards an upstream Anthropic event stream to the

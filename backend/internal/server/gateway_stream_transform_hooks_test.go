@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -121,6 +122,64 @@ func TestResponsesStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body, "Plugin responses") {
 		t.Fatalf("responses stream body was not transformed: %s", resp.Body)
+	}
+}
+
+func TestAnthropicNativeStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: message_start\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_transform\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"upstream-model\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1}}}\n\n")
+		_, _ = io.WriteString(w, "event: content_block_delta\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Native stream\"}}\n\n")
+		_, _ = io.WriteString(w, "event: message_delta\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}\n\n")
+		_, _ = io.WriteString(w, "event: message_stop\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderAnthropic)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-stream",
+		HookID:        "rewrite-native-anthropic",
+		Stage:         pluginmeta.StageStreamTransform,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var event gatewayStreamEventView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataStreamEvents], &event); err != nil {
+			t.Fatalf("decode stream event: %v", err)
+		}
+		if !strings.Contains(event.Data, "Native stream") {
+			return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+		}
+		return streamEventPatchResult(t, map[string]any{
+			"data": strings.Replace(event.Data, "Native stream", "Plugin stream", 1),
+		}), nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"stream":     true,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "stream"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "Plugin stream") || strings.Contains(resp.Body.String(), "Native stream") {
+		t.Fatalf("native Anthropic stream body was not transformed: %s", resp.Body)
 	}
 }
 
