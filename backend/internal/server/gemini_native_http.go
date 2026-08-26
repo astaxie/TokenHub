@@ -481,8 +481,8 @@ func geminiModelAllowed(models []Model, name string) bool {
 // geminiAccessibleModels only advertises models that this native Gemini
 // surface can actually execute. AccessibleModels deliberately answers the
 // broader gateway question and may include chat-only routes; Gemini requests
-// are translated to Responses and, by contract, are backed by Codex
-// subscription resources.
+// are translated through the Codex Responses compatibility protocol, which is
+// declared by provider plugins instead of inferred from a provider type.
 func (s *Server) geminiAccessibleModels(key APIKey) []Model {
 	models := s.store.AccessibleModels(key)
 	compatible := make([]Model, 0, len(models))
@@ -496,7 +496,7 @@ func (s *Server) geminiAccessibleModels(key APIKey) []Model {
 		}
 		routes = s.routesWithAdapterCapability(routes, AdapterCapabilityResponses)
 		for _, route := range routes {
-			if route.Provider.Type == ProviderOpenAICodex && routeMatchesProject(route.Route, key.ProjectID) {
+			if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) && routeMatchesProject(route.Route, key.ProjectID) {
 				compatible = append(compatible, model)
 				break
 			}

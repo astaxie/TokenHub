@@ -60,6 +60,38 @@ func TestGeminiNativeGenerateContentUsesCodexSubscription(t *testing.T) {
 	}
 }
 
+func TestGeminiNativeModelsUsePluginDeclaredCodexResponsesProtocol(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Gemini Plugin Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Gemini Plugin Key", Allowed: []string{"gemini-plugin-model"}, Status: StatusActive}, "thk_gemini_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const providerType = "plugin_codex_responses"
+	provider := store.AddProvider(Provider{ID: "prv_gemini_plugin", Name: "Gemini Plugin", Type: providerType, Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gemini-plugin-model", Modality: "chat", ContextWindow: 128000, Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_gemini_plugin", ModelName: "gemini-plugin-model", ProviderID: provider.ID, ProviderModel: "gemini-plugin-model", Status: StatusActive})
+	server := New(store)
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.plugin-codex-responses",
+		Name:    "Plugin Codex Responses",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      routeProtocolTestAdapter{protocols: []string{providerRouteProtocolCodexResponses}},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses},
+	}); err != nil {
+		t.Fatalf("register plugin provider: %v", err)
+	}
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodGet, "/v1beta/models", nil, secret)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body, `"name":"models/gemini-plugin-model"`) {
+		t.Fatalf("Gemini model list did not include plugin-declared Codex Responses route: %d %s", response.Code, response.Body)
+	}
+}
+
 func TestGeminiNativeStreamGenerateContentEmitsToolCall(t *testing.T) {
 	longName := "read_workspace_file_with_a_long_gemini_cli_specific_function_name"
 	server, secret := newGeminiCodexTestServer(t, func(request map[string]any) string {
