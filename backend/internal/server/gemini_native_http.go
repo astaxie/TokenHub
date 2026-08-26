@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func (s *Server) registerModelRoutes() {
@@ -142,12 +144,98 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 		writeError(w, r, err)
 		return
 	}
-	request, reverseNames, err := geminiToResponsesRequest(model, payload, stream)
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, model, stream, requestTokenReservation(payload))
 	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, stream, err, guardrailAuditSummary{Model: model})
+		w.Header().Set("x-request-id", requestID)
 		writeError(w, r, err)
 		return
 	}
-	routed, ok := s.startRoutedCall(w, r, project, key, model, stream, payload)
+	if err := s.runGatewayAuthContextHooks(r.Context(), &call, r.Header); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiDecodeNormalizeHooks(r.Context(), call, r.Header, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, payload, requestTokenReservation(payload)); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiPrivacyPreHooks(r.Context(), call, r.Header, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiContextOptimizeHooks(r.Context(), call, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiGuardrailPreHooks(r.Context(), call, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, geminiGuardrailTargets(payload))
+	auditPayload := guardrailRequestAuditPayload(model, decision, payload)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	if !stream {
+		resp, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), call, payload)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		if hit {
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, body, usage)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, body)
+			w.Header().Set("x-request-id", call.RequestID)
+			w.Header().Set("x-tokenhub-cache", "hit")
+			writeJSON(w, http.StatusOK, body)
+			return
+		}
+	}
+	request, reverseNames, err := geminiToResponsesRequest(model, payload, stream)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
 	if !ok {
 		return
 	}
@@ -158,13 +246,13 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 	routed.Routes = s.routesWithAdapterCapability(routed.Routes, capability)
 	if len(routed.Routes) == 0 {
 		err := NewHTTPError(http.StatusNotImplemented, "provider_capability_not_supported", "No route supports the Gemini CLI compatibility protocol")
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, payload)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	affinity, err := s.geminiGatewayAffinity(key.ID, r.Header, payload, routed.Routes)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, payload)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
@@ -174,24 +262,58 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 	}
 	if stream {
-		s.handleStreamingGemini(w, r, routed, request, payload, reverseNames)
+		s.handleStreamingGemini(w, r, routed, request, payload, reverseNames, auditPayload)
 		return
 	}
 	response, route, usage, attempts, err := s.executeRoutedGemini(r, routed, request, payload)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, payload)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	converted, err := codexResponsesToGemini(response, model, usage, reverseNames)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, payload)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, payload, converted)
+	postResp, err := s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, converted, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	converted, ok = postResp.(map[string]any)
+	if !ok {
+		err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	postResp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, converted)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	converted, ok = postResp.(map[string]any)
+	if !ok {
+		err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, converted, usage)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, payload, converted, usage)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, converted)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, converted)
@@ -207,6 +329,19 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 		upstream := request
 		if omitReasoningEffort {
 			upstream = withoutResponsesReasoningEffort(upstream)
+		}
+		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &upstream); transformErr != nil {
+			return nil, Usage{}, transformErr
+		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, upstream); err != nil || handled {
+			if err != nil {
+				return nil, usage, err
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				return nil, usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Responses provider returned an invalid payload")
+			}
+			return body, usage, nil
 		}
 		response, usage, err := s.invokeResponsesAdapter(ctx, prepared, upstream, geminiCodexCompatibilityHeaders(r.Header, payload))
 		if isCodexModelUnsupportedError(err) {
@@ -224,7 +359,7 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 	return response, route, usage, attempts, err
 }
 
-func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest, payload map[string]any, reverseNames map[string]string) {
+func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest, payload map[string]any, reverseNames map[string]string, auditPayload any) {
 	tracker := &streamWriteTracker{writer: w}
 	_, route, usage, attempts, streamErr := executeRoutedWithStore(r.Context(), s.store, routed, true, func(ctx context.Context, candidate RouteSelection, omitReasoningEffort bool, attempt int) (struct{}, Usage, error) {
 		prepared, err := s.prepareRouteForUpstream(ctx, candidate)
@@ -235,14 +370,28 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		if omitReasoningEffort {
 			upstream = withoutResponsesReasoningEffort(upstream)
 		}
+		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &upstream); transformErr != nil {
+			return struct{}{}, Usage{}, transformErr
+		}
 		tracker.onFirstWrite = func() {
 			w.Header().Set("content-type", "text/event-stream")
 			w.Header().Set("cache-control", "no-cache")
 			w.Header().Set("x-request-id", routed.Call.RequestID)
 			s.writeRouteHeaders(w, routed.Call, prepared, attempt)
 		}
-		sink := newCodexGeminiStreamSink(tracker, request.Model, reverseNames)
+		streamWriter := io.Writer(tracker)
+		var transformer *gatewayStreamTransformWriter
+		if s.hasGatewayStreamTransformHooks() {
+			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, tracker)
+			streamWriter = transformer
+		}
+		sink := newCodexGeminiStreamSink(streamWriter, request.Model, reverseNames)
 		usage, err := s.streamCodexCompatibility(ctx, prepared, upstream, geminiCodexCompatibilityHeaders(r.Header, payload), sink)
+		if transformer != nil {
+			if closeErr := transformer.Close(); err == nil && closeErr != nil {
+				err = closeErr
+			}
+		}
 		return struct{}{}, usage, classifyStreamError(ctx, err, tracker.Wrote())
 	})
 	status, code := statusAndCode(streamErr)
@@ -266,7 +415,7 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		StatusCode:      status,
 		ErrorCode:       code,
 		ErrorMessage:    errorMessageOrEmpty(streamErr),
-		RequestPayload:  payload,
+		RequestPayload:  auditPayload,
 		ResponsePayload: auditStreamPayload(status, code, streamErr),
 	})
 	if streamErr != nil && !tracker.Wrote() {

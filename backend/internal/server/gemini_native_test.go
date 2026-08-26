@@ -2,12 +2,15 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 const geminiCodexTestModel = "gpt-5.5"
@@ -247,6 +250,272 @@ func TestGeminiNativeCallsEmitGatewayTraces(t *testing.T) {
 	}
 }
 
+func TestGeminiNativePrivacyPreHookCanRewriteContentBeforeUpstream(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(request map[string]any) string {
+		input := geminiTestSlice(t, request["input"], "Codex input")
+		item := geminiTestMap(t, input[0], "input item")
+		content := geminiTestSlice(t, item["content"], "input content")
+		text := geminiTestMap(t, content[0], "input text")["text"]
+		if text != "[masked]" {
+			t.Fatalf("Codex input text = %#v, want masked", text)
+		}
+		return geminiCodexTestSSE(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id": "resp_gemini_privacy", "status": "completed",
+				"output": []any{map[string]any{
+					"type": "message", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "privacy ok"}},
+				}},
+				"usage": map[string]any{"input_tokens": 2, "output_tokens": 1, "total_tokens": 3},
+			},
+		})
+	})
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-gemini-privacy",
+		HookID:        "mask-gemini-content",
+		Stage:         pluginmeta.StagePrivacyPre,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register privacy hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var payload map[string]any
+		if err := json.Unmarshal(input.Data[pluginmeta.DataRequestBody], &payload); err != nil {
+			t.Fatalf("decode hook request: %v", err)
+		}
+		payload["contents"] = []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "[masked]"}}}}
+		return rawRequestBodyPatch(t, payload), nil
+	})); err != nil {
+		t.Fatalf("register privacy handler: %v", err)
+	}
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:generateContent", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "secret"}}}},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("generateContent failed: %d %s", response.Code, response.Body)
+	}
+}
+
+func TestGeminiNativeCacheLookupHookShortCircuitsGenerateContent(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(map[string]any) string {
+		t.Fatal("upstream should not be called on cache hit")
+		return ""
+	})
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-gemini-cache",
+		HookID:        "lookup",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyReturnFallback,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Data[pluginmeta.DataRequestBody]) == 0 {
+			t.Fatal("cache lookup did not receive Gemini request body")
+		}
+		response, err := json.Marshal(map[string]any{
+			"candidates": []any{map[string]any{
+				"content":      map[string]any{"role": "model", "parts": []any{map[string]any{"text": "cached gemini"}}},
+				"finishReason": "STOP",
+			}},
+			"usageMetadata": map[string]any{"totalTokenCount": 9},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		usage, err := json.Marshal(Usage{TotalTokens: 9})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pluginmeta.GatewayHookResult{
+			Decision: pluginmeta.HookDecisionShortCircuit,
+			Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+				pluginmeta.DataProviderResponse: {Value: response},
+				pluginmeta.DataUsage:            {Value: usage},
+			},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register cache lookup handler: %v", err)
+	}
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:generateContent", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "cache me"}}}},
+	}, secret)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body, "cached gemini") {
+		t.Fatalf("cache hit failed: %d %s", response.Code, response.Body)
+	}
+	if got := response.Header.Get("x-tokenhub-cache"); got != "hit" {
+		t.Fatalf("cache header = %q, want hit", got)
+	}
+}
+
+func TestGeminiNativeRequestTransformHookCanRewriteResponsesPayloadBeforeProvider(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(request map[string]any) string {
+		input := geminiTestSlice(t, request["input"], "Codex input")
+		item := geminiTestMap(t, input[0], "input item")
+		content := geminiTestSlice(t, item["content"], "input content")
+		text := geminiTestMap(t, content[0], "input text")["text"]
+		if text != "provider-side transform" {
+			t.Fatalf("Codex input text = %#v, want provider transform", text)
+		}
+		return geminiCodexTestSSE(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id": "resp_gemini_request_transform", "status": "completed",
+				"output": []any{map[string]any{
+					"type": "message", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "request transform ok"}},
+				}},
+				"usage": map[string]any{"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
+			},
+		})
+	})
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-gemini-transform",
+		HookID:        "rewrite-responses-payload",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var request ResponsesRequest
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderRequest], &request); err != nil {
+			t.Fatalf("decode provider request: %v", err)
+		}
+		request.Input = []any{map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{map[string]any{
+				"type": "input_text",
+				"text": "provider-side transform",
+			}},
+		}}
+		return rawProviderRequestPatch(t, request), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:generateContent", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "before transform"}}}},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("generateContent failed: %d %s", response.Code, response.Body)
+	}
+}
+
+func TestGeminiNativeCacheWriteHookReceivesGeminiResponse(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(map[string]any) string {
+		return geminiCodexTestSSE(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id": "resp_gemini_cache_write", "status": "completed",
+				"output": []any{map[string]any{
+					"type": "message", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "write cache"}},
+				}},
+				"usage": map[string]any{"input_tokens": 4, "output_tokens": 5, "total_tokens": 9},
+			},
+		})
+	})
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-gemini-cache",
+		HookID:        "write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody, pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache write hook: %v", err)
+	}
+	var sawGeminiResponse bool
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var response map[string]any
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
+			t.Fatalf("decode cache write response: %v", err)
+		}
+		sawGeminiResponse = response["candidates"] != nil && response["usageMetadata"] != nil && len(input.Data[pluginmeta.DataRequestBody]) > 0 && len(input.Data[pluginmeta.DataUsage]) > 0
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register cache write handler: %v", err)
+	}
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:generateContent", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "store this"}}}},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("generateContent failed: %d %s", response.Code, response.Body)
+	}
+	if !sawGeminiResponse {
+		t.Fatal("cache write hook did not receive Gemini request, response, and usage")
+	}
+}
+
+func TestGeminiNativeStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(map[string]any) string {
+		return geminiCodexTestSSE(
+			map[string]any{"type": "response.created", "response": map[string]any{"id": "resp_gemini_stream_transform", "status": "in_progress"}},
+			map[string]any{"type": "response.output_text.delta", "delta": "Native Gemini stream"},
+			map[string]any{"type": "response.completed", "response": map[string]any{
+				"id": "resp_gemini_stream_transform", "status": "completed",
+				"output": []any{map[string]any{
+					"type": "message", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "Native Gemini stream"}},
+				}},
+				"usage": map[string]any{"input_tokens": 4, "output_tokens": 5, "total_tokens": 9},
+			}},
+		)
+	})
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-gemini-stream",
+		HookID:        "rewrite",
+		Stage:         pluginmeta.StageStreamTransform,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var event gatewayStreamEventView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataStreamEvents], &event); err != nil {
+			t.Fatalf("decode stream event: %v", err)
+		}
+		if !strings.Contains(event.Data, "Native Gemini stream") {
+			return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+		}
+		return streamEventPatchResult(t, map[string]any{
+			"data": strings.Replace(event.Data, "Native Gemini stream", "Plugin Gemini stream", 1),
+		}), nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:streamGenerateContent?alt=sse", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "stream"}}}},
+	}, secret)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body, "Plugin Gemini stream") || strings.Contains(response.Body, "Native Gemini stream") {
+		t.Fatalf("stream transform failed: %d %s", response.Code, response.Body)
+	}
+}
+
 func newGeminiCodexTestServer(t *testing.T, responder func(map[string]any) string) (*Server, string) {
 	return newGeminiCodexTestServerForModel(t, geminiCodexTestModel, responder)
 }
@@ -318,7 +587,7 @@ func doGeminiJSON(t *testing.T, handler http.Handler, method string, path string
 	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
-	return responseBody{Code: recorder.Code, Body: recorder.Body.String()}
+	return responseBody{Code: recorder.Code, Header: recorder.Header(), Body: recorder.Body.String()}
 }
 
 func geminiCodexTestSSE(events ...map[string]any) string {

@@ -429,9 +429,21 @@ func (s *Server) runGatewayAnthropicDecodeNormalizeHooks(ctx context.Context, ca
 	})
 }
 
+func (s *Server) runGatewayGeminiDecodeNormalizeHooks(ctx context.Context, call CallContext, headers http.Header, payload *map[string]any, model string, stream bool) error {
+	return s.runGatewayDecodeNormalizeHooks(ctx, call, headers, *payload, func(data json.RawMessage) error {
+		return applyGeminiGatewayRequestPatch(payload, data, model, stream)
+	})
+}
+
 func (s *Server) runGatewayAnthropicPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, req *anthropicMessagesRequest) error {
 	return s.runGatewayPrivacyPreHooks(ctx, call, headers, req.Raw, func(data json.RawMessage) error {
 		return applyAnthropicGatewayRequestPatch(req, data)
+	})
+}
+
+func (s *Server) runGatewayGeminiPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload *map[string]any, model string, stream bool) error {
+	return s.runGatewayPrivacyPreHooks(ctx, call, headers, *payload, func(data json.RawMessage) error {
+		return applyGeminiGatewayRequestPatch(payload, data, model, stream)
 	})
 }
 
@@ -569,9 +581,21 @@ func (s *Server) runGatewayAnthropicGuardrailPreHooks(ctx context.Context, call 
 	})
 }
 
+func (s *Server) runGatewayGeminiGuardrailPreHooks(ctx context.Context, call CallContext, payload *map[string]any, model string, stream bool) error {
+	return s.runGatewayGuardrailPreHooks(ctx, call, *payload, geminiGuardrailTargets(*payload), func(data json.RawMessage) error {
+		return applyGeminiGatewayRequestPatch(payload, data, model, stream)
+	})
+}
+
 func (s *Server) runGatewayAnthropicContextOptimizeHooks(ctx context.Context, call CallContext, req *anthropicMessagesRequest) error {
 	return s.runGatewayContextOptimizeHooks(ctx, call, req.Raw, func(data json.RawMessage) error {
 		return applyAnthropicGatewayRequestPatch(req, data)
+	})
+}
+
+func (s *Server) runGatewayGeminiContextOptimizeHooks(ctx context.Context, call CallContext, payload *map[string]any, model string, stream bool) error {
+	return s.runGatewayContextOptimizeHooks(ctx, call, *payload, func(data json.RawMessage) error {
+		return applyGeminiGatewayRequestPatch(payload, data, model, stream)
 	})
 }
 
@@ -1121,6 +1145,27 @@ func applyAnthropicGatewayRequestPatch(req *anthropicMessagesRequest, data json.
 	req.Raw = patched
 	req.Messages = messages
 	req.MaxTokens = int(int64FromAny(patched["max_tokens"]))
+	return nil
+}
+
+func applyGeminiGatewayRequestPatch(payload *map[string]any, data json.RawMessage, model string, stream bool) error {
+	if payload == nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid request patch")
+	}
+	var patched map[string]any
+	if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+		return err
+	}
+	if patchedModel, ok := patched["model"].(string); ok && strings.TrimSpace(patchedModel) != "" && strings.TrimSpace(patchedModel) != model {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+	}
+	if patchedStream, ok := patched["stream"].(bool); ok && patchedStream != stream {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested stream mode")
+	}
+	if _, ok := patched["contents"].([]any); !ok {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid request patch")
+	}
+	*payload = patched
 	return nil
 }
 

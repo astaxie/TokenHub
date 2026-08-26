@@ -132,8 +132,9 @@ func assertPasswordResetEmail(t *testing.T, messages <-chan string, recipient st
 }
 
 type responseBody struct {
-	Code int
-	Body string
+	Code   int
+	Header http.Header
+	Body   string
 }
 
 func doJSON(t *testing.T, handler http.Handler, method string, path string, payload any, token string) responseBody {

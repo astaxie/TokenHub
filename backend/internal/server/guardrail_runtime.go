@@ -197,6 +197,50 @@ func anthropicGuardrailTargets(request *anthropicMessagesRequest) []guardrailTex
 	return targets
 }
 
+func geminiGuardrailTargets(payload map[string]any) []guardrailTextTarget {
+	targets := make([]guardrailTextTarget, 0)
+	if system, exists := payload["systemInstruction"]; exists {
+		appendGeminiGuardrailTargets(&targets, system, "systemInstruction", func(value any) {
+			payload["systemInstruction"] = value
+		})
+	}
+	if contents, exists := payload["contents"]; exists {
+		appendGeminiGuardrailTargets(&targets, contents, "contents", func(value any) {
+			payload["contents"] = value
+		})
+	}
+	return targets
+}
+
+func appendGeminiGuardrailTargets(targets *[]guardrailTextTarget, value any, id string, set func(any)) {
+	switch typed := value.(type) {
+	case string:
+		appendGuardrailStringTarget(targets, typed, id, set)
+	case []any:
+		for index, item := range typed {
+			itemIndex := index
+			appendGeminiGuardrailTargets(targets, item, fmt.Sprintf("%s.%d", id, index), func(next any) {
+				typed[itemIndex] = next
+				set(typed)
+			})
+		}
+	case map[string]any:
+		if text, ok := typed["text"].(string); ok {
+			appendGuardrailStringTarget(targets, text, id+".text", func(next any) {
+				typed["text"] = next
+				set(typed)
+			})
+			return
+		}
+		if parts, ok := typed["parts"]; ok {
+			appendGeminiGuardrailTargets(targets, parts, id+".parts", func(next any) {
+				typed["parts"] = next
+				set(typed)
+			})
+		}
+	}
+}
+
 func appendGuardrailResponseInputTargets(targets *[]guardrailTextTarget, value any, id string, set func(any)) {
 	switch typed := value.(type) {
 	case string:
