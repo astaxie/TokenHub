@@ -16,9 +16,13 @@ import (
 type gatewayRouteCandidateView struct {
 	RouteID          string `json:"route_id"`
 	ProviderID       string `json:"provider_id,omitempty"`
+	ProviderName     string `json:"provider_name,omitempty"`
 	ProviderType     string `json:"provider_type,omitempty"`
 	ProviderModel    string `json:"provider_model,omitempty"`
 	ResourceID       string `json:"resource_id,omitempty"`
+	ResourceName     string `json:"resource_name,omitempty"`
+	ResourceType     string `json:"resource_type,omitempty"`
+	ResourceGroup    string `json:"resource_group,omitempty"`
 	RoutePriority    int    `json:"route_priority"`
 	ResourcePriority int    `json:"resource_priority"`
 	Weight           int    `json:"weight"`
@@ -1278,9 +1282,13 @@ func gatewayRouteCandidateViews(routes []RouteSelection) []gatewayRouteCandidate
 		views = append(views, gatewayRouteCandidateView{
 			RouteID:          route.Route.ID,
 			ProviderID:       route.Provider.ID,
+			ProviderName:     route.Provider.Name,
 			ProviderType:     route.Provider.Type,
 			ProviderModel:    route.ProviderModel,
 			ResourceID:       routeResourceID(route),
+			ResourceName:     routeResourceName(route),
+			ResourceType:     routeResourceType(route),
+			ResourceGroup:    routeResourceGroup(route),
 			RoutePriority:    route.Route.Priority,
 			ResourcePriority: routeResourcePriority(route),
 			Weight:           routeEffectiveWeight(route),
@@ -1288,6 +1296,27 @@ func gatewayRouteCandidateViews(routes []RouteSelection) []gatewayRouteCandidate
 		})
 	}
 	return views
+}
+
+func routeResourceName(route RouteSelection) string {
+	if route.Resource == nil {
+		return ""
+	}
+	return route.Resource.Name
+}
+
+func routeResourceType(route RouteSelection) string {
+	if route.Resource == nil {
+		return ""
+	}
+	return route.Resource.ResourceType
+}
+
+func routeResourceGroup(route RouteSelection) string {
+	if route.Resource == nil {
+		return ""
+	}
+	return route.Resource.Group
 }
 
 func gatewayAuthContextView(call CallContext) map[string]any {

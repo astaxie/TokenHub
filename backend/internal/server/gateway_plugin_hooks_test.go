@@ -1166,8 +1166,20 @@ func TestRouteCandidatesHookCanFilterCoreApprovedCandidates(t *testing.T) {
 		t.Fatalf("register route candidates hook: %v", err)
 	}
 	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
-		if _, ok := input.Data[pluginmeta.DataRouteCandidates]; !ok {
+		rawCandidates, ok := input.Data[pluginmeta.DataRouteCandidates]
+		if !ok {
 			t.Fatal("route candidates were not available to the hook")
+		}
+		var candidates []gatewayRouteCandidateView
+		if err := json.Unmarshal(rawCandidates, &candidates); err != nil {
+			t.Fatalf("decode route candidates: %v", err)
+		}
+		if len(candidates) != 2 ||
+			candidates[0].ProviderName != "Provider A" ||
+			candidates[0].ResourceName != "Account A" ||
+			candidates[0].ResourceType != "plugin_account" ||
+			candidates[0].ResourceGroup != "tenant-a" {
+			t.Fatalf("route candidate resource metadata = %+v", candidates)
 		}
 		return routeRankPatchResult(t, "route_b"), nil
 	})); err != nil {
@@ -1175,8 +1187,16 @@ func TestRouteCandidatesHookCanFilterCoreApprovedCandidates(t *testing.T) {
 	}
 
 	routes := []RouteSelection{
-		{Route: ModelRoute{ID: "route_a"}, Provider: Provider{ID: "prv_a"}},
-		{Route: ModelRoute{ID: "route_b"}, Provider: Provider{ID: "prv_b"}},
+		{
+			Route:    ModelRoute{ID: "route_a"},
+			Provider: Provider{ID: "prv_a", Name: "Provider A", Type: "provider_a"},
+			Resource: &ProviderResource{ID: "rsrc_a", Name: "Account A", ResourceType: "plugin_account", Group: "tenant-a"},
+		},
+		{
+			Route:    ModelRoute{ID: "route_b"},
+			Provider: Provider{ID: "prv_b", Name: "Provider B", Type: "provider_b"},
+			Resource: &ProviderResource{ID: "rsrc_b", Name: "Account B", ResourceType: "api_key", Group: "tenant-b"},
+		},
 	}
 	selected, err := server.runGatewayRouteCandidatesHooks(context.Background(), gatewayPluginTestCall(), routes)
 	if err != nil {
@@ -1228,9 +1248,23 @@ func TestRouteCandidatesHookFiltersGatewayChatCandidatesBeforeRouting(t *testing
 	}
 	firstProvider := store.AddProvider(Provider{ID: "prv_candidates_a", Name: "Candidates A", Type: "candidate_capture", Status: StatusActive, Healthy: true})
 	secondProvider := store.AddProvider(Provider{ID: "prv_candidates_b", Name: "Candidates B", Type: "candidate_capture", Status: StatusActive, Healthy: true})
+	firstResource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_candidates_a", ProviderID: firstProvider.ID, Name: "Candidates A Account",
+		ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondResource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_candidates_b", ProviderID: secondProvider.ID, Name: "Candidates B Account",
+		ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	store.AddModel(Model{Name: "gpt-candidates", Modality: "chat", Status: StatusActive})
-	store.AddRoute(ModelRoute{ID: "route_candidates_a", ModelName: "gpt-candidates", ProviderID: firstProvider.ID, ProviderModel: "upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
-	store.AddRoute(ModelRoute{ID: "route_candidates_b", ModelName: "gpt-candidates", ProviderID: secondProvider.ID, ProviderModel: "upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_candidates_a", ModelName: "gpt-candidates", ProviderID: firstProvider.ID, ProviderResourceID: firstResource.ID, ProviderModel: "upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_candidates_b", ModelName: "gpt-candidates", ProviderID: secondProvider.ID, ProviderResourceID: secondResource.ID, ProviderModel: "upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
 	server := New(store)
 	adapter := &requestTransformCaptureAdapter{}
 	server.adapterRegistry.Register("candidate_capture", adapter, AdapterCapabilityChat)
