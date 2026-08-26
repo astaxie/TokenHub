@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
-import { codexProviderCatalogSummary, codexProviderType } from "../domain/codex-provider-profile";
+import { codexProviderCatalogSummary } from "../domain/codex-provider-profile";
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
@@ -27,7 +27,7 @@ import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderPluginPanels } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { isOpenAISubscriptionResource, isProviderAccountResource } from "../domain/provider-resource-types";
+import { isProviderAccountResource } from "../domain/provider-resource-types";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 type OpenAIAccountQuota = {
   account_id?: string;
@@ -92,7 +92,6 @@ export function ProviderUpsertModal({
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins), [catalog, plugins]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0] ?? codexProviderCatalogSummary;
   const editingAccountProvider = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResource(resource));
-  const editingCodexSubscription = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource));
   const editingAccountProviderCatalogEntry = accountProviderCatalogOptions.find((entry) => entry.type === provider?.type) ?? defaultAccountProviderCatalogEntry;
   const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
@@ -130,9 +129,9 @@ export function ProviderUpsertModal({
   const catalogRefreshRequested = useRef(false);
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
-    name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex" : provider?.name ?? "" : initialEntry?.display_name ?? "",
-    type: mode === "edit" ? editingCodexSubscription ? codexProviderType : provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
-    base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
+    name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name ?? "",
+    type: mode === "edit" ? provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
+    base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     clear_api_key: "false",
     anthropic_auth_type: provider?.options?.anthropic_auth_type ?? "x-api-key",
@@ -148,9 +147,9 @@ export function ProviderUpsertModal({
   const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingAccountProvider ? "account_integration" : "provider_api_key");
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() => providerResourceDraftDefaults({
     provider_id: "",
-    name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex Codex Account" : provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
-    base_url: mode === "edit" ? editingCodexSubscription ? codexProviderCatalogSummary.base_url ?? "" : provider?.base_url ?? "" : initialEntry?.base_url ?? "",
-    type: mode === "edit" ? editingCodexSubscription ? codexProviderType : provider?.type ?? "" : initialEntry?.type ?? "",
+    name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
+    base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
+    type: mode === "edit" ? provider?.type ?? "" : initialEntry?.type ?? "",
   }, { plugins }));
   const [accountOAuthCallback, setAccountOAuthCallback] = useState("");
   const [accountOAuthStatus, setAccountOAuthStatus] = useState("");
