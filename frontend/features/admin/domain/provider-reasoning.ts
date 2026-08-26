@@ -6,21 +6,9 @@ import {
   providerReasoningOverrideFormValues,
   serializeProviderReasoningOptions,
 } from "./provider-reasoning-options";
+export { providerSupportsAnthropicReasoning, providerTypeOptionsSupportAnthropicReasoning } from "./provider-reasoning-policy";
 
 export { providerHasReasoningOverrides, providerReasoningFormValues, providerReasoningOverrideFormValues };
-
-const anthropicReasoningProviderTypes = new Set([
-  "openai",
-  "openai_compatible",
-  "azure_openai",
-  "deepseek",
-  "qwen",
-  "local",
-]);
-
-export function providerSupportsAnthropicReasoning(providerType?: string) {
-  return anthropicReasoningProviderTypes.has(providerType?.trim().toLowerCase() ?? "");
-}
 
 export function providerReasoningFieldConfigs(visible?: FieldConfig["visible"]): FieldConfig[] {
   return [

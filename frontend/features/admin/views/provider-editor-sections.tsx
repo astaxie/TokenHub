@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { type ApiContext, type ProviderResource } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
-import { providerReasoningFieldConfigs, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
+import { providerReasoningFieldConfigs, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
 import { legacyProviderTypeOptions, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
@@ -86,7 +86,7 @@ export function ProviderAdvancedFields({
   idPlaceholder,
   providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
 }: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
-  const showReasoningCompatibility = providerSupportsAnthropicReasoning(values.type);
+  const showReasoningCompatibility = providerTypeOptionsSupportAnthropicReasoning(providerTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid">

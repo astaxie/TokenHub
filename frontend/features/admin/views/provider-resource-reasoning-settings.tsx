@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ApiContext, Provider, ProviderResource } from "../core/types";
-import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
+import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { effectiveProviderHeaderEntries, parseProviderHeaderEntries, providerHeaderEntryErrors, providerHeadersFormValue } from "../domain/provider-headers";
 import { isOpenAISubscriptionResource } from "../domain/provider-resource-types";
 import { tx } from "../i18n/runtime";
@@ -85,7 +85,7 @@ export function ProviderResourceReasoningSettings({
   }
 
   if (scopedResources.length === 0) return null;
-  const showReasoning = providerSupportsAnthropicReasoning(providerType);
+  const showReasoning = providerTypeOptionsSupportAnthropicReasoning(providerTypeOptions, providerType);
   return (
     <section className="provider-quota-panel">
       <div className="wizard-panel-head">
