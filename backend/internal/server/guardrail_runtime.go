@@ -212,6 +212,46 @@ func geminiGuardrailTargets(payload map[string]any) []guardrailTextTarget {
 	return targets
 }
 
+func embeddingsGuardrailTargets(request *EmbeddingsRequest) []guardrailTextTarget {
+	targets := make([]guardrailTextTarget, 0)
+	if request == nil {
+		return targets
+	}
+	appendEmbeddingGuardrailTargets(&targets, request.Input, "input", func(value any) {
+		request.Input = value
+	})
+	return targets
+}
+
+func appendEmbeddingGuardrailTargets(targets *[]guardrailTextTarget, value any, id string, set func(any)) {
+	switch typed := value.(type) {
+	case string:
+		appendGuardrailStringTarget(targets, typed, id, set)
+	case []any:
+		for index, item := range typed {
+			itemIndex := index
+			appendEmbeddingGuardrailTargets(targets, item, fmt.Sprintf("%s.%d", id, index), func(next any) {
+				typed[itemIndex] = next
+				set(typed)
+			})
+		}
+	case map[string]any:
+		if text, ok := typed["text"].(string); ok {
+			appendGuardrailStringTarget(targets, text, id+".text", func(next any) {
+				typed["text"] = next
+				set(typed)
+			})
+			return
+		}
+		if content, ok := typed["content"]; ok {
+			appendEmbeddingGuardrailTargets(targets, content, id+".content", func(next any) {
+				typed["content"] = next
+				set(typed)
+			})
+		}
+	}
+}
+
 func appendGeminiGuardrailTargets(targets *[]guardrailTextTarget, value any, id string, set func(any)) {
 	switch typed := value.(type) {
 	case string:

@@ -84,6 +84,45 @@ func TestEmbeddingsCacheWriteHookRunsAfterProviderSuccess(t *testing.T) {
 	}
 }
 
+func TestEmbeddingsPrivacyPreHookCanRewriteInputBeforeProvider(t *testing.T) {
+	server := newEmbeddingsCacheHookTestServer(t)
+	capture := &captureAdapter{}
+	server.adapterRegistry.Register(ProviderMock, capture, AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-embedding-privacy",
+		HookID:        "mask-input",
+		Stage:         pluginmeta.StagePrivacyPre,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register privacy hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var request EmbeddingsRequest
+		if err := json.Unmarshal(input.Data[pluginmeta.DataRequestBody], &request); err != nil {
+			t.Fatalf("decode embedding request: %v", err)
+		}
+		request.Input = "[masked embedding]"
+		return rawRequestBodyPatch(t, request), nil
+	})); err != nil {
+		t.Fatalf("register privacy handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/embeddings", map[string]any{
+		"model": "text-embedding-3-small",
+		"input": "sensitive embedding input",
+	}, "thk_demo_local")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if capture.seenEmbeddingsInput != "[masked embedding]" {
+		t.Fatalf("provider input = %#v, want masked embedding", capture.seenEmbeddingsInput)
+	}
+}
+
 func newEmbeddingsCacheHookTestServer(t *testing.T) *Server {
 	t.Helper()
 	store := NewMemoryStore()
