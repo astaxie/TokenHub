@@ -411,6 +411,11 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Configure OpenAI Codex image capability",
 		Capability: "image.capability.configure",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"display_name":   "Codex Subscription ImageGen",
+			"public_model":   codexImageModelName,
+			"upstream_model": codexImageUpstreamModel,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"resource_id", "enabled"},

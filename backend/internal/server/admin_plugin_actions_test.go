@@ -203,7 +203,9 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 		!strings.Contains(body, `"capability":"models.preview"`) ||
 		!strings.Contains(body, `"capability":"image.capability.configure"`) ||
 		!strings.Contains(body, `"capability":"credentials.refresh"`) ||
-		!strings.Contains(body, `"oauth_redirect_uri":"http://localhost:1455/auth/callback"`) {
+		!strings.Contains(body, `"oauth_redirect_uri":"http://localhost:1455/auth/callback"`) ||
+		!strings.Contains(body, `"public_model":"codex-gpt-image-2"`) ||
+		!strings.Contains(body, `"upstream_model":"gpt-image-2"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
 	}
 }

@@ -20,6 +20,11 @@ const action = {
   kind: "mutate",
   capability: "image.capability.configure",
   subject: "openai_codex",
+  metadata: {
+    display_name: "Codex Subscription ImageGen",
+    public_model: "codex-gpt-image-2",
+    upstream_model: "gpt-image-2",
+  },
 };
 
 describe("ProviderCodexImageCapability", () => {
@@ -48,6 +53,8 @@ describe("ProviderCodexImageCapability", () => {
       />,
     );
 
+    expect(screen.getByText("Codex Subscription ImageGen")).toBeInTheDocument();
+    expect(screen.getByText("codex-gpt-image-2 ← gpt-image-2")).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: "开始测试并启用" }));
 
@@ -60,7 +67,7 @@ describe("ProviderCodexImageCapability", () => {
       enabled: true,
     });
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
-    expect(setNotice).toHaveBeenCalledWith("Codex 订阅生图测试通过并已启用。");
+    expect(setNotice).toHaveBeenCalledWith("订阅生图测试通过并已启用。");
   });
 
   it("stays hidden when the plugin action is not registered", () => {

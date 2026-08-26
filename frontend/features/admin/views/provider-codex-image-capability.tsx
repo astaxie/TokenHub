@@ -46,6 +46,9 @@ export function ProviderCodexImageCapability({
   const [busy, setBusy] = useState<"enable" | "disable" | "">("");
   const [error, setError] = useState("");
   const selectedResource = providerResources.find((resource) => resource.id === resourceID);
+  const displayName = action?.metadata?.display_name?.trim() || tx("订阅生图");
+  const publicModel = action?.metadata?.public_model?.trim() || "codex-gpt-image-2";
+  const upstreamModel = action?.metadata?.upstream_model?.trim() || "gpt-image-2";
   const stateLabel = {
     enabled: "已启用，生图测试通过",
     enabled_without_account: "线路已启用，但当前没有测试通过的可用账号",
@@ -78,7 +81,7 @@ export function ProviderCodexImageCapability({
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("配置 Codex 订阅生图")));
       const result = unwrapCodexImageCapabilityResult(await response.json());
-      setNotice(tx(result.enabled ? "Codex 订阅生图测试通过并已启用。" : "Codex 订阅生图已停用；能力测试结果已保留。"));
+      setNotice(tx(result.enabled ? "订阅生图测试通过并已启用。" : "订阅生图已停用；能力测试结果已保留。"));
       await onChanged().catch(() => undefined);
       setDialogOpen(false);
     } catch (caught) {
@@ -105,8 +108,8 @@ export function ProviderCodexImageCapability({
           type="checkbox"
         />
         <div>
-          <strong>{tx("Codex 订阅生图")}</strong>
-          <span>codex-gpt-image-2 ← gpt-image-2</span>
+          <strong>{tx(displayName)}</strong>
+          <span>{publicModel} ← {upstreamModel}</span>
           <small>{tx(stateLabel)} · {tx("勾选后会向所选真实账号发送一次低质量生图测试，测试会消耗少量订阅额度。")}</small>
           <div className="capability-row">
             <em>{tx("图片生成")}</em>
