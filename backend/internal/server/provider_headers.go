@@ -351,8 +351,11 @@ func validateProviderHeaderSupportWithRegistry(registry *AdapterRegistry, provid
 	if len(headers) == 0 {
 		return nil
 	}
-	if policyer, ok := resolveTypedAdapter[ProviderHeaderPolicyer](registry, providerType); ok && !policyer.SupportsProviderHeaders() {
-		return providerHeadersUnsupportedError()
+	if descriptor, ok := registry.Describe(providerType); ok {
+		if !descriptor.ProviderPolicy.SupportsCustomHeaders {
+			return providerHeadersUnsupportedError()
+		}
+		return nil
 	}
 	return validateProviderHeaderSupport(providerType, headers)
 }

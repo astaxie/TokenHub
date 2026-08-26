@@ -131,6 +131,16 @@ func TestAdminProviderHeadersUseAdapterDeclaredPolicy(t *testing.T) {
 	}
 }
 
+func TestProviderHeaderValidationTrustsRegisteredAdapterPolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	registry.Register(ProviderOpenAICodex, providerHeaderPolicyTestAdapter{supportsHeaders: true}, AdapterCapabilityChat)
+
+	err := validateProviderHeaderSupportWithRegistry(registry, ProviderOpenAICodex, map[string]string{"X-Tenant": "tenant-one"})
+	if err != nil {
+		t.Fatalf("registered adapter policy should allow headers: %v", err)
+	}
+}
+
 func TestApplyProviderHeadersCannotOverrideSystemHeaders(t *testing.T) {
 	headers := http.Header{
 		"Authorization": []string{"Bearer system-key"},
