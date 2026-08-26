@@ -343,7 +343,7 @@ function formatResetCreditDate(value?: string | null) {
 }
 
 function quotaResetDangerConfirmation(action: PluginActionDescriptor) {
-  return action.metadata?.danger_confirmation?.trim() || "codex-quota-reset";
+  return action.metadata?.danger_confirmation?.trim() || `provider-quota-reset:${action.plugin_id}:${action.action_id}`;
 }
 
 async function readResetError(resp: Response) {
@@ -372,6 +372,10 @@ function resetErrorIsFinal(code: string) {
 }
 
 function resetConfirmationStorageKey(resourceID: string) {
+  return `tokenhub.provider-quota-reset.${resourceID}`;
+}
+
+function legacyResetConfirmationStorageKey(resourceID: string) {
   return `tokenhub.codex-quota-reset.${resourceID}`;
 }
 
@@ -389,6 +393,7 @@ function clearStoredResetConfirmation(resourceID: string) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(resetConfirmationStorageKey(resourceID));
+    window.localStorage.removeItem(legacyResetConfirmationStorageKey(resourceID));
   } catch {
     // The server-side operation record remains the source of truth.
   }
@@ -397,9 +402,12 @@ function clearStoredResetConfirmation(resourceID: string) {
 function readStoredResetConfirmation(resourceID: string): ResetConfirmation | null {
   if (typeof window === "undefined") return null;
   try {
-    const value = JSON.parse(window.localStorage.getItem(resetConfirmationStorageKey(resourceID)) || "null") as Partial<ResetConfirmation> | null;
-    if (!value || typeof value.availableCount !== "number" || !Number.isFinite(value.availableCount) || typeof value.creditID !== "string" || !value.creditID || typeof value.idempotencyKey !== "string" || !value.idempotencyKey) return null;
-    return { availableCount: value.availableCount, creditID: value.creditID, expiresAt: value.expiresAt, idempotencyKey: value.idempotencyKey, attempted: Boolean(value.attempted) };
+    for (const key of [resetConfirmationStorageKey(resourceID), legacyResetConfirmationStorageKey(resourceID)]) {
+      const value = JSON.parse(window.localStorage.getItem(key) || "null") as Partial<ResetConfirmation> | null;
+      if (!value || typeof value.availableCount !== "number" || !Number.isFinite(value.availableCount) || typeof value.creditID !== "string" || !value.creditID || typeof value.idempotencyKey !== "string" || !value.idempotencyKey) continue;
+      return { availableCount: value.availableCount, creditID: value.creditID, expiresAt: value.expiresAt, idempotencyKey: value.idempotencyKey, attempted: Boolean(value.attempted) };
+    }
+    return null;
   } catch {
     return null;
   }

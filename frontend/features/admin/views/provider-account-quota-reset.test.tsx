@@ -119,4 +119,57 @@ describe("ProviderAccountQuotaReset", () => {
 
     expect(screen.queryByText("重置套餐")).not.toBeInTheDocument();
   });
+
+  it("uses a provider plugin danger fallback when action metadata is absent", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("fallback-operation-id");
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: () => null,
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+    });
+    const actionsWithoutDanger = pluginActions.map((action) => action.capability === "quota.reset"
+      ? { ...action, metadata: undefined }
+      : action);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: {
+          available_count: 1,
+          credits: [{ id: "credit-1", status: "available", expires_at: "2099-01-01T00:00:00Z" }],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { code: "reset", windows_reset: 1 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { available_count: 0, credits: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderAccountQuotaReset
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={actionsWithoutDanger}
+        providerType="openai_codex"
+        quotaBusy={false}
+        resource={resource}
+        onRefreshQuota={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("radio", { name: /重置次数 1/ }));
+    await user.click(screen.getByRole("button", { name: "重置套餐" }));
+    await user.click(screen.getByRole("button", { name: "确认重置" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body)).danger_confirmation).toBe(
+      "provider-quota-reset:tokenhub.provider.openai-codex:openai_codex.quota.reset",
+    );
+  });
 });
