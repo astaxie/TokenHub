@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 const (
@@ -95,7 +97,7 @@ func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter,
 }
 
 func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	if strings.TrimSpace(r.Header.Get(openAIAccountQuotaResetDangerHeader)) != openAIAccountQuotaResetDangerValue {
+	if strings.TrimSpace(r.Header.Get(openAIAccountQuotaResetDangerHeader)) != s.providerResourceQuotaResetDangerConfirmation(resourceID) {
 		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, "quota_reset_danger_confirmation_required")
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "quota_reset_danger_confirmation_required", "The dangerous operation confirmation header is required"))
 		return
@@ -126,6 +128,32 @@ func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *htt
 		"windows_reset": result.WindowsReset,
 	})
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) providerResourceQuotaResetDangerConfirmation(resourceID string) string {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return openAIAccountQuotaResetDangerValue
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return openAIAccountQuotaResetDangerValue
+	}
+	action, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityQuota, "quota.reset", resource.ResourceType)
+	if !ok {
+		return openAIAccountQuotaResetDangerValue
+	}
+	return providerQuotaResetDangerConfirmation(action)
+}
+
+func providerQuotaResetDangerConfirmation(action pluginmeta.ActionDescriptor) string {
+	if value := strings.TrimSpace(action.Metadata["danger_confirmation"]); value != "" {
+		return value
+	}
+	if action.PluginID != "" && action.ActionID != "" {
+		return "provider-quota-reset:" + action.PluginID + ":" + action.ActionID
+	}
+	return openAIAccountQuotaResetDangerValue
 }
 
 func (s *Server) recordOpenAIAccountQuotaResetFailure(r *http.Request, user AdminUser, resourceID string, errorCode string) {

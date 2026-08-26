@@ -358,19 +358,20 @@ func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, us
 	if !ok {
 		return openAIAccountQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityQuota, "quota.reset", map[string]any{
+	action, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityQuota, "quota.reset", resource.ResourceType)
+	if !ok {
+		return openAIAccountQuotaResetResult{}, false, nil
+	}
+	result, err := s.executeEncodedPluginAction(ctx, user, action.PluginID, action.ActionID, map[string]any{
 		"resource_id":              resourceID,
 		"confirm":                  req.Confirm,
 		"idempotency_key":          req.IdempotencyKey,
 		"expected_available_count": req.ExpectedAvailableCount,
 		"credit_id":                req.CreditID,
-		"danger_confirmation":      openAIAccountQuotaResetDangerValue,
+		"danger_confirmation":      providerQuotaResetDangerConfirmation(action),
 	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
 		return openAIAccountQuotaResetResult{}, true, err
-	}
-	if !handled {
-		return openAIAccountQuotaResetResult{}, false, nil
 	}
 	reset, ok := openAIAccountQuotaResetResultFromActionData(result.Data)
 	if !ok {
@@ -559,9 +560,17 @@ func providerProbeResultFromActionData(data any) (ProviderProbeResult, bool) {
 }
 
 func (s *Server) providerPluginCapabilityAction(providerType string, capability AdapterCapability, actionCapability string, resourceType string) (string, string, bool) {
+	action, ok := s.providerPluginCapabilityActionDescriptor(providerType, capability, actionCapability, resourceType)
+	if !ok {
+		return "", "", false
+	}
+	return action.PluginID, action.ActionID, true
+}
+
+func (s *Server) providerPluginCapabilityActionDescriptor(providerType string, capability AdapterCapability, actionCapability string, resourceType string) (pluginmeta.ActionDescriptor, bool) {
 	descriptor, ok := s.adapterRegistry.Describe(providerType)
 	if !ok || descriptor.PluginID == "" || !adapterSupports(descriptor, capability) {
-		return "", "", false
+		return pluginmeta.ActionDescriptor{}, false
 	}
 	for _, action := range s.pluginActions.List() {
 		if action.PluginID != descriptor.PluginID || action.Capability != actionCapability {
@@ -573,7 +582,7 @@ func (s *Server) providerPluginCapabilityAction(providerType string, capability 
 		if !providerPluginActionMatchesResourceType(action, resourceType) {
 			continue
 		}
-		return action.PluginID, action.ActionID, true
+		return action, true
 	}
-	return "", "", false
+	return pluginmeta.ActionDescriptor{}, false
 }

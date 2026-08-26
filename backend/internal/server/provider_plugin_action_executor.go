@@ -52,11 +52,11 @@ func (s *Server) executeEncodedPluginAction(ctx context.Context, user AdminUser,
 }
 
 func (s *Server) executeProviderCapabilityAction(ctx context.Context, user AdminUser, providerType string, capability AdapterCapability, actionCapability string, payload any, opts providerPluginActionOptions) (pluginmeta.ActionResult, bool, error) {
-	pluginID, actionID, ok := s.providerPluginCapabilityAction(providerType, capability, actionCapability, opts.ResourceType)
+	action, ok := s.providerPluginCapabilityActionDescriptor(providerType, capability, actionCapability, opts.ResourceType)
 	if !ok {
 		return pluginmeta.ActionResult{}, false, nil
 	}
-	result, err := s.executeEncodedPluginAction(ctx, user, pluginID, actionID, payload, opts)
+	result, err := s.executeEncodedPluginAction(ctx, user, action.PluginID, action.ActionID, payload, opts)
 	return result, true, err
 }
 

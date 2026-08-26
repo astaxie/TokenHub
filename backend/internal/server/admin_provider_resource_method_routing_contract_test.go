@@ -460,12 +460,14 @@ func TestAdminProviderResourceQuotaResetRoutesUsePluginActions(t *testing.T) {
 		t.Fatalf("register quota reset credits action: %v", err)
 	}
 	resetCalls := 0
+	pluginDangerConfirmation := "quota-reset-plugin-danger"
 	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
 		PluginID:   pluginID,
 		ActionID:   "quota_reset.consume",
 		Kind:       pluginmeta.ActionKindMutate,
 		Capability: "quota.reset",
 		Subject:    providerType,
+		Metadata:   map[string]string{"danger_confirmation": pluginDangerConfirmation},
 	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		resetCalls++
 		var payload struct {
@@ -481,7 +483,7 @@ func TestAdminProviderResourceQuotaResetRoutesUsePluginActions(t *testing.T) {
 		}
 		if payload.ResourceID != resource.ID || !payload.Confirm || payload.IdempotencyKey != "plugin-reset-1" ||
 			payload.ExpectedAvailableCount != 3 || payload.CreditID != "plugin-credit" ||
-			payload.DangerConfirmation != openAIAccountQuotaResetDangerValue {
+			payload.DangerConfirmation != pluginDangerConfirmation {
 			t.Fatalf("unexpected quota reset payload: %+v", payload)
 		}
 		return pluginmeta.ActionResult{Data: map[string]any{
@@ -519,7 +521,7 @@ func TestAdminProviderResourceQuotaResetRoutesUsePluginActions(t *testing.T) {
 	resetRequest.Header.Set("authorization", "Bearer dev_admin_token")
 	resetRequest.Header.Set("content-type", "application/json")
 	resetRequest.Header.Set("idempotency-key", "plugin-reset-1")
-	resetRequest.Header.Set(openAIAccountQuotaResetDangerHeader, openAIAccountQuotaResetDangerValue)
+	resetRequest.Header.Set(openAIAccountQuotaResetDangerHeader, pluginDangerConfirmation)
 	reset := httptest.NewRecorder()
 	app.ServeHTTP(reset, resetRequest)
 	if reset.Code != http.StatusOK {
