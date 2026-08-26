@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestImageJobErrorStatus(t *testing.T) {
@@ -515,6 +517,66 @@ func TestImageAuthorizationHappensBeforeJobOrAssetPersistence(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("rejected request wrote image files: %+v", entries)
+	}
+}
+
+func TestImageRouteCandidatesHookCanSelectApprovedImageRoute(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Route Plugin Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-route-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_route_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstProvider := store.AddProvider(Provider{ID: "prv_image_route_a", Name: "Image Route A", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	secondProvider := store.AddProvider(Provider{ID: "prv_image_route_b", Name: "Image Route B", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	firstResource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_route_a", ProviderID: firstProvider.ID, Name: "Image Route A Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondResource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_route_b", ProviderID: secondProvider.ID, Name: "Image Route B Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_a", ModelName: openAIImageModelName, ProviderID: firstProvider.ID, ProviderResourceID: firstResource.ID, ProviderModel: "image-upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_image_b", ModelName: openAIImageModelName, ProviderID: secondProvider.ID, ProviderResourceID: secondResource.ID, ProviderModel: "image-upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-route-plugin-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-router",
+		HookID:        "select-second-image-route",
+		Stage:         pluginmeta.StageRouteCandidates,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register route candidates hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Data[pluginmeta.DataRouteCandidates]) == 0 {
+			t.Fatal("image route candidates were not available to the hook")
+		}
+		return routeRankPatchResult(t, "route_image_b"), nil
+	})); err != nil {
+		t.Fatalf("register route candidates handler: %v", err)
+	}
+	var selectedRoute RouteSelection
+	server.imageRunner = func(_ context.Context, route RouteSelection, _ ImageJob) ([]byte, string, Usage, error) {
+		selectedRoute = route
+		return imageBytes, "", Usage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4}, nil
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "Draw route-selected image.", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)
+	}
+	if selectedRoute.Route.ID != "route_image_b" || selectedRoute.Provider.ID != "prv_image_route_b" {
+		t.Fatalf("selected route = %s/%s, want route_image_b/prv_image_route_b", selectedRoute.Route.ID, selectedRoute.Provider.ID)
 	}
 }
 

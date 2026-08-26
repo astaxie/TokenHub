@@ -639,6 +639,12 @@ func (s *Server) processImageJob(work imageJobWork) {
 		s.finishImageJobFailure(work, job, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, httpErr.Message)
 		return
 	}
+	routes, routeErr = s.runGatewayRouteCandidatesHooks(ctx, work.call, routes)
+	if routeErr != nil {
+		httpErr := AsHTTPError(routeErr)
+		s.finishImageJobFailure(work, job, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, httpErr.Message)
+		return
+	}
 	routes = s.planRouteOrderWithContext(ctx, work.call, routes)
 	if job.Model == codexImageModelName {
 		routes = s.filterAndPrioritizeCodexImageRoutes(routes)
