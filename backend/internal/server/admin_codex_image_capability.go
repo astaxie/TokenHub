@@ -94,7 +94,7 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 			return currentErr
 		}
 		if !enabled {
-			if err := s.setCodexImageRoutesStatus(currentProvider.ID, StatusDisabled); err != nil {
+			if err := s.setProviderImageCapabilityRoutesStatus(currentProvider.ID, codexImageCapabilityRouteProfile(), StatusDisabled); err != nil {
 				return err
 			}
 			result.Capability = strings.TrimSpace(current.Options[codexImageCapabilityOption])
@@ -141,7 +141,7 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		if _, err := decodeGeneratedImage(response.Data[0].B64JSON); err != nil {
 			return NewHTTPError(http.StatusBadGateway, "image_result_invalid", err.Error())
 		}
-		route, err := s.ensureCodexImageRoute(currentProvider.ID)
+		route, err := s.ensureProviderImageCapabilityRoute(currentProvider.ID, codexImageCapabilityRouteProfile())
 		if err != nil {
 			return err
 		}
@@ -200,29 +200,24 @@ func (s *Server) codexImageResource(resourceID string, requireActive bool) (Prov
 }
 
 func (s *Server) updateCodexImageCapability(resourceID string, capability string) (ProviderResource, error) {
-	options := map[string]string{
-		codexImageCapabilityOption:          capability,
-		codexImageCapabilityCheckedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
-	}
-	if capability == codexImageCapabilitySupported {
-		options[codexImageRouteBackfillOption] = codexImageRouteBackfillCompleted
-	}
-	return s.store.UpdateProviderResourceOptions(resourceID, options)
+	return s.updateProviderImageCapability(resourceID, capability)
 }
 
 func codexImageRouteMatches(route ModelRoute, providerID string) bool {
-	return strings.TrimSpace(route.ModelName) == codexImageModelName &&
-		strings.TrimSpace(route.ProviderID) == strings.TrimSpace(providerID) &&
-		strings.TrimSpace(route.ProviderModel) == codexImageUpstreamModel
+	return providerImageCapabilityRouteMatches(route, providerID, codexImageCapabilityRouteProfile())
 }
 
 func codexImageRouteHasSupportedResource(route ModelRoute, resources []ProviderResource) bool {
+	return providerImageCapabilityRouteHasSupportedResource(route, resources, codexImageCapabilityRouteProfile())
+}
+
+func providerImageCapabilityRouteHasSupportedResource(route ModelRoute, resources []ProviderResource, profile providerImageCapabilityRouteProfile) bool {
 	providerID := strings.TrimSpace(route.ProviderID)
 	resourceID := strings.TrimSpace(route.ProviderResourceID)
 	resourceGroup := strings.TrimSpace(route.ResourceGroup)
 	for _, resource := range resources {
 		if strings.TrimSpace(resource.ProviderID) != providerID ||
-			resource.ResourceType != ProviderResourceOpenAISubscription ||
+			(profile.ResourceType != "" && resource.ResourceType != profile.ResourceType) ||
 			resource.Status != StatusActive || !resource.Healthy ||
 			strings.TrimSpace(resource.Options[codexImageCapabilityOption]) != codexImageCapabilitySupported {
 			continue
@@ -249,51 +244,23 @@ func activeCodexImageRoute(routes []ModelRoute, providerID string) *ModelRoute {
 }
 
 func (s *Server) ensureCodexImageRoute(providerID string) (ModelRoute, error) {
-	var disabled *ModelRoute
-	for _, route := range s.store.ListRoutes() {
-		if !codexImageRouteMatches(route, providerID) {
-			continue
-		}
-		if route.Status == StatusActive {
-			return route, nil
-		}
-		if disabled == nil {
-			copy := route
-			disabled = &copy
-		}
-	}
-	if disabled != nil {
-		disabled.Status = StatusActive
-		return s.store.UpdateRoute(disabled.ID, *disabled)
-	}
-	return s.store.CreateRoute(defaultCodexImageRoute(providerID))
+	return s.ensureProviderImageCapabilityRoute(providerID, codexImageCapabilityRouteProfile())
 }
 
 func (s *Server) setCodexImageRoutesStatus(providerID string, status string) error {
-	for _, route := range s.store.ListRoutes() {
-		if !codexImageRouteMatches(route, providerID) || route.Status == status {
-			continue
-		}
-		route.Status = status
-		if _, err := s.store.UpdateRoute(route.ID, route); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.setProviderImageCapabilityRoutesStatus(providerID, codexImageCapabilityRouteProfile(), status)
 }
 
 func defaultCodexImageRoute(providerID string) ModelRoute {
-	return ModelRoute{
-		ModelName:     codexImageModelName,
-		ProviderID:    strings.TrimSpace(providerID),
-		ProviderModel: codexImageUpstreamModel,
-		Priority:      1,
-		Weight:        100,
-		QualityScore:  50,
-		CostScore:     50,
-		Status:        StatusActive,
-		Strategy:      RouteStrategyPriorityWeighted,
-		ProjectScope:  RouteProjectScopeAll,
+	return defaultProviderImageCapabilityRoute(providerID, codexImageCapabilityRouteProfile())
+}
+
+func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
+	return providerImageCapabilityRouteProfile{
+		ProviderType:  ProviderOpenAICodex,
+		ResourceType:  ProviderResourceOpenAISubscription,
+		PublicModel:   codexImageModelName,
+		UpstreamModel: codexImageUpstreamModel,
 	}
 }
 
