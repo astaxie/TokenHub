@@ -9,7 +9,7 @@ export type ImageCapabilityProfile = {
   resourceType?: string;
 };
 
-const defaultImageCapabilityProfile: ImageCapabilityProfile = {
+export const defaultImageCapabilityProfile: ImageCapabilityProfile = {
   displayName: "订阅生图",
   publicModel: codexImageModelName,
   upstreamModel: codexImageUpstreamModel,
@@ -38,8 +38,20 @@ export function providerImageCapabilityContribution(contributions: AdminUIContri
 }
 
 export function providerImageCapabilityProfile(contributions: AdminUIContribution[], actions: PluginActionDescriptor[], providerType: string) {
-  const action = actions.find((item) => item.capability === "image.capability.configure" && (!item.subject || item.subject === providerType));
-  return providerImageCapabilityContribution(contributions, providerType, action) ? imageCapabilityProfileFromAction(action) : null;
+  return providerImageCapabilityProfiles(contributions, actions, providerType)[0] ?? null;
+}
+
+export function providerImageCapabilityProfiles(contributions: AdminUIContribution[], actions: PluginActionDescriptor[], providerType: string) {
+  return actions
+    .filter((item) => item.capability === "image.capability.configure" && (!item.subject || item.subject === providerType))
+    .filter((action) => providerImageCapabilityContribution(contributions, providerType, action))
+    .map((action) => imageCapabilityProfileFromAction(action))
+    .filter((profile): profile is ImageCapabilityProfile => Boolean(profile));
+}
+
+export function imageCapabilityProfileForModel(profiles: ImageCapabilityProfile[], modelName: string) {
+  const normalizedModelName = modelName.trim();
+  return profiles.find((profile) => profile.publicModel === normalizedModelName) ?? null;
 }
 
 function adminUIContributionLayout(contribution: AdminUIContribution) {

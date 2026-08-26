@@ -1,6 +1,7 @@
 import { appRole } from "../core/navigation";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
-import { codexImageModelName, codexImageUpstreamModel, codexProviderType } from "./codex-provider-profile";
+import { defaultImageCapabilityProfile, imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfiles } from "./codex-image-capability";
+import { codexImageModelName, codexProviderType } from "./codex-provider-profile";
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabelFromData, roleLabel, splitList } from "./labels";
@@ -135,8 +136,9 @@ export function modelSelectOptions(data: AppData) {
 }
 
 export function providerSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
-  const providers = values?.model_name?.trim() === codexImageModelName
-    ? data.providers.filter((provider) => provider.type === codexProviderType)
+  const imageProviderIDs = providerIDsForImageCapabilityModel(data, values?.model_name ?? "");
+  const providers = imageProviderIDs.size > 0
+    ? data.providers.filter((provider) => imageProviderIDs.has(provider.id))
     : data.providers;
   return providers
     .slice()
@@ -150,11 +152,9 @@ export function providerSelectOptions(data: AppData, _currentUser?: AdminUser | 
 export function providerModelSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
   const providerID = values?.provider_id?.trim();
   if (!providerID) return [];
-  if (values?.model_name?.trim() === codexImageModelName) {
-    return data.providers.some((provider) => provider.id === providerID && provider.type === codexProviderType)
-      ? [{ value: codexImageUpstreamModel, label: codexImageUpstreamModel }]
-      : [];
-  }
+  const provider = findProvider(data, providerID);
+  const imageProfile = provider ? providerImageCapabilityProfileForModel(data, provider.type, values?.model_name ?? "") : null;
+  if (imageProfile) return [{ value: imageProfile.upstreamModel, label: imageProfile.upstreamModel }];
   const seen = new Set<string>();
   return data.providerModels
     .filter((model) => model.provider_id === providerID)
@@ -479,18 +479,44 @@ export function isCodexSubscriptionImageModel(model: Model | undefined) {
     model?.metadata?.execution_type === "codex_subscription_image_generation";
 }
 
-export function codexImageCapableResources(data: AppData) {
-  const codexProviderIDs = new Set(
-    data.providers
-      .filter((provider) => provider.type === codexProviderType && provider.status === "active" && provider.healthy !== false)
-      .map((provider) => provider.id),
-  );
+export function modelHasImageCapability(data: AppData, model: Model | undefined) {
+  if (!model) return false;
+  return data.providers.some((provider) => Boolean(providerImageCapabilityProfileForModel(data, provider.type, model)));
+}
+
+export function providerImageCapabilityProfileForModel(data: AppData, providerType: string, model: Pick<Model, "name" | "metadata"> | string | undefined) {
+  const modelName = typeof model === "string" ? model : model?.name ?? "";
+  const profile = imageCapabilityProfileForModel(providerImageCapabilityProfiles(data.pluginUI, data.pluginActions, providerType), modelName);
+  if (profile) return profile;
+  if (providerType === codexProviderType && (modelName === codexImageModelName || (typeof model === "object" && model?.metadata?.execution_type === "codex_subscription_image_generation"))) {
+    return defaultImageCapabilityProfile;
+  }
+  return null;
+}
+
+export function routeImageCapabilityProfile(route: ModelRoute, data: AppData) {
+  const provider = findProvider(data, route.provider_id);
+  return provider ? providerImageCapabilityProfileForModel(data, provider.type, route.model_name) : null;
+}
+
+export function imageCapabilityCapableResources(data: AppData, providerID: string, profile: ImageCapabilityProfile) {
   return data.providerResources.filter((resource) =>
-    codexProviderIDs.has(resource.provider_id) &&
+    resource.provider_id === providerID &&
     resource.status === "active" &&
     resource.healthy !== false &&
-    resource.options?.image_generation_capability === "supported",
+    resource.options?.image_generation_capability === "supported" &&
+    (profile.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResource(resource)),
   );
+}
+
+function providerIDsForImageCapabilityModel(data: AppData, modelName: string) {
+  const providerIDs = new Set<string>();
+  const normalizedModelName = modelName.trim();
+  if (!normalizedModelName) return providerIDs;
+  for (const provider of data.providers) {
+    if (providerImageCapabilityProfileForModel(data, provider.type, normalizedModelName)) providerIDs.add(provider.id);
+  }
+  return providerIDs;
 }
 
 export function routeModelCategories(data: AppData) {
@@ -669,10 +695,11 @@ export function providerRouteDefaults(provider: Provider, data: AppData) {
 }
 
 export function modelRouteDefaults(model: Model, data: AppData) {
-  const firstProvider = isCodexSubscriptionImageModel(model)
-    ? data.providers.find((provider) => provider.type === codexProviderType && provider.status === "active")
-      ?? data.providers.find((provider) => provider.type === codexProviderType)
+  const firstProvider = modelHasImageCapability(data, model)
+    ? data.providers.find((provider) => providerImageCapabilityProfileForModel(data, provider.type, model) && provider.status === "active")
+      ?? data.providers.find((provider) => providerImageCapabilityProfileForModel(data, provider.type, model))
     : firstActiveProvider(data);
+  const imageProfile = firstProvider ? providerImageCapabilityProfileForModel(data, firstProvider.type, model) : null;
   const matchingProviderModel = data.providerModels.find((providerModel) =>
     providerModel.provider_id === firstProvider?.id
       && (providerModel.upstream_model === model.name || providerModel.canonical_name === model.name),
@@ -680,7 +707,7 @@ export function modelRouteDefaults(model: Model, data: AppData) {
   return {
     model_name: model.name,
     provider_id: firstProvider?.id ?? "",
-    provider_model: isCodexSubscriptionImageModel(model) ? codexImageUpstreamModel : matchingProviderModel?.upstream_model ?? "",
+    provider_model: imageProfile ? imageProfile.upstreamModel : matchingProviderModel?.upstream_model ?? "",
     priority: "1",
     weight: "100",
     quality_score: "50",

@@ -2,7 +2,7 @@ import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, typ
 import { modelCategory } from "./catalog";
 import { configuredPriceFormValue } from "./configured-pricing";
 import { modelDisplayName } from "./model-display-name";
-import { codexImageCapableResources, findProvider, findProviderResource, isCodexSubscriptionImageModel, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
+import { imageCapabilityCapableResources, modelHasImageCapability, routeImageCapabilityProfile, findProvider, findProviderResource, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
 import { preferredModelCategories } from "./model-categories";
 
@@ -180,9 +180,10 @@ export type ModelAvailabilitySummary = {
 export function modelAvailabilitySummary(model: Model, data: AppData, readOnly = false): ModelAvailabilitySummary {
   const routes = modelRoutesFor(model, data);
   const activeRoutes = routes.filter((route) => route.status === "active");
-  const healthyRoutes = activeRoutes.filter((route) => isCodexSubscriptionImageModel(model)
-    ? codexImageRouteHasHealthyTarget(route, data)
-    : routeHasHealthyTarget(route, data));
+  const healthyRoutes = activeRoutes.filter((route) => {
+    const imageProfile = routeImageCapabilityProfile(route, data);
+    return imageProfile ? imageCapabilityRouteHasHealthyTarget(route, data, imageProfile) : routeHasHealthyTarget(route, data);
+  });
   if (model.status !== "active") {
     return {
       tone: "blocked",
@@ -260,8 +261,8 @@ export function routeHasHealthyTarget(route: ModelRoute, data: AppData) {
   return true;
 }
 
-function codexImageRouteHasHealthyTarget(route: ModelRoute, data: AppData) {
-  const capableResources = codexImageCapableResources(data).filter((resource) => resource.provider_id === route.provider_id);
+function imageCapabilityRouteHasHealthyTarget(route: ModelRoute, data: AppData, imageProfile: NonNullable<ReturnType<typeof routeImageCapabilityProfile>>) {
+  const capableResources = imageCapabilityCapableResources(data, route.provider_id, imageProfile);
   if (route.provider_resource_id) {
     return capableResources.some((resource) => resource.id === route.provider_resource_id);
   }
@@ -272,7 +273,7 @@ export function keyWizardModelOptions(data: AppData) {
   const activeChatModels = playgroundModels(data, data.routes.length > 0);
   const routed = activeChatModels.filter((model) => data.routes.length === 0 || activeRouteCount(model.name, data) > 0);
   const codexImageModels = data.models.filter((model) =>
-    model.status === "active" && isCodexSubscriptionImageModel(model) && activeRouteCount(model.name, data) > 0,
+    model.status === "active" && modelHasImageCapability(data, model) && activeRouteCount(model.name, data) > 0,
   );
   return [...(routed.length > 0 ? routed : activeChatModels), ...codexImageModels].sort((left, right) =>
     modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name),
