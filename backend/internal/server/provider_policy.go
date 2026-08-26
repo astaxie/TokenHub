@@ -1,6 +1,9 @@
 package server
 
-import "strings"
+import (
+	"log"
+	"strings"
+)
 
 const (
 	providerCredentialsScopeOption      = "credentials_scope"
@@ -29,6 +32,25 @@ func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor)
 	}
 }
 
+type providerPluginPolicyReconciler interface {
+	ReconcileProviderPluginPolicies(registry *AdapterRegistry) (int, error)
+}
+
+func reconcileProviderPluginPolicies(store Store, registry *AdapterRegistry) {
+	reconciler, ok := store.(providerPluginPolicyReconciler)
+	if !ok {
+		return
+	}
+	updated, err := reconciler.ReconcileProviderPluginPolicies(registry)
+	if err != nil {
+		log.Printf("[tokenhub] failed to reconcile provider plugin policies: %v", err)
+		return
+	}
+	if updated > 0 {
+		log.Printf("[tokenhub] reconciled plugin policy options for %d providers", updated)
+	}
+}
+
 func providerRouteRequiresResource(provider Provider) bool {
 	if value, ok := provider.Options[providerRouteRequiresResourceOption]; ok {
 		return strings.EqualFold(strings.TrimSpace(value), "true")
@@ -49,4 +71,13 @@ func patchedProviderPolicy(current Provider, patch Provider) Provider {
 		current.Options = patch.Options
 	}
 	return current
+}
+
+func providerPolicyOptionsChanged(before map[string]string, after map[string]string) bool {
+	for _, key := range []string{providerRouteRequiresResourceOption, providerCredentialsScopeOption} {
+		if strings.TrimSpace(before[key]) != strings.TrimSpace(after[key]) {
+			return true
+		}
+	}
+	return false
 }

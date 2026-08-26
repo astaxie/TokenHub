@@ -257,6 +257,78 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 }
 
+func TestReconcileProviderPluginPoliciesPersistsBuiltinProviderPolicy(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_legacy_codex_policy",
+		Name:    "Legacy Codex Policy",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+		Options: map[string]string{"catalog_id": "openai-codex"},
+	})
+	delete(provider.Options, providerRouteRequiresResourceOption)
+	delete(provider.Options, providerCredentialsScopeOption)
+	if err := store.db.Model(&provider).Select("Options").Updates(provider).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+
+	stored, ok := store.GetProvider(provider.ID)
+	if !ok {
+		t.Fatal("provider disappeared")
+	}
+	if stored.Options["catalog_id"] != "openai-codex" {
+		t.Fatalf("non-policy options were not preserved: %+v", stored.Options)
+	}
+	if stored.Options[providerRouteRequiresResourceOption] != "true" || stored.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource {
+		t.Fatalf("builtin provider policy was not reconciled: %+v", stored.Options)
+	}
+}
+
+func TestReconcileProviderPluginPoliciesPersistsExternalProviderPolicy(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "external_policy_provider"
+	provider := store.AddProvider(Provider{
+		ID:      "prv_external_policy",
+		Name:    "External Policy",
+		Type:    providerType,
+		Status:  StatusActive,
+		Healthy: true,
+		Options: map[string]string{"custom": "preserved"},
+	})
+	registry := NewAdapterRegistry()
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.external-policy",
+		Name:    "External Policy Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
+		},
+	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
+		t.Fatalf("register plugin adapter: %v", err)
+	}
+
+	updated, err := store.ReconcileProviderPluginPolicies(registry)
+	if err != nil {
+		t.Fatalf("reconcile provider policies: %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("reconciled providers = %d, want 1", updated)
+	}
+	stored, ok := store.GetProvider(provider.ID)
+	if !ok {
+		t.Fatal("provider disappeared")
+	}
+	if stored.Options["custom"] != "preserved" || stored.Options[providerRouteRequiresResourceOption] != "true" || stored.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource {
+		t.Fatalf("external provider policy was not reconciled: %+v", stored.Options)
+	}
+}
+
 func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	server := New(NewMemoryStore())
 	descriptor, ok := server.adapterRegistry.plugins.Describe("tokenhub.provider.openai-codex")

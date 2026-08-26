@@ -194,6 +194,38 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 	return provider, nil
 }
 
+func (s *GormStore) ReconcileProviderPluginPolicies(registry *AdapterRegistry) (int, error) {
+	if registry == nil {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var providers []Provider
+	if err := s.db.Find(&providers).Error; err != nil {
+		return 0, err
+	}
+	updated := 0
+	for _, provider := range providers {
+		descriptor, ok := registry.Describe(provider.Type)
+		if !ok {
+			continue
+		}
+		before := cloneStringMap(provider.Options)
+		after := cloneStringMap(provider.Options)
+		provider.Options = after
+		applyProviderPluginPolicy(&provider, descriptor)
+		if !providerPolicyOptionsChanged(before, provider.Options) {
+			continue
+		}
+		if err := s.db.Model(&provider).Select("Options").Updates(provider).Error; err != nil {
+			return updated, err
+		}
+		updated++
+	}
+	return updated, nil
+}
+
 func (s *GormStore) DeleteProvider(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
