@@ -276,7 +276,7 @@ func (s *Server) prepareAnthropicRoutedCall(w http.ResponseWriter, r *http.Reque
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
-	compatible, err := compatibleAnthropicRoutes(RoutedCall{
+	compatible, err := s.compatibleAnthropicRoutes(RoutedCall{
 		Call:   call,
 		Routes: s.planRouteOrderWithContext(r.Context(), call, routes),
 	}, req)
@@ -308,7 +308,7 @@ func (s *Server) executeRoutedAnthropicMessages(
 	routed RoutedCall,
 	req anthropicMessagesRequest,
 ) (map[string]any, RouteSelection, Usage, []RouteAttempt, error) {
-	compatible, compatibilityErr := compatibleAnthropicRoutes(routed, req)
+	compatible, compatibilityErr := s.compatibleAnthropicRoutes(routed, req)
 	if compatibilityErr != nil {
 		return nil, RouteSelection{}, Usage{}, nil, compatibilityErr
 	}
@@ -974,7 +974,7 @@ func (s *Server) handleAnthropicMessagesStream(
 	req anthropicMessagesRequest,
 	auditPayload any,
 ) {
-	compatible, compatibilityErr := compatibleAnthropicRoutes(routed, req)
+	compatible, compatibilityErr := s.compatibleAnthropicRoutes(routed, req)
 	if compatibilityErr != nil {
 		s.finishFailedRoutedCall(r, routed, nil, Usage{}, compatibilityErr, auditPayload)
 		writeAnthropicError(w, r, compatibilityErr)
@@ -1008,11 +1008,11 @@ func (s *Server) handleAnthropicMessagesStream(
 				streamWriter = transformer
 			}
 			switch {
-			case prepared.Provider.Type == ProviderAnthropic:
+			case routeSupportsProviderProtocol(s.adapterRegistry, prepared, providerRouteProtocolAnthropic):
 				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, attemptReq, r.Header, streamWriter)
-			case prepared.Provider.Type == ProviderOpenAICodex:
+			case routeSupportsProviderProtocol(s.adapterRegistry, prepared, providerRouteProtocolCodexResponses):
 				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, attemptReq, r.Header, streamWriter)
-			case openAIMessageProvider(prepared.Provider.Type):
+			case routeSupportsProviderProtocol(s.adapterRegistry, prepared, providerRouteProtocolChatCompletions):
 				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, attemptReq, streamWriter)
 			default:
 				streamErr = NewHTTPError(

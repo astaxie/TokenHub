@@ -124,7 +124,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	routed, err = compatibleChatRoutes(routed, req)
+	routed, err = s.compatibleChatRoutes(routed, req)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)

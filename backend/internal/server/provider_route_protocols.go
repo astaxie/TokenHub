@@ -5,13 +5,20 @@ import (
 	"strings"
 )
 
+const (
+	providerRouteProtocolAnthropic       = "anthropic"
+	providerRouteProtocolChatCompletions = "chat/completions"
+	providerRouteProtocolCodexResponses  = "codex/responses"
+	providerRouteProtocolResponses       = "responses"
+)
+
 func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[string]bool {
 	protocols := map[string]bool{}
 	if adapterSupports(descriptor, AdapterCapabilityChat) {
-		protocols["chat/completions"] = true
+		protocols[providerRouteProtocolChatCompletions] = true
 	}
 	if adapterSupports(descriptor, AdapterCapabilityResponses) {
-		protocols["responses"] = true
+		protocols[providerRouteProtocolResponses] = true
 	}
 	if adapterSupports(descriptor, AdapterCapabilityEmbeddings) {
 		protocols["embeddings"] = true
@@ -63,4 +70,40 @@ func routeProtocolSetList(protocols map[string]bool) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func routeSupportsProviderProtocol(registry *AdapterRegistry, route RouteSelection, protocol string) bool {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	if protocol == "" {
+		return false
+	}
+	if descriptor, ok := registry.Describe(route.Provider.Type); ok {
+		return adapterDescriptorRouteProtocolSet(descriptor)[protocol]
+	}
+	return legacyRouteSupportsProviderProtocol(route.Provider.Type, protocol)
+}
+
+func legacyRouteSupportsProviderProtocol(providerType string, protocol string) bool {
+	switch protocol {
+	case providerRouteProtocolAnthropic:
+		return providerType == ProviderAnthropic
+	case providerRouteProtocolCodexResponses:
+		return providerType == ProviderOpenAICodex
+	case providerRouteProtocolChatCompletions:
+		switch providerType {
+		case ProviderMock, ProviderOpenAI, ProviderOpenAICompatible, ProviderAzureOpenAI, "deepseek", "qwen", "local":
+			return true
+		default:
+			return false
+		}
+	case providerRouteProtocolResponses:
+		switch providerType {
+		case ProviderMock, ProviderOpenAI, ProviderOpenAICompatible, ProviderOpenAICodex, "deepseek", "qwen", "local", ProviderKronk:
+			return true
+		default:
+			return false
+		}
+	default:
+		return false
+	}
 }

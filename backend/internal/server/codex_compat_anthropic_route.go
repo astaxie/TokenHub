@@ -11,13 +11,13 @@ func (s *Server) executeAnthropicMessagesRoute(
 	req anthropicMessagesRequest,
 	headers http.Header,
 ) (map[string]any, Usage, error) {
-	switch route.Provider.Type {
-	case ProviderAnthropic:
+	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolAnthropic) {
 		return s.executeNativeAnthropicMessages(ctx, route, req, headers)
-	case ProviderOpenAICodex:
+	}
+	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
 		return s.executeCodexAnthropicMessages(ctx, route, req, headers)
 	}
-	if !openAIMessageProvider(route.Provider.Type) {
+	if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolChatCompletions) {
 		return nil, Usage{}, NewHTTPError(
 			http.StatusNotImplemented,
 			"provider_capability_not_supported",
@@ -47,21 +47,12 @@ func (s *Server) executeAnthropicMessagesRoute(
 	return converted, usage, nil
 }
 
-func openAIMessageProvider(providerType string) bool {
-	switch providerType {
-	case ProviderMock, ProviderOpenAI, ProviderOpenAICompatible, ProviderAzureOpenAI, "deepseek", "qwen", "local":
-		return true
-	default:
-		return false
-	}
-}
-
-func compatibleAnthropicRoutes(routed RoutedCall, req anthropicMessagesRequest) (RoutedCall, error) {
+func (s *Server) compatibleAnthropicRoutes(routed RoutedCall, req anthropicMessagesRequest) (RoutedCall, error) {
 	compatible := routed
 	compatible.Routes = make([]RouteSelection, 0, len(routed.Routes))
 	var firstErr error
 	for _, route := range routed.Routes {
-		err := validateAnthropicRouteCompatibility(route, req)
+		err := s.validateAnthropicRouteCompatibility(route, req)
 		if err == nil {
 			compatible.Routes = append(compatible.Routes, route)
 			continue
@@ -82,15 +73,19 @@ func compatibleAnthropicRoutes(routed RoutedCall, req anthropicMessagesRequest) 
 	return compatible, nil
 }
 
-func validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMessagesRequest) error {
-	switch route.Provider.Type {
-	case ProviderAnthropic:
+func compatibleAnthropicRoutes(routed RoutedCall, req anthropicMessagesRequest) (RoutedCall, error) {
+	return (&Server{}).compatibleAnthropicRoutes(routed, req)
+}
+
+func (s *Server) validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMessagesRequest) error {
+	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolAnthropic) {
 		return nil
-	case ProviderOpenAICodex:
+	}
+	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
 		_, err := anthropicToCodexResponsesRequest(req)
 		return err
 	}
-	if !openAIMessageProvider(route.Provider.Type) {
+	if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolChatCompletions) {
 		return NewHTTPError(
 			http.StatusNotImplemented,
 			"provider_capability_not_supported",
@@ -99,6 +94,10 @@ func validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMess
 	}
 	_, err := anthropicToOpenAIChatRequest(req, route.Provider)
 	return err
+}
+
+func validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMessagesRequest) error {
+	return (&Server{}).validateAnthropicRouteCompatibility(route, req)
 }
 
 func isAnthropicRouteIncompatibility(err error) bool {

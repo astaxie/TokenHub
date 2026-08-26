@@ -704,6 +704,63 @@ esac
 	}
 }
 
+func TestExternalProviderPluginServesChatThroughCodexResponsesBridge(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithPolicy(t, pluginDir, true, []string{"responses"}, `
+  provider:
+    route_protocols:
+      - codex/responses
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"responses"'*'"provider_model":"plugin-upstream-bridge"'*'"model":"plugin-chat-bridge"'*)
+    printf '{"response":{"id":"resp_plugin_bridge","output":[{"type":"message","content":[{"type":"output_text","text":"bridged by plugin"}]}],"status":"completed"},"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}'
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Provider Plugin Bridge Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Provider Plugin Bridge Key", Allowed: []string{"plugin-chat-bridge"}, Status: StatusActive}, "thk_provider_plugin_bridge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-chat-bridge", Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{ID: "prv_plugin_bridge", Name: "Provider Plugin Bridge", Type: "custom_stdio", APIKey: "provider-secret", Status: StatusActive, Healthy: true})
+	store.AddRoute(ModelRoute{
+		ModelName:     "plugin-chat-bridge",
+		ProviderID:    provider.ID,
+		ProviderModel: "plugin-upstream-bridge",
+		Priority:      1,
+		Weight:        100,
+		Status:        StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-admin", PluginDir: root})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "plugin-chat-bridge",
+		"messages": []map[string]any{
+			{"role": "user", "content": "hello"},
+		},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("gateway chat bridge through provider plugin: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"resp_plugin_bridge"`) || !strings.Contains(response.Body, "bridged by plugin") {
+		t.Fatalf("gateway chat response did not come through plugin bridge: %s", response.Body)
+	}
+}
+
 func TestExternalProviderPluginCompactUsesSessionAffinityPolicy(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")

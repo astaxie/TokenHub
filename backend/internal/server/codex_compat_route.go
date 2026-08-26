@@ -89,7 +89,7 @@ func (s *Server) executeChatRoute(
 	req ChatCompletionRequest,
 	headers http.Header,
 ) (any, Usage, error) {
-	if route.Provider.Type != ProviderOpenAICodex {
+	if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
 		adapter, err := s.adapterForRoute(route)
 		if err != nil {
 			return nil, Usage{}, err
@@ -122,7 +122,7 @@ func (s *Server) streamChatRoute(
 	headers http.Header,
 	writer io.Writer,
 ) (Usage, error) {
-	if route.Provider.Type == ProviderOpenAICodex {
+	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
 		return s.streamCodexAsChat(ctx, route, req, headers, writer)
 	}
 	adapter, err := s.adapterForRoute(route)
@@ -132,15 +132,22 @@ func (s *Server) streamChatRoute(
 	return adapter.ChatStream(ctx, route.Provider, route.ProviderModel, req, writer)
 }
 
-func compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {
-	if !routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
+func (s *Server) compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {
+	hasBridgeRoute := false
+	for _, route := range routed.Routes {
+		if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
+			hasBridgeRoute = true
+			break
+		}
+	}
+	if !hasBridgeRoute {
 		return routed, nil
 	}
 	if _, err := chatToCodexResponsesRequest(req); err != nil {
 		compatible := routed
 		compatible.Routes = make([]RouteSelection, 0, len(routed.Routes))
 		for _, route := range routed.Routes {
-			if route.Provider.Type != ProviderOpenAICodex {
+			if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
 				compatible.Routes = append(compatible.Routes, route)
 			}
 		}
@@ -150,6 +157,10 @@ func compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedC
 		return compatible, nil
 	}
 	return routed, nil
+}
+
+func compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {
+	return (&Server{}).compatibleChatRoutes(routed, req)
 }
 
 func (s *Server) anthropicGatewayAffinity(
@@ -211,7 +222,7 @@ func resolveProviderBridgeAffinity(
 	if adapterType == "" {
 		return nil, nil
 	}
-	kind := firstNonEmpty(strings.TrimSpace(affinityKind), providerSessionAffinityKind(adapterType))
+	kind := firstNonEmpty(strings.TrimSpace(affinityKind), AffinityKindProviderSession)
 	return &RequestAffinity{
 		AdapterType: adapterType,
 		Kind:        kind,
