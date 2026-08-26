@@ -356,6 +356,28 @@ describe("providerResourceConfig", () => {
           }),
         },
       ],
+    }, {
+      id: "tokenhub.provider.openai-codex",
+      name: "OpenAI Codex Subscription",
+      version: "built-in",
+      source: "built-in",
+      kinds: ["provider"],
+      placements: ["gateway_chain", "management_action"],
+      capabilities: [
+        { kind: "provider_type", name: "openai_codex" },
+        {
+          kind: "provider_resource_type",
+          name: "openai_subscription",
+          subject: "openai_codex",
+          value: JSON.stringify({
+            type: "openai_subscription",
+            display_name: "OpenAI Codex Subscription",
+            auth_modes: ["oauth", "personal_access_token"],
+            default: true,
+            defaults: { auth_type: "oauth", base_url: "https://chatgpt.com/backend-api/codex", max_concurrency: "3" },
+          }),
+        },
+      ],
     }];
 
     expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_kimi" })).toEqual([
@@ -425,6 +447,43 @@ describe("providerResourceConfig", () => {
       resource_type: "api_key",
       auth_type: "",
       base_url: "",
+    });
+  });
+
+  it("uses built-in Provider plugin metadata for Codex account defaults", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.openai-codex",
+      name: "OpenAI Codex Subscription",
+      version: "built-in",
+      source: "built-in",
+      kinds: ["provider"],
+      placements: ["gateway_chain", "management_action"],
+      capabilities: [{
+        kind: "provider_resource_type",
+        name: "openai_subscription",
+        subject: "openai_codex",
+        value: JSON.stringify({
+          type: "openai_subscription",
+          display_name: "OpenAI Codex Subscription",
+          auth_modes: ["oauth", "personal_access_token"],
+          default: true,
+          defaults: {
+            auth_type: "oauth",
+            base_url: "https://chatgpt.com/backend-api/codex",
+            max_concurrency: "3",
+          },
+        }),
+      }],
+    }];
+
+    expect(providerResourceDraftDefaults({ provider_id: "prv_codex", name: "Codex", type: "openai_codex" }, data)).toMatchObject({
+      provider_id: "prv_codex",
+      name: "Codex Account",
+      resource_type: "openai_subscription",
+      auth_type: "oauth",
+      base_url: "https://chatgpt.com/backend-api/codex",
+      max_concurrency: "3",
     });
   });
 
@@ -505,6 +564,14 @@ describe("providerResourceConfig", () => {
       kind: "test",
       capability: "probe.run",
       subject: "openai_codex",
+      metadata: {
+        default_payload_json: JSON.stringify({
+          model: "gpt-5.6-luna",
+          reasoning_effort: "medium",
+          speed: "standard",
+          prompt: "Please respond with one short sentence confirming the Codex connection works.",
+        }),
+      },
     }];
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { healthy: true } }), {
       status: 200,

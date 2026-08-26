@@ -1,7 +1,7 @@
 import { type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult } from "../core/session";
 import { type AdminUser, type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { codexLunaProbeDefaults, codexProviderType, codexSubscriptionBaseURL, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
+import { openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
@@ -168,7 +168,7 @@ export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?
       }
     }
   }
-  if ((providerType === codexProviderType || isOpenAISubscriptionResourceType(values?.resource_type)) && !resourceTypes.has(providerResourceOpenAISubscriptionType)) {
+  if (isOpenAISubscriptionResourceType(values?.resource_type) && !resourceTypes.has(providerResourceOpenAISubscriptionType)) {
     resourceTypes.set(providerResourceOpenAISubscriptionType, undefined);
   }
   return Array.from(resourceTypes.entries())
@@ -215,14 +215,14 @@ export function providerPluginActionDefaultPayload(action: Pick<PluginActionDesc
   }
 }
 
-function providerAccountProbePayload(action: PluginActionDescriptor, resource: ProviderResource) {
+function providerAccountProbePayload(action: PluginActionDescriptor, _resource: ProviderResource) {
   const metadataPayload = providerPluginActionDefaultPayload(action);
   if (Object.keys(metadataPayload).length > 0) return metadataPayload;
-  return isOpenAISubscriptionResource(resource) ? codexLunaProbeDefaults : {};
+  return {};
 }
 
-function providerAccountProbeFallbackLabel(resource: ProviderResource) {
-  return isOpenAISubscriptionResource(resource) ? tx("Codex Luna 中等推理标准测试") : tx("账号资源测试");
+function providerAccountProbeFallbackLabel(_resource: ProviderResource) {
+  return tx("账号资源测试");
 }
 
 export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext, item: ProviderResource, data: AppData) {
@@ -324,11 +324,9 @@ function providerResourcePluginPayload(item: ProviderResource, payload: Record<s
 async function legacyProviderResourceProbe(ctx: ApiContext, resource: ProviderResource) {
   const resp = await adminFetch(ctx, `/api/admin/provider-resources/${resource.id}/test`, {
     method: "POST",
-    body: JSON.stringify({
-      ...codexLunaProbeDefaults,
-    }),
+    body: JSON.stringify({}),
   });
-  if (!resp.ok) throw new Error(await readAdminError(resp, tx("Codex Luna 中等推理标准测试")));
+  if (!resp.ok) throw new Error(await readAdminError(resp, tx("账号资源测试")));
 }
 
 export function providerCreateAccountResourceFields() {
@@ -366,16 +364,15 @@ export function defaultProviderResourceName(providerName?: string) {
 export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string; type?: string }, data?: Pick<AppData, "plugins">) {
   const metadata = data && provider.type ? defaultProviderResourceTypeMetadata(data, provider.type) : null;
   const metadataDefaults = metadata?.defaults ?? {};
-  const codexProvider = provider.type === codexProviderType;
-  const resourceType = metadata?.type || (codexProvider ? providerResourceOpenAISubscriptionType : providerResourceAPIKeyType);
-  const authType = metadataDefaults.auth_type || metadata?.authModes[0] || (codexProvider ? "oauth" : "");
+  const resourceType = metadata?.type || providerResourceAPIKeyType;
+  const authType = metadataDefaults.auth_type || metadata?.authModes[0] || "";
   const defaults = {
     provider_id: provider.provider_id ?? "",
     name: defaultProviderResourceName(provider.name),
     resource_type: resourceType,
     auth_type: authType,
     authorization_url: "",
-    base_url: metadataDefaults.base_url || provider.base_url || (codexProvider ? codexSubscriptionBaseURL : ""),
+    base_url: metadataDefaults.base_url || provider.base_url || "",
     group: "default",
     priority: "1",
     weight: "100",
