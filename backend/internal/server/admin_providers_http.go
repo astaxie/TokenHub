@@ -167,6 +167,17 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
+		if resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id")); resourceID != "" {
+			pluginEntry, supported, actionErr := s.executeProviderResourceModelsActionForCatalog(r.Context(), user, entry.Type, resourceID)
+			if actionErr != nil {
+				writeError(w, r, actionErr)
+				return
+			}
+			if supported {
+				writeJSON(w, http.StatusOK, map[string]any{"data": pluginEntry, "source": pluginEntry.Source})
+				return
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}

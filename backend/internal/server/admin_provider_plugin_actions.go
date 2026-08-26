@@ -25,6 +25,10 @@ func (s *Server) executeProviderProbeAction(ctx context.Context, user AdminUser,
 }
 
 func (s *Server) executeProviderResourceModelsAction(ctx context.Context, user AdminUser, resourceID string) (ProviderCatalogEntry, bool, error) {
+	return s.executeProviderResourceModelsActionForCatalog(ctx, user, "", resourceID)
+}
+
+func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Context, user AdminUser, catalogProviderType string, resourceID string) (ProviderCatalogEntry, bool, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
 		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
@@ -32,6 +36,9 @@ func (s *Server) executeProviderResourceModelsAction(ctx context.Context, user A
 	provider, ok := s.providerByID(resource.ProviderID)
 	if !ok {
 		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	if catalogProviderType = strings.TrimSpace(catalogProviderType); catalogProviderType != "" && provider.Type != catalogProviderType {
+		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusBadRequest, "provider_resource_catalog_mismatch", "Provider resource does not belong to this provider catalog")
 	}
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityModels, "models.read", map[string]any{
 		"resource_id": resourceID,
