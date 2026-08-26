@@ -396,6 +396,69 @@ func TestSelectCodexRouteCandidatesDistinguishesResourceAvailability(t *testing.
 	}
 }
 
+func TestSelectPluginAccountRouteCandidatesRequireResource(t *testing.T) {
+	now := time.Now().UTC()
+	for _, binding := range []string{"explicit", "implicit"} {
+		for _, test := range []struct {
+			name          string
+			resource      *ProviderResource
+			wantCode      string
+			wantCandidate bool
+		}{
+			{name: "missing", wantCode: "provider_resource_missing"},
+			{name: "disabled", resource: &ProviderResource{Status: StatusDisabled, Healthy: false}, wantCode: "provider_resource_disabled"},
+			{name: "unhealthy", resource: &ProviderResource{Status: StatusActive, Healthy: false}, wantCode: "provider_resource_unhealthy"},
+			{name: "cooling down", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(time.Minute))}, wantCode: "provider_resource_cooling_down"},
+			{name: "healthy", resource: &ProviderResource{Status: StatusActive, Healthy: true}, wantCandidate: true},
+		} {
+			t.Run(binding+"/"+test.name, func(t *testing.T) {
+				store := NewMemoryStore()
+				modelName := "plugin-account-resource-availability"
+				store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+				provider := store.AddProvider(Provider{
+					ID: "prv_plugin_resource_availability", Name: "Plugin resource availability",
+					Type: "kimi_subscription", Status: StatusActive, Healthy: true,
+				})
+				resourceID := "rsrc_plugin_resource_availability"
+				if test.resource != nil {
+					resource := *test.resource
+					resource.ID = resourceID
+					resource.ProviderID = provider.ID
+					resource.Name = "Kimi account"
+					resource.ResourceType = "kimi_subscription_account"
+					if err := store.db.Create(&resource).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				route := ModelRoute{
+					ID: "route_plugin_resource_availability", ModelName: modelName,
+					ProviderID: provider.ID, ProviderModel: modelName,
+					Status: StatusActive, Priority: 1, Weight: 100,
+				}
+				if binding == "explicit" {
+					route.ProviderResourceID = resourceID
+				}
+				store.AddRoute(route)
+
+				candidates, err := store.SelectRouteCandidates(modelName)
+				if test.wantCandidate {
+					if err != nil || len(candidates) != 1 || routeResourceID(candidates[0]) != resourceID {
+						t.Fatalf("eligible plugin resource candidates=%+v err=%v", candidates, err)
+					}
+					return
+				}
+				httpErr := AsHTTPError(err)
+				if httpErr == nil || httpErr.Code != test.wantCode {
+					t.Fatalf("availability error=%+v want code=%q candidates=%+v", httpErr, test.wantCode, candidates)
+				}
+				if len(candidates) != 0 {
+					t.Fatalf("unavailable plugin resource returned candidates: %+v", candidates)
+				}
+			})
+		}
+	}
+}
+
 func TestProviderLevelRouteKeepsResourceOptional(t *testing.T) {
 	now := time.Now().UTC()
 	for _, test := range []struct {
