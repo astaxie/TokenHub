@@ -29,14 +29,15 @@ const (
 )
 
 type ActionDescriptor struct {
-	PluginID     string         `json:"plugin_id"`
-	ActionID     string         `json:"action_id"`
-	Kind         ActionKind     `json:"kind"`
-	Title        string         `json:"title,omitempty"`
-	Capability   string         `json:"capability,omitempty"`
-	Subject      string         `json:"subject,omitempty"`
-	InputSchema  map[string]any `json:"input_schema,omitempty"`
-	OutputSchema map[string]any `json:"output_schema,omitempty"`
+	PluginID     string            `json:"plugin_id"`
+	ActionID     string            `json:"action_id"`
+	Kind         ActionKind        `json:"kind"`
+	Title        string            `json:"title,omitempty"`
+	Capability   string            `json:"capability,omitempty"`
+	Subject      string            `json:"subject,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+	InputSchema  map[string]any    `json:"input_schema,omitempty"`
+	OutputSchema map[string]any    `json:"output_schema,omitempty"`
 }
 
 type ActionActor struct {
@@ -176,6 +177,7 @@ func NormalizeActionDescriptor(descriptor ActionDescriptor) ActionDescriptor {
 	descriptor.Title = strings.TrimSpace(descriptor.Title)
 	descriptor.Capability = strings.TrimSpace(descriptor.Capability)
 	descriptor.Subject = strings.TrimSpace(descriptor.Subject)
+	descriptor.Metadata = normalizeStringMap(descriptor.Metadata)
 	if descriptor.Kind == "" {
 		descriptor.Kind = ActionKindRead
 	}

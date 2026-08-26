@@ -42,6 +42,8 @@ capabilities:
       title: Read quota
       capability: quota.read
       subject: openai_codex
+      metadata:
+        default_payload_json: '{"refresh":true}'
       input_schema:
         type: object
         required:
@@ -116,7 +118,7 @@ permissions:
 	if len(actions) != 1 || actions[0].ActionID != "codex.quota.read" || actions[0].Kind != ActionKindRead {
 		t.Fatalf("actions = %+v", actions)
 	}
-	if actions[0].Capability != "quota.read" || actions[0].Subject != "openai_codex" {
+	if actions[0].Capability != "quota.read" || actions[0].Subject != "openai_codex" || actions[0].Metadata["default_payload_json"] != `{"refresh":true}` {
 		t.Fatalf("action capability metadata = %+v", actions[0])
 	}
 	if actions[0].InputSchema["type"] != "object" {

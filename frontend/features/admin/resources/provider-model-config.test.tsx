@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerResourceAuthTypeOptionsFromData } from "../domain/provider-resource-types";
 import { providerResourcePayload } from "./payloads";
-import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("renders provider type display names from plugin catalog metadata", () => {
@@ -117,6 +117,59 @@ describe("providerResourceConfig", () => {
       resource_id: "rsrc_codex",
       refresh: true,
     });
+  });
+
+  it("uses plugin action metadata for account probe default payloads", async () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    data.providerResources = [{
+      id: "rsrc_kimi",
+      provider_id: "prv_kimi",
+      name: "Kimi Account",
+      resource_type: "kimi_subscription_account",
+      status: "active",
+      healthy: true,
+      priority: 1,
+      weight: 100,
+    }];
+    data.plugins = [{
+      id: "tokenhub.provider.kimi",
+      name: "Kimi Subscription",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain", "management_action"],
+      capabilities: [
+        { kind: "provider", name: "provider_type", subject: "kimi_subscription" },
+        { kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" },
+      ],
+    }];
+    data.pluginActions = [{
+      plugin_id: "tokenhub.provider.kimi",
+      action_id: "kimi.probe.run",
+      kind: "test",
+      capability: "probe.run",
+      subject: "kimi_subscription",
+      metadata: {
+        default_payload_json: JSON.stringify({ model: "kimi-k2", prompt: "ping" }),
+      },
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { resource_id: "rsrc_kimi" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runProviderAvailabilityTest({ baseURL: "http://localhost:8080", adminToken: "admin-token" }, data.providers[0], data);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      provider_id: "prv_kimi",
+      resource_id: "rsrc_kimi",
+      model: "kimi-k2",
+      prompt: "ping",
+    });
+    expect(providerPluginActionDefaultPayload({ metadata: { default_payload_json: "[]" } })).toEqual({});
   });
 
   it("runs provider-level plugin actions without a resource envelope", async () => {

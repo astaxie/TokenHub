@@ -325,6 +325,7 @@ export type PluginActionDescriptor = {
   title?: string;
   capability?: string;
   subject?: string;
+  metadata?: Record<string, string>;
   input_schema?: Record<string, unknown>;
   output_schema?: Record<string, unknown>;
 };

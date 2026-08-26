@@ -225,6 +225,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Test OpenAI Codex account resource",
 		Capability: "probe.run",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"default_payload_json": `{"model":"` + openAICodexDefaultProbeModel + `","reasoning_effort":"medium","speed":"standard","prompt":"Please respond with one short sentence confirming the Codex connection works."}`,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"resource_id"},

@@ -188,7 +188,7 @@ export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Pro
   if (accountResource) {
     const action = providerPluginActionForCapability(data.pluginActions, provider.type, "probe.run");
     if (action) {
-      await runProviderResourcePluginAction(ctx, accountResource, action, providerAccountProbePayload(accountResource), providerAccountProbeFallbackLabel(accountResource));
+      await runProviderResourcePluginAction(ctx, accountResource, action, providerAccountProbePayload(action, accountResource), providerAccountProbeFallbackLabel(accountResource));
       return;
     }
     if (isOpenAISubscriptionResource(accountResource)) {
@@ -204,7 +204,20 @@ export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Pro
   await adminMutate(ctx, `/api/admin/providers/${provider.id}/test`, "POST", {});
 }
 
-function providerAccountProbePayload(resource: ProviderResource) {
+export function providerPluginActionDefaultPayload(action: Pick<PluginActionDescriptor, "metadata"> | undefined): Record<string, unknown> {
+  const raw = action?.metadata?.default_payload_json?.trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function providerAccountProbePayload(action: PluginActionDescriptor, resource: ProviderResource) {
+  const metadataPayload = providerPluginActionDefaultPayload(action);
+  if (Object.keys(metadataPayload).length > 0) return metadataPayload;
   return isOpenAISubscriptionResource(resource) ? codexLunaProbeDefaults : {};
 }
 
