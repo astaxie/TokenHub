@@ -447,6 +447,22 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, request, resultTTL)
 		return
 	}
+	if err := s.runGatewayResponsesPrivacyPreHooks(ctx, call, envelope.Headers, &request); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
+		return
+	}
+	if err := s.runGatewayResponsesContextOptimizeHooks(ctx, call, &request); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
+		return
+	}
 	if err := s.runGatewayResponsesGuardrailPreHooks(ctx, call, &request); err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
@@ -463,6 +479,51 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		}
 		httpErr := AsHTTPError(err)
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+		return
+	}
+	response, usage, hit, err := s.runGatewayCacheLookupHooks(ctx, call, request)
+	if err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+		return
+	}
+	if hit {
+		response, err = s.runGatewayGuardrailPostHooks(ctx, call, RouteSelection{}, response, usage)
+		if err != nil {
+			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+				return
+			}
+			httpErr := AsHTTPError(err)
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		response, err = s.runGatewayResponsePostHooks(ctx, call, RouteSelection{}, response)
+		if err != nil {
+			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+				return
+			}
+			httpErr := AsHTTPError(err)
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		usage, err = s.runGatewayUsageAttributionHooks(ctx, call, RouteSelection{}, response, usage)
+		if err != nil {
+			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+				return
+			}
+			httpErr := AsHTTPError(err)
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		resultJSON, marshalErr := json.Marshal(response)
+		if marshalErr != nil {
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, http.StatusInternalServerError, "response_result_invalid", "Response result could not be serialized", auditPayload, resultTTL)
+			return
+		}
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, http.StatusOK, "", "", auditPayload, resultTTL, resultJSON)
 		return
 	}
 	routed, err := s.prepareAdmittedRoutedCall(ctx, call, request.Model)
@@ -522,6 +583,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 			return
 		}
 		attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+		s.runGatewayCacheWriteHooks(ctx, routed.Call, request, response, usage)
 		resultJSON, marshalErr := json.Marshal(response)
 		if marshalErr != nil {
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, http.StatusInternalServerError, "response_result_invalid", "Response result could not be serialized", auditPayload, resultTTL)

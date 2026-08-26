@@ -453,6 +453,22 @@ func (s *Server) runGatewayGeminiPrivacyPreHooks(ctx context.Context, call CallC
 	})
 }
 
+func (s *Server) runGatewayResponsesPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, req *ResponsesRequest) error {
+	return s.runGatewayPrivacyPreHooks(ctx, call, headers, *req, func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ResponsesRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		*req = patched
+		return nil
+	})
+}
+
 func (s *Server) runGatewayEmbeddingsPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, req *EmbeddingsRequest) error {
 	return s.runGatewayPrivacyPreHooks(ctx, call, headers, *req, func(data json.RawMessage) error {
 		return applyEmbeddingsGatewayRequestPatch(req, data)

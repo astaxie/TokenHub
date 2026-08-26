@@ -237,6 +237,7 @@ func findResource(t *testing.T, store *GormStore, id string) ProviderResource {
 type captureAdapter struct {
 	seenKey             string
 	seenOptions         map[string]string
+	seenResponsesInput  any
 	seenEmbeddingsInput any
 }
 
@@ -255,6 +256,7 @@ func (a *captureAdapter) ChatStream(ctx context.Context, provider Provider, prov
 func (a *captureAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	a.seenKey = provider.APIKey
 	a.seenOptions = provider.Options
+	a.seenResponsesInput = req.Input
 	return MockAdapter{}.Responses(ctx, provider, providerModel, req)
 }
 

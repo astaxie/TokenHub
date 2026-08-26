@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func responseJobTestConfig() Config {
@@ -175,6 +177,81 @@ func TestBackgroundResponsesSuccessPersistsEncryptedPayloadAndAccountsOnce(t *te
 	var payloadLogs int64
 	if err := store.db.Model(&RequestPayloadLog{}).Where("request_id = ?", logs[0].RequestID).Count(&payloadLogs).Error; err != nil || payloadLogs != 0 {
 		t.Fatalf("background payload was copied into plaintext audit storage: count=%d err=%v", payloadLogs, err)
+	}
+}
+
+func TestBackgroundResponsesPrivacyPreHookCanRewriteInputBeforeProvider(t *testing.T) {
+	server, _, secret := newBackgroundResponseTestServer(t)
+	capture := &captureAdapter{}
+	server.adapterRegistry.Register(ProviderMock, capture, AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-privacy",
+		HookID:        "mask-background-input",
+		Stage:         pluginmeta.StagePrivacyPre,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register privacy hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var request ResponsesRequest
+		if err := json.Unmarshal(input.Data[pluginmeta.DataRequestBody], &request); err != nil {
+			t.Fatalf("decode response request: %v", err)
+		}
+		request.Input = "[background masked]"
+		return rawRequestBodyPatch(t, request), nil
+	})); err != nil {
+		t.Fatalf("register privacy handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "background secret")
+	waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if capture.seenResponsesInput != "[background masked]" {
+		t.Fatalf("provider input = %#v, want masked background input", capture.seenResponsesInput)
+	}
+}
+
+func TestBackgroundResponsesCacheLookupHookCanCompleteJobWithoutProvider(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	server.adapterRegistry.Register(ProviderMock, failingResponseJobAdapter{}, AdapterCapabilityResponses)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-cache",
+		HookID:        "lookup",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyReturnFallback,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Data[pluginmeta.DataRequestBody]) == 0 {
+			t.Fatal("cache lookup did not receive background request body")
+		}
+		return rawProviderCallResult(t, map[string]any{
+			"id":          "resp_background_cache",
+			"object":      "response",
+			"model":       "gpt-background",
+			"output_text": "background cache hit",
+			"output":      []any{},
+		}, Usage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}), nil
+	})); err != nil {
+		t.Fatalf("register cache lookup handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "cacheable background")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "background cache hit" {
+		t.Fatalf("unexpected cached job result: %#v", completed)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "" {
+		t.Fatalf("cache-hit job reached provider routing or was not audited once: %+v", logs)
 	}
 }
 

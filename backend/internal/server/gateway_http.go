@@ -281,19 +281,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	if err := s.runGatewayPrivacyPreHooks(r.Context(), call, r.Header, req, func(data json.RawMessage) error {
-		originalModel := req.Model
-		originalStream := req.Stream
-		var patched ResponsesRequest
-		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
-			return err
-		}
-		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
-			return err
-		}
-		req = patched
-		return nil
-	}); err != nil {
+	if err := s.runGatewayResponsesPrivacyPreHooks(r.Context(), call, r.Header, &req); err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
 		writeError(w, r, err)
 		return
