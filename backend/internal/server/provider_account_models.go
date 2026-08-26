@@ -348,9 +348,6 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 }
 
 func providerResourceCachedCatalog(provider Provider, resource *ProviderResource) (ProviderCatalogEntry, bool) {
-	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
-		return codexResourceCachedCatalog(resource)
-	}
 	if resource == nil || resource.Options == nil {
 		return ProviderCatalogEntry{}, false
 	}
@@ -359,20 +356,51 @@ func providerResourceCachedCatalog(provider Provider, resource *ProviderResource
 		return ProviderCatalogEntry{}, false
 	}
 	categories, counts := catalogCategorySummary(models)
-	name := firstNonEmpty(strings.TrimSpace(provider.Name), strings.TrimSpace(provider.Type))
+	metadata := providerResourceCachedCatalogIdentityFor(provider, resource)
 	return ProviderCatalogEntry{
-		ID:             provider.Type,
-		Name:           name,
-		DisplayName:    name,
-		Type:           provider.Type,
-		BaseURL:        provider.BaseURL,
+		ID:             metadata.id,
+		Name:           metadata.name,
+		DisplayName:    metadata.displayName,
+		Type:           metadata.providerType,
+		BaseURL:        metadata.baseURL,
 		Categories:     categories,
 		CategoryCounts: counts,
 		ModelsCount:    len(models),
-		Source:         "provider-resource-cache",
+		Source:         metadata.source,
 		ETag:           providerResourceModelsETag(resource),
 		Models:         models,
 	}, true
+}
+
+type providerResourceCachedCatalogIdentity struct {
+	id           string
+	name         string
+	displayName  string
+	providerType string
+	baseURL      string
+	source       string
+}
+
+func providerResourceCachedCatalogIdentityFor(provider Provider, resource *ProviderResource) providerResourceCachedCatalogIdentity {
+	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
+		return providerResourceCachedCatalogIdentity{
+			id:           codexProviderCatalogID,
+			name:         "OpenAI Codex",
+			displayName:  "OpenAI Codex",
+			providerType: ProviderOpenAICodex,
+			baseURL:      openAICodexBaseURL,
+			source:       "openai-codex-cache",
+		}
+	}
+	name := firstNonEmpty(strings.TrimSpace(provider.Name), strings.TrimSpace(provider.Type))
+	return providerResourceCachedCatalogIdentity{
+		id:           provider.Type,
+		name:         name,
+		displayName:  name,
+		providerType: provider.Type,
+		baseURL:      provider.BaseURL,
+		source:       "provider-resource-cache",
+	}
 }
 
 func (s *Server) persistCodexResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {
@@ -410,30 +438,6 @@ func (s *Server) persistProviderResourceModels(resourceID string, models []Provi
 		providerResourceModelCatalogOption:    string(catalogEncoded),
 	})
 	return err
-}
-
-func codexResourceCachedCatalog(resource *ProviderResource) (ProviderCatalogEntry, bool) {
-	if resource == nil || resource.Options == nil {
-		return ProviderCatalogEntry{}, false
-	}
-	var models []ProviderCatalogModel
-	if json.Unmarshal([]byte(providerResourceModelCatalogJSON(resource)), &models) != nil || len(models) == 0 {
-		return ProviderCatalogEntry{}, false
-	}
-	categories, counts := catalogCategorySummary(models)
-	return ProviderCatalogEntry{
-		ID:             codexProviderCatalogID,
-		Name:           "OpenAI Codex",
-		DisplayName:    "OpenAI Codex",
-		Type:           ProviderOpenAICodex,
-		BaseURL:        openAICodexBaseURL,
-		Categories:     categories,
-		CategoryCounts: counts,
-		ModelsCount:    len(models),
-		Source:         "openai-codex-cache",
-		ETag:           providerResourceModelsETag(resource),
-		Models:         models,
-	}, true
 }
 
 func integerListString(values []int) string {
