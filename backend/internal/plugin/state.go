@@ -79,6 +79,35 @@ func (r Runtime) UpdatePackageState(pluginID string, state PackageState) (Packag
 	return Package{}, ErrPackageNotFound
 }
 
+func (r Runtime) UninstallPackage(pluginID string) (Package, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return Package{}, ErrPackageNotFound
+	}
+	dirs, err := r.manifestPackageDirs()
+	if err != nil {
+		return Package{}, err
+	}
+	for _, dir := range dirs {
+		manifest, err := readManifestOnly(dir)
+		if err != nil {
+			return Package{}, err
+		}
+		if manifest.ID != pluginID {
+			continue
+		}
+		state, err := readPackageState(dir)
+		if err != nil {
+			return Package{}, err
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			return Package{}, err
+		}
+		return Package{Dir: dir, Manifest: manifest, State: state}, nil
+	}
+	return Package{}, ErrPackageNotFound
+}
+
 func (r Runtime) manifestPackageDirs() ([]string, error) {
 	if r.Dir == "" {
 		return nil, nil

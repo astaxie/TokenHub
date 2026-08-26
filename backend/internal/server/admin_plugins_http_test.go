@@ -240,6 +240,48 @@ kinds:
 	}
 }
 
+func TestAdminPluginDeleteUninstallsLocalPackage(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "privacy")
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.local-privacy
+name: Local Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	response := doJSON(t, server.Handler(), http.MethodDelete, "/api/admin/plugin-packages/tokenhub.local-privacy", nil, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("DELETE /api/admin/plugin-packages/{id}: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginUninstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Data.PluginID != "tokenhub.local-privacy" || !body.Data.RestartRequired {
+		t.Fatalf("delete response = %+v, want restart-required uninstall response", body.Data)
+	}
+	if _, err := os.Stat(localPluginDir); !os.IsNotExist(err) {
+		t.Fatalf("plugin package still exists after delete: %v", err)
+	}
+}
+
+func TestAdminPluginDeleteRejectsMissingPackage(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: t.TempDir()})
+
+	response := doJSON(t, server.Handler(), http.MethodDelete, "/api/admin/plugin-packages/tokenhub.missing", nil, "dev_admin_token")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("DELETE missing plugin: expected 404, got %d: %s", response.Code, response.Body)
+	}
+}
+
 func adminPluginZip(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	var buffer bytes.Buffer

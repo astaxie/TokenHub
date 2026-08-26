@@ -117,6 +117,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-marketplace", s.handleAdminPluginMarketplaceGet, s.adminMethodNotAllowed("providers", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/install", s.handleAdminPluginInstallPost, s.adminMethodNotAllowed("providers", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/update", s.handleAdminPluginUpdatePost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodDelete, "/api/admin/plugin-packages/{plugin_id}", s.handleAdminPluginDelete, s.adminMethodNotAllowed("providers", http.MethodDelete))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-chain", s.handleAdminPluginChain, s.adminMethodNotAllowed("providers", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-ui-manifest", s.handleAdminPluginUIManifest, s.adminMethodNotAllowed("providers", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-actions", s.handleAdminPluginActions, s.adminMethodNotAllowed("providers", http.MethodGet))

@@ -135,6 +135,33 @@ describe("PluginsView", () => {
     await waitFor(() => expect(screen.getByText("1.1.0 · 插件更新完成，重启后生效")).toBeInTheDocument());
   });
 
+  it("uninstalls a local plugin package through the admin endpoint", async () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.local-privacy",
+      name: "Local Privacy",
+      version: "1.0.0",
+      source: "local_file",
+      status: "enabled",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { plugin_id: "tokenhub.local-privacy", restart_required: true },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "卸载" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugin-packages/tokenhub.local-privacy");
+    expect(init.method).toBe("DELETE");
+    await waitFor(() => expect(screen.getByText("tokenhub.local-privacy · 插件卸载完成，重启后生效")).toBeInTheDocument());
+  });
+
   it("installs a marketplace plugin from its distribution metadata", async () => {
     const data = emptyData();
     data.pluginMarketplaceAvailable = true;

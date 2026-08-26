@@ -25,6 +25,11 @@ type adminPluginInstallResponse struct {
 	Replaced        bool                  `json:"replaced"`
 }
 
+type adminPluginUninstallResponse struct {
+	PluginID        string `json:"plugin_id"`
+	RestartRequired bool   `json:"restart_required"`
+}
+
 func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
@@ -192,6 +197,30 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		PluginID:        pkg.Manifest.ID,
 		Status:          pkg.State.Status,
 		Reason:          pkg.State.Reason,
+		RestartRequired: true,
+	}})
+}
+
+func (s *Server) handleAdminPluginDelete(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	pluginID := strings.TrimSpace(r.PathValue("plugin_id"))
+	if pluginID == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	pkg, err := pluginmeta.NewRuntime(s.config.PluginDir).UninstallPackage(pluginID)
+	if err != nil {
+		if errors.Is(err, pluginmeta.ErrPackageNotFound) {
+			writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+			return
+		}
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_uninstall_failed", "Plugin package could not be uninstalled"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginUninstallResponse{
+		PluginID:        pkg.Manifest.ID,
 		RestartRequired: true,
 	}})
 }

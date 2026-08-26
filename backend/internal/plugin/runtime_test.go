@@ -583,6 +583,33 @@ kinds:
 	}
 }
 
+func TestRuntimeUninstallPackageRemovesInstalledDirectory(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "privacy")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.privacy
+name: Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	writePackageStateFile(t, pluginDir, `{"status":"disabled","reason":"operator removed"}`)
+
+	pkg, err := NewRuntime(root).UninstallPackage("tokenhub.privacy")
+	if err != nil {
+		t.Fatalf("uninstall package: %v", err)
+	}
+	if pkg.Manifest.ID != "tokenhub.privacy" || pkg.State.Status != StatusDisabled {
+		t.Fatalf("uninstalled package = %+v, want disabled tokenhub.privacy package", pkg)
+	}
+	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) {
+		t.Fatalf("plugin directory still exists after uninstall: %v", err)
+	}
+}
+
 func TestRuntimeIgnoresMissingInstallDirectory(t *testing.T) {
 	packages, err := NewRuntime(filepath.Join(t.TempDir(), "missing")).Discover()
 	if err != nil {

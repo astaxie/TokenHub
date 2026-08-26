@@ -1,4 +1,4 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, Power, PowerOff, ShieldCheck } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, Power, PowerOff, ShieldCheck, Trash2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { tx } from "../i18n/runtime";
@@ -35,11 +35,18 @@ type PluginUpdateDraft = {
   result: string;
 };
 
+type PluginDeleteDraft = {
+  busy: boolean;
+  error: string;
+  result: string;
+};
+
 export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const plugins = data.plugins;
   const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
   const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
   const [pluginUpdateDrafts, setPluginUpdateDrafts] = useState<Record<string, PluginUpdateDraft>>({});
+  const [pluginDeleteDrafts, setPluginDeleteDrafts] = useState<Record<string, PluginDeleteDraft>>({});
   const [marketplaceDrafts, setMarketplaceDrafts] = useState<Record<string, PluginInstallDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
   const providerCapabilities = plugins.reduce(
@@ -58,6 +65,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
+  const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const marketplaceInstallDraft = (plugin: PluginDescriptor) => marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
 
   function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
@@ -188,6 +196,41 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
         [plugin.id]: {
           busy: false,
           error: reason instanceof Error ? reason.message : tx("更新插件失败"),
+          result: "",
+        },
+      }));
+    }
+  }
+
+  async function deletePlugin(plugin: PluginDescriptor) {
+    const current = pluginDeleteDraft(plugin);
+    setPluginDeleteDrafts((drafts) => ({
+      ...drafts,
+      [plugin.id]: { ...current, busy: true, error: "", result: "" },
+    }));
+    try {
+      const response = await adminFetch(api, `/api/admin/plugin-packages/${encodeURIComponent(plugin.id)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("卸载插件")));
+      const payload = await response.json() as { data?: { plugin_id?: string; restart_required?: boolean } };
+      const pluginID = payload.data?.plugin_id ?? plugin.id;
+      setPluginDeleteDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          busy: false,
+          error: "",
+          result: `${pluginID} · ${payload.data?.restart_required ? tx("插件卸载完成，重启后生效") : tx("插件卸载完成")}`,
+        },
+      }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setPluginDeleteDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          ...current,
+          busy: false,
+          error: reason instanceof Error ? reason.message : tx("卸载插件失败"),
           result: "",
         },
       }));
@@ -334,6 +377,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                     <th>{tx("运行位置")}</th>
                     <th>{tx("分发")}</th>
                     <th>{tx("能力")}</th>
+                    <th>{tx("操作")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -355,6 +399,9 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                       </td>
                       <td>
                         <CapabilityList plugin={plugin} />
+                      </td>
+                      <td>
+                        <PluginDeleteControl plugin={plugin} draft={pluginDeleteDraft(plugin)} onDelete={deletePlugin} />
                       </td>
                     </tr>
                   ))}
@@ -873,6 +920,34 @@ function MarketplaceInstallControl({
       >
         <Download size={13} />
         <span>{tx(draft.busy ? "安装中" : "安装插件")}</span>
+      </button>
+      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
+      {draft.result ? <span>{draft.result}</span> : null}
+    </div>
+  );
+}
+
+function PluginDeleteControl({
+  plugin,
+  draft,
+  onDelete,
+}: {
+  plugin: PluginDescriptor;
+  draft: PluginDeleteDraft;
+  onDelete: (plugin: PluginDescriptor) => void;
+}) {
+  if (plugin.source === "built_in") return <span className="muted">-</span>;
+  return (
+    <div className="stacked-cell">
+      <button
+        className="danger-button compact-button"
+        disabled={draft.busy}
+        onClick={() => onDelete(plugin)}
+        title={tx("卸载插件")}
+        type="button"
+      >
+        <Trash2 size={13} />
+        <span>{tx(draft.busy ? "卸载中" : "卸载")}</span>
       </button>
       {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
       {draft.result ? <span>{draft.result}</span> : null}
