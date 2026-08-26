@@ -1448,8 +1448,8 @@ export function ProviderUpsertModal({
             {mode === "edit" && editTab === "advanced" && accountQuotaAction && accountResources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
-                  <h3>{tx("订阅额度")}</h3>
-                  <p>{tx("实时查询 ChatGPT/Codex 套餐用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
+                  <h3>{accountQuotaAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
+                  <p>{accountQuotaAction.metadata?.panel_description?.trim() || tx("实时查询账号订阅用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
                 </div>
                 <div className="provider-quota-list">
                   {selectedAccountResources.map((resource) => {

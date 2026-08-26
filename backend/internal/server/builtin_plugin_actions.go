@@ -104,6 +104,8 @@ func registerBuiltinPluginActions(server *Server) {
 		Subject:    ProviderOpenAICodex,
 		Metadata: map[string]string{
 			"provider_resource_type": ProviderResourceOpenAISubscription,
+			"panel_title":            "OpenAI Codex subscription quota",
+			"panel_description":      "Query live ChatGPT/Codex plan usage and reset times. Data refreshes every 10 minutes and can also be refreshed manually.",
 		},
 		InputSchema: map[string]any{
 			"type":     "object",
