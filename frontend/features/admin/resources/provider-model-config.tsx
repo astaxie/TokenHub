@@ -52,7 +52,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       },
       {
         label: "测试",
-        title: "检测 Provider 可用性；Codex 订阅使用 Luna 中等推理标准速度真实测试",
+        title: "检测 Provider 可用性；账号型 Provider 会优先使用插件真实测试",
         run: runProviderAvailabilityTest,
         doneMessage: (item) => `${item.name} ${tx("检测完成")}`,
       },
@@ -76,7 +76,7 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "name", label: "名称", required: true },
     { key: "resource_type", label: "账号类型", type: "select", optionsFromData: providerResourceTypeOptionsFromData, required: true },
     { key: "auth_type", label: "认证方式", type: "select", optionsFromData: providerResourceAuthTypeOptionsFromData, visible: accountResourceFieldVisible },
-    { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "OpenAI subscription / Codex OAuth access token 或 PAT；保存后不会再次显示。" },
+    { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "账号 OAuth access token 或 PAT；保存后不会再次显示。" },
     { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
     { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: accountResourceFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
     { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values) => !isProviderAccountResourceType(values.resource_type), help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
@@ -112,7 +112,7 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
     view: "providers",
     title: "账号集成",
     eyebrow: "Provider 账号资源",
-    description: "把 OpenAI subscription、PAT 或普通 API Key 作为 Provider 资源实例加入账号池，并参与路由权重、并发和限流调度。",
+    description: "把账号订阅、PAT 或普通 API Key 作为 Provider 资源实例加入账号池，并参与路由权重、并发和限流调度。",
     createLabel: "添加账号资源",
     columns: [
       { key: "name", label: "名称" },
