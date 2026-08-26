@@ -180,8 +180,11 @@ func TestAdminPluginProviderCatalogGetFallsBackToResourceModelAdapter(t *testing
 		t.Fatalf("plugin adapter catalog response = %s", response.Body)
 	}
 	stored, ok := store.GetProviderResource(resource.ID)
-	if !ok || !strings.Contains(stored.Options[codexResourceSupportedModelsOption], "adapter-model") {
+	if !ok || !strings.Contains(stored.Options[providerResourceSupportedModelsOption], "adapter-model") {
 		t.Fatalf("adapter catalog models were not persisted: ok=%v options=%v", ok, stored.Options)
+	}
+	if _, ok := stored.Options[codexResourceSupportedModelsOption]; ok {
+		t.Fatalf("adapter catalog unexpectedly persisted legacy Codex model cache key: %v", stored.Options)
 	}
 }
 
@@ -223,8 +226,8 @@ func TestAdminPluginProviderCatalogGetUsesGenericResourceModelCache(t *testing.T
 		ID: "rsrc_adapter_cached_catalog", ProviderID: provider.ID, Name: "Adapter Cached Catalog Account",
 		ResourceType: "adapter_cached_catalog_account", Status: StatusActive, Healthy: true,
 		Options: map[string]string{
-			codexResourceModelsETagOption:   "etag-cached",
-			codexResourceModelCatalogOption: string(catalog),
+			providerResourceModelsETagOption:   "etag-cached",
+			providerResourceModelCatalogOption: string(catalog),
 		},
 	})
 	if err != nil {
@@ -243,6 +246,66 @@ func TestAdminPluginProviderCatalogGetUsesGenericResourceModelCache(t *testing.T
 		!strings.Contains(response.Body, `"id":"cached-adapter-model"`) ||
 		strings.Contains(response.Body, `"OpenAI Codex"`) {
 		t.Fatalf("cached plugin adapter catalog response = %s", response.Body)
+	}
+}
+
+func TestAdminPluginProviderCatalogGetUsesLegacyCodexResourceModelCache(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "adapter_legacy_cached_catalog_provider"
+	adapter := &providerResourceModelsCatalogAdapter{status: http.StatusNotModified}
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.adapter-legacy-cached-catalog",
+		Name:    "Adapter Legacy Cached Catalog Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+			pluginmeta.PlacementManagementAction,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityModels), Subject: providerType},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      adapter,
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register adapter legacy cached catalog provider: %v", err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_adapter_legacy_cached_catalog", Name: "Adapter Legacy Cached Catalog Provider", Type: providerType,
+		BaseURL: "https://legacy-cached.example/v1", Status: StatusActive, Healthy: true,
+	})
+	catalog, err := json.Marshal([]ProviderCatalogModel{{ID: "legacy-cached-adapter-model", Name: "legacy-cached-adapter-model"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_adapter_legacy_cached_catalog", ProviderID: provider.ID, Name: "Adapter Legacy Cached Catalog Account",
+		ResourceType: "adapter_legacy_cached_catalog_account", Status: StatusActive, Healthy: true,
+		Options: map[string]string{
+			codexResourceModelsETagOption:   "etag-legacy-cached",
+			codexResourceModelCatalogOption: string(catalog),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/"+providerType+"?resource_id="+resource.ID, nil, "plugin-catalog-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET legacy cached plugin adapter catalog: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if adapter.calls != 1 || adapter.etag != "etag-legacy-cached" {
+		t.Fatalf("adapter legacy cached catalog invocation: calls=%d etag=%q", adapter.calls, adapter.etag)
+	}
+	if !strings.Contains(response.Body, `"source":"provider-resource-cache"`) ||
+		!strings.Contains(response.Body, `"type":"`+providerType+`"`) ||
+		!strings.Contains(response.Body, `"id":"legacy-cached-adapter-model"`) ||
+		strings.Contains(response.Body, `"OpenAI Codex"`) {
+		t.Fatalf("legacy cached plugin adapter catalog response = %s", response.Body)
 	}
 }
 

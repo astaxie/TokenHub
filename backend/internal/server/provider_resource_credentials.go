@@ -20,6 +20,14 @@ var providerAccountProtectedOptions = []string{
 	"organization_id",
 	"plan_type",
 	"has_refresh_token",
+	providerResourceSupportedModelsOption,
+	providerResourceModelsFetchedAtOption,
+	providerResourceModelsETagOption,
+	providerResourceModelCatalogOption,
+	codexResourceSupportedModelsOption,
+	codexResourceModelsFetchedAtOption,
+	codexResourceModelsETagOption,
+	codexResourceModelCatalogOption,
 	openAIAccountReauthorizationRequiredOption,
 }
 

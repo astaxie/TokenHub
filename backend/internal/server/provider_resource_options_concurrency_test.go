@@ -91,7 +91,15 @@ func TestProviderResourceMutationPreservesConcurrentProtectedOptions(t *testing.
 		_, updateErr := storeB.UpdateProviderResourceOptions(resource.ID, map[string]string{
 			codexImageCapabilityOption:                 codexImageCapabilitySupported,
 			codexImageCapabilityCheckedAtOption:        time.Now().UTC().Format(time.RFC3339Nano),
+			providerResourceSupportedModelsOption:      `["plugin-cache-model"]`,
+			providerResourceModelsFetchedAtOption:      time.Now().UTC().Format(time.RFC3339Nano),
+			providerResourceModelsETagOption:           "plugin-cache-etag",
+			providerResourceModelCatalogOption:         `[{"id":"plugin-cache-model","name":"plugin-cache-model"}]`,
 			openAIAccountReauthorizationRequiredOption: "true",
+			codexResourceSupportedModelsOption:         `["legacy-cache-model"]`,
+			codexResourceModelsFetchedAtOption:         time.Now().UTC().Format(time.RFC3339Nano),
+			codexResourceModelsETagOption:              "legacy-cache-etag",
+			codexResourceModelCatalogOption:            `[{"id":"legacy-cache-model","name":"legacy-cache-model"}]`,
 		})
 		optionsDone <- updateErr
 	}()
@@ -116,6 +124,14 @@ func TestProviderResourceMutationPreservesConcurrentProtectedOptions(t *testing.
 	if updated.Name != "After Concurrent Edit" || updated.Options["operator_note"] != "retained" ||
 		updated.Options[codexImageCapabilityOption] != codexImageCapabilitySupported ||
 		updated.Options[codexImageCapabilityCheckedAtOption] == "" ||
+		updated.Options[providerResourceSupportedModelsOption] != `["plugin-cache-model"]` ||
+		updated.Options[providerResourceModelsFetchedAtOption] == "" ||
+		updated.Options[providerResourceModelsETagOption] != "plugin-cache-etag" ||
+		updated.Options[providerResourceModelCatalogOption] != `[{"id":"plugin-cache-model","name":"plugin-cache-model"}]` ||
+		updated.Options[codexResourceSupportedModelsOption] != `["legacy-cache-model"]` ||
+		updated.Options[codexResourceModelsFetchedAtOption] == "" ||
+		updated.Options[codexResourceModelsETagOption] != "legacy-cache-etag" ||
+		updated.Options[codexResourceModelCatalogOption] != `[{"id":"legacy-cache-model","name":"legacy-cache-model"}]` ||
 		updated.Options[openAIAccountReauthorizationRequiredOption] != "true" {
 		t.Fatalf("concurrent update lost resource or protected option state: %+v", updated)
 	}

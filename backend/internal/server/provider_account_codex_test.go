@@ -1412,7 +1412,7 @@ func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 func codexCapabilityOptionsForTest(models ...string) map[string]string {
 	encoded, _ := json.Marshal(models)
 	return map[string]string{
-		codexResourceSupportedModelsOption: string(encoded),
-		codexResourceModelsFetchedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
+		providerResourceSupportedModelsOption: string(encoded),
+		providerResourceModelsFetchedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }

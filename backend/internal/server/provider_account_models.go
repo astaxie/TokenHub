@@ -14,7 +14,13 @@ import (
 )
 
 const (
-	codexProviderCatalogID             = "openai-codex"
+	codexProviderCatalogID = "openai-codex"
+
+	providerResourceSupportedModelsOption = "provider_resource_supported_models"
+	providerResourceModelsFetchedAtOption = "provider_resource_models_fetched_at"
+	providerResourceModelsETagOption      = "provider_resource_models_etag"
+	providerResourceModelCatalogOption    = "provider_resource_model_catalog"
+
 	codexResourceSupportedModelsOption = "codex_supported_models"
 	codexResourceModelsFetchedAtOption = "codex_models_fetched_at"
 	codexResourceModelsETagOption      = "codex_models_etag"
@@ -324,7 +330,7 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 	}
 	etag := ""
 	if resource.Options != nil {
-		etag = strings.TrimSpace(resource.Options[codexResourceModelsETagOption])
+		etag = providerResourceModelsETag(&resource)
 	}
 	catalog, status, err := modeler.ResourceModels(ctx, provider, resource, etag)
 	if err == nil && status == http.StatusNotModified {
@@ -334,7 +340,7 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 		catalog, _, err = modeler.ResourceModels(ctx, provider, resource, "")
 	}
 	if err == nil {
-		if persistErr := s.persistCodexResourceModels(resourceID, catalog.Models, time.Now().UTC()); persistErr != nil {
+		if persistErr := s.persistProviderResourceModels(resourceID, catalog.Models, time.Now().UTC()); persistErr != nil {
 			return ProviderCatalogEntry{}, true, persistErr
 		}
 	}
@@ -349,7 +355,7 @@ func providerResourceCachedCatalog(provider Provider, resource *ProviderResource
 		return ProviderCatalogEntry{}, false
 	}
 	var models []ProviderCatalogModel
-	if json.Unmarshal([]byte(resource.Options[codexResourceModelCatalogOption]), &models) != nil || len(models) == 0 {
+	if json.Unmarshal([]byte(providerResourceModelCatalogJSON(resource)), &models) != nil || len(models) == 0 {
 		return ProviderCatalogEntry{}, false
 	}
 	categories, counts := catalogCategorySummary(models)
@@ -364,12 +370,16 @@ func providerResourceCachedCatalog(provider Provider, resource *ProviderResource
 		CategoryCounts: counts,
 		ModelsCount:    len(models),
 		Source:         "provider-resource-cache",
-		ETag:           resource.Options[codexResourceModelsETagOption],
+		ETag:           providerResourceModelsETag(resource),
 		Models:         models,
 	}, true
 }
 
 func (s *Server) persistCodexResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {
+	return s.persistProviderResourceModels(resourceID, models, fetchedAt)
+}
+
+func (s *Server) persistProviderResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {
 	modelIDs := make([]string, 0, len(models))
 	seen := map[string]struct{}{}
 	for _, model := range models {
@@ -394,10 +404,10 @@ func (s *Server) persistCodexResourceModels(resourceID string, models []Provider
 		return err
 	}
 	_, err = s.store.UpdateProviderResourceOptions(resourceID, map[string]string{
-		codexResourceSupportedModelsOption: string(encoded),
-		codexResourceModelsFetchedAtOption: fetchedAt.UTC().Format(time.RFC3339Nano),
-		codexResourceModelsETagOption:      firstNonEmptyModelETag(models),
-		codexResourceModelCatalogOption:    string(catalogEncoded),
+		providerResourceSupportedModelsOption: string(encoded),
+		providerResourceModelsFetchedAtOption: fetchedAt.UTC().Format(time.RFC3339Nano),
+		providerResourceModelsETagOption:      firstNonEmptyModelETag(models),
+		providerResourceModelCatalogOption:    string(catalogEncoded),
 	})
 	return err
 }
@@ -407,7 +417,7 @@ func codexResourceCachedCatalog(resource *ProviderResource) (ProviderCatalogEntr
 		return ProviderCatalogEntry{}, false
 	}
 	var models []ProviderCatalogModel
-	if json.Unmarshal([]byte(resource.Options[codexResourceModelCatalogOption]), &models) != nil || len(models) == 0 {
+	if json.Unmarshal([]byte(providerResourceModelCatalogJSON(resource)), &models) != nil || len(models) == 0 {
 		return ProviderCatalogEntry{}, false
 	}
 	categories, counts := catalogCategorySummary(models)
@@ -421,7 +431,7 @@ func codexResourceCachedCatalog(resource *ProviderResource) (ProviderCatalogEntr
 		CategoryCounts: counts,
 		ModelsCount:    len(models),
 		Source:         "openai-codex-cache",
-		ETag:           resource.Options[codexResourceModelsETagOption],
+		ETag:           providerResourceModelsETag(resource),
 		Models:         models,
 	}, true
 }
@@ -459,19 +469,50 @@ func providerResourceCachedModels(resource *ProviderResource) ([]string, time.Ti
 	if resource == nil || resource.Options == nil {
 		return nil, time.Time{}, false
 	}
-	encoded, ok := resource.Options[codexResourceSupportedModelsOption]
-	if !ok {
+	encoded := providerResourceSupportedModelsJSON(resource)
+	if strings.TrimSpace(encoded) == "" {
 		return nil, time.Time{}, false
 	}
 	var models []string
 	if err := json.Unmarshal([]byte(encoded), &models); err != nil {
 		return nil, time.Time{}, false
 	}
-	fetchedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(resource.Options[codexResourceModelsFetchedAtOption]))
+	fetchedAt, err := time.Parse(time.RFC3339Nano, providerResourceModelsFetchedAt(resource))
 	if err != nil {
 		fetchedAt = time.Time{}
 	}
 	return models, fetchedAt, true
+}
+
+func providerResourceSupportedModelsJSON(resource *ProviderResource) string {
+	return providerResourceModelOption(resource, providerResourceSupportedModelsOption, codexResourceSupportedModelsOption)
+}
+
+func providerResourceModelsFetchedAt(resource *ProviderResource) string {
+	return providerResourceModelOption(resource, providerResourceModelsFetchedAtOption, codexResourceModelsFetchedAtOption)
+}
+
+func providerResourceModelsETag(resource *ProviderResource) string {
+	return providerResourceModelOption(resource, providerResourceModelsETagOption, codexResourceModelsETagOption)
+}
+
+func providerResourceModelCatalogJSON(resource *ProviderResource) string {
+	return providerResourceModelOption(resource, providerResourceModelCatalogOption, codexResourceModelCatalogOption)
+}
+
+func providerResourceModelOption(resource *ProviderResource, key string, legacyKeys ...string) string {
+	if resource == nil || resource.Options == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(resource.Options[key]); value != "" {
+		return value
+	}
+	for _, legacyKey := range legacyKeys {
+		if value := strings.TrimSpace(resource.Options[legacyKey]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func codexResourceCachedModels(resource *ProviderResource) ([]string, time.Time, bool) {
@@ -559,7 +600,7 @@ func (s *Server) removeProviderResourceModel(resourceID string, modelName string
 	for _, modelID := range filtered {
 		catalogModels = append(catalogModels, ProviderCatalogModel{ID: modelID})
 	}
-	_ = s.persistCodexResourceModels(resourceID, catalogModels, time.Now().UTC())
+	_ = s.persistProviderResourceModels(resourceID, catalogModels, time.Now().UTC())
 }
 
 func (s *Server) codexProviderCatalogFromStandardModels(selected []string) ProviderCatalogEntry {
