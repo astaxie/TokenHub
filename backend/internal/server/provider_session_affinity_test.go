@@ -9,15 +9,6 @@ import (
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
-func TestProviderSessionAffinityKindKeepsCodexCompatibility(t *testing.T) {
-	if got := providerSessionAffinityKind(ProviderOpenAICodex); got != AffinityKindCodexSession {
-		t.Fatalf("Codex affinity kind = %q, want %q", got, AffinityKindCodexSession)
-	}
-	if got := providerSessionAffinityKind("kimi_subscription"); got != AffinityKindProviderSession {
-		t.Fatalf("plugin affinity kind = %q, want %q", got, AffinityKindProviderSession)
-	}
-}
-
 func TestAdapterSessionBindingExpiresAfterOneHour(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{

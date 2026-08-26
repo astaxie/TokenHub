@@ -355,6 +355,10 @@ func TestSelectCodexRouteCandidatesDistinguishesResourceAvailability(t *testing.
 				provider := store.AddProvider(Provider{
 					ID: "prv_codex_resource_availability", Name: "Codex resource availability",
 					Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+					Options: map[string]string{
+						providerCredentialsScopeOption:      providerCredentialsScopeResource,
+						providerRouteRequiresResourceOption: "true",
+					},
 				})
 				resourceID := "rsrc_codex_resource_availability"
 				if test.resource != nil {

@@ -55,14 +55,14 @@ func providerRouteRequiresResource(provider Provider) bool {
 	if value, ok := provider.Options[providerRouteRequiresResourceOption]; ok {
 		return strings.EqualFold(strings.TrimSpace(value), "true")
 	}
-	return provider.Type == ProviderOpenAICodex
+	return false
 }
 
 func providerUsesResourceCredentials(provider Provider) bool {
 	if value, ok := provider.Options[providerCredentialsScopeOption]; ok {
 		return strings.EqualFold(strings.TrimSpace(value), providerCredentialsScopeResource)
 	}
-	return provider.Type == ProviderOpenAICodex
+	return false
 }
 
 func patchedProviderPolicy(current Provider, patch Provider) Provider {
