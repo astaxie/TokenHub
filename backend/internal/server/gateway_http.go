@@ -363,19 +363,27 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, req)
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return
+	var affinity *RequestAffinity
+	sessionAffinityApplied := false
+	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
+		kind := AffinityKindProviderSession
+		if adapterType == ProviderOpenAICodex {
+			kind = AffinityKindCodexSession
+		}
+		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, kind, r.Header, req)
+		if err != nil {
+			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		if affinity != nil {
+			sessionAffinityApplied = true
+			routed.Affinity = affinity
+			routed.Call.Affinity = affinity
+			routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
+		}
 	}
-	codexAffinityApplied := affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex)
-	if codexAffinityApplied {
-		routed.Affinity = affinity
-		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
-	}
-	if !codexAffinityApplied {
+	if !sessionAffinityApplied {
 		affinity, err = s.responsesCacheLocalityAffinity(key.ID, r.Header, req)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)

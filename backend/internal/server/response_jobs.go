@@ -690,17 +690,23 @@ func (s *Server) watchResponseJobCancellation(ctx context.Context, cancel contex
 }
 
 func (s *Server) applyResponseJobAffinity(ctx context.Context, routed *RoutedCall, key APIKey, headers http.Header, request ResponsesRequest) error {
-	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, headers, request)
-	if err != nil {
-		return err
+	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
+		kind := AffinityKindProviderSession
+		if adapterType == ProviderOpenAICodex {
+			kind = AffinityKindCodexSession
+		}
+		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, kind, headers, request)
+		if err != nil {
+			return err
+		}
+		if affinity != nil {
+			routed.Affinity = affinity
+			routed.Call.Affinity = affinity
+			routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routed.Routes)
+			return nil
+		}
 	}
-	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
-		routed.Affinity = affinity
-		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routed.Routes)
-		return nil
-	}
-	affinity, err = s.responsesCacheLocalityAffinity(key.ID, headers, request)
+	affinity, err := s.responsesCacheLocalityAffinity(key.ID, headers, request)
 	if err != nil {
 		return err
 	}

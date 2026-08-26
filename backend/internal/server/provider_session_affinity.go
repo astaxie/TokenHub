@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	AffinityKindCodexSession = "codex_session"
-	noBindingGeneration      = int64(-1)
-	codexSessionAffinityTTL  = time.Hour
+	AffinityKindCodexSession    = "codex_session"
+	AffinityKindProviderSession = "provider_session"
+	noBindingGeneration         = int64(-1)
+	codexSessionAffinityTTL     = time.Hour
 )
 
 type RequestAffinity struct {
@@ -37,20 +38,35 @@ type RequestAffinity struct {
 // Cache locality is purely stateless and must return false, otherwise every chat
 // request would pay for the binding table's DELETE+SELECT+UPDATE.
 func (a *RequestAffinity) persistsBinding() bool {
-	return a != nil && a.Kind == AffinityKindCodexSession
+	return a != nil && (a.Kind == AffinityKindCodexSession || a.Kind == AffinityKindProviderSession)
 }
 
 func resolveCodexSessionAffinity(secret string, apiKeyID string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
+	return resolveProviderSessionAffinity(secret, apiKeyID, ProviderOpenAICodex, AffinityKindCodexSession, headers, request)
+}
+
+func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType string, affinityKind string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
 	canonical, ok := codexSessionIdentifier(headers, request)
 	if !ok {
 		return nil, nil
 	}
-	if err := validateSessionIdentifier(canonical, "codex_session_id_invalid", "Codex session identifier"); err != nil {
+	code := "provider_session_id_invalid"
+	label := "Provider session identifier"
+	if adapterType == ProviderOpenAICodex {
+		code = "codex_session_id_invalid"
+		label = "Codex session identifier"
+	}
+	if err := validateSessionIdentifier(canonical, code, label); err != nil {
 		return nil, err
 	}
+	adapterType = strings.TrimSpace(adapterType)
+	if adapterType == "" {
+		return nil, nil
+	}
+	affinityKind = firstNonEmpty(strings.TrimSpace(affinityKind), AffinityKindProviderSession)
 	return &RequestAffinity{
-		AdapterType: ProviderOpenAICodex,
-		Kind:        AffinityKindCodexSession,
+		AdapterType: adapterType,
+		Kind:        affinityKind,
 		KeyHash:     deriveSessionAffinityKey(secret, apiKeyID, canonical),
 	}, nil
 }

@@ -160,8 +160,10 @@ func (s *Server) anthropicGatewayAffinity(
 	routes []RouteSelection,
 ) (*RequestAffinity, error) {
 	identifier, scope := anthropicSessionIdentifier(headers, raw)
-	if scope == sessionScopeSession && routesContainAdapterType(routes, ProviderOpenAICodex) {
-		return resolveCodexBridgeAffinity(s.config.SecretKey, apiKeyID, codexBridgeProtocolAnthropic, identifier)
+	if scope == sessionScopeSession {
+		if adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity); adapterType != "" {
+			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, codexBridgeProtocolAnthropic, identifier)
+		}
 	}
 	return s.anthropicCacheLocalityAffinity(apiKeyID, model, headers, raw)
 }
@@ -173,8 +175,10 @@ func (s *Server) chatGatewayAffinity(
 	routes []RouteSelection,
 ) (*RequestAffinity, error) {
 	identifier, scope := chatCompletionSessionIdentifier(headers, request)
-	if scope == sessionScopeSession && routesContainAdapterType(routes, ProviderOpenAICodex) {
-		return resolveCodexBridgeAffinity(s.config.SecretKey, apiKeyID, codexBridgeProtocolChat, identifier)
+	if scope == sessionScopeSession {
+		if adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity); adapterType != "" {
+			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, codexBridgeProtocolChat, identifier)
+		}
 	}
 	return s.chatCacheLocalityAffinity(apiKeyID, headers, request)
 }
@@ -185,6 +189,16 @@ func resolveCodexBridgeAffinity(
 	protocol string,
 	identifier string,
 ) (*RequestAffinity, error) {
+	return resolveProviderBridgeAffinity(secret, apiKeyID, ProviderOpenAICodex, protocol, identifier)
+}
+
+func resolveProviderBridgeAffinity(
+	secret string,
+	apiKeyID string,
+	adapterType string,
+	protocol string,
+	identifier string,
+) (*RequestAffinity, error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
 		return nil, nil
@@ -192,9 +206,17 @@ func resolveCodexBridgeAffinity(
 	if err := validateSessionIdentifier(identifier, "session_id_invalid", "Session identifier"); err != nil {
 		return nil, err
 	}
+	adapterType = strings.TrimSpace(adapterType)
+	if adapterType == "" {
+		return nil, nil
+	}
+	kind := AffinityKindProviderSession
+	if adapterType == ProviderOpenAICodex {
+		kind = AffinityKindCodexSession
+	}
 	return &RequestAffinity{
-		AdapterType: ProviderOpenAICodex,
-		Kind:        AffinityKindCodexSession,
+		AdapterType: adapterType,
+		Kind:        kind,
 		KeyHash:     deriveSessionAffinityKey(secret, apiKeyID, protocol+"\x00"+identifier),
 	}, nil
 }

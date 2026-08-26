@@ -426,11 +426,12 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 }
 
 func (s *Server) geminiGatewayAffinity(apiKeyID string, headers http.Header, payload map[string]any, routes []RouteSelection) (*RequestAffinity, error) {
-	if !routesContainAdapterType(routes, ProviderOpenAICodex) {
+	adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity)
+	if adapterType == "" {
 		return nil, nil
 	}
 	identifier := geminiSessionIdentifier(headers, payload)
-	return resolveCodexBridgeAffinity(s.config.SecretKey, apiKeyID, codexBridgeProtocolGemini, identifier)
+	return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, codexBridgeProtocolGemini, identifier)
 }
 
 func geminiSessionIdentifier(headers http.Header, payload map[string]any) string {
