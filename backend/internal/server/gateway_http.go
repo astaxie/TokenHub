@@ -366,11 +366,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	var affinity *RequestAffinity
 	sessionAffinityApplied := false
 	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
-		kind := AffinityKindProviderSession
-		if adapterType == ProviderOpenAICodex {
-			kind = AffinityKindCodexSession
-		}
-		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, kind, r.Header, req)
+		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, providerSessionAffinityKind(adapterType), r.Header, req)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 			writeError(w, r, err)

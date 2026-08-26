@@ -691,11 +691,7 @@ func (s *Server) watchResponseJobCancellation(ctx context.Context, cancel contex
 
 func (s *Server) applyResponseJobAffinity(ctx context.Context, routed *RoutedCall, key APIKey, headers http.Header, request ResponsesRequest) error {
 	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
-		kind := AffinityKindProviderSession
-		if adapterType == ProviderOpenAICodex {
-			kind = AffinityKindCodexSession
-		}
-		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, kind, headers, request)
+		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, providerSessionAffinityKind(adapterType), headers, request)
 		if err != nil {
 			return err
 		}
