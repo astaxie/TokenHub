@@ -152,7 +152,12 @@ func (s *Server) serveAdminProviderResourcePatch(w http.ResponseWriter, r *http.
 	if headers == nil {
 		headers = current.Headers
 	}
-	if err := s.validateProviderHeaderSupport(provider.Type, headers); err != nil {
+	headers, err := providerHeadersWithRetainedSensitiveValues(headers, req.SensitiveHeaders, current.Headers, current.SensitiveHeaders)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if err := s.validateEffectiveProviderHeaders(provider.Type, provider.Headers, headers); err != nil {
 		writeError(w, r, err)
 		return
 	}

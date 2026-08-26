@@ -708,7 +708,7 @@ func (s *Server) serveAdminProviderPatch(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	provider.ID = providerID
-	if err := s.validateProviderHeaderSupport(provider.Type, provider.Headers); err != nil {
+	if err := s.validateProviderUpdateHeaders(providerID, current, provider); err != nil {
 		writeError(w, r, err)
 		return
 	}

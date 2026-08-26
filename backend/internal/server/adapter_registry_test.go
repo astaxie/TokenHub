@@ -196,6 +196,9 @@ func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T
 	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindProviderSession {
 		t.Fatalf("bare adapter session affinity kind = %q, want provider session", descriptor.ProviderPolicy.SessionAffinityKind)
 	}
+	if !descriptor.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("bare adapter registration should keep custom headers enabled by default")
+	}
 }
 
 func TestBuiltinProviderPluginsExposeAdapterCapabilities(t *testing.T) {

@@ -328,23 +328,88 @@ func validateProviderHeaderSupport(providerType string, headers map[string]strin
 	if len(headers) == 0 {
 		return nil
 	}
-	if !legacyProviderTypeSupportsHeaders(providerType) {
+	if !defaultProviderTypeSupportsHeaders(providerType) {
 		return providerHeadersUnsupportedError()
 	}
 	return nil
 }
 
-func legacyProviderTypeSupportsHeaders(providerType string) bool {
-	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case ProviderAzureOpenAI, ProviderOpenAICodex:
-		return false
-	default:
-		return true
-	}
+func defaultProviderTypeSupportsHeaders(_ string) bool {
+	return true
 }
 
 func (s *Server) validateProviderHeaderSupport(providerType string, headers map[string]string) error {
 	return validateProviderHeaderSupportWithRegistry(s.adapterRegistry, providerType, headers)
+}
+
+func (s *Server) validateEffectiveProviderHeaders(providerType string, providerHeaders, resourceHeaders map[string]string) error {
+	if err := validateProviderHeaderSupportWithRegistry(s.adapterRegistry, providerType, mergeProviderHeaders(providerHeaders, resourceHeaders)); err != nil {
+		return err
+	}
+	return validateMergedProviderHeaderLimits(providerHeaders, resourceHeaders)
+}
+
+func (s *Server) validateProviderUpdateHeaders(providerID string, current Provider, provider Provider) error {
+	providerHeaders, err := providerHeadersWithRetainedSensitiveValues(
+		provider.Headers,
+		provider.SensitiveHeaders,
+		current.Headers,
+		current.SensitiveHeaders,
+	)
+	if err != nil {
+		return err
+	}
+	if err := s.validateEffectiveProviderHeaders(provider.Type, providerHeaders, nil); err != nil {
+		return err
+	}
+	for _, listedResource := range s.store.ListProviderResources() {
+		if listedResource.ProviderID != providerID {
+			continue
+		}
+		resource, ok := s.store.GetProviderResource(listedResource.ID)
+		if !ok {
+			continue
+		}
+		if err := s.validateEffectiveProviderHeaders(provider.Type, providerHeaders, resource.Headers); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func providerHeadersWithRetainedSensitiveValues(headers map[string]string, sensitive []string, existingHeaders map[string]string, existingSensitive []string) (map[string]string, error) {
+	if headers == nil {
+		return nil, nil
+	}
+	retained := make(map[string]string, len(headers))
+	for name, value := range headers {
+		retained[name] = value
+	}
+	existingSet := sensitiveProviderHeaderSet(existingSensitive)
+	retainedSensitive := sensitive
+	if retainedSensitive == nil && existingHeaders != nil {
+		for name := range retained {
+			if existingSet[http.CanonicalHeaderKey(name)] {
+				retainedSensitive = append(retainedSensitive, name)
+			}
+		}
+	}
+	requestedSet := sensitiveProviderHeaderSet(retainedSensitive)
+	for name, value := range retained {
+		if value != "" && value != providerHeaderMask {
+			continue
+		}
+		canonicalName := http.CanonicalHeaderKey(name)
+		if !requestedSet[canonicalName] || !existingSet[canonicalName] {
+			return nil, NewHTTPError(http.StatusBadRequest, "provider_header_value_required", "Custom request header value cannot be empty")
+		}
+		oldValue, exists := providerHeaderValue(existingHeaders, canonicalName)
+		if !exists {
+			return nil, NewHTTPError(http.StatusBadRequest, "provider_header_value_required", "Custom request header value cannot be empty")
+		}
+		retained[name] = oldValue
+	}
+	return retained, nil
 }
 
 func validateProviderHeaderSupportWithRegistry(registry *AdapterRegistry, providerType string, headers map[string]string) error {

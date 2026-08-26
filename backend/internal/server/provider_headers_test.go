@@ -863,12 +863,12 @@ func TestLegacyUnsafeProviderHeadersAreReportedAndNotApplied(t *testing.T) {
 	}
 }
 
-func TestLegacyUnsupportedProviderHeadersAreReportedAndNotApplied(t *testing.T) {
+func TestLegacyProviderHeadersWithoutAdapterPolicyRemainUsable(t *testing.T) {
 	store := NewMemoryStore()
 	provider := Provider{
-		ID:      "prv_legacy_unsupported_headers",
-		Name:    "Legacy unsupported headers",
-		Type:    ProviderAzureOpenAI,
+		ID:      "prv_legacy_headers_without_policy",
+		Name:    "Legacy headers without policy",
+		Type:    "legacy_without_header_policy",
 		Status:  StatusActive,
 		Healthy: true,
 		Headers: map[string]string{"User-Agent": "legacy-client"},
@@ -876,11 +876,11 @@ func TestLegacyUnsupportedProviderHeadersAreReportedAndNotApplied(t *testing.T) 
 	if err := store.db.Create(&provider).Error; err != nil {
 		t.Fatal(err)
 	}
-	store.AddModel(Model{Name: "legacy-unsupported-header-model", Modality: "chat", Status: StatusActive})
+	store.AddModel(Model{Name: "legacy-header-policy-model", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{
-		ModelName:     "legacy-unsupported-header-model",
+		ModelName:     "legacy-header-policy-model",
 		ProviderID:    provider.ID,
-		ProviderModel: "legacy-unsupported-header-model",
+		ProviderModel: "legacy-header-policy-model",
 		Priority:      1,
 		Weight:        100,
 		Status:        StatusActive,
@@ -894,15 +894,15 @@ func TestLegacyUnsupportedProviderHeadersAreReportedAndNotApplied(t *testing.T) 
 			break
 		}
 	}
-	if len(found.HeaderValidationErrors) != 1 || found.HeaderValidationErrors[0] != "provider_headers_unsupported" {
+	if len(found.HeaderValidationErrors) != 0 {
 		t.Fatalf("legacy validation errors = %+v", found.HeaderValidationErrors)
 	}
-	candidates, err := store.SelectRouteCandidates("legacy-unsupported-header-model")
+	candidates, err := store.SelectRouteCandidates("legacy-header-policy-model")
 	if err != nil || len(candidates) != 1 {
 		t.Fatalf("route candidates = %+v, %v", candidates, err)
 	}
-	if len(candidates[0].Provider.Headers) != 0 {
-		t.Fatalf("unsupported legacy headers were applied: %+v", candidates[0].Provider.Headers)
+	if got := candidates[0].Provider.Headers["User-Agent"]; got != "legacy-client" {
+		t.Fatalf("legacy headers were not applied: %+v", candidates[0].Provider.Headers)
 	}
 }
 

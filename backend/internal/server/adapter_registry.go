@@ -189,7 +189,7 @@ func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType stri
 	if policyer, ok := resolveTypedAdapter[ProviderHeaderPolicyer](registry, providerType); ok {
 		return policyer.SupportsProviderHeaders()
 	}
-	return legacyProviderTypeSupportsHeaders(providerType)
+	return defaultProviderTypeSupportsHeaders(providerType)
 }
 
 func adapterRequiresRouteResource(registry *AdapterRegistry, providerType string) bool {
