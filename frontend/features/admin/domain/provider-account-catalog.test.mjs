@@ -32,6 +32,30 @@ test("account Provider catalog options come from plugin resource type capabiliti
   assert.deepEqual(directProviderCatalogOptions(catalog, accountCatalog).map((entry) => entry.id), ["openai"]);
 });
 
+test("account Provider catalog options include resource-scoped credential policy", () => {
+  const catalog = [
+    { id: "gm", name: "GM", display_name: "GM Subscription", type: "gm_subscription", models_count: 0, source: "plugin" },
+    { id: "openai", name: "OpenAI", display_name: "OpenAI", type: "openai", models_count: 0, source: "built_in" },
+  ];
+  const plugins = [{
+    id: "tokenhub.provider.gm",
+    name: "GM",
+    version: "1.0.0",
+    source: "marketplace",
+    kinds: ["provider"],
+    placements: ["gateway_chain"],
+    capabilities: [
+      { kind: "provider_type", name: "gm_subscription" },
+      { kind: "provider_policy", name: "credentials_scope", subject: "gm_subscription", value: "resource" },
+    ],
+  }];
+
+  const accountCatalog = accountProviderCatalogOptionsFromPlugins(catalog, plugins);
+
+  assert.deepEqual(accountCatalog.map((entry) => entry.id), ["gm"]);
+  assert.deepEqual(directProviderCatalogOptions(catalog, accountCatalog).map((entry) => entry.id), ["openai"]);
+});
+
 test("account Provider catalog options are empty without plugin resource type capabilities", () => {
   assert.deepEqual(accountProviderCatalogOptionsFromPlugins([], []).map((entry) => entry.id), []);
 

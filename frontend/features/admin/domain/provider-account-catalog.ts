@@ -5,9 +5,10 @@ export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalo
   const accountProviderTypes = new Set<string>();
   for (const plugin of plugins) {
     for (const capability of plugin.capabilities) {
-      if (capability.kind !== providerResourceTypeCapabilityKind) continue;
-      if (!isProviderAccountResourceType(capability.name)) continue;
-      if (capability.subject?.trim()) accountProviderTypes.add(capability.subject.trim());
+      const subject = capability.subject?.trim();
+      if (!subject) continue;
+      if (capability.kind === providerResourceTypeCapabilityKind && isProviderAccountResourceType(capability.name)) accountProviderTypes.add(subject);
+      if (capability.kind === "provider_policy" && capability.name === "credentials_scope" && capability.value === "resource") accountProviderTypes.add(subject);
     }
   }
   const candidates = catalog.filter((entry) => accountProviderTypes.has(entry.type));
