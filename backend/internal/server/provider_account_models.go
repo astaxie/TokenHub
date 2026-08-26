@@ -409,7 +409,7 @@ func firstNonEmptyModelETag(models []ProviderCatalogModel) string {
 	return ""
 }
 
-func codexResourceCachedModels(resource *ProviderResource) ([]string, time.Time, bool) {
+func providerResourceCachedModels(resource *ProviderResource) ([]string, time.Time, bool) {
 	if resource == nil || resource.Options == nil {
 		return nil, time.Time{}, false
 	}
@@ -428,6 +428,10 @@ func codexResourceCachedModels(resource *ProviderResource) ([]string, time.Time,
 	return models, fetchedAt, true
 }
 
+func codexResourceCachedModels(resource *ProviderResource) ([]string, time.Time, bool) {
+	return providerResourceCachedModels(resource)
+}
+
 func codexModelInList(modelName string, models []string) bool {
 	lookupName := normalizeModelLookupName(modelName)
 	for _, candidate := range models {
@@ -439,19 +443,29 @@ func codexModelInList(modelName string, models []string) bool {
 }
 
 func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, routes []RouteSelection) ([]RouteSelection, error) {
+	return s.filterProviderAccountRoutesByModel(modelName, routes)
+}
+
+func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []RouteSelection) ([]RouteSelection, error) {
 	filtered := make([]RouteSelection, 0, len(routes))
+	filteredByAccountModels := false
+	codexOnly := true
 
 	for _, route := range routes {
-		if route.Resource == nil || !isOpenAIAccountResource(route.Resource.ResourceType) {
+		if route.Resource == nil || !isProviderAccountResource(route.Resource.ResourceType) {
 			filtered = append(filtered, route)
 			continue
 		}
-		cachedModels, _, cached := codexResourceCachedModels(route.Resource)
+		cachedModels, _, cached := providerResourceCachedModels(route.Resource)
 		if !cached {
 			// Model discovery is a control-plane operation. If no snapshot exists
 			// yet, keep the route and let the upstream return a precise result.
 			filtered = append(filtered, route)
 			continue
+		}
+		filteredByAccountModels = true
+		if !isOpenAIAccountResource(route.Resource.ResourceType) {
+			codexOnly = false
 		}
 		upstreamModel := firstNonEmpty(route.ProviderModel, modelName)
 		if codexModelInList(upstreamModel, cachedModels) {
@@ -462,6 +476,13 @@ func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, r
 	if len(filtered) > 0 {
 		return filtered, nil
 	}
+	if filteredByAccountModels && !codexOnly {
+		return nil, NewHTTPError(
+			http.StatusServiceUnavailable,
+			"provider_resource_model_unavailable",
+			fmt.Sprintf("No connected provider account supports model %q", strings.TrimSpace(modelName)),
+		)
+	}
 	return nil, NewHTTPError(
 		http.StatusServiceUnavailable,
 		"codex_model_unavailable",
@@ -470,11 +491,15 @@ func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, r
 }
 
 func (s *Server) removeCodexResourceModel(resourceID string, modelName string) {
+	s.removeProviderResourceModel(resourceID, modelName)
+}
+
+func (s *Server) removeProviderResourceModel(resourceID string, modelName string) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
 		return
 	}
-	models, _, cached := codexResourceCachedModels(&resource)
+	models, _, cached := providerResourceCachedModels(&resource)
 	if !cached {
 		return
 	}

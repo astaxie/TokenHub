@@ -491,7 +491,7 @@ func (s *Server) prepareAdmittedRoutedCall(ctx context.Context, call CallContext
 		err = s.annotateRoutingPolicyForCandidateError(&call, err)
 		return RoutedCall{Call: call}, err
 	}
-	routes, err = s.filterCodexRoutesByModel(ctx, model, routes)
+	routes, err = s.filterProviderAccountRoutesByModel(model, routes)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&call, err)
 		return RoutedCall{Call: call}, err
@@ -623,7 +623,7 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		finishRoutingFailure(err)
 		return
 	}
-	routes, err = s.filterCodexRoutesByModel(r.Context(), req.Model, routes)
+	routes, err = s.filterProviderAccountRoutesByModel(req.Model, routes)
 	if err != nil {
 		finishRoutingFailure(err)
 		return

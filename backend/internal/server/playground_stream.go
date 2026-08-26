@@ -456,7 +456,7 @@ func (s *Server) preparePlaygroundRoutedCall(ctx context.Context, req ChatComple
 		err = s.annotateRoutingPolicyForCandidateError(&routed.Call, err)
 		return routed, err
 	}
-	routes, err = s.filterCodexRoutesByModel(ctx, req.Model, routes)
+	routes, err = s.filterProviderAccountRoutesByModel(req.Model, routes)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&routed.Call, err)
 		return routed, err

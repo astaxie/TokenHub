@@ -211,6 +211,60 @@ func TestCodexRouteFilteringUsesPerAccountModels(t *testing.T) {
 	}
 }
 
+func TestProviderAccountRouteFilteringUsesPluginAccountModels(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_kimi_pool",
+		Name:    "Kimi Pool",
+		Type:    "kimi_subscription",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	solResource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_sol",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Sol Account",
+		ResourceType: "kimi_subscription_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-sol", "kimi-luna"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_luna",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Luna Account",
+		ResourceType: "kimi_subscription_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-luna"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "kimi-sol", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID:            "route_kimi_sol",
+		ModelName:     "kimi-sol",
+		ProviderID:    provider.ID,
+		ProviderModel: "kimi-sol",
+		Status:        StatusActive,
+	})
+
+	routes, err := store.SelectRouteCandidates("kimi-sol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	filtered, err := New(store).filterProviderAccountRoutesByModel("kimi-sol", routes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || routeResourceID(filtered[0]) != solResource.ID {
+		t.Fatalf("expected only Sol-capable plugin account, got %+v", filtered)
+	}
+}
+
 func TestCodexRouteFilteringUsesPersistedAccountCatalog(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{

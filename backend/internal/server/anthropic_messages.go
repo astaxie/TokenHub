@@ -268,7 +268,7 @@ func (s *Server) prepareAnthropicRoutedCall(w http.ResponseWriter, r *http.Reque
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
-	routes, err = s.filterCodexRoutesByModel(r.Context(), req.Model, routes)
+	routes, err = s.filterProviderAccountRoutesByModel(req.Model, routes)
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
