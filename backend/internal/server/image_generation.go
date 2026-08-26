@@ -1239,10 +1239,7 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 		if len(filtered) == 0 {
 			return nil, ErrProviderMissing
 		}
-		if profile.ProviderType != ProviderOpenAICodex {
-			filtered = s.routesWithAdapterCapability(filtered, AdapterCapabilityImageGenerate)
-		}
-		return filtered, nil
+		return s.routesWithAdapterCapability(filtered, AdapterCapabilityImageGenerate), nil
 	}
 	routes, err := s.store.SelectRouteCandidates(openAIImageModelName)
 	if err != nil {
