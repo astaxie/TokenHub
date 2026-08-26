@@ -97,7 +97,7 @@ describe("ProviderAPIQuickConnect", () => {
     expect(screen.getByText("Connect a Kimi account from the plugin marketplace.")).toBeInTheDocument();
     expect(screen.getByText(/Zhipu Plugin · 3/)).toBeInTheDocument();
     expect(screen.queryByText("Other Subscription")).not.toBeInTheDocument();
-    expect(screen.getByText(/OpenAI · 2/)).toBeInTheDocument();
+    expect(screen.getByText(/OpenAI 兼容/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Kimi Subscription/ }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "plugin-kimi", type: "kimi_subscription" }));

@@ -88,7 +88,10 @@ function schemaString(value: unknown) {
 }
 
 function providerCatalogTypeLabel(entry: ProviderCatalogEntry) {
-  return String(entry.display_name || entry.name || "").trim() || providerTypeLabel(entry.type);
+  const metadataLabel = String(entry.display_name || entry.name || "").trim();
+  const pluginCatalogEntry = String(entry.source || "").startsWith("plugin");
+  if ((pluginCatalogEntry || !legacyProviderTypeOptions.includes(entry.type)) && metadataLabel) return metadataLabel;
+  return providerTypeLabel(entry.type);
 }
 
 export function ProviderAPIQuickConnect({
