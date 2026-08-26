@@ -146,6 +146,7 @@ func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 		},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 		},
 	}, AdapterRegistration{
 		Type:    providerType,
@@ -155,8 +156,9 @@ func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 	}
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
-		"name": "Policy Subscription",
-		"type": providerType,
+		"name":    "Policy Subscription",
+		"type":    providerType,
+		"api_key": "provider-level-secret",
 	}, "plugin-catalog-admin")
 	if response.Code != http.StatusCreated {
 		t.Fatalf("create plugin provider: expected 201, got %d: %s", response.Code, response.Body)
@@ -168,12 +170,18 @@ func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 	if payload.Provider.Options[providerRouteRequiresResourceOption] != "true" {
 		t.Fatalf("provider route resource policy options = %+v", payload.Provider.Options)
 	}
+	if payload.Provider.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource {
+		t.Fatalf("provider credentials scope options = %+v", payload.Provider.Options)
+	}
 	stored, ok := store.GetProvider(payload.Provider.ID)
 	if !ok {
 		t.Fatal("created provider was not persisted")
 	}
 	if !providerRouteRequiresResource(stored) {
 		t.Fatalf("stored provider policy = %+v", stored.Options)
+	}
+	if !providerUsesResourceCredentials(stored) || stored.APIKey != "" {
+		t.Fatalf("stored provider credentials policy/api key = options:%+v api_key:%q", stored.Options, stored.APIKey)
 	}
 }
 

@@ -33,7 +33,7 @@ Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic
 
 **Plugin Extensions** では、組み込みおよびインストール済みプラグイン、ゲートウェイチェーン Hook、Admin UI 貢献、管理アクション、バックグラウンドジョブを確認できます。Marketplace またはローカルパッケージからのインストールは checksum で検証され、`TOKENHUB_PLUGIN_DIR` に書き込まれ、バックエンド再起動後に有効になります。組み込み以外のプラグインは同じ画面で有効化、無効化、更新、アンインストールできます。
 
-Provider プラグインは manifest でルーティングポリシーを宣言できます。サブスクリプション/アカウント型 Provider では `capabilities.provider.route_requires_resource: true` を設定すると、各ルート試行で利用可能な Provider Resource の選択が必須になります。Core は Provider 作成時にこのポリシーを永続化し、組み込みサブスクリプション Provider と同じ、欠落、無効化、不健康、クールダウン、リソースグループの各チェックを適用します。
+Provider プラグインは manifest でルーティングと認証情報のポリシーを宣言できます。上流シークレットを Provider 自体ではなく Provider Resource に置くサブスクリプション/アカウント型 Provider では、`capabilities.provider.credentials_scope: resource` を設定します。各ルート試行で利用可能な Provider Resource の選択を必須にする場合は `capabilities.provider.route_requires_resource: true` を設定します。Core は Provider 作成時にこれらのポリシーを永続化し、組み込みサブスクリプション Provider と同じ、欠落、無効化、不健康、クールダウン、リソースグループの各チェックを適用します。
 
 プラグインが宣言したバックグラウンドジョブは、バックグラウンドジョブマニフェスト表から手動実行できます。手動実行はスケジュール実行と同じ Core runner を使い、入力 Schema 検証、再試行設定、タイムアウト処理、同時実行制限、最新実行記録、結果のサニタイズ、管理者監査イベントを適用します。TokenHub は実行結果をコンソールへ返す前に、access token、refresh token、API key、パスワード、cookie、秘密鍵などの機密らしいフィールドをマスクします。
 

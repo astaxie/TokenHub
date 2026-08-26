@@ -5,6 +5,7 @@ import pluginmeta "tokenhub/backend/internal/plugin"
 type builtinProviderAdapter struct {
 	providerType          string
 	adapter               any
+	credentialsScope      string
 	routeRequiresResource bool
 	resourceTypes         []pluginmeta.ManifestProviderResourceType
 	capabilities          []AdapterCapability
@@ -62,6 +63,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
 		providerType:          ProviderOpenAICodex,
 		adapter:               codexSubscription,
+		credentialsScope:      providerCredentialsScopeResource,
 		routeRequiresResource: true,
 		resourceTypes: []pluginmeta.ManifestProviderResourceType{{
 			Type:        ProviderResourceOpenAISubscription,
@@ -155,6 +157,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "route_requires_resource",
 			Subject: adapter.providerType,
 			Value:   "true",
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.credentialsScope != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "credentials_scope",
+			Subject: adapter.providerType,
+			Value:   adapter.credentialsScope,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

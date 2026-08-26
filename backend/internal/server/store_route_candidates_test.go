@@ -560,6 +560,27 @@ func TestRouteCandidatesRequireResourceFromProviderPolicy(t *testing.T) {
 	}
 }
 
+func TestProviderCredentialScopeRejectsProviderLevelAPIKey(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_resource_credentials", Name: "Resource Credentials",
+		Type: "subscription_plugin", APIKey: "create-secret", Status: StatusActive, Healthy: true,
+		Options: map[string]string{providerCredentialsScopeOption: providerCredentialsScopeResource},
+	})
+	if stored, ok := store.GetProvider(provider.ID); !ok || stored.APIKey != "" {
+		t.Fatalf("resource credentials provider stored api key on create: ok=%v provider=%+v", ok, stored)
+	}
+
+	_, err := store.UpdateProvider(provider.ID, Provider{
+		APIKey:  "update-secret",
+		Options: map[string]string{providerCredentialsScopeOption: providerCredentialsScopeResource},
+		Healthy: true,
+	})
+	if httpErr := AsHTTPError(err); httpErr == nil || httpErr.Code != "provider_adapter_credential_conflict" {
+		t.Fatalf("resource credentials update error = %+v", httpErr)
+	}
+}
+
 func TestPluginAccountGroupedResourceMissingSurvivesBatchLookupFallback(t *testing.T) {
 	store := NewMemoryStore()
 	modelName := "plugin-account-grouped-resource-missing"

@@ -33,7 +33,7 @@ Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上�
 
 打开「插件扩展」可以查看内置与已安装插件、链路 Hook、Admin UI 贡献、管理动作和后台任务。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并在后端重启后生效。非内置插件可以在同一页面启用、禁用、更新或卸载。
 
-Provider 插件可以在 manifest 中声明路由策略。对订阅/账号型 Provider，设置 `capabilities.provider.route_requires_resource: true` 后，每次路由尝试都必须选中可用的 Provider Resource；Core 会在创建 Provider 时持久化该策略，并应用与内置订阅 Provider 一致的缺失、禁用、不健康、冷却和资源组检查。
+Provider 插件可以在 manifest 中声明路由和凭据策略。对上游密钥必须放在 Provider Resource、而不是 Provider 自身上的订阅/账号型 Provider，设置 `capabilities.provider.credentials_scope: resource`。如果每次路由尝试都必须选中可用的 Provider Resource，则设置 `capabilities.provider.route_requires_resource: true`；Core 会在创建 Provider 时持久化这些策略，并应用与内置订阅 Provider 一致的缺失、禁用、不健康、冷却和资源组检查。
 
 插件声明的后台任务可以在后台任务清单中手动运行。手动运行会使用与定时任务相同的 Core runner，包括输入 Schema 校验、重试设置、超时处理、并发限制、最近运行记录、结果脱敏和管理员审计事件。TokenHub 在把运行结果返回给控制台前，会遮蔽 access token、refresh token、API key、密码、cookie、私钥等疑似敏感字段。
 

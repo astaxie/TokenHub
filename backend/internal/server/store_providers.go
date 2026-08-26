@@ -31,8 +31,10 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 	if provider.CreatedAt.IsZero() {
 		provider.CreatedAt = time.Now().UTC()
 	}
-	if provider.Type == ProviderOpenAICodex {
+	if providerUsesResourceCredentials(provider) {
 		provider.APIKey = ""
+	}
+	if provider.Type == ProviderOpenAICodex {
 		if codexProviderBaseURLNeedsNormalization(provider.BaseURL) {
 			provider.BaseURL = openAICodexBaseURL
 		}
@@ -147,8 +149,8 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 	if patch.ClearAPIKey {
 		provider.APIKey = ""
 	} else if patch.APIKey != "" {
-		if firstNonEmpty(patch.Type, provider.Type) == ProviderOpenAICodex {
-			return Provider{}, NewHTTPError(409, "provider_adapter_credential_conflict", "Codex Subscription credentials must be stored on account resources")
+		if providerUsesResourceCredentials(patchedProviderPolicy(provider, patch)) {
+			return Provider{}, NewHTTPError(409, "provider_adapter_credential_conflict", "Provider credentials must be stored on account resources")
 		}
 		provider.APIKey = s.encryptSecret(patch.APIKey)
 	}

@@ -69,6 +69,7 @@ type ManifestProvider struct {
 	RouteProtocols        []string                `yaml:"route_protocols"`
 	SupportsCustomHeaders *bool                   `yaml:"supports_custom_headers"`
 	RouteRequiresResource *bool                   `yaml:"route_requires_resource"`
+	CredentialsScope      string                  `yaml:"credentials_scope"`
 	Catalog               ManifestProviderCatalog `yaml:"catalog"`
 }
 
@@ -236,6 +237,9 @@ func (m Manifest) Validate() error {
 	if err := m.validateProviderCatalog(); err != nil {
 		return err
 	}
+	if err := m.validateProviderPolicy(); err != nil {
+		return err
+	}
 	for _, placement := range m.Placement {
 		if !validPlacement(placement) {
 			return fmt.Errorf("unsupported plugin placement %q", placement)
@@ -328,6 +332,23 @@ func (m Manifest) Validate() error {
 	return nil
 }
 
+func (m Manifest) validateProviderPolicy() error {
+	scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope)
+	if scope == "" {
+		return nil
+	}
+	if scope != "provider" && scope != "resource" {
+		return fmt.Errorf("provider credentials_scope must be provider or resource")
+	}
+	if len(m.Capabilities.ProviderTypes) == 0 {
+		return fmt.Errorf("provider credentials_scope requires at least one provider type")
+	}
+	if !manifestHasKind(m.Kinds, KindProvider) {
+		return fmt.Errorf("provider credentials_scope requires provider kind")
+	}
+	return nil
+}
+
 func (m Manifest) validateProviderCatalog() error {
 	if !m.Capabilities.Provider.Catalog.Configured() {
 		return nil
@@ -387,6 +408,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "route_requires_resource",
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.RouteRequiresResource),
+			})
+		}
+		if scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope); scope != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "credentials_scope",
+				Subject: providerType,
+				Value:   scope,
 			})
 		}
 		for _, protocol := range m.Capabilities.Provider.RouteProtocols {

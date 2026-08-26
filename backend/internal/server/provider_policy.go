@@ -2,7 +2,12 @@ package server
 
 import "strings"
 
-const providerRouteRequiresResourceOption = "route_requires_resource"
+const (
+	providerCredentialsScopeOption      = "credentials_scope"
+	providerCredentialsScopeProvider    = "provider"
+	providerCredentialsScopeResource    = "resource"
+	providerRouteRequiresResourceOption = "route_requires_resource"
+)
 
 func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor) {
 	if provider == nil {
@@ -16,6 +21,12 @@ func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor)
 	} else {
 		delete(provider.Options, providerRouteRequiresResourceOption)
 	}
+	switch descriptor.ProviderPolicy.CredentialsScope {
+	case providerCredentialsScopeResource:
+		provider.Options[providerCredentialsScopeOption] = providerCredentialsScopeResource
+	case providerCredentialsScopeProvider:
+		delete(provider.Options, providerCredentialsScopeOption)
+	}
 }
 
 func providerRouteRequiresResource(provider Provider) bool {
@@ -23,4 +34,19 @@ func providerRouteRequiresResource(provider Provider) bool {
 		return strings.EqualFold(strings.TrimSpace(value), "true")
 	}
 	return provider.Type == ProviderOpenAICodex
+}
+
+func providerUsesResourceCredentials(provider Provider) bool {
+	if value, ok := provider.Options[providerCredentialsScopeOption]; ok {
+		return strings.EqualFold(strings.TrimSpace(value), providerCredentialsScopeResource)
+	}
+	return provider.Type == ProviderOpenAICodex
+}
+
+func patchedProviderPolicy(current Provider, patch Provider) Provider {
+	current.Type = firstNonEmpty(patch.Type, current.Type)
+	if patch.Options != nil {
+		current.Options = patch.Options
+	}
+	return current
 }

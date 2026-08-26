@@ -40,6 +40,7 @@ capabilities:
       - codex/responses
     supports_custom_headers: false
     route_requires_resource: true
+    credentials_scope: resource
   gateway:
     - responses
     - responses_stream
@@ -98,8 +99,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 11 {
-		t.Fatalf("descriptor capabilities = %v, want 11 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 12 {
+		t.Fatalf("descriptor capabilities = %v, want 12 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -109,6 +110,9 @@ permissions:
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_requires_resource", Subject: "openai_codex", Value: "true"}) {
 		t.Fatalf("descriptor is missing provider route resource policy capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "credentials_scope", Subject: "openai_codex", Value: "resource"}) {
+		t.Fatalf("descriptor is missing provider credentials scope policy capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_protocol", Subject: "openai_codex", Value: "codex/responses"}) {
 		t.Fatalf("descriptor is missing provider route protocol capability: %+v", descriptor.Capabilities)
@@ -121,6 +125,9 @@ permissions:
 	}
 	if manifest.Capabilities.Provider.RouteRequiresResource == nil || !*manifest.Capabilities.Provider.RouteRequiresResource {
 		t.Fatalf("provider route resource policy = %+v", manifest.Capabilities.Provider.RouteRequiresResource)
+	}
+	if manifest.Capabilities.Provider.CredentialsScope != "resource" {
+		t.Fatalf("provider credentials scope = %q", manifest.Capabilities.Provider.CredentialsScope)
 	}
 	hooks := manifest.GatewayHooks()
 	if len(hooks) != 1 {
@@ -267,6 +274,29 @@ capabilities:
 `))
 	if err == nil {
 		t.Fatal("manifest with missing provider resource type parsed successfully")
+	}
+}
+
+func TestParseManifestRejectsInvalidProviderCredentialsScope(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.bad-credentials-scope
+name: Bad Credentials Scope
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - bad_provider
+  provider:
+    credentials_scope: tenant
+`))
+	if err == nil {
+		t.Fatal("manifest with invalid provider credentials scope parsed successfully")
 	}
 }
 

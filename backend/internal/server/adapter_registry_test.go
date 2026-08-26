@@ -151,6 +151,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !codex.ProviderPolicy.RouteRequiresResource {
 		t.Fatal("OpenAI Codex should require route resources through provider policy")
 	}
+	if codex.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
+		t.Fatalf("OpenAI Codex credentials scope = %q, want resource", codex.ProviderPolicy.CredentialsScope)
+	}
 
 	compatible, ok := server.adapterRegistry.Describe(ProviderOpenAICompatible)
 	if !ok {
@@ -158,6 +161,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	}
 	if compatible.ProviderPolicy.RouteRequiresResource {
 		t.Fatal("OpenAI-compatible should keep route resources optional")
+	}
+	if compatible.ProviderPolicy.CredentialsScope != providerCredentialsScopeProvider {
+		t.Fatalf("OpenAI-compatible credentials scope = %q, want provider", compatible.ProviderPolicy.CredentialsScope)
 	}
 	if !compatible.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("OpenAI-compatible should support custom headers")
@@ -204,6 +210,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 		},
 	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
 		t.Fatalf("register plugin adapter: %v", err)
@@ -215,6 +222,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if !descriptor.ProviderPolicy.RouteRequiresResource {
 		t.Fatalf("plugin provider policy = %+v, want route resource required", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
+		t.Fatalf("plugin provider credentials scope = %+v, want resource", descriptor.ProviderPolicy)
 	}
 }
 
@@ -236,6 +246,9 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	}
 	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "route_requires_resource", Subject: ProviderOpenAICodex, Value: "true"}) {
 		t.Fatalf("Codex provider plugin route resource policy is missing: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "credentials_scope", Subject: ProviderOpenAICodex, Value: providerCredentialsScopeResource}) {
+		t.Fatalf("Codex provider plugin credentials scope policy is missing: %+v", descriptor.Capabilities)
 	}
 	var resourceType pluginmeta.ManifestProviderResourceType
 	if err := json.Unmarshal([]byte(value), &resourceType); err != nil {
