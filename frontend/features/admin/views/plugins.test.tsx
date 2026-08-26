@@ -99,6 +99,37 @@ describe("PluginsView", () => {
     await waitFor(() => expect(screen.getByText("tokenhub.marketplace.kimi · 插件安装完成，重启后生效")).toBeInTheDocument());
   });
 
+  it("updates an installed plugin package through the admin endpoint", async () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.marketplace.kimi",
+      name: "Marketplace Kimi",
+      version: "1.0.0",
+      source: "marketplace",
+      status: "enabled",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+      distribution: {
+        download_url: "https://plugins.example/kimi.zip",
+        checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      },
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { plugin: { version: "1.1.0" }, restart_required: true },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.marketplace.kimi/update");
+    expect(init.method).toBe("POST");
+    await waitFor(() => expect(screen.getByText("1.1.0 · 插件更新完成，重启后生效")).toBeInTheDocument());
+  });
+
   it("renders background job descriptors", () => {
     const data = emptyData();
     data.pluginBackgroundJobs = [{

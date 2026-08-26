@@ -114,6 +114,23 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 	return packages, nil
 }
 
+func (r Runtime) DescribeInstalledPackage(pluginID string) (Package, bool, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return Package{}, false, nil
+	}
+	packages, err := r.Discover()
+	if err != nil {
+		return Package{}, false, err
+	}
+	for _, pkg := range packages {
+		if pkg.Manifest.ID == pluginID {
+			return pkg, true, nil
+		}
+	}
+	return Package{}, false, nil
+}
+
 func descriptorWithAdminUIContributions(descriptor Descriptor, adminUI AdminUIManifest) Descriptor {
 	for _, contribution := range adminUI.Contributions {
 		if strings.TrimSpace(string(contribution.Slot)) == "" || strings.TrimSpace(contribution.ID) == "" {

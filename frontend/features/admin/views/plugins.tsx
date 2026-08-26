@@ -29,10 +29,17 @@ type PluginInstallDraft = {
   result: string;
 };
 
+type PluginUpdateDraft = {
+  busy: boolean;
+  error: string;
+  result: string;
+};
+
 export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const plugins = data.plugins;
   const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
   const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
+  const [pluginUpdateDrafts, setPluginUpdateDrafts] = useState<Record<string, PluginUpdateDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
   const providerCapabilities = plugins.reduce(
     (count, plugin) => count + plugin.capabilities.filter((capability) => capability.kind === "provider").length,
@@ -49,6 +56,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
+  const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
 
   function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
     const key = pluginActionKey(action.plugin_id, action.action_id);
@@ -140,6 +148,37 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
         busy: false,
         error: reason instanceof Error ? reason.message : tx("安装插件失败"),
         result: "",
+      }));
+    }
+  }
+
+  async function updatePlugin(plugin: PluginDescriptor) {
+    setPluginUpdateDrafts((drafts) => ({
+      ...drafts,
+      [plugin.id]: { ...(drafts[plugin.id] ?? { busy: false, error: "", result: "" }), busy: true, error: "", result: "" },
+    }));
+    try {
+      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(plugin.id)}/update`, { method: "POST" });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("更新插件包")));
+      const payload = await response.json() as { data?: { plugin?: { version?: string; name?: string }; restart_required?: boolean } };
+      const label = payload.data?.plugin?.version ?? tx("插件");
+      setPluginUpdateDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          busy: false,
+          error: "",
+          result: `${label} · ${payload.data?.restart_required ? tx("插件更新完成，重启后生效") : tx("插件更新完成")}`,
+        },
+      }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setPluginUpdateDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          busy: false,
+          error: reason instanceof Error ? reason.message : tx("更新插件失败"),
+          result: "",
+        },
       }));
     }
   }
@@ -254,7 +293,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                       <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
                       <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
                       <td>
-                        <DistributionMetadata plugin={plugin} />
+                        <DistributionMetadata plugin={plugin} draft={pluginUpdateDraft(plugin)} onUpdate={updatePlugin} />
                       </td>
                       <td>
                         <CapabilityList plugin={plugin} />
@@ -619,7 +658,15 @@ function CapabilityList({ plugin }: { plugin: PluginDescriptor }) {
   );
 }
 
-function DistributionMetadata({ plugin }: { plugin: PluginDescriptor }) {
+function DistributionMetadata({
+  plugin,
+  draft,
+  onUpdate,
+}: {
+  plugin: PluginDescriptor;
+  draft: PluginUpdateDraft;
+  onUpdate: (plugin: PluginDescriptor) => void;
+}) {
   const distribution = plugin.distribution;
   if (!distribution) return <span className="muted">{tx("未声明")}</span>;
   const candidates: Array<{ href?: string; label: string; icon: ReactNode }> = [
@@ -644,6 +691,14 @@ function DistributionMetadata({ plugin }: { plugin: PluginDescriptor }) {
       ) : (
         <span className="muted">{tx("无下载来源")}</span>
       )}
+      {distribution.download_url && plugin.source !== "built_in" ? (
+        <button className="secondary-button compact-button" disabled={draft.busy} onClick={() => onUpdate(plugin)} type="button">
+          <Download size={13} />
+          <span>{tx(draft.busy ? "更新中" : "更新")}</span>
+        </button>
+      ) : null}
+      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
+      {draft.result ? <span>{draft.result}</span> : null}
       <span>{distribution.license ? `${tx("许可证")} ${distribution.license}` : tx("未声明许可证")}</span>
       {distribution.checksum_sha256 ? <span>{tx("SHA-256")} {shortChecksum(distribution.checksum_sha256)}</span> : null}
     </div>

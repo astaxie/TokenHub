@@ -63,7 +63,7 @@ func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Req
 		writeError(w, r, err)
 		return
 	}
-	pkg, err := pluginmeta.NewRuntime(s.config.PluginDir).InstallZipArchive(archive, pluginmeta.InstallOptions{
+	pkg, err := s.installPluginArchive(archive, pluginmeta.InstallOptions{
 		ChecksumSHA256: checksum,
 		Replace:        payload.Replace,
 		InitialState:   state,
@@ -78,6 +78,57 @@ func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Req
 		Plugin:          descriptor,
 		RestartRequired: true,
 		Replaced:        payload.Replace,
+	}})
+}
+
+func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	pluginID := strings.TrimSpace(r.PathValue("plugin_id"))
+	if pluginID == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	descriptor, ok := s.pluginRegistry.Describe(pluginID)
+	if !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	distribution := descriptor.Distribution
+	if distribution == nil || strings.TrimSpace(distribution.DownloadURL) == "" || strings.TrimSpace(distribution.ChecksumSHA256) == "" {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "plugin_distribution_unavailable", "Plugin distribution metadata is unavailable"))
+		return
+	}
+	archive, err := s.downloadPluginInstallArchive(r, distribution.DownloadURL)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	current, _, err := pluginmeta.NewRuntime(s.config.PluginDir).DescribeInstalledPackage(pluginID)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_install_failed", "Plugin package could not be inspected"))
+		return
+	}
+	if current.Manifest.ID == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	pkg, err := s.installPluginArchive(archive, pluginmeta.InstallOptions{
+		ChecksumSHA256: distribution.ChecksumSHA256,
+		Replace:        true,
+		InitialState:   current.State,
+	})
+	if err != nil {
+		writeError(w, r, pluginInstallHTTPError(err))
+		return
+	}
+	updated := pkg.Manifest.Descriptor()
+	updated.Status = pkg.State.Status
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginInstallResponse{
+		Plugin:          updated,
+		RestartRequired: true,
+		Replaced:        true,
 	}})
 }
 
@@ -166,6 +217,10 @@ func (s *Server) downloadPluginInstallArchive(r *http.Request, downloadURL strin
 		return nil, NewHTTPError(http.StatusBadRequest, "plugin_archive_too_large", "Plugin package archive is too large")
 	}
 	return data, nil
+}
+
+func (s *Server) installPluginArchive(archive []byte, options pluginmeta.InstallOptions) (pluginmeta.Package, error) {
+	return pluginmeta.NewRuntime(s.config.PluginDir).InstallZipArchive(archive, options)
 }
 
 func pluginInstallHTTPError(err error) error {

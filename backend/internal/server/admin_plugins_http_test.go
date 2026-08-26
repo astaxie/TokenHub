@@ -92,6 +92,61 @@ func TestAdminPluginInstallPostRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestAdminPluginUpdatePostDownloadsAndReplacesPackage(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "kimi")
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.kimi", "Marketplace Kimi", "1.1.0"),
+	})
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer upstream.Close()
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.marketplace.kimi
+name: Marketplace Kimi
+version: 1.0.0
+distribution:
+  download_url: `+upstream.URL+`/kimi-1.1.0.zip
+  checksum_sha256: `+adminSHA256Hex(archive)+`
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	if err := os.WriteFile(filepath.Join(localPluginDir, "plugin.state.json"), []byte(`{"status":"disabled","reason":"operator disabled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	server.pluginInstallClient = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.marketplace.kimi/update", map[string]any{}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST /api/admin/plugins/{id}/update: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginInstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if body.Data.Plugin.Version != "1.1.0" || body.Data.Plugin.Status != pluginmeta.StatusDisabled || !body.Data.RestartRequired || !body.Data.Replaced {
+		t.Fatalf("update response = %+v, want replaced disabled updated package", body.Data)
+	}
+	stateData, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
+	if err != nil {
+		t.Fatalf("read updated package state: %v", err)
+	}
+	var state pluginmeta.PackageState
+	if err := json.Unmarshal(stateData, &state); err != nil {
+		t.Fatalf("decode updated package state: %v", err)
+	}
+	if state.Status != pluginmeta.StatusDisabled || state.Reason != "operator disabled" {
+		t.Fatalf("updated package state = %+v", state)
+	}
+}
+
 func TestAdminPluginStatePatchWritesLocalPackageState(t *testing.T) {
 	pluginDir := t.TempDir()
 	localPluginDir := filepath.Join(pluginDir, "privacy")
