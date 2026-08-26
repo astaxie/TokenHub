@@ -2,9 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerResourceAuthTypeOptionsFromData } from "../domain/provider-resource-types";
 import { providerResourcePayload } from "./payloads";
-import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
+  it("renders provider type display names from plugin catalog metadata", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.kimi",
+      name: "Kimi Plugin",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [{ kind: "provider_type", name: "kimi_subscription" }],
+    }];
+    data.providerCatalog = [{
+      id: "kimi",
+      name: "Kimi Catalog",
+      display_name: "Kimi Subscription",
+      type: "kimi_subscription",
+      models_count: 0,
+      source: "plugin",
+    }];
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    const column = providerConfig().columns.find((item) => item.key === "type");
+    const rendered = column?.render?.(data.providers[0], data);
+
+    expect(rendered).toBe("Kimi Subscription");
+  });
+
   it("shows credential refresh only when a provider plugin action is registered", async () => {
     const data = emptyData();
     data.providers = [{ id: "prv_codex", name: "Codex", type: "openai_codex", status: "active", healthy: true, priority: 1 }];

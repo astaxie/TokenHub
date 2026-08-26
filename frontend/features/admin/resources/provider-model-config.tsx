@@ -4,7 +4,7 @@ import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../
 import { codexLunaProbeDefaults, codexProviderType, codexSubscriptionBaseURL, openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
-import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
+import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResource, isProviderAccountResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeMetadataForResource, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
@@ -21,7 +21,7 @@ export function providerConfig(): ResourceConfig<Provider> {
     createLabel: "新增 Provider",
     columns: [
       { key: "name", label: "名称", render: (item, ctx) => providerDisplayName(item, ctx.providerResources) },
-      { key: "type", label: "类型", render: (item, ctx) => providerTypeLabel(providerDisplayType(item, ctx.providerResources)) },
+      { key: "type", label: "类型", render: (item, ctx) => providerTypeLabelFromData(ctx, providerDisplayType(item, ctx.providerResources)) },
       { key: "base_url", label: "Base URL", render: (item, ctx) => providerDisplayBaseURL(item, ctx.providerResources) },
       { key: "models", label: "已引入模型", render: (item, ctx) => ctx.providerModels.filter((model) => model.provider_id === item.id).length },
       { key: "routes", label: "路由线路", render: (item, ctx) => providerRouteSummary(item, ctx) },

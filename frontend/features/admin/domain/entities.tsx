@@ -3,7 +3,7 @@ import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_
 import { codexImageModelName, codexImageUpstreamModel, codexProviderType } from "./codex-provider-profile";
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
-import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabel, roleLabel, splitList } from "./labels";
+import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabelFromData, roleLabel, splitList } from "./labels";
 import { isProviderAccountResource } from "./provider-resource-types";
 import { tx } from "../i18n/runtime";
 import { preferredModelCategories } from "./model-categories";
@@ -143,7 +143,7 @@ export function providerSelectOptions(data: AppData, _currentUser?: AdminUser | 
     .sort((left, right) => (left.priority - right.priority) || left.name.localeCompare(right.name))
     .map((provider) => ({
       value: provider.id,
-      label: `${providerDisplayName(provider, data.providerResources)} / ${providerTypeLabel(providerDisplayType(provider, data.providerResources))}${provider.status !== "active" ? ` / ${enumValueLabel(provider.status)}` : ""}`,
+      label: `${providerDisplayName(provider, data.providerResources)} / ${providerTypeLabelFromData(data, providerDisplayType(provider, data.providerResources))}${provider.status !== "active" ? ` / ${enumValueLabel(provider.status)}` : ""}`,
     }));
 }
 

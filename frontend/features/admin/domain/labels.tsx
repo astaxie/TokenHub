@@ -330,6 +330,26 @@ export function providerTypeLabel(type: string | undefined) {
   return tx(labels[normalized] ?? type ?? "-");
 }
 
+export function providerTypeLabelFromData(data: Pick<AppData, "plugins" | "providerCatalog">, type: string | undefined) {
+  const normalized = String(type ?? "").trim();
+  if (!normalized) return "-";
+  for (const entry of data.providerCatalog ?? []) {
+    if (entry.type !== normalized) continue;
+    const label = String(entry.display_name || entry.name || "").trim();
+    if (label) return label;
+  }
+  for (const plugin of data.plugins ?? []) {
+    const declaresType = plugin.capabilities.some((capability) => (
+      (capability.kind === "provider_type" && capability.name === normalized) ||
+      (capability.kind === "provider" && (capability.subject === normalized || capability.name === normalized))
+    ));
+    if (!declaresType) continue;
+    const label = String(plugin.name || "").trim();
+    if (label) return label;
+  }
+  return providerTypeLabel(normalized);
+}
+
 export function budgetScopeLabel(scope: string) {
   const labels: Record<string, string> = {
     project: "项目",

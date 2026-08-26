@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { providerTypeOptionsFromData, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
+import { providerTypeLabelFromData } from "../domain/labels";
 
 describe("providerTypeOptionsFromData", () => {
   it("includes provider types declared by plugins, catalog entries, providers, and the current form value", () => {
@@ -90,5 +91,29 @@ describe("providerTypeOptionsFromData", () => {
 
     expect(providerTypeSupportsCustomHeaders(options, "oauth_subscription")).toBe(false);
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
+  });
+
+  it("resolves provider type labels from catalog entries before plugin names", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.kimi",
+      name: "Kimi Plugin",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [{ kind: "provider_type", name: "kimi_subscription" }],
+    }];
+    data.providerCatalog = [{
+      id: "kimi",
+      name: "Kimi Catalog",
+      display_name: "Kimi Subscription",
+      type: "kimi_subscription",
+      models_count: 0,
+      source: "plugin",
+    }];
+
+    expect(providerTypeLabelFromData(data, "kimi_subscription")).toBe("Kimi Subscription");
+    expect(providerTypeLabelFromData(data, "unknown_subscription")).toBe("unknown_subscription");
   });
 });
