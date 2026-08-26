@@ -429,6 +429,46 @@ describe("providerResourceConfig", () => {
     ]);
   });
 
+  it("builds resource type options from adapter descriptors", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    data.providerAdapters = [{
+      type: "kimi_subscription",
+      capabilities: ["responses"],
+      plugin_id: "tokenhub.provider.kimi",
+      resource_types: [{
+        type: "kimi_oauth_account",
+        display_name: "Kimi OAuth Account",
+        auth_modes: ["personal_access_token", "oauth"],
+        default: true,
+        defaults: {
+          auth_type: "personal_access_token",
+          base_url: "https://api.moonshot.cn/v1",
+          max_concurrency: "5",
+        },
+      }],
+      provider_policy: {
+        supports_custom_headers: true,
+        credentials_scope: "resource",
+      },
+    }];
+
+    expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_kimi" })).toEqual([
+      { value: "api_key", label: "API Key" },
+      { value: "kimi_oauth_account", label: "Kimi OAuth Account" },
+    ]);
+    expect(providerResourceDraftDefaults(data.providers[0], data)).toMatchObject({
+      resource_type: "kimi_oauth_account",
+      auth_type: "personal_access_token",
+      base_url: "https://api.moonshot.cn/v1",
+      max_concurrency: "5",
+    });
+    expect(providerResourceAuthTypeOptionsFromData(data, null, { provider_id: "prv_kimi", resource_type: "kimi_oauth_account" })).toEqual([
+      { value: "oauth", label: "OAuth" },
+      { value: "personal_access_token", label: "Personal Access Token" },
+    ]);
+  });
+
   it("applies provider resource metadata to account defaults and auth options", () => {
     const data = emptyData();
     data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];

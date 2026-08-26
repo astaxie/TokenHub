@@ -150,7 +150,7 @@ export function ProviderUpsertModal({
     name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
     base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     type: mode === "edit" ? provider?.type ?? "" : initialEntry?.type ?? "",
-  }, { plugins }));
+  }, { plugins, providerAdapters }));
   const [accountOAuthCallback, setAccountOAuthCallback] = useState("");
   const [accountOAuthStatus, setAccountOAuthStatus] = useState("");
   const [accountOAuthBusy, setAccountOAuthBusy] = useState(false);
@@ -604,7 +604,7 @@ export function ProviderUpsertModal({
       setError(tx("未在回调结果中识别到 Token。"));
       return;
     }
-    const defaults = providerResourceDraftDefaults({ name: selectedEntry?.display_name || selectedEntry?.name || values.name, base_url: selectedEntry?.base_url || values.base_url, type: values.type || selectedEntry?.type }, { plugins });
+    const defaults = providerResourceDraftDefaults({ name: selectedEntry?.display_name || selectedEntry?.name || values.name, base_url: selectedEntry?.base_url || values.base_url, type: values.type || selectedEntry?.type }, { plugins, providerAdapters });
     setAccountValues((current) => ({
       ...current,
       resource_type: current.resource_type || defaults.resource_type,
@@ -754,7 +754,7 @@ export function ProviderUpsertModal({
     if (nextMode === "account_integration" && !defaultAccountProviderCatalogEntry) return;
     setCredentialMode(nextMode);
     if (nextMode === "account_integration") {
-      const defaults = providerResourceDraftDefaults({ name: defaultAccountProviderCatalogEntry.display_name || defaultAccountProviderCatalogEntry.name, base_url: defaultAccountProviderCatalogEntry.base_url, type: defaultAccountProviderCatalogEntry.type }, { plugins });
+      const defaults = providerResourceDraftDefaults({ name: defaultAccountProviderCatalogEntry.display_name || defaultAccountProviderCatalogEntry.name, base_url: defaultAccountProviderCatalogEntry.base_url, type: defaultAccountProviderCatalogEntry.type }, { plugins, providerAdapters });
       setAccountValues((current) => ({ ...current, ...accountProviderResourceDefaultPatch(defaults) }));
       setModelCategory(accountProviderCatalogCategory(defaultAccountProviderCatalogEntry));
       setCatalogQuery("");
@@ -770,7 +770,7 @@ export function ProviderUpsertModal({
 
   function syncAccountDefaults(providerName: string, baseURL?: string, providerType = values.type) {
     if (mode !== "create") return;
-    const nextDefaults = providerResourceDraftDefaults({ name: providerName, base_url: baseURL, type: providerType }, { plugins });
+    const nextDefaults = providerResourceDraftDefaults({ name: providerName, base_url: baseURL, type: providerType }, { plugins, providerAdapters });
     setAccountValues((current) => ({ ...current, resource_type: nextDefaults.resource_type, auth_type: nextDefaults.auth_type, name: nextDefaults.name, base_url: nextDefaults.base_url, max_concurrency: nextDefaults.max_concurrency }));
   }
 

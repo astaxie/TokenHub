@@ -1,4 +1,4 @@
-import { type AppData, type PluginCapabilityDescriptor } from "../core/types";
+import { type AdapterProviderResourceType, type AppData, type PluginCapabilityDescriptor } from "../core/types";
 
 export const providerResourceAPIKeyType = "api_key";
 export const providerResourceOpenAISubscriptionType = "openai_subscription";
@@ -60,8 +60,15 @@ export function parseProviderResourceTypeCapabilityMetadata(capability: PluginCa
   }
 }
 
-export function providerResourceTypeMetadataFromData(data: Pick<AppData, "plugins">, providerType: string) {
+export function providerResourceTypeMetadataFromData(data: Pick<AppData, "plugins" | "providerAdapters">, providerType: string) {
   const metadata: ProviderResourceTypeCapabilityMetadata[] = [];
+  for (const adapter of data.providerAdapters ?? []) {
+    if (adapter.type && providerType && adapter.type !== providerType) continue;
+    for (const resourceType of adapter.resource_types ?? []) {
+      const parsed = providerResourceTypeMetadataFromAdapter(resourceType);
+      if (parsed) metadata.push(parsed);
+    }
+  }
   for (const plugin of data.plugins) {
     for (const capability of plugin.capabilities) {
       if (capability.kind !== providerResourceTypeCapabilityKind) continue;
@@ -92,7 +99,7 @@ export function providerResourceTypeMetadataForResource(data: AppData, resource:
   });
 }
 
-export function defaultProviderResourceTypeMetadata(data: Pick<AppData, "plugins">, providerType: string) {
+export function defaultProviderResourceTypeMetadata(data: Pick<AppData, "plugins" | "providerAdapters">, providerType: string) {
   const metadata = providerResourceTypeMetadataFromData(data, providerType);
   return metadata.find((item) => item.default) ?? metadata[0] ?? null;
 }
@@ -118,6 +125,18 @@ function providerResourceAuthTypeLabel(value: string) {
     api_key: "API Key",
   };
   return labels[value] ?? value;
+}
+
+function providerResourceTypeMetadataFromAdapter(resourceType: AdapterProviderResourceType): ProviderResourceTypeCapabilityMetadata | null {
+  const type = resourceType.type?.trim();
+  if (!type) return null;
+  return {
+    type,
+    displayName: stringValue(resourceType.display_name),
+    authModes: stringArrayValue(resourceType.auth_modes),
+    defaults: stringRecordValue(resourceType.defaults),
+    default: resourceType.default === true,
+  };
 }
 
 function stringValue(value: unknown) {

@@ -6,7 +6,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResource, isProviderAccountResourceType, parseProviderResourceTypeCapabilityMetadata, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeCapabilityKind, providerResourceTypeMetadataForResource, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResource, isProviderAccountResourceType, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -145,18 +145,13 @@ export function accountResourceFieldVisible(values: Record<string, string>) {
 export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
   const providerType = providerTypeForResourceValues(data, values);
   const resourceTypes = new Map<string, string | undefined>([[providerResourceAPIKeyType, undefined]]);
-  for (const plugin of data.plugins) {
-    for (const capability of plugin.capabilities) {
-      if (capability.kind !== providerResourceTypeCapabilityKind) continue;
-      if (capability.subject && providerType && capability.subject !== providerType) continue;
-      if (capability.subject && !providerType && values?.resource_type !== capability.name) continue;
-      const metadata = parseProviderResourceTypeCapabilityMetadata(capability);
-      const resourceType = metadata?.type || capability.name.trim();
-      if (!resourceType) continue;
-      const label = metadata?.displayName;
-      if (!resourceTypes.has(resourceType) || label) {
-        resourceTypes.set(resourceType, label);
-      }
+  for (const metadata of providerResourceTypeMetadataFromData(data, providerType)) {
+    if (!providerType && values?.resource_type !== metadata.type) continue;
+    const resourceType = metadata.type.trim();
+    if (!resourceType) continue;
+    const label = metadata.displayName;
+    if (!resourceTypes.has(resourceType) || label) {
+      resourceTypes.set(resourceType, label);
     }
   }
   if (isOpenAISubscriptionResourceType(values?.resource_type) && !resourceTypes.has(providerResourceOpenAISubscriptionType)) {
@@ -355,7 +350,7 @@ export function defaultProviderResourceName(providerName?: string) {
   return `${normalized} Account`;
 }
 
-export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string; type?: string }, data?: Pick<AppData, "plugins">) {
+export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string; type?: string }, data?: Pick<AppData, "plugins" | "providerAdapters">) {
   const metadata = data && provider.type ? defaultProviderResourceTypeMetadata(data, provider.type) : null;
   const metadataDefaults = metadata?.defaults ?? {};
   const resourceType = metadata?.type || providerResourceAPIKeyType;

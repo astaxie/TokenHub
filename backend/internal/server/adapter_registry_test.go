@@ -240,6 +240,16 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
+			{Kind: "provider_resource_type", Name: "subscription_account", Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
+				Type:        "subscription_account",
+				DisplayName: "Subscription Account",
+				AuthModes:   []string{"oauth", "personal_access_token"},
+				Default:     true,
+				Defaults: map[string]string{
+					"auth_type": "oauth",
+					"base_url":  "https://subscription.example/v1",
+				},
+			}.CapabilityValue()},
 		},
 	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
 		t.Fatalf("register plugin adapter: %v", err)
@@ -257,6 +267,19 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("plugin provider session affinity kind = %+v, want codex session", descriptor.ProviderPolicy)
+	}
+	if len(descriptor.ResourceTypes) != 1 {
+		t.Fatalf("plugin provider resource types = %+v, want one resource type", descriptor.ResourceTypes)
+	}
+	resourceType := descriptor.ResourceTypes[0]
+	if resourceType.Type != "subscription_account" || resourceType.DisplayName != "Subscription Account" || !resourceType.Default {
+		t.Fatalf("plugin provider resource type = %+v, want subscription account metadata", resourceType)
+	}
+	if !reflect.DeepEqual(resourceType.AuthModes, []string{"oauth", "personal_access_token"}) {
+		t.Fatalf("plugin provider resource auth modes = %+v", resourceType.AuthModes)
+	}
+	if resourceType.Defaults["auth_type"] != "oauth" || resourceType.Defaults["base_url"] != "https://subscription.example/v1" {
+		t.Fatalf("plugin provider resource defaults = %+v", resourceType.Defaults)
 	}
 }
 

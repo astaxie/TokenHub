@@ -268,6 +268,7 @@ export type AdapterDescriptor = {
   type: string;
   capabilities: string[];
   plugin_id?: string;
+  resource_types?: AdapterProviderResourceType[];
   provider_policy?: {
     route_protocols?: string[];
     supports_custom_headers: boolean;
@@ -275,6 +276,14 @@ export type AdapterDescriptor = {
     credentials_scope?: string;
     session_affinity_kind?: string;
   };
+};
+
+export type AdapterProviderResourceType = {
+  type: string;
+  display_name?: string;
+  auth_modes?: string[];
+  defaults?: Record<string, string>;
+  default?: boolean;
 };
 
 export type PluginCapabilityDescriptor = {

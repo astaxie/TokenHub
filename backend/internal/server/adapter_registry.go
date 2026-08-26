@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -27,10 +28,11 @@ const (
 )
 
 type AdapterDescriptor struct {
-	Type           string                `json:"type"`
-	Capabilities   []AdapterCapability   `json:"capabilities"`
-	PluginID       string                `json:"plugin_id,omitempty"`
-	ProviderPolicy AdapterProviderPolicy `json:"provider_policy"`
+	Type           string                                    `json:"type"`
+	Capabilities   []AdapterCapability                       `json:"capabilities"`
+	PluginID       string                                    `json:"plugin_id,omitempty"`
+	ResourceTypes  []pluginmeta.ManifestProviderResourceType `json:"resource_types,omitempty"`
+	ProviderPolicy AdapterProviderPolicy                     `json:"provider_policy"`
 }
 
 type AdapterProviderPolicy struct {
@@ -168,6 +170,7 @@ func (r *AdapterRegistry) List() []AdapterDescriptor {
 }
 
 func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) AdapterDescriptor {
+	descriptor.ResourceTypes = adapterProviderResourceTypes(r, descriptor.Type)
 	descriptor.ProviderPolicy = AdapterProviderPolicy{
 		RouteProtocols:        adapterRouteProtocols(r, descriptor),
 		SupportsCustomHeaders: adapterSupportsProviderHeaders(r, descriptor.Type),
@@ -222,14 +225,7 @@ func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string
 }
 
 func providerPolicyStringCapability(registry *AdapterRegistry, providerType string, name string) (string, bool) {
-	if registry == nil || registry.plugins == nil {
-		return "", false
-	}
-	descriptor, ok := registry.descriptors[providerType]
-	if !ok || descriptor.PluginID == "" {
-		return "", false
-	}
-	plugin, ok := registry.plugins.Describe(descriptor.PluginID)
+	plugin, ok := adapterPluginDescriptor(registry, providerType)
 	if !ok {
 		return "", false
 	}
@@ -243,6 +239,105 @@ func providerPolicyStringCapability(registry *AdapterRegistry, providerType stri
 		return strings.TrimSpace(capability.Value), true
 	}
 	return "", false
+}
+
+func adapterProviderResourceTypes(registry *AdapterRegistry, providerType string) []pluginmeta.ManifestProviderResourceType {
+	plugin, ok := adapterPluginDescriptor(registry, providerType)
+	if !ok {
+		return nil
+	}
+	itemsByType := map[string]pluginmeta.ManifestProviderResourceType{}
+	for _, capability := range plugin.Capabilities {
+		if capability.Kind != "provider_resource_type" {
+			continue
+		}
+		if capability.Subject != "" && capability.Subject != providerType {
+			continue
+		}
+		resourceType := adapterResourceTypeFromCapability(capability)
+		if resourceType.Type == "" {
+			continue
+		}
+		if current, exists := itemsByType[resourceType.Type]; !exists || adapterResourceTypeHasMetadata(resourceType) || !adapterResourceTypeHasMetadata(current) {
+			itemsByType[resourceType.Type] = resourceType
+		}
+	}
+	items := make([]pluginmeta.ManifestProviderResourceType, 0, len(itemsByType))
+	for _, item := range itemsByType {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Type < items[j].Type })
+	return items
+}
+
+func adapterPluginDescriptor(registry *AdapterRegistry, providerType string) (pluginmeta.Descriptor, bool) {
+	if registry == nil || registry.plugins == nil {
+		return pluginmeta.Descriptor{}, false
+	}
+	descriptor, ok := registry.descriptors[providerType]
+	if !ok || descriptor.PluginID == "" {
+		return pluginmeta.Descriptor{}, false
+	}
+	return registry.plugins.Describe(descriptor.PluginID)
+}
+
+func adapterResourceTypeFromCapability(capability pluginmeta.CapabilityDescriptor) pluginmeta.ManifestProviderResourceType {
+	resourceType := pluginmeta.ManifestProviderResourceType{Type: strings.TrimSpace(capability.Name)}
+	if value := strings.TrimSpace(capability.Value); value != "" {
+		var parsed pluginmeta.ManifestProviderResourceType
+		if err := json.Unmarshal([]byte(value), &parsed); err == nil {
+			resourceType = parsed
+			if strings.TrimSpace(resourceType.Type) == "" {
+				resourceType.Type = capability.Name
+			}
+		}
+	}
+	resourceType.Type = strings.TrimSpace(resourceType.Type)
+	resourceType.DisplayName = strings.TrimSpace(resourceType.DisplayName)
+	resourceType.AuthModes = sortedUniqueStrings(resourceType.AuthModes)
+	resourceType.Defaults = normalizedStringMap(resourceType.Defaults)
+	return resourceType
+}
+
+func adapterResourceTypeHasMetadata(resourceType pluginmeta.ManifestProviderResourceType) bool {
+	return resourceType.DisplayName != "" || len(resourceType.AuthModes) > 0 || len(resourceType.Defaults) > 0 || resourceType.Default
+}
+
+func sortedUniqueStrings(items []string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func normalizedStringMap(items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(items))
+	for key, value := range items {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		result[key] = value
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func (r *AdapterRegistry) ListPlugins() []pluginmeta.Descriptor {
