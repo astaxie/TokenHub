@@ -70,6 +70,35 @@ describe("PluginsView", () => {
     expect(screen.getByText("已启用")).toBeInTheDocument();
   });
 
+  it("installs a verified plugin package through the admin endpoint", async () => {
+    const data = emptyData();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { plugin: { id: "tokenhub.marketplace.kimi" }, restart_required: true },
+    }), { status: 201, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.change(screen.getByLabelText("下载 URL"), { target: { value: "https://plugins.example/kimi.zip" } });
+    fireEvent.change(screen.getByLabelText("SHA-256 校验"), {
+      target: { value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+    });
+    fireEvent.click(screen.getByLabelText("允许替换"));
+    fireEvent.click(screen.getByLabelText("安装后启用"));
+    fireEvent.click(screen.getByRole("button", { name: "安装插件" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/install");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      download_url: "https://plugins.example/kimi.zip",
+      checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      replace: true,
+      enable: true,
+    });
+    await waitFor(() => expect(screen.getByText("tokenhub.marketplace.kimi · 插件安装完成，重启后生效")).toBeInTheDocument());
+  });
+
   it("renders background job descriptors", () => {
     const data = emptyData();
     data.pluginBackgroundJobs = [{
