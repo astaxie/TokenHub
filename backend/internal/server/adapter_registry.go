@@ -196,15 +196,12 @@ func adapterRequiresRouteResource(registry *AdapterRegistry, providerType string
 	if value, ok := providerPolicyBoolCapability(registry, providerType, "route_requires_resource"); ok {
 		return value
 	}
-	return providerType == ProviderOpenAICodex
+	return false
 }
 
 func adapterCredentialsScope(registry *AdapterRegistry, providerType string) string {
 	if value, ok := providerPolicyStringCapability(registry, providerType, "credentials_scope"); ok {
 		return value
-	}
-	if providerType == ProviderOpenAICodex {
-		return providerCredentialsScopeResource
 	}
 	return providerCredentialsScopeProvider
 }
@@ -213,7 +210,7 @@ func adapterSessionAffinityKind(registry *AdapterRegistry, providerType string) 
 	if value, ok := providerPolicyStringCapability(registry, providerType, "session_affinity_kind"); ok && validProviderSessionAffinityKind(value) {
 		return value
 	}
-	return providerSessionAffinityKind(providerType)
+	return AffinityKindProviderSession
 }
 
 func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string, name string) (bool, bool) {

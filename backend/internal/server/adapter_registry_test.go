@@ -179,6 +179,25 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	}
 }
 
+func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	registry.Register(ProviderOpenAICodex, MockAdapter{}, AdapterCapabilityResponses)
+
+	descriptor, ok := registry.Describe(ProviderOpenAICodex)
+	if !ok {
+		t.Fatal("adapter descriptor is missing")
+	}
+	if descriptor.ProviderPolicy.RouteRequiresResource {
+		t.Fatal("bare adapter registration should not imply route resource policy")
+	}
+	if descriptor.ProviderPolicy.CredentialsScope != providerCredentialsScopeProvider {
+		t.Fatalf("bare adapter credentials scope = %q, want provider", descriptor.ProviderPolicy.CredentialsScope)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindProviderSession {
+		t.Fatalf("bare adapter session affinity kind = %q, want provider session", descriptor.ProviderPolicy.SessionAffinityKind)
+	}
+}
+
 func TestBuiltinProviderPluginsExposeAdapterCapabilities(t *testing.T) {
 	server := New(NewMemoryStore())
 
