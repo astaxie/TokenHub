@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
-import { codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
+import { codexProviderCatalogSummary, codexProviderType } from "../domain/codex-provider-profile";
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
@@ -23,6 +23,7 @@ import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
+import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderPluginPanels } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
@@ -50,20 +51,6 @@ type OpenAIAccountQuota = {
   }>;
   rate_limit_reset_credits?: { available_count: number };
   fetched_at: number;
-};
-type CodexSubscriptionTestResult = {
-  resource_id: string;
-  model: string;
-  reasoning_effort: string;
-  speed: "standard" | "fast";
-  upstream_service_tier?: string;
-  output_text: string;
-  latency_ms: number;
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
 };
 type ProviderEditTab = "connect" | "models" | "advanced";
 type ProviderAccountConfirmation = { action: "enable" | "disable" | "delete"; resource: ProviderResource };
@@ -183,10 +170,6 @@ export function ProviderUpsertModal({
   const [accountCatalogs, setAccountCatalogs] = useState<Record<string, ProviderCatalogEntry>>({});
   const [accountCatalogErrors, setAccountCatalogErrors] = useState<Record<string, string>>({});
   const [accountCatalogLoading, setAccountCatalogLoading] = useState(false);
-  const [codexTestValues, setCodexTestValues] = useState({ ...codexLunaProbeDefaults, prompt: "" });
-  const [codexTestBusyID, setCodexTestBusyID] = useState("");
-  const [codexTestErrors, setCodexTestErrors] = useState<Record<string, string>>({});
-  const [codexTestResults, setCodexTestResults] = useState<Record<string, CodexSubscriptionTestResult>>({});
   const [editTab, setEditTab] = useState<ProviderEditTab>("connect");
   const [quickAPITab, setQuickAPITab] = useState<ProviderEditTab>("connect");
   const [createStep, setCreateStep] = useState(0);
@@ -548,28 +531,6 @@ export function ProviderUpsertModal({
     if (!normalized) return false;
     return resources.some((resource) => resource.name.trim().toLocaleLowerCase() === normalized);
   }, [accountValues.name, resources]);
-  const codexTestModels = useMemo(() => selectedAccountCatalog?.models ?? [], [selectedAccountCatalog?.models]);
-  const selectedCodexTestModel = codexTestModels.find((model) => model.id === codexTestValues.model);
-  const codexReasoningEfforts = selectedCodexTestModel?.metadata?.supported_reasoning_levels
-    ?.split(",")
-    .map((value) => value.trim())
-    .filter(Boolean) ?? fallbackCodexReasoningEfforts;
-  useEffect(() => {
-    if (codexTestModels.length === 0) return;
-    setCodexTestValues((current) => {
-      const nextModel = codexTestModels.some((model) => model.id === current.model)
-        ? current.model
-        : codexTestModels.find((model) => model.id === codexLunaProbeDefaults.model)?.id ?? codexTestModels[0].id;
-      const model = codexTestModels.find((item) => item.id === nextModel);
-      const efforts = model?.metadata?.supported_reasoning_levels?.split(",").filter(Boolean) ?? fallbackCodexReasoningEfforts;
-      const nextEffort = efforts.includes(current.reasoning_effort)
-        ? current.reasoning_effort
-        : model?.metadata?.default_reasoning_level || efforts[0] || "medium";
-      if (nextModel === current.model && nextEffort === current.reasoning_effort) return current;
-      return { ...current, model: nextModel, reasoning_effort: nextEffort };
-    });
-  }, [codexTestModels]);
-
   useEffect(() => {
     if (mode !== "create" || !hasPendingProviderAccountOAuthResult()) return;
     selectCredentialMode("account_integration");
@@ -789,34 +750,6 @@ export function ProviderUpsertModal({
     } finally {
       setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: false }));
     }
-  }
-
-  async function testCodexSubscription() {
-    if (selectedAccountResources.length === 0) {
-      setCodexTestErrors({ selection: tx("请选择要测试的 Codex 账号") });
-      return;
-    }
-    setCodexTestBusyID(selectedAccountID);
-    setCodexTestErrors({});
-    await Promise.all(selectedAccountResources.map(async (resource) => {
-      try {
-        const action = providerPluginActionForCapability(pluginActions, values.type, "probe.run");
-        const result = action
-          ? await runProviderResourcePluginAction<CodexSubscriptionTestResult>(api, resource, action, codexTestValues, tx("账号资源测试"))
-          : await legacyCodexSubscriptionTest(resource);
-        setCodexTestResults((current) => ({ ...current, [resource.id]: result }));
-      } catch (err) {
-        if (isAuthExpiredError(err)) return;
-        const message = err instanceof Error ? err.message : tx("Codex Subscription 测试失败");
-        setCodexTestErrors((current) => ({ ...current, [resource.id]: message }));
-      }
-    }));
-    setCodexTestBusyID("");
-  }
-  async function legacyCodexSubscriptionTest(resource: ProviderResource) {
-    const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/test`, { method: "POST", body: JSON.stringify(codexTestValues) });
-    if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Codex Subscription")));
-    return (await resp.json()) as CodexSubscriptionTestResult;
   }
 
   function selectCredentialMode(nextMode: ProviderCredentialMode) {
@@ -1624,121 +1557,8 @@ export function ProviderUpsertModal({
                 </div>
               </section>
             ) : null}
-            {mode === "edit" && editTab === "advanced" && editingCodexSubscription && accountResources.length > 0 ? (
-              <section className="provider-quota-panel provider-codex-test-panel">
-                <div className="wizard-panel-head">
-                  <h3>{tx("Codex 真实请求测试")}</h3>
-                  <p>{tx("使用顶部选中的账号真实调用 Codex Responses；选择全部账号时，每个账号都会分别发起一次请求并展示独立结果。")}</p>
-                </div>
-                {selectedAccountID === "all" ? (
-                  <p className="provider-account-intersection-note">
-                    {tx("当前模型列表是所有账号可用模型的交集，确保所选模型能够被每个账号真实调用。")}
-                  </p>
-                ) : null}
-                <div className="provider-codex-test-controls">
-                  <label className="field">
-                    <span>{tx("模型")}</span>
-                    <select
-                      disabled={accountCatalogLoading || codexTestModels.length === 0}
-                      value={codexTestValues.model}
-                      onChange={(event) => setCodexTestValues((current) => ({ ...current, model: event.target.value }))}
-                    >
-                      {codexTestModels.map((model) => <option key={model.id} value={model.id}>{model.display_name || model.name}</option>)}
-                    </select>
-                    {accountCatalogLoading ? <small>{tx("正在从所选账号加载模型目录...")}</small> : null}
-                  </label>
-                  <label className="field">
-                    <span>{tx("推理强度")}</span>
-                    <select
-                      disabled={accountCatalogLoading || codexTestModels.length === 0}
-                      value={codexTestValues.reasoning_effort}
-                      onChange={(event) => setCodexTestValues((current) => ({ ...current, reasoning_effort: event.target.value }))}
-                    >
-                      {codexReasoningEfforts.map((value) => <option key={value} value={value}>{value}</option>)}
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>{tx("速度")}</span>
-                    <select
-                      disabled={accountCatalogLoading || codexTestModels.length === 0}
-                      value={codexTestValues.speed}
-                      onChange={(event) => setCodexTestValues((current) => ({ ...current, speed: event.target.value }))}
-                    >
-                      <option value="standard">{tx("标准")}</option>
-                      <option value="fast">{tx("快速")}</option>
-                    </select>
-                  </label>
-                  <label className="field provider-codex-test-prompt">
-                    <span>{tx("真实提示词")}</span>
-                    <textarea
-                      rows={3}
-                      value={codexTestValues.prompt}
-                      onChange={(event) => setCodexTestValues((current) => ({ ...current, prompt: event.target.value }))}
-                      placeholder={tx("输入要真实发送给 Codex 的内容")}
-                    />
-                  </label>
-                </div>
-                {Object.entries(accountCatalogErrors).map(([resourceID, message]) => (
-                  <p className="provider-quota-error" key={resourceID}>
-                    {accountResources.find((resource) => resource.id === resourceID)?.name || resourceID}：{message}
-                  </p>
-                ))}
-                <div className="provider-codex-test-actions">
-                  <button
-                    className="primary-button"
-                    disabled={
-                      Boolean(codexTestBusyID) ||
-                      accountCatalogLoading ||
-                      codexTestModels.length === 0 ||
-                      !codexTestValues.prompt.trim()
-                    }
-                    onClick={() => void testCodexSubscription()}
-                    type="button"
-                  >
-                    <Send size={14} />
-                    {tx(codexTestBusyID ? "正在真实调用" : selectedAccountID === "all" ? "测试全部账号" : "发送真实测试")}
-                  </button>
-                </div>
-                <div className="provider-quota-list">
-                  {selectedAccountResources.map((resource) => {
-                    const result = codexTestResults[resource.id];
-                    const testError = codexTestErrors[resource.id];
-                    return (
-                    <article className="provider-quota-card" key={resource.id}>
-                        <div className="provider-quota-card-head">
-                          <div>
-                            <strong>{resource.name}</strong>
-                            <span>{providerResourceAccountLabel(resource)}</span>
-                          </div>
-                          <span className={testError ? "provider-test-status error" : result ? "provider-test-status success" : "provider-test-status"}>
-                            {tx(testError ? "失败" : result ? "完成" : "等待测试")}
-                          </span>
-                        </div>
-                        {result ? (
-                          <div className="provider-codex-test-result">
-                            <div className="provider-quota-grid">
-                              <QuotaMetric label="模型" value={result.model} />
-                              <QuotaMetric label="推理强度" value={result.reasoning_effort} />
-                              <QuotaMetric label="请求速度" value={result.speed === "fast" ? "快速" : "标准"} />
-                              <QuotaMetric label="上游 Service Tier" value={result.upstream_service_tier || "未返回"} />
-                              <QuotaMetric label="耗时" value={`${result.latency_ms} ms`} />
-                              <QuotaMetric label="输入 Token" value={String(result.usage.prompt_tokens)} />
-                              <QuotaMetric label="输出 Token" value={String(result.usage.completion_tokens)} />
-                              <QuotaMetric label="总 Token" value={String(result.usage.total_tokens)} />
-                            </div>
-                            <pre>{result.output_text}</pre>
-                          </div>
-                        ) : testError ? (
-                          <p className="provider-quota-error">{testError}</p>
-                        ) : (
-                          <p className="provider-credential-note">{tx("填写提示词后发送；返回内容来自真实 Codex 上游，不使用 Mock。")}</p>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-                {codexTestErrors.selection ? <p className="provider-quota-error">{codexTestErrors.selection}</p> : null}
-              </section>
+            {mode === "edit" && editTab === "advanced" && accountResources.length > 0 && providerPluginActionForCapability(pluginActions, values.type, "probe.run") ? (
+              <ProviderResourceProbePanel api={api} accountCatalogErrors={accountCatalogErrors} accountCatalogLoading={accountCatalogLoading} accountResources={accountResources} pluginActions={pluginActions} providerType={values.type} selectedAccountCatalog={selectedAccountCatalog} selectedAccountID={selectedAccountID} selectedAccountResources={selectedAccountResources} />
             ) : null}
             {mode === "create" && createStep === 1 && !quickAPIConnect ? (
               <ProviderAdvancedFields

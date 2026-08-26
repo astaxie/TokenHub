@@ -244,6 +244,7 @@ func registerBuiltinPluginActions(server *Server) {
 		Metadata: map[string]string{
 			"provider_resource_type": ProviderResourceOpenAISubscription,
 			"default_payload_json":   `{"model":"` + openAICodexDefaultProbeModel + `","reasoning_effort":"medium","speed":"standard","prompt":"Please respond with one short sentence confirming the Codex connection works."}`,
+			"probe_fields":           "model,reasoning_effort,speed,prompt",
 		},
 		InputSchema: map[string]any{
 			"type":     "object",
