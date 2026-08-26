@@ -1,7 +1,6 @@
 import { type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult } from "../core/session";
 import { type AdminUser, type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
-import { openAIAccountOAuthRedirectURI } from "../domain/codex-provider-profile";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
@@ -261,10 +260,9 @@ export async function runProviderPluginActionEnvelope<T>(ctx: ApiContext, action
 export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, returnURL: string) {
   const oauthAction = providerPluginActionForCapability(actions, providerType, "oauth.start");
   if (oauthAction) {
-    return runProviderPluginAction<ProviderAccountOAuthGenerateResponse>(ctx, oauthAction, {
-      redirect_uri: openAIAccountOAuthRedirectURI,
+    return runProviderPluginAction<ProviderAccountOAuthGenerateResponse>(ctx, oauthAction, providerPluginOAuthPayload(oauthAction, {
       return_url: returnURL,
-    }, tx("生成账号授权地址"));
+    }), tx("生成账号授权地址"));
   }
   const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/generate-auth-url", {
     method: "POST",
@@ -277,10 +275,9 @@ export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: 
 export async function exchangeProviderAccountOAuthCode(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, payload: { session_id: string; state: string; code: string }) {
   const exchangeAction = providerPluginActionForCapability(actions, providerType, "oauth.exchange");
   if (exchangeAction) {
-    return runProviderPluginAction<ProviderAccountOAuthResult>(ctx, exchangeAction, {
+    return runProviderPluginAction<ProviderAccountOAuthResult>(ctx, exchangeAction, providerPluginOAuthPayload(exchangeAction, {
       ...payload,
-      redirect_uri: openAIAccountOAuthRedirectURI,
-    }, tx("账号授权换取 Token"));
+    }), tx("账号授权换取 Token"));
   }
   const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/exchange-code", {
     method: "POST",
@@ -319,6 +316,11 @@ export function providerPluginActionPath(action: PluginActionDescriptor) {
 
 function providerResourcePluginPayload(item: ProviderResource, payload: Record<string, unknown>) {
   return { provider_id: item.provider_id, resource_id: item.id, ...payload };
+}
+
+function providerPluginOAuthPayload(action: PluginActionDescriptor, payload: Record<string, unknown>) {
+  const redirectURI = action.metadata?.oauth_redirect_uri?.trim();
+  return redirectURI ? { ...payload, redirect_uri: redirectURI } : payload;
 }
 
 async function legacyProviderResourceProbe(ctx: ApiContext, resource: ProviderResource) {

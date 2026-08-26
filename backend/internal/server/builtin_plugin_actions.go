@@ -17,6 +17,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Start OpenAI Codex account OAuth",
 		Capability: "oauth.start",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"oauth_redirect_uri": openAIAccountOAuthRedirectURI,
+		},
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -51,6 +54,9 @@ func registerBuiltinPluginActions(server *Server) {
 		Title:      "Exchange OpenAI Codex account OAuth code",
 		Capability: "oauth.exchange",
 		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"oauth_redirect_uri": openAIAccountOAuthRedirectURI,
+		},
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []string{"session_id", "state", "code"},

@@ -202,7 +202,8 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 		!strings.Contains(body, `"capability":"models.read"`) ||
 		!strings.Contains(body, `"capability":"models.preview"`) ||
 		!strings.Contains(body, `"capability":"image.capability.configure"`) ||
-		!strings.Contains(body, `"capability":"credentials.refresh"`) {
+		!strings.Contains(body, `"capability":"credentials.refresh"`) ||
+		!strings.Contains(body, `"oauth_redirect_uri":"http://localhost:1455/auth/callback"`) {
 		t.Fatalf("GET plugin actions did not include built-in Codex actions: %s", body)
 	}
 }

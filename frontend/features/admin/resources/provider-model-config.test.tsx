@@ -221,6 +221,7 @@ describe("providerResourceConfig", () => {
         kind: "external_redirect",
         capability: "oauth.start",
         subject: "openai_codex",
+        metadata: { oauth_redirect_uri: "http://localhost:1455/auth/callback" },
       }],
       "openai_codex",
       "http://localhost:3000/providers/callback",
@@ -231,6 +232,38 @@ describe("providerResourceConfig", () => {
     expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.oauth.start");
     expect(JSON.parse(String(init.body))).toEqual({
       redirect_uri: "http://localhost:1455/auth/callback",
+      return_url: "http://localhost:3000/providers/callback",
+    });
+  });
+
+  it("does not inject a Codex OAuth redirect URI into generic plugin actions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        auth_url: "https://kimi.example/oauth",
+        session_id: "session-kimi",
+        state: "state-kimi",
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateProviderAccountOAuthURL(
+      { baseURL: "http://localhost:8080", adminToken: "admin-token" },
+      [{
+        plugin_id: "tokenhub.provider.kimi",
+        action_id: "kimi.oauth.start",
+        kind: "external_redirect",
+        capability: "oauth.start",
+        subject: "kimi_subscription",
+      }],
+      "kimi_subscription",
+      "http://localhost:3000/providers/callback",
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
       return_url: "http://localhost:3000/providers/callback",
     });
   });
@@ -280,6 +313,7 @@ describe("providerResourceConfig", () => {
         kind: "mutate",
         capability: "oauth.exchange",
         subject: "openai_codex",
+        metadata: { oauth_redirect_uri: "http://localhost:1455/auth/callback" },
       }],
       "openai_codex",
       { session_id: "session-1", state: "state-1", code: "code-1" },
