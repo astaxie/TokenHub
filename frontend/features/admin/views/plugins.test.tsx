@@ -1,9 +1,13 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { PluginsView } from "./plugins";
 
 describe("PluginsView", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders plugin distribution metadata", () => {
     const data = emptyData();
     data.plugins = [{
@@ -35,6 +39,35 @@ describe("PluginsView", () => {
     expect(screen.getByRole("link", { name: /市场/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi");
     expect(screen.getByRole("link", { name: /仓库/ })).toHaveAttribute("href", "https://github.com/tokenhub/kimi-provider");
     expect(screen.getByRole("link", { name: /下载/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi/1.2.3.zip");
+  });
+
+  it("updates local plugin state through the admin endpoint", async () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.local-privacy",
+      name: "Local Privacy",
+      version: "1.0.0",
+      source: "local_file",
+      status: "disabled",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { plugin_id: "tokenhub.local-privacy", status: "enabled", restart_required: true },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: /启用/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.local-privacy/state");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ status: "enabled" });
+    await waitFor(() => expect(screen.getByText("重启后生效")).toBeInTheDocument());
+    expect(screen.getByText("已启用")).toBeInTheDocument();
   });
 
   it("renders background job descriptors", () => {

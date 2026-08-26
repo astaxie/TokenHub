@@ -1,4 +1,4 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, ShieldCheck } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, Power, PowerOff, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor } from "../core/types";
 import { tx } from "../i18n/runtime";
@@ -12,9 +12,17 @@ type ActionDraft = {
   result: string;
 };
 
+type PluginStateDraft = {
+  status?: string;
+  busy?: boolean;
+  error?: string;
+  restartRequired?: boolean;
+};
+
 export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const plugins = data.plugins;
   const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
+  const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
   const providerCapabilities = plugins.reduce(
     (count, plugin) => count + plugin.capabilities.filter((capability) => capability.kind === "provider").length,
     0,
@@ -29,6 +37,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
+  const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
 
   function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
     const key = pluginActionKey(action.plugin_id, action.action_id);
@@ -61,6 +70,32 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
       setActionDrafts((drafts) => ({
         ...drafts,
         [key]: { ...draft, busy: false, error: reason instanceof Error ? reason.message : tx("执行插件动作失败"), result: "" },
+      }));
+    }
+  }
+
+  async function updatePluginState(plugin: PluginDescriptor, status: string) {
+    const current = pluginStateDraft(plugin);
+    setPluginStateDrafts((drafts) => ({
+      ...drafts,
+      [plugin.id]: { ...current, busy: true, error: "", restartRequired: false },
+    }));
+    try {
+      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(plugin.id)}/state`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("更新插件状态")));
+      const payload = await response.json() as { data?: { status?: string; restart_required?: boolean } };
+      setPluginStateDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: { status: payload.data?.status ?? status, busy: false, error: "", restartRequired: Boolean(payload.data?.restart_required) },
+      }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setPluginStateDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: { ...current, busy: false, error: reason instanceof Error ? reason.message : tx("更新插件状态失败") },
       }));
     }
   }
@@ -109,7 +144,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                         <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
                       </td>
                       <td>
-                        <StatusPill status={plugin.status ?? "enabled"} label={pluginStatusLabel(plugin.status)} />
+                        <PluginStatusControl plugin={plugin} draft={pluginStateDraft(plugin)} onUpdate={updatePluginState} />
                       </td>
                       <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
                       <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
@@ -427,6 +462,39 @@ function PluginTitle({ plugin }: { plugin: PluginDescriptor }) {
     <div className="stacked-cell">
       <strong>{plugin.name || plugin.id}</strong>
       <span>{plugin.id} · {plugin.version || tx("内置")}</span>
+    </div>
+  );
+}
+
+function PluginStatusControl({
+  plugin,
+  draft,
+  onUpdate,
+}: {
+  plugin: PluginDescriptor;
+  draft: PluginStateDraft;
+  onUpdate: (plugin: PluginDescriptor, status: string) => void;
+}) {
+  const status = draft.status ?? plugin.status ?? "enabled";
+  const nextStatus = status === "disabled" ? "enabled" : "disabled";
+  const canUpdate = plugin.source !== "built_in";
+  return (
+    <div className="stacked-cell">
+      <StatusPill status={status} label={pluginStatusLabel(status)} />
+      {canUpdate ? (
+        <button
+          className="secondary-button compact-button"
+          disabled={Boolean(draft.busy)}
+          onClick={() => onUpdate(plugin, nextStatus)}
+          title={tx(nextStatus === "enabled" ? "启用插件" : "禁用插件")}
+          type="button"
+        >
+          {nextStatus === "enabled" ? <Power size={14} /> : <PowerOff size={14} />}
+          <span>{tx(draft.busy ? "更新中" : nextStatus === "enabled" ? "启用" : "禁用")}</span>
+        </button>
+      ) : null}
+      {draft.restartRequired ? <span>{tx("重启后生效")}</span> : null}
+      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
     </div>
   );
 }
