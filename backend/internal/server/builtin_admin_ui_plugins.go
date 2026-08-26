@@ -87,6 +87,7 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "admin_ui", Name: "provider_form", Subject: ProviderOpenAICodex},
 			{Kind: "admin_ui", Name: "provider_model_panel", Subject: ProviderOpenAICodex},
+			{Kind: "admin_ui", Name: "provider_resource_form", Subject: ProviderOpenAICodex},
 			{Kind: "admin_ui", Name: "provider_resource_panel", Subject: ProviderOpenAICodex},
 		},
 	})
@@ -101,6 +102,26 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 			Schema: map[string]any{
 				"fields": []any{
 					map[string]any{"name": "oauth_start", "type": "oauth_button", "label": "Start OpenAI Codex OAuth", "action": "openai_codex.oauth.start"},
+				},
+			},
+		},
+		{
+			PluginID:      "tokenhub.provider.openai-codex",
+			ID:            "fingerprint",
+			Slot:          pluginmeta.SlotProviderResourceFormSection,
+			Title:         "OpenAI Codex fingerprint convergence",
+			ProviderTypes: []string{ProviderOpenAICodex},
+			ResourceTypes: []string{ProviderResourceOpenAISubscription},
+			Schema: map[string]any{
+				"fields": []any{
+					map[string]any{
+						"name":    "codex_fingerprint_mode",
+						"type":    "select",
+						"label":   "Codex fingerprint convergence",
+						"options": []string{"off", "device", "session", "full"},
+						"default": "session",
+						"help":    "Rewrite client device and session identifiers to stable account-level values when sharing a subscription account.",
+					},
 				},
 			},
 		},

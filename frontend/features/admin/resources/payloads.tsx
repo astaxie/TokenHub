@@ -2,7 +2,6 @@ import { appRole } from "../core/navigation";
 import { clearSavedSession } from "../core/session";
 import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderCatalogModel, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
 import { inferModelCategoryText, normalizeNotificationChannelType, notificationChannelDescription, notificationChannelLabel, notificationChannelURLPlaceholder } from "../domain/catalog";
-import { applyCodexFingerprintOption, normalizeCodexFingerprintMode } from "../domain/codex-fingerprint";
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
@@ -129,7 +128,7 @@ export function providerResourceOptions(values: Record<string, string>) {
   } else {
     delete options.claude_code_attribution_policy;
   }
-  return { ...applyCodexFingerprintOption(options, values), ...providerPluginOptionValues(values) };
+  return { ...options, ...providerPluginOptionValues(values) };
 }
 
 export function providerResourceToForm(item: ProviderResource, providerOptions?: Record<string, string>) {
@@ -157,7 +156,6 @@ export function providerResourceToForm(item: ProviderResource, providerOptions?:
     rate_limit_rpm: String(item.rate_limit_rpm ?? ""),
     token_limit_tpm: String(item.token_limit_tpm ?? ""),
     max_concurrency: String(item.max_concurrency ?? ""),
-    codex_fingerprint_mode: normalizeCodexFingerprintMode(item.options?.codex_fingerprint_mode),
     claude_code_attribution_policy: item.options?.claude_code_attribution_policy ?? "inherit",
     region: item.region ?? "",
     environment: item.environment ?? "",

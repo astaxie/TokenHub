@@ -366,6 +366,37 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	}
 }
 
+func TestBuiltinCodexAdminUIContributesFingerprintResourceForm(t *testing.T) {
+	server := New(NewMemoryStore())
+	var found bool
+	for _, contribution := range server.adminUI.List() {
+		if contribution.PluginID != "tokenhub.provider.openai-codex" || contribution.ID != "fingerprint" {
+			continue
+		}
+		found = true
+		if contribution.Slot != pluginmeta.SlotProviderResourceFormSection {
+			t.Fatalf("Codex fingerprint slot = %q", contribution.Slot)
+		}
+		if !reflect.DeepEqual(contribution.ProviderTypes, []string{ProviderOpenAICodex}) {
+			t.Fatalf("Codex fingerprint provider types = %+v", contribution.ProviderTypes)
+		}
+		if !reflect.DeepEqual(contribution.ResourceTypes, []string{ProviderResourceOpenAISubscription}) {
+			t.Fatalf("Codex fingerprint resource types = %+v", contribution.ResourceTypes)
+		}
+		fields, ok := contribution.Schema["fields"].([]any)
+		if !ok || len(fields) != 1 {
+			t.Fatalf("Codex fingerprint fields = %#v", contribution.Schema["fields"])
+		}
+		field, ok := fields[0].(map[string]any)
+		if !ok || field["name"] != "codex_fingerprint_mode" || field["type"] != "select" || field["default"] != "session" {
+			t.Fatalf("Codex fingerprint field = %#v", fields[0])
+		}
+	}
+	if !found {
+		t.Fatal("Codex fingerprint resource form contribution is missing")
+	}
+}
+
 func descriptorHasPluginCapability(descriptor pluginmeta.Descriptor, capability pluginmeta.CapabilityDescriptor) bool {
 	for _, candidate := range descriptor.Capabilities {
 		if candidate == capability {

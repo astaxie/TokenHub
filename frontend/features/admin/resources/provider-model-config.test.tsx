@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerResourceAuthTypeOptionsFromData } from "../domain/provider-resource-types";
 import { providerResourcePayload } from "./payloads";
-import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
+  it("keeps provider account runtime fields free of provider-specific plugin options", () => {
+    const keys = providerCreateAccountRuntimeFields().map((field) => field.key);
+    expect(keys).not.toContain("codex_fingerprint_mode");
+  });
+
   it("renders provider type display names from plugin catalog metadata", () => {
     const data = emptyData();
     data.plugins = [{
@@ -462,7 +467,6 @@ describe("providerResourceConfig", () => {
       max_concurrency: "5",
       group: "kimi",
     });
-    expect(providerResourceDraftDefaults({ provider_id: "prv_kimi", name: "Kimi", type: "kimi_subscription" }, data).codex_fingerprint_mode).toBe("");
     expect(providerResourceAuthTypeOptionsFromData(data, null, { provider_id: "prv_kimi", resource_type: "kimi_oauth_account" })).toEqual([
       { value: "oauth", label: "OAuth" },
       { value: "personal_access_token", label: "Personal Access Token" },
@@ -506,7 +510,6 @@ describe("providerResourceConfig", () => {
           defaults: {
             auth_type: "oauth",
             base_url: "https://chatgpt.com/backend-api/codex",
-            codex_fingerprint_mode: "session",
             max_concurrency: "3",
           },
         }),
@@ -519,7 +522,6 @@ describe("providerResourceConfig", () => {
       resource_type: "openai_subscription",
       auth_type: "oauth",
       base_url: "https://chatgpt.com/backend-api/codex",
-      codex_fingerprint_mode: "session",
       max_concurrency: "3",
     });
   });

@@ -73,10 +73,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AuthModes:   []string{"oauth", "personal_access_token"},
 			Default:     true,
 			Defaults: map[string]string{
-				"auth_type":              "oauth",
-				"base_url":               openAICodexBaseURL,
-				"codex_fingerprint_mode": "session",
-				"max_concurrency":        "3",
+				"auth_type":       "oauth",
+				"base_url":        openAICodexBaseURL,
+				"max_concurrency": "3",
 			},
 		}},
 		capabilities: []AdapterCapability{

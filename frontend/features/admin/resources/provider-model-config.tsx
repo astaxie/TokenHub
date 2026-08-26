@@ -93,14 +93,6 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "rate_limit_rpm", label: "RPM 限制", type: "number" },
     { key: "token_limit_tpm", label: "TPM 限制", type: "number" },
     { key: "max_concurrency", label: "最大并发", type: "number" },
-    {
-      key: "codex_fingerprint_mode",
-      label: "Codex 指纹收敛",
-      type: "select",
-      options: ["off", "device", "session", "full"],
-      visible: openAIAccountFieldVisible,
-      help: "共享同一订阅账号时，将客户端设备与会话标识改写为账号级稳定值，减少上游可见的设备数和会话数。",
-    },
     { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["inherit", "preserve", "strip"], help: "继承 Provider 策略，或只为当前 Resource 覆盖保留或移除行为。" },
     { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     { key: "healthy", label: "健康", type: "boolean" },
@@ -339,7 +331,7 @@ export function providerCreateAccountResourceFields() {
 }
 
 export function providerCreateAccountRuntimeFields() {
-  const keys = new Set(["base_url", "group", "priority", "weight", "rate_limit_rpm", "token_limit_tpm", "max_concurrency", "codex_fingerprint_mode", "claude_code_attribution_policy", "status"]);
+  const keys = new Set(["base_url", "group", "priority", "weight", "rate_limit_rpm", "token_limit_tpm", "max_concurrency", "claude_code_attribution_policy", "status"]);
   return providerResourceFieldConfigs()
     .filter((field) => keys.has(field.key))
     .map((field) => field.key === "base_url" ? { ...field, required: true } : field);
@@ -381,7 +373,6 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     rate_limit_rpm: "",
     token_limit_tpm: "",
     max_concurrency: metadataDefaults.max_concurrency || "3",
-    codex_fingerprint_mode: "",
     claude_code_attribution_policy: "inherit",
     token_type: "",
     expires_at: "",
