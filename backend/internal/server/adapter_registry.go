@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -35,6 +36,7 @@ type AdapterDescriptor struct {
 type AdapterProviderPolicy struct {
 	RouteProtocols        []string `json:"route_protocols,omitempty"`
 	SupportsCustomHeaders bool     `json:"supports_custom_headers"`
+	RouteRequiresResource bool     `json:"route_requires_resource"`
 }
 
 // AdapterRegistry is the single source of truth for which adapter serves a
@@ -167,6 +169,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 	descriptor.ProviderPolicy = AdapterProviderPolicy{
 		RouteProtocols:        adapterRouteProtocols(r, descriptor),
 		SupportsCustomHeaders: adapterSupportsProviderHeaders(r, descriptor.Type),
+		RouteRequiresResource: adapterRequiresRouteResource(r, descriptor.Type),
 	}
 	return descriptor
 }
@@ -183,6 +186,37 @@ func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType stri
 		return policyer.SupportsProviderHeaders()
 	}
 	return legacyProviderTypeSupportsHeaders(providerType)
+}
+
+func adapterRequiresRouteResource(registry *AdapterRegistry, providerType string) bool {
+	if value, ok := providerPolicyBoolCapability(registry, providerType, "route_requires_resource"); ok {
+		return value
+	}
+	return providerType == ProviderOpenAICodex
+}
+
+func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string, name string) (bool, bool) {
+	if registry == nil || registry.plugins == nil {
+		return false, false
+	}
+	descriptor, ok := registry.descriptors[providerType]
+	if !ok || descriptor.PluginID == "" {
+		return false, false
+	}
+	plugin, ok := registry.plugins.Describe(descriptor.PluginID)
+	if !ok {
+		return false, false
+	}
+	for _, capability := range plugin.Capabilities {
+		if capability.Kind != "provider_policy" || capability.Name != name {
+			continue
+		}
+		if capability.Subject != "" && capability.Subject != providerType {
+			continue
+		}
+		return strings.EqualFold(strings.TrimSpace(capability.Value), "true"), true
+	}
+	return false, false
 }
 
 func (r *AdapterRegistry) ListPlugins() []pluginmeta.Descriptor {

@@ -99,13 +99,10 @@ func (availability providerResourceAvailability) err() error {
 }
 
 func routeCandidateResourceRequired(provider Provider, resource ProviderResource) bool {
-	return provider.Type == ProviderOpenAICodex || isProviderAccountResource(resource.ResourceType)
+	return providerRouteRequiresResource(provider) || isProviderAccountResource(resource.ResourceType)
 }
 
 func routeCandidateResourcesRequireSelection(provider Provider, resources []ProviderResource) bool {
-	if provider.Type == ProviderOpenAICodex {
-		return true
-	}
 	if routeCandidateProviderRequiresResource(provider) {
 		return true
 	}
@@ -118,12 +115,7 @@ func routeCandidateResourcesRequireSelection(provider Provider, resources []Prov
 }
 
 func routeCandidateProviderRequiresResource(provider Provider) bool {
-	switch strings.TrimSpace(provider.Type) {
-	case ProviderOpenAICodex:
-		return true
-	default:
-		return false
-	}
+	return providerRouteRequiresResource(provider)
 }
 
 func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.Time) ([]RouteSelection, error) {

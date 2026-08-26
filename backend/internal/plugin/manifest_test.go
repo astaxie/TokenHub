@@ -39,6 +39,7 @@ capabilities:
     route_protocols:
       - codex/responses
     supports_custom_headers: false
+    route_requires_resource: true
   gateway:
     - responses
     - responses_stream
@@ -97,14 +98,17 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 10 {
-		t.Fatalf("descriptor capabilities = %v, want 10 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 11 {
+		t.Fatalf("descriptor capabilities = %v, want 11 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "supports_custom_headers", Subject: "openai_codex", Value: "false"}) {
 		t.Fatalf("descriptor is missing provider policy capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_requires_resource", Subject: "openai_codex", Value: "true"}) {
+		t.Fatalf("descriptor is missing provider route resource policy capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_protocol", Subject: "openai_codex", Value: "codex/responses"}) {
 		t.Fatalf("descriptor is missing provider route protocol capability: %+v", descriptor.Capabilities)
@@ -114,6 +118,9 @@ permissions:
 	}
 	if manifest.Capabilities.Provider.SupportsCustomHeaders == nil || *manifest.Capabilities.Provider.SupportsCustomHeaders {
 		t.Fatalf("provider custom header policy = %+v", manifest.Capabilities.Provider.SupportsCustomHeaders)
+	}
+	if manifest.Capabilities.Provider.RouteRequiresResource == nil || !*manifest.Capabilities.Provider.RouteRequiresResource {
+		t.Fatalf("provider route resource policy = %+v", manifest.Capabilities.Provider.RouteRequiresResource)
 	}
 	hooks := manifest.GatewayHooks()
 	if len(hooks) != 1 {

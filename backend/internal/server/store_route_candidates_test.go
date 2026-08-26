@@ -502,6 +502,64 @@ func TestPluginAccountExplicitMissingResourceFails(t *testing.T) {
 	}
 }
 
+func TestRouteCandidatesRequireResourceFromProviderPolicy(t *testing.T) {
+	now := time.Now().UTC()
+	for _, test := range []struct {
+		name          string
+		resource      *ProviderResource
+		wantCode      string
+		wantCandidate bool
+	}{
+		{name: "missing", wantCode: "provider_resource_missing"},
+		{name: "disabled", resource: &ProviderResource{Status: StatusDisabled, Healthy: false}, wantCode: "provider_resource_disabled"},
+		{name: "unhealthy", resource: &ProviderResource{Status: StatusActive, Healthy: false}, wantCode: "provider_resource_unhealthy"},
+		{name: "cooling down", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(time.Minute))}, wantCode: "provider_resource_cooling_down"},
+		{name: "healthy", resource: &ProviderResource{Status: StatusActive, Healthy: true}, wantCandidate: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := NewMemoryStore()
+			modelName := "provider-policy-requires-resource"
+			store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+			provider := store.AddProvider(Provider{
+				ID: "prv_policy_requires_resource", Name: "Policy Requires Resource",
+				Type: "subscription_plugin", Status: StatusActive, Healthy: true,
+				Options: map[string]string{providerRouteRequiresResourceOption: "true"},
+			})
+			resourceID := "rsrc_policy_requires_resource"
+			if test.resource != nil {
+				resource := *test.resource
+				resource.ID = resourceID
+				resource.ProviderID = provider.ID
+				resource.Name = "Plugin account"
+				resource.ResourceType = ProviderResourceAPIKey
+				if err := store.db.Create(&resource).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			store.AddRoute(ModelRoute{
+				ID: "route_policy_requires_resource", ModelName: modelName,
+				ProviderID: provider.ID, ProviderModel: modelName,
+				Status: StatusActive, Priority: 1, Weight: 100,
+			})
+
+			candidates, err := store.SelectRouteCandidates(modelName)
+			if test.wantCandidate {
+				if err != nil || len(candidates) != 1 || routeResourceID(candidates[0]) != resourceID {
+					t.Fatalf("eligible policy resource candidates=%+v err=%v", candidates, err)
+				}
+				return
+			}
+			httpErr := AsHTTPError(err)
+			if httpErr == nil || httpErr.Code != test.wantCode {
+				t.Fatalf("availability error=%+v want code=%q candidates=%+v", httpErr, test.wantCode, candidates)
+			}
+			if len(candidates) != 0 {
+				t.Fatalf("unavailable policy resource returned candidates: %+v", candidates)
+			}
+		})
+	}
+}
+
 func TestPluginAccountGroupedResourceMissingSurvivesBatchLookupFallback(t *testing.T) {
 	store := NewMemoryStore()
 	modelName := "plugin-account-grouped-resource-missing"

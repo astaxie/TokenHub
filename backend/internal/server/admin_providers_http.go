@@ -359,7 +359,8 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		SensitiveHeaders: req.SensitiveHeaders,
 		Options:          req.Options,
 	}
-	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
+	adapterDescriptor, ok := s.adapterRegistry.Describe(provider.Type)
+	if !ok {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, NewHTTPError(
 			http.StatusBadRequest,
 			"provider_adapter_missing",
@@ -379,9 +380,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	if err := ValidateProviderUpstreamBaseURL(provider.BaseURL); err != nil {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
-	if provider.Options == nil {
-		provider.Options = map[string]string{}
-	}
+	applyProviderPluginPolicy(&provider, adapterDescriptor)
 	if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}

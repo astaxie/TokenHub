@@ -3,10 +3,11 @@ package server
 import pluginmeta "tokenhub/backend/internal/plugin"
 
 type builtinProviderAdapter struct {
-	providerType  string
-	adapter       any
-	resourceTypes []pluginmeta.ManifestProviderResourceType
-	capabilities  []AdapterCapability
+	providerType          string
+	adapter               any
+	routeRequiresResource bool
+	resourceTypes         []pluginmeta.ManifestProviderResourceType
+	capabilities          []AdapterCapability
 }
 
 func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]ProviderAdapter, codexSubscription *CodexSubscriptionAdapter) {
@@ -59,8 +60,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
-		providerType: ProviderOpenAICodex,
-		adapter:      codexSubscription,
+		providerType:          ProviderOpenAICodex,
+		adapter:               codexSubscription,
+		routeRequiresResource: true,
 		resourceTypes: []pluginmeta.ManifestProviderResourceType{{
 			Type:        ProviderResourceOpenAISubscription,
 			DisplayName: "OpenAI Codex Subscription",
@@ -146,5 +148,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 	for _, capability := range adapter.capabilities {
 		capabilities = append(capabilities, string(capability))
 	}
-	return pluginmeta.BuiltInProviderWithResourceTypeMetadata(pluginID, name, []string{adapter.providerType}, adapter.resourceTypes, capabilities)
+	descriptor := pluginmeta.BuiltInProviderWithResourceTypeMetadata(pluginID, name, []string{adapter.providerType}, adapter.resourceTypes, capabilities)
+	if adapter.routeRequiresResource {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "route_requires_resource",
+			Subject: adapter.providerType,
+			Value:   "true",
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	return descriptor
 }

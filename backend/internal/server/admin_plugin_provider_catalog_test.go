@@ -131,6 +131,52 @@ func TestAdminPluginProviderCatalogGetUsesModelsReadAction(t *testing.T) {
 	}
 }
 
+func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "policy_subscription_provider"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.policy-subscription",
+		Name:    "Policy Subscription Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+		},
+	}, AdapterRegistration{
+		Type:    providerType,
+		Adapter: struct{}{},
+	}); err != nil {
+		t.Fatalf("register policy provider: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
+		"name": "Policy Subscription",
+		"type": providerType,
+	}, "plugin-catalog-admin")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create plugin provider: expected 201, got %d: %s", response.Code, response.Body)
+	}
+	var payload ProviderCreateResult
+	if err := json.Unmarshal([]byte(response.Body), &payload); err != nil {
+		t.Fatalf("decode create provider response: %v", err)
+	}
+	if payload.Provider.Options[providerRouteRequiresResourceOption] != "true" {
+		t.Fatalf("provider route resource policy options = %+v", payload.Provider.Options)
+	}
+	stored, ok := store.GetProvider(payload.Provider.ID)
+	if !ok {
+		t.Fatal("created provider was not persisted")
+	}
+	if !providerRouteRequiresResource(stored) {
+		t.Fatalf("stored provider policy = %+v", stored.Options)
+	}
+}
+
 func TestAdminPluginProviderCatalogGetFallsBackToResourceModelAdapter(t *testing.T) {
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})

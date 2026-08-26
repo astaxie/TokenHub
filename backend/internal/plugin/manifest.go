@@ -68,6 +68,7 @@ type ManifestCapabilities struct {
 type ManifestProvider struct {
 	RouteProtocols        []string                `yaml:"route_protocols"`
 	SupportsCustomHeaders *bool                   `yaml:"supports_custom_headers"`
+	RouteRequiresResource *bool                   `yaml:"route_requires_resource"`
 	Catalog               ManifestProviderCatalog `yaml:"catalog"`
 }
 
@@ -378,6 +379,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "supports_custom_headers",
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.SupportsCustomHeaders),
+			})
+		}
+		if m.Capabilities.Provider.RouteRequiresResource != nil {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "route_requires_resource",
+				Subject: providerType,
+				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.RouteRequiresResource),
 			})
 		}
 		for _, protocol := range m.Capabilities.Provider.RouteProtocols {

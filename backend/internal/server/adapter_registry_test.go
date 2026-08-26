@@ -148,10 +148,16 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if codex.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("OpenAI Codex should not support custom headers")
 	}
+	if !codex.ProviderPolicy.RouteRequiresResource {
+		t.Fatal("OpenAI Codex should require route resources through provider policy")
+	}
 
 	compatible, ok := server.adapterRegistry.Describe(ProviderOpenAICompatible)
 	if !ok {
 		t.Fatal("OpenAI-compatible adapter descriptor is missing")
+	}
+	if compatible.ProviderPolicy.RouteRequiresResource {
+		t.Fatal("OpenAI-compatible should keep route resources optional")
 	}
 	if !compatible.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("OpenAI-compatible should support custom headers")
@@ -187,6 +193,31 @@ func TestBuiltinProviderPluginsExposeAdapterCapabilities(t *testing.T) {
 	}
 }
 
+func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	providerType := "subscription_plugin"
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.subscription-plugin",
+		Name:    "Subscription Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+		},
+	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
+		t.Fatalf("register plugin adapter: %v", err)
+	}
+
+	descriptor, ok := registry.Describe(providerType)
+	if !ok {
+		t.Fatal("plugin adapter descriptor is missing")
+	}
+	if !descriptor.ProviderPolicy.RouteRequiresResource {
+		t.Fatalf("plugin provider policy = %+v, want route resource required", descriptor.ProviderPolicy)
+	}
+}
+
 func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	server := New(NewMemoryStore())
 	descriptor, ok := server.adapterRegistry.plugins.Describe("tokenhub.provider.openai-codex")
@@ -203,6 +234,9 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	if value == "" {
 		t.Fatalf("Codex provider plugin resource type metadata is missing: %+v", descriptor.Capabilities)
 	}
+	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "route_requires_resource", Subject: ProviderOpenAICodex, Value: "true"}) {
+		t.Fatalf("Codex provider plugin route resource policy is missing: %+v", descriptor.Capabilities)
+	}
 	var resourceType pluginmeta.ManifestProviderResourceType
 	if err := json.Unmarshal([]byte(value), &resourceType); err != nil {
 		t.Fatalf("decode Codex resource type metadata: %v", err)
@@ -213,6 +247,15 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	if !reflect.DeepEqual(resourceType.AuthModes, []string{"oauth", "personal_access_token"}) {
 		t.Fatalf("Codex resource type auth modes = %+v", resourceType.AuthModes)
 	}
+}
+
+func descriptorHasPluginCapability(descriptor pluginmeta.Descriptor, capability pluginmeta.CapabilityDescriptor) bool {
+	for _, candidate := range descriptor.Capabilities {
+		if candidate == capability {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuiltinGatewayChainPluginPlansCoreHooks(t *testing.T) {

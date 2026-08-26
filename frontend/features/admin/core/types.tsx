@@ -271,6 +271,7 @@ export type AdapterDescriptor = {
   provider_policy?: {
     route_protocols?: string[];
     supports_custom_headers: boolean;
+    route_requires_resource?: boolean;
   };
 };
 
