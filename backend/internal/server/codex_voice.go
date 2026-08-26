@@ -10,12 +10,14 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"path"
-	"sort"
 	"strings"
 	"time"
 )
 
 const (
+	// codexVoiceModelName is the internal governance model used for authorization,
+	// routing, quotas, and audit. It is never written into the upstream session.
+	codexVoiceModelName = "codex-voice"
 	// codexVoiceDefaultSidebandUpstreamBaseURL is OpenAI's Codex Voice sideband base.
 	codexVoiceDefaultSidebandUpstreamBaseURL = "https://api.openai.com/v1"
 	// codexVoiceAffinityKind isolates Voice call bindings from other adapter sessions.
@@ -35,6 +37,34 @@ type codexVoiceSelection struct {
 	Provider    Provider
 	Resource    ProviderResource
 	Credentials ProviderResourceCredentials
+}
+
+type codexVoiceCallResult struct {
+	StatusCode int
+	Header     http.Header
+	Body       []byte
+	CallID     string
+	Selection  codexVoiceSelection
+}
+
+type codexVoiceAuditSummary struct {
+	Operation string `json:"operation"`
+	BodyBytes int    `json:"body_bytes"`
+}
+
+// codexVoiceResponseFilteringTransport sanitizes upstream response headers
+// before ReverseProxy removes the Connection declarations needed to identify
+// extension hop-by-hop headers.
+type codexVoiceResponseFilteringTransport struct {
+	next http.RoundTripper
+}
+
+func (transport codexVoiceResponseFilteringTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := transport.next.RoundTrip(request)
+	if response != nil {
+		stripCodexVoiceSensitiveResponseHeaders(response.Header, response.StatusCode == http.StatusSwitchingProtocols)
+	}
+	return response, err
 }
 
 // codexVoiceStrippedRequestHeaders lists headers that cannot cross the gateway
@@ -65,47 +95,77 @@ var codexVoiceStrippedRequestHeaders = map[string]bool{
 }
 
 func (s *Server) handleCodexVoiceCallCreate(w http.ResponseWriter, r *http.Request) {
-	_, key, err := s.authenticate(r)
+	project, key, err := s.authenticate(r)
 	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	admittedAt := time.Now().UTC()
+	if !capabilityAllowedByScopes(project, key, AccessCapabilityCodexVoice) {
+		err := ErrModelNotAllowed
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, codexVoiceModelName, false, err, codexVoiceAuditSummary{Operation: "call_create"})
+		w.Header().Set("x-request-id", requestID)
 		writeError(w, r, err)
 		return
 	}
 	body, err := s.readCodexVoiceRequestBody(w, r)
 	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, codexVoiceModelName, false, err, codexVoiceAuditSummary{Operation: "call_create"})
+		w.Header().Set("x-request-id", requestID)
 		writeError(w, r, err)
 		return
 	}
-	selection, err := s.selectCodexVoiceResource(r.Context())
+	auditPayload := codexVoiceAuditSummary{Operation: "call_create", BodyBytes: len(body)}
+	call, err := s.admitRoutedCall(w, r, project, key, codexVoiceModelName, false, 0)
 	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, codexVoiceModelName, false, err, auditPayload)
+		w.Header().Set("x-request-id", requestID)
 		writeError(w, r, err)
 		return
 	}
-	response, err := s.createCodexVoiceCall(r.Context(), r, body, selection)
+	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, codexVoiceModelName, auditPayload)
+	if !ok {
+		return
+	}
+	routed.Routes = s.codexVoiceRoutes(routed.Routes)
+	if len(routed.Routes) == 0 {
+		err := NewHTTPError(http.StatusServiceUnavailable, "codex_voice_resource_unavailable", "No routed Codex subscription resource is available for Voice")
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	result, route, _, attempts, err := executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, candidate RouteSelection, _ bool, _ int) (codexVoiceCallResult, Usage, error) {
+		result, err := s.executeCodexVoiceCall(ctx, r, body, candidate)
+		return result, Usage{}, err
+	})
 	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
-	defer response.Body.Close()
-	if response.StatusCode >= http.StatusBadRequest {
-		data, _ := io.ReadAll(io.LimitReader(response.Body, 256<<10))
-		writeError(w, r, classifyCodexHTTPError(response.StatusCode, response.Header, data))
-		return
-	}
-	callID := codexVoiceCallID(response.Header.Get("Location"))
-	if callID == "" {
-		writeError(w, r, NewHTTPError(http.StatusBadGateway, "codex_voice_call_location_missing", "Codex Voice call response is missing a call ID"))
-		return
-	}
-	if err := s.commitCodexVoiceBinding(r.Context(), key, callID, selection); err != nil {
+	selection := result.Selection
+	if err := s.commitCodexVoiceBinding(r.Context(), key, result.CallID, selection); err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
-	copyCodexVoiceResponseHeaders(w.Header(), response.Header)
+	s.store.MarkRouteUsed(route.Route.ID)
+	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	s.finishRoutedCall(r, GatewayCallCompletion{
+		Call:            routed.Call,
+		Route:           route,
+		Attempts:        attempts,
+		StatusCode:      result.StatusCode,
+		RequestPayload:  auditPayload,
+		ResponsePayload: map[string]any{"call_created": true},
+	})
+	copyCodexVoiceResponseHeaders(w.Header(), result.Header)
+	w.Header().Set("x-request-id", routed.Call.RequestID)
+	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	w.Header().Set("x-tokenhub-provider", selection.Provider.ID)
 	w.Header().Set("x-tokenhub-provider-resource-id", selection.Resource.ID)
-	w.WriteHeader(response.StatusCode)
-	_, _ = io.Copy(w, response.Body)
-	s.store.MarkProviderResourceUsed(selection.Resource.ID)
+	w.WriteHeader(result.StatusCode)
+	_, _ = w.Write(result.Body)
 }
 
 func (s *Server) readCodexVoiceRequestBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
@@ -129,62 +189,69 @@ func (s *Server) readCodexVoiceRequestBody(w http.ResponseWriter, r *http.Reques
 	return body, nil
 }
 
-func (s *Server) selectCodexVoiceResource(ctx context.Context) (codexVoiceSelection, error) {
-	providers := make(map[string]Provider)
-	for _, provider := range s.store.ListProviders() {
-		if provider.Type == ProviderOpenAICodex && provider.Status == StatusActive && provider.Healthy {
-			providers[provider.ID] = provider
+func (s *Server) codexVoiceRoutes(routes []RouteSelection) []RouteSelection {
+	routes = s.routesWithAdapterCapability(routes, AdapterCapabilityCodexVoice)
+	filtered := make([]RouteSelection, 0, len(routes))
+	for _, route := range routes {
+		if route.Provider.Type == ProviderOpenAICodex && route.Resource != nil && isOpenAIAccountResource(route.Resource.ResourceType) {
+			filtered = append(filtered, route)
 		}
 	}
-	type candidate struct {
-		provider Provider
-		resource ProviderResource
+	return filtered
+}
+
+func codexVoiceSelectionForRoute(route RouteSelection) (codexVoiceSelection, error) {
+	if route.Provider.Type != ProviderOpenAICodex || route.Resource == nil || !isOpenAIAccountResource(route.Resource.ResourceType) {
+		return codexVoiceSelection{}, NewHTTPError(http.StatusServiceUnavailable, "codex_voice_resource_unavailable", "The routed resource does not support Codex Voice")
 	}
-	candidates := make([]candidate, 0)
-	now := time.Now().UTC()
-	for _, resource := range s.store.ListProviderResources() {
-		provider, ok := providers[resource.ProviderID]
-		if !ok || !isOpenAIAccountResource(resource.ResourceType) || resource.Status != StatusActive || !resource.Healthy {
-			continue
-		}
-		if resource.CooldownUntil != nil && resource.CooldownUntil.After(now) {
-			continue
-		}
-		candidates = append(candidates, candidate{provider: provider, resource: resource})
+	credentials := ProviderResourceCredentials{
+		AccessToken: strings.TrimSpace(route.Provider.APIKey),
+		AccountID:   strings.TrimSpace(route.Provider.Options["account_id"]),
 	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		left, right := candidates[i], candidates[j]
-		if left.provider.Priority != right.provider.Priority {
-			return left.provider.Priority < right.provider.Priority
-		}
-		if left.resource.Priority != right.resource.Priority {
-			return left.resource.Priority < right.resource.Priority
-		}
-		if left.resource.Weight != right.resource.Weight {
-			return left.resource.Weight > right.resource.Weight
-		}
-		return left.resource.ID < right.resource.ID
-	})
-	if len(candidates) == 0 {
-		return codexVoiceSelection{}, NewHTTPError(http.StatusServiceUnavailable, "codex_voice_resource_unavailable", "No active Codex subscription resource is available for Voice")
+	if credentials.AccessToken == "" || credentials.AccountID == "" {
+		return codexVoiceSelection{}, NewHTTPError(http.StatusServiceUnavailable, "codex_voice_credentials_incomplete", "Codex Voice resource credentials are incomplete")
 	}
-	var lastErr error
-	for _, current := range candidates {
-		credentials, err := s.store.RefreshProviderResourceCredentials(ctx, current.resource.ID, false)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if strings.TrimSpace(credentials.AccessToken) == "" || strings.TrimSpace(credentials.AccountID) == "" {
-			lastErr = NewHTTPError(http.StatusServiceUnavailable, "codex_voice_credentials_incomplete", "Codex Voice resource credentials are incomplete")
-			continue
-		}
-		return codexVoiceSelection{Provider: current.provider, Resource: current.resource, Credentials: credentials}, nil
+	return codexVoiceSelection{Provider: route.Provider, Resource: *route.Resource, Credentials: credentials}, nil
+}
+
+func (s *Server) executeCodexVoiceCall(ctx context.Context, incoming *http.Request, body []byte, route RouteSelection) (codexVoiceCallResult, error) {
+	route, err := s.prepareRouteForUpstream(ctx, route)
+	if err != nil {
+		return codexVoiceCallResult{}, err
 	}
-	if lastErr != nil {
-		return codexVoiceSelection{}, lastErr
+	selection, err := codexVoiceSelectionForRoute(route)
+	if err != nil {
+		return codexVoiceCallResult{}, err
 	}
-	return codexVoiceSelection{}, NewHTTPError(http.StatusServiceUnavailable, "codex_voice_resource_unavailable", "No usable Codex subscription resource is available for Voice")
+	response, err := s.createCodexVoiceCall(ctx, incoming, body, selection)
+	if err != nil {
+		return codexVoiceCallResult{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	data, readErr := io.ReadAll(io.LimitReader(response.Body, 4<<20))
+	if readErr != nil {
+		return codexVoiceCallResult{}, &ProviderInvocationError{
+			Err:         NewHTTPError(http.StatusBadGateway, "codex_voice_response_failed", "Codex Voice response could not be read"),
+			Disposition: ProviderErrorTransientSame,
+		}
+	}
+	if response.StatusCode >= http.StatusBadRequest {
+		return codexVoiceCallResult{}, classifyCodexHTTPError(response.StatusCode, response.Header, data)
+	}
+	callID := codexVoiceCallID(response.Header.Get("Location"))
+	if callID == "" {
+		return codexVoiceCallResult{}, &ProviderInvocationError{
+			Err:         NewHTTPError(http.StatusBadGateway, "codex_voice_call_location_missing", "Codex Voice call response is missing a call ID"),
+			Disposition: ProviderErrorTransientSame,
+		}
+	}
+	return codexVoiceCallResult{
+		StatusCode: response.StatusCode,
+		Header:     response.Header.Clone(),
+		Body:       data,
+		CallID:     callID,
+		Selection:  selection,
+	}, nil
 }
 
 func (s *Server) createCodexVoiceCall(ctx context.Context, incoming *http.Request, body []byte, selection codexVoiceSelection) (*http.Response, error) {
@@ -334,6 +401,22 @@ func copyCodexVoiceResponseHeaders(target http.Header, source http.Header) {
 	}
 }
 
+func stripCodexVoiceSensitiveResponseHeaders(headers http.Header, preserveUpgrade bool) {
+	connectionHeaders := connectionHeaderNames(headers)
+	for name := range headers {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		if preserveUpgrade && normalized == "upgrade" {
+			continue
+		}
+		if normalized == "set-cookie" || codexVoiceRequestHeaderStripped(normalized, connectionHeaders) {
+			headers.Del(name)
+		}
+	}
+	if preserveUpgrade {
+		headers.Set("Connection", "Upgrade")
+	}
+}
+
 func codexVoiceCallID(location string) string {
 	location = strings.TrimSpace(location)
 	if location == "" {
@@ -379,9 +462,13 @@ func (s *Server) handleCodexVoiceRealtimeSideband(w http.ResponseWriter, r *http
 }
 
 func (s *Server) handleCodexVoiceSideband(w http.ResponseWriter, r *http.Request, callID string, frameless bool) {
-	_, key, err := s.authenticate(r)
+	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
+		return
+	}
+	if !capabilityAllowedByScopes(project, key, AccessCapabilityCodexVoice) {
+		writeError(w, r, ErrModelNotAllowed)
 		return
 	}
 	callID = strings.TrimSpace(callID)
@@ -500,16 +587,18 @@ func (s *Server) proxyCodexVoiceWebSocket(w http.ResponseWriter, r *http.Request
 			setCodexVoiceIdentityFallbacks(request.Out.Header)
 		},
 		ModifyResponse: func(response *http.Response) error {
-			response.Header.Del("Set-Cookie")
+			stripCodexVoiceSensitiveResponseHeaders(response.Header, response.StatusCode == http.StatusSwitchingProtocols)
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, proxyErr error) {
 			writeError(writer, request, NewHTTPError(http.StatusBadGateway, "codex_voice_sideband_failed", "Codex Voice sideband connection failed"))
 		},
 	}
-	if s.codexSubscription != nil && s.codexSubscription.Client != nil {
-		proxy.Transport = s.codexSubscription.Client.Transport
+	transport := http.DefaultTransport
+	if s.codexSubscription != nil && s.codexSubscription.Client != nil && s.codexSubscription.Client.Transport != nil {
+		transport = s.codexSubscription.Client.Transport
 	}
+	proxy.Transport = codexVoiceResponseFilteringTransport{next: transport}
 	proxy.ServeHTTP(w, r)
 	s.store.MarkProviderResourceUsed(selection.Resource.ID)
 }

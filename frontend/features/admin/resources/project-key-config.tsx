@@ -5,9 +5,18 @@ import { type AdminResource, type APIKey, type AppData, type FieldConfig, type P
 import { apiKeyCanManage } from "../domain/api-key-management-authz";
 import { apiKeyOwnerSelectOptions, apiKeyOwnerUserID, costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
 import { apiGatewayBaseURL } from "../domain/formatting";
+import { splitList } from "../domain/labels";
 import { tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, keyPatchPayload, projectQuotaSummary, updateAPIKeyStatus } from "./payloads";
 import { StatusPill } from "../shared/ui";
+
+function projectWritePayload(values: Record<string, string>) {
+  return {
+    ...values,
+    allowed_models: splitList(values.allowed_models),
+    allowed_capabilities: splitList(values.allowed_capabilities),
+  };
+}
 
 export function projectConfig(): ResourceConfig<Project> {
   return {
@@ -23,6 +32,7 @@ export function projectConfig(): ResourceConfig<Project> {
       { key: "cost_center", label: "成本中心", render: (item, ctx) => costCenterLabel(ctx, item.cost_center ?? "") },
       { key: "quota", label: "额度", render: (item, ctx) => projectQuotaSummary(ctx, item) },
       { key: "allowed_models", label: "模型访问", render: (item) => modelAccessSummary(item.model_access_mode, item.allowed_models) },
+      { key: "allowed_capabilities", label: "显式能力", render: (item) => item.allowed_capabilities?.join(", ") || "-" },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
     fields: [
@@ -32,11 +42,12 @@ export function projectConfig(): ResourceConfig<Project> {
       { key: "cost_center", label: "成本中心", type: "select", optionsFromData: costCenterSelectOptions },
       { key: "model_access_mode", label: "模型访问模式", type: "select", options: ["inherit", "restricted"], required: true },
       { key: "allowed_models", label: "项目模型允许列表，逗号分隔", visible: (values) => values.model_access_mode === "restricted", help: "restricted 且留空时禁止项目访问任何模型；所有项目 Key 只能进一步收窄。" },
+      { key: "allowed_capabilities", label: "显式能力", type: "multi-select", options: ["codex_voice"], multiSelectOnEdit: true, help: "敏感能力默认关闭；项目与 Key 必须同时显式允许。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     ],
     list: (ctx) => ctx.projects,
-    create: (ctx, values) => adminMutate(ctx, "/api/admin/projects", "POST", values),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/projects/${item.id}`, "PATCH", values),
+    create: (ctx, values) => adminMutate(ctx, "/api/admin/projects", "POST", projectWritePayload(values)),
+    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/projects/${item.id}`, "PATCH", projectWritePayload(values)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/projects/${item.id}`),
     actions: [
       {
@@ -169,6 +180,7 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       { key: "project_team", label: "团队", render: (item, ctx) => projectTeamLabel(ctx, item.project_id) },
       { key: "key_prefix", label: "Key", render: (item) => `${item.key_prefix}...${item.key_suffix}` },
       { key: "allowed_models", label: "模型", render: (item) => modelAccessSummary(item.model_access_mode, item.allowed_models) },
+      { key: "allowed_capabilities", label: "显式能力", render: (item) => item.allowed_capabilities?.join(", ") || "-" },
       { key: "ip_allowlist", label: "IP 白名单", render: (item) => (item.ip_allowlist ?? []).join(", ") || tx("不限") },
       { key: "rate_limit_rpm", label: "RPM" },
       { key: "token_limit_tpm", label: "TPM" },
@@ -197,6 +209,7 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       { key: "group", label: "用途/环境", placeholder: "prod、dev、backend-service" },
       { key: "model_access_mode", label: "模型访问模式", type: "select", options: ["inherit", "restricted"], required: true, help: "inherit 表示继承项目范围；restricted 表示与项目允许列表取交集。" },
       { key: "allowed_models", label: "模型允许列表，逗号分隔", visible: (values) => values.model_access_mode === "restricted", help: "restricted 且留空表示禁止此 Key 访问任何模型。" },
+      { key: "allowed_capabilities", label: "显式能力", type: "multi-select", options: ["codex_voice"], multiSelectOnEdit: true, help: "只有项目和此 Key 都允许时才能使用；新 Key 默认关闭。" },
       { key: "ip_allowlist", label: "IP 白名单，逗号分隔", help: "留空表示不限来源 IP。" },
       { key: "rate_limit_rpm", label: "每分钟请求数（RPM）", type: "number", help: "留空表示继承项目或全局策略；填 0 表示 Key 层不额外限速，上级限制仍然生效。若要停止调用，请将 Key 状态设为 disabled。" },
       { key: "token_limit_tpm", label: "每分钟 Token 数（TPM）", type: "number", help: "留空表示继承项目或全局策略；填 0 表示 Key 层不额外限速。流式请求会先预留预算，再按实际用量结算。" },
@@ -244,6 +257,7 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
       group: item.group ?? "default",
       model_access_mode: item.model_access_mode || ((item.allowed_models ?? []).length > 0 ? "restricted" : "inherit"),
       allowed_models: (item.allowed_models ?? []).join(", "),
+      allowed_capabilities: (item.allowed_capabilities ?? []).join(", "),
       ip_allowlist: (item.ip_allowlist ?? []).join(", "),
       rate_limit_rpm: item.rate_limit_rpm === undefined ? "" : String(item.rate_limit_rpm),
       token_limit_tpm: item.token_limit_tpm === undefined ? "" : String(item.token_limit_tpm),

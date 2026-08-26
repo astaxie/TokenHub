@@ -490,29 +490,31 @@ func (c *AdminAPIClient) CreateProjectKey(ctx context.Context, projectID string,
 // a bundle asking to clear allowed_models would report an update that changed
 // nothing.
 type apiKeyWriteRequest struct {
-	Name            string              `json:"name,omitempty"`
-	Group           string              `json:"group,omitempty"`
-	AllowedModels   []string            `json:"allowed_models"`
-	ModelAccessMode string              `json:"model_access_mode,omitempty"`
-	IPAllowlist     []string            `json:"ip_allowlist"`
-	Limits          *server.QuotaLimits `json:"limits,omitempty"`
-	RateLimitRPM    *int64              `json:"rate_limit_rpm,omitempty"`
-	TokenLimitTPM   *int64              `json:"token_limit_tpm,omitempty"`
-	Status          string              `json:"status,omitempty"`
-	ExpiresAt       *time.Time          `json:"expires_at,omitempty"`
+	Name                string              `json:"name,omitempty"`
+	Group               string              `json:"group,omitempty"`
+	AllowedModels       []string            `json:"allowed_models"`
+	ModelAccessMode     string              `json:"model_access_mode,omitempty"`
+	AllowedCapabilities []string            `json:"allowed_capabilities"`
+	IPAllowlist         []string            `json:"ip_allowlist"`
+	Limits              *server.QuotaLimits `json:"limits,omitempty"`
+	RateLimitRPM        *int64              `json:"rate_limit_rpm,omitempty"`
+	TokenLimitTPM       *int64              `json:"token_limit_tpm,omitempty"`
+	Status              string              `json:"status,omitempty"`
+	ExpiresAt           *time.Time          `json:"expires_at,omitempty"`
 }
 
 func (c *AdminAPIClient) UpdateAPIKey(ctx context.Context, id string, req server.APIKey) (server.APIKey, error) {
 	payload := apiKeyWriteRequest{
-		Name:            req.Name,
-		Group:           req.Group,
-		AllowedModels:   req.Allowed,
-		ModelAccessMode: req.ModelAccessMode,
-		IPAllowlist:     req.IPAllowlist,
-		RateLimitRPM:    req.RateLimitRPM,
-		TokenLimitTPM:   req.TokenLimitTPM,
-		Status:          req.Status,
-		ExpiresAt:       req.ExpiresAt,
+		Name:                req.Name,
+		Group:               req.Group,
+		AllowedModels:       req.Allowed,
+		ModelAccessMode:     req.ModelAccessMode,
+		AllowedCapabilities: req.AllowedCapabilities,
+		IPAllowlist:         req.IPAllowlist,
+		RateLimitRPM:        req.RateLimitRPM,
+		TokenLimitTPM:       req.TokenLimitTPM,
+		Status:              req.Status,
+		ExpiresAt:           req.ExpiresAt,
 	}
 	if req.Limits != (server.QuotaLimits{}) {
 		limits := req.Limits

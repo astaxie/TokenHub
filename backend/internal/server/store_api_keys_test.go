@@ -83,3 +83,34 @@ func TestFindAPIKeyUsesSingleLookupAndPreservesNotFoundError(t *testing.T) {
 		t.Fatalf("missing API key error = %#v", httpErr)
 	}
 }
+
+func TestAccessCapabilitiesAreExplicitValidatedAndPreservedOnRotation(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{
+		Name:                "Voice capability project",
+		AllowedCapabilities: []string{AccessCapabilityCodexVoice, AccessCapabilityCodexVoice},
+	})
+	if !reflect.DeepEqual(project.AllowedCapabilities, []string{AccessCapabilityCodexVoice}) {
+		t.Fatalf("project capabilities = %#v", project.AllowedCapabilities)
+	}
+	key, _, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:                "Voice capability key",
+		AllowedCapabilities: []string{AccessCapabilityCodexVoice},
+	}, "thk_voice_capability_rotation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated, _, err := store.RotateAPIKey(key.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rotated.AllowedCapabilities, []string{AccessCapabilityCodexVoice}) {
+		t.Fatalf("rotated key capabilities = %#v", rotated.AllowedCapabilities)
+	}
+	if _, err := store.UpdateProject(project.ID, Project{AllowedCapabilities: []string{"unknown"}}); AsHTTPError(err).Code != "invalid_access_capability" {
+		t.Fatalf("unknown project capability error = %v", err)
+	}
+	if _, err := store.UpdateAPIKey(rotated.ID, APIKey{AllowedCapabilities: []string{"unknown"}}); AsHTTPError(err).Code != "invalid_access_capability" {
+		t.Fatalf("unknown key capability error = %v", err)
+	}
+}

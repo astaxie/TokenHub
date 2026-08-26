@@ -353,3 +353,20 @@ func TestBootstrapBaseDataPreservesRoutesWhenRefreshingLegacyCatalogModel(t *tes
 	}
 	t.Fatalf("expected catalog refresh to preserve route %+v", route)
 }
+
+func TestSeedCodexVoiceModelIsInternalAndIdempotent(t *testing.T) {
+	store := NewMemoryStore()
+	if err := seedCodexVoiceModel(store); err != nil {
+		t.Fatal(err)
+	}
+	models := store.ListModels()
+	if len(models) != 1 || models[0].Name != codexVoiceModelName || models[0].Metadata["internal"] != "true" || !AllowedModelSet(models[0].Capabilities)[AccessCapabilityCodexVoice] {
+		t.Fatalf("seeded Codex Voice model = %#v", models)
+	}
+	if err := seedCodexVoiceModel(store); err != nil {
+		t.Fatal(err)
+	}
+	if models := store.ListModels(); len(models) != 1 {
+		t.Fatalf("Codex Voice seed is not idempotent: %#v", models)
+	}
+}

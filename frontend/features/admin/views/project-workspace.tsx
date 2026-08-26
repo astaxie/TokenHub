@@ -25,6 +25,7 @@ export type ProjectWorkspaceDraft = {
   cost_center: string;
   model_access_mode: "inherit" | "restricted";
   allowed_models: string[];
+  allowed_capabilities: string[];
   primary_team_id: string;
   primary_role: ProjectTeam["role"];
   additional_teams: ProjectTeamDraftRow[];
@@ -50,6 +51,7 @@ export function projectWorkspaceDraft(project?: Project): ProjectWorkspaceDraft 
     cost_center: project?.cost_center ?? "",
     model_access_mode: project?.model_access_mode || ((project?.allowed_models ?? []).length > 0 ? "restricted" : "inherit"),
     allowed_models: project?.allowed_models ?? [],
+    allowed_capabilities: project?.allowed_capabilities ?? [],
     primary_team_id: primaryTeamID,
     primary_role: primaryLink?.role ?? "team_leader",
     additional_teams: project ? additionalTeams : [teamDraftRow()],
@@ -78,6 +80,7 @@ export async function saveProjectWorkspaceDraft(
     cost_center: draft.cost_center,
     model_access_mode: draft.model_access_mode,
     allowed_models: draft.model_access_mode === "restricted" ? draft.allowed_models : [],
+    allowed_capabilities: draft.allowed_capabilities,
     team_id: draft.primary_team_id,
   };
   const saved = await projectJSON<Project>(
@@ -359,11 +362,23 @@ export function ProjectWorkspace({
                     <small>{tx("不选择任何模型表示禁止项目访问全部模型。")}</small>
                   </label>
                 ) : null}
+                <label className="field">
+                  <span>{tx("显式能力")}</span>
+                  <select
+                    multiple
+                    value={draft.allowed_capabilities}
+                    onChange={(event) => setDraft((current) => ({ ...current, allowed_capabilities: Array.from(event.target.selectedOptions, (option) => option.value) }))}
+                  >
+                    <option value="codex_voice">Codex Voice</option>
+                  </select>
+                  <small>{tx("敏感能力默认关闭；项目与 Key 必须同时显式允许。")}</small>
+                </label>
               </div>
             ) : (
               <div className="project-readonly-grid">
                 <ProjectSummaryField label="模型访问模式" value={draft.model_access_mode === "inherit" ? tx("继承全部已启用模型") : tx("指定模型允许列表")} />
                 <ProjectSummaryField label="模型允许列表" value={draft.model_access_mode === "inherit" ? tx("继承上级范围") : draft.allowed_models.join(", ") || tx("禁止全部模型")} />
+                <ProjectSummaryField label="显式能力" value={draft.allowed_capabilities.join(", ") || tx("未启用")} />
               </div>
             )}
           </ProjectSection>

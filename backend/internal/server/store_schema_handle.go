@@ -132,7 +132,39 @@ func SchemaMigrationRegistry() []dbschema.Migration {
 					ADD COLUMN IF NOT EXISTS "redis_user_lease_held" boolean`,
 			},
 		},
+		{
+			Version:          4,
+			Name:             "add-access-capabilities-sqlite",
+			Dialect:          dbschema.DialectSQLite,
+			Go:               addAccessCapabilitiesSQLite,
+			ChecksumOverride: "tokenhub-schema-access-capabilities-sqlite-v1",
+		},
+		{
+			Version: 5,
+			Name:    "add-access-capabilities-postgres",
+			Dialect: dbschema.DialectPostgres,
+			Statements: []string{
+				`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "allowed_capabilities" text`,
+				`ALTER TABLE "api_keys" ADD COLUMN IF NOT EXISTS "allowed_capabilities" text`,
+			},
+		},
 	}
+}
+
+func addAccessCapabilitiesSQLite(ctx context.Context, db dbschema.MigrationExecer) error {
+	for _, table := range []string{"projects", "api_keys"} {
+		exists, err := sqliteColumnExists(ctx, db, table, "allowed_capabilities")
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %q ADD COLUMN %q text", table, "allowed_capabilities")); err != nil {
+			return fmt.Errorf("add sqlite column %s.allowed_capabilities: %w", table, err)
+		}
+	}
+	return nil
 }
 
 func addGranularBillingColumnsSQLite(ctx context.Context, db dbschema.MigrationExecer) error {

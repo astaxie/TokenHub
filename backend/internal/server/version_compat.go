@@ -18,14 +18,15 @@ type CompatibilityManifest struct {
 	MaxCompatible int64 `json:"max_compatible"`
 }
 
-// CurrentCompatibilityManifest is this release's declaration. This release
-// establishes the granular billing expand migration and can run from the
-// adoption baseline through the expanded state.
+// CurrentCompatibilityManifest is this release's declaration. TargetVersion
+// tracks the SQLite target used by managed-upgrade guards; MaxCompatible also
+// includes the PostgreSQL-only migration version because dialect-specific
+// migrations occupy distinct global registry versions.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 2,
+		TargetVersion: 4,
 		MinCompatible: dbschema.BaselineVersion,
-		MaxCompatible: 2,
+		MaxCompatible: 5,
 	}
 }
 

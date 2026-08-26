@@ -834,15 +834,16 @@ func (s *HTTPSink) applyAPIKeyHTTP(ctx context.Context, existingKeys []server.AP
 		return Change{Resource: "api_key", ID: current.ID, Action: ActionUpdate}, err
 	}
 	payload := map[string]any{
-		"name":              spec.Name,
-		"group":             spec.Group,
-		"allowed_models":    spec.Allowed,
-		"model_access_mode": spec.ModelAccessMode,
-		"ip_allowlist":      spec.IPAllowlist,
-		"limits":            spec.Limits,
-		"rate_limit_rpm":    spec.RateLimitRPM,
-		"token_limit_tpm":   spec.TokenLimitTPM,
-		"expires_at":        spec.ExpiresAt,
+		"name":                 spec.Name,
+		"group":                spec.Group,
+		"allowed_models":       spec.Allowed,
+		"model_access_mode":    spec.ModelAccessMode,
+		"allowed_capabilities": spec.AllowedCapabilities,
+		"ip_allowlist":         spec.IPAllowlist,
+		"limits":               spec.Limits,
+		"rate_limit_rpm":       spec.RateLimitRPM,
+		"token_limit_tpm":      spec.TokenLimitTPM,
+		"expires_at":           spec.ExpiresAt,
 	}
 	created, err := s.client.CreateProjectKey(ctx, projectID, payload)
 	if err != nil {

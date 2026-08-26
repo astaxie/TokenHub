@@ -488,6 +488,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "owner_user_id" && config.view === "api-keys") values[field.key] = currentUser && appRole(currentUser.role) !== "admin" ? currentUser.id : "";
     if (field.key === "team_id") values[field.key] = firstActiveTeam(data)?.id ?? "";
     if (field.key === "allowed_models") values[field.key] = "";
+    if (field.key === "allowed_capabilities") values[field.key] = "";
     if (field.key === "model_access_mode") values[field.key] = "inherit";
     if (field.key === "daily_requests") values[field.key] = "1000";
     if (field.key === "monthly_requests") values[field.key] = "30000";
@@ -550,6 +551,7 @@ export function keyCreatePayload(values: Record<string, string>) {
     owner_user_id: values.owner_user_id,
     model_access_mode: values.model_access_mode || "inherit",
     allowed_models: splitList(values.allowed_models),
+    allowed_capabilities: splitList(values.allowed_capabilities),
     ip_allowlist: splitList(values.ip_allowlist),
     rate_limit_rpm: minuteLimitValue(values.rate_limit_rpm, false),
     token_limit_tpm: minuteLimitValue(values.token_limit_tpm, false),
@@ -565,6 +567,7 @@ export function keyPatchPayload(values: Record<string, string>) {
     model_access_mode: values.model_access_mode || "inherit",
     status: values.status || "active",
     allowed_models: splitList(values.allowed_models),
+    allowed_capabilities: splitList(values.allowed_capabilities),
     ip_allowlist: splitList(values.ip_allowlist),
     rate_limit_rpm: minuteLimitValue(values.rate_limit_rpm, true),
     token_limit_tpm: minuteLimitValue(values.token_limit_tpm, true),

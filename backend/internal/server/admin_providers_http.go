@@ -1335,6 +1335,20 @@ func (s *Server) validateRoutePolicy(route ModelRoute) error {
 func (s *Server) validateImportedProviderModel(route ModelRoute) error {
 	providerID := strings.TrimSpace(route.ProviderID)
 	upstreamModel := strings.TrimSpace(route.ProviderModel)
+	if strings.TrimSpace(route.ModelName) == codexVoiceModelName {
+		provider, ok := s.providerByID(providerID)
+		if !ok || provider.Type != ProviderOpenAICodex {
+			return NewHTTPError(http.StatusBadRequest, "codex_voice_provider_required", "The Codex Voice route must use an OpenAI Codex Provider")
+		}
+		descriptor, ok := s.adapterRegistry.Describe(provider.Type)
+		if !ok || !adapterSupports(descriptor, AdapterCapabilityCodexVoice) {
+			return NewHTTPError(http.StatusBadRequest, "codex_voice_capability_required", "The selected Provider does not support Codex Voice")
+		}
+		if upstreamModel != codexVoiceModelName {
+			return NewHTTPError(http.StatusBadRequest, "codex_voice_upstream_model_invalid", "The Codex Voice route must use codex-voice as its internal upstream model")
+		}
+		return nil
+	}
 	if strings.TrimSpace(route.ModelName) == codexImageModelName {
 		provider, ok := s.providerByID(providerID)
 		if !ok || provider.Type != ProviderOpenAICodex {

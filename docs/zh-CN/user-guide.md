@@ -242,11 +242,13 @@ TokenHub 可以为已经实现 WebRTC 与 sideband 协议的客户端代理 Code
 | `GET /v1/live/{call_id}` | 连接 V3 Frameless sideband WebSocket。 |
 | `GET /v1/realtime?call_id={call_id}` | 连接 V1 sideband WebSocket。 |
 
-四个接口都要求 TokenHub 项目 API Key；连接 sideband 时必须使用创建 call 的同一个 Key。TokenHub 按 Provider 优先级、Resource 优先级、权重和稳定 ID 选择第一个可用的 Codex Subscription 资源，刷新 OAuth 后调用上游，并把返回的 call ID 持久绑定到该资源一小时。WebRTC 媒体由客户端与 OpenAI 协商；TokenHub 只代理 call bootstrap 和 sideband，不中继 RTP 媒体。两个 call-create 路径都映射到 ChatGPT Codex 产品后端；`/v1/realtime/calls` 的路径重名不代表 TokenHub 暴露了完整公共 Realtime API。
+四个接口都要求 TokenHub 项目 API Key。管理员必须在项目和 Key 上同时显式启用 `codex_voice`，并配置一条启用的 `codex-voice` 路由，将其指向由 Codex Subscription 账号资源支撑的 OpenAI Codex Provider。该能力默认关闭；项目或 Key 缺少授权时返回 `model_not_allowed`，且不会访问上游。
+
+创建 call 会复用 TokenHub 的常规准入、项目范围路由、账号容量、故障转移、请求日志、指标和追踪生命周期。它消耗请求数、RPM 和并发额度；由于上游 call-create 响应不提供权威 Token 用量，因此不创建 Token 或成本用量记录。连接 sideband 时会重新检查同一个 Key、能力授权和持久化 call 绑定，但不会产生第二次计费请求。TokenHub 将返回的 call ID 持久绑定到选中的订阅资源一小时。WebRTC 媒体由客户端与 OpenAI 协商；TokenHub 只代理 call bootstrap 和 sideband，不中继 RTP 媒体。两个 call-create 路径都映射到 ChatGPT Codex 产品后端；`/v1/realtime/calls` 的路径重名不代表 TokenHub 暴露了完整公共 Realtime API。
 
 Voice 路由会有界透传未知的端到端 Header，使后续实验性协议 Header 不必等待 TokenHub 发版。TokenHub 始终移除调用方鉴权、账号、Cookie、转发身份、内部 `X-TokenHub-*`、Host 和逐跳 Header，再写入所选 Codex OAuth 与账号 ID。`OpenAI-Alpha`、`x-oai-attestation`、`Originator` 以及未来协议 Header 等客户端值会保留；TokenHub 不会自行生成 attestation。
 
-这些实验性接口是账号级能力，不是模型目录路由：它们会认证项目 Key，但不执行单模型白名单、Token 配额结算、成本记录或模型线路故障切换。需要隔离这项权限时应使用专用项目 Key。代理成功不能授予 Voice 权益。上游会分别校验账号授权与实验性会话参数，因此 `403 Voice session access denied` 既可能表示账号或工作区受限，也可能是模型与音色组合不受支持；应结合完整请求和当前 Codex 契约诊断。
+代理成功不能授予 Voice 权益。上游会分别校验账号授权与实验性会话参数，因此 `403 Voice session access denied` 既可能表示账号或工作区受限，也可能是模型与音色组合不受支持；应结合完整请求和当前 Codex 契约诊断。
 
 ## Codex 订阅生图
 

@@ -160,7 +160,33 @@ func BootstrapBaseDataWithConfig(store Store, config Config) error {
 	if err := seedDefaultModelCatalog(store, config.ModelCatalogFile); err != nil {
 		return err
 	}
+	if err := seedCodexVoiceModel(store); err != nil {
+		return err
+	}
 	return nil
+}
+
+func seedCodexVoiceModel(store Store) error {
+	for _, model := range store.ListModels() {
+		if model.Name == codexVoiceModelName {
+			return nil
+		}
+	}
+	_, err := store.CreateModelWithRoutes(Model{
+		ID:               codexVoiceModelName,
+		Name:             codexVoiceModelName,
+		Category:         "codex",
+		Family:           "codex",
+		Modality:         "audio",
+		InputModalities:  []string{"audio", "text"},
+		OutputModalities: []string{"audio", "text"},
+		Capabilities:     []string{AccessCapabilityCodexVoice},
+		Metadata: map[string]string{
+			"internal": "true",
+		},
+		Status: StatusActive,
+	}, nil)
+	return err
 }
 
 func seedBootstrapAdmin(store Store, password string) error {

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "baselines": {
-    "postgres": "a939977b7ce3068dc6fd5ed6b30eb8c492a51f28250238a425191265173c5935",
-    "sqlite": "cc7c37894c1dc937ac258155b0bd32dd1b08ce87cc743093e8f7bde53c54f2fe"
+    "postgres": "76b13fc0d8c2770dc3720cddda366ad0420f88871a92b930dc1c0baf6696fc16",
+    "sqlite": "16a21d5848ecd8c099d0e353c2a4aefc2a716093196f1b745006243b4b4d1205"
   },
   "migrations": [
     {
@@ -20,6 +20,24 @@
       "phase": "expand",
       "dialect": "postgres",
       "checksum": "5f48b7b59084c2a12f8f743d06c52cc9f14299679f07fb7ac09820ca694c937c",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 50
+    },
+    {
+      "version": 4,
+      "name": "add-access-capabilities-sqlite",
+      "phase": "expand",
+      "dialect": "sqlite",
+      "checksum": "tokenhub-schema-access-capabilities-sqlite-v1",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 50
+    },
+    {
+      "version": 5,
+      "name": "add-access-capabilities-postgres",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "79964f40679ab31e11b6435b732b42681ac1f5ef3894bb169d417d70f04e8e6e",
       "lock_timeout_seconds": 30,
       "statement_budget": 50
     }

@@ -226,20 +226,21 @@ func (s *Server) apiKeyUpdateApproval(user AdminUser, key APIKey, patch APIKey) 
 	if quotaLimitsSet || minuteLimitsSet {
 		trigger = "quota_increase"
 	}
-	if trigger == "" && (patch.ModelAccessMode != "" || patch.Allowed != nil) {
+	if trigger == "" && (patch.ModelAccessMode != "" || patch.Allowed != nil || patch.AllowedCapabilities != nil) {
 		trigger = "model_access"
 	}
 	if trigger == "" {
 		return ApprovalRequest{}, false
 	}
 	payload := map[string]any{
-		"api_key_id":        key.ID,
-		"project_id":        key.ProjectID,
-		"requested_action":  trigger,
-		"owner_user_id":     patch.OwnerUserID,
-		"allowed_models":    patch.Allowed,
-		"model_access_mode": patch.ModelAccessMode,
-		"status":            patch.Status,
+		"api_key_id":           key.ID,
+		"project_id":           key.ProjectID,
+		"requested_action":     trigger,
+		"owner_user_id":        patch.OwnerUserID,
+		"allowed_models":       patch.Allowed,
+		"model_access_mode":    patch.ModelAccessMode,
+		"allowed_capabilities": patch.AllowedCapabilities,
+		"status":               patch.Status,
 	}
 	if quotaLimitsSet {
 		payload["limits"] = patch.Limits
@@ -898,16 +899,17 @@ func (s *Server) applyApprovalRequest(request ApprovalRequest, actor AdminUser) 
 			requesterRole = normalizeAdminRole(actor.Role)
 		}
 		key, secret, err := s.store.CreateAPIKey(projectID, APIKey{
-			Name:            stringFromPayload(payload, "name"),
-			Group:           stringFromPayload(payload, "group"),
-			OwnerUserID:     ownerUserID,
-			Allowed:         stringSliceFromPayload(payload["allowed_models"]),
-			ModelAccessMode: stringFromPayload(payload, "model_access_mode"),
-			IPAllowlist:     stringSliceFromPayload(payload["ip_allowlist"]),
-			Limits:          quotaLimitsFromPayload(payload["limits"]),
-			RateLimitRPM:    optionalInt64Value(payload, "rate_limit_rpm"),
-			TokenLimitTPM:   optionalInt64Value(payload, "token_limit_tpm"),
-			Status:          StatusActive,
+			Name:                stringFromPayload(payload, "name"),
+			Group:               stringFromPayload(payload, "group"),
+			OwnerUserID:         ownerUserID,
+			Allowed:             stringSliceFromPayload(payload["allowed_models"]),
+			ModelAccessMode:     stringFromPayload(payload, "model_access_mode"),
+			AllowedCapabilities: stringSliceFromPayload(payload["allowed_capabilities"]),
+			IPAllowlist:         stringSliceFromPayload(payload["ip_allowlist"]),
+			Limits:              quotaLimitsFromPayload(payload["limits"]),
+			RateLimitRPM:        optionalInt64Value(payload, "rate_limit_rpm"),
+			TokenLimitTPM:       optionalInt64Value(payload, "token_limit_tpm"),
+			Status:              StatusActive,
 			Metadata: map[string]string{
 				"created_by":      request.RequesterID,
 				"created_by_role": requesterRole,
@@ -929,17 +931,18 @@ func (s *Server) applyApprovalRequest(request ApprovalRequest, actor AdminUser) 
 		rateLimitRPM, rateLimitSet := optionalInt64Payload(payload, "rate_limit_rpm")
 		tokenLimitTPM, tokenLimitSet := optionalInt64Payload(payload, "token_limit_tpm")
 		key, err := s.store.UpdateAPIKey(request.ResourceID, APIKey{
-			OwnerUserID:     stringFromPayload(payload, "owner_user_id"),
-			Allowed:         stringSliceFromPayload(payload["allowed_models"]),
-			ModelAccessMode: stringFromPayload(payload, "model_access_mode"),
-			IPAllowlist:     stringSliceFromPayload(payload["ip_allowlist"]),
-			Limits:          quotaLimitsFromPayload(limits),
-			LimitsSet:       limitsSet,
-			RateLimitRPM:    rateLimitRPM,
-			RateLimitSet:    rateLimitSet,
-			TokenLimitTPM:   tokenLimitTPM,
-			TokenLimitSet:   tokenLimitSet,
-			Status:          stringFromPayload(payload, "status"),
+			OwnerUserID:         stringFromPayload(payload, "owner_user_id"),
+			Allowed:             stringSliceFromPayload(payload["allowed_models"]),
+			ModelAccessMode:     stringFromPayload(payload, "model_access_mode"),
+			AllowedCapabilities: stringSliceFromPayload(payload["allowed_capabilities"]),
+			IPAllowlist:         stringSliceFromPayload(payload["ip_allowlist"]),
+			Limits:              quotaLimitsFromPayload(limits),
+			LimitsSet:           limitsSet,
+			RateLimitRPM:        rateLimitRPM,
+			RateLimitSet:        rateLimitSet,
+			TokenLimitTPM:       tokenLimitTPM,
+			TokenLimitSet:       tokenLimitSet,
+			Status:              stringFromPayload(payload, "status"),
 		})
 		return key, err
 	case request.ResourceType == "budgets" || request.ResourceType == "quota-policies":

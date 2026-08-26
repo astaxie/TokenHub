@@ -310,7 +310,7 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 	publishedModelNames := make([]string, 0, len(routes)+1)
 	seenModelNames := map[string]bool{}
 	for _, route := range routes {
-		if route.ModelName == codexImageModelName || seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) {
+		if route.ModelName == codexImageModelName || seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) || (route.ModelName == codexVoiceModelName && !capabilityAllowedByScopes(project, privateKey, AccessCapabilityCodexVoice)) {
 			continue
 		}
 		selections := []RouteSelection{{Provider: Provider{ID: route.ProviderID}, ProviderModel: route.ProviderModel, Route: route}}

@@ -135,7 +135,7 @@ export function modelSelectOptions(data: AppData) {
 }
 
 export function providerSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
-  const providers = values?.model_name?.trim() === codexImageModelName
+  const providers = isCodexSubscriptionRouteModelName(values?.model_name)
     ? data.providers.filter((provider) => provider.type === "openai_codex")
     : data.providers;
   return providers
@@ -150,6 +150,11 @@ export function providerSelectOptions(data: AppData, _currentUser?: AdminUser | 
 export function providerModelSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
   const providerID = values?.provider_id?.trim();
   if (!providerID) return [];
+  if (values?.model_name?.trim() === codexVoiceModelName) {
+    return data.providers.some((provider) => provider.id === providerID && provider.type === "openai_codex")
+      ? [{ value: codexVoiceModelName, label: "Codex Voice" }]
+      : [];
+  }
   if (values?.model_name?.trim() === codexImageModelName) {
     return data.providers.some((provider) => provider.id === providerID && provider.type === "openai_codex")
       ? [{ value: "gpt-image-2", label: "gpt-image-2" }]
@@ -475,6 +480,13 @@ export function modelIsInDirectory(model: Model, data: AppData) {
 }
 
 export const codexImageModelName = "codex-gpt-image-2";
+// codexVoiceModelName identifies the internal route used for Voice governance.
+export const codexVoiceModelName = "codex-voice";
+
+function isCodexSubscriptionRouteModelName(modelName: string | undefined) {
+  const normalized = modelName?.trim();
+  return normalized === codexImageModelName || normalized === codexVoiceModelName;
+}
 
 export function isCodexSubscriptionImageModel(model: Model | undefined) {
   return model?.name === codexImageModelName ||
@@ -671,7 +683,7 @@ export function providerRouteDefaults(provider: Provider, data: AppData) {
 }
 
 export function modelRouteDefaults(model: Model, data: AppData) {
-  const firstProvider = isCodexSubscriptionImageModel(model)
+  const firstProvider = isCodexSubscriptionRouteModelName(model.name)
     ? data.providers.find((provider) => provider.type === "openai_codex" && provider.status === "active")
       ?? data.providers.find((provider) => provider.type === "openai_codex")
     : firstActiveProvider(data);
@@ -682,7 +694,9 @@ export function modelRouteDefaults(model: Model, data: AppData) {
   return {
     model_name: model.name,
     provider_id: firstProvider?.id ?? "",
-    provider_model: isCodexSubscriptionImageModel(model) ? "gpt-image-2" : matchingProviderModel?.upstream_model ?? "",
+    provider_model: model.name === codexVoiceModelName
+      ? codexVoiceModelName
+      : isCodexSubscriptionImageModel(model) ? "gpt-image-2" : matchingProviderModel?.upstream_model ?? "",
     priority: "1",
     weight: "100",
     quality_score: "50",

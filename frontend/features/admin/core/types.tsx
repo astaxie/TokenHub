@@ -37,6 +37,7 @@ export type Project = {
   cost_center?: string;
   model_access_mode?: "inherit" | "restricted";
   allowed_models?: string[];
+  allowed_capabilities?: string[];
   status: string;
   default_quota_ref?: string;
   created_at?: string;
@@ -52,6 +53,7 @@ export type APIKey = {
   key_suffix: string;
   allowed_models: string[];
   model_access_mode?: "inherit" | "restricted";
+  allowed_capabilities?: string[];
   ip_allowlist?: string[];
   status: string;
   limits?: Record<string, number>;

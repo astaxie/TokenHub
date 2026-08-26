@@ -419,6 +419,11 @@ func codexModelInList(modelName string, models []string) bool {
 }
 
 func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, routes []RouteSelection) ([]RouteSelection, error) {
+	// Codex Voice is a gateway governance model, not an upstream Responses model.
+	// Account model discovery therefore cannot decide whether Voice is available.
+	if strings.TrimSpace(modelName) == codexVoiceModelName {
+		return routes, nil
+	}
 	filtered := make([]RouteSelection, 0, len(routes))
 
 	for _, route := range routes {

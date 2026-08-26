@@ -34,6 +34,10 @@ func (s *GormStore) createProject(project Project, requireActiveTeam bool) (Proj
 		return Project{}, err
 	}
 	project.ModelAccessMode, project.AllowedModels = mode, allowed
+	project.AllowedCapabilities, err = normalizeAccessCapabilities(project.AllowedCapabilities)
+	if err != nil {
+		return Project{}, err
+	}
 	now := time.Now().UTC()
 	if project.ID == "" {
 		project.ID = NewID("prj")
@@ -132,6 +136,13 @@ func (s *GormStore) UpdateProject(id string, patch Project) (Project, error) {
 				return err
 			}
 			project.ModelAccessMode, project.AllowedModels = mode, allowed
+		}
+		if patch.AllowedCapabilities != nil {
+			capabilities, err := normalizeAccessCapabilities(patch.AllowedCapabilities)
+			if err != nil {
+				return err
+			}
+			project.AllowedCapabilities = capabilities
 		}
 		project.DefaultQuotaRef = patch.DefaultQuotaRef
 		project.UpdatedAt = time.Now().UTC()
@@ -437,6 +448,10 @@ func (s *GormStore) CreateAPIKey(projectID string, key APIKey, rawSecret string)
 		}
 	}
 	key.ModelAccessMode, key.Allowed = mode, allowed
+	key.AllowedCapabilities, err = normalizeAccessCapabilities(key.AllowedCapabilities)
+	if err != nil {
+		return APIKey{}, "", err
+	}
 	if rawSecret == "" {
 		rawSecret = s.generateAPIKeySecret()
 	}
@@ -564,6 +579,13 @@ func (s *GormStore) UpdateAPIKey(id string, patch APIKey) (APIKey, error) {
 		}
 		if patch.IPAllowlist != nil {
 			key.IPAllowlist = patch.IPAllowlist
+		}
+		if patch.AllowedCapabilities != nil {
+			capabilities, err := normalizeAccessCapabilities(patch.AllowedCapabilities)
+			if err != nil {
+				return err
+			}
+			key.AllowedCapabilities = capabilities
 		}
 		if patch.LimitsSet || patch.Limits != (QuotaLimits{}) {
 			key.Limits = patch.Limits

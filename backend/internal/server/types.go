@@ -22,6 +22,8 @@ const (
 	RouteStrategyPriorityOnly     = "priority_only"
 	ModelAccessModeInherit        = "inherit"
 	ModelAccessModeRestricted     = "restricted"
+	// AccessCapabilityCodexVoice requires an explicit Project and API Key grant.
+	AccessCapabilityCodexVoice = "codex_voice"
 
 	RouteProjectScopeAll     = "all"
 	RouteProjectScopeInclude = "include"
@@ -96,18 +98,19 @@ func AsHTTPError(err error) *HTTPError {
 }
 
 type Project struct {
-	ID              string        `json:"id" gorm:"primaryKey"`
-	Name            string        `json:"name"`
-	TeamID          string        `json:"team_id,omitempty"`
-	Teams           []ProjectTeam `json:"teams,omitempty" gorm:"foreignKey:ProjectID;references:ID"`
-	OwnerUserID     string        `json:"owner_user_id,omitempty"`
-	CostCenter      string        `json:"cost_center,omitempty" gorm:"index"`
-	ModelAccessMode string        `json:"model_access_mode"`
-	AllowedModels   []string      `json:"allowed_models" gorm:"serializer:json"`
-	Status          string        `json:"status"`
-	CreatedAt       time.Time     `json:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at"`
-	DefaultQuotaRef string        `json:"default_quota_ref,omitempty"`
+	ID                  string        `json:"id" gorm:"primaryKey"`
+	Name                string        `json:"name"`
+	TeamID              string        `json:"team_id,omitempty"`
+	Teams               []ProjectTeam `json:"teams,omitempty" gorm:"foreignKey:ProjectID;references:ID"`
+	OwnerUserID         string        `json:"owner_user_id,omitempty"`
+	CostCenter          string        `json:"cost_center,omitempty" gorm:"index"`
+	ModelAccessMode     string        `json:"model_access_mode"`
+	AllowedModels       []string      `json:"allowed_models" gorm:"serializer:json"`
+	AllowedCapabilities []string      `json:"allowed_capabilities" gorm:"serializer:json"`
+	Status              string        `json:"status"`
+	CreatedAt           time.Time     `json:"created_at"`
+	UpdatedAt           time.Time     `json:"updated_at"`
+	DefaultQuotaRef     string        `json:"default_quota_ref,omitempty"`
 }
 
 type ProjectTeam struct {
@@ -120,31 +123,32 @@ type ProjectTeam struct {
 }
 
 type APIKey struct {
-	ID              string            `json:"id" gorm:"primaryKey"`
-	ProjectID       string            `json:"project_id" gorm:"index"`
-	OwnerUserID     string            `json:"owner_user_id,omitempty" gorm:"index"`
-	Name            string            `json:"name"`
-	Group           string            `json:"group,omitempty" gorm:"index"`
-	KeyHash         string            `json:"-" gorm:"uniqueIndex"`
-	KeyPrefix       string            `json:"key_prefix"`
-	KeySuffix       string            `json:"key_suffix"`
-	AllowedModels   map[string]bool   `json:"-" gorm:"-"`
-	Allowed         []string          `json:"allowed_models" gorm:"serializer:json"`
-	ModelAccessMode string            `json:"model_access_mode"`
-	IPAllowlist     []string          `json:"ip_allowlist,omitempty" gorm:"serializer:json"`
-	Limits          QuotaLimits       `json:"limits" gorm:"embedded;embeddedPrefix:limit_"`
-	LimitsSet       bool              `json:"-" gorm:"-"`
-	RateLimitRPM    *int64            `json:"rate_limit_rpm,omitempty"`
-	RateLimitSet    bool              `json:"-" gorm:"-"`
-	TokenLimitTPM   *int64            `json:"token_limit_tpm,omitempty"`
-	TokenLimitSet   bool              `json:"-" gorm:"-"`
-	Status          string            `json:"status"`
-	ExpiresAt       *time.Time        `json:"expires_at,omitempty"`
-	RotatedFromID   string            `json:"rotated_from_id,omitempty" gorm:"index"`
-	GraceUntil      *time.Time        `json:"grace_until,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	LastUsedAt      *time.Time        `json:"last_used_at,omitempty"`
-	Metadata        map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
+	ID                  string            `json:"id" gorm:"primaryKey"`
+	ProjectID           string            `json:"project_id" gorm:"index"`
+	OwnerUserID         string            `json:"owner_user_id,omitempty" gorm:"index"`
+	Name                string            `json:"name"`
+	Group               string            `json:"group,omitempty" gorm:"index"`
+	KeyHash             string            `json:"-" gorm:"uniqueIndex"`
+	KeyPrefix           string            `json:"key_prefix"`
+	KeySuffix           string            `json:"key_suffix"`
+	AllowedModels       map[string]bool   `json:"-" gorm:"-"`
+	Allowed             []string          `json:"allowed_models" gorm:"serializer:json"`
+	ModelAccessMode     string            `json:"model_access_mode"`
+	AllowedCapabilities []string          `json:"allowed_capabilities" gorm:"serializer:json"`
+	IPAllowlist         []string          `json:"ip_allowlist,omitempty" gorm:"serializer:json"`
+	Limits              QuotaLimits       `json:"limits" gorm:"embedded;embeddedPrefix:limit_"`
+	LimitsSet           bool              `json:"-" gorm:"-"`
+	RateLimitRPM        *int64            `json:"rate_limit_rpm,omitempty"`
+	RateLimitSet        bool              `json:"-" gorm:"-"`
+	TokenLimitTPM       *int64            `json:"token_limit_tpm,omitempty"`
+	TokenLimitSet       bool              `json:"-" gorm:"-"`
+	Status              string            `json:"status"`
+	ExpiresAt           *time.Time        `json:"expires_at,omitempty"`
+	RotatedFromID       string            `json:"rotated_from_id,omitempty" gorm:"index"`
+	GraceUntil          *time.Time        `json:"grace_until,omitempty"`
+	CreatedAt           time.Time         `json:"created_at"`
+	LastUsedAt          *time.Time        `json:"last_used_at,omitempty"`
+	Metadata            map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
 }
 
 type QuotaLimits struct {

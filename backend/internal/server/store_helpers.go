@@ -35,6 +35,7 @@ func hydrateAPIKey(key *APIKey) {
 	key.ModelAccessMode = mode
 	key.Allowed = allowed
 	key.AllowedModels = AllowedModelSet(key.Allowed)
+	key.AllowedCapabilities = uniqueStrings(key.AllowedCapabilities)
 }
 
 func hydrateProject(project *Project) {
@@ -44,6 +45,7 @@ func hydrateProject(project *Project) {
 	}
 	project.ModelAccessMode = mode
 	project.AllowedModels = allowed
+	project.AllowedCapabilities = uniqueStrings(project.AllowedCapabilities)
 }
 
 func normalizeModelAccess(mode string, allowed []string) (string, []string, error) {
@@ -77,6 +79,22 @@ func modelAllowedByScopes(project Project, key APIKey, modelName string) bool {
 		return false
 	}
 	return true
+}
+
+func capabilityAllowedByScopes(project Project, key APIKey, capability string) bool {
+	hydrateProject(&project)
+	hydrateAPIKey(&key)
+	return AllowedModelSet(project.AllowedCapabilities)[capability] && AllowedModelSet(key.AllowedCapabilities)[capability]
+}
+
+func normalizeAccessCapabilities(capabilities []string) ([]string, error) {
+	capabilities = uniqueStrings(capabilities)
+	for _, capability := range capabilities {
+		if capability != AccessCapabilityCodexVoice {
+			return nil, NewHTTPError(400, "invalid_access_capability", "Unsupported access capability")
+		}
+	}
+	return capabilities, nil
 }
 
 func publicKey(key APIKey) APIKey {

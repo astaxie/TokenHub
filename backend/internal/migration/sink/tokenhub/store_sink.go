@@ -1121,6 +1121,9 @@ func sameProject(left server.Project, right server.Project) bool {
 			return false
 		}
 	}
+	if right.AllowedCapabilities != nil && !reflect.DeepEqual(normalizeStringSlice(left.AllowedCapabilities), normalizeStringSlice(right.AllowedCapabilities)) {
+		return false
+	}
 	return strings.TrimSpace(left.Name) == strings.TrimSpace(right.Name) &&
 		strings.TrimSpace(left.TeamID) == strings.TrimSpace(right.TeamID) &&
 		strings.TrimSpace(left.OwnerUserID) == strings.TrimSpace(right.OwnerUserID) &&
@@ -1151,6 +1154,9 @@ func sameAPIKey(left server.APIKey, right server.APIKey) bool {
 		if leftMode != rightMode || !slices.Equal(leftAllowed, rightAllowed) {
 			return false
 		}
+	}
+	if right.AllowedCapabilities != nil && !reflect.DeepEqual(normalizeStringSlice(left.AllowedCapabilities), normalizeStringSlice(right.AllowedCapabilities)) {
+		return false
 	}
 	if right.IPAllowlist != nil && !reflect.DeepEqual(normalizeStringSlice(left.IPAllowlist), normalizeStringSlice(right.IPAllowlist)) {
 		return false

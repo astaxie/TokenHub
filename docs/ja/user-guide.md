@@ -242,11 +242,13 @@ TokenHub は、WebRTC と sideband プロトコルを実装済みのクライア
 | `GET /v1/live/{call_id}` | V3 Frameless sideband WebSocket を接続します。 |
 | `GET /v1/realtime?call_id={call_id}` | V1 sideband WebSocket を接続します。 |
 
-4 つのエンドポイントはすべて TokenHub Project API Key を必要とし、sideband には call 作成時と同じ Key を使用します。TokenHub は Provider 優先度、Resource 優先度、weight、安定 ID の順で最初の利用可能な Codex Subscription リソースを選び、OAuth を更新して、返された call ID をそのリソースへ 1 時間永続的に固定します。WebRTC メディアはクライアントと OpenAI が交渉し、TokenHub は call bootstrap と sideband のみをプロキシして RTP メディアは中継しません。2 つの call-create パスはいずれも ChatGPT Codex 製品バックエンドへマッピングされます。`/v1/realtime/calls` という同名パスがあっても、完全な公開 Realtime API を公開するものではありません。
+4 つのエンドポイントはすべて TokenHub Project API Key を必要とします。管理者は Project と Key の両方で `codex_voice` を明示的に有効化し、Codex Subscription アカウントリソースを持つ OpenAI Codex Provider へ有効な `codex-voice` ルートを設定する必要があります。この機能は既定で無効であり、Project または Key の許可がない場合は upstream に接続せず `model_not_allowed` を返します。
+
+call 作成は通常の TokenHub admission、Project スコープルーティング、アカウント容量、failover、リクエストログ、メトリクス、トレースのライフサイクルを使用します。リクエスト数、RPM、同時実行クォータは消費しますが、upstream の call-create 応答に信頼できる Token 使用量がないため、Token またはコストの使用量レコードは作成しません。sideband 接続では同じ Key、機能許可、永続化された call binding を再検証し、2 回目の課金対象リクエストは作成しません。TokenHub は返された call ID を選択した Subscription リソースへ 1 時間永続的に固定します。WebRTC メディアはクライアントと OpenAI が交渉し、TokenHub は call bootstrap と sideband のみをプロキシして RTP メディアは中継しません。2 つの call-create パスはいずれも ChatGPT Codex 製品バックエンドへマッピングされます。`/v1/realtime/calls` という同名パスがあっても、完全な公開 Realtime API を公開するものではありません。
 
 Voice ルートは、今後の実験的なプロトコル Header が TokenHub の更新を待たずに動作できるよう、サイズ制限付きで未知の end-to-end Header を転送します。TokenHub は呼び出し元の認証、アカウント、Cookie、転送元識別、内部 `X-TokenHub-*`、Host、hop-by-hop Header を必ず削除し、選択した Codex OAuth とアカウント ID を設定します。`OpenAI-Alpha`、`x-oai-attestation`、`Originator`、将来のプロトコル Header などのクライアント値は保持されますが、TokenHub 自身は attestation を生成しません。
 
-これらの実験的エンドポイントはアカウント単位の機能であり、モデルカタログのルートではありません。Project Key は認証されますが、モデル単位の allowlist、Token quota 集計、コスト記録、モデルルートの failover は適用されません。この境界を分離する必要がある場合は専用 Project Key を使用してください。プロキシが成功しても Voice entitlement は付与されません。上流はアカウント認可と実験的なセッションパラメーターを個別に検証するため、`403 Voice session access denied` はアカウントまたは workspace の制限だけでなく、モデルと Voice の組み合わせがサポート外であることも示す場合があります。完全なリクエストと現行の Codex 契約に基づいて診断してください。
+プロキシが成功しても Voice entitlement は付与されません。上流はアカウント認可と実験的なセッションパラメーターを個別に検証するため、`403 Voice session access denied` はアカウントまたは workspace の制限だけでなく、モデルと Voice の組み合わせがサポート外であることも示す場合があります。完全なリクエストと現行の Codex 契約に基づいて診断してください。
 
 ## Codex サブスクリプション画像生成
 

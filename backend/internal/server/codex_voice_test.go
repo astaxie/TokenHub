@@ -19,6 +19,7 @@ type codexVoiceTestUpstream struct {
 	callHeaders      http.Header
 	callQuery        url.Values
 	callBody         string
+	callCount        int
 	sidebandHeaders  http.Header
 	sidebandPath     string
 	sidebandRawQuery string
@@ -32,6 +33,7 @@ func (u *codexVoiceTestUpstream) handler(w http.ResponseWriter, r *http.Request)
 		u.callHeaders = r.Header.Clone()
 		u.callQuery = r.URL.Query()
 		u.callBody = string(body)
+		u.callCount++
 		u.mu.Unlock()
 		w.Header().Set("Content-Type", "application/sdp")
 		w.Header().Set("Location", "/v1/realtime/calls/call_voice_test")
@@ -41,16 +43,24 @@ func (u *codexVoiceTestUpstream) handler(w http.ResponseWriter, r *http.Request)
 		_, _ = w.Write([]byte("v=0\r\na=answer:test\r\n"))
 	case r.URL.Path == "/v1/live/call_voice_test" || r.URL.Path == "/v1/realtime":
 		websocket.Server{
-			Handshake: func(_ *websocket.Config, request *http.Request) error {
+			Handshake: func(config *websocket.Config, request *http.Request) error {
 				u.mu.Lock()
 				u.sidebandHeaders = request.Header.Clone()
 				u.sidebandPath = request.URL.Path
 				u.sidebandRawQuery = request.URL.RawQuery
 				u.mu.Unlock()
+				config.Header = make(http.Header)
+				config.Header.Set("Authorization", "Bearer upstream-must-not-leak")
+				config.Header.Set("ChatGPT-Account-ID", "upstream-account-must-not-leak")
+				config.Header.Set("OpenAI-Organization", "upstream-org-must-not-leak")
+				config.Header.Set("X-TokenHub-Internal", "internal-must-not-leak")
+				config.Header.Set("X-Future-Voice-Response", "preserved")
+				config.Header.Set("X-Connection-Secret", "connection-must-not-leak")
+				config.Header.Add("Set-Cookie", "sideband=must-not-leak")
 				return nil
 			},
 			Handler: func(connection *websocket.Conn) {
-				defer connection.Close()
+				defer func() { _ = connection.Close() }()
 				var message []byte
 				if err := websocket.Message.Receive(connection, &message); err == nil {
 					_ = websocket.Message.Send(connection, append([]byte("echo:"), message...))
@@ -66,9 +76,10 @@ func newCodexVoiceTestServer(t *testing.T, upstream *httptest.Server) (*Server, 
 	t.Helper()
 	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK", "true")
 	store := NewMemoryStoreWithConfig(Config{SecretKey: "codex-voice-store-secret"})
-	project := store.CreateProject(Project{Name: "Codex Voice test project", Status: StatusActive})
+	store.AddModel(Model{ID: codexVoiceModelName, Name: codexVoiceModelName, Status: StatusActive})
+	project := store.CreateProject(Project{Name: "Codex Voice test project", AllowedCapabilities: []string{AccessCapabilityCodexVoice}, Status: StatusActive})
 	secret := "thk_codex_voice_test_secret"
-	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Codex Voice test key", Status: StatusActive}, secret); err != nil {
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "Codex Voice test key", AllowedCapabilities: []string{AccessCapabilityCodexVoice}, Status: StatusActive}, secret); err != nil {
 		t.Fatal(err)
 	}
 	provider := store.AddProvider(Provider{
@@ -87,12 +98,24 @@ func newCodexVoiceTestServer(t *testing.T, upstream *httptest.Server) (*Server, 
 		BaseURL:      upstream.URL + "/backend-api/codex",
 		Status:       StatusActive,
 		Healthy:      true,
-		Priority:     0,
+		Priority:     1,
 		Weight:       100,
-		Credentials:  &ProviderResourceCredentials{AuthType: "oauth", AccountID: "incomplete-account"},
+		Options: map[string]string{
+			codexResourceSupportedModelsOption: `["gpt-5.4"]`,
+		},
+		Credentials: &ProviderResourceCredentials{AuthType: "oauth", AccountID: "incomplete-account"},
 	}); err != nil {
 		t.Fatal(err)
 	}
+	store.AddRoute(ModelRoute{
+		ID:            "route_codex_voice",
+		ModelName:     codexVoiceModelName,
+		ProviderID:    provider.ID,
+		ProviderModel: codexVoiceModelName,
+		Priority:      1,
+		Weight:        100,
+		Status:        StatusActive,
+	})
 	if _, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_codex_voice",
 		ProviderID:   provider.ID,
@@ -101,8 +124,11 @@ func newCodexVoiceTestServer(t *testing.T, upstream *httptest.Server) (*Server, 
 		BaseURL:      upstream.URL + "/backend-api/codex",
 		Status:       StatusActive,
 		Healthy:      true,
-		Priority:     1,
+		Priority:     2,
 		Weight:       100,
+		Options: map[string]string{
+			codexResourceSupportedModelsOption: `["gpt-5.4"]`,
+		},
 		Credentials: &ProviderResourceCredentials{
 			AuthType:    "oauth",
 			AccessToken: "upstream-access-token",
@@ -182,6 +208,27 @@ func TestCodexVoiceCallCreateForwardsFutureHeadersAndBindsResource(t *testing.T)
 	if err != nil || !ok || binding.ResourceID != "rsrc_codex_voice" || binding.AffinityKind != codexVoiceAffinityKind {
 		t.Fatalf("voice binding = %#v ok=%v err=%v", binding, ok, err)
 	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusCreated || logs[0].ModelName != codexVoiceModelName || logs[0].ProviderResourceID != "rsrc_codex_voice" {
+		t.Fatalf("successful Voice audit = %#v", logs)
+	}
+	if records := store.ListUsageRecords(); len(records) != 0 {
+		t.Fatalf("successful Voice call fabricated token usage: %#v", records)
+	}
+	var attempts []RouteAttemptLog
+	if err := store.db.Where("request_id = ?", logs[0].RequestID).Order("attempt_index asc").Find(&attempts).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 2 || attempts[0].ProviderResourceID != "rsrc_codex_voice_incomplete" || attempts[1].ProviderResourceID != "rsrc_codex_voice" {
+		t.Fatalf("Voice resource failover attempts = %#v", attempts)
+	}
+	var payload RequestPayloadLog
+	if err := store.db.First(&payload, "request_id = ?", logs[0].RequestID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(payload.RequestBody, `"sdp"`) || !strings.Contains(payload.RequestBody, `"body_bytes"`) {
+		t.Fatalf("Voice audit payload leaked SDP or missed bounded metadata: %s", payload.RequestBody)
+	}
 }
 
 func TestCodexVoiceV1CallCreateRouteUsesCodexHandler(t *testing.T) {
@@ -211,7 +258,7 @@ func TestCodexVoiceSidebandRelaysV3AndV1OnBoundResource(t *testing.T) {
 	state := &codexVoiceTestUpstream{}
 	upstream := httptest.NewServer(http.HandlerFunc(state.handler))
 	defer upstream.Close()
-	server, _, secret := newCodexVoiceTestServer(t, upstream)
+	server, store, secret := newCodexVoiceTestServer(t, upstream)
 	gateway := httptest.NewServer(server.Handler())
 	defer gateway.Close()
 
@@ -253,7 +300,7 @@ func TestCodexVoiceSidebandRelaysV3AndV1OnBoundResource(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer connection.Close()
+			defer func() { _ = connection.Close() }()
 			if test.binary {
 				if err := websocket.Message.Send(connection, []byte{0x00, 0x01, 0x02}); err != nil {
 					t.Fatal(err)
@@ -298,6 +345,107 @@ func TestCodexVoiceSidebandRelaysV3AndV1OnBoundResource(t *testing.T) {
 				}
 			}
 		})
+	}
+	if logs := store.ListRequestLogs(); len(logs) != 1 || logs[0].StatusCode != http.StatusCreated {
+		t.Fatalf("sideband connections must not create additional billable calls: %#v", logs)
+	}
+}
+
+func TestCodexVoiceSidebandStripsSensitiveUpgradeResponseHeaders(t *testing.T) {
+	state := &codexVoiceTestUpstream{}
+	upstream := httptest.NewServer(http.HandlerFunc(state.handler))
+	defer upstream.Close()
+	server, _, secret := newCodexVoiceTestServer(t, upstream)
+	baseTransport := server.codexSubscription.Client.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	server.codexSubscription.Client.Transport = roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		response, err := baseTransport.RoundTrip(request)
+		if response != nil && response.StatusCode == http.StatusSwitchingProtocols {
+			response.Header.Set("Connection", "Upgrade, X-Connection-Secret")
+			response.Header.Set("X-Connection-Secret", "connection-must-not-leak")
+			response.Header.Set("Keep-Alive", "timeout=5")
+			response.Header.Set("TE", "trailers")
+			response.Header.Set("Trailer", "X-Upstream-Trailer")
+			response.Header.Set("Transfer-Encoding", "chunked")
+		}
+		return response, err
+	})
+	gateway := httptest.NewServer(server.Handler())
+	defer gateway.Close()
+
+	createRequest, err := http.NewRequest(http.MethodPost, gateway.URL+"/v1/live", strings.NewReader(`{"sdp":"v=0","session":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	createRequest.Header.Set("Authorization", "Bearer "+secret)
+	createResponse, err := http.DefaultClient.Do(createRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = createResponse.Body.Close()
+	if createResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d", createResponse.StatusCode)
+	}
+
+	request, err := http.NewRequest(http.MethodGet, gateway.URL+"/v1/live/call_voice_test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+secret)
+	request.Header.Set("Connection", "Upgrade")
+	request.Header.Set("Upgrade", "websocket")
+	request.Header.Set("Origin", "http://tokenhub.local")
+	request.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+	request.Header.Set("Sec-WebSocket-Version", "13")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusSwitchingProtocols || !strings.EqualFold(response.Header.Get("Upgrade"), "websocket") {
+		t.Fatalf("sideband upgrade = %d headers=%#v", response.StatusCode, response.Header)
+	}
+	if response.Header.Get("X-Future-Voice-Response") != "preserved" {
+		t.Fatalf("safe future response header missing: %#v", response.Header)
+	}
+	if !strings.EqualFold(response.Header.Get("Connection"), "Upgrade") {
+		t.Fatalf("sideband Connection header was not normalized: %#v", response.Header)
+	}
+	for _, sensitive := range []string{"Authorization", "ChatGPT-Account-ID", "OpenAI-Organization", "Set-Cookie", "X-TokenHub-Internal", "X-Connection-Secret", "Keep-Alive", "TE", "Trailer", "Transfer-Encoding"} {
+		if response.Header.Get(sensitive) != "" {
+			t.Fatalf("sensitive sideband response header %s leaked: %#v", sensitive, response.Header)
+		}
+	}
+}
+
+func TestCodexVoiceResponseFilteringTransportStripsUpgradeHeadersFromErrors(t *testing.T) {
+	transport := codexVoiceResponseFilteringTransport{next: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header: http.Header{
+				"Connection":          []string{"Upgrade, X-Connection-Secret"},
+				"Upgrade":             []string{"websocket"},
+				"X-Connection-Secret": []string{"must-not-leak"},
+				"X-Future-Response":   []string{"preserved"},
+			},
+			Body:    io.NopCloser(strings.NewReader(`{"error":"forbidden"}`)),
+			Request: request,
+		}, nil
+	})}
+	response, err := transport.RoundTrip(httptest.NewRequest(http.MethodGet, "http://upstream.example/v1/live/call", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	for _, stripped := range []string{"Connection", "Upgrade", "X-Connection-Secret"} {
+		if response.Header.Get(stripped) != "" {
+			t.Fatalf("error response header %s leaked: %#v", stripped, response.Header)
+		}
+	}
+	if response.Header.Get("X-Future-Response") != "preserved" {
+		t.Fatalf("safe error response header missing: %#v", response.Header)
 	}
 }
 
@@ -369,17 +517,258 @@ func TestCodexVoiceRejectsUnsafeOrUnboundRequests(t *testing.T) {
 
 func TestCodexVoiceRequiresAnActiveSubscriptionResource(t *testing.T) {
 	store := NewMemoryStore()
-	project := store.CreateProject(Project{Name: "No Voice resource", Status: StatusActive})
+	store.AddModel(Model{ID: codexVoiceModelName, Name: codexVoiceModelName, Status: StatusActive})
+	project := store.CreateProject(Project{Name: "No Voice resource", AllowedCapabilities: []string{AccessCapabilityCodexVoice}, Status: StatusActive})
 	secret := "thk_codex_voice_no_resource"
-	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "No Voice resource", Status: StatusActive}, secret); err != nil {
+	if _, _, err := store.CreateAPIKey(project.ID, APIKey{Name: "No Voice resource", AllowedCapabilities: []string{AccessCapabilityCodexVoice}, Status: StatusActive}, secret); err != nil {
 		t.Fatal(err)
 	}
 	request := httptest.NewRequest(http.MethodPost, "/v1/live", strings.NewReader(`{}`))
 	request.Header.Set("Authorization", "Bearer "+secret)
 	response := httptest.NewRecorder()
 	New(store).Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "codex_voice_resource_unavailable") {
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "provider_unavailable") {
 		t.Fatalf("missing resource response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCodexVoiceRequiresExplicitProjectAndKeyCapability(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		revokeProject bool
+	}{
+		{name: "project capability missing", revokeProject: true},
+		{name: "key capability missing"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := &codexVoiceTestUpstream{}
+			upstream := httptest.NewServer(http.HandlerFunc(state.handler))
+			defer upstream.Close()
+			server, store, secret := newCodexVoiceTestServer(t, upstream)
+			project, key, err := store.ValidateAPIKey(secret, "127.0.0.1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.revokeProject {
+				if _, err := store.UpdateProject(project.ID, Project{AllowedCapabilities: []string{}}); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := store.UpdateAPIKey(key.ID, APIKey{AllowedCapabilities: []string{}}); err != nil {
+				t.Fatal(err)
+			}
+
+			request := httptest.NewRequest(http.MethodPost, "/v1/live", strings.NewReader(`{"sdp":"v=0","session":{}}`))
+			request.Header.Set("Authorization", "Bearer "+secret)
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":"model_not_allowed"`) {
+				t.Fatalf("capability denial = %d %s", response.Code, response.Body.String())
+			}
+			state.mu.Lock()
+			callCount := state.callCount
+			state.mu.Unlock()
+			if callCount != 0 {
+				t.Fatalf("denied Voice request reached upstream %d times", callCount)
+			}
+			logs := store.ListRequestLogs()
+			if len(logs) != 1 || logs[0].ModelName != codexVoiceModelName || logs[0].ErrorCode != "model_not_allowed" {
+				t.Fatalf("denied Voice audit = %#v", logs)
+			}
+			if records := store.ListUsageRecords(); len(records) != 0 {
+				t.Fatalf("denied Voice request created usage: %#v", records)
+			}
+		})
+	}
+}
+
+func TestCodexVoiceRequiresInternalModelPermission(t *testing.T) {
+	state := &codexVoiceTestUpstream{}
+	upstream := httptest.NewServer(http.HandlerFunc(state.handler))
+	defer upstream.Close()
+	server, store, secret := newCodexVoiceTestServer(t, upstream)
+	_, key, err := store.ValidateAPIKey(secret, "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{ID: "gpt-5.4", Name: "gpt-5.4", Status: StatusActive})
+	if _, err := store.UpdateAPIKey(key.ID, APIKey{
+		ModelAccessMode: ModelAccessModeRestricted,
+		Allowed:         []string{"gpt-5.4"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/live", strings.NewReader(`{"sdp":"v=0","session":{}}`))
+	request.Header.Set("Authorization", "Bearer "+secret)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":"model_not_allowed"`) {
+		t.Fatalf("Voice model denial = %d %s", response.Code, response.Body.String())
+	}
+	state.mu.Lock()
+	callCount := state.callCount
+	state.mu.Unlock()
+	if callCount != 0 {
+		t.Fatalf("model-denied Voice request reached upstream %d times", callCount)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].ModelName != codexVoiceModelName || logs[0].ErrorCode != "model_not_allowed" {
+		t.Fatalf("model-denied Voice audit = %#v", logs)
+	}
+}
+
+func TestCodexVoiceModelDiscoveryRequiresExplicitCapability(t *testing.T) {
+	state := &codexVoiceTestUpstream{}
+	upstream := httptest.NewServer(http.HandlerFunc(state.handler))
+	defer upstream.Close()
+	server, store, secret := newCodexVoiceTestServer(t, upstream)
+	project, key, err := store.ValidateAPIKey(secret, "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header.Set("Authorization", "Bearer "+secret)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":"codex-voice"`) {
+		t.Fatalf("authorized Voice model discovery = %d %s", response.Code, response.Body.String())
+	}
+
+	if _, err := store.UpdateProject(project.ID, Project{AllowedCapabilities: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header.Set("Authorization", "Bearer "+secret)
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"id":"codex-voice"`) {
+		t.Fatalf("unauthorized Voice model discovery = %d %s", response.Code, response.Body.String())
+	}
+
+	if _, err := store.UpdateProject(project.ID, Project{AllowedCapabilities: []string{AccessCapabilityCodexVoice}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateAPIKey(key.ID, APIKey{AllowedCapabilities: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header.Set("Authorization", "Bearer "+secret)
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"id":"codex-voice"`) {
+		t.Fatalf("key-denied Voice model discovery = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCodexVoiceCallCreateUsesRequestQuotaAndZeroTokenAccounting(t *testing.T) {
+	state := &codexVoiceTestUpstream{}
+	upstream := httptest.NewServer(http.HandlerFunc(state.handler))
+	defer upstream.Close()
+	server, store, secret := newCodexVoiceTestServer(t, upstream)
+	_, key, err := store.ValidateAPIKey(secret, "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateAPIKey(key.ID, APIKey{Limits: QuotaLimits{DailyRequests: 1}, LimitsSet: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	for index, expectedStatus := range []int{http.StatusCreated, http.StatusTooManyRequests} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/live", strings.NewReader(`{"sdp":"v=0","session":{}}`))
+		request.Header.Set("Authorization", "Bearer "+secret)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != expectedStatus {
+			t.Fatalf("Voice request %d = %d %s", index+1, response.Code, response.Body.String())
+		}
+	}
+	state.mu.Lock()
+	callCount := state.callCount
+	state.mu.Unlock()
+	if callCount != 1 {
+		t.Fatalf("quota-rejected request reached upstream; call count = %d", callCount)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 2 {
+		t.Fatalf("Voice quota audits = %#v", logs)
+	}
+	var created, rejected bool
+	for _, log := range logs {
+		if log.ModelName != codexVoiceModelName {
+			t.Fatalf("Voice quota audit used model %q", log.ModelName)
+		}
+		created = created || log.StatusCode == http.StatusCreated
+		rejected = rejected || log.ErrorCode == "quota_exceeded"
+	}
+	if !created || !rejected {
+		t.Fatalf("Voice quota audits = %#v", logs)
+	}
+	if records := store.ListUsageRecords(); len(records) != 0 {
+		t.Fatalf("Voice call create must not fabricate token usage: %#v", records)
+	}
+}
+
+func TestCodexVoiceHonorsProjectScopedRoutesBeforeUpstream(t *testing.T) {
+	state := &codexVoiceTestUpstream{}
+	upstream := httptest.NewServer(http.HandlerFunc(state.handler))
+	defer upstream.Close()
+	server, store, secret := newCodexVoiceTestServer(t, upstream)
+	if _, err := store.UpdateRoute("route_codex_voice", ModelRoute{
+		ProjectScope: RouteProjectScopeInclude,
+		ProjectIDs:   []string{"prj_other"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/v1/live", strings.NewReader(`{"sdp":"v=0","session":{}}`))
+	request.Header.Set("Authorization", "Bearer "+secret)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"code":"codex_voice_resource_unavailable"`) {
+		t.Fatalf("project-scoped Voice route = %d %s", response.Code, response.Body.String())
+	}
+	state.mu.Lock()
+	callCount := state.callCount
+	state.mu.Unlock()
+	if callCount != 0 {
+		t.Fatalf("out-of-scope Voice route reached upstream %d times", callCount)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].ModelName != codexVoiceModelName || logs[0].ErrorCode != "codex_voice_resource_unavailable" {
+		t.Fatalf("project-scoped Voice audit = %#v", logs)
+	}
+}
+
+func TestCodexVoiceSidebandRechecksCapabilityWithoutChargingAgain(t *testing.T) {
+	state := &codexVoiceTestUpstream{}
+	upstream := httptest.NewServer(http.HandlerFunc(state.handler))
+	defer upstream.Close()
+	server, store, secret := newCodexVoiceTestServer(t, upstream)
+	create := httptest.NewRequest(http.MethodPost, "/v1/live", strings.NewReader(`{"sdp":"v=0","session":{}}`))
+	create.Header.Set("Authorization", "Bearer "+secret)
+	createResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createResponse, create)
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("Voice create = %d %s", createResponse.Code, createResponse.Body.String())
+	}
+	_, key, err := store.ValidateAPIKey(secret, "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateAPIKey(key.ID, APIKey{AllowedCapabilities: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	sideband := httptest.NewRequest(http.MethodGet, "/v1/live/call_voice_test", nil)
+	sideband.Header.Set("Authorization", "Bearer "+secret)
+	sideband.Header.Set("Connection", "Upgrade")
+	sideband.Header.Set("Upgrade", "websocket")
+	sidebandResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(sidebandResponse, sideband)
+	if sidebandResponse.Code != http.StatusForbidden || !strings.Contains(sidebandResponse.Body.String(), `"code":"model_not_allowed"`) {
+		t.Fatalf("revoked Voice sideband = %d %s", sidebandResponse.Code, sidebandResponse.Body.String())
+	}
+	if logs := store.ListRequestLogs(); len(logs) != 1 || logs[0].StatusCode != http.StatusCreated {
+		t.Fatalf("sideband authorization created another billable call: %#v", logs)
 	}
 }
 
@@ -404,6 +793,13 @@ func TestCodexVoiceUpstreamErrorDoesNotCreateBinding(t *testing.T) {
 	if bindings != 0 {
 		t.Fatalf("failed Voice call created %d bindings", bindings)
 	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusForbidden || logs[0].ModelName != codexVoiceModelName || logs[0].ErrorCode == "" {
+		t.Fatalf("failed Voice audit = %#v", logs)
+	}
+	if records := store.ListUsageRecords(); len(records) != 0 {
+		t.Fatalf("failed Voice call fabricated token usage: %#v", records)
+	}
 }
 
 func TestCodexVoiceAdapterCapabilityIsDeclared(t *testing.T) {
@@ -412,5 +808,26 @@ func TestCodexVoiceAdapterCapabilityIsDeclared(t *testing.T) {
 	if !ok || !adapterSupports(descriptor, AdapterCapabilityCodexVoice) {
 		encoded, _ := json.Marshal(descriptor)
 		t.Fatalf("Codex Voice capability is not declared: %s", encoded)
+	}
+}
+
+func TestCodexVoiceRouteValidationRequiresCodexProviderAndInternalModel(t *testing.T) {
+	store := NewMemoryStore()
+	codex := store.AddProvider(Provider{ID: "prv_voice_route_codex", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	mock := store.AddProvider(Provider{ID: "prv_voice_route_mock", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	server := New(store)
+	valid := ModelRoute{ModelName: codexVoiceModelName, ProviderID: codex.ID, ProviderModel: codexVoiceModelName}
+	if err := server.validateImportedProviderModel(valid); err != nil {
+		t.Fatalf("valid Codex Voice route rejected: %v", err)
+	}
+	invalidProvider := valid
+	invalidProvider.ProviderID = mock.ID
+	if code := AsHTTPError(server.validateImportedProviderModel(invalidProvider)).Code; code != "codex_voice_provider_required" {
+		t.Fatalf("invalid Voice Provider error = %q", code)
+	}
+	invalidModel := valid
+	invalidModel.ProviderModel = "gpt-realtime"
+	if code := AsHTTPError(server.validateImportedProviderModel(invalidModel)).Code; code != "codex_voice_upstream_model_invalid" {
+		t.Fatalf("invalid Voice internal model error = %q", code)
 	}
 }

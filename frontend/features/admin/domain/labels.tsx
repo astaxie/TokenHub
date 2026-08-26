@@ -197,6 +197,7 @@ export function fieldValueLabel(fieldKey: string, value: unknown): string {
   if (normalizedKey === "provider_type") return identityProviderTypeLabel(text);
   if (normalizedKey.includes("provider_type")) return providerTypeLabel(text);
   if (normalizedKey === "provider_template") return identityProviderTemplateLabel(text);
+  if (normalizedKey === "allowed_capabilities" && text === "codex_voice") return "Codex Voice";
   if (normalizedKey === "icon_key") return identityProviderIconLabel(text);
   if (normalizedKey === "status" || normalizedKey.includes("status")) return enumValueLabel(text);
   if (normalizedKey === "strategy") return routeStrategyLabel(text);
