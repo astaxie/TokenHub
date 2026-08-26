@@ -178,4 +178,69 @@ describe("ProviderUpsertModal", () => {
 
     expect(screen.getByDisplayValue("https://callback.example/provider/oauth")).toBeInTheDocument();
   });
+
+  it("loads account catalogs for non-Codex Provider plugins", async () => {
+    const kimiCatalog = {
+      ...catalogEntry,
+      id: "kimi-subscription",
+      name: "Kimi Subscription",
+      display_name: "Kimi Subscription",
+      type: "kimi_subscription",
+    };
+    const provider: Provider = {
+      id: "prv_kimi",
+      name: "Kimi Pool",
+      type: "kimi_subscription",
+      base_url: "https://kimi.example/api",
+      status: "active",
+      healthy: true,
+      priority: 10,
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ data: kimiCatalog }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[kimiCatalog]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        plugins={[{
+          id: "tokenhub.provider.kimi",
+          name: "Kimi Subscription",
+          version: "built-in",
+          source: "built_in",
+          kinds: ["provider"],
+          placements: [],
+          capabilities: [{ kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" }],
+        }]}
+        provider={provider}
+        resources={[{
+          id: "rsrc_kimi",
+          provider_id: "prv_kimi",
+          name: "Kimi Account",
+          resource_type: "kimi_subscription_account",
+          status: "active",
+          healthy: true,
+          priority: 1,
+          weight: 100,
+        }]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+        standardModels={[]}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/api/admin/provider-catalog/kimi-subscription?resource_id=rsrc_kimi",
+      expect.any(Object),
+    ));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/provider-catalog/openai-codex"))).toBe(false);
+  });
 });

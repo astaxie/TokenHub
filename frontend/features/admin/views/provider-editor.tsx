@@ -26,7 +26,7 @@ import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning
 import { ProviderPluginPanels } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { isOpenAISubscriptionResource } from "../domain/provider-resource-types";
+import { isOpenAISubscriptionResource, isProviderAccountResource } from "../domain/provider-resource-types";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 type OpenAIAccountQuota = {
   account_id?: string;
@@ -102,9 +102,11 @@ export function ProviderUpsertModal({
   setError: (value: string) => void;
   setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
-  const editingCodexSubscription = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource));
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins), [catalog, plugins]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0] ?? codexProviderCatalogSummary;
+  const editingAccountProvider = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResource(resource));
+  const editingCodexSubscription = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource));
+  const editingAccountProviderCatalogEntry = accountProviderCatalogOptions.find((entry) => entry.type === provider?.type) ?? defaultAccountProviderCatalogEntry;
   const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
   const availableCategories = useMemo(
@@ -113,13 +115,13 @@ export function ProviderUpsertModal({
   );
   const providerCatalogID = provider?.options?.catalog_id;
   const providerModelCategory = provider?.options?.model_category;
-  const initialCategory = editingCodexSubscription
-    ? "codex"
+  const initialCategory = editingAccountProvider
+    ? accountProviderCatalogCategory(editingAccountProviderCatalogEntry)
     : providerModelCategory || (mode === "edit" && provider
       ? "all"
       : availableCategories.find((item) => item.key !== "all")?.key || "custom");
-  const initialEntry = editingCodexSubscription
-    ? defaultAccountProviderCatalogEntry
+  const initialEntry = editingAccountProvider
+    ? editingAccountProviderCatalogEntry
     : mode === "edit"
       ? selectableProviderCatalog.find((entry) => entry.id === (provider?.type === "kronk" ? "kronk" : "custom")) ?? selectableProviderCatalog[0]
       : selectableProviderCatalog.find((entry) => entry.id === providerCatalogID)
@@ -156,7 +158,7 @@ export function ProviderUpsertModal({
     custom_headers: providerHeadersFormValue(provider?.headers, provider?.sensitive_headers),
     ...providerReasoningFormValues(provider?.options),
   }));
-  const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingCodexSubscription ? "account_integration" : "provider_api_key");
+  const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingAccountProvider ? "account_integration" : "provider_api_key");
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() => providerResourceDraftDefaults({
     provider_id: "",
     name: mode === "edit" ? editingCodexSubscription ? "OpenAI Codex Codex Account" : provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
@@ -177,7 +179,7 @@ export function ProviderUpsertModal({
   const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
   const [accountConfirmationError, setAccountConfirmationError] = useState("");
   const [deleteAccountConfirmation, setDeleteAccountConfirmation] = useState("");
-  const [selectedAccountID, setSelectedAccountID] = useState(editingCodexSubscription ? "all" : "");
+  const [selectedAccountID, setSelectedAccountID] = useState(editingAccountProvider ? "all" : "");
   const [accountCatalogs, setAccountCatalogs] = useState<Record<string, ProviderCatalogEntry>>({});
   const [accountCatalogErrors, setAccountCatalogErrors] = useState<Record<string, string>>({});
   const [accountCatalogLoading, setAccountCatalogLoading] = useState(false);
@@ -194,6 +196,7 @@ export function ProviderUpsertModal({
   const lastCreateStep = createSteps.length - 1;
   const accountCallbackURL = useMemo(() => providerAccountOAuthCallbackURL(), []);
   const accountOAuthRedirectURI = useMemo(() => providerPluginActionForCapability(pluginActions, values.type, "oauth.start")?.metadata?.oauth_redirect_uri?.trim() || accountCallbackURL, [accountCallbackURL, pluginActions, values.type]);
+  const accountQuotaAction = providerPluginActionForCapability(pluginActions, values.type, "quota.read");
   const modalRef = useRef<HTMLFormElement | null>(null);
   const preserveCatalogValuesOnReload = useRef(false);
   const loadedCustomConnection = useRef("");
@@ -203,18 +206,18 @@ export function ProviderUpsertModal({
     () => new Set(routes.filter((route) => provider && route.provider_id === provider.id).map((route) => route.model_name)),
     [provider, routes],
   );
-  const subscriptionResources = useMemo(
+  const accountResources = useMemo(
     () => resources.filter((resource) =>
-      isOpenAISubscriptionResource(resource) && (mode === "create" || resource.provider_id === provider?.id),
+      isProviderAccountResource(resource) && (mode === "create" || resource.provider_id === provider?.id),
     ),
     [mode, provider?.id, resources],
   );
-  const usesAccountCatalog = credentialMode === "account_integration" || editingCodexSubscription;
+  const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
   const selectedAccountResources = useMemo(
     () => selectedAccountID === "all"
-      ? subscriptionResources
-      : subscriptionResources.filter((resource) => resource.id === selectedAccountID),
-    [selectedAccountID, subscriptionResources],
+      ? accountResources
+      : accountResources.filter((resource) => resource.id === selectedAccountID),
+    [accountResources, selectedAccountID],
   );
   const categoryCatalog = useMemo(
     () => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory)),
@@ -339,7 +342,7 @@ export function ProviderUpsertModal({
 
   useEffect(() => {
     if (!usesAccountCatalog || mode === "edit") return;
-    const resource = subscriptionResources.find((item) => item.status === "active") ?? subscriptionResources[0];
+    const resource = accountResources.find((item) => item.status === "active") ?? accountResources[0];
     const hasPendingCredentials = Boolean(accountValues.access_token?.trim() && accountValues.account_id?.trim());
     if (!resource && !hasPendingCredentials) {
       setAccountProviderCatalog(null);
@@ -394,7 +397,7 @@ export function ProviderUpsertModal({
   }, [
     api,
     credentialMode,
-    subscriptionResources,
+    accountResources,
     usesAccountCatalog,
     accountValues.access_token,
     accountValues.account_id,
@@ -413,7 +416,7 @@ export function ProviderUpsertModal({
   ]);
 
   useEffect(() => {
-    if (mode !== "edit" || !editingCodexSubscription || selectedAccountResources.length === 0) {
+    if (mode !== "edit" || !editingAccountProvider || selectedAccountResources.length === 0) {
       setAccountCatalogs({});
       setAccountCatalogErrors({});
       return;
@@ -425,7 +428,7 @@ export function ProviderUpsertModal({
       try {
         const resp = await adminFetch(
           api,
-          `/api/admin/provider-catalog/${codexProviderCatalogSummary.id}?resource_id=${encodeURIComponent(resource.id)}`,
+          `/api/admin/provider-catalog/${editingAccountProviderCatalogEntry.id}?resource_id=${encodeURIComponent(resource.id)}`,
         );
         if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载账号模型目录")));
         const payload = (await resp.json()) as { data: ProviderCatalogEntry };
@@ -443,7 +446,7 @@ export function ProviderUpsertModal({
     return () => {
       cancelled = true;
     };
-  }, [api, editingCodexSubscription, mode, selectedAccountResources]);
+  }, [api, editingAccountProvider, editingAccountProviderCatalogEntry.id, mode, selectedAccountResources]);
 
   useEffect(() => {
     if (mode === "create") {
@@ -463,13 +466,13 @@ export function ProviderUpsertModal({
   }, [catalogID, createStep, customConnectionKey, editTab, mode, quickAPIConnect, quickAPITab, values.base_url]);
 
   useEffect(() => {
-    if (mode !== "edit" || editTab !== "advanced") return;
+    if (mode !== "edit" || editTab !== "advanced" || !accountQuotaAction) return;
     for (const resource of selectedAccountResources) {
       if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
     }
     const timer = window.setInterval(() => { for (const resource of selectedAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
-  }, [editTab, mode, selectedAccountResources]);
+  }, [accountQuotaAction, editTab, mode, selectedAccountResources]);
 
   const selectedAccountCatalog = useMemo(
     () => {
@@ -480,11 +483,9 @@ export function ProviderUpsertModal({
     },
     [accountCatalogs, selectedAccountResources],
   );
-  const effectiveDetail = editingCodexSubscription ? selectedAccountCatalog : usesAccountCatalog ? accountProviderCatalog : detail;
-  const effectiveCatalogLoading = editingCodexSubscription ? accountCatalogLoading : usesAccountCatalog ? accountProviderCatalogLoading : modelLoading;
-  const effectiveCatalogError = editingCodexSubscription
-    ? Object.values(accountCatalogErrors)[0] || ""
-    : usesAccountCatalog ? accountProviderCatalogError : modelError;
+  const effectiveDetail = editingAccountProvider ? selectedAccountCatalog : usesAccountCatalog ? accountProviderCatalog : detail;
+  const effectiveCatalogLoading = editingAccountProvider ? accountCatalogLoading : usesAccountCatalog ? accountProviderCatalogLoading : modelLoading;
+  const effectiveCatalogError = editingAccountProvider ? Object.values(accountCatalogErrors)[0] || "" : usesAccountCatalog ? accountProviderCatalogError : modelError;
   const models = useMemo(
     () => (effectiveDetail?.models ?? []).filter((model) => {
       const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name);
@@ -773,9 +774,8 @@ export function ProviderUpsertModal({
     setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: true }));
     setAccountQuotaErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
     try {
-      const action = providerPluginActionForCapability(pluginActions, values.type, "quota.read");
-      if (!action) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: force }, tx("查询订阅额度"));
+      if (!accountQuotaAction) throw new Error(tx("该插件动作尚未注册。"));
+      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, accountQuotaAction, { refresh: force }, tx("查询订阅额度"));
       setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
       return true;
     } catch (err) {
@@ -1205,7 +1205,7 @@ export function ProviderUpsertModal({
           ) : null}
 
           <section className="provider-config-pane">
-            {mode === "edit" && editingCodexSubscription ? (
+            {mode === "edit" && editingAccountProvider ? (
               <div className="provider-account-selector">
                 <div>
                   <strong>{tx("账号列表")}</strong>
@@ -1220,8 +1220,8 @@ export function ProviderUpsertModal({
                     setSelectedModels({});
                   }}
                 >
-                  <option value="all">{tx("全部账号")}（{subscriptionResources.length}）</option>
-                  {subscriptionResources.map((resource) => (
+                  <option value="all">{tx("全部账号")}（{accountResources.length}）</option>
+                  {accountResources.map((resource) => (
                     <option key={resource.id} value={resource.id}>
                       {resource.name} · {providerResourceAccountLabel(resource)}
                       {resource.status !== "active" ? ` · ${tx("已停用")}` : ""}
@@ -1512,7 +1512,7 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerTypeOptions={providerTypeOptions} resources={resources} /> : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} /> : null}
-            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && accountQuotaAction && accountResources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("订阅额度")}</h3>
@@ -1624,7 +1624,7 @@ export function ProviderUpsertModal({
                 </div>
               </section>
             ) : null}
-            {mode === "edit" && editTab === "advanced" && subscriptionResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && editingCodexSubscription && accountResources.length > 0 ? (
               <section className="provider-quota-panel provider-codex-test-panel">
                 <div className="wizard-panel-head">
                   <h3>{tx("Codex 真实请求测试")}</h3>
@@ -1680,7 +1680,7 @@ export function ProviderUpsertModal({
                 </div>
                 {Object.entries(accountCatalogErrors).map(([resourceID, message]) => (
                   <p className="provider-quota-error" key={resourceID}>
-                    {subscriptionResources.find((resource) => resource.id === resourceID)?.name || resourceID}：{message}
+                    {accountResources.find((resource) => resource.id === resourceID)?.name || resourceID}：{message}
                   </p>
                 ))}
                 <div className="provider-codex-test-actions">
@@ -1754,7 +1754,7 @@ export function ProviderUpsertModal({
               <>
             {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
             {mode === "edit" && imageCapabilityProfile && provider ? <div className="provider-model-list provider-codex-image-list"><ProviderCodexImageCapability api={api} pluginActions={pluginActions} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
-            {mode === "edit" && editingCodexSubscription && selectedAccountID === "all" ? (
+            {mode === "edit" && editingAccountProvider && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">
                 {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}
               </p>
