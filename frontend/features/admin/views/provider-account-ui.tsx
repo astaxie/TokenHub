@@ -2,6 +2,7 @@ import { AlertCircle, Check, Copy, KeyRound, Send } from "lucide-react";
 import { useState } from "react";
 import type { ProviderResource } from "../core/types";
 import { copyText } from "../domain/clipboard";
+import type { ImageCapabilityProfile } from "../domain/provider-image-capability";
 import { tx } from "../i18n/runtime";
 
 export { ProviderAccountTokenRenewal } from "./provider-account-token-renewal";
@@ -32,9 +33,11 @@ export function QuotaMetric({ label, value }: { label: string; value: string }) 
   );
 }
 
-export function ProviderAccountDetails({ resource }: { resource: ProviderResource }) {
+export function ProviderAccountDetails({ imageCapabilityProfile, resource }: { imageCapabilityProfile?: ImageCapabilityProfile | null; resource: ProviderResource }) {
   const summary = resource.credential_summary ?? {};
   const options = resource.options ?? {};
+  const imageCapability = imageCapabilityProfile ? options[imageCapabilityProfile.capabilityOption] : undefined;
+  const imageCapabilityCheckedAt = imageCapabilityProfile ? options[imageCapabilityProfile.capabilityCheckedAtOption] : undefined;
   const rawItems: Array<[string, string | undefined]> = [
     ["资源 ID", resource.id],
     ["账号邮箱", summary.account_email],
@@ -42,8 +45,8 @@ export function ProviderAccountDetails({ resource }: { resource: ProviderResourc
     ["用户 ID", summary.user_id],
     ["组织 ID", summary.organization_id],
     ["套餐", summary.plan_type],
-    ["生图能力", formatImageGenerationCapability(options.image_generation_capability)],
-    ["生图能力检查时间", formatProviderAccountDate(options.image_generation_capability_checked_at)],
+    ["生图能力", imageCapabilityProfile ? formatImageGenerationCapability(imageCapability, imageCapabilityProfile.capabilitySupportedValue, imageCapabilityProfile.capabilityUnsupportedValue) : undefined],
+    ["生图能力检查时间", formatProviderAccountDate(imageCapabilityCheckedAt)],
     ["认证方式", summary.auth_type],
     ["Token 类型", summary.token_type || options.token_type],
     ["Token 过期时间", formatProviderAccountDate(summary.token_expires_at || options.token_expires_at)],

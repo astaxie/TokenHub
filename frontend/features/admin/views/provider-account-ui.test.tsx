@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setActiveLanguage } from "../i18n/runtime";
-import { ProviderOAuthCallbackModal, ProviderOAuthNoticeModal } from "./provider-account-ui";
+import { ProviderAccountDetails, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal } from "./provider-account-ui";
 
 describe("Provider account OAuth UI", () => {
   afterEach(() => {
@@ -42,5 +42,42 @@ describe("Provider account OAuth UI", () => {
 
     expect(screen.getByText("账号 OAuth 授权")).toBeInTheDocument();
     expect(screen.queryByText(/OpenAI\/Codex/)).not.toBeInTheDocument();
+  });
+
+  it("reads image capability details from the plugin profile option keys", () => {
+    setActiveLanguage("zh-CN");
+
+    render(
+      <ProviderAccountDetails
+        imageCapabilityProfile={{
+          displayName: "Kimi ImageGen",
+          publicModel: "kimi-image",
+          upstreamModel: "moonshot-image",
+          capabilityOption: "kimi_image_capability",
+          capabilityCheckedAtOption: "kimi_image_capability_checked_at",
+          capabilitySupportedValue: "available",
+          capabilityUnsupportedValue: "blocked",
+        }}
+        resource={{
+          id: "rsrc_kimi",
+          provider_id: "prv_kimi",
+          name: "Kimi Account",
+          resource_type: "kimi_subscription_account",
+          status: "active",
+          healthy: true,
+          priority: 1,
+          weight: 100,
+          options: {
+            image_generation_capability: "blocked",
+            kimi_image_capability: "available",
+            kimi_image_capability_checked_at: "2099-01-01T00:00:00Z",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("生图能力")).toBeInTheDocument();
+    expect(screen.getByText("支持")).toBeInTheDocument();
+    expect(screen.queryByText("不支持")).not.toBeInTheDocument();
   });
 });

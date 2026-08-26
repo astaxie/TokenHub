@@ -51,6 +51,7 @@ test("image capability profile follows plugin metadata for resources and routes"
       public_model: "kimi-image",
       upstream_model: "moonshot-image",
       capability_option: "kimi_image_capability",
+      capability_checked_at_option: "kimi_image_capability_checked_at",
       capability_supported_value: "available",
       capability_unsupported_value: "blocked",
     },
@@ -61,6 +62,7 @@ test("image capability profile follows plugin metadata for resources and routes"
     upstreamModel: "moonshot-image",
     resourceType: "kimi_subscription_account",
     capabilityOption: "kimi_image_capability",
+    capabilityCheckedAtOption: "kimi_image_capability_checked_at",
     capabilitySupportedValue: "available",
     capabilityUnsupportedValue: "blocked",
   });

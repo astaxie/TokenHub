@@ -8,6 +8,7 @@ export type ImageCapabilityProfile = {
   upstreamModel: string;
   resourceType?: string;
   capabilityOption: string;
+  capabilityCheckedAtOption: string;
   capabilitySupportedValue: string;
   capabilityUnsupportedValue: string;
 };
@@ -17,6 +18,7 @@ export const defaultImageCapabilityProfile: ImageCapabilityProfile = {
   publicModel: codexImageModelName,
   upstreamModel: codexImageUpstreamModel,
   capabilityOption: "image_generation_capability",
+  capabilityCheckedAtOption: "image_generation_capability_checked_at",
   capabilitySupportedValue: "supported",
   capabilityUnsupportedValue: "unsupported",
 };
@@ -32,6 +34,7 @@ export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescr
     upstreamModel,
     resourceType: action.metadata?.provider_resource_type?.trim() || action.metadata?.resource_type?.trim() || undefined,
     capabilityOption: action.metadata?.capability_option?.trim() || action.metadata?.provider_capability_option?.trim() || "image_capability",
+    capabilityCheckedAtOption: action.metadata?.capability_checked_at_option?.trim() || action.metadata?.provider_capability_checked_at_option?.trim() || "image_capability_checked_at",
     capabilitySupportedValue: action.metadata?.capability_supported_value?.trim() || action.metadata?.supported_value?.trim() || "supported",
     capabilityUnsupportedValue: action.metadata?.capability_unsupported_value?.trim() || action.metadata?.unsupported_value?.trim() || "unsupported",
   };

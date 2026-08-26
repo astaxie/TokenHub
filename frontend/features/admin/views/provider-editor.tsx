@@ -1458,7 +1458,7 @@ export function ProviderUpsertModal({
                     const secondary = quota?.rate_limit?.secondary_window;
                     const accountEmail = providerResourceAccountLabel(resource);
                     const quotaStatus = quota?.rate_limit?.limit_reached ? "已达上限" : quota?.rate_limit?.allowed ? "可用" : "不可用";
-                    const imageCapability = imageCapabilityProfile ? resource.options?.[imageCapabilityProfile.capabilityOption] : resource.options?.image_generation_capability;
+                    const imageCapability = imageCapabilityProfile ? resource.options?.[imageCapabilityProfile.capabilityOption] : undefined;
                     const usagePercent = quotaUsagePercent(primary);
                     return (
                       <article className="provider-quota-card" key={resource.id}>
@@ -1469,9 +1469,9 @@ export function ProviderUpsertModal({
                           </div>
                           <div className="provider-quota-card-actions">
                             {quota ? <span className={`provider-quota-status ${quotaStatus === "可用" ? "available" : "limited"}`}>{tx(quotaStatus)}</span> : null}
-                            <span className={`provider-image-capability ${imageCapability || "unknown"}`}>
+                            {imageCapabilityProfile ? <span className={`provider-image-capability ${imageCapability || "unknown"}`}>
                               {tx(formatImageGenerationCapabilityTag(imageCapability, imageCapabilityProfile?.capabilitySupportedValue, imageCapabilityProfile?.capabilityUnsupportedValue))}
-                            </span>
+                            </span> : null}
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
@@ -1526,7 +1526,7 @@ export function ProviderUpsertModal({
                               </div>
                               <div className="provider-quota-highlights">
                                 <QuotaMetric label="套餐" value={quota.plan_type || resource.credential_summary?.plan_type || "-"} />
-                                <QuotaMetric label="生图能力" value={formatImageGenerationCapability(resource.options?.image_generation_capability)} />
+                                {imageCapabilityProfile ? <QuotaMetric label="生图能力" value={formatImageGenerationCapability(imageCapability, imageCapabilityProfile.capabilitySupportedValue, imageCapabilityProfile.capabilityUnsupportedValue)} /> : null}
                                 <QuotaMetric label="主窗口重置时间" value={quotaWindowResetLabel(primary)} />
                               </div>
                             </div>
@@ -1541,7 +1541,7 @@ export function ProviderUpsertModal({
                                   <QuotaMetric label="次窗口重置" value={quotaWindowResetLabel(secondary)} />
                                 </div>
                               ) : null}
-                              <ProviderAccountDetails resource={resource} />
+                              <ProviderAccountDetails imageCapabilityProfile={imageCapabilityProfile} resource={resource} />
                             </details>
                           </>
                         ) : (
