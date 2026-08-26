@@ -116,6 +116,7 @@ export function ProviderUpsertModal({
         ?? selectableProviderCatalog[0];
   const [modelCategory, setModelCategory] = useState(initialCategory);
   const [catalogID, setCatalogID] = useState(initialEntry?.id ?? "custom");
+  const selectedCatalogIsAccountProvider = useMemo(() => accountProviderCatalogOptions.some((entry) => entry.id === catalogID), [accountProviderCatalogOptions, catalogID]);
   const [detail, setDetail] = useState<ProviderCatalogEntry | null>(null);
   const [accountProviderCatalog, setAccountProviderCatalog] = useState<ProviderCatalogEntry | null>(null);
   const [accountProviderCatalogLoading, setAccountProviderCatalogLoading] = useState(false);
@@ -208,15 +209,14 @@ export function ProviderUpsertModal({
   const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory, standardModels), [modelCategory, standardModels]);
 
   useEffect(() => {
-    if (quickAPIFlow) return;
-    if (credentialMode === "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
+    if (quickAPIFlow || credentialMode === "account_integration" || selectedCatalogIsAccountProvider) return;
     if (catalogID === "custom") return;
     if (categoryCatalog.length === 0) return;
     if (!categoryCatalog.some((entry) => entry.id === catalogID)) {
       selectCatalog(categoryCatalog[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectCatalog also rewrites form state; catalog identity changes alone control this correction.
-  }, [modelCategory, categoryCatalog.length, credentialMode, catalogID, quickAPIFlow]);
+  }, [modelCategory, categoryCatalog.length, credentialMode, catalogID, quickAPIFlow, selectedCatalogIsAccountProvider]);
 
   useEffect(() => {
     const entry = catalogID === "custom" ? customCatalogEntry : catalog.find((item) => item.id === catalogID);
@@ -237,7 +237,7 @@ export function ProviderUpsertModal({
     let cancelled = false;
     setDetail(null);
     setSelectedModels({});
-    if (catalogID === codexProviderCatalogSummary.id) {
+    if (selectedCatalogIsAccountProvider) {
       setModelLoading(false);
       return () => {
         cancelled = true;
@@ -320,7 +320,7 @@ export function ProviderUpsertModal({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the explicit catalog and connection keys are the request identity; form setters must not refetch.
-  }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id]);
+  }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id, selectedCatalogIsAccountProvider]);
 
   useEffect(() => {
     if (!usesAccountCatalog || mode === "edit") return;
@@ -763,7 +763,7 @@ export function ProviderUpsertModal({
       selectCatalog(defaultAccountProviderCatalogEntry);
       return;
     }
-    if (modelCategory === "codex" || catalogID === codexProviderCatalogSummary.id) {
+    if (selectedCatalogIsAccountProvider) {
       selectCategory(availableCategories[0]?.key ?? "custom");
     }
   }
@@ -1791,7 +1791,7 @@ function intersectProviderCatalogs(catalogs: ProviderCatalogEntry[]): ProviderCa
     ...first,
     models,
     models_count: models.length,
-    category_counts: { ...(first.category_counts ?? {}), codex: models.length },
+    category_counts: { ...(first.category_counts ?? {}), [accountProviderCatalogCategory(first)]: models.length },
   };
 }
 function intersectStringLists(lists: string[][]) {
