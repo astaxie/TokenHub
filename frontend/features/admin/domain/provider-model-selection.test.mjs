@@ -16,7 +16,7 @@ test("Kronk discovery bypasses category and standard-catalog filters", () => {
   ];
   const selectable = discovered.filter((model) => providerCatalogModelIsSelectable({
     catalogID: "kronk",
-    usesCodexCatalog: false,
+    usesAccountCatalog: false,
     quickAPIFlow: false,
     selectedCategory: "custom",
     discoveredCategory: model.category,
@@ -26,7 +26,7 @@ test("Kronk discovery bypasses category and standard-catalog filters", () => {
   assert.deepEqual(selectable.map((model) => model.id), discovered.map((model) => model.id));
   assert.equal(providerCatalogModelIsSelectable({
     catalogID: "openai",
-    usesCodexCatalog: false,
+    usesAccountCatalog: false,
     quickAPIFlow: false,
     selectedCategory: "custom",
     discoveredCategory: "llama",

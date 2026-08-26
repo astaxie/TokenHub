@@ -130,9 +130,9 @@ export function ProviderUpsertModal({
   const [modelCategory, setModelCategory] = useState(initialCategory);
   const [catalogID, setCatalogID] = useState(initialEntry?.id ?? "custom");
   const [detail, setDetail] = useState<ProviderCatalogEntry | null>(null);
-  const [codexCatalog, setCodexCatalog] = useState<ProviderCatalogEntry | null>(null);
-  const [codexCatalogLoading, setCodexCatalogLoading] = useState(false);
-  const [codexCatalogError, setCodexCatalogError] = useState("");
+  const [accountProviderCatalog, setAccountProviderCatalog] = useState<ProviderCatalogEntry | null>(null);
+  const [accountProviderCatalogLoading, setAccountProviderCatalogLoading] = useState(false);
+  const [accountProviderCatalogError, setAccountProviderCatalogError] = useState("");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [modelLoading, setModelLoading] = useState(false);
@@ -210,7 +210,7 @@ export function ProviderUpsertModal({
     ),
     [mode, provider?.id, resources],
   );
-  const usesCodexCatalog = credentialMode === "account_integration" || editingCodexSubscription;
+  const usesAccountCatalog = credentialMode === "account_integration" || editingCodexSubscription;
   const selectedAccountResources = useMemo(
     () => selectedAccountID === "all"
       ? subscriptionResources
@@ -339,17 +339,17 @@ export function ProviderUpsertModal({
   }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id]);
 
   useEffect(() => {
-    if (!usesCodexCatalog || mode === "edit") return;
+    if (!usesAccountCatalog || mode === "edit") return;
     const resource = subscriptionResources.find((item) => item.status === "active") ?? subscriptionResources[0];
     const hasPendingCredentials = Boolean(accountValues.access_token?.trim() && accountValues.account_id?.trim());
     if (!resource && !hasPendingCredentials) {
-      setCodexCatalog(null);
-      setCodexCatalogError(tx("完成账号授权后将从真实账号加载可用模型。"));
+      setAccountProviderCatalog(null);
+      setAccountProviderCatalogError(tx("完成账号授权后将从真实账号加载可用模型。"));
       return;
     }
     let cancelled = false;
-    setCodexCatalogLoading(true);
-    setCodexCatalogError("");
+    setAccountProviderCatalogLoading(true);
+    setAccountProviderCatalogError("");
     const path = resource
       ? `/api/admin/provider-catalog/${encodeURIComponent(catalogID)}?resource_id=${encodeURIComponent(resource.id)}`
       : `/api/admin/provider-catalog/${encodeURIComponent(catalogID)}`;
@@ -378,16 +378,16 @@ export function ProviderUpsertModal({
       })
       .then((payload) => {
         if (cancelled) return;
-        setCodexCatalog(payload.data);
-        setCodexCatalogError("");
+        setAccountProviderCatalog(payload.data);
+        setAccountProviderCatalogError("");
       })
       .catch((err) => {
         if (cancelled || isAuthExpiredError(err)) return;
-        setCodexCatalog(null);
-        setCodexCatalogError(err instanceof Error ? err.message : tx("账号模型目录加载失败"));
+        setAccountProviderCatalog(null);
+        setAccountProviderCatalogError(err instanceof Error ? err.message : tx("账号模型目录加载失败"));
       })
       .finally(() => {
-        if (!cancelled) setCodexCatalogLoading(false);
+        if (!cancelled) setAccountProviderCatalogLoading(false);
       });
     return () => {
       cancelled = true;
@@ -396,7 +396,7 @@ export function ProviderUpsertModal({
     api,
     credentialMode,
     subscriptionResources,
-    usesCodexCatalog,
+    usesAccountCatalog,
     accountValues.access_token,
     accountValues.account_id,
     accountValues.account_email,
@@ -481,24 +481,24 @@ export function ProviderUpsertModal({
     },
     [accountCatalogs, selectedAccountResources],
   );
-  const effectiveDetail = editingCodexSubscription ? selectedAccountCatalog : usesCodexCatalog ? codexCatalog : detail;
-  const effectiveCatalogLoading = editingCodexSubscription ? accountCatalogLoading : usesCodexCatalog ? codexCatalogLoading : modelLoading;
+  const effectiveDetail = editingCodexSubscription ? selectedAccountCatalog : usesAccountCatalog ? accountProviderCatalog : detail;
+  const effectiveCatalogLoading = editingCodexSubscription ? accountCatalogLoading : usesAccountCatalog ? accountProviderCatalogLoading : modelLoading;
   const effectiveCatalogError = editingCodexSubscription
     ? Object.values(accountCatalogErrors)[0] || ""
-    : usesCodexCatalog ? codexCatalogError : modelError;
+    : usesAccountCatalog ? accountProviderCatalogError : modelError;
   const models = useMemo(
     () => (effectiveDetail?.models ?? []).filter((model) => {
       const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name);
       return providerCatalogModelIsSelectable({
         catalogID,
-        usesCodexCatalog,
+        usesAccountCatalog,
         quickAPIFlow,
         selectedCategory: modelCategory,
         discoveredCategory: modelCategoryForCatalog(model),
         matchesStandardModel: standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name) === canonicalModelNameForUI(canonical, canonical)),
       });
     }),
-    [catalogID, effectiveDetail, modelCategory, quickAPIFlow, standardModels, usesCodexCatalog],
+    [catalogID, effectiveDetail, modelCategory, quickAPIFlow, standardModels, usesAccountCatalog],
   );
   const listedCatalog = useMemo(
     () => quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
@@ -532,8 +532,8 @@ export function ProviderUpsertModal({
     .filter(([id, selected]) => selected && !importedModelIDs.has(id))
     .map(([id]) => id);
   const selectedModelCount = selectedModelIDs.length;
-  const selectedEntry = usesCodexCatalog
-    ? codexCatalog ?? accountProviderCatalogOptions.find((entry) => entry.id === catalogID) ?? defaultAccountProviderCatalogEntry
+  const selectedEntry = usesAccountCatalog
+    ? accountProviderCatalog ?? accountProviderCatalogOptions.find((entry) => entry.id === catalogID) ?? defaultAccountProviderCatalogEntry
     : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
   const showProviderCatalog = mode === "create" && createStep === 1 && credentialMode !== "account_integration";
   const providerBodyClassName = !showProviderCatalog
@@ -972,7 +972,7 @@ export function ProviderUpsertModal({
   function reloadSelectedCatalog() {
     loadedCustomConnection.current = customConnectionKey;
     preserveCatalogValuesOnReload.current = true;
-    catalogRefreshRequested.current = catalogID !== "custom" && !usesCodexCatalog;
+    catalogRefreshRequested.current = catalogID !== "custom" && !usesAccountCatalog;
     setCatalogReloadKey((current) => current + 1);
     setDetail(null);
     setSelectedModels({});
@@ -1061,7 +1061,7 @@ export function ProviderUpsertModal({
         catalog_id: catalogID,
         model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
-        custom_models: (catalogID === "custom" || catalogID === "kronk" || usesCodexCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
+        custom_models: (catalogID === "custom" || catalogID === "kronk" || usesAccountCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
@@ -1350,7 +1350,7 @@ export function ProviderUpsertModal({
                     <ReviewItem label={credentialMode === "account_integration" ? "模型协议" : "模型类型"} value={modelCategoryLabel(modelCategory)} />
                     <ReviewItem label={credentialMode === "account_integration" ? "默认通道" : "渠道商"} value={selectedEntry?.display_name || selectedEntry?.name || "-"} />
                     <ReviewItem label={credentialMode === "account_integration" ? "兼容协议" : "渠道商类型"} value={providerTypeLabel(selectedEntry?.type || values.type || "openai_compatible")} />
-                    <ReviewItem label="可引入模型" value={effectiveDetail ? `${models.length}/${effectiveDetail.models_count}` : codexCatalogError || tx("加载中")} />
+                    <ReviewItem label="可引入模型" value={effectiveDetail ? `${models.length}/${effectiveDetail.models_count}` : accountProviderCatalogError || tx("加载中")} />
                   </div>
                 ) : null}
               </section>
