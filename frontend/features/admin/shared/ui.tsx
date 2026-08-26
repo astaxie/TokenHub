@@ -431,12 +431,14 @@ export type ProviderTypeOption = {
 };
 
 export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">, values?: Record<string, string>) {
-  const types = new Set(legacyProviderTypeOptions);
+  const types = new Set<string>();
   const labelByType = new Map<string, string>();
   const policyByType = new Map<string, boolean>();
   const routeProtocolsByType = new Map<string, Set<string>>();
+  let hasPluginProviderSource = false;
   for (const adapter of data.providerAdapters ?? []) {
     if (!adapter.type) continue;
+    hasPluginProviderSource = true;
     types.add(adapter.type);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
     for (const protocol of adapter.provider_policy?.route_protocols ?? []) {
@@ -447,18 +449,21 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     for (const capability of plugin.capabilities ?? []) {
       if (capability.kind === "provider") {
         const providerType = String(capability.subject || capability.name || "").trim();
+        hasPluginProviderSource = hasPluginProviderSource || Boolean(providerType);
         if (providerType) types.add(providerType);
         if (providerType && plugin.name) labelByType.set(providerType, plugin.name);
       }
       if (capability.kind === "provider_policy" && capability.name === "supports_custom_headers") {
         const providerType = String(capability.subject || "").trim();
         if (!providerType) continue;
+        hasPluginProviderSource = true;
         types.add(providerType);
         policyByType.set(providerType, capability.value !== "false");
       }
       if (capability.kind === "provider_policy" && capability.name === "route_protocol") {
         const providerType = String(capability.subject || "").trim();
         if (!providerType) continue;
+        hasPluginProviderSource = true;
         types.add(providerType);
         addProviderRouteProtocol(routeProtocolsByType, providerType, capability.value);
       }
@@ -466,13 +471,18 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   }
   for (const entry of data.providerCatalog ?? []) {
     if (!entry.type) continue;
+    hasPluginProviderSource = true;
     types.add(entry.type);
     const label = String(entry.display_name || entry.name || entry.type).trim();
     if (label) labelByType.set(entry.type, label);
   }
   for (const provider of data.providers ?? []) {
-    if (provider.type) types.add(provider.type);
+    if (provider.type) {
+      hasPluginProviderSource = true;
+      types.add(provider.type);
+    }
   }
+  if (!hasPluginProviderSource) legacyProviderTypeOptions.forEach((type) => types.add(type));
   if (values?.type) types.add(values.type);
   return [...types].sort(providerTypeSort).map((value) => ({
     value,

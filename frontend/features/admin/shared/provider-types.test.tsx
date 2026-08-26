@@ -6,6 +6,26 @@ import { providerTypeLabelFromData } from "../domain/labels";
 describe("providerTypeOptionsFromData", () => {
   it("includes provider types declared by plugins, catalog entries, providers, and the current form value", () => {
     const data = emptyData();
+    data.providerAdapters = [
+      {
+        type: "mock",
+        capabilities: ["chat"],
+        plugin_id: "tokenhub.provider.mock",
+        provider_policy: { route_protocols: ["chat"], supports_custom_headers: true },
+      },
+      {
+        type: "openai",
+        capabilities: ["chat"],
+        plugin_id: "tokenhub.provider.openai",
+        provider_policy: { route_protocols: ["chat"], supports_custom_headers: true },
+      },
+      {
+        type: "openai_codex",
+        capabilities: ["responses"],
+        plugin_id: "tokenhub.provider.openai-codex",
+        provider_policy: { route_protocols: ["responses"], supports_custom_headers: false },
+      },
+    ];
     data.plugins = [{
       id: "tokenhub.provider.kimi-subscription",
       name: "Kimi Subscription",
@@ -58,6 +78,22 @@ describe("providerTypeOptionsFromData", () => {
     expect(options.find((option) => option.value === "glm_subscription")?.label).toBe("GLM Subscription");
     expect(options.find((option) => option.value === "openai_codex")?.label).toBe("OpenAI Codex Subscription");
     expect(options.find((option) => option.value === "openai")?.label).toBe("OpenAI 官方");
+  });
+
+  it("uses legacy provider types only when no plugin provider source is loaded", () => {
+    const fallback = providerTypeOptionsFromData(emptyData()).map((option) => option.value);
+    expect(fallback).toContain("qwen");
+
+    const data = emptyData();
+    data.providerAdapters = [{
+      type: "openai_compatible",
+      capabilities: ["chat"],
+      plugin_id: "tokenhub.provider.openai-compatible",
+      provider_policy: { route_protocols: ["chat"], supports_custom_headers: true },
+    }];
+
+    const descriptorFirst = providerTypeOptionsFromData(data).map((option) => option.value);
+    expect(descriptorFirst).toEqual(["openai_compatible"]);
   });
 
   it("carries provider header policy from adapter descriptors", () => {
