@@ -3,10 +3,11 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
-import { accountProviderCatalogOptions, codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
+import { codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
+import { accountProviderCatalogCategory, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
@@ -103,10 +104,9 @@ export function ProviderUpsertModal({
   const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
     resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource),
   );
-  const directCredentialCatalog = useMemo(
-    () => catalog.filter((entry) => entry.id !== codexProviderCatalogSummary.id && entry.type !== codexProviderType),
-    [catalog],
-  );
+  const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins), [catalog, plugins]);
+  const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0] ?? codexProviderCatalogSummary;
+  const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
   const availableCategories = useMemo(
     () => catalogModelCategoryOptions(selectableProviderCatalog).filter((item) => mode !== "create" || item.key !== "codex"),
@@ -120,7 +120,7 @@ export function ProviderUpsertModal({
       ? "all"
       : availableCategories.find((item) => item.key !== "all")?.key || "custom");
   const initialEntry = editingCodexSubscription
-    ? codexProviderCatalogSummary
+    ? defaultAccountProviderCatalogEntry
     : mode === "edit"
       ? selectableProviderCatalog.find((entry) => entry.id === (provider?.type === "kronk" ? "kronk" : "custom")) ?? selectableProviderCatalog[0]
       : selectableProviderCatalog.find((entry) => entry.id === providerCatalogID)
@@ -351,8 +351,8 @@ export function ProviderUpsertModal({
     setCodexCatalogLoading(true);
     setCodexCatalogError("");
     const path = resource
-      ? `/api/admin/provider-catalog/${codexProviderCatalogSummary.id}?resource_id=${encodeURIComponent(resource.id)}`
-      : `/api/admin/provider-catalog/${codexProviderCatalogSummary.id}`;
+      ? `/api/admin/provider-catalog/${encodeURIComponent(catalogID)}?resource_id=${encodeURIComponent(resource.id)}`
+      : `/api/admin/provider-catalog/${encodeURIComponent(catalogID)}`;
     const request = hasPendingCredentials
       ? {
           method: "POST",
@@ -373,7 +373,7 @@ export function ProviderUpsertModal({
       : undefined;
     adminFetch(api, path, request)
       .then(async (resp) => {
-        if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载 Codex 模型目录")));
+        if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载账号模型目录")));
         return (await resp.json()) as { data: ProviderCatalogEntry };
       })
       .then((payload) => {
@@ -384,7 +384,7 @@ export function ProviderUpsertModal({
       .catch((err) => {
         if (cancelled || isAuthExpiredError(err)) return;
         setCodexCatalog(null);
-        setCodexCatalogError(err instanceof Error ? err.message : tx("Codex 模型目录加载失败"));
+        setCodexCatalogError(err instanceof Error ? err.message : tx("账号模型目录加载失败"));
       })
       .finally(() => {
         if (!cancelled) setCodexCatalogLoading(false);
@@ -408,6 +408,7 @@ export function ProviderUpsertModal({
     accountValues.refresh_token,
     accountValues.scopes,
     accountValues.token_type,
+    catalogID,
     catalogReloadKey,
     mode,
   ]);
@@ -532,7 +533,7 @@ export function ProviderUpsertModal({
     .map(([id]) => id);
   const selectedModelCount = selectedModelIDs.length;
   const selectedEntry = usesCodexCatalog
-    ? codexCatalog ?? codexProviderCatalogSummary
+    ? codexCatalog ?? accountProviderCatalogOptions.find((entry) => entry.id === catalogID) ?? defaultAccountProviderCatalogEntry
     : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
   const showProviderCatalog = mode === "create" && createStep === 1 && credentialMode !== "account_integration";
   const providerBodyClassName = !showProviderCatalog
@@ -584,11 +585,11 @@ export function ProviderUpsertModal({
   }, [mode, credentialMode]);
 
   useEffect(() => {
-    if (mode !== "create" || credentialMode !== "account_integration" || catalogID === codexProviderCatalogSummary.id) return;
-    setModelCategory("codex");
-    selectCatalog(codexProviderCatalogSummary);
+    if (mode !== "create" || credentialMode !== "account_integration" || accountProviderCatalogOptions.some((entry) => entry.id === catalogID)) return;
+    setModelCategory(accountProviderCatalogCategory(defaultAccountProviderCatalogEntry));
+    selectCatalog(defaultAccountProviderCatalogEntry);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- catalog selection is the corrective action; including it would retrigger the correction.
-  }, [credentialMode, mode, catalogID]);
+  }, [accountProviderCatalogOptions, credentialMode, mode, catalogID]);
 
   function update(key: string, value: string) {
     const previousProviderName = values.name;
@@ -817,16 +818,13 @@ export function ProviderUpsertModal({
   function selectCredentialMode(nextMode: ProviderCredentialMode) {
     setCredentialMode(nextMode);
     if (nextMode === "account_integration") {
-      setAccountValues((current) => ({
-        ...current,
-        resource_type: providerResourceOpenAISubscriptionType,
-        auth_type: "oauth",
-      }));
-      setModelCategory("codex");
+      const defaults = providerResourceDraftDefaults({ name: defaultAccountProviderCatalogEntry.display_name || defaultAccountProviderCatalogEntry.name, base_url: defaultAccountProviderCatalogEntry.base_url, type: defaultAccountProviderCatalogEntry.type }, { plugins });
+      setAccountValues((current) => ({ ...current, ...accountProviderResourceDefaultPatch(defaults) }));
+      setModelCategory(accountProviderCatalogCategory(defaultAccountProviderCatalogEntry));
       setCatalogQuery("");
       setModelQuery("");
       setSelectedModels({});
-      selectCatalog(codexProviderCatalogSummary);
+      selectCatalog(defaultAccountProviderCatalogEntry);
       return;
     }
     if (modelCategory === "codex" || catalogID === codexProviderCatalogSummary.id) {
