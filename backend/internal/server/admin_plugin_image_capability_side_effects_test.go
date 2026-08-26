@@ -16,6 +16,10 @@ func TestProviderImageCapabilityActionMetadataAppliesRouteSideEffects(t *testing
 	publicModel := "plugin-public-image"
 	upstreamModel := "plugin-upstream-image"
 	resourceType := "plugin_subscription_account"
+	capabilityOption := "plugin_image_capability"
+	checkedAtOption := "plugin_image_capability_checked_at"
+	backfillOption := "plugin_image_capability_route_backfill_v1"
+	supportedValue := "available"
 	store.AddModel(Model{Name: publicModel, Modality: "image", Status: StatusActive})
 	provider := store.AddProvider(Provider{
 		ID: "prv_image_capability_side_effect", Name: "Image Capability Side Effect", Type: providerType,
@@ -44,9 +48,13 @@ func TestProviderImageCapabilityActionMetadataAppliesRouteSideEffects(t *testing
 		Capability: "image.capability.configure",
 		Subject:    providerType,
 		Metadata: map[string]string{
-			"provider_resource_type": resourceType,
-			"public_model":           publicModel,
-			"upstream_model":         upstreamModel,
+			"provider_resource_type":       resourceType,
+			"public_model":                 publicModel,
+			"upstream_model":               upstreamModel,
+			"capability_option":            capabilityOption,
+			"capability_checked_at_option": checkedAtOption,
+			"capability_supported_value":   supportedValue,
+			"route_backfill_option":        backfillOption,
 		},
 	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {
@@ -62,7 +70,7 @@ func TestProviderImageCapabilityActionMetadataAppliesRouteSideEffects(t *testing
 		return pluginmeta.ActionResult{Data: map[string]any{
 			"enabled":     true,
 			"tested":      true,
-			"capability":  codexImageCapabilitySupported,
+			"capability":  supportedValue,
 			"resource_id": resource.ID,
 		}}, nil
 	})); err != nil {
@@ -76,8 +84,11 @@ func TestProviderImageCapabilityActionMetadataAppliesRouteSideEffects(t *testing
 		t.Fatalf("POST plugin image capability: expected 200, got %d: %s", response.Code, response.Body)
 	}
 	updated, ok := store.GetProviderResource(resource.ID)
-	if !ok || updated.Options[codexImageCapabilityOption] != codexImageCapabilitySupported || updated.Options[codexImageCapabilityCheckedAtOption] == "" {
+	if !ok || updated.Options[capabilityOption] != supportedValue || updated.Options[checkedAtOption] == "" || updated.Options[backfillOption] != "completed" {
 		t.Fatalf("image capability side effect did not update resource options: %+v", updated.Options)
+	}
+	if updated.Options[codexImageCapabilityOption] != "" || updated.Options[codexImageCapabilityCheckedAtOption] != "" {
+		t.Fatalf("third-party image capability side effect wrote Codex option keys: %+v", updated.Options)
 	}
 	routes := store.ListRoutes()
 	if len(routes) != 1 || routes[0].ModelName != publicModel || routes[0].ProviderID != provider.ID || routes[0].ProviderModel != upstreamModel || routes[0].Status != StatusActive {

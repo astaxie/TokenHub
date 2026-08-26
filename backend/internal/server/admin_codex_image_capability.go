@@ -200,7 +200,7 @@ func (s *Server) codexImageResource(resourceID string, requireActive bool) (Prov
 }
 
 func (s *Server) updateCodexImageCapability(resourceID string, capability string) (ProviderResource, error) {
-	return s.updateProviderImageCapability(resourceID, capability)
+	return s.updateProviderImageCapability(resourceID, capability, codexImageCapabilityRouteProfile())
 }
 
 func codexImageRouteMatches(route ModelRoute, providerID string) bool {
@@ -219,7 +219,7 @@ func providerImageCapabilityRouteHasSupportedResource(route ModelRoute, resource
 		if strings.TrimSpace(resource.ProviderID) != providerID ||
 			(profile.ResourceType != "" && resource.ResourceType != profile.ResourceType) ||
 			resource.Status != StatusActive || !resource.Healthy ||
-			strings.TrimSpace(resource.Options[codexImageCapabilityOption]) != codexImageCapabilitySupported {
+			!profile.capabilityIsSupported(resource.Options[profile.CapabilityOption]) {
 			continue
 		}
 		if resourceID != "" && strings.TrimSpace(resource.ID) != resourceID {
@@ -257,10 +257,15 @@ func defaultCodexImageRoute(providerID string) ModelRoute {
 
 func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 	return providerImageCapabilityRouteProfile{
-		ProviderType:  ProviderOpenAICodex,
-		ResourceType:  ProviderResourceOpenAISubscription,
-		PublicModel:   codexImageModelName,
-		UpstreamModel: codexImageUpstreamModel,
+		ProviderType:              ProviderOpenAICodex,
+		ResourceType:              ProviderResourceOpenAISubscription,
+		PublicModel:               codexImageModelName,
+		UpstreamModel:             codexImageUpstreamModel,
+		CapabilityOption:          codexImageCapabilityOption,
+		CapabilityCheckedAtOption: codexImageCapabilityCheckedAtOption,
+		CapabilitySupportedValue:  codexImageCapabilitySupported,
+		RouteBackfillOption:       codexImageRouteBackfillOption,
+		RouteBackfillValue:        codexImageRouteBackfillCompleted,
 	}
 }
 

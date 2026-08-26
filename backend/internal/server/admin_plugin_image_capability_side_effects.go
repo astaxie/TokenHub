@@ -11,10 +11,15 @@ import (
 )
 
 type providerImageCapabilityRouteProfile struct {
-	ProviderType  string
-	ResourceType  string
-	PublicModel   string
-	UpstreamModel string
+	ProviderType              string
+	ResourceType              string
+	PublicModel               string
+	UpstreamModel             string
+	CapabilityOption          string
+	CapabilityCheckedAtOption string
+	CapabilitySupportedValue  string
+	RouteBackfillOption       string
+	RouteBackfillValue        string
 }
 
 func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
@@ -56,11 +61,11 @@ func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, desc
 	}
 
 	if capability.Capability != "" {
-		if _, err := s.updateProviderImageCapability(resource.ID, capability.Capability); err != nil {
+		if _, err := s.updateProviderImageCapability(resource.ID, capability.Capability, profile); err != nil {
 			return result, err
 		}
 	}
-	if capability.Capability != codexImageCapabilitySupported {
+	if !profile.capabilityIsSupported(capability.Capability) {
 		return result, nil
 	}
 	route, err := s.ensureProviderImageCapabilityRoute(provider.ID, profile)
@@ -78,7 +83,28 @@ func providerImageCapabilityRouteProfileFromAction(descriptor pluginmeta.ActionD
 		ResourceType:  strings.TrimSpace(firstNonEmpty(descriptor.Metadata["provider_resource_type"], descriptor.Metadata["resource_type"])),
 		PublicModel:   strings.TrimSpace(descriptor.Metadata["public_model"]),
 		UpstreamModel: strings.TrimSpace(descriptor.Metadata["upstream_model"]),
+		CapabilityOption: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["capability_option"],
+			descriptor.Metadata["provider_capability_option"],
+		)),
+		CapabilityCheckedAtOption: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["capability_checked_at_option"],
+			descriptor.Metadata["provider_capability_checked_at_option"],
+		)),
+		CapabilitySupportedValue: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["capability_supported_value"],
+			descriptor.Metadata["supported_value"],
+		)),
+		RouteBackfillOption: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_backfill_option"],
+			descriptor.Metadata["provider_route_backfill_option"],
+		)),
+		RouteBackfillValue: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_backfill_value"],
+			descriptor.Metadata["provider_route_backfill_value"],
+		)),
 	}
+	profile.withDefaults()
 	return profile, profile.PublicModel != "" && profile.UpstreamModel != ""
 }
 
@@ -111,13 +137,14 @@ func imageCapabilityActionResultWithRoute(data any, routeID string) any {
 	return result
 }
 
-func (s *Server) updateProviderImageCapability(resourceID string, capability string) (ProviderResource, error) {
+func (s *Server) updateProviderImageCapability(resourceID string, capability string, profile providerImageCapabilityRouteProfile) (ProviderResource, error) {
+	profile.withDefaults()
 	options := map[string]string{
-		codexImageCapabilityOption:          capability,
-		codexImageCapabilityCheckedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
+		profile.CapabilityOption:          capability,
+		profile.CapabilityCheckedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	if capability == codexImageCapabilitySupported {
-		options[codexImageRouteBackfillOption] = codexImageRouteBackfillCompleted
+	if profile.capabilityIsSupported(capability) {
+		options[profile.RouteBackfillOption] = profile.RouteBackfillValue
 	}
 	return s.store.UpdateProviderResourceOptions(resourceID, options)
 }
@@ -175,4 +202,27 @@ func defaultProviderImageCapabilityRoute(providerID string, profile providerImag
 		Strategy:      RouteStrategyPriorityWeighted,
 		ProjectScope:  RouteProjectScopeAll,
 	}
+}
+
+func (p *providerImageCapabilityRouteProfile) withDefaults() {
+	if p.CapabilityOption == "" {
+		p.CapabilityOption = "image_capability"
+	}
+	if p.CapabilityCheckedAtOption == "" {
+		p.CapabilityCheckedAtOption = "image_capability_checked_at"
+	}
+	if p.CapabilitySupportedValue == "" {
+		p.CapabilitySupportedValue = "supported"
+	}
+	if p.RouteBackfillOption == "" {
+		p.RouteBackfillOption = "image_capability_route_backfill_v1"
+	}
+	if p.RouteBackfillValue == "" {
+		p.RouteBackfillValue = "completed"
+	}
+}
+
+func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
+	p.withDefaults()
+	return strings.TrimSpace(capability) == p.CapabilitySupportedValue
 }
