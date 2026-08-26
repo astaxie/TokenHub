@@ -344,7 +344,7 @@ export function ProviderUpsertModal({
     const hasPendingCredentials = Boolean(accountValues.access_token?.trim() && accountValues.account_id?.trim());
     if (!resource && !hasPendingCredentials) {
       setCodexCatalog(null);
-      setCodexCatalogError(tx("完成 Codex 账号授权后将从真实账号加载可用模型。"));
+      setCodexCatalogError(tx("完成账号授权后将从真实账号加载可用模型。"));
       return;
     }
     let cancelled = false;
@@ -613,7 +613,7 @@ export function ProviderUpsertModal({
         if (current.base_url && current.base_url !== previousBaseURL) return current;
         return {
           ...current,
-          base_url: value || (credentialMode === "account_integration" ? codexProviderCatalogSummary.base_url || "" : "https://api.openai.com/v1"),
+          base_url: value || (credentialMode === "account_integration" ? selectedEntry?.base_url || "" : "https://api.openai.com/v1"),
         };
       });
     }
@@ -1078,7 +1078,7 @@ export function ProviderUpsertModal({
           ...accountValues,
           provider_id: providerID,
           name: accountValues.name?.trim() || defaultProviderResourceName(result.provider?.name || values.name || providerID),
-          base_url: accountValues.base_url?.trim() || values.base_url || codexProviderCatalogSummary.base_url || "",
+          base_url: accountValues.base_url?.trim() || values.base_url || selectedEntry?.base_url || "",
         };
         const resourceResp = await adminFetch(api, "/api/admin/provider-resources", {
           method: "POST",
@@ -1305,7 +1305,7 @@ export function ProviderUpsertModal({
                         <span><Icon size={18} /></span>
                         <strong>{tx(option.label)}</strong>
                         <em>{tx(option.description)}</em>
-                        {option.key === "account_integration" ? <small>{tx("账号资源池会选择 Codex Subscription 适配器，下一步确认 Codex Backend 地址和账号凭据。")}</small> : null}
+                        {option.key === "account_integration" ? <small>{tx("账号资源池会选择插件声明的账号适配器，下一步确认账号地址和凭据。")}</small> : null}
                       </button>
                     );
                   })}
