@@ -14,15 +14,22 @@ const providerCredentialRefreshConcurrency = 4
 // they expire. RefreshProviderResourceCredentials owns the cluster lease, so
 // every replica may run this scheduler without rotating a token concurrently.
 type ProviderCredentialRefreshService struct {
-	store Store
+	store         Store
+	pluginRefresh providerCredentialRefreshFunc
 
 	schedulerOnce sync.Once
 	schedulerStop context.CancelFunc
 	schedulerDone chan struct{}
 }
 
-func newProviderCredentialRefreshService(store Store) *ProviderCredentialRefreshService {
-	return &ProviderCredentialRefreshService{store: store}
+type providerCredentialRefreshFunc func(context.Context, ProviderResource) (bool, error)
+
+func newProviderCredentialRefreshService(store Store, pluginRefresh ...providerCredentialRefreshFunc) *ProviderCredentialRefreshService {
+	service := &ProviderCredentialRefreshService{store: store}
+	if len(pluginRefresh) > 0 {
+		service.pluginRefresh = pluginRefresh[0]
+	}
+	return service
 }
 
 func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
@@ -31,7 +38,7 @@ func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if !isOpenAIAccountResource(resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[openAIAccountReauthorizationRequiredOption] == "true" {
+		if !isProviderAccountResource(resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[openAIAccountReauthorizationRequiredOption] == "true" {
 			continue
 		}
 		resources = append(resources, resource)
@@ -65,6 +72,23 @@ func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 }
 
 func (s *ProviderCredentialRefreshService) renewResource(ctx context.Context, resource ProviderResource) {
+	if s.pluginRefresh != nil {
+		handled, err := s.pluginRefresh(ctx, resource)
+		if err != nil {
+			code := "credential_refresh_failed"
+			if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code != "" {
+				code = httpErr.Code
+			}
+			log.Printf("[tokenhub] OAuth token renewal failed for provider resource %s: code=%s", resource.ID, code)
+			return
+		}
+		if handled {
+			return
+		}
+	}
+	if !isOpenAIAccountResource(resource.ResourceType) {
+		return
+	}
 	if _, err := s.store.RefreshProviderResourceCredentials(ctx, resource.ID, false); err != nil {
 		code := "credential_refresh_failed"
 		if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code != "" {

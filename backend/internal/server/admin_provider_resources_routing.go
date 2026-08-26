@@ -582,7 +582,33 @@ func (s *Server) executeProviderResourceCredentialRefreshAction(ctx context.Cont
 	if err != nil {
 		return pluginmeta.ActionResult{}, pluginActionHTTPError(err)
 	}
+	if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
+		result, err = s.applyPluginActionSideEffects(ctx, descriptor, payload, result)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+	}
 	return result, nil
+}
+
+func (s *Server) refreshProviderResourceCredentialsWithPluginAction(ctx context.Context, resource ProviderResource) (bool, error) {
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return true, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	if _, _, ok := s.providerPluginCapabilityAction(provider.Type, AdapterCapabilityOAuth, "credentials.refresh"); !ok {
+		return false, nil
+	}
+	result, err := s.executeProviderResourceCredentialRefreshAction(ctx, AdminUser{
+		ID:   "system",
+		Name: "System",
+		Role: "system",
+	}, resource.ID, false)
+	if err != nil {
+		return true, err
+	}
+	_ = result
+	return true, nil
 }
 
 func (s *Server) providerResourcePanelAction(providerType string, panelID string, capability AdapterCapability) (string, string, bool) {

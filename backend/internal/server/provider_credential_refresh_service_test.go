@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestProviderCredentialRefreshServiceRenewsExpiringOpenAIAccounts(t *testing.T) {
@@ -55,6 +57,94 @@ func TestProviderCredentialRefreshServiceRenewsExpiringOpenAIAccounts(t *testing
 	}
 	if credentials.AccessToken != "access-after-renewal" || credentials.RefreshToken != "refresh-after-renewal" {
 		t.Fatalf("expected rotated credentials to be stored, got %+v", credentials)
+	}
+}
+
+func TestProviderCredentialRefreshServiceRunsPluginCredentialRefreshActions(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_scheduler", Name: "Kimi", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_scheduler",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Scheduler Account",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType:     "oauth",
+			AccessToken:  "old-plugin-access",
+			RefreshToken: "old-plugin-refresh",
+			ExpiresAt:    time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "plugin-refresh-admin"})
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.kimi",
+		Name:    "Kimi",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+	}, AdapterRegistration{
+		Type:         "kimi_subscription",
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityOAuth},
+	}); err != nil {
+		t.Fatalf("register Kimi adapter plugin: %v", err)
+	}
+	var calls atomic.Int64
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi",
+		ActionID:   "kimi.credentials.refresh",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "credentials.refresh",
+		Subject:    "kimi_subscription",
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		calls.Add(1)
+		if invocation.Actor.ID != "system" || invocation.Actor.Role != "system" {
+			t.Fatalf("unexpected scheduler actor: %+v", invocation.Actor)
+		}
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Force      bool   `json:"force"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode scheduler refresh payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || payload.Force {
+			t.Fatalf("unexpected scheduler refresh payload: %+v", payload)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"credentials": map[string]string{
+				"auth_type":     "oauth",
+				"access_token":  "new-plugin-access",
+				"refresh_token": "new-plugin-refresh",
+				"email":         "scheduler@example.com",
+			},
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register Kimi refresh action: %v", err)
+	}
+
+	newProviderCredentialRefreshService(store, server.refreshProviderResourceCredentialsWithPluginAction).RunDue(context.Background())
+
+	if calls.Load() != 1 {
+		t.Fatalf("expected one plugin refresh action call, got %d", calls.Load())
+	}
+	stored, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("expected refreshed resource to exist")
+	}
+	credentials := store.providerResourceCredentialsForRuntime(stored)
+	if credentials.AccessToken != "new-plugin-access" || credentials.RefreshToken != "new-plugin-refresh" {
+		t.Fatalf("expected plugin-refreshed credentials to be stored, got %+v", credentials)
+	}
+	if stored.CredentialSummary["credential_source"] != "kimi_oauth_account" ||
+		stored.CredentialSummary["has_refresh_token"] != "true" ||
+		stored.CredentialSummary["account_email"] != "scheduler@example.com" {
+		t.Fatalf("expected plugin credential summary to be stored, got %+v", stored.CredentialSummary)
 	}
 }
 
