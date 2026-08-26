@@ -353,7 +353,7 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityImageGenerate, AdapterCapabilityCompact:
+		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityImageGenerate, AdapterCapabilityCompact, AdapterCapabilityAffinity:
 			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}

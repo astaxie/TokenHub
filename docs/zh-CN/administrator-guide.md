@@ -35,7 +35,7 @@ Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上�
 
 Provider 插件可以在 manifest 中声明路由和凭据策略。对上游密钥必须放在 Provider Resource、而不是 Provider 自身上的订阅/账号型 Provider，设置 `capabilities.provider.credentials_scope: resource`。如果每次路由尝试都必须选中可用的 Provider Resource，则设置 `capabilities.provider.route_requires_resource: true`；Core 会在创建 Provider 时持久化这些策略，并应用与内置订阅 Provider 一致的缺失、禁用、不健康、冷却和资源组检查。
 
-支持请求会话亲和性的插件还可以把 `capabilities.provider.session_affinity_kind` 设置为 `provider_session` 或 `codex_session`。当 Responses、Chat、Anthropic 或 Gemini 兼容路由根据 session header 或请求 metadata 生成粘性 Provider Resource 绑定时，Core 会使用该策略。
+支持请求会话亲和性的插件还可以在 `capabilities.gateway` 中声明 `session_affinity`，并把 `capabilities.provider.session_affinity_kind` 设置为 `provider_session` 或 `codex_session`。当 Responses、Chat、Anthropic、Gemini 或 Responses Compact 路由根据 session header 或请求 metadata 生成粘性 Provider Resource 绑定时，Core 会使用该策略。
 
 插件声明的后台任务可以在后台任务清单中手动运行。手动运行会使用与定时任务相同的 Core runner，包括输入 Schema 校验、重试设置、超时处理、并发限制、最近运行记录、结果脱敏和管理员审计事件。TokenHub 在把运行结果返回给控制台前，会遮蔽 access token、refresh token、API key、密码、cookie、私钥等疑似敏感字段。
 

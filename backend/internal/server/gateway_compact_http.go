@@ -111,16 +111,18 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	affinityRequest := ResponsesRequest{Model: model, raw: request}
-	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, r.Header, affinityRequest)
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
-		routed.Affinity = affinity
-		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
+	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
+		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), r.Header, affinityRequest)
+		if err != nil {
+			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		if affinity != nil {
+			routed.Affinity = affinity
+			routed.Call.Affinity = affinity
+			routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
+		}
 	}
 	response, route, usage, attempts, err := s.executeRoutedCompact(r, routed, request)
 	if err != nil {

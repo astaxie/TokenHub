@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -703,6 +704,79 @@ esac
 	}
 }
 
+func TestExternalProviderPluginCompactUsesSessionAffinityPolicy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifestWithPolicy(t, pluginDir, true, []string{"responses_compact", "session_affinity"}, `
+  provider:
+    session_affinity_kind: codex_session
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
+payload="$(cat)"
+case "$payload" in
+  *'"operation":"responses_compact"'*'"provider_model":"plugin-upstream-affinity-compact"'*)
+    printf '{"response":{"id":"resp_gateway_compact_affinity_plugin","status":"completed","output_text":"gateway compacted with affinity"},"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}'
+    ;;
+  *)
+    printf 'unexpected provider payload: %s' "$payload" >&2
+    exit 2
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Provider Plugin Compact Affinity Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Provider Plugin Compact Affinity Key", Allowed: []string{"plugin-affinity-compact"}, Status: StatusActive}, "thk_provider_plugin_compact_affinity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-affinity-compact", Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{ID: "prv_plugin_compact_affinity", Name: "Provider Plugin Compact Affinity", Type: "custom_stdio", APIKey: "provider-secret", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_plugin_compact_affinity",
+		ProviderID:   provider.ID,
+		Name:         "Provider Plugin Compact Account",
+		ResourceType: "custom_account",
+		Status:       StatusActive,
+		Healthy:      true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddRoute(ModelRoute{
+		ModelName:          "plugin-affinity-compact",
+		ProviderID:         provider.ID,
+		ProviderResourceID: resource.ID,
+		ProviderModel:      "plugin-upstream-affinity-compact",
+		Priority:           1,
+		Weight:             100,
+		Status:             StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-admin", PluginDir: root, SecretKey: "plugin-compact-affinity-secret"})
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", strings.NewReader(
+		`{"model":"plugin-affinity-compact","input":"hello","client_metadata":{"session_id":"plugin-compact-session"}}`,
+	))
+	request.Header.Set("Authorization", "Bearer "+secret)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("gateway compact responses through provider plugin: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var bindings []AdapterSessionBinding
+	if err := store.db.Find(&bindings).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(bindings) != 1 || bindings[0].AdapterType != "custom_stdio" || bindings[0].AffinityKind != AffinityKindCodexSession || bindings[0].ResourceID != resource.ID {
+		t.Fatalf("plugin compact affinity binding = %+v", bindings)
+	}
+}
+
 func TestExternalProviderPluginAdapterExecutesImageGenerationCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")
@@ -908,6 +982,11 @@ func writeProviderPluginManifest(t *testing.T, dir string, includeCredentials bo
 
 func writeProviderPluginManifestWithCapabilities(t *testing.T, dir string, includeCredentials bool, capabilities []string) {
 	t.Helper()
+	writeProviderPluginManifestWithPolicy(t, dir, includeCredentials, capabilities, "")
+}
+
+func writeProviderPluginManifestWithPolicy(t *testing.T, dir string, includeCredentials bool, capabilities []string, providerPolicy string) {
+	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -938,6 +1017,7 @@ entry:
 capabilities:
   provider_types:
     - custom_stdio
+`+providerPolicy+`
   gateway:
 `+providerPluginGatewayCapabilityYAML(capabilities)+
 		permissions), 0o644); err != nil {
