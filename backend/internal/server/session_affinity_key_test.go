@@ -173,6 +173,23 @@ func TestCodexSessionIdentifierErrorCodeUnchanged(t *testing.T) {
 	}
 }
 
+func TestPluginCodexSessionAffinityUsesCodexErrorContract(t *testing.T) {
+	var request ResponsesRequest
+	if err := json.Unmarshal([]byte(`{"model":"gpt-test","input":[]}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	headers := make(http.Header)
+	headers.Set("session-id", "bad\x01id")
+
+	_, err := resolveProviderSessionAffinity("secret", "key_alpha", "plugin_codex_session", AffinityKindCodexSession, headers, request)
+	if err == nil {
+		t.Fatal("expected invalid plugin session identifier to be rejected")
+	}
+	if httpErr := AsHTTPError(err); httpErr.Code != "codex_session_id_invalid" {
+		t.Fatalf("plugin Codex session error code = %q", httpErr.Code)
+	}
+}
+
 func TestSessionAffinityKeyIsolatedByAPIKey(t *testing.T) {
 	first, err := sessionAffinityKey("shared-secret", "key_alpha", "same-session")
 	if err != nil {

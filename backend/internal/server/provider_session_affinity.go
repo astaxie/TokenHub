@@ -57,7 +57,7 @@ func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType 
 	}
 	code := "provider_session_id_invalid"
 	label := "Provider session identifier"
-	if adapterType == ProviderOpenAICodex {
+	if affinityKind == AffinityKindCodexSession {
 		code = "codex_session_id_invalid"
 		label = "Codex session identifier"
 	}
