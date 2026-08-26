@@ -487,7 +487,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   return [...types].sort(providerTypeSort).map((value) => ({
     value,
     label: providerTypeOptionLabel(value, labelByType),
-    supportsCustomHeaders: policyByType.get(value) ?? legacyProviderTypeSupportsCustomHeaders(value),
+    supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
   }));
 }
@@ -497,15 +497,15 @@ function providerTypeOptionLabel(providerType: string, labels: Map<string, strin
 }
 
 export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {
-  return providerTypeOptions.find((option) => option.value === providerType)?.supportsCustomHeaders ?? legacyProviderTypeSupportsCustomHeaders(providerType);
+  return providerTypeOptions.find((option) => option.value === providerType)?.supportsCustomHeaders ?? defaultProviderTypeSupportsCustomHeaders();
 }
 
 export function providerTypeRouteProtocols(providerTypeOptions: ProviderTypeOption[], providerType: string) {
   return providerTypeOptions.find((option) => option.value === providerType)?.routeProtocols ?? [];
 }
 
-function legacyProviderTypeSupportsCustomHeaders(providerType: string) {
-  return providerType !== "azure_openai" && providerType !== "openai_codex";
+function defaultProviderTypeSupportsCustomHeaders() {
+  return true;
 }
 
 function addProviderRouteProtocol(protocolsByType: Map<string, Set<string>>, providerType: string, protocol?: string) {

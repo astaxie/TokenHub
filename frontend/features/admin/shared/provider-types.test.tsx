@@ -113,8 +113,33 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeSupportsCustomHeaders(options, "native_subscription")).toBe(false);
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(providerTypeSupportsCustomHeaders(options, "openai_compatible")).toBe(true);
-    expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(false);
+    expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(true);
+    expect(providerTypeSupportsCustomHeaders(options, "openai_codex")).toBe(true);
+  });
+
+  it("does not hard-code custom header support by built-in provider type", () => {
+    const data = emptyData();
+    data.providerAdapters = [
+      {
+        type: "openai_codex",
+        capabilities: ["responses"],
+        plugin_id: "tokenhub.provider.openai-codex",
+        provider_policy: { route_protocols: ["responses"], supports_custom_headers: false },
+      },
+      {
+        type: "azure_openai",
+        capabilities: ["chat"],
+        plugin_id: "tokenhub.provider.azure-openai",
+        provider_policy: { route_protocols: ["chat"], supports_custom_headers: false },
+      },
+    ];
+
+    const options = providerTypeOptionsFromData(data);
+
     expect(providerTypeSupportsCustomHeaders(options, "openai_codex")).toBe(false);
+    expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(false);
+    expect(providerTypeSupportsCustomHeaders([], "openai_codex")).toBe(true);
+    expect(providerTypeSupportsCustomHeaders([], "azure_openai")).toBe(true);
   });
 
   it("carries provider header policy from plugin capabilities", () => {
