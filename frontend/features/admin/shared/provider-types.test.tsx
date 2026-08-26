@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerTypeOptionsFromData, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
+import { providerTypeAuthModes, providerTypeOptionsFromData, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
 import { providerTypeLabelFromData } from "../domain/labels";
 
@@ -103,6 +103,7 @@ describe("providerTypeOptionsFromData", () => {
       capabilities: ["responses"],
       plugin_id: "tokenhub.provider.native-subscription",
       provider_policy: {
+        auth_modes: ["x-api-key", "bearer"],
         route_protocols: ["native/responses"],
         supports_custom_headers: false,
       },
@@ -111,6 +112,7 @@ describe("providerTypeOptionsFromData", () => {
     const options = providerTypeOptionsFromData(data);
 
     expect(providerTypeSupportsCustomHeaders(options, "native_subscription")).toBe(false);
+    expect(providerTypeAuthModes(options, "native_subscription")).toEqual(["bearer", "x-api-key"]);
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(providerTypeSupportsCustomHeaders(options, "openai_compatible")).toBe(true);
     expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(true);
@@ -154,6 +156,8 @@ describe("providerTypeOptionsFromData", () => {
       capabilities: [
         { kind: "provider", name: "responses", subject: "oauth_subscription" },
         { kind: "provider_policy", name: "supports_custom_headers", subject: "oauth_subscription", value: "false" },
+        { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "oauth" },
+        { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "personal_access_token" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "responses" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "images/generations" },
       ],
@@ -162,6 +166,7 @@ describe("providerTypeOptionsFromData", () => {
     const options = providerTypeOptionsFromData(data);
 
     expect(providerTypeSupportsCustomHeaders(options, "oauth_subscription")).toBe(false);
+    expect(providerTypeAuthModes(options, "oauth_subscription")).toEqual(["oauth", "personal_access_token"]);
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
   });
 

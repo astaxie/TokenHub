@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	providerAuthModeOption              = "auth_mode"
 	providerCredentialsScopeOption      = "credentials_scope"
 	providerCredentialsScopeProvider    = "provider"
 	providerCredentialsScopeResource    = "resource"

@@ -38,6 +38,9 @@ capabilities:
   provider:
     route_protocols:
       - codex/responses
+    auth_modes:
+      - x-api-key
+      - bearer
     supports_custom_headers: false
     route_requires_resource: true
     credentials_scope: resource
@@ -100,8 +103,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 13 {
-		t.Fatalf("descriptor capabilities = %v, want 13 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 15 {
+		t.Fatalf("descriptor capabilities = %v, want 15 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -121,8 +124,15 @@ permissions:
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_protocol", Subject: "openai_codex", Value: "codex/responses"}) {
 		t.Fatalf("descriptor is missing provider route protocol capability: %+v", descriptor.Capabilities)
 	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "auth_mode", Subject: "openai_codex", Value: "x-api-key"}) ||
+		!descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "auth_mode", Subject: "openai_codex", Value: "bearer"}) {
+		t.Fatalf("descriptor is missing provider auth mode policy capabilities: %+v", descriptor.Capabilities)
+	}
 	if len(manifest.Capabilities.Provider.RouteProtocols) != 1 || manifest.Capabilities.Provider.RouteProtocols[0] != "codex/responses" {
 		t.Fatalf("provider route protocols = %+v", manifest.Capabilities.Provider.RouteProtocols)
+	}
+	if len(manifest.Capabilities.Provider.AuthModes) != 2 || manifest.Capabilities.Provider.AuthModes[0] != "x-api-key" || manifest.Capabilities.Provider.AuthModes[1] != "bearer" {
+		t.Fatalf("provider auth modes = %+v", manifest.Capabilities.Provider.AuthModes)
 	}
 	if manifest.Capabilities.Provider.SupportsCustomHeaders == nil || *manifest.Capabilities.Provider.SupportsCustomHeaders {
 		t.Fatalf("provider custom header policy = %+v", manifest.Capabilities.Provider.SupportsCustomHeaders)

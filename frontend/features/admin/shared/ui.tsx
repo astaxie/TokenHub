@@ -427,6 +427,7 @@ export type ProviderTypeOption = {
   value: string;
   label: string;
   supportsCustomHeaders: boolean;
+  authModes?: string[];
   routeProtocols?: string[];
 };
 
@@ -434,6 +435,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const types = new Set<string>();
   const labelByType = new Map<string, string>();
   const policyByType = new Map<string, boolean>();
+  const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
   let hasPluginProviderSource = false;
   for (const adapter of data.providerAdapters ?? []) {
@@ -441,6 +443,9 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     hasPluginProviderSource = true;
     types.add(adapter.type);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
+    for (const authMode of adapter.provider_policy?.auth_modes ?? []) {
+      addProviderAuthMode(authModesByType, adapter.type, authMode);
+    }
     for (const protocol of adapter.provider_policy?.route_protocols ?? []) {
       addProviderRouteProtocol(routeProtocolsByType, adapter.type, protocol);
     }
@@ -467,6 +472,13 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         types.add(providerType);
         addProviderRouteProtocol(routeProtocolsByType, providerType, capability.value);
       }
+      if (capability.kind === "provider_policy" && capability.name === "auth_mode") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        hasPluginProviderSource = true;
+        types.add(providerType);
+        addProviderAuthMode(authModesByType, providerType, capability.value);
+      }
     }
   }
   for (const entry of data.providerCatalog ?? []) {
@@ -488,6 +500,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     value,
     label: providerTypeOptionLabel(value, labelByType),
     supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
+    authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
   }));
 }
@@ -504,8 +517,22 @@ export function providerTypeRouteProtocols(providerTypeOptions: ProviderTypeOpti
   return providerTypeOptions.find((option) => option.value === providerType)?.routeProtocols ?? [];
 }
 
+export function providerTypeAuthModes(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  const modes = providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
+  if (modes.length > 0) return modes;
+  return providerType === "anthropic" ? ["bearer", "x-api-key"] : [];
+}
+
 function defaultProviderTypeSupportsCustomHeaders() {
   return true;
+}
+
+function addProviderAuthMode(authModesByType: Map<string, Set<string>>, providerType: string, authMode?: string) {
+  authMode = String(authMode || "").trim();
+  if (!providerType || !authMode) return;
+  const authModes = authModesByType.get(providerType) ?? new Set<string>();
+  authModes.add(authMode);
+  authModesByType.set(providerType, authModes);
 }
 
 function addProviderRouteProtocol(protocolsByType: Map<string, Set<string>>, providerType: string, protocol?: string) {
@@ -514,6 +541,10 @@ function addProviderRouteProtocol(protocolsByType: Map<string, Set<string>>, pro
   const protocols = protocolsByType.get(providerType) ?? new Set<string>();
   protocols.add(protocol);
   protocolsByType.set(providerType, protocols);
+}
+
+function providerAuthModeList(authModes?: Set<string>) {
+  return authModes ? [...authModes].sort() : undefined;
 }
 
 function providerRouteProtocolList(protocols?: Set<string>) {

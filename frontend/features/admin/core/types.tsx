@@ -271,6 +271,7 @@ export type AdapterDescriptor = {
   resource_types?: AdapterProviderResourceType[];
   provider_policy?: {
     route_protocols?: string[];
+    auth_modes?: string[];
     supports_custom_headers: boolean;
     route_requires_resource?: boolean;
     credentials_scope?: string;

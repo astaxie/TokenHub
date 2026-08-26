@@ -37,6 +37,7 @@ type AdapterDescriptor struct {
 
 type AdapterProviderPolicy struct {
 	RouteProtocols        []string `json:"route_protocols,omitempty"`
+	AuthModes             []string `json:"auth_modes,omitempty"`
 	SupportsCustomHeaders bool     `json:"supports_custom_headers"`
 	RouteRequiresResource bool     `json:"route_requires_resource"`
 	CredentialsScope      string   `json:"credentials_scope,omitempty"`
@@ -173,6 +174,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 	descriptor.ResourceTypes = adapterProviderResourceTypes(r, descriptor.Type)
 	descriptor.ProviderPolicy = AdapterProviderPolicy{
 		RouteProtocols:        adapterRouteProtocols(r, descriptor),
+		AuthModes:             adapterAuthModes(r, descriptor.Type),
 		SupportsCustomHeaders: adapterSupportsProviderHeaders(r, descriptor.Type),
 		RouteRequiresResource: adapterRequiresRouteResource(r, descriptor.Type),
 		CredentialsScope:      adapterCredentialsScope(r, descriptor.Type),
@@ -186,6 +188,10 @@ func adapterRouteProtocols(registry *AdapterRegistry, descriptor AdapterDescript
 		return routeProtocolList(protocoler.RouteProtocols())
 	}
 	return routeProtocolSetList(routeProviderProtocolsFromCapabilities(descriptor))
+}
+
+func adapterAuthModes(registry *AdapterRegistry, providerType string) []string {
+	return providerPolicyStringValues(registry, providerType, providerAuthModeOption)
 }
 
 func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType string) bool {
@@ -225,10 +231,19 @@ func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string
 }
 
 func providerPolicyStringCapability(registry *AdapterRegistry, providerType string, name string) (string, bool) {
-	plugin, ok := adapterPluginDescriptor(registry, providerType)
-	if !ok {
+	values := providerPolicyStringValues(registry, providerType, name)
+	if len(values) == 0 {
 		return "", false
 	}
+	return values[0], true
+}
+
+func providerPolicyStringValues(registry *AdapterRegistry, providerType string, name string) []string {
+	plugin, ok := adapterPluginDescriptor(registry, providerType)
+	if !ok {
+		return nil
+	}
+	values := []string{}
 	for _, capability := range plugin.Capabilities {
 		if capability.Kind != "provider_policy" || capability.Name != name {
 			continue
@@ -236,9 +251,11 @@ func providerPolicyStringCapability(registry *AdapterRegistry, providerType stri
 		if capability.Subject != "" && capability.Subject != providerType {
 			continue
 		}
-		return strings.TrimSpace(capability.Value), true
+		if value := strings.TrimSpace(capability.Value); value != "" {
+			values = append(values, value)
+		}
 	}
-	return "", false
+	return sortedUniqueStrings(values)
 }
 
 func adapterProviderResourceTypes(registry *AdapterRegistry, providerType string) []pluginmeta.ManifestProviderResourceType {

@@ -67,6 +67,7 @@ type ManifestCapabilities struct {
 
 type ManifestProvider struct {
 	RouteProtocols        []string                `yaml:"route_protocols"`
+	AuthModes             []string                `yaml:"auth_modes"`
 	SupportsCustomHeaders *bool                   `yaml:"supports_custom_headers"`
 	RouteRequiresResource *bool                   `yaml:"route_requires_resource"`
 	CredentialsScope      string                  `yaml:"credentials_scope"`
@@ -444,6 +445,18 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "route_protocol",
 				Subject: providerType,
 				Value:   protocol,
+			})
+		}
+		for _, authMode := range m.Capabilities.Provider.AuthModes {
+			authMode = strings.TrimSpace(authMode)
+			if authMode == "" {
+				continue
+			}
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "auth_mode",
+				Subject: providerType,
+				Value:   authMode,
 			})
 		}
 		for _, resourceType := range m.Capabilities.ResourceTypes {

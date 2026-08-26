@@ -347,7 +347,7 @@ export function ProviderAPIQuickConnect({
                 {providerTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <AnthropicAuthTypeField values={values} onUpdate={updateConnectionValue} />
+            <AnthropicAuthTypeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={providerTypeOptions} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />

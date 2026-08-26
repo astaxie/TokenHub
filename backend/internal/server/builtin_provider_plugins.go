@@ -8,6 +8,7 @@ type builtinProviderAdapter struct {
 	credentialsScope      string
 	routeRequiresResource bool
 	sessionAffinityKind   string
+	authModes             []string
 	resourceTypes         []pluginmeta.ManifestProviderResourceType
 	capabilities          []AdapterCapability
 }
@@ -103,6 +104,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.anthropic", "Anthropic", builtinProviderAdapter{
 		providerType: ProviderAnthropic,
 		adapter:      adapters[ProviderAnthropic],
+		authModes:    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -176,6 +178,18 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "session_affinity_kind",
 			Subject: adapter.providerType,
 			Value:   adapter.sessionAffinityKind,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	for _, authMode := range adapter.authModes {
+		if authMode == "" {
+			continue
+		}
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    providerAuthModeOption,
+			Subject: adapter.providerType,
+			Value:   authMode,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

@@ -132,6 +132,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !anthropic.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("Anthropic should support custom headers")
 	}
+	if !reflect.DeepEqual(anthropic.ProviderPolicy.AuthModes, []string{anthropicAuthTypeBearer, anthropicAuthTypeAPIKey}) {
+		t.Fatalf("Anthropic auth modes = %v", anthropic.ProviderPolicy.AuthModes)
+	}
 
 	azure, ok := server.adapterRegistry.Describe(ProviderAzureOpenAI)
 	if !ok {
@@ -238,6 +241,8 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "oauth"},
+			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "personal_access_token"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 			{Kind: "provider_resource_type", Name: "subscription_account", Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
@@ -264,6 +269,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
 		t.Fatalf("plugin provider credentials scope = %+v, want resource", descriptor.ProviderPolicy)
+	}
+	if !reflect.DeepEqual(descriptor.ProviderPolicy.AuthModes, []string{"oauth", "personal_access_token"}) {
+		t.Fatalf("plugin provider auth modes = %+v", descriptor.ProviderPolicy.AuthModes)
 	}
 	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("plugin provider session affinity kind = %+v, want codex session", descriptor.ProviderPolicy)
