@@ -116,6 +116,60 @@ permissions:
 	}
 }
 
+func TestRuntimeLoadIntoRegistersDisabledDescriptorWithoutActivatingHooks(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "privacy")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.privacy
+name: Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: mask
+      stage: privacy_pre
+      priority: 2300
+      failure_policy: fail_closed
+      reads:
+        - request_body
+      writes:
+        - request_body
+permissions:
+  data:
+    read:
+      - request_body
+    write:
+      - request_body
+`)
+	writePackageState(t, pluginDir, `{"status":"disabled","reason":"operator disabled during upgrade"}`)
+	plugins := NewRegistry()
+	chain := NewGatewayChainRegistry()
+
+	packages, err := NewRuntime(root).LoadInto(plugins, chain)
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if len(packages) != 1 || packages[0].State.Status != StatusDisabled || packages[0].State.Reason == "" {
+		t.Fatalf("packages = %+v, want disabled package state", packages)
+	}
+	descriptor, ok := plugins.Describe("tokenhub.privacy")
+	if !ok {
+		t.Fatal("disabled plugin descriptor was not registered")
+	}
+	if descriptor.Status != StatusDisabled {
+		t.Fatalf("descriptor status = %q, want disabled", descriptor.Status)
+	}
+	if hooks := chain.Hooks(StagePrivacyPre); len(hooks) != 0 {
+		t.Fatalf("disabled plugin hooks were activated: %+v", hooks)
+	}
+}
+
 func TestRuntimeLoadIntoRegistersAdminUIContributions(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "codex")
@@ -476,6 +530,27 @@ kinds:
 	}
 }
 
+func TestRuntimeRejectsUnsupportedPackageState(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "bad-state")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.bad-state
+name: Bad State
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	writePackageState(t, pluginDir, `{"status":"paused"}`)
+
+	_, err := NewRuntime(root).Discover()
+	if err == nil {
+		t.Fatal("runtime discovered plugin with unsupported package state")
+	}
+}
+
 func TestRuntimeIgnoresMissingInstallDirectory(t *testing.T) {
 	packages, err := NewRuntime(filepath.Join(t.TempDir(), "missing")).Discover()
 	if err != nil {
@@ -492,6 +567,13 @@ func writeManifest(t *testing.T, dir string, body string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writePackageState(t *testing.T, dir string, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, packageStateFileName), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

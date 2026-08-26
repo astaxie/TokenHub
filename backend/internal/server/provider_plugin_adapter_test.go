@@ -180,6 +180,29 @@ esac
 	}
 }
 
+func TestDisabledExternalProviderPluginAdapterIsNotRegistered(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeProviderPluginManifest(t, pluginDir, true)
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.state.json"), []byte(`{"status":"disabled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pluginRegistry := pluginmeta.NewRegistry()
+	packages, err := pluginmeta.NewRuntime(root).LoadIntoWithActions(pluginRegistry, pluginmeta.NewGatewayChainRegistry(), nil, nil)
+	if err != nil {
+		t.Fatalf("load plugin packages: %v", err)
+	}
+	pluginDescriptor, ok := pluginRegistry.Describe("tokenhub.provider.custom-stdio")
+	if !ok || pluginDescriptor.Status != pluginmeta.StatusDisabled {
+		t.Fatalf("plugin descriptor = %+v, want disabled descriptor", pluginDescriptor)
+	}
+	registry := NewAdapterRegistry()
+	registerExternalProviderPluginAdapters(registry, packages)
+	if descriptor, ok := registry.Describe("custom_stdio"); ok {
+		t.Fatalf("disabled provider plugin registered adapter: %+v", descriptor)
+	}
+}
+
 func TestExternalProviderPluginAdapterUsesManifestProviderPolicy(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")

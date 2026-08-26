@@ -11,6 +11,7 @@ describe("PluginsView", () => {
       name: "Kimi Provider",
       version: "1.2.3",
       source: "marketplace",
+      status: "disabled",
       kinds: ["provider"],
       placements: ["gateway_chain"],
       capabilities: [{ kind: "provider", name: "kimi_subscription" }],
@@ -28,6 +29,7 @@ describe("PluginsView", () => {
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
     expect(screen.getByText("分发")).toBeInTheDocument();
+    expect(screen.getByText("已禁用")).toBeInTheDocument();
     expect(screen.getByText("许可证 Apache-2.0")).toBeInTheDocument();
     expect(screen.getByText("SHA-256 0123456789ab...cdef")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /市场/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi");

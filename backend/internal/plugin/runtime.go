@@ -11,6 +11,7 @@ import (
 type Package struct {
 	Dir      string
 	Manifest Manifest
+	State    PackageState
 	AdminUI  AdminUIManifest
 }
 
@@ -57,8 +58,13 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 			return nil, fmt.Errorf("duplicate plugin id %s in %s and %s", pkg.Manifest.ID, previousDir, pkg.Dir)
 		}
 		packageDirsByID[pkg.Manifest.ID] = pkg.Dir
-		if err := plugins.Register(descriptorWithAdminUIContributions(pkg.Manifest.Descriptor(), pkg.AdminUI)); err != nil {
+		descriptor := descriptorWithAdminUIContributions(pkg.Manifest.Descriptor(), pkg.AdminUI)
+		descriptor.Status = pkg.State.Status
+		if err := plugins.Register(descriptor); err != nil {
 			return nil, fmt.Errorf("register plugin %s: %w", pkg.Manifest.ID, err)
+		}
+		if !pkg.State.Enabled() {
+			continue
 		}
 		hookHandler := gatewayHookHandlerForPackage(pkg)
 		for _, hook := range pkg.Manifest.GatewayHooks() {
@@ -218,6 +224,10 @@ func (r Runtime) Discover() ([]Package, error) {
 }
 
 func readPackage(dir string) (Package, error) {
+	state, err := readPackageState(dir)
+	if err != nil {
+		return Package{}, fmt.Errorf("read %s: %w", filepath.Join(dir, packageStateFileName), err)
+	}
 	data, err := os.ReadFile(filepath.Join(dir, "plugin.yaml"))
 	if err != nil {
 		return Package{}, err
@@ -226,11 +236,14 @@ func readPackage(dir string) (Package, error) {
 	if err != nil {
 		return Package{}, fmt.Errorf("parse %s: %w", filepath.Join(dir, "plugin.yaml"), err)
 	}
+	if !state.Enabled() {
+		return Package{Dir: dir, Manifest: manifest, State: state}, nil
+	}
 	adminUI, err := readAdminUIManifest(dir, manifest)
 	if err != nil {
 		return Package{}, err
 	}
-	return Package{Dir: dir, Manifest: manifest, AdminUI: adminUI}, nil
+	return Package{Dir: dir, Manifest: manifest, State: state, AdminUI: adminUI}, nil
 }
 
 func readAdminUIManifest(dir string, manifest Manifest) (AdminUIManifest, error) {

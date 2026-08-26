@@ -307,6 +307,9 @@ func (a providerPluginAdapter) Probe(ctx context.Context, provider Provider, res
 
 func registerExternalProviderPluginAdapters(registry *AdapterRegistry, packages []pluginmeta.Package) {
 	for _, pkg := range packages {
+		if !pkg.State.Enabled() {
+			continue
+		}
 		if !externalProviderPackageHasBackend(pkg) {
 			continue
 		}

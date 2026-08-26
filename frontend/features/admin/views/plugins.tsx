@@ -92,6 +92,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                   <tr>
                     <th>{tx("插件")}</th>
                     <th>{tx("来源")}</th>
+                    <th>{tx("状态")}</th>
                     <th>{tx("类型")}</th>
                     <th>{tx("运行位置")}</th>
                     <th>{tx("分发")}</th>
@@ -106,6 +107,9 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                       </td>
                       <td>
                         <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                      </td>
+                      <td>
+                        <StatusPill status={plugin.status ?? "enabled"} label={pluginStatusLabel(plugin.status)} />
                       </td>
                       <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
                       <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
@@ -632,6 +636,12 @@ function pluginSourceLabel(source: string) {
   if (source === "marketplace") return tx("插件市场");
   if (source === "local_file") return tx("本地文件");
   return source;
+}
+
+function pluginStatusLabel(status?: string) {
+  if (!status || status === "enabled") return tx("已启用");
+  if (status === "disabled") return tx("已禁用");
+  return status;
 }
 
 function mandatoryLabel(mandatory: boolean) {

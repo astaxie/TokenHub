@@ -28,6 +28,13 @@ const (
 	SourceLocalFile   Source = "local_file"
 )
 
+type Status string
+
+const (
+	StatusEnabled  Status = "enabled"
+	StatusDisabled Status = "disabled"
+)
+
 type CapabilityDescriptor struct {
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
@@ -50,6 +57,7 @@ type Descriptor struct {
 	Name         string                 `json:"name"`
 	Version      string                 `json:"version"`
 	Source       Source                 `json:"source"`
+	Status       Status                 `json:"status"`
 	Distribution *Distribution          `json:"distribution,omitempty"`
 	Kinds        []Kind                 `json:"kinds"`
 	Placements   []Placement            `json:"placements"`
@@ -92,6 +100,7 @@ func BuiltInProviderWithResourceTypeMetadata(id string, name string, providerTyp
 		Name:         name,
 		Version:      "built-in",
 		Source:       SourceBuiltIn,
+		Status:       StatusEnabled,
 		Kinds:        []Kind{KindProvider},
 		Placements:   []Placement{PlacementGatewayChain, PlacementManagementAction},
 		Capabilities: descriptors,
@@ -99,6 +108,9 @@ func BuiltInProviderWithResourceTypeMetadata(id string, name string, providerTyp
 }
 
 func NormalizeDescriptor(descriptor Descriptor) Descriptor {
+	if descriptor.Status == "" {
+		descriptor.Status = StatusEnabled
+	}
 	descriptor.Kinds = normalizeKinds(descriptor.Kinds)
 	descriptor.Placements = normalizePlacements(descriptor.Placements)
 	descriptor.Capabilities = normalizeCapabilities(descriptor.Capabilities)

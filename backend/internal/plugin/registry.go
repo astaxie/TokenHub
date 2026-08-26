@@ -18,12 +18,16 @@ func (r *Registry) Register(descriptor Descriptor) error {
 	if r == nil {
 		return fmt.Errorf("plugin registry is not configured")
 	}
+	hasStatus := strings.TrimSpace(string(descriptor.Status)) != ""
 	descriptor = NormalizeDescriptor(descriptor)
 	descriptor.ID = strings.TrimSpace(descriptor.ID)
 	if descriptor.ID == "" {
 		return fmt.Errorf("plugin id is required")
 	}
 	if existing, ok := r.plugins[descriptor.ID]; ok {
+		if !hasStatus {
+			descriptor.Status = ""
+		}
 		descriptor = mergeDescriptors(existing, descriptor)
 	}
 	if descriptor.Source == "" {
@@ -62,6 +66,12 @@ func mergeDescriptors(existing Descriptor, next Descriptor) Descriptor {
 	}
 	if next.Source == "" {
 		next.Source = existing.Source
+	}
+	if next.Status == "" {
+		next.Status = existing.Status
+	}
+	if next.Distribution == nil {
+		next.Distribution = existing.Distribution
 	}
 	next.Kinds = append(existing.Kinds, next.Kinds...)
 	next.Placements = append(existing.Placements, next.Placements...)

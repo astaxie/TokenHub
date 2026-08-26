@@ -296,6 +296,7 @@ export type PluginDescriptor = {
   name: string;
   version: string;
   source: "built_in" | "marketplace" | "local_file" | string;
+  status?: "enabled" | "disabled" | string;
   distribution?: PluginDistribution;
   kinds: string[];
   placements: string[];

@@ -362,6 +362,7 @@ func (m Manifest) Descriptor() Descriptor {
 		Name:         m.Name,
 		Version:      m.Version,
 		Source:       SourceLocalFile,
+		Status:       StatusEnabled,
 		Distribution: m.Distribution.Descriptor(),
 		Kinds:        m.Kinds,
 		Placements:   m.Placement,

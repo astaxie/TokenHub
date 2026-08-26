@@ -311,6 +311,61 @@ permissions:
 	}
 }
 
+func TestServerListsDisabledLocalPluginWithoutActivatingHooks(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "privacy")
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.local-disabled-privacy
+name: Local Disabled Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: mask
+      stage: privacy_pre
+      priority: 2300
+      failure_policy: fail_closed
+      reads:
+        - request_body
+      writes:
+        - request_body
+permissions:
+  data:
+    read:
+      - request_body
+    write:
+      - request_body
+`)
+	if err := os.WriteFile(filepath.Join(localPluginDir, "plugin.state.json"), []byte(`{"status":"disabled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	descriptor, ok := server.pluginRegistry.Describe("tokenhub.local-disabled-privacy")
+	if !ok {
+		t.Fatal("disabled local plugin descriptor was not loaded")
+	}
+	if descriptor.Status != pluginmeta.StatusDisabled {
+		t.Fatalf("disabled plugin status = %q, want disabled", descriptor.Status)
+	}
+	if gatewayHookExists(server.gatewayChain.Hooks(pluginmeta.StagePrivacyPre), "tokenhub.local-disabled-privacy", "mask") {
+		t.Fatal("disabled local plugin hook was activated")
+	}
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"tokenhub.local-disabled-privacy"`) || !strings.Contains(response.Body, `"status":"disabled"`) {
+		t.Fatalf("GET /api/admin/plugins did not include disabled plugin status: %s", response.Body)
+	}
+}
+
 func TestServerLoadsLocalPluginAdminUIManifestsIntoRegistry(t *testing.T) {
 	pluginDir := t.TempDir()
 	uiPluginDir := filepath.Join(pluginDir, "ui")
