@@ -272,10 +272,10 @@ function imageCapabilityRouteHasHealthyTarget(route: ModelRoute, data: AppData, 
 export function keyWizardModelOptions(data: AppData) {
   const activeChatModels = playgroundModels(data, data.routes.length > 0);
   const routed = activeChatModels.filter((model) => data.routes.length === 0 || activeRouteCount(model.name, data) > 0);
-  const codexImageModels = data.models.filter((model) =>
+  const imageCapabilityModels = data.models.filter((model) =>
     model.status === "active" && modelHasImageCapability(data, model) && activeRouteCount(model.name, data) > 0,
   );
-  return [...(routed.length > 0 ? routed : activeChatModels), ...codexImageModels].sort((left, right) =>
+  return [...(routed.length > 0 ? routed : activeChatModels), ...imageCapabilityModels].sort((left, right) =>
     modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name),
   );
 }

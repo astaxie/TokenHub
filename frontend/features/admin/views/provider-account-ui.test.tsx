@@ -57,6 +57,8 @@ describe("Provider account OAuth UI", () => {
           capabilityCheckedAtOption: "kimi_image_capability_checked_at",
           capabilitySupportedValue: "available",
           capabilityUnsupportedValue: "blocked",
+          routeBackfillOption: "kimi_image_route_backfill_v1",
+          routeBackfillValue: "done",
         }}
         resource={{
           id: "rsrc_kimi",

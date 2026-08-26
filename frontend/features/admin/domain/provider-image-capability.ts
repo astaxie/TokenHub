@@ -11,6 +11,8 @@ export type ImageCapabilityProfile = {
   capabilityCheckedAtOption: string;
   capabilitySupportedValue: string;
   capabilityUnsupportedValue: string;
+  routeBackfillOption: string;
+  routeBackfillValue: string;
 };
 
 export const defaultImageCapabilityProfile: ImageCapabilityProfile = {
@@ -21,6 +23,8 @@ export const defaultImageCapabilityProfile: ImageCapabilityProfile = {
   capabilityCheckedAtOption: "image_generation_capability_checked_at",
   capabilitySupportedValue: "supported",
   capabilityUnsupportedValue: "unsupported",
+  routeBackfillOption: "image_generation_route_backfill_v1",
+  routeBackfillValue: "completed",
 };
 
 export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescriptor, "metadata" | "title"> | null): ImageCapabilityProfile | null {
@@ -37,6 +41,8 @@ export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescr
     capabilityCheckedAtOption: action.metadata?.capability_checked_at_option?.trim() || action.metadata?.provider_capability_checked_at_option?.trim() || "image_capability_checked_at",
     capabilitySupportedValue: action.metadata?.capability_supported_value?.trim() || action.metadata?.supported_value?.trim() || "supported",
     capabilityUnsupportedValue: action.metadata?.capability_unsupported_value?.trim() || action.metadata?.unsupported_value?.trim() || "unsupported",
+    routeBackfillOption: action.metadata?.route_backfill_option?.trim() || action.metadata?.provider_route_backfill_option?.trim() || "image_capability_route_backfill_v1",
+    routeBackfillValue: action.metadata?.route_backfill_value?.trim() || action.metadata?.provider_route_backfill_value?.trim() || "completed",
   };
 }
 

@@ -54,6 +54,8 @@ test("image capability profile follows plugin metadata for resources and routes"
       capability_checked_at_option: "kimi_image_capability_checked_at",
       capability_supported_value: "available",
       capability_unsupported_value: "blocked",
+      route_backfill_option: "kimi_image_route_backfill_v1",
+      route_backfill_value: "done",
     },
   });
   assert.deepEqual(profile, {
@@ -65,6 +67,8 @@ test("image capability profile follows plugin metadata for resources and routes"
     capabilityCheckedAtOption: "kimi_image_capability_checked_at",
     capabilitySupportedValue: "available",
     capabilityUnsupportedValue: "blocked",
+    routeBackfillOption: "kimi_image_route_backfill_v1",
+    routeBackfillValue: "done",
   });
   assert.equal(providerImageRouteEnabled([{ ...route, model_name: "kimi-image", provider_model: "moonshot-image" }], "provider-1", profile), true);
   assert.deepEqual(

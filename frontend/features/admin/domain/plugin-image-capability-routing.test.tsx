@@ -3,6 +3,7 @@ import { type AppData, type Model, type ModelRoute, type Provider, type Provider
 import { emptyData } from "./catalog";
 import { modelRouteDefaults, providerModelSelectOptions, providerSelectOptions } from "./entities";
 import { modelAvailabilitySummary } from "./formatting";
+import { providerImageCapabilityProfile } from "./provider-image-capability";
 
 function pluginImageData(): AppData {
   const data = emptyData();
@@ -27,6 +28,8 @@ function pluginImageData(): AppData {
       upstream_model: "moonshot-image",
       capability_option: "kimi_image_capability",
       capability_supported_value: "available",
+      route_backfill_option: "kimi_image_route_backfill_v1",
+      route_backfill_value: "done",
     },
   }];
   data.providers = [
@@ -50,6 +53,10 @@ describe("plugin image capability routing", () => {
       model_name: "kimi-image",
       provider_id: "prv_kimi",
       provider_model: "moonshot-image",
+    });
+    expect(providerImageCapabilityProfile(data.pluginUI, data.pluginActions, "kimi_subscription")).toMatchObject({
+      routeBackfillOption: "kimi_image_route_backfill_v1",
+      routeBackfillValue: "done",
     });
   });
 
