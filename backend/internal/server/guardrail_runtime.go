@@ -223,6 +223,17 @@ func embeddingsGuardrailTargets(request *EmbeddingsRequest) []guardrailTextTarge
 	return targets
 }
 
+func imageGuardrailTargets(request *imageGenerationRequest) []guardrailTextTarget {
+	targets := make([]guardrailTextTarget, 0, 1)
+	if request == nil {
+		return targets
+	}
+	appendGuardrailStringTarget(&targets, request.Prompt, "prompt", func(value any) {
+		request.Prompt = guardrailStringValue(value)
+	})
+	return targets
+}
+
 func appendEmbeddingGuardrailTargets(targets *[]guardrailTextTarget, value any, id string, set func(any)) {
 	switch typed := value.(type) {
 	case string:

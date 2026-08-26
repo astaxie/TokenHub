@@ -121,6 +121,18 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, httpErr)
 		return
 	}
+	if err := s.runImageGatewayPreflightHooks(r.Context(), &call, r.Header, &request); err != nil {
+		s.finishImageJobPreflightFailure(w, r, job, call, err)
+		return
+	}
+	job.Model = request.Model
+	job.Prompt = request.Prompt
+	job.Quality = request.Quality
+	job.Size = request.Size
+	if err := s.store.UpdateImageJobRequest(job, request.Prompt); err != nil {
+		s.finishImageJobPreflightFailure(w, r, job, call, NewHTTPError(http.StatusInternalServerError, "image_job_update_failed", err.Error()))
+		return
+	}
 	work := imageJobWork{
 		job:       job,
 		call:      call,
@@ -273,6 +285,18 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("x-request-id", requestID)
 		s.recordRequestPayload(requestID, imageAuditRequest(ImageJob{RequestID: requestID, Model: request.Model, Action: "edit", Quality: request.Quality, Size: request.Size}), auditErrorPayload(err, requestID))
 		writeError(w, r, httpErr)
+		return
+	}
+	if err := s.runImageGatewayPreflightHooks(r.Context(), &call, r.Header, &request); err != nil {
+		s.finishImageJobPreflightFailure(w, r, job, call, err)
+		return
+	}
+	job.Model = request.Model
+	job.Prompt = request.Prompt
+	job.Quality = request.Quality
+	job.Size = request.Size
+	if err := s.store.UpdateImageJobRequest(job, request.Prompt); err != nil {
+		s.finishImageJobPreflightFailure(w, r, job, call, NewHTTPError(http.StatusInternalServerError, "image_job_update_failed", err.Error()))
 		return
 	}
 	for index, input := range inputs {
@@ -476,6 +500,39 @@ func (s *Server) createImageJobForRequest(w http.ResponseWriter, r *http.Request
 	}
 	persisted, err := s.store.CreateImageJob(imageJobWithAdmission(job, call), prompt)
 	return persisted, call, false, true, err
+}
+
+func (s *Server) runImageGatewayPreflightHooks(ctx context.Context, call *CallContext, headers http.Header, request *imageGenerationRequest) error {
+	if call == nil || request == nil {
+		return nil
+	}
+	if err := s.runGatewayAuthContextHooks(ctx, call, headers); err != nil {
+		return err
+	}
+	if err := s.runGatewayImageDecodeNormalizeHooks(ctx, *call, headers, request); err != nil {
+		return err
+	}
+	if err := s.runGatewayAdmissionHooks(ctx, *call, headers, *request, EstimateTextTokens(request.Prompt)); err != nil {
+		return err
+	}
+	if err := s.runGatewayImagePrivacyPreHooks(ctx, *call, headers, request); err != nil {
+		return err
+	}
+	if err := s.runGatewayImageContextOptimizeHooks(ctx, *call, request); err != nil {
+		return err
+	}
+	if err := s.runGatewayImageGuardrailPreHooks(ctx, *call, request); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) finishImageJobPreflightFailure(w http.ResponseWriter, r *http.Request, job ImageJob, call CallContext, err error) {
+	httpErr := AsHTTPError(err)
+	s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+	s.failImageJob(job, httpErr.Code, httpErr.Message)
+	s.recordRequestPayload(call.RequestID, imageAuditRequest(job), auditErrorPayload(err, call.RequestID))
+	writeError(w, r, httpErr)
 }
 
 func imageJobWithAdmission(job ImageJob, call CallContext) ImageJob {

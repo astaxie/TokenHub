@@ -412,6 +412,12 @@ func (s *Server) runGatewayEmbeddingsDecodeNormalizeHooks(ctx context.Context, c
 	})
 }
 
+func (s *Server) runGatewayImageDecodeNormalizeHooks(ctx context.Context, call CallContext, headers http.Header, req *imageGenerationRequest) error {
+	return s.runGatewayDecodeNormalizeHooks(ctx, call, headers, *req, func(data json.RawMessage) error {
+		return applyImageGatewayRequestPatch(req, data)
+	})
+}
+
 func (s *Server) runGatewayCompactDecodeNormalizeHooks(ctx context.Context, call CallContext, headers http.Header, request map[string]json.RawMessage) (map[string]json.RawMessage, error) {
 	body := cloneRawJSON(request, 0)
 	err := s.runGatewayDecodeNormalizeHooks(ctx, call, headers, body, func(data json.RawMessage) error {
@@ -472,6 +478,12 @@ func (s *Server) runGatewayResponsesPrivacyPreHooks(ctx context.Context, call Ca
 func (s *Server) runGatewayEmbeddingsPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, req *EmbeddingsRequest) error {
 	return s.runGatewayPrivacyPreHooks(ctx, call, headers, *req, func(data json.RawMessage) error {
 		return applyEmbeddingsGatewayRequestPatch(req, data)
+	})
+}
+
+func (s *Server) runGatewayImagePrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, req *imageGenerationRequest) error {
+	return s.runGatewayPrivacyPreHooks(ctx, call, headers, *req, func(data json.RawMessage) error {
+		return applyImageGatewayRequestPatch(req, data)
 	})
 }
 
@@ -592,6 +604,12 @@ func (s *Server) runGatewayEmbeddingsGuardrailPreHooks(ctx context.Context, call
 	})
 }
 
+func (s *Server) runGatewayImageGuardrailPreHooks(ctx context.Context, call CallContext, req *imageGenerationRequest) error {
+	return s.runGatewayGuardrailPreHooks(ctx, call, *req, imageGuardrailTargets(req), func(data json.RawMessage) error {
+		return applyImageGatewayRequestPatch(req, data)
+	})
+}
+
 func (s *Server) runGatewayCompactGuardrailPreHooks(ctx context.Context, call CallContext, request map[string]json.RawMessage) (map[string]json.RawMessage, error) {
 	body := cloneRawJSON(request, 0)
 	err := s.runGatewayGuardrailPreHooks(ctx, call, body, responsesCompactGuardrailTargets(body), func(data json.RawMessage) error {
@@ -703,6 +721,12 @@ func (s *Server) runGatewayResponsesContextOptimizeHooks(ctx context.Context, ca
 func (s *Server) runGatewayEmbeddingsContextOptimizeHooks(ctx context.Context, call CallContext, req *EmbeddingsRequest) error {
 	return s.runGatewayContextOptimizeHooks(ctx, call, *req, func(data json.RawMessage) error {
 		return applyEmbeddingsGatewayRequestPatch(req, data)
+	})
+}
+
+func (s *Server) runGatewayImageContextOptimizeHooks(ctx context.Context, call CallContext, req *imageGenerationRequest) error {
+	return s.runGatewayContextOptimizeHooks(ctx, call, *req, func(data json.RawMessage) error {
+		return applyImageGatewayRequestPatch(req, data)
 	})
 }
 
@@ -1220,6 +1244,29 @@ func applyEmbeddingsGatewayRequestPatch(req *EmbeddingsRequest, data json.RawMes
 	}
 	if strings.TrimSpace(patched.Model) != originalModel {
 		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+	}
+	*req = patched
+	return nil
+}
+
+func applyImageGatewayRequestPatch(req *imageGenerationRequest, data json.RawMessage) error {
+	if req == nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid request patch")
+	}
+	originalModel := req.Model
+	originalResponseFormat := req.ResponseFormat
+	var patched imageGenerationRequest
+	if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+		return err
+	}
+	if err := normalizeImageGenerationRequest(&patched); err != nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid image request patch")
+	}
+	if patched.Model != originalModel {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+	}
+	if patched.ResponseFormat != originalResponseFormat {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested image response format")
 	}
 	*req = patched
 	return nil

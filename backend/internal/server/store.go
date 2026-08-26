@@ -178,6 +178,7 @@ type Store interface {
 	RecordRejectedRequest(project Project, key APIKey, modelName string, stream bool, statusCode int, errorCode string, clientIP string, userAgent string) string
 	RecordRequestPayload(requestID string, requestBody string, requestTruncated bool, responseBody string, responseTruncated bool)
 	CreateImageJob(job ImageJob, prompt string) (ImageJob, error)
+	UpdateImageJobRequest(job ImageJob, prompt string) error
 	ClaimImageJob(id string) (ImageJob, bool, error)
 	GetImageJob(id string) (ImageJob, bool)
 	ListImageJobs(limit int) []ImageJob
