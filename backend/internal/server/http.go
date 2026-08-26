@@ -367,6 +367,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	s.syncProviderImageCapabilityRouteProfiles()
 	models := s.store.AccessibleModels(key)
 	data := make([]modelListItem, 0, len(models))
 	for _, model := range models {
@@ -405,6 +406,7 @@ func (s *Server) handleModelGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	s.syncProviderImageCapabilityRouteProfiles()
 	for _, model := range s.store.AccessibleModels(key) {
 		if model.Name == modelID || model.ID == modelID {
 			writeJSON(w, http.StatusOK, buildModelListItem(model))

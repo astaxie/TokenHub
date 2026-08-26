@@ -307,10 +307,12 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 		resourcesByID[resource.ID] = resource
 		resourcesByProvider[resource.ProviderID] = append(resourcesByProvider[resource.ProviderID], resource)
 	}
-	publishedModelNames := make([]string, 0, len(routes)+1)
+	imageCapabilityProfiles := s.providerImageCapabilityRouteProfiles()
+	imageCapabilityModelNames := providerImageCapabilityModelNameSet(imageCapabilityProfiles)
+	publishedModelNames := make([]string, 0, len(routes)+len(imageCapabilityProfiles))
 	seenModelNames := map[string]bool{}
 	for _, route := range routes {
-		if route.ModelName == codexImageModelName || seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) {
+		if imageCapabilityModelNames[route.ModelName] || seenModelNames[route.ModelName] || !modelAllowedByScopes(project, privateKey, route.ModelName) {
 			continue
 		}
 		selections := []RouteSelection{{Provider: Provider{ID: route.ProviderID}, ProviderModel: route.ProviderModel, Route: route}}
@@ -334,9 +336,14 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 			break
 		}
 	}
-	if modelAllowedByScopes(project, privateKey, codexImageModelName) && s.codexImageAllowedByPolicyLocked(project, privateKey, policy) {
-		seenModelNames[codexImageModelName] = true
-		publishedModelNames = append(publishedModelNames, codexImageModelName)
+	for _, profile := range imageCapabilityProfiles {
+		if seenModelNames[profile.PublicModel] || !modelAllowedByScopes(project, privateKey, profile.PublicModel) {
+			continue
+		}
+		if s.providerImageCapabilityAllowedByPolicyLocked(project, privateKey, policy, profile) {
+			seenModelNames[profile.PublicModel] = true
+			publishedModelNames = append(publishedModelNames, profile.PublicModel)
+		}
 	}
 	var models []Model
 	if err := s.db.Where("status = ?", StatusActive).
@@ -348,58 +355,6 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 	items := make([]Model, 0, len(models))
 	items = append(items, models...)
 	return items
-}
-
-func (s *GormStore) codexImageAllowedByPolicyLocked(project Project, key APIKey, policy *ScopedRoutingPolicy) bool {
-	var routes []ModelRoute
-	if err := s.db.Where("model_name = ? AND provider_model = ? AND status = ?", codexImageModelName, codexImageUpstreamModel, StatusActive).Find(&routes).Error; err != nil {
-		return false
-	}
-	for _, configuredRoute := range routes {
-		var provider Provider
-		if err := s.db.Where("id = ? AND type = ? AND status = ? AND healthy = ?", configuredRoute.ProviderID, ProviderOpenAICodex, StatusActive, true).First(&provider).Error; err != nil {
-			continue
-		}
-		var resources []ProviderResource
-		query := s.db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true)
-		if configuredRoute.ProviderResourceID != "" {
-			query = query.Where("id = ?", configuredRoute.ProviderResourceID)
-		} else if strings.TrimSpace(configuredRoute.ResourceGroup) != "" {
-			query = query.Where("\"group\" = ?", strings.TrimSpace(configuredRoute.ResourceGroup))
-		}
-		if err := query.Find(&resources).Error; err != nil {
-			continue
-		}
-		for index := range resources {
-			resource := &resources[index]
-			if !isOpenAIAccountResource(resource.ResourceType) || !s.codexImageResourceAvailable(*resource) {
-				continue
-			}
-			resourceRoute := configuredRoute
-			resourceRoute.ProviderResourceID = resource.ID
-			route := RouteSelection{
-				Provider: provider, Resource: resource, ProviderModel: codexImageUpstreamModel,
-				Route: resourceRoute,
-			}
-			call := CallContext{Project: project, Key: key, Model: Model{Name: codexImageModelName}}
-			if len(routingPolicyCandidateReasons(call, route, policy)) == 0 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (s *GormStore) codexImageResourceAvailable(resource ProviderResource) bool {
-	switch strings.TrimSpace(resource.Options[codexImageCapabilityOption]) {
-	case codexImageCapabilitySupported:
-		return true
-	case codexImageCapabilityUnsupported:
-		checkedAt, err := time.Parse(time.RFC3339Nano, resource.Options[codexImageCapabilityCheckedAtOption])
-		return err == nil && s.imageCapabilityRetry > 0 && !time.Now().Before(checkedAt.Add(s.imageCapabilityRetry))
-	default:
-		return false
-	}
 }
 
 func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string, attributedUserIDs ...string) (QuotaBucket, error) {

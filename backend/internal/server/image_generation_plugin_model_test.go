@@ -85,6 +85,61 @@ func TestPluginImagePublicModelUsesActionMetadataRoute(t *testing.T) {
 	}
 }
 
+func TestPluginImagePublicModelAppearsInModelsList(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Plugin Image Models Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name: "Plugin Image Models Key", Allowed: []string{"kimi-image"}, Status: StatusActive,
+	}, "thk_plugin_image_models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "kimi-image", Modality: "image", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID: "prv_kimi_image_models", Name: "Kimi Image Models", Type: "kimi_subscription",
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_kimi_image_models", ProviderID: provider.ID, Name: "Kimi Image Models Account",
+		ResourceType: "kimi_subscription_account", Status: StatusActive, Healthy: true,
+		Options: map[string]string{"kimi_image_capability": "available"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddRoute(ModelRoute{
+		ModelName: "kimi-image", ProviderID: provider.ID, ProviderResourceID: resource.ID,
+		ProviderModel: "moonshot-image", Status: StatusActive, Priority: 1, Weight: 100,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-image-admin"})
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi-image-models",
+		ActionID:   "kimi.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "kimi_subscription",
+		Metadata: map[string]string{
+			"provider_resource_type":     "kimi_subscription_account",
+			"public_model":               "kimi-image",
+			"upstream_model":             "moonshot-image",
+			"capability_option":          "kimi_image_capability",
+			"capability_supported_value": "available",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatalf("register plugin image models action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/v1/models", nil, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list plugin image models: status=%d body=%s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"kimi-image"`) {
+		t.Fatalf("plugin image public model was not listed: %s", response.Body)
+	}
+}
+
 type pluginPublicImageAdapter struct {
 	image []byte
 	model *string
