@@ -429,6 +429,12 @@ func (s *Server) runGatewayAnthropicDecodeNormalizeHooks(ctx context.Context, ca
 	})
 }
 
+func (s *Server) runGatewayAnthropicPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, req *anthropicMessagesRequest) error {
+	return s.runGatewayPrivacyPreHooks(ctx, call, headers, req.Raw, func(data json.RawMessage) error {
+		return applyAnthropicGatewayRequestPatch(req, data)
+	})
+}
+
 func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
 	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)) == 0 {
 		return nil
@@ -559,6 +565,12 @@ func (s *Server) runGatewayCompactGuardrailPreHooks(ctx context.Context, call Ca
 
 func (s *Server) runGatewayAnthropicGuardrailPreHooks(ctx context.Context, call CallContext, req *anthropicMessagesRequest) error {
 	return s.runGatewayGuardrailPreHooks(ctx, call, req.Raw, anthropicGuardrailTargets(req), func(data json.RawMessage) error {
+		return applyAnthropicGatewayRequestPatch(req, data)
+	})
+}
+
+func (s *Server) runGatewayAnthropicContextOptimizeHooks(ctx context.Context, call CallContext, req *anthropicMessagesRequest) error {
+	return s.runGatewayContextOptimizeHooks(ctx, call, req.Raw, func(data json.RawMessage) error {
 		return applyAnthropicGatewayRequestPatch(req, data)
 	})
 }

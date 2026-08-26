@@ -56,6 +56,16 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
+	if err := s.runGatewayAnthropicPrivacyPreHooks(r.Context(), call, r.Header, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAnthropicContextOptimizeHooks(r.Context(), call, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
 	if err := s.runGatewayAnthropicGuardrailPreHooks(r.Context(), call, &req); err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
 		writeAnthropicError(w, r, err)

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestAnthropicMessagesConvertsToolsAndToolResultsForOpenAI(t *testing.T) {
@@ -206,6 +208,121 @@ func TestAnthropicMessagesConvertsToolsAndToolResultsForOpenAI(t *testing.T) {
 
 	if len(store.ListUsageRecords()) != 2 {
 		t.Fatalf("expected two billed inference records, got %d", len(store.ListUsageRecords()))
+	}
+}
+
+func TestAnthropicMessagesRunsPrivacyPreHookBeforeProviderCall(t *testing.T) {
+	var upstreamPayload map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("unexpected upstream path %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+			return
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_privacy","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderOpenAICompatible)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-anthropic-privacy",
+		HookID:        "mask",
+		Stage:         pluginmeta.StagePrivacyPre,
+		Priority:      2000,
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register Anthropic privacy hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawRequestBodyPatch(t, map[string]any{
+			"model":      "claude-tokenhub-test",
+			"max_tokens": 32,
+			"stream":     false,
+			"messages": []map[string]any{
+				{"role": "user", "content": "[masked anthropic]"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register Anthropic privacy handler: %v", err)
+	}
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "raw secret"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	messages, _ := upstreamPayload["messages"].([]any)
+	first, _ := messages[0].(map[string]any)
+	if first["content"] != "[masked anthropic]" {
+		t.Fatalf("upstream message content = %#v, want masked content", first["content"])
+	}
+}
+
+func TestAnthropicMessagesRunsContextOptimizeHookBeforeProviderCall(t *testing.T) {
+	var upstreamPayload map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("unexpected upstream path %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+			return
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_context","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderOpenAICompatible)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-anthropic-context",
+		HookID:        "compress",
+		Stage:         pluginmeta.StageContextOptimize,
+		Priority:      2000,
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register Anthropic context hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawRequestBodyPatch(t, map[string]any{
+			"model":      "claude-tokenhub-test",
+			"max_tokens": 32,
+			"stream":     false,
+			"system":     "compressed context",
+			"messages": []map[string]any{
+				{"role": "user", "content": "continue"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register Anthropic context handler: %v", err)
+	}
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "long context"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	messages, _ := upstreamPayload["messages"].([]any)
+	first, _ := messages[0].(map[string]any)
+	if first["role"] != "system" || first["content"] != "compressed context" {
+		t.Fatalf("upstream first message = %#v, want compressed system context", first)
 	}
 }
 
@@ -925,6 +1042,15 @@ func newAnthropicGateway(t *testing.T, upstreamURL string, providerType string) 
 }
 
 func newAnthropicGatewayWithOptions(t *testing.T, upstreamURL string, providerType string, options map[string]string) (http.Handler, *GormStore, string) {
+	server, store, secret := newAnthropicGatewayServerWithOptions(t, upstreamURL, providerType, options)
+	return server.Handler(), store, secret
+}
+
+func newAnthropicGatewayServer(t *testing.T, upstreamURL string, providerType string) (*Server, *GormStore, string) {
+	return newAnthropicGatewayServerWithOptions(t, upstreamURL, providerType, nil)
+}
+
+func newAnthropicGatewayServerWithOptions(t *testing.T, upstreamURL string, providerType string, options map[string]string) (*Server, *GormStore, string) {
 	t.Helper()
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Claude Code Project", Status: StatusActive})
@@ -965,7 +1091,7 @@ func newAnthropicGatewayWithOptions(t *testing.T, upstreamURL string, providerTy
 		Status:        StatusActive,
 		Strategy:      RouteStrategyPriorityOnly,
 	})
-	return New(store).Handler(), store, secret
+	return New(store), store, secret
 }
 
 func doAnthropicRequest(
