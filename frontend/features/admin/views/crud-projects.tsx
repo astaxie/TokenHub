@@ -290,7 +290,7 @@ export function ProviderChannelTable({
     try {
       const action = providerQuotaReadAction(data, resource);
       if (!action) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: true }, tx("查询 Codex 套餐"));
+      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: true }, tx("查询账号配额"));
       const snapshot = data.providerMonitoring.find((item) => item.provider.id === resource.provider_id);
       if (snapshot) {
         setQuotaOverrides((current) => ({
@@ -349,7 +349,7 @@ export function ProviderChannelTable({
               <th>{tx("模型、路由与账号")}</th>
               <th>{tx("真实监控 · L3")}</th>
               <th>{tx("性能与质量")}</th>
-              <th>{tx("Codex 套餐")}</th>
+              <th>{tx("账号配额")}</th>
               <th>{tx("操作")}</th>
             </tr>
           </thead>
