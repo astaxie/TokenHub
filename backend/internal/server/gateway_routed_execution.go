@@ -58,8 +58,8 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 				return resp, usage, err
 			}
 			resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
-			if isCodexModelUnsupportedError(err) {
-				s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+			if providerResourceModelUnsupportedError(err) {
+				s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 			}
 			return resp, usage, err
 		}

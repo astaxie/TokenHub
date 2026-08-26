@@ -499,8 +499,8 @@ func (s *Server) executeRoutedPlaygroundStream(
 					upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
 				}
 				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundResponses(ctx, r, prepared, upstreamReq, events, routed.Call.RequestID)
-				if isCodexModelUnsupportedError(attemptErr) {
-					s.removeCodexResourceModel(routeResourceID(prepared), prepared.ProviderModel)
+				if providerResourceModelUnsupportedError(attemptErr) {
+					s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
 				}
 			} else {
 				upstreamReq := req

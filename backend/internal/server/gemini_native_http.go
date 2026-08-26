@@ -344,8 +344,8 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 			return body, usage, nil
 		}
 		response, usage, err := s.invokeResponsesAdapter(ctx, prepared, upstream, geminiCodexCompatibilityHeaders(r.Header, payload))
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(prepared), prepared.ProviderModel)
+		if providerResourceModelUnsupportedError(err) {
+			s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
 		}
 		if err != nil {
 			return nil, usage, err

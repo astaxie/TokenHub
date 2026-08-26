@@ -382,8 +382,8 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 			upstreamRequest = withoutResponsesReasoningEffort(upstreamRequest)
 		}
 		opened, err := streamAdapter.OpenResponses(ctx, prepared.Provider, prepared.ProviderModel, upstreamRequest, r.Header)
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+		if providerResourceModelUnsupportedError(err) {
+			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 		}
 		if err != nil {
 			return nil, Usage{}, err

@@ -26,8 +26,8 @@ func (s *Server) executeRoutedResponsesContext(ctx context.Context, incoming htt
 			return resp, usage, err
 		}
 		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, incoming)
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+		if providerResourceModelUnsupportedError(err) {
+			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 		}
 		return resp, usage, err
 	})

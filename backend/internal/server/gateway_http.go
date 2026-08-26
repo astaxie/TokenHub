@@ -1380,7 +1380,7 @@ func isCodexModelUnsupportedError(err error) bool {
 		return false
 	}
 	httpErr := AsHTTPError(err)
-	if httpErr.Code == "codex_model_unsupported" || providerErrorDisposition(err) == ProviderErrorModelUnsupported {
+	if httpErr.Code == "codex_model_unsupported" {
 		return true
 	}
 	if httpErr.Code != "codex_upstream_error" {
@@ -1389,6 +1389,10 @@ func isCodexModelUnsupportedError(err error) bool {
 	message := strings.ToLower(httpErr.Message)
 	return strings.Contains(message, "model is not supported") ||
 		(strings.Contains(message, "model") && strings.Contains(message, "not supported") && strings.Contains(message, "chatgpt account"))
+}
+
+func providerResourceModelUnsupportedError(err error) bool {
+	return providerErrorDisposition(err) == ProviderErrorModelUnsupported || isCodexModelUnsupportedError(err)
 }
 
 func lastAttemptRoute(attempts []RouteAttempt) RouteSelection {
