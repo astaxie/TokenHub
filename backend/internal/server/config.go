@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,6 +27,7 @@ type Config struct {
 	ModelCatalogFile         string
 	ProviderCatalogFile      string
 	PluginDir                string
+	PluginMarketplaceURL     string
 	SecretKey                string
 	TrustedProxyCIDRs        []string
 	CORSAllowedOrigins       []string
@@ -139,6 +141,7 @@ func ConfigFromEnv() Config {
 		SQLiteBackupDir:                  getenv("TOKENHUB_SQLITE_BACKUP_DIR", defaultSQLiteBackupDir()),
 		ModelCatalogFile:                 getenv("TOKENHUB_MODEL_CATALOG_FILE", defaultModelCatalogFile()),
 		ProviderCatalogFile:              getenv("TOKENHUB_PROVIDER_CATALOG_FILE", defaultProviderCatalogFile()),
+		PluginMarketplaceURL:             getenv("TOKENHUB_PLUGIN_MARKETPLACE_URL", ""),
 		SecretKey:                        getenv("TOKENHUB_SECRET_KEY", "dev_tokenhub_secret_key"),
 		TrustedProxyCIDRs:                getenvList("TOKENHUB_TRUSTED_PROXY_CIDRS"),
 		CORSAllowedOrigins:               getenvList("TOKENHUB_CORS_ALLOWED_ORIGINS"),
@@ -193,6 +196,11 @@ func (c Config) ValidateForStartup() error {
 	if repository := strings.TrimSpace(c.ReleaseRepository); repository != "" && !validReleaseRepository(repository) {
 		return fmt.Errorf("invalid TOKENHUB_RELEASE_REPOSITORY: expected owner/repository")
 	}
+	if marketplace := strings.TrimSpace(c.PluginMarketplaceURL); marketplace != "" {
+		if err := validateHTTPSURL("TOKENHUB_PLUGIN_MARKETPLACE_URL", marketplace); err != nil {
+			return err
+		}
+	}
 	// Checked in every environment, not only production: a tracing setting that is
 	// wrong fails as silence, which is the one failure mode an operator cannot see.
 	if err := c.validateTracing(); err != nil {
@@ -244,6 +252,17 @@ func weakProductionSecretReason(value string, minimumLength int, blocked ...stri
 		return fmt.Sprintf("must be at least %d bytes after trimming whitespace", minimumLength)
 	}
 	return ""
+}
+
+func validateHTTPSURL(name string, value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("invalid %s: expected an absolute URL", name)
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("invalid %s: expected HTTPS", name)
+	}
+	return nil
 }
 
 func getenvList(key string) []string {

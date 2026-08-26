@@ -85,6 +85,14 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
+	var payload struct {
+		DownloadURL    string `json:"download_url"`
+		ChecksumSHA256 string `json:"checksum_sha256"`
+	}
+	if err := s.decodeJSONOptional(w, r, &payload); err != nil {
+		writeError(w, r, err)
+		return
+	}
 	pluginID := strings.TrimSpace(r.PathValue("plugin_id"))
 	if pluginID == "" {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
@@ -96,11 +104,21 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	distribution := descriptor.Distribution
-	if distribution == nil || strings.TrimSpace(distribution.DownloadURL) == "" || strings.TrimSpace(distribution.ChecksumSHA256) == "" {
+	if distribution == nil {
+		distribution = &pluginmeta.Distribution{}
+	}
+	if strings.TrimSpace(distribution.DownloadURL) == "" && strings.TrimSpace(payload.DownloadURL) == "" ||
+		strings.TrimSpace(distribution.ChecksumSHA256) == "" && strings.TrimSpace(payload.ChecksumSHA256) == "" {
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "plugin_distribution_unavailable", "Plugin distribution metadata is unavailable"))
 		return
 	}
-	archive, err := s.downloadPluginInstallArchive(r, distribution.DownloadURL)
+	downloadURL := firstNonEmpty(strings.TrimSpace(payload.DownloadURL), distribution.DownloadURL)
+	checksum := firstNonEmpty(strings.ToLower(strings.TrimSpace(payload.ChecksumSHA256)), distribution.ChecksumSHA256)
+	if err := validatePluginInstallDownloadURL(downloadURL); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_download_url", err.Error()))
+		return
+	}
+	archive, err := s.downloadPluginInstallArchive(r, downloadURL)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -115,7 +133,7 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	pkg, err := s.installPluginArchive(archive, pluginmeta.InstallOptions{
-		ChecksumSHA256: distribution.ChecksumSHA256,
+		ChecksumSHA256: checksum,
 		Replace:        true,
 		InitialState:   current.State,
 	})

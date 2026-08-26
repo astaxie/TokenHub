@@ -22,6 +22,7 @@ export type LoadPlan = {
   providerAdapters: boolean;
   providerMonitoring: boolean;
   plugins: boolean;
+  pluginMarketplace: boolean;
   pluginChain: boolean;
   pluginUI: boolean;
   pluginActions: boolean;
@@ -60,6 +61,7 @@ export function emptyLoadPlan(): LoadPlan {
     providerAdapters: false,
     providerMonitoring: false,
     plugins: false,
+    pluginMarketplace: false,
     pluginChain: false,
     pluginUI: false,
     pluginActions: false,
@@ -89,6 +91,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.breakdown = true;
       plan.timeseries = true;
       plan.plugins = true;
+      plan.pluginMarketplace = true;
       plan.pluginChain = true;
       plan.pluginUI = true;
       plan.pluginActions = true;
@@ -147,6 +150,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "providers":
       plan.providers = true;
       plan.plugins = true;
+      plan.pluginMarketplace = true;
       plan.pluginUI = true;
       plan.pluginActions = true;
       plan.pluginBackgroundJobs = true;
@@ -164,6 +168,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "plugins":
     case "plugin-pages":
       plan.plugins = true;
+      plan.pluginMarketplace = true;
       plan.providerAdapters = true;
       plan.pluginChain = true;
       plan.pluginUI = true;
@@ -228,6 +233,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "settings":
       plan.providers = true;
       plan.plugins = true;
+      plan.pluginMarketplace = true;
       plan.pluginChain = true;
       plan.pluginUI = true;
       plan.pluginActions = true;
@@ -301,6 +307,10 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     providerAdapters: loaded.providerAdapters ?? current.providerAdapters,
     providerMonitoring: loaded.providerMonitoring ?? current.providerMonitoring,
     plugins: loaded.plugins ?? current.plugins,
+    pluginMarketplace: loaded.pluginMarketplace ?? current.pluginMarketplace,
+    pluginMarketplaceSourceURL: loaded.pluginMarketplaceSourceURL ?? current.pluginMarketplaceSourceURL,
+    pluginMarketplaceAvailable: loaded.pluginMarketplaceAvailable ?? current.pluginMarketplaceAvailable,
+    pluginMarketplaceError: loaded.pluginMarketplaceError ?? current.pluginMarketplaceError,
     pluginChain: loaded.pluginChain ?? current.pluginChain,
     pluginUI: loaded.pluginUI ?? current.pluginUI,
     pluginActions: loaded.pluginActions ?? current.pluginActions,

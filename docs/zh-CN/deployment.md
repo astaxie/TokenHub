@@ -374,6 +374,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | 备份目录 |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 托管部署中的标准模型目录文件 |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 托管部署中的 Provider 模板与候选模型目录文件 |
+| `TOKENHUB_PLUGIN_MARKETPLACE_URL` | 空 | HTTPS 插件市场索引 URL，供管理后台浏览可安装插件 |
 | `TOKENHUB_SEED_DEMO` | `false` | 是否写入演示数据 |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider 资源进入冷却前的失败阈值 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Provider 资源进入冷却后获得半开重试前的基础等待秒数 |
@@ -470,7 +471,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 更新当前配置的目录文件后，可以重启后端，也可以在「系统设置 → 基础设置」中点击「同步模型参考目录」。两种方式都会同步参考元数据、保留自定义对外模型，但不会发布任何模型。
 
-`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需为启动加载和刷新回退使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。`TOKENHUB_PLUGIN_MARKETPLACE_URL` 可以指向一个 HTTPS JSON 索引，用于在管理后台浏览并安装插件包。如需为启动加载和刷新回退使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
 
 ### 连接 Kronk
 

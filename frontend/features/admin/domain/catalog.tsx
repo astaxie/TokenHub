@@ -31,6 +31,7 @@ export function emptyData(): AppData {
     providerAdapters: [],
     providerMonitoring: [],
     plugins: [],
+    pluginMarketplace: [],
     pluginChain: { hooks: [] },
     pluginUI: [],
     pluginActions: [],

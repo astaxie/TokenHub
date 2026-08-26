@@ -374,6 +374,7 @@ Options: `--rebuild`, `--reset` to drop the local database, `--backend-port N`, 
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | Backup output directory |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | Standard model catalog file in managed deployments |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | Provider templates and candidate-model catalog file in managed deployments |
+| `TOKENHUB_PLUGIN_MARKETPLACE_URL` | empty | HTTPS plugin-marketplace index URL used by the admin console to browse installable plugins |
 | `TOKENHUB_SEED_DEMO` | `false` | Whether to seed demo data |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider resource failure threshold before cooldown |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Base cooldown before a parked provider resource is given a half-open retry |
@@ -473,7 +474,7 @@ After editing the configured catalog file, restart the backend or choose **Setti
 
 The custom mount intentionally overrides the image catalog and is therefore managed separately from `TOKENHUB_IMAGE_TAG`. After updating that file, restart the backend container or run the settings synchronization action, and confirm that the operation completes without a model-catalog error.
 
-`data/model-catalog.yaml` provides tracked reference metadata; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory only. External models and their unified client-facing prices are created separately in Model Directory, then mapped to imported Provider models under Routing Policies. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. To use a custom Provider catalog for startup and refresh fallback, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
+`data/model-catalog.yaml` provides tracked reference metadata; it is not a route allowlist and does not publish models. `data/provider-catalog.json` provides Provider templates and the upstream models that can be selected during Provider setup. Importing a selection creates persisted Provider-model inventory only. External models and their unified client-facing prices are created separately in Model Directory, then mapped to imported Provider models under Routing Policies. `GET /v1/models` lists only active external models with at least one active route, filtered by the API Key model allowlist when configured. `TOKENHUB_PLUGIN_MARKETPLACE_URL` can point at a HTTPS JSON index of plugin descriptors so the admin console can browse and install marketplace packages. To use a custom Provider catalog for startup and refresh fallback, set `TOKENHUB_PROVIDER_CATALOG_FILE` to a local JSON file using the same `providers` structure.
 
 ### Connecting to Kronk
 

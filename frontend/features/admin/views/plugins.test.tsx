@@ -84,7 +84,8 @@ describe("PluginsView", () => {
     });
     fireEvent.click(screen.getByLabelText("允许替换"));
     fireEvent.click(screen.getByLabelText("安装后启用"));
-    fireEvent.click(screen.getByRole("button", { name: "安装插件" }));
+    const installButtons = screen.getAllByRole("button", { name: "安装插件" });
+    fireEvent.click(installButtons[installButtons.length - 1]);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -127,7 +128,55 @@ describe("PluginsView", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.marketplace.kimi/update");
     expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      download_url: "https://plugins.example/kimi.zip",
+      checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    });
     await waitFor(() => expect(screen.getByText("1.1.0 · 插件更新完成，重启后生效")).toBeInTheDocument());
+  });
+
+  it("installs a marketplace plugin from its distribution metadata", async () => {
+    const data = emptyData();
+    data.pluginMarketplaceAvailable = true;
+    data.pluginMarketplaceSourceURL = "https://plugins.example/index.json";
+    data.pluginMarketplace = [{
+      plugin: {
+        id: "tokenhub.marketplace.kimi",
+        name: "Marketplace Kimi",
+        version: "1.0.0",
+        source: "marketplace",
+        status: "enabled",
+        kinds: ["provider"],
+        placements: ["gateway_chain"],
+        capabilities: [],
+        distribution: {
+          download_url: "https://plugins.example/kimi.zip",
+          checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        },
+      },
+      installed: false,
+      update_available: false,
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { plugin: { id: "tokenhub.marketplace.kimi" }, restart_required: true },
+    }), { status: 201, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    const installButtons = screen.getAllByRole("button", { name: "安装插件" });
+    fireEvent.click(installButtons[installButtons.length - 1]);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/install");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      download_url: "https://plugins.example/kimi.zip",
+      checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      replace: false,
+      enable: false,
+    });
+    await waitFor(() => expect(screen.getByText("tokenhub.marketplace.kimi · 插件安装完成，重启后生效")).toBeInTheDocument());
   });
 
   it("renders background job descriptors", () => {

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdapterDescriptor, type AdminResource, type AdminUIContribution, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, type GatewayChainPlan, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginBackgroundJobRunRecord, type PluginDescriptor, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { type AdapterDescriptor, type AdminResource, type AdminUIContribution, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, type GatewayChainPlan, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginBackgroundJobRunRecord, type PluginDescriptor, type PluginMarketplacePlugin, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
@@ -387,6 +387,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.providerAdapters, "provider-adapters", "/api/admin/provider-adapters");
       queue(plan.providerMonitoring, "provider-monitoring", "/api/admin/providers/monitoring");
       queue(plan.plugins, "plugins", "/api/admin/plugins");
+      queue(plan.pluginMarketplace, "plugin-marketplace", "/api/admin/plugin-marketplace");
       queue(plan.pluginChain, "plugin-chain", "/api/admin/plugin-chain");
       queue(plan.pluginUI, "plugin-ui", "/api/admin/plugin-ui-manifest");
       queue(plan.pluginActions, "plugin-actions", "/api/admin/plugin-actions");
@@ -481,6 +482,19 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         } else if (name === "plugins") {
           const payload = (await resp.json()) as { data: PluginDescriptor[] };
           loaded.plugins = payload.data ?? [];
+        } else if (name === "plugin-marketplace") {
+          const payload = (await resp.json()) as {
+            data?: {
+              source_url?: string;
+              available?: boolean;
+              error?: string;
+              plugins?: PluginMarketplacePlugin[];
+            };
+          };
+          loaded.pluginMarketplace = payload.data?.plugins ?? [];
+          loaded.pluginMarketplaceSourceURL = payload.data?.source_url;
+          loaded.pluginMarketplaceAvailable = payload.data?.available;
+          loaded.pluginMarketplaceError = payload.data?.error;
         } else if (name === "plugin-chain") {
           const payload = (await resp.json()) as { data: GatewayChainPlan };
           loaded.pluginChain = payload.data ?? { hooks: [] };

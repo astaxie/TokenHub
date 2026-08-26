@@ -303,6 +303,13 @@ export type PluginDescriptor = {
   capabilities: PluginCapabilityDescriptor[];
 };
 
+export type PluginMarketplacePlugin = {
+  plugin: PluginDescriptor;
+  installed: boolean;
+  installed_version?: string;
+  update_available?: boolean;
+};
+
 export type GatewayHookDescriptor = {
   plugin_id: string;
   hook_id: string;
@@ -1258,6 +1265,10 @@ export type AppData = {
   providerAdapters: AdapterDescriptor[];
   providerMonitoring: ProviderMonitoringSnapshot[];
   plugins: PluginDescriptor[];
+  pluginMarketplace: PluginMarketplacePlugin[];
+  pluginMarketplaceSourceURL?: string;
+  pluginMarketplaceAvailable?: boolean;
+  pluginMarketplaceError?: string;
   pluginChain: GatewayChainPlan;
   pluginUI: AdminUIContribution[];
   pluginActions: PluginActionDescriptor[];

@@ -1,6 +1,6 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, Power, PowerOff, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor } from "../core/types";
+import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
@@ -40,6 +40,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
   const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
   const [pluginUpdateDrafts, setPluginUpdateDrafts] = useState<Record<string, PluginUpdateDraft>>({});
+  const [marketplaceDrafts, setMarketplaceDrafts] = useState<Record<string, PluginInstallDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
   const providerCapabilities = plugins.reduce(
     (count, plugin) => count + plugin.capabilities.filter((capability) => capability.kind === "provider").length,
@@ -57,6 +58,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
+  const marketplaceInstallDraft = (plugin: PluginDescriptor) => marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
 
   function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
     const key = pluginActionKey(action.plugin_id, action.action_id);
@@ -158,7 +160,16 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
       [plugin.id]: { ...(drafts[plugin.id] ?? { busy: false, error: "", result: "" }), busy: true, error: "", result: "" },
     }));
     try {
-      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(plugin.id)}/update`, { method: "POST" });
+      const distribution = plugin.distribution;
+      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(plugin.id)}/update`, {
+        method: "POST",
+        body: distribution?.download_url && distribution.checksum_sha256
+          ? JSON.stringify({
+            download_url: distribution.download_url,
+            checksum_sha256: distribution.checksum_sha256,
+          })
+          : undefined,
+      });
       if (!response.ok) throw new Error(await readAdminError(response, tx("更新插件包")));
       const payload = await response.json() as { data?: { plugin?: { version?: string; name?: string }; restart_required?: boolean } };
       const label = payload.data?.plugin?.version ?? tx("插件");
@@ -177,6 +188,53 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
         [plugin.id]: {
           busy: false,
           error: reason instanceof Error ? reason.message : tx("更新插件失败"),
+          result: "",
+        },
+      }));
+    }
+  }
+
+  async function installMarketplacePlugin(item: PluginMarketplacePlugin) {
+    const plugin = item.plugin;
+    const distribution = plugin.distribution;
+    const draft = marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
+    setMarketplaceDrafts((drafts) => ({
+      ...drafts,
+      [plugin.id]: { ...draft, busy: true, error: "", result: "" },
+    }));
+    try {
+      if (!distribution?.download_url || !distribution.checksum_sha256) {
+        throw new Error(tx("无下载来源"));
+      }
+      const response = await adminFetch(api, "/api/admin/plugins/install", {
+        method: "POST",
+        body: JSON.stringify({
+          download_url: distribution.download_url,
+          checksum_sha256: distribution.checksum_sha256,
+          replace: false,
+          enable: false,
+        }),
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("安装插件")));
+      const payload = await response.json() as { data?: { plugin?: { id?: string }; restart_required?: boolean } };
+      const pluginID = payload.data?.plugin?.id ?? plugin.id;
+      setMarketplaceDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          ...draft,
+          busy: false,
+          error: "",
+          result: `${pluginID} · ${payload.data?.restart_required ? tx("插件安装完成，重启后生效") : tx("插件安装完成")}`,
+        },
+      }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setMarketplaceDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          ...draft,
+          busy: false,
+          error: reason instanceof Error ? reason.message : tx("安装插件失败"),
           result: "",
         },
       }));
@@ -297,6 +355,66 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                       </td>
                       <td>
                         <CapabilityList plugin={plugin} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-header">
+          <h2>{tx("插件市场")}</h2>
+        </div>
+        <div className="section-body">
+          {data.pluginMarketplaceSourceURL ? (
+            <p className="muted">
+              {tx("市场")} <a href={data.pluginMarketplaceSourceURL} rel="noreferrer" target="_blank">{data.pluginMarketplaceSourceURL}</a>
+            </p>
+          ) : null}
+          {data.pluginMarketplaceError ? <p className="provider-quota-error">{data.pluginMarketplaceError}</p> : null}
+          {!data.pluginMarketplaceAvailable ? (
+            <p className="empty-state">{tx("暂无插件")}</p>
+          ) : data.pluginMarketplace.length === 0 ? (
+            <p className="empty-state">{tx("暂无插件")}</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{tx("插件")}</th>
+                    <th>{tx("状态")}</th>
+                    <th>{tx("分发")}</th>
+                    <th>{tx("安装")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.pluginMarketplace.map((item) => (
+                    <tr key={item.plugin.id}>
+                      <td>
+                        <PluginTitle plugin={item.plugin} />
+                      </td>
+                      <td>
+                        <div className="stacked-cell">
+                          <StatusPill status={item.installed ? "enabled" : "disabled"} label={item.installed ? tx("已安装") : tx("未安装")} />
+                          {item.installed_version ? <span>{tx("已安装版本")} {item.installed_version}</span> : null}
+                          {item.update_available ? <span>{tx("更新可用")}</span> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <DistributionMetadata plugin={item.plugin} draft={marketplaceInstallDraft(item.plugin)} onUpdate={updatePlugin} showUpdate={false} />
+                      </td>
+                      <td>
+                        <MarketplaceInstallControl
+                          item={item}
+                          draft={marketplaceInstallDraft(item.plugin)}
+                          updateDraft={pluginUpdateDraft(item.plugin)}
+                          onInstall={installMarketplacePlugin}
+                          onUpdate={updatePlugin}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -662,10 +780,12 @@ function DistributionMetadata({
   plugin,
   draft,
   onUpdate,
+  showUpdate = true,
 }: {
   plugin: PluginDescriptor;
   draft: PluginUpdateDraft;
   onUpdate: (plugin: PluginDescriptor) => void;
+  showUpdate?: boolean;
 }) {
   const distribution = plugin.distribution;
   if (!distribution) return <span className="muted">{tx("未声明")}</span>;
@@ -691,16 +811,71 @@ function DistributionMetadata({
       ) : (
         <span className="muted">{tx("无下载来源")}</span>
       )}
-      {distribution.download_url && plugin.source !== "built_in" ? (
+      {showUpdate && distribution.download_url && plugin.source !== "built_in" ? (
         <button className="secondary-button compact-button" disabled={draft.busy} onClick={() => onUpdate(plugin)} type="button">
           <Download size={13} />
           <span>{tx(draft.busy ? "更新中" : "更新")}</span>
         </button>
       ) : null}
-      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
-      {draft.result ? <span>{draft.result}</span> : null}
+      {showUpdate && draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
+      {showUpdate && draft.result ? <span>{draft.result}</span> : null}
       <span>{distribution.license ? `${tx("许可证")} ${distribution.license}` : tx("未声明许可证")}</span>
       {distribution.checksum_sha256 ? <span>{tx("SHA-256")} {shortChecksum(distribution.checksum_sha256)}</span> : null}
+    </div>
+  );
+}
+
+function MarketplaceInstallControl({
+  item,
+  draft,
+  updateDraft,
+  onInstall,
+  onUpdate,
+}: {
+  item: PluginMarketplacePlugin;
+  draft: PluginInstallDraft;
+  updateDraft: PluginUpdateDraft;
+  onInstall: (item: PluginMarketplacePlugin) => void;
+  onUpdate: (plugin: PluginDescriptor) => void;
+}) {
+  if (item.installed && !item.update_available) {
+    return (
+      <div className="stacked-cell">
+        <StatusPill status="enabled" label={tx("已安装")} />
+        {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
+      </div>
+    );
+  }
+  if (item.installed && item.update_available) {
+    return (
+      <div className="stacked-cell">
+        <button
+          className="secondary-button compact-button"
+          disabled={updateDraft.busy}
+          onClick={() => onUpdate(item.plugin)}
+          type="button"
+        >
+          <Download size={13} />
+          <span>{tx(updateDraft.busy ? "更新中" : "更新")}</span>
+        </button>
+        {updateDraft.error ? <span className="provider-quota-error">{updateDraft.error}</span> : null}
+        {updateDraft.result ? <span>{updateDraft.result}</span> : null}
+      </div>
+    );
+  }
+  return (
+    <div className="stacked-cell">
+      <button
+        className="secondary-button compact-button"
+        disabled={draft.busy}
+        onClick={() => onInstall(item)}
+        type="button"
+      >
+        <Download size={13} />
+        <span>{tx(draft.busy ? "安装中" : "安装插件")}</span>
+      </button>
+      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
+      {draft.result ? <span>{draft.result}</span> : null}
     </div>
   );
 }

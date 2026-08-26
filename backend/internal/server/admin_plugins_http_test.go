@@ -147,6 +147,55 @@ kinds:
 	}
 }
 
+func TestAdminPluginUpdatePostAcceptsMarketplaceDistributionOverride(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "kimi")
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.kimi", "Marketplace Kimi", "1.2.0"),
+	})
+	var requestedPath string
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		_, _ = w.Write(archive)
+	}))
+	defer upstream.Close()
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.marketplace.kimi
+name: Marketplace Kimi
+version: 1.0.0
+distribution:
+  download_url: https://plugins.example/kimi-1.0.0.zip
+  checksum_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	server.pluginInstallClient = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.marketplace.kimi/update", map[string]any{
+		"download_url":    upstream.URL + "/kimi-1.2.0.zip",
+		"checksum_sha256": adminSHA256Hex(archive),
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST /api/admin/plugins/{id}/update with override: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if requestedPath != "/kimi-1.2.0.zip" {
+		t.Fatalf("update downloaded %q, want marketplace override path", requestedPath)
+	}
+	var body struct {
+		Data adminPluginInstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if body.Data.Plugin.Version != "1.2.0" || !body.Data.Replaced {
+		t.Fatalf("update response = %+v, want marketplace replacement", body.Data)
+	}
+}
+
 func TestAdminPluginStatePatchWritesLocalPackageState(t *testing.T) {
 	pluginDir := t.TempDir()
 	localPluginDir := filepath.Join(pluginDir, "privacy")
