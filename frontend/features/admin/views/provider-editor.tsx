@@ -4,7 +4,7 @@ import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountO
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
-import { providerImageCapabilityProfile } from "../domain/codex-image-capability";
+import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
@@ -18,7 +18,7 @@ import { assertProviderAccountResourceReady, defaultProviderResourceName, exchan
 import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
-import { ProviderCodexImageCapability } from "./provider-codex-image-capability";
+import { ProviderImageCapability } from "./provider-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
@@ -1753,7 +1753,7 @@ export function ProviderUpsertModal({
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
             {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
-            {mode === "edit" && imageCapabilityProfile && provider ? <div className="provider-model-list provider-codex-image-list"><ProviderCodexImageCapability api={api} pluginActions={pluginActions} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
+            {mode === "edit" && imageCapabilityProfile && provider ? <div className="provider-model-list provider-image-capability-list"><ProviderImageCapability api={api} pluginActions={pluginActions} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
             {mode === "edit" && editingAccountProvider && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">
                 {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}

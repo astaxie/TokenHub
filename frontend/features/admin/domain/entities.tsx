@@ -1,6 +1,6 @@
 import { appRole } from "../core/navigation";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
-import { defaultImageCapabilityProfile, imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfiles } from "./codex-image-capability";
+import { defaultImageCapabilityProfile, imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfiles } from "./provider-image-capability";
 import { codexImageModelName, codexProviderType } from "./codex-provider-profile";
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";

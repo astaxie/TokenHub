@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ProviderCodexImageCapability, unwrapCodexImageCapabilityResult } from "./provider-codex-image-capability";
+import { ProviderImageCapability, unwrapProviderImageCapabilityResult } from "./provider-image-capability";
 
 const provider = { id: "prv_codex", name: "Codex", type: "openai_codex", status: "active", healthy: true, priority: 1 };
 const resource = {
@@ -27,7 +27,7 @@ const action = {
   },
 };
 
-describe("ProviderCodexImageCapability", () => {
+describe("ProviderImageCapability", () => {
   it("configures image capability through the plugin action endpoint", async () => {
     const user = userEvent.setup();
     const onChanged = vi.fn().mockResolvedValue(undefined);
@@ -41,7 +41,7 @@ describe("ProviderCodexImageCapability", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <ProviderCodexImageCapability
+      <ProviderImageCapability
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
         pluginActions={[action]}
         provider={provider}
@@ -72,7 +72,7 @@ describe("ProviderCodexImageCapability", () => {
 
   it("stays hidden when the plugin action is not registered", () => {
     render(
-      <ProviderCodexImageCapability
+      <ProviderImageCapability
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
         pluginActions={[]}
         provider={provider}
@@ -99,7 +99,7 @@ describe("ProviderCodexImageCapability", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <ProviderCodexImageCapability
+      <ProviderImageCapability
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
         pluginActions={[{
           ...action,
@@ -135,7 +135,7 @@ describe("ProviderCodexImageCapability", () => {
   });
 
   it("unwraps plugin action result envelopes", () => {
-    expect(unwrapCodexImageCapabilityResult({
+    expect(unwrapProviderImageCapabilityResult({
       data: { enabled: true, tested: true, resource_id: "rsrc_codex" },
     })).toEqual({ enabled: true, tested: true, resource_id: "rsrc_codex" });
   });

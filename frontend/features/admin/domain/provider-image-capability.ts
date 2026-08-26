@@ -59,7 +59,7 @@ function adminUIContributionLayout(contribution: AdminUIContribution) {
   return typeof layout === "string" ? layout.trim() : "";
 }
 
-export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string, profile?: ImageCapabilityProfile | null) {
+export function providerImageRouteEnabled(routes: ModelRoute[], providerID: string, profile?: ImageCapabilityProfile | null) {
   const imageProfile = profile ?? defaultImageCapabilityProfile;
   return routes.some((route) =>
     route.model_name === imageProfile?.publicModel &&
@@ -69,22 +69,22 @@ export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string,
   );
 }
 
-export function codexImageResources(resources: ProviderResource[], providerID: string, profile?: ImageCapabilityProfile | null) {
+export function providerImageCapabilityResources(resources: ProviderResource[], providerID: string, profile?: ImageCapabilityProfile | null) {
   return resources.filter((resource) =>
     resource.provider_id === providerID &&
     (profile?.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResource(resource)),
   );
 }
 
-export function defaultCodexImageResourceID(resources: ProviderResource[], providerID: string, selectedAccountID: string, profile?: ImageCapabilityProfile | null) {
-  const candidates = codexImageResources(resources, providerID, profile);
+export function defaultProviderImageCapabilityResourceID(resources: ProviderResource[], providerID: string, selectedAccountID: string, profile?: ImageCapabilityProfile | null) {
+  const candidates = providerImageCapabilityResources(resources, providerID, profile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
   if (selectedAccountID !== "all" && available.some((resource) => resource.id === selectedAccountID)) return selectedAccountID;
   return available.find((resource) => resource.options?.image_generation_capability === "supported")?.id ?? available[0]?.id ?? "";
 }
 
-export function codexImageModelState(resources: ProviderResource[], providerID: string, routeEnabled: boolean, profile?: ImageCapabilityProfile | null) {
-  const candidates = codexImageResources(resources, providerID, profile);
+export function providerImageCapabilityState(resources: ProviderResource[], providerID: string, routeEnabled: boolean, profile?: ImageCapabilityProfile | null) {
+  const candidates = providerImageCapabilityResources(resources, providerID, profile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
   const supported = available.filter((resource) => resource.options?.image_generation_capability === "supported").length;
   const unsupported = available.filter((resource) => resource.options?.image_generation_capability === "unsupported").length;

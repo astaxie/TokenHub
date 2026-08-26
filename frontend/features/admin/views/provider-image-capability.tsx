@@ -1,13 +1,13 @@
 import { AlertCircle, Image as ImageIcon, LoaderCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { type ApiContext, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
-import { codexImageModelState, codexImageResources, codexImageRouteEnabled, defaultCodexImageResourceID, imageCapabilityProfileFromAction } from "../domain/codex-image-capability";
+import { defaultProviderImageCapabilityResourceID, imageCapabilityProfileFromAction, providerImageCapabilityResources, providerImageCapabilityState, providerImageRouteEnabled } from "../domain/provider-image-capability";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerPluginActionForCapability, providerPluginActionPath } from "../resources/provider-model-config";
 import { formatImageGenerationCapabilityTag, providerResourceAccountLabel } from "./provider-account-ui";
 
-type CodexImageCapabilityResult = {
+type ProviderImageCapabilityResult = {
   enabled: boolean;
   tested: boolean;
   capability?: string;
@@ -15,7 +15,7 @@ type CodexImageCapabilityResult = {
   route_id?: string;
 };
 
-export function ProviderCodexImageCapability({
+export function ProviderImageCapability({
   api,
   pluginActions,
   provider,
@@ -39,9 +39,9 @@ export function ProviderCodexImageCapability({
     [pluginActions, provider.type],
   );
   const imageProfile = useMemo(() => imageCapabilityProfileFromAction(action), [action]);
-  const providerResources = useMemo(() => codexImageResources(resources, provider.id, imageProfile), [imageProfile, provider.id, resources]);
-  const enabled = codexImageRouteEnabled(routes, provider.id, imageProfile);
-  const modelState = codexImageModelState(resources, provider.id, enabled, imageProfile);
+  const providerResources = useMemo(() => providerImageCapabilityResources(resources, provider.id, imageProfile), [imageProfile, provider.id, resources]);
+  const enabled = providerImageRouteEnabled(routes, provider.id, imageProfile);
+  const modelState = providerImageCapabilityState(resources, provider.id, enabled, imageProfile);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resourceID, setResourceID] = useState("");
   const [busy, setBusy] = useState<"enable" | "disable" | "">("");
@@ -59,7 +59,7 @@ export function ProviderCodexImageCapability({
   }[modelState];
 
   function openCapabilityTest() {
-    setResourceID(defaultCodexImageResourceID(resources, provider.id, selectedAccountID, imageProfile));
+    setResourceID(defaultProviderImageCapabilityResourceID(resources, provider.id, selectedAccountID, imageProfile));
     setError("");
     setDialogOpen(true);
   }
@@ -81,7 +81,7 @@ export function ProviderCodexImageCapability({
         body: JSON.stringify({ provider_id: provider.id, resource_id: targetResourceID, enabled: enabledValue }),
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("配置订阅生图")));
-      const result = unwrapCodexImageCapabilityResult(await response.json());
+      const result = unwrapProviderImageCapabilityResult(await response.json());
       setNotice(tx(result.enabled ? "订阅生图测试通过并已启用。" : "订阅生图已停用；能力测试结果已保留。"));
       await onChanged().catch(() => undefined);
       setDialogOpen(false);
@@ -98,7 +98,7 @@ export function ProviderCodexImageCapability({
 
   return (
     <>
-      <label className={`model-option provider-codex-image-option ${modelState}`}>
+      <label className={`model-option provider-image-capability-option ${modelState}`}>
         <input
           checked={enabled}
           disabled={Boolean(busy) || providerResources.length === 0}
@@ -122,12 +122,12 @@ export function ProviderCodexImageCapability({
       </label>
       {dialogOpen ? (
         <div className="modal-backdrop provider-account-confirmation-backdrop" role="presentation">
-          <div aria-labelledby="codex-image-capability-title" aria-modal="true" className="confirm-modal provider-codex-image-modal" role="dialog">
-            <div className="provider-codex-image-modal-title">
+          <div aria-labelledby="provider-image-capability-title" aria-modal="true" className="confirm-modal provider-image-capability-modal" role="dialog">
+            <div className="provider-image-capability-modal-title">
               <ImageIcon aria-hidden="true" size={20} />
               <div>
                 <p className="eyebrow">{tx("订阅模型")}</p>
-                <h2 id="codex-image-capability-title">{tx("测试并启用生图能力")}</h2>
+                <h2 id="provider-image-capability-title">{tx("测试并启用生图能力")}</h2>
               </div>
             </div>
             <p>{tx("TokenHub 将立即向所选真实账号发送一次低质量生图请求。只有收到有效图片后才会添加线路；本次测试会消耗少量订阅额度。")}</p>
@@ -144,12 +144,12 @@ export function ProviderCodexImageCapability({
               </select>
             </label>
             {busy === "enable" ? (
-              <div className="provider-codex-image-testing" role="status">
+              <div className="provider-image-capability-testing" role="status">
                 <LoaderCircle aria-hidden="true" className="spin" size={20} />
                 <div><strong>{tx("正在测试生图能力")}</strong><span>{tx("正在等待真实上游返回图片，请勿关闭弹窗。")}</span></div>
               </div>
             ) : null}
-            {error ? <div className="provider-codex-image-error" role="alert"><AlertCircle aria-hidden="true" size={18} /><span>{error}</span></div> : null}
+            {error ? <div className="provider-image-capability-error" role="alert"><AlertCircle aria-hidden="true" size={18} /><span>{error}</span></div> : null}
             {selectedResource?.options?.image_generation_capability ? (
               <p className="provider-credential-note">
                 {formatTranslationTemplate(tx("该账号上次测试结果：{result}"), {
@@ -170,9 +170,9 @@ export function ProviderCodexImageCapability({
   );
 }
 
-export function unwrapCodexImageCapabilityResult(payload: unknown): CodexImageCapabilityResult {
+export function unwrapProviderImageCapabilityResult(payload: unknown): ProviderImageCapabilityResult {
   if (payload && typeof payload === "object" && "data" in payload) {
-    return (payload as { data?: CodexImageCapabilityResult }).data ?? { enabled: false, tested: false, resource_id: "" };
+    return (payload as { data?: ProviderImageCapabilityResult }).data ?? { enabled: false, tested: false, resource_id: "" };
   }
-  return payload as CodexImageCapabilityResult;
+  return payload as ProviderImageCapabilityResult;
 }
