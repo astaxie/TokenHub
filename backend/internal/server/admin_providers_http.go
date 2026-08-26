@@ -128,7 +128,8 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				return
 			}
 			var supported bool
-			entry, supported, err = s.executeProviderCredentialModelsAction(r.Context(), user, ProviderOpenAICodex, credentials)
+			catalogProviderType := codexProviderCatalogFromModels(nil).Type
+			entry, supported, err = s.executeProviderCredentialModelsAction(r.Context(), user, catalogProviderType, credentials)
 			if !supported {
 				entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
 			}
