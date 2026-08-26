@@ -396,7 +396,7 @@ func TestSelectCodexRouteCandidatesDistinguishesResourceAvailability(t *testing.
 	}
 }
 
-func TestSelectPluginAccountRouteCandidatesRequireResource(t *testing.T) {
+func TestSelectPluginAccountRouteCandidatesRequireExistingAccountResource(t *testing.T) {
 	now := time.Now().UTC()
 	for _, binding := range []string{"explicit", "implicit"} {
 		for _, test := range []struct {
@@ -405,7 +405,6 @@ func TestSelectPluginAccountRouteCandidatesRequireResource(t *testing.T) {
 			wantCode      string
 			wantCandidate bool
 		}{
-			{name: "missing", wantCode: "provider_resource_missing"},
 			{name: "disabled", resource: &ProviderResource{Status: StatusDisabled, Healthy: false}, wantCode: "provider_resource_disabled"},
 			{name: "unhealthy", resource: &ProviderResource{Status: StatusActive, Healthy: false}, wantCode: "provider_resource_unhealthy"},
 			{name: "cooling down", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(time.Minute))}, wantCode: "provider_resource_cooling_down"},
@@ -459,54 +458,152 @@ func TestSelectPluginAccountRouteCandidatesRequireResource(t *testing.T) {
 	}
 }
 
+func TestPluginAccountRouteCandidatesUseProviderFallbackWhenNoResourcesExist(t *testing.T) {
+	store := NewMemoryStore()
+	modelName := "plugin-account-provider-fallback"
+	store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID: "prv_plugin_account_provider_fallback", Name: "Plugin account provider fallback",
+		Type: "kimi_subscription", Status: StatusActive, Healthy: true,
+	})
+	store.AddRoute(ModelRoute{
+		ID: "route_plugin_account_provider_fallback", ModelName: modelName,
+		ProviderID: provider.ID, ProviderModel: modelName,
+		Status: StatusActive, Priority: 1, Weight: 100,
+	})
+
+	candidates, err := store.SelectRouteCandidates(modelName)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("plugin provider-level candidates=%+v err=%v", candidates, err)
+	}
+	if candidates[0].Resource != nil {
+		t.Fatalf("plugin route without resources should use provider-level fallback: %+v", candidates[0])
+	}
+}
+
+func TestPluginAccountExplicitMissingResourceFails(t *testing.T) {
+	store := NewMemoryStore()
+	modelName := "plugin-account-explicit-missing-resource"
+	store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID: "prv_plugin_explicit_missing_resource", Name: "Plugin explicit missing resource",
+		Type: "kimi_subscription", Status: StatusActive, Healthy: true,
+	})
+	store.AddRoute(ModelRoute{
+		ID: "route_plugin_explicit_missing_resource", ModelName: modelName,
+		ProviderID: provider.ID, ProviderResourceID: "rsrc_missing_plugin_account",
+		ProviderModel: modelName, Status: StatusActive, Priority: 1, Weight: 100,
+	})
+
+	candidates, err := store.SelectRouteCandidates(modelName)
+	httpErr := AsHTTPError(err)
+	if httpErr == nil || httpErr.Code != "provider_resource_missing" {
+		t.Fatalf("availability error=%+v want missing resource candidates=%+v", httpErr, candidates)
+	}
+}
+
+func TestPluginAccountGroupedResourceMissingSurvivesBatchLookupFallback(t *testing.T) {
+	store := NewMemoryStore()
+	modelName := "plugin-account-grouped-resource-missing"
+	store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID: "prv_plugin_grouped_resource_missing", Name: "Plugin grouped resource missing",
+		Type: "kimi_subscription", Status: StatusActive, Healthy: true,
+	})
+	if err := store.db.Create(&ProviderResource{
+		ID: "rsrc_plugin_grouped_resource_missing", ProviderID: provider.ID, Name: "Plugin account",
+		ResourceType: "kimi_subscription_account", Group: "blue",
+		Status: StatusActive, Healthy: true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	store.AddRoute(ModelRoute{
+		ID: "route_plugin_grouped_resource_missing", ModelName: modelName,
+		ProviderID: provider.ID, ResourceGroup: "green", ProviderModel: modelName,
+		Status: StatusActive, Priority: 1, Weight: 100,
+	})
+
+	attempts := 0
+	callbackName := "test:plugin-account-grouped-resource-missing"
+	if err := store.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Schema != nil && tx.Statement.Schema.Table == "providers" {
+			attempts++
+			if attempts == 1 {
+				_ = tx.AddError(errors.New("force individual candidate lookup"))
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := store.db.Callback().Query().Remove(callbackName); err != nil {
+			t.Errorf("remove query callback: %v", err)
+		}
+	}()
+
+	candidates, err := store.SelectRouteCandidates(modelName)
+	httpErr := AsHTTPError(err)
+	if httpErr == nil || httpErr.Code != "provider_resource_missing" {
+		t.Fatalf("availability error=%+v want missing resource candidates=%+v", httpErr, candidates)
+	}
+	if attempts != 2 {
+		t.Fatalf("provider lookup attempts=%d want batch plus individual", attempts)
+	}
+}
+
 func TestProviderLevelRouteKeepsResourceOptional(t *testing.T) {
 	now := time.Now().UTC()
-	for _, test := range []struct {
-		name         string
-		resource     *ProviderResource
-		wantResource bool
-	}{
-		{name: "no resource"},
-		{name: "disabled resource", resource: &ProviderResource{Status: StatusDisabled, Healthy: false}},
-		{name: "unhealthy resource", resource: &ProviderResource{Status: StatusActive, Healthy: false}},
-		{name: "cooling resource", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(time.Minute))}},
-		{name: "expired cooldown resource", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(-time.Minute))}, wantResource: true},
-		{name: "healthy resource", resource: &ProviderResource{Status: StatusActive, Healthy: true}, wantResource: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			store := NewMemoryStore()
-			modelName := "provider-level-resource-optional"
-			store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
-			provider := store.AddProvider(Provider{
-				ID: "prv_provider_level_resource_optional", Name: "Provider-level credentials",
-				Type: ProviderOpenAICompatible, Status: StatusActive, Healthy: true,
-			})
-			if test.resource != nil {
-				resource := *test.resource
-				resource.ID = "rsrc_provider_level_resource_optional"
-				resource.ProviderID = provider.ID
-				resource.Name = "Optional resource"
-				resource.ResourceType = ProviderResourceAPIKey
-				if err := store.db.Create(&resource).Error; err != nil {
-					t.Fatal(err)
-				}
-			}
-			store.AddRoute(ModelRoute{
-				ID: "route_provider_level_resource_optional", ModelName: modelName,
-				ProviderID: provider.ID, ProviderModel: modelName,
-				Status: StatusActive, Priority: 1, Weight: 100,
-			})
+	for _, providerType := range []string{ProviderOpenAICompatible, "custom_stdio"} {
+		t.Run(providerType, func(t *testing.T) {
+			for _, test := range []struct {
+				name         string
+				resource     *ProviderResource
+				wantResource bool
+			}{
+				{name: "no resource"},
+				{name: "disabled resource", resource: &ProviderResource{Status: StatusDisabled, Healthy: false}},
+				{name: "unhealthy resource", resource: &ProviderResource{Status: StatusActive, Healthy: false}},
+				{name: "cooling resource", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(time.Minute))}},
+				{name: "expired cooldown resource", resource: &ProviderResource{Status: StatusActive, Healthy: false, CooldownUntil: ptrTime(now.Add(-time.Minute))}, wantResource: true},
+				{name: "healthy resource", resource: &ProviderResource{Status: StatusActive, Healthy: true}, wantResource: true},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					store := NewMemoryStore()
+					modelName := "provider-level-resource-optional-" + providerType
+					store.AddModel(Model{Name: modelName, Modality: "chat", Status: StatusActive})
+					provider := store.AddProvider(Provider{
+						ID: "prv_provider_level_resource_optional_" + providerType, Name: "Provider-level credentials",
+						Type: providerType, Status: StatusActive, Healthy: true,
+					})
+					resourceID := "rsrc_provider_level_resource_optional_" + providerType
+					if test.resource != nil {
+						resource := *test.resource
+						resource.ID = resourceID
+						resource.ProviderID = provider.ID
+						resource.Name = "Optional resource"
+						resource.ResourceType = ProviderResourceAPIKey
+						if err := store.db.Create(&resource).Error; err != nil {
+							t.Fatal(err)
+						}
+					}
+					store.AddRoute(ModelRoute{
+						ID: "route_provider_level_resource_optional_" + providerType, ModelName: modelName,
+						ProviderID: provider.ID, ProviderModel: modelName,
+						Status: StatusActive, Priority: 1, Weight: 100,
+					})
 
-			candidates, err := store.SelectRouteCandidates(modelName)
-			if err != nil || len(candidates) != 1 {
-				t.Fatalf("provider-level candidates=%+v err=%v", candidates, err)
-			}
-			if test.wantResource {
-				if routeResourceID(candidates[0]) != "rsrc_provider_level_resource_optional" {
-					t.Fatalf("eligible optional resource was not selected: %+v", candidates[0])
-				}
-			} else if candidates[0].Resource != nil {
-				t.Fatalf("unavailable optional resource blocked provider-level fallback: %+v", candidates[0])
+					candidates, err := store.SelectRouteCandidates(modelName)
+					if err != nil || len(candidates) != 1 {
+						t.Fatalf("provider-level candidates=%+v err=%v", candidates, err)
+					}
+					if test.wantResource {
+						if routeResourceID(candidates[0]) != resourceID {
+							t.Fatalf("eligible optional resource was not selected: %+v", candidates[0])
+						}
+					} else if candidates[0].Resource != nil {
+						t.Fatalf("unavailable optional resource blocked provider-level fallback: %+v", candidates[0])
+					}
+				})
 			}
 		})
 	}

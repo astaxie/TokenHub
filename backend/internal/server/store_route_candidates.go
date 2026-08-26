@@ -119,19 +119,10 @@ func routeCandidateResourcesRequireSelection(provider Provider, resources []Prov
 
 func routeCandidateProviderRequiresResource(provider Provider) bool {
 	switch strings.TrimSpace(provider.Type) {
-	case ProviderMock,
-		ProviderOpenAI,
-		ProviderOpenAICompatible,
-		ProviderAzureOpenAI,
-		ProviderAnthropic,
-		ProviderGemini,
-		ProviderKronk,
-		"deepseek",
-		"qwen",
-		"local":
-		return false
-	default:
+	case ProviderOpenAICodex:
 		return true
+	default:
+		return false
 	}
 }
 
@@ -261,15 +252,19 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 		}
 
 		var resources []ProviderResource
-		query := db.Where("provider_id = ?", provider.ID)
-		if group := strings.TrimSpace(route.ResourceGroup); group != "" {
-			query = query.Where("\"group\" = ?", group)
-		}
-		if err := query.Order("priority asc, weight desc, created_at asc, id asc").Find(&resources).Error; err != nil {
+		if err := db.Where("provider_id = ?", provider.ID).
+			Order("priority asc, weight desc, created_at asc, id asc").
+			Find(&resources).Error; err != nil {
 			return nil, err
 		}
+		group := strings.TrimSpace(route.ResourceGroup)
+		matched := false
 		eligible := false
 		for _, resource := range resources {
+			if group != "" && resource.Group != group {
+				continue
+			}
+			matched = true
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
 				availability.observeUnavailable(routeCandidateResourceRequired(provider, resource), resource, now)
 				continue
@@ -284,7 +279,7 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 		}
 		if !eligible {
 			if routeCandidateResourcesRequireSelection(provider, resources) {
-				if len(resources) == 0 {
+				if !matched {
 					availability.observeMissing(true)
 				}
 			} else {
