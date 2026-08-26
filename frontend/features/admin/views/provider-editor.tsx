@@ -800,12 +800,10 @@ export function ProviderUpsertModal({
     setCodexTestErrors({});
     await Promise.all(selectedAccountResources.map(async (resource) => {
       try {
-        const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/test`, {
-          method: "POST",
-          body: JSON.stringify(codexTestValues),
-        });
-        if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Codex Subscription")));
-        const result = (await resp.json()) as CodexSubscriptionTestResult;
+        const action = providerPluginActionForCapability(pluginActions, values.type, "probe.run");
+        const result = action
+          ? await runProviderResourcePluginAction<CodexSubscriptionTestResult>(api, resource, action, codexTestValues, tx("账号资源测试"))
+          : await legacyCodexSubscriptionTest(resource);
         setCodexTestResults((current) => ({ ...current, [resource.id]: result }));
       } catch (err) {
         if (isAuthExpiredError(err)) return;
@@ -814,6 +812,11 @@ export function ProviderUpsertModal({
       }
     }));
     setCodexTestBusyID("");
+  }
+  async function legacyCodexSubscriptionTest(resource: ProviderResource) {
+    const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/test`, { method: "POST", body: JSON.stringify(codexTestValues) });
+    if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Codex Subscription")));
+    return (await resp.json()) as CodexSubscriptionTestResult;
   }
 
   function selectCredentialMode(nextMode: ProviderCredentialMode) {
