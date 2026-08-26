@@ -3,7 +3,8 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
 import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
-import { codexImageUpstreamModel, codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
+import { codexLunaProbeDefaults, codexProviderCatalogSummary, codexProviderType, fallbackCodexReasoningEfforts } from "../domain/codex-provider-profile";
+import { imageCapabilityProfileFromAction } from "../domain/codex-image-capability";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabel } from "../domain/labels";
@@ -101,9 +102,7 @@ export function ProviderUpsertModal({
   setError: (value: string) => void;
   setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
-  const editingCodexSubscription = mode === "edit" && resources.some((resource) =>
-    resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource),
-  );
+  const editingCodexSubscription = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isOpenAISubscriptionResource(resource));
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins), [catalog, plugins]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0] ?? codexProviderCatalogSummary;
   const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
@@ -523,9 +522,10 @@ export function ProviderUpsertModal({
       .filter((model) => JSON.stringify(model).toLowerCase().includes(normalized))
       .slice(0, 80);
   }, [models, modelQuery]);
+  const imageCapabilityProfile = useMemo(() => imageCapabilityProfileFromAction(providerPluginActionForCapability(pluginActions, provider?.type ?? values.type, "image.capability.configure")), [pluginActions, provider?.type, values.type]);
   const importedModels = useMemo(
-    () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!editingCodexSubscription || model.upstream_model !== codexImageUpstreamModel)) : [],
-    [editingCodexSubscription, provider, providerModels],
+    () => provider ? providerModels.filter((model) => model.provider_id === provider.id && (!imageCapabilityProfile || model.upstream_model !== imageCapabilityProfile.upstreamModel)) : [],
+    [imageCapabilityProfile, provider, providerModels],
   );
   const importedModelIDs = useMemo(() => new Set(importedModels.map((model) => model.upstream_model)), [importedModels]);
   const selectedModelIDs = Object.entries(selectedModels)
@@ -1753,7 +1753,7 @@ export function ProviderUpsertModal({
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
             {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
-            {mode === "edit" && editingCodexSubscription && provider ? <div className="provider-model-list provider-codex-image-list"><ProviderCodexImageCapability api={api} pluginActions={pluginActions} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
+            {mode === "edit" && imageCapabilityProfile && provider ? <div className="provider-model-list provider-codex-image-list"><ProviderCodexImageCapability api={api} pluginActions={pluginActions} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
             {mode === "edit" && editingCodexSubscription && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">
                 {tx("当前上游模型映射仅展示所有账号都支持的模型交集。这样创建的路由才能在账号池切换时保持可用，避免请求被分配到不支持该模型的账号。")}

@@ -1,7 +1,7 @@
 import { AlertCircle, Image as ImageIcon, LoaderCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { type ApiContext, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
-import { codexImageModelState, codexImageResources, codexImageRouteEnabled, defaultCodexImageResourceID } from "../domain/codex-image-capability";
+import { codexImageModelState, codexImageResources, codexImageRouteEnabled, defaultCodexImageResourceID, imageCapabilityProfileFromAction } from "../domain/codex-image-capability";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerPluginActionForCapability, providerPluginActionPath } from "../resources/provider-model-config";
@@ -34,21 +34,22 @@ export function ProviderCodexImageCapability({
   onChanged: () => Promise<void>;
   setNotice: (value: string) => void;
 }) {
-  const providerResources = useMemo(() => codexImageResources(resources, provider.id), [provider.id, resources]);
   const action = useMemo(
     () => providerPluginActionForCapability(pluginActions, provider.type, "image.capability.configure"),
     [pluginActions, provider.type],
   );
-  const enabled = codexImageRouteEnabled(routes, provider.id);
-  const modelState = codexImageModelState(resources, provider.id, enabled);
+  const imageProfile = useMemo(() => imageCapabilityProfileFromAction(action), [action]);
+  const providerResources = useMemo(() => codexImageResources(resources, provider.id, imageProfile), [imageProfile, provider.id, resources]);
+  const enabled = codexImageRouteEnabled(routes, provider.id, imageProfile);
+  const modelState = codexImageModelState(resources, provider.id, enabled, imageProfile);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resourceID, setResourceID] = useState("");
   const [busy, setBusy] = useState<"enable" | "disable" | "">("");
   const [error, setError] = useState("");
   const selectedResource = providerResources.find((resource) => resource.id === resourceID);
-  const displayName = action?.metadata?.display_name?.trim() || tx("订阅生图");
-  const publicModel = action?.metadata?.public_model?.trim() || "codex-gpt-image-2";
-  const upstreamModel = action?.metadata?.upstream_model?.trim() || "gpt-image-2";
+  const displayName = imageProfile?.displayName || tx("订阅生图");
+  const publicModel = imageProfile?.publicModel || "";
+  const upstreamModel = imageProfile?.upstreamModel || "";
   const stateLabel = {
     enabled: "已启用，生图测试通过",
     enabled_without_account: "线路已启用，但当前没有测试通过的可用账号",
@@ -58,7 +59,7 @@ export function ProviderCodexImageCapability({
   }[modelState];
 
   function openCapabilityTest() {
-    setResourceID(defaultCodexImageResourceID(resources, provider.id, selectedAccountID));
+    setResourceID(defaultCodexImageResourceID(resources, provider.id, selectedAccountID, imageProfile));
     setError("");
     setDialogOpen(true);
   }

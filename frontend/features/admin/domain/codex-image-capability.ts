@@ -1,31 +1,57 @@
-import { type ModelRoute, type ProviderResource } from "../core/types";
+import { type ModelRoute, type PluginActionDescriptor, type ProviderResource } from "../core/types";
 import { codexImageModelName, codexImageUpstreamModel } from "./codex-provider-profile";
-import { isOpenAISubscriptionResource } from "./provider-resource-types";
+import { isProviderAccountResource } from "./provider-resource-types";
 
-export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string) {
+export type ImageCapabilityProfile = {
+  displayName: string;
+  publicModel: string;
+  upstreamModel: string;
+  resourceType?: string;
+};
+
+const defaultImageCapabilityProfile: ImageCapabilityProfile = {
+  displayName: "订阅生图",
+  publicModel: codexImageModelName,
+  upstreamModel: codexImageUpstreamModel,
+};
+
+export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescriptor, "metadata" | "title"> | null): ImageCapabilityProfile | null {
+  if (!action) return null;
+  return {
+    ...defaultImageCapabilityProfile,
+    displayName: action.metadata?.display_name?.trim() || action.title?.trim() || defaultImageCapabilityProfile.displayName,
+    publicModel: action.metadata?.public_model?.trim() || defaultImageCapabilityProfile.publicModel,
+    upstreamModel: action.metadata?.upstream_model?.trim() || defaultImageCapabilityProfile.upstreamModel,
+    resourceType: action.metadata?.provider_resource_type?.trim() || action.metadata?.resource_type?.trim() || undefined,
+  };
+}
+
+export function codexImageRouteEnabled(routes: ModelRoute[], providerID: string, profile?: ImageCapabilityProfile | null) {
+  const imageProfile = profile ?? defaultImageCapabilityProfile;
   return routes.some((route) =>
-    route.model_name === codexImageModelName &&
+    route.model_name === imageProfile?.publicModel &&
     route.provider_id === providerID &&
-    route.provider_model === codexImageUpstreamModel &&
+    route.provider_model === imageProfile?.upstreamModel &&
     route.status === "active",
   );
 }
 
-export function codexImageResources(resources: ProviderResource[], providerID: string) {
+export function codexImageResources(resources: ProviderResource[], providerID: string, profile?: ImageCapabilityProfile | null) {
   return resources.filter((resource) =>
-    resource.provider_id === providerID && isOpenAISubscriptionResource(resource),
+    resource.provider_id === providerID &&
+    (profile?.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResource(resource)),
   );
 }
 
-export function defaultCodexImageResourceID(resources: ProviderResource[], providerID: string, selectedAccountID: string) {
-  const candidates = codexImageResources(resources, providerID);
+export function defaultCodexImageResourceID(resources: ProviderResource[], providerID: string, selectedAccountID: string, profile?: ImageCapabilityProfile | null) {
+  const candidates = codexImageResources(resources, providerID, profile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
   if (selectedAccountID !== "all" && available.some((resource) => resource.id === selectedAccountID)) return selectedAccountID;
   return available.find((resource) => resource.options?.image_generation_capability === "supported")?.id ?? available[0]?.id ?? "";
 }
 
-export function codexImageModelState(resources: ProviderResource[], providerID: string, routeEnabled: boolean) {
-  const candidates = codexImageResources(resources, providerID);
+export function codexImageModelState(resources: ProviderResource[], providerID: string, routeEnabled: boolean, profile?: ImageCapabilityProfile | null) {
+  const candidates = codexImageResources(resources, providerID, profile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
   const supported = available.filter((resource) => resource.options?.image_generation_capability === "supported").length;
   const unsupported = available.filter((resource) => resource.options?.image_generation_capability === "unsupported").length;

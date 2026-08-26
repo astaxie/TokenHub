@@ -87,6 +87,53 @@ describe("ProviderCodexImageCapability", () => {
     expect(screen.queryByText("Codex 订阅生图")).not.toBeInTheDocument();
   });
 
+  it("uses plugin metadata to select non-Codex account resources", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { enabled: true, tested: true, capability: "supported", resource_id: "rsrc_kimi" },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderCodexImageCapability
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={[{
+          ...action,
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.image_capability.configure",
+          subject: "kimi_subscription",
+          metadata: {
+            display_name: "Kimi Subscription ImageGen",
+            provider_resource_type: "kimi_subscription_account",
+            public_model: "kimi-image",
+            upstream_model: "moonshot-image",
+          },
+        }]}
+        provider={{ ...provider, id: "prv_kimi", name: "Kimi", type: "kimi_subscription" }}
+        routes={[]}
+        resources={[
+          { ...resource, id: "rsrc_codex", provider_id: "prv_kimi", resource_type: "openai_subscription" },
+          { ...resource, id: "rsrc_kimi", provider_id: "prv_kimi", name: "Kimi Account", resource_type: "kimi_subscription_account" },
+        ]}
+        selectedAccountID="all"
+        onChanged={onChanged}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Kimi Subscription ImageGen")).toBeInTheDocument();
+    expect(screen.getByText("kimi-image ← moonshot-image")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "开始测试并启用" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body)).resource_id).toBe("rsrc_kimi");
+  });
+
   it("unwraps plugin action result envelopes", () => {
     expect(unwrapCodexImageCapabilityResult({
       data: { enabled: true, tested: true, resource_id: "rsrc_codex" },

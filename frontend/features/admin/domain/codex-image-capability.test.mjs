@@ -4,15 +4,17 @@ import { importTypeScript } from "./typescript-test-loader.mjs";
 
 const {
   codexImageModelState,
+  codexImageResources,
   codexImageRouteEnabled,
   defaultCodexImageResourceID,
+  imageCapabilityProfileFromAction,
 } = await importTypeScript(new URL("./codex-image-capability.ts", import.meta.url));
 
 const route = { model_name: "codex-gpt-image-2", provider_id: "provider-1", provider_model: "gpt-image-2", status: "active" };
-const resource = (id, capability, status = "active") => ({
+const resource = (id, capability, status = "active", resourceType = "openai_subscription") => ({
   id,
   provider_id: "provider-1",
-  resource_type: "openai_subscription",
+  resource_type: resourceType,
   status,
   healthy: status === "active",
   options: capability ? { image_generation_capability: capability } : {},
@@ -37,4 +39,29 @@ test("Codex image model state distinguishes disabled, unsupported, and unusable 
   assert.equal(codexImageModelState([resource("one", "unsupported")], "provider-1", false), "unsupported");
   assert.equal(codexImageModelState([resource("one", "unsupported")], "provider-1", true), "enabled_without_account");
   assert.equal(codexImageModelState([resource("one")], "provider-1", false), "untested");
+});
+
+test("image capability profile follows plugin metadata for resources and routes", () => {
+  const profile = imageCapabilityProfileFromAction({
+    metadata: {
+      display_name: "Kimi Subscription ImageGen",
+      provider_resource_type: "kimi_subscription_account",
+      public_model: "kimi-image",
+      upstream_model: "moonshot-image",
+    },
+  });
+  assert.deepEqual(profile, {
+    displayName: "Kimi Subscription ImageGen",
+    publicModel: "kimi-image",
+    upstreamModel: "moonshot-image",
+    resourceType: "kimi_subscription_account",
+  });
+  assert.equal(codexImageRouteEnabled([{ ...route, model_name: "kimi-image", provider_model: "moonshot-image" }], "provider-1", profile), true);
+  assert.deepEqual(
+    codexImageResources([
+      resource("codex", "supported"),
+      resource("kimi", "supported", "active", "kimi_subscription_account"),
+    ], "provider-1", profile).map((item) => item.id),
+    ["kimi"],
+  );
 });
