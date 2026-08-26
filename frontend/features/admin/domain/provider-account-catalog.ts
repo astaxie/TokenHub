@@ -1,8 +1,11 @@
-import { type PluginDescriptor, type Provider, type ProviderCatalogEntry } from "../core/types";
+import { type AdapterDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry } from "../core/types";
 import { isProviderAccountResourceType, providerResourceTypeCapabilityKind } from "./provider-resource-types";
 
-export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalogEntry[], plugins: PluginDescriptor[]) {
+export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalogEntry[], plugins: PluginDescriptor[], adapters: AdapterDescriptor[] = []) {
   const accountProviderTypes = new Set<string>();
+  for (const adapter of adapters) {
+    if (adapter.type && adapter.provider_policy?.credentials_scope === "resource") accountProviderTypes.add(adapter.type);
+  }
   for (const plugin of plugins) {
     for (const capability of plugin.capabilities) {
       const subject = capability.subject?.trim();

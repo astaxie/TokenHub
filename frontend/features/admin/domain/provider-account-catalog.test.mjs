@@ -56,6 +56,27 @@ test("account Provider catalog options include resource-scoped credential policy
   assert.deepEqual(directProviderCatalogOptions(catalog, accountCatalog).map((entry) => entry.id), ["openai"]);
 });
 
+test("account Provider catalog options include adapter resource-scoped credential policy", () => {
+  const catalog = [
+    { id: "kimi", name: "Kimi", display_name: "Kimi Subscription", type: "kimi_subscription", models_count: 0, source: "plugin" },
+    { id: "openai", name: "OpenAI", display_name: "OpenAI", type: "openai", models_count: 0, source: "built_in" },
+  ];
+  const adapters = [{
+    type: "kimi_subscription",
+    capabilities: ["chat"],
+    plugin_id: "tokenhub.provider.kimi",
+    provider_policy: {
+      supports_custom_headers: true,
+      credentials_scope: "resource",
+    },
+  }];
+
+  const accountCatalog = accountProviderCatalogOptionsFromPlugins(catalog, [], adapters);
+
+  assert.deepEqual(accountCatalog.map((entry) => entry.id), ["kimi"]);
+  assert.deepEqual(directProviderCatalogOptions(catalog, accountCatalog).map((entry) => entry.id), ["openai"]);
+});
+
 test("account Provider catalog options are empty without plugin resource type capabilities", () => {
   assert.deepEqual(accountProviderCatalogOptionsFromPlugins([], []).map((entry) => entry.id), []);
 

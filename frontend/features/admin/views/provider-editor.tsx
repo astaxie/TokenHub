@@ -1,7 +1,7 @@
 import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
+import { type AdapterDescriptor, type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
@@ -69,7 +69,7 @@ export function ProviderUpsertModal({
   onAccountsChanged,
   setLoading,
   setError,
-  setNotice, providerTypeOptions, pluginUI = [], pluginActions = [],
+  setNotice, providerTypeOptions, providerAdapters = [], pluginUI = [], pluginActions = [],
   plugins = [],
 }: {
   mode: "create" | "edit";
@@ -86,9 +86,9 @@ export function ProviderUpsertModal({
   onAccountsChanged?: () => Promise<void>;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
-  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
+  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
-  const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins), [catalog, plugins]);
+  const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins, providerAdapters), [catalog, plugins, providerAdapters]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0];
   const editingAccountProvider = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResource(resource));
   const editingAccountProviderCatalogEntry = useMemo(() => accountProviderCatalogOptions.find((entry) => entry.type === provider?.type) ?? (provider ? accountProviderCatalogEntryFromProvider(provider) : defaultAccountProviderCatalogEntry), [accountProviderCatalogOptions, defaultAccountProviderCatalogEntry, provider]);

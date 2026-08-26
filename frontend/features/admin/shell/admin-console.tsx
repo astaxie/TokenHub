@@ -1127,6 +1127,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           standardModels={data.models}
           providerModels={data.providerModels}
           resources={data.providerResources}
+          providerAdapters={data.providerAdapters}
           pluginUI={data.pluginUI}
           pluginActions={data.pluginActions}
           plugins={data.plugins}
@@ -1153,6 +1154,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}
+          providerAdapters={data.providerAdapters}
           pluginUI={data.pluginUI}
           pluginActions={data.pluginActions}
           plugins={data.plugins}
