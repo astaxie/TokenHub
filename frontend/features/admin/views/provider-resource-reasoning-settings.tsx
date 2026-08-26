@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ApiContext, Provider, ProviderResource } from "../core/types";
 import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
 import { effectiveProviderHeaderEntries, parseProviderHeaderEntries, providerHeaderEntryErrors, providerHeadersFormValue } from "../domain/provider-headers";
+import { isOpenAISubscriptionResource } from "../domain/provider-resource-types";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerResourceToForm, providerResourceUpdatePayload, readAdminError } from "../resources/payloads";
 import { providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
@@ -24,7 +25,7 @@ export function ProviderResourceReasoningSettings({
   onSaved: () => Promise<void> | void;
 }) {
   const scopedResources = useMemo(
-    () => resources.filter((resource) => resource.provider_id === provider.id && resource.resource_type !== "openai_subscription"),
+    () => resources.filter((resource) => resource.provider_id === provider.id && !isOpenAISubscriptionResource(resource)),
     [provider.id, resources],
   );
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
