@@ -50,9 +50,17 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
-	if strings.TrimSpace(descriptor.Capability) != "credentials.refresh" {
+	switch strings.TrimSpace(descriptor.Capability) {
+	case "credentials.refresh":
+		return s.applyCredentialsRefreshActionSideEffects(ctx, descriptor, payload, result)
+	case "image.capability.configure":
+		return s.applyImageCapabilityActionSideEffects(ctx, descriptor, payload, result)
+	default:
 		return result, nil
 	}
+}
+
+func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
 	credentials, ok := pluginActionResultCredentials(result.Data)
 	if !ok {
 		return result, nil

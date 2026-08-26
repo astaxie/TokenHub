@@ -1,0 +1,178 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
+)
+
+type providerImageCapabilityRouteProfile struct {
+	ProviderType  string
+	ResourceType  string
+	PublicModel   string
+	UpstreamModel string
+}
+
+func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
+	profile, ok := providerImageCapabilityRouteProfileFromAction(descriptor)
+	if !ok {
+		return result, nil
+	}
+	capability, ok := providerImageCapabilityResultFromActionData(result.Data)
+	if !ok {
+		return result, nil
+	}
+	resourceID, err := imageCapabilityActionResourceID(payload, capability.ResourceID)
+	if err != nil {
+		return result, err
+	}
+	if resourceID == "" {
+		return result, NewHTTPError(http.StatusBadGateway, "provider_image_capability_missing_resource", "Provider image capability action did not identify a resource")
+	}
+	resource, ok := s.store.GetProviderResource(resourceID)
+	if !ok {
+		return result, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return result, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	if profile.ProviderType != "" && profile.ProviderType != provider.Type {
+		return result, NewHTTPError(http.StatusForbidden, "plugin_action_subject_mismatch", "Plugin action subject does not match the Provider type")
+	}
+	if profile.ResourceType != "" && profile.ResourceType != resource.ResourceType {
+		return result, NewHTTPError(http.StatusForbidden, "plugin_action_resource_type_mismatch", "Plugin action resource type does not match the Provider resource")
+	}
+
+	if !capability.Enabled {
+		if err := s.setProviderImageCapabilityRoutesStatus(provider.ID, profile, StatusDisabled); err != nil {
+			return result, err
+		}
+		return result, nil
+	}
+
+	if capability.Capability != "" {
+		if _, err := s.updateProviderImageCapability(resource.ID, capability.Capability); err != nil {
+			return result, err
+		}
+	}
+	if capability.Capability != codexImageCapabilitySupported {
+		return result, nil
+	}
+	route, err := s.ensureProviderImageCapabilityRoute(provider.ID, profile)
+	if err != nil {
+		return result, err
+	}
+	capability.RouteID = route.ID
+	result.Data = imageCapabilityActionResultWithRoute(result.Data, route.ID)
+	return result, nil
+}
+
+func providerImageCapabilityRouteProfileFromAction(descriptor pluginmeta.ActionDescriptor) (providerImageCapabilityRouteProfile, bool) {
+	profile := providerImageCapabilityRouteProfile{
+		ProviderType:  strings.TrimSpace(descriptor.Subject),
+		ResourceType:  strings.TrimSpace(firstNonEmpty(descriptor.Metadata["provider_resource_type"], descriptor.Metadata["resource_type"])),
+		PublicModel:   strings.TrimSpace(descriptor.Metadata["public_model"]),
+		UpstreamModel: strings.TrimSpace(descriptor.Metadata["upstream_model"]),
+	}
+	return profile, profile.PublicModel != "" && profile.UpstreamModel != ""
+}
+
+func imageCapabilityActionResourceID(payload json.RawMessage, fallback string) (string, error) {
+	resourceID := strings.TrimSpace(fallback)
+	if resourceID != "" {
+		return resourceID, nil
+	}
+	var request struct {
+		ResourceID string `json:"resource_id"`
+	}
+	if len(payload) > 0 {
+		if err := json.Unmarshal(payload, &request); err != nil {
+			return "", NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+		}
+	}
+	return strings.TrimSpace(request.ResourceID), nil
+}
+
+func imageCapabilityActionResultWithRoute(data any, routeID string) any {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return data
+	}
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return data
+	}
+	result["route_id"] = routeID
+	return result
+}
+
+func (s *Server) updateProviderImageCapability(resourceID string, capability string) (ProviderResource, error) {
+	options := map[string]string{
+		codexImageCapabilityOption:          capability,
+		codexImageCapabilityCheckedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if capability == codexImageCapabilitySupported {
+		options[codexImageRouteBackfillOption] = codexImageRouteBackfillCompleted
+	}
+	return s.store.UpdateProviderResourceOptions(resourceID, options)
+}
+
+func (s *Server) ensureProviderImageCapabilityRoute(providerID string, profile providerImageCapabilityRouteProfile) (ModelRoute, error) {
+	var disabled *ModelRoute
+	for _, route := range s.store.ListRoutes() {
+		if !providerImageCapabilityRouteMatches(route, providerID, profile) {
+			continue
+		}
+		if route.Status == StatusActive {
+			return route, nil
+		}
+		if disabled == nil {
+			copy := route
+			disabled = &copy
+		}
+	}
+	if disabled != nil {
+		disabled.Status = StatusActive
+		return s.store.UpdateRoute(disabled.ID, *disabled)
+	}
+	return s.store.CreateRoute(defaultProviderImageCapabilityRoute(providerID, profile))
+}
+
+func (s *Server) setProviderImageCapabilityRoutesStatus(providerID string, profile providerImageCapabilityRouteProfile, status string) error {
+	for _, route := range s.store.ListRoutes() {
+		if !providerImageCapabilityRouteMatches(route, providerID, profile) || route.Status == status {
+			continue
+		}
+		route.Status = status
+		if _, err := s.store.UpdateRoute(route.ID, route); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func providerImageCapabilityRouteMatches(route ModelRoute, providerID string, profile providerImageCapabilityRouteProfile) bool {
+	return strings.TrimSpace(route.ModelName) == profile.PublicModel &&
+		strings.TrimSpace(route.ProviderID) == strings.TrimSpace(providerID) &&
+		strings.TrimSpace(route.ProviderModel) == profile.UpstreamModel
+}
+
+func defaultProviderImageCapabilityRoute(providerID string, profile providerImageCapabilityRouteProfile) ModelRoute {
+	return ModelRoute{
+		ModelName:     profile.PublicModel,
+		ProviderID:    strings.TrimSpace(providerID),
+		ProviderModel: profile.UpstreamModel,
+		Priority:      1,
+		Weight:        100,
+		QualityScore:  50,
+		CostScore:     50,
+		Status:        StatusActive,
+		Strategy:      RouteStrategyPriorityWeighted,
+		ProjectScope:  RouteProjectScopeAll,
+	}
+}

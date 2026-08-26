@@ -16,11 +16,11 @@ const (
 	codexImageRouteBackfillCompleted = "completed"
 )
 
-type codexImageCapabilityRequest struct {
+type providerImageCapabilityRequest struct {
 	Enabled *bool `json:"enabled"`
 }
 
-type codexImageCapabilityResult struct {
+type providerImageCapabilityResult struct {
 	Enabled    bool   `json:"enabled"`
 	Tested     bool   `json:"tested"`
 	Capability string `json:"capability,omitempty"`
@@ -49,8 +49,8 @@ func codexImageCapabilityClusterKey(providerID string) string {
 	return "codex-image-capability:" + strings.TrimSpace(providerID)
 }
 
-func (s *Server) handleAdminCodexImageCapability(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	var req codexImageCapabilityRequest
+func (s *Server) handleAdminProviderImageCapability(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
+	var req providerImageCapabilityRequest
 	if err := s.decodeJSON(w, r, &req); err != nil {
 		writeError(w, r, err)
 		return
@@ -82,12 +82,12 @@ func (s *Server) handleAdminCodexImageCapability(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID string, enabled bool) (codexImageCapabilityResult, error) {
+func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID string, enabled bool) (providerImageCapabilityResult, error) {
 	resource, provider, err := s.codexImageResource(resourceID, enabled)
 	if err != nil {
-		return codexImageCapabilityResult{}, err
+		return providerImageCapabilityResult{}, err
 	}
-	result := codexImageCapabilityResult{Enabled: enabled, ResourceID: resource.ID}
+	result := providerImageCapabilityResult{Enabled: enabled, ResourceID: resource.ID}
 	err = s.store.RunClusterOperation(ctx, codexImageCapabilityClusterKey(provider.ID), func(leaseCtx context.Context) error {
 		current, currentProvider, currentErr := s.codexImageResource(resourceID, enabled)
 		if currentErr != nil {

@@ -124,7 +124,7 @@ func (s *Server) handleAdminProviderResourceTestPost(w http.ResponseWriter, r *h
 }
 
 func (s *Server) handleAdminProviderResourceImageCapabilityPost(w http.ResponseWriter, r *http.Request) {
-	s.handleAdminProviderResourceActionRoute(w, r, s.handleAdminCodexImageCapability)
+	s.handleAdminProviderResourceActionRoute(w, r, s.handleAdminProviderImageCapability)
 }
 
 func (s *Server) handleAdminProviderResourceRefreshTokenPost(w http.ResponseWriter, r *http.Request) {
@@ -379,28 +379,28 @@ func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, us
 	return reset, true, nil
 }
 
-func (s *Server) executeProviderResourceImageCapabilityAction(ctx context.Context, user AdminUser, resourceID string, enabled bool) (codexImageCapabilityResult, bool, error) {
+func (s *Server) executeProviderResourceImageCapabilityAction(ctx context.Context, user AdminUser, resourceID string, enabled bool) (providerImageCapabilityResult, bool, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
-		return codexImageCapabilityResult{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+		return providerImageCapabilityResult{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
 	}
 	provider, ok := s.providerByID(resource.ProviderID)
 	if !ok {
-		return codexImageCapabilityResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+		return providerImageCapabilityResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityImageGenerate, "image.capability.configure", map[string]any{
 		"resource_id": resourceID,
 		"enabled":     enabled,
-	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
+	}, providerPluginActionOptions{ApplySideEffects: true, ResourceType: resource.ResourceType})
 	if err != nil {
-		return codexImageCapabilityResult{}, true, err
+		return providerImageCapabilityResult{}, true, err
 	}
 	if !handled {
-		return codexImageCapabilityResult{}, false, nil
+		return providerImageCapabilityResult{}, false, nil
 	}
-	imageCapability, ok := codexImageCapabilityResultFromActionData(result.Data)
+	imageCapability, ok := providerImageCapabilityResultFromActionData(result.Data)
 	if !ok {
-		return codexImageCapabilityResult{}, true, NewHTTPError(http.StatusInternalServerError, "provider_image_capability_invalid_result", "Provider image capability returned an invalid result")
+		return providerImageCapabilityResult{}, true, NewHTTPError(http.StatusInternalServerError, "provider_image_capability_invalid_result", "Provider image capability returned an invalid result")
 	}
 	return imageCapability, true, nil
 }
@@ -464,17 +464,17 @@ func openAIAccountQuotaResetResultFromActionData(data any) (openAIAccountQuotaRe
 	return result, strings.TrimSpace(result.Code) != ""
 }
 
-func codexImageCapabilityResultFromActionData(data any) (codexImageCapabilityResult, bool) {
-	if result, ok := data.(codexImageCapabilityResult); ok {
+func providerImageCapabilityResultFromActionData(data any) (providerImageCapabilityResult, bool) {
+	if result, ok := data.(providerImageCapabilityResult); ok {
 		return result, strings.TrimSpace(result.ResourceID) != ""
 	}
 	raw, err := json.Marshal(data)
 	if err != nil {
-		return codexImageCapabilityResult{}, false
+		return providerImageCapabilityResult{}, false
 	}
-	var result codexImageCapabilityResult
+	var result providerImageCapabilityResult
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return codexImageCapabilityResult{}, false
+		return providerImageCapabilityResult{}, false
 	}
 	return result, strings.TrimSpace(result.ResourceID) != ""
 }

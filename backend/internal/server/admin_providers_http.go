@@ -864,7 +864,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 	}
 	switch parts[1] {
 	case "image-capability":
-		s.handleAdminCodexImageCapability(w, r, user, parts[0])
+		s.handleAdminProviderImageCapability(w, r, user, parts[0])
 	case "test":
 		s.serveAdminProviderResourceTest(w, r, user, parts[0])
 	case "refresh-token":
