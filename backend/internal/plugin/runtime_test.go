@@ -147,7 +147,7 @@ permissions:
     write:
       - request_body
 `)
-	writePackageState(t, pluginDir, `{"status":"disabled","reason":"operator disabled during upgrade"}`)
+	writePackageStateFile(t, pluginDir, `{"status":"disabled","reason":"operator disabled during upgrade"}`)
 	plugins := NewRegistry()
 	chain := NewGatewayChainRegistry()
 
@@ -543,11 +543,43 @@ tokenhub:
 kinds:
   - extension
 `)
-	writePackageState(t, pluginDir, `{"status":"paused"}`)
+	writePackageStateFile(t, pluginDir, `{"status":"paused"}`)
 
 	_, err := NewRuntime(root).Discover()
 	if err == nil {
 		t.Fatal("runtime discovered plugin with unsupported package state")
+	}
+}
+
+func TestRuntimeUpdatePackageStateWritesLocalState(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, filepath.Join(root, "privacy"), `
+schema_version: 1
+id: tokenhub.privacy
+name: Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+
+	pkg, err := NewRuntime(root).UpdatePackageState("tokenhub.privacy", PackageState{
+		Status: StatusDisabled,
+		Reason: "operator disabled before restart",
+	})
+	if err != nil {
+		t.Fatalf("update package state: %v", err)
+	}
+	if pkg.State.Status != StatusDisabled || pkg.State.Reason != "operator disabled before restart" {
+		t.Fatalf("updated package state = %+v", pkg.State)
+	}
+	packages, err := NewRuntime(root).Discover()
+	if err != nil {
+		t.Fatalf("discover after state update: %v", err)
+	}
+	if len(packages) != 1 || packages[0].State.Status != StatusDisabled {
+		t.Fatalf("packages after update = %+v", packages)
 	}
 }
 
@@ -571,7 +603,7 @@ func writeManifest(t *testing.T, dir string, body string) {
 	}
 }
 
-func writePackageState(t *testing.T, dir string, body string) {
+func writePackageStateFile(t *testing.T, dir string, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, packageStateFileName), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
