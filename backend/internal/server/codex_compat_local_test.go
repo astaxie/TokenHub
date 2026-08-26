@@ -688,6 +688,7 @@ func TestLocalCodexCompatSerializesClaudeCodeToolsOnly(t *testing.T) {
 }
 
 func TestLocalCodexCompatAnthropicRouteCompatibility(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "admin"})
 	validRequest := localCodexCompatAnthropicRequest(t, map[string]any{
 		"model":      localCodexCompatModel,
 		"max_tokens": 1024,
@@ -707,11 +708,11 @@ func TestLocalCodexCompatAnthropicRouteCompatibility(t *testing.T) {
 		},
 		ProviderModel: localCodexCompatModel,
 	}
-	if err := validateAnthropicRouteCompatibility(codexRoute, validRequest); err != nil {
+	if err := server.validateAnthropicRouteCompatibility(codexRoute, validRequest); err != nil {
 		t.Fatalf("valid Codex route was rejected: %v", err)
 	}
 
-	filtered, err := compatibleAnthropicRoutes(
+	filtered, err := server.compatibleAnthropicRoutes(
 		RoutedCall{Routes: []RouteSelection{
 			{
 				Provider: Provider{
@@ -749,7 +750,7 @@ func TestLocalCodexCompatAnthropicRouteCompatibility(t *testing.T) {
 			},
 		},
 	})
-	err = validateAnthropicRouteCompatibility(codexRoute, unsupportedRequest)
+	err = server.validateAnthropicRouteCompatibility(codexRoute, unsupportedRequest)
 	if err == nil || AsHTTPError(err).Code != "unsupported_content_block" {
 		t.Fatalf("assistant image compatibility error = %#v", err)
 	}

@@ -66,3 +66,10 @@ func TestRouteModelProtocolUsesDescriptorPolicy(t *testing.T) {
 		t.Fatalf("unexpected incompatible descriptor protocol error: %v", err)
 	}
 }
+
+func TestRouteProtocolRequiresAdapterDescriptor(t *testing.T) {
+	route := RouteSelection{Provider: Provider{Type: ProviderOpenAICodex}}
+	if routeSupportsProviderProtocol(NewAdapterRegistry(), route, providerRouteProtocolCodexResponses) {
+		t.Fatal("unregistered provider type should not be matched by legacy protocol fallback")
+	}
+}

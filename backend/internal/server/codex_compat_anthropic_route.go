@@ -73,10 +73,6 @@ func (s *Server) compatibleAnthropicRoutes(routed RoutedCall, req anthropicMessa
 	return compatible, nil
 }
 
-func compatibleAnthropicRoutes(routed RoutedCall, req anthropicMessagesRequest) (RoutedCall, error) {
-	return (&Server{}).compatibleAnthropicRoutes(routed, req)
-}
-
 func (s *Server) validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMessagesRequest) error {
 	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolAnthropic) {
 		return nil
@@ -94,10 +90,6 @@ func (s *Server) validateAnthropicRouteCompatibility(route RouteSelection, req a
 	}
 	_, err := anthropicToOpenAIChatRequest(req, route.Provider)
 	return err
-}
-
-func validateAnthropicRouteCompatibility(route RouteSelection, req anthropicMessagesRequest) error {
-	return (&Server{}).validateAnthropicRouteCompatibility(route, req)
 }
 
 func isAnthropicRouteIncompatibility(err error) bool {

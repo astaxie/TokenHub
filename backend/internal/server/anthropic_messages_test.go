@@ -1052,6 +1052,7 @@ func TestAnthropicMessagesSkipsIncompatibleRouteWithoutProviderPenalty(t *testin
 }
 
 func TestCompatibleAnthropicRoutesUsesHighestPriorityError(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "admin"})
 	req := anthropicMessagesRequest{
 		Raw: map[string]any{
 			"model":      "claude-route-compatibility",
@@ -1078,7 +1079,7 @@ func TestCompatibleAnthropicRoutesUsesHighestPriorityError(t *testing.T) {
 		},
 	}}
 
-	compatible, err := compatibleAnthropicRoutes(routed, req)
+	compatible, err := server.compatibleAnthropicRoutes(routed, req)
 	if len(compatible.Routes) != 0 {
 		t.Fatalf("expected no compatible routes, got %#v", compatible.Routes)
 	}
@@ -1088,6 +1089,7 @@ func TestCompatibleAnthropicRoutesUsesHighestPriorityError(t *testing.T) {
 }
 
 func TestCompatibleAnthropicRoutesSkipsProviderRejectingReasoningEffort(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "admin"})
 	req := anthropicMessagesRequest{
 		Raw: map[string]any{
 			"model":         "claude-route-reasoning",
@@ -1115,7 +1117,7 @@ func TestCompatibleAnthropicRoutesSkipsProviderRejectingReasoningEffort(t *testi
 		},
 	}}
 
-	compatible, err := compatibleAnthropicRoutes(routed, req)
+	compatible, err := server.compatibleAnthropicRoutes(routed, req)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -80,30 +80,5 @@ func routeSupportsProviderProtocol(registry *AdapterRegistry, route RouteSelecti
 	if descriptor, ok := registry.Describe(route.Provider.Type); ok {
 		return adapterDescriptorRouteProtocolSet(descriptor)[protocol]
 	}
-	return legacyRouteSupportsProviderProtocol(route.Provider.Type, protocol)
-}
-
-func legacyRouteSupportsProviderProtocol(providerType string, protocol string) bool {
-	switch protocol {
-	case providerRouteProtocolAnthropic:
-		return providerType == ProviderAnthropic
-	case providerRouteProtocolCodexResponses:
-		return providerType == ProviderOpenAICodex
-	case providerRouteProtocolChatCompletions:
-		switch providerType {
-		case ProviderMock, ProviderOpenAI, ProviderOpenAICompatible, ProviderAzureOpenAI, "deepseek", "qwen", "local":
-			return true
-		default:
-			return false
-		}
-	case providerRouteProtocolResponses:
-		switch providerType {
-		case ProviderMock, ProviderOpenAI, ProviderOpenAICompatible, ProviderOpenAICodex, "deepseek", "qwen", "local", ProviderKronk:
-			return true
-		default:
-			return false
-		}
-	default:
-		return false
-	}
+	return false
 }
