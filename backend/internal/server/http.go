@@ -64,6 +64,7 @@ type Server struct {
 	versions                *versionService
 	guardrailEngine         *guardrails.Engine
 	upstreamClient          *http.Client
+	pluginInstallClient     *http.Client
 	syntheticDNSPolicy      *providerSyntheticDNSPolicy
 	providerProxyPolicy     *providerProxyPolicy
 	syntheticDNSSetting     sync.Mutex
@@ -232,7 +233,12 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 			Model:   config.GuardrailModelName,
 			Timeout: time.Duration(config.GuardrailModelTimeoutSeconds) * time.Second,
 		})),
-		upstreamClient:      client,
+		upstreamClient: client,
+		pluginInstallClient: &http.Client{
+			Transport:     client.Transport,
+			CheckRedirect: strictProviderUpstreamRedirect,
+			Timeout:       60 * time.Second,
+		},
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
 	}
