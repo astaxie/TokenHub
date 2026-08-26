@@ -120,6 +120,7 @@ export function ProviderOAuthNoticeModal({
   open,
   busy,
   error,
+  oauthMetadata,
   onClose,
   onConfirm,
   onCopy,
@@ -127,6 +128,7 @@ export function ProviderOAuthNoticeModal({
   open: boolean;
   busy: boolean;
   error: string;
+  oauthMetadata?: Record<string, string>;
   onClose: () => void;
   onConfirm: () => Promise<void>;
   onCopy: () => Promise<void>;
@@ -157,7 +159,7 @@ export function ProviderOAuthNoticeModal({
           <span>{tx("登录和授权完成后，请复制浏览器地址栏中的完整 localhost callback URL，再返回此处粘贴回填。")}</span>
         </div>
         <ol className="provider-oauth-notice-steps">
-          <li>{tx("在即将打开的页面中登录 OpenAI/Codex 并完成授权。")}</li>
+          <li>{pluginOAuthCopy(oauthMetadata, "notice_login_step", "在即将打开的页面中登录账号并完成授权。")}</li>
           <li>{tx("授权后 localhost 页面可能显示无法访问，这是正常现象。")}</li>
           <li>{tx("复制地址栏中的完整地址，返回 TokenHub 粘贴并确认回填。")}</li>
         </ol>
@@ -183,6 +185,7 @@ export function ProviderOAuthCallbackModal({
   busy,
   value,
   error,
+  oauthMetadata,
   onValueChange,
   onClose,
   onConfirm,
@@ -191,6 +194,7 @@ export function ProviderOAuthCallbackModal({
   busy: boolean;
   value: string;
   error: string;
+  oauthMetadata?: Record<string, string>;
   onValueChange: (value: string) => void;
   onClose: () => void;
   onConfirm: () => void;
@@ -202,7 +206,7 @@ export function ProviderOAuthCallbackModal({
         <div className="provider-oauth-callback-heading">
           <div className="provider-oauth-callback-icon" aria-hidden="true"><KeyRound size={18} /></div>
           <div>
-            <p className="eyebrow">{tx("OpenAI/Codex 授权")}</p>
+            <p className="eyebrow">{pluginOAuthCopy(oauthMetadata, "callback_eyebrow", "账号 OAuth 授权")}</p>
             <h2 id="provider-oauth-callback-title">{tx("粘贴授权回调地址")}</h2>
           </div>
         </div>
@@ -228,4 +232,8 @@ export function ProviderOAuthCallbackModal({
       </div>
     </div>
   );
+}
+
+function pluginOAuthCopy(metadata: Record<string, string> | undefined, key: string, fallback: string) {
+  return metadata?.[key]?.trim() || tx(fallback);
 }

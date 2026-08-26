@@ -19,6 +19,8 @@ func registerBuiltinPluginActions(server *Server) {
 		Subject:    ProviderOpenAICodex,
 		Metadata: map[string]string{
 			"oauth_redirect_uri": openAIAccountOAuthRedirectURI,
+			"notice_login_step":  "Sign in to OpenAI/Codex and complete authorization on the page that opens.",
+			"callback_eyebrow":   "OpenAI/Codex authorization",
 		},
 		InputSchema: map[string]any{
 			"type": "object",

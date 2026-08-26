@@ -1735,14 +1735,14 @@ export function ProviderUpsertModal({
       ) : null}
       <ProviderOAuthNoticeModal
         busy={accountOAuthBusy}
-        error={accountOAuthNoticeError}
+        error={accountOAuthNoticeError} oauthMetadata={providerPluginActionForCapability(pluginActions, values.type, "oauth.start")?.metadata}
         onClose={() => setAccountOAuthNoticeOpen(false)}
         onConfirm={() => startProviderAccountAuthorization("open")} onCopy={() => startProviderAccountAuthorization("copy")}
         open={accountOAuthNoticeOpen}
       />
       <ProviderOAuthCallbackModal
         busy={accountOAuthBusy}
-        error={accountOAuthCallbackModalError}
+        error={accountOAuthCallbackModalError} oauthMetadata={providerPluginActionForCapability(pluginActions, values.type, "oauth.start")?.metadata}
         onClose={() => setAccountOAuthCallbackModalOpen(false)}
         onConfirm={confirmProviderAccountOAuthCallback}
         onValueChange={(value) => {
