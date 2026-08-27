@@ -85,13 +85,21 @@ func TestImageProviderCallHookServesGatewayImageWithoutBuiltinAdapter(t *testing
 	imageBytes := realPNGFixture(t)
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Image Provider Plugin Project", Status: StatusActive})
-	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-provider-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_provider_plugin")
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-provider-plugin-key", Allowed: []string{"plugin-image-model"}, Status: StatusActive}, "thk_image_provider_plugin")
 	if err != nil {
 		t.Fatal(err)
 	}
 	provider := store.AddProvider(Provider{ID: "prv_image_provider_plugin", Name: "Image Provider Plugin", Type: "third_party_image_plugin", Status: StatusActive, Healthy: true})
-	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
-	store.AddRoute(ModelRoute{ID: "route_image_provider_plugin", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderModel: "upstream-image-model", Status: StatusActive, Priority: 1, Weight: 100})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_image_provider_plugin", ProviderID: provider.ID, Name: "Image Provider Plugin Account",
+		ResourceType: "third_party_image_account", Status: StatusActive, Healthy: true,
+		Options: map[string]string{"third_party_image_capability": "available"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-image-model", Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_provider_plugin", ModelName: "plugin-image-model", ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: "upstream-image-model", Status: StatusActive, Priority: 1, Weight: 100})
 	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-provider-plugin-secret", ImageStorageDir: t.TempDir()})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
@@ -110,6 +118,24 @@ func TestImageProviderCallHookServesGatewayImageWithoutBuiltinAdapter(t *testing
 	}
 	if err := server.gatewayChain.RegisterHook(hook); err != nil {
 		t.Fatalf("register image provider call hook: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.test-image-provider",
+		ActionID:   "third_party_image.capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "third_party_image_plugin",
+		Metadata: map[string]string{
+			"provider_resource_type":     "third_party_image_account",
+			"public_model":               "plugin-image-model",
+			"upstream_model":             "upstream-image-model",
+			"capability_option":          "third_party_image_capability",
+			"capability_supported_value": "available",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatalf("register image capability action: %v", err)
 	}
 	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
 		var request ProviderImageGenerationRequest
@@ -131,7 +157,7 @@ func TestImageProviderCallHookServesGatewayImageWithoutBuiltinAdapter(t *testing
 	}
 
 	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
-		"model": openAIImageModelName, "prompt": "plugin image prompt", "response_format": "b64_json",
+		"model": "plugin-image-model", "prompt": "plugin image prompt", "response_format": "b64_json",
 	}, secret, nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)

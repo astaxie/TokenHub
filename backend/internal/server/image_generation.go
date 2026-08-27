@@ -1143,7 +1143,8 @@ func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, s
 		request.Model = codexImageModelName
 	}
 	if !imageModelIsSupported(request.Model, supportedModels) {
-		return NewHTTPError(http.StatusBadRequest, "unsupported_image_model", "Only codex-gpt-image-2 and gpt-image-2 are supported")
+		supported := uniqueStrings(supportedModels)
+		return NewHTTPError(http.StatusBadRequest, "unsupported_image_model", fmt.Sprintf("Supported image models: %s", strings.Join(supported, ", ")))
 	}
 	request.Prompt = strings.TrimSpace(request.Prompt)
 	if request.Prompt == "" {
