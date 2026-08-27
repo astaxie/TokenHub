@@ -420,9 +420,7 @@ export function ModelRouteProviders({ model, data }: { model: Model; data: AppDa
   );
 }
 
-export const legacyProviderTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local", "kronk"];
-
-export const providerTypeOptions = legacyProviderTypeOptions;
+const fallbackProviderTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local", "kronk"];
 
 export type ProviderTypeOption = {
   value: string;
@@ -550,7 +548,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
       types.add(provider.type);
     }
   }
-  if (!hasPluginProviderSource) legacyProviderTypeOptions.forEach((type) => types.add(type));
+  if (!hasPluginProviderSource) fallbackProviderTypeOptions.forEach((type) => types.add(type));
   if (values?.type) types.add(values.type);
   return [...types].map((value) => ({
     value,
