@@ -1,7 +1,6 @@
 import { appRole } from "../core/navigation";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
 import { imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfilesFromActions } from "./provider-image-capability";
-import { codexImageModelName } from "./codex-provider-profile";
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabelFromData, roleLabel, splitList } from "./labels";
@@ -472,11 +471,6 @@ export function modelIsInDirectory(model: Model, data: AppData) {
   if (modelRoutesFor(model, data).length > 0) return true;
   const source = model.metadata?.source ?? "";
   return source !== "tokenhub-standard-catalog" && source !== "public-provider-conf";
-}
-
-export function isCodexSubscriptionImageModel(model: Model | undefined) {
-  return model?.name === codexImageModelName ||
-    model?.metadata?.execution_type === "codex_subscription_image_generation";
 }
 
 export function modelHasImageCapability(data: AppData, model: Model | undefined) {
