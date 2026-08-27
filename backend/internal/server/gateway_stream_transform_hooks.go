@@ -24,20 +24,25 @@ type gatewayStreamEventPatch struct {
 }
 
 type gatewayStreamTransformWriter struct {
-	server  *Server
-	ctx     context.Context
-	call    CallContext
-	route   RouteSelection
-	sink    io.Writer
-	decoder *sseStreamWriter
+	server   *Server
+	ctx      context.Context
+	call     CallContext
+	route    RouteSelection
+	protocol string
+	sink     io.Writer
+	decoder  *sseStreamWriter
 }
 
-func (s *Server) hasGatewayStreamTransformHooks() bool {
-	return s.hasGatewayHookStage(pluginmeta.StageStreamTransform)
+func (s *Server) hasGatewayStreamTransformHooksForRoute(route RouteSelection, protocol string) bool {
+	return len(s.gatewayStreamTransformHooksForRoute(route, protocol)) > 0
 }
 
-func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallContext, route RouteSelection, sink io.Writer) *gatewayStreamTransformWriter {
-	writer := &gatewayStreamTransformWriter{server: s, ctx: ctx, call: call, route: route, sink: sink}
+func (s *Server) gatewayStreamTransformHooksForRoute(route RouteSelection, protocol string) []pluginmeta.GatewayHookDescriptor {
+	return s.gatewayRouteHooksForRoute(pluginmeta.StageStreamTransform, route, protocol, true)
+}
+
+func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallContext, route RouteSelection, protocol string, sink io.Writer) *gatewayStreamTransformWriter {
+	writer := &gatewayStreamTransformWriter{server: s, ctx: ctx, call: call, route: route, protocol: protocol, sink: sink}
 	writer.decoder = newSSEStreamWriter(writer.handleEvent)
 	return writer
 }
@@ -45,8 +50,8 @@ func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallC
 func (s *Server) streamChatRouteWithGatewayTransforms(ctx context.Context, call CallContext, route RouteSelection, req ChatCompletionRequest, headers http.Header, writer io.Writer) (Usage, error) {
 	streamWriter := writer
 	var transformer *gatewayStreamTransformWriter
-	if s.hasGatewayStreamTransformHooks() {
-		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, writer)
+	if s.hasGatewayStreamTransformHooksForRoute(route, providerRouteProtocolChatCompletions) {
+		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolChatCompletions, writer)
 		streamWriter = transformer
 	}
 	usage, err := s.streamChatRoute(ctx, route, req, headers, streamWriter)
@@ -83,7 +88,7 @@ func (w *gatewayStreamTransformWriter) handleEvent(event serverSentEvent) error 
 		_, err := w.sink.Write(event.Raw)
 		return err
 	}
-	transformed, emit, err := w.server.runGatewayStreamTransformHooks(w.ctx, w.call, w.route, event)
+	transformed, emit, err := w.server.runGatewayStreamTransformHooks(w.ctx, w.call, w.route, w.protocol, event)
 	if err != nil {
 		return err
 	}
@@ -94,8 +99,9 @@ func (w *gatewayStreamTransformWriter) handleEvent(event serverSentEvent) error 
 	return err
 }
 
-func (s *Server) runGatewayStreamTransformHooks(ctx context.Context, call CallContext, route RouteSelection, event serverSentEvent) (serverSentEvent, bool, error) {
-	if !s.hasGatewayStreamTransformHooks() {
+func (s *Server) runGatewayStreamTransformHooks(ctx context.Context, call CallContext, route RouteSelection, protocol string, event serverSentEvent) (serverSentEvent, bool, error) {
+	hooks := s.gatewayStreamTransformHooksForRoute(route, protocol)
+	if len(hooks) == 0 {
 		return event, true, nil
 	}
 	eventData, ok := marshalGatewayHookData(gatewayStreamEventView{Event: event.Event, Data: event.Data})
@@ -137,7 +143,7 @@ func (s *Server) runGatewayStreamTransformHooks(ctx context.Context, call CallCo
 	}); ok {
 		input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageStreamTransform, input)
+	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageStreamTransform, input, hooks)
 	if err != nil {
 		return event, true, gatewayHookHTTPError(pluginmeta.StageStreamTransform, err)
 	}

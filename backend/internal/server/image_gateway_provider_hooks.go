@@ -79,11 +79,11 @@ func (s *Server) finishImageGatewayHooks(ctx context.Context, call CallContext, 
 	previousRequest := result.providerRequest
 	previousCacheHit := result.cacheHit
 	response := gatewayImageProviderResponseFromRunResult(result)
-	post, err := s.runGatewayGuardrailPostHooks(ctx, call, route, response, usage)
+	post, err := s.runGatewayGuardrailPostHooks(ctx, call, route, response, usage, providerRouteProtocolImageGeneration)
 	if err != nil {
 		return imageRunResult{}, usage, err
 	}
-	post, err = s.runGatewayResponsePostHooks(ctx, call, route, post)
+	post, err = s.runGatewayResponsePostHooks(ctx, call, route, post, providerRouteProtocolImageGeneration)
 	if err != nil {
 		return imageRunResult{}, usage, err
 	}
@@ -93,12 +93,12 @@ func (s *Server) finishImageGatewayHooks(ctx context.Context, call CallContext, 
 	}
 	result.providerRequest = previousRequest
 	result.cacheHit = previousCacheHit
-	usage, err = s.runGatewayUsageAttributionHooks(ctx, call, route, post, usage)
+	usage, err = s.runGatewayUsageAttributionHooks(ctx, call, route, post, usage, providerRouteProtocolImageGeneration)
 	if err != nil {
 		return imageRunResult{}, usage, err
 	}
 	if !result.cacheHit && result.providerRequest.Model != "" {
-		s.runGatewayCacheWriteHooks(ctx, call, result.providerRequest, post, usage)
+		s.runGatewayCacheWriteHooks(ctx, call, route, result.providerRequest, post, usage, providerRouteProtocolImageGeneration)
 	}
 	return result, usage, nil
 }

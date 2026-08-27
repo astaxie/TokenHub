@@ -86,13 +86,13 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if hit {
-			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage)
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage, providerRouteProtocolAnthropic)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 				writeAnthropicError(w, r, err)
 				return
 			}
-			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp)
+			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp, providerRouteProtocolAnthropic)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 				writeAnthropicError(w, r, err)
@@ -105,7 +105,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 				writeAnthropicError(w, r, err)
 				return
 			}
-			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, body, usage)
+			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, body, usage, providerRouteProtocolAnthropic)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 				writeAnthropicError(w, r, err)
@@ -134,7 +134,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	postResp, err := s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage)
+	postResp, err := s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolAnthropic)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeAnthropicError(w, r, err)
@@ -147,7 +147,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
-	postResp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp)
+	postResp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp, providerRouteProtocolAnthropic)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeAnthropicError(w, r, err)
@@ -160,14 +160,14 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		writeAnthropicError(w, r, err)
 		return
 	}
-	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage)
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolAnthropic)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
-	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req.Raw, resp, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, req.Raw, resp, usage, providerRouteProtocolAnthropic)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
@@ -333,6 +333,19 @@ func (s *Server) executeRoutedAnthropicMessages(
 		}
 		return s.executeAnthropicMessagesRoute(ctx, route, upstreamReq, r.Header)
 	})
+}
+
+func anthropicGatewayRouteProtocol(registry *AdapterRegistry, route RouteSelection) string {
+	switch {
+	case routeSupportsProviderProtocol(registry, route, providerRouteProtocolAnthropic):
+		return providerRouteProtocolAnthropic
+	case routeSupportsProviderProtocol(registry, route, providerRouteProtocolCodexResponses):
+		return providerRouteProtocolCodexResponses
+	case routeSupportsProviderProtocol(registry, route, providerRouteProtocolChatCompletions):
+		return providerRouteProtocolChatCompletions
+	default:
+		return ""
+	}
 }
 
 func anthropicToOpenAIChatRequest(req anthropicMessagesRequest, provider Provider) (ChatCompletionRequest, error) {
@@ -1003,16 +1016,17 @@ func (s *Server) handleAnthropicMessagesStream(
 			var streamErr error
 			streamWriter := io.Writer(tracker)
 			var transformer *gatewayStreamTransformWriter
-			if s.hasGatewayStreamTransformHooks() {
-				transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, tracker)
+			protocol := anthropicGatewayRouteProtocol(s.adapterRegistry, prepared)
+			if s.hasGatewayStreamTransformHooksForRoute(prepared, protocol) {
+				transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, protocol, tracker)
 				streamWriter = transformer
 			}
-			switch {
-			case routeSupportsProviderProtocol(s.adapterRegistry, prepared, providerRouteProtocolAnthropic):
+			switch protocol {
+			case providerRouteProtocolAnthropic:
 				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, attemptReq, r.Header, streamWriter)
-			case routeSupportsProviderProtocol(s.adapterRegistry, prepared, providerRouteProtocolCodexResponses):
+			case providerRouteProtocolCodexResponses:
 				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, attemptReq, r.Header, streamWriter)
-			case routeSupportsProviderProtocol(s.adapterRegistry, prepared, providerRouteProtocolChatCompletions):
+			case providerRouteProtocolChatCompletions:
 				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, attemptReq, streamWriter)
 			default:
 				streamErr = NewHTTPError(

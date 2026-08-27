@@ -491,7 +491,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 	if hit {
-		response, err = s.runGatewayGuardrailPostHooks(ctx, call, RouteSelection{}, response, usage)
+		response, err = s.runGatewayGuardrailPostHooks(ctx, call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
 		if err != nil {
 			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 				return
@@ -500,7 +500,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
-		response, err = s.runGatewayResponsePostHooks(ctx, call, RouteSelection{}, response)
+		response, err = s.runGatewayResponsePostHooks(ctx, call, RouteSelection{}, response, providerRouteProtocolResponses)
 		if err != nil {
 			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 				return
@@ -509,7 +509,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
-		usage, err = s.runGatewayUsageAttributionHooks(ctx, call, RouteSelection{}, response, usage)
+		usage, err = s.runGatewayUsageAttributionHooks(ctx, call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
 		if err != nil {
 			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 				return
@@ -564,26 +564,26 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 	}
 	response, route, usage, attempts, invokeErr := s.executeRoutedResponsesContext(ctx, envelope.Headers, routed, request)
 	if invokeErr == nil {
-		response, invokeErr = s.runGatewayGuardrailPostHooks(ctx, routed.Call, route, response, usage)
+		response, invokeErr = s.runGatewayGuardrailPostHooks(ctx, routed.Call, route, response, usage, providerRouteProtocolResponses)
 		if invokeErr != nil {
 			httpErr := AsHTTPError(invokeErr)
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
-		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response)
+		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response, providerRouteProtocolResponses)
 		if invokeErr != nil {
 			httpErr := AsHTTPError(invokeErr)
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
-		usage, invokeErr = s.runGatewayUsageAttributionHooks(ctx, routed.Call, route, response, usage)
+		usage, invokeErr = s.runGatewayUsageAttributionHooks(ctx, routed.Call, route, response, usage, providerRouteProtocolResponses)
 		if invokeErr != nil {
 			httpErr := AsHTTPError(invokeErr)
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
 		attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
-		s.runGatewayCacheWriteHooks(ctx, routed.Call, request, response, usage)
+		s.runGatewayCacheWriteHooks(ctx, routed.Call, route, request, response, usage, providerRouteProtocolResponses)
 		resultJSON, marshalErr := json.Marshal(response)
 		if marshalErr != nil {
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, http.StatusInternalServerError, "response_result_invalid", "Response result could not be serialized", auditPayload, resultTTL)

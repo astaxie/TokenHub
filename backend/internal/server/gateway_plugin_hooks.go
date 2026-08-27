@@ -121,8 +121,9 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 	return response, usage, true, nil
 }
 
-func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext, payload any, response any, usage Usage) {
-	if !s.hasGatewayHookStage(pluginmeta.StageCacheWrite) {
+func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext, route RouteSelection, payload any, response any, usage Usage, protocol string) {
+	hooks := s.gatewayRouteHooksForRoute(pluginmeta.StageCacheWrite, route, protocol, true)
+	if len(hooks) == 0 {
 		return
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -150,13 +151,14 @@ func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext
 	if encodedUsage, ok := marshalGatewayHookData(usage); ok {
 		input.Data[pluginmeta.DataUsage] = encodedUsage
 	}
-	if _, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageCacheWrite, input); err != nil {
+	if _, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageCacheWrite, input, hooks); err != nil {
 		log.Printf("[tokenhub] gateway cache_write hooks failed for request %s: %v", call.RequestID, err)
 	}
 }
 
-func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallContext, route RouteSelection, response any) (any, error) {
-	if !s.hasGatewayHookStage(pluginmeta.StageResponsePost) {
+func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallContext, route RouteSelection, response any, protocol string) (any, error) {
+	hooks := s.gatewayRouteHooksForRoute(pluginmeta.StageResponsePost, route, protocol, true)
+	if len(hooks) == 0 {
 		return response, nil
 	}
 	body, ok := marshalGatewayHookData(response)
@@ -181,7 +183,7 @@ func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallConte
 			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 		}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageResponsePost, input)
+	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageResponsePost, input, hooks)
 	if err != nil {
 		return nil, gatewayHookHTTPError(pluginmeta.StageResponsePost, err)
 	}
@@ -200,8 +202,9 @@ func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallConte
 	return output, nil
 }
 
-func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage) (any, error) {
-	if !s.hasGatewayHookStage(pluginmeta.StageGuardrailPost) {
+func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage, protocol string) (any, error) {
+	hooks := s.gatewayRouteHooksForRoute(pluginmeta.StageGuardrailPost, route, protocol, true)
+	if len(hooks) == 0 {
 		return response, nil
 	}
 	body, ok := marshalGatewayHookData(response)
@@ -236,7 +239,7 @@ func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallCont
 			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 		}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageGuardrailPost, input)
+	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageGuardrailPost, input, hooks)
 	if err != nil {
 		return nil, gatewayHookHTTPError(pluginmeta.StageGuardrailPost, err)
 	}
@@ -255,8 +258,9 @@ func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallCont
 	return output, nil
 }
 
-func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage) (Usage, error) {
-	if !s.hasGatewayHookStage(pluginmeta.StageUsageAttribution) {
+func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage, protocol string) (Usage, error) {
+	hooks := s.gatewayRouteHooksForRoute(pluginmeta.StageUsageAttribution, route, protocol, true)
+	if len(hooks) == 0 {
 		return usage, nil
 	}
 	usageBody, ok := marshalGatewayHookData(usage)
@@ -290,7 +294,7 @@ func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallC
 			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 		}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageUsageAttribution, input)
+	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageUsageAttribution, input, hooks)
 	if err != nil {
 		return Usage{}, gatewayHookHTTPError(pluginmeta.StageUsageAttribution, err)
 	}

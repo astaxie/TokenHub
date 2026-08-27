@@ -76,19 +76,19 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hit {
-		resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, RouteSelection{}, resp, usage)
+		resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, RouteSelection{}, resp, usage, providerRouteProtocolEmbeddings)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, usage, err, auditPayload)
 			writeError(w, r, err)
 			return
 		}
-		resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, RouteSelection{}, resp)
+		resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, RouteSelection{}, resp, providerRouteProtocolEmbeddings)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, usage, err, auditPayload)
 			writeError(w, r, err)
 			return
 		}
-		usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, RouteSelection{}, resp, usage)
+		usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, RouteSelection{}, resp, usage, providerRouteProtocolEmbeddings)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, usage, err, auditPayload)
 			writeError(w, r, err)
@@ -108,26 +108,26 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage)
+	resp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolEmbeddings)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
-	resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp)
+	resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp, providerRouteProtocolEmbeddings)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
-	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage)
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolEmbeddings)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
-	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, req, resp, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, req, resp, usage, providerRouteProtocolEmbeddings)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))

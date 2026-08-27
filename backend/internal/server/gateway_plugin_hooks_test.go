@@ -682,7 +682,7 @@ func TestGuardrailPostHookCanRewriteProviderResponse(t *testing.T) {
 		t.Fatalf("register guardrail post handler: %v", err)
 	}
 
-	response, err := server.runGatewayGuardrailPostHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"}, Usage{TotalTokens: 3})
+	response, err := server.runGatewayGuardrailPostHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"}, Usage{TotalTokens: 3}, providerRouteProtocolChatCompletions)
 	if err != nil {
 		t.Fatalf("run guardrail post hook: %v", err)
 	}
@@ -822,7 +822,7 @@ func TestResponsePostHookCanRewriteProviderResponse(t *testing.T) {
 		t.Fatalf("register response post handler: %v", err)
 	}
 
-	response, err := server.runGatewayResponsePostHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"})
+	response, err := server.runGatewayResponsePostHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"}, providerRouteProtocolChatCompletions)
 	if err != nil {
 		t.Fatalf("run response post hook: %v", err)
 	}
@@ -976,7 +976,7 @@ func TestUsageAttributionHookCanRewriteUsage(t *testing.T) {
 		t.Fatalf("register usage attribution handler: %v", err)
 	}
 
-	usage, err := server.runGatewayUsageAttributionHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"}, Usage{TotalTokens: 3})
+	usage, err := server.runGatewayUsageAttributionHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, map[string]any{"id": "upstream"}, Usage{TotalTokens: 3}, providerRouteProtocolChatCompletions)
 	if err != nil {
 		t.Fatalf("run usage attribution hook: %v", err)
 	}
@@ -1145,7 +1145,7 @@ func TestCacheWriteHookReceivesRequestResponseAndUsage(t *testing.T) {
 		t.Fatalf("register cache write handler: %v", err)
 	}
 
-	server.runGatewayCacheWriteHooks(context.Background(), gatewayPluginTestCall(), ChatCompletionRequest{Model: "gpt-test"}, map[string]any{"id": "provider_response"}, Usage{TotalTokens: 7})
+	server.runGatewayCacheWriteHooks(context.Background(), gatewayPluginTestCall(), RouteSelection{}, ChatCompletionRequest{Model: "gpt-test"}, map[string]any{"id": "provider_response"}, Usage{TotalTokens: 7}, providerRouteProtocolChatCompletions)
 	if !sawRequest || !sawResponse || !sawUsage {
 		t.Fatalf("cache write saw request=%v response=%v usage=%v, want all true", sawRequest, sawResponse, sawUsage)
 	}

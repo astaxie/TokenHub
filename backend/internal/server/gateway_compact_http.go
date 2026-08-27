@@ -71,19 +71,19 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if hit {
-		response, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, response, usage)
+		response, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
 		if err != nil {
 			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 			writeError(w, r, err)
 			return
 		}
-		response, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, response)
+		response, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, response, providerRouteProtocolResponses)
 		if err != nil {
 			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 			writeError(w, r, err)
 			return
 		}
-		usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, response, usage)
+		usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
 		if err != nil {
 			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 			writeError(w, r, err)
@@ -132,26 +132,26 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	response, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, response, usage)
+	response, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, response, usage, providerRouteProtocolResponses)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
-	response, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, response)
+	response, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, response, providerRouteProtocolResponses)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
-	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, response, usage)
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, response, usage, providerRouteProtocolResponses)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
-	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, request, response, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, request, response, usage, providerRouteProtocolResponses)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)

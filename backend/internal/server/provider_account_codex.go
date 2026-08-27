@@ -397,8 +397,8 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		tracker.ensureStarted()
 		streamWriter := io.Writer(tracker)
 		var transformer *gatewayStreamTransformWriter
-		if s.hasGatewayStreamTransformHooks() {
-			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, tracker)
+		if s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolResponses) {
+			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, tracker)
 			streamWriter = transformer
 		}
 		response, _, usage, streamErr := consumeCodexResponsesStream(opened.Body, streamWriter)
