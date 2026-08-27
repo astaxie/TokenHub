@@ -137,9 +137,6 @@ func (s *GormStore) applyProviderTypeDefaults(provider *Provider) {
 			provider.BaseURL = baseURL
 		}
 	}
-	if provider.Type == ProviderOpenAICodex && codexProviderBaseURLNeedsNormalization(provider.BaseURL) {
-		provider.BaseURL = firstNonEmpty(s.providerTypeDefaultBaseURL(provider.Type), openAICodexBaseURL)
-	}
 }
 
 func (s *GormStore) ConfigureProviderResourceTypePolicy(resourceTypes map[string][]string) {
