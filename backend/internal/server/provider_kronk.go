@@ -213,11 +213,6 @@ func KronkProviderCatalogFromUpstream(ctx context.Context, client *http.Client, 
 	return entry, nil
 }
 
-func kronkProviderCatalogRequest(req ProviderCreateRequest) ProviderCreateRequest {
-	req.Type = ProviderKronk
-	return req
-}
-
 func (s *Server) discoverKronkCatalog(ctx context.Context, req ProviderCreateRequest) (ProviderCatalogEntry, error) {
 	providerID := firstNonEmpty(strings.TrimSpace(req.ProviderID), strings.TrimSpace(req.ID))
 	if providerID != "" {

@@ -144,15 +144,24 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}
-	if entry, ok := s.pluginProviderCatalogEntry(id); ok && (r.Method == http.MethodGet || r.Method == http.MethodPost) && !(id == ProviderKronk && r.Method == http.MethodPost) {
+	if entry, ok := s.pluginProviderCatalogEntry(id); ok && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
 		if r.Method == http.MethodPost {
-			var credentials ProviderResourceCredentials
-			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {
+			var payload map[string]any
+			if decodeErr := s.decodeJSON(w, r, &payload); decodeErr != nil {
 				writeError(w, r, decodeErr)
 				return
 			}
+			if payload == nil {
+				payload = map[string]any{}
+			}
+			if _, ok := payload["type"]; !ok {
+				payload["type"] = entry.Type
+			}
+			if _, ok := payload["catalog_id"]; !ok {
+				payload["catalog_id"] = entry.ID
+			}
 			var supported bool
-			entry, supported, err = s.executeProviderCredentialModelsAction(r.Context(), user, entry.Type, credentials)
+			entry, supported, err = s.executeProviderModelsPreviewAction(r.Context(), user, entry.Type, payload)
 			if !supported {
 				jsonMethodNotAllowed(http.MethodGet)(w, r)
 				return
@@ -263,24 +272,14 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}
-	if id == ProviderKronk && r.Method == http.MethodPost {
-		var req ProviderCreateRequest
-		if err := s.decodeJSON(w, r, &req); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		entry, err := s.discoverProviderCatalogFromCreateRequest(r.Context(), user, kronkProviderCatalogRequest(req))
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
-		return
-	}
 	if r.Method != http.MethodGet {
 		allowedMethods := http.MethodGet
-		if id == "custom" || id == ProviderKronk {
+		if id == "custom" {
 			allowedMethods += ", " + http.MethodPost
+		} else if entry, ok := s.pluginProviderCatalogEntry(id); ok {
+			if _, ok := s.providerPluginCapabilityActionDescriptor(entry.Type, AdapterCapabilityModels, "models.preview", ""); ok {
+				allowedMethods += ", " + http.MethodPost
+			}
 		}
 		jsonMethodNotAllowed(allowedMethods)(w, r)
 		return
@@ -302,17 +301,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	var catalog ProviderCatalogEntry
 	catalogSource := ""
 	catalogID := strings.TrimSpace(req.CatalogID)
-	if catalogID == ProviderKronk && len(req.CustomModels) > 0 {
-		catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
-		catalog.ID = ProviderKronk
-		catalog.Name = "Kronk"
-		catalog.DisplayName = "Kronk"
-		catalog.Type = ProviderKronk
-		catalog.BaseURL = firstNonEmpty(strings.TrimSpace(req.BaseURL), kronkDefaultBaseURL)
-		catalog.DocURL = kronkDocURL
-		catalog.Source = "kronk-upstream"
-		catalogSource = catalog.Source
-	} else if catalogID == codexProviderCatalogID {
+	if catalogID == codexProviderCatalogID {
 		if len(req.CustomModels) > 0 {
 			catalog = s.codexProviderCatalogFromSubmittedModels(req.CustomModels)
 		} else {

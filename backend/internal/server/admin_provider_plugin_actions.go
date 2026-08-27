@@ -57,18 +57,7 @@ func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Conte
 }
 
 func (s *Server) executeProviderCredentialModelsAction(ctx context.Context, user AdminUser, providerType string, credentials ProviderResourceCredentials) (ProviderCatalogEntry, bool, error) {
-	result, handled, err := s.executeProviderCapabilityAction(ctx, user, providerType, AdapterCapabilityModels, "models.preview", credentials, providerPluginActionOptions{})
-	if err != nil {
-		return ProviderCatalogEntry{}, true, err
-	}
-	if !handled {
-		return ProviderCatalogEntry{}, false, nil
-	}
-	catalog, ok := providerCatalogEntryFromActionData(result.Data)
-	if !ok {
-		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "provider_models_invalid_result", "Provider models preview action returned an invalid result")
-	}
-	return catalog, true, nil
+	return s.executeProviderModelsPreviewAction(ctx, user, providerType, credentials)
 }
 
 func (s *Server) executeProviderCreateRequestModelsAction(ctx context.Context, user AdminUser, req ProviderCreateRequest) (ProviderCatalogEntry, bool, error) {
@@ -76,7 +65,11 @@ func (s *Server) executeProviderCreateRequestModelsAction(ctx context.Context, u
 	if providerType == "" {
 		return ProviderCatalogEntry{}, false, nil
 	}
-	result, handled, err := s.executeProviderCapabilityAction(ctx, user, providerType, AdapterCapabilityModels, "models.preview", req, providerPluginActionOptions{})
+	return s.executeProviderModelsPreviewAction(ctx, user, providerType, req)
+}
+
+func (s *Server) executeProviderModelsPreviewAction(ctx context.Context, user AdminUser, providerType string, payload any) (ProviderCatalogEntry, bool, error) {
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, providerType, AdapterCapabilityModels, "models.preview", payload, providerPluginActionOptions{})
 	if err != nil {
 		return ProviderCatalogEntry{}, true, err
 	}
