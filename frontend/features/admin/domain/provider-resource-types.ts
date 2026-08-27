@@ -13,6 +13,8 @@ export type ProviderResourceTypeCapabilityMetadata = {
   displayName?: string;
   authModes: string[];
   defaults: Record<string, string>;
+  credentialIdentityProfile?: string;
+  credentialInputOptional: boolean;
   default: boolean;
 };
 
@@ -66,6 +68,8 @@ export function parseProviderResourceTypeCapabilityMetadata(capability: PluginCa
       displayName: stringValue(data.display_name),
       authModes: stringArrayValue(data.auth_modes),
       defaults: stringRecordValue(data.defaults),
+      credentialIdentityProfile: stringValue(data.credential_identity_profile),
+      credentialInputOptional: data.credential_input_optional === true,
       default: data.default === true,
     };
   } catch {
@@ -91,6 +95,8 @@ export function providerResourceTypeMetadataFromData(data: Pick<AppData, "plugin
         type: capability.name.trim(),
         authModes: [],
         defaults: {},
+        credentialIdentityProfile: "",
+        credentialInputOptional: false,
         default: false,
       });
     }
@@ -148,6 +154,8 @@ function providerResourceTypeMetadataFromAdapter(resourceType: AdapterProviderRe
     displayName: stringValue(resourceType.display_name),
     authModes: stringArrayValue(resourceType.auth_modes),
     defaults: stringRecordValue(resourceType.defaults),
+    credentialIdentityProfile: stringValue(resourceType.credential_identity_profile),
+    credentialInputOptional: resourceType.credential_input_optional === true,
     default: resourceType.default === true,
   };
 }

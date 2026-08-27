@@ -296,6 +296,8 @@ export type AdapterProviderResourceType = {
   display_name?: string;
   auth_modes?: string[];
   defaults?: Record<string, string>;
+  credential_identity_profile?: string;
+  credential_input_optional?: boolean;
   default?: boolean;
 };
 

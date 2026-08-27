@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
-import { providerResourceAuthTypeOptionsFromData } from "../domain/provider-resource-types";
+import { providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataFromData } from "../domain/provider-resource-types";
 import { providerResourcePayload, providerResourceToForm } from "./payloads";
 import { accountResourceFieldVisible, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
@@ -437,6 +437,8 @@ describe("providerResourceConfig", () => {
             type: "kimi_oauth_account",
             display_name: "Kimi OAuth Account",
             auth_modes: ["oauth", "personal_access_token"],
+            credential_identity_profile: "openai_account_id_token",
+            credential_input_optional: true,
             default: true,
             defaults: { auth_type: "oauth", base_url: "https://api.moonshot.cn/v1" },
           }),
@@ -474,6 +476,10 @@ describe("providerResourceConfig", () => {
       "openai_subscription",
       "api_key",
     ]);
+    expect(providerResourceTypeMetadataFromData(data, "kimi_subscription")[0]).toMatchObject({
+      credentialIdentityProfile: "openai_account_id_token",
+      credentialInputOptional: true,
+    });
   });
 
   it("builds resource type options from adapter descriptors", () => {
@@ -487,6 +493,8 @@ describe("providerResourceConfig", () => {
         type: "kimi_oauth_account",
         display_name: "Kimi OAuth Account",
         auth_modes: ["personal_access_token", "oauth"],
+        credential_identity_profile: "openai_account_id_token",
+        credential_input_optional: true,
         default: true,
         defaults: {
           auth_type: "personal_access_token",
@@ -514,6 +522,10 @@ describe("providerResourceConfig", () => {
       { value: "oauth", label: "OAuth" },
       { value: "personal_access_token", label: "Personal Access Token" },
     ]);
+    expect(providerResourceTypeMetadataFromData(data, "kimi_subscription")[0]).toMatchObject({
+      credentialIdentityProfile: "openai_account_id_token",
+      credentialInputOptional: true,
+    });
   });
 
   it("shows account credential fields only for resource types declared by plugin metadata", () => {
