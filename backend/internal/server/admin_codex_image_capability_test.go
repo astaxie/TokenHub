@@ -94,6 +94,53 @@ func TestAdminCodexImageCapabilityTestsOnceAndManagesRoute(t *testing.T) {
 	}
 }
 
+func TestAdminCodexImageCapabilityUsesPluginActionMetadataProfile(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	profile := codexImageCapabilityRouteProfile()
+	profile.PublicModel = "plugin-codex-public-image"
+	profile.UpstreamModel = codexImageUpstreamModel
+	profile.CapabilityOption = "plugin_codex_image_capability"
+	profile.CapabilityCheckedAtOption = "plugin_codex_image_capability_checked_at"
+	profile.RouteBackfillOption = "plugin_codex_image_route_backfill_v1"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request codexSubscriptionImageRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode capability request: %v", err)
+			return
+		}
+		if request.Model != profile.UpstreamModel {
+			t.Errorf("capability request model = %q, want %q", request.Model, profile.UpstreamModel)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{{"b64_json": encodeBase64(imageBytes)}},
+		})
+	}))
+	defer upstream.Close()
+
+	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
+	server.codexSubscription.Client = upstream.Client()
+	result, err := server.configureCodexImageCapability(context.Background(), resource.ID, true, profile)
+	if err != nil {
+		t.Fatalf("enable metadata-driven image capability: %v", err)
+	}
+	if result.Capability != profile.CapabilitySupportedValue {
+		t.Fatalf("metadata-driven capability result = %+v", result)
+	}
+	updated, ok := store.GetProviderResource(resource.ID)
+	if !ok || updated.Options[profile.CapabilityOption] != profile.CapabilitySupportedValue ||
+		updated.Options[profile.CapabilityCheckedAtOption] == "" ||
+		updated.Options[profile.RouteBackfillOption] != profile.RouteBackfillValue {
+		t.Fatalf("metadata-driven capability was not recorded: %+v", updated.Options)
+	}
+	if updated.Options[codexImageCapabilityOption] != "" || updated.Options[codexImageCapabilityCheckedAtOption] != "" {
+		t.Fatalf("metadata-driven capability wrote Codex fallback keys: %+v", updated.Options)
+	}
+	routes := store.ListRoutes()
+	if len(routes) != 1 || !providerImageCapabilityRouteMatches(routes[0], resource.ProviderID, profile) {
+		t.Fatalf("metadata-driven capability route = %+v", routes)
+	}
+}
+
 func TestAdminCodexImageCapabilityDisablesRouteAfterLastAccountDeleted(t *testing.T) {
 	imageBytes := realPNGFixture(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

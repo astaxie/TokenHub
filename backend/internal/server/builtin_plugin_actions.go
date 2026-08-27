@@ -420,41 +420,8 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: catalog}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
-		PluginID:   "tokenhub.provider.openai-codex",
-		ActionID:   "openai_codex.image_capability.configure",
-		Kind:       pluginmeta.ActionKindMutate,
-		Title:      "Configure OpenAI Codex image capability",
-		Capability: "image.capability.configure",
-		Subject:    ProviderOpenAICodex,
-		Metadata: map[string]string{
-			"display_name":                 "Codex Subscription ImageGen",
-			"provider_resource_type":       ProviderResourceOpenAISubscription,
-			"public_model":                 codexImageModelName,
-			"upstream_model":               codexImageUpstreamModel,
-			"capability_option":            codexImageCapabilityOption,
-			"capability_checked_at_option": codexImageCapabilityCheckedAtOption,
-			"capability_supported_value":   codexImageCapabilitySupported,
-			"capability_unsupported_value": codexImageCapabilityUnsupported,
-			"route_backfill_option":        codexImageRouteBackfillOption,
-			"route_backfill_value":         codexImageRouteBackfillCompleted,
-		},
-		InputSchema: map[string]any{
-			"type":     "object",
-			"required": []string{"resource_id", "enabled"},
-			"properties": map[string]any{
-				"resource_id": map[string]any{"type": "string"},
-				"enabled":     map[string]any{"type": "boolean"},
-			},
-		},
-		OutputSchema: actionObjectSchema([]string{"enabled", "tested", "resource_id"}, map[string]string{
-			"enabled":     "boolean",
-			"tested":      "boolean",
-			"capability":  "string",
-			"resource_id": "string",
-			"route_id":    "string",
-		}),
-	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+	imageCapabilityAction := openAICodexImageCapabilityActionDescriptor()
+	mustRegisterPluginAction(server.pluginActions, imageCapabilityAction, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {
 			ResourceID string `json:"resource_id"`
 			Enabled    bool   `json:"enabled"`
@@ -464,7 +431,8 @@ func registerBuiltinPluginActions(server *Server) {
 				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
 			}
 		}
-		result, err := server.configureCodexImageCapability(ctx, payload.ResourceID, payload.Enabled)
+		profile, _ := providerImageCapabilityRouteProfileFromAction(imageCapabilityAction)
+		result, err := server.configureCodexImageCapability(ctx, payload.ResourceID, payload.Enabled, profile)
 		if err != nil {
 			return pluginmeta.ActionResult{}, err
 		}
@@ -511,6 +479,44 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: map[string]any{"credential_summary": providerAccountCredentialSummary(credentials)}}, nil
 	}))
+}
+
+func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
+	return pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "openai_codex.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Title:      "Configure OpenAI Codex image capability",
+		Capability: "image.capability.configure",
+		Subject:    ProviderOpenAICodex,
+		Metadata: map[string]string{
+			"display_name":                 "Codex Subscription ImageGen",
+			"provider_resource_type":       ProviderResourceOpenAISubscription,
+			"public_model":                 codexImageModelName,
+			"upstream_model":               codexImageUpstreamModel,
+			"capability_option":            codexImageCapabilityOption,
+			"capability_checked_at_option": codexImageCapabilityCheckedAtOption,
+			"capability_supported_value":   codexImageCapabilitySupported,
+			"capability_unsupported_value": codexImageCapabilityUnsupported,
+			"route_backfill_option":        codexImageRouteBackfillOption,
+			"route_backfill_value":         codexImageRouteBackfillCompleted,
+		},
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"resource_id", "enabled"},
+			"properties": map[string]any{
+				"resource_id": map[string]any{"type": "string"},
+				"enabled":     map[string]any{"type": "boolean"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"enabled", "tested", "resource_id"}, map[string]string{
+			"enabled":     "boolean",
+			"tested":      "boolean",
+			"capability":  "string",
+			"resource_id": "string",
+			"route_id":    "string",
+		}),
+	}
 }
 
 func mustRegisterPluginAction(actions *pluginmeta.ActionBroker, descriptor pluginmeta.ActionDescriptor, handler pluginmeta.ActionHandler) {

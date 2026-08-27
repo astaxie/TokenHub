@@ -82,29 +82,40 @@ func (s *Server) handleAdminProviderImageCapability(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID string, enabled bool) (providerImageCapabilityResult, error) {
-	resource, provider, err := s.codexImageResource(resourceID, enabled)
+func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID string, enabled bool, profiles ...providerImageCapabilityRouteProfile) (providerImageCapabilityResult, error) {
+	profile := codexImageCapabilityRouteProfile()
+	if len(profiles) > 0 {
+		profile = profiles[0]
+		profile.withDefaults()
+		if profile.ProviderType == "" {
+			profile.ProviderType = ProviderOpenAICodex
+		}
+		if profile.ResourceType == "" {
+			profile.ResourceType = ProviderResourceOpenAISubscription
+		}
+	}
+	resource, provider, err := s.codexImageResource(resourceID, enabled, profile)
 	if err != nil {
 		return providerImageCapabilityResult{}, err
 	}
 	result := providerImageCapabilityResult{Enabled: enabled, ResourceID: resource.ID}
 	err = s.store.RunClusterOperation(ctx, codexImageCapabilityClusterKey(provider.ID), func(leaseCtx context.Context) error {
-		current, currentProvider, currentErr := s.codexImageResource(resourceID, enabled)
+		current, currentProvider, currentErr := s.codexImageResource(resourceID, enabled, profile)
 		if currentErr != nil {
 			return currentErr
 		}
 		if !enabled {
-			if err := s.setProviderImageCapabilityRoutesStatus(currentProvider.ID, codexImageCapabilityRouteProfile(), StatusDisabled); err != nil {
+			if err := s.setProviderImageCapabilityRoutesStatus(currentProvider.ID, profile, StatusDisabled); err != nil {
 				return err
 			}
-			result.Capability = strings.TrimSpace(current.Options[codexImageCapabilityOption])
+			result.Capability = strings.TrimSpace(current.Options[profile.CapabilityOption])
 			return nil
 		}
 
-		if route := activeCodexImageRoute(s.store.ListRoutes(), currentProvider.ID); route != nil &&
-			strings.TrimSpace(current.Options[codexImageCapabilityOption]) == codexImageCapabilitySupported {
+		if route := activeProviderImageCapabilityRoute(s.store.ListRoutes(), currentProvider.ID, profile); route != nil &&
+			profile.capabilityIsSupported(current.Options[profile.CapabilityOption]) {
 			result.RouteID = route.ID
-			result.Capability = codexImageCapabilitySupported
+			result.Capability = profile.CapabilitySupportedValue
 			return nil
 		}
 
@@ -112,7 +123,7 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		defer cancel()
 		effectiveProvider := effectiveProviderResourceConfig(currentProvider, &current)
 		response, _, imageErr := s.codexSubscription.Image(testCtx, effectiveProvider, current.ID, codexSubscriptionImageRequest{
-			Model:      codexImageUpstreamModel,
+			Model:      profile.UpstreamModel,
 			Prompt:     "A small solid blue square centered on a white background.",
 			Background: "auto",
 			Quality:    "low",
@@ -127,11 +138,11 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		}
 		if imageErr != nil {
 			if AsHTTPError(imageErr).Code == "codex_image_forbidden" {
-				_, updateErr := s.updateCodexImageCapability(current.ID, codexImageCapabilityUnsupported)
+				_, updateErr := s.updateProviderImageCapability(current.ID, profile.CapabilityUnsupportedValue, profile)
 				if updateErr != nil {
 					return updateErr
 				}
-				result.Capability = codexImageCapabilityUnsupported
+				result.Capability = profile.CapabilityUnsupportedValue
 			}
 			return publicCodexImageCapabilityProbeError(imageErr)
 		}
@@ -141,16 +152,16 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		if _, err := decodeGeneratedImage(response.Data[0].B64JSON); err != nil {
 			return NewHTTPError(http.StatusBadGateway, "image_result_invalid", err.Error())
 		}
-		route, err := s.ensureProviderImageCapabilityRoute(currentProvider.ID, codexImageCapabilityRouteProfile())
+		route, err := s.ensureProviderImageCapabilityRoute(currentProvider.ID, profile)
 		if err != nil {
 			return err
 		}
-		_, err = s.updateCodexImageCapability(current.ID, codexImageCapabilitySupported)
+		_, err = s.updateProviderImageCapability(current.ID, profile.CapabilitySupportedValue, profile)
 		if err != nil {
 			return err
 		}
 		result.RouteID = route.ID
-		result.Capability = codexImageCapabilitySupported
+		result.Capability = profile.CapabilitySupportedValue
 		return nil
 	})
 	return result, err
@@ -181,7 +192,12 @@ func publicCodexImageCapabilityProbeError(err error) error {
 	return publicErr
 }
 
-func (s *Server) codexImageResource(resourceID string, requireActive bool) (ProviderResource, Provider, error) {
+func (s *Server) codexImageResource(resourceID string, requireActive bool, profiles ...providerImageCapabilityRouteProfile) (ProviderResource, Provider, error) {
+	profile := codexImageCapabilityRouteProfile()
+	if len(profiles) > 0 {
+		profile = profiles[0]
+		profile.withDefaults()
+	}
 	resource, ok := s.store.GetProviderResource(strings.TrimSpace(resourceID))
 	if !ok {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
@@ -190,7 +206,7 @@ func (s *Server) codexImageResource(resourceID string, requireActive bool) (Prov
 	if !ok {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	if provider.Type != ProviderOpenAICodex || resource.ResourceType != ProviderResourceOpenAISubscription {
+	if provider.Type != profile.ProviderType || resource.ResourceType != profile.ResourceType {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusBadRequest, "codex_subscription_resource_required", "Codex image capability testing requires an OpenAI Codex subscription account")
 	}
 	if requireActive && (provider.Status != StatusActive || !provider.Healthy || resource.Status != StatusActive || !resource.Healthy) {
@@ -234,8 +250,12 @@ func providerImageCapabilityRouteHasSupportedResource(route ModelRoute, resource
 }
 
 func activeCodexImageRoute(routes []ModelRoute, providerID string) *ModelRoute {
+	return activeProviderImageCapabilityRoute(routes, providerID, codexImageCapabilityRouteProfile())
+}
+
+func activeProviderImageCapabilityRoute(routes []ModelRoute, providerID string, profile providerImageCapabilityRouteProfile) *ModelRoute {
 	for index := range routes {
-		if codexImageRouteMatches(routes[index], providerID) && routes[index].Status == StatusActive {
+		if providerImageCapabilityRouteMatches(routes[index], providerID, profile) && routes[index].Status == StatusActive {
 			route := routes[index]
 			return &route
 		}
