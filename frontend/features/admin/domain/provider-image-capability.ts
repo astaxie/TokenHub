@@ -1,5 +1,4 @@
 import { type AdminUIContribution, type ModelRoute, type PluginActionDescriptor, type ProviderResource } from "../core/types";
-import { codexImageModelName, codexImageUpstreamModel } from "./codex-provider-profile";
 import { isProviderAccountResource } from "./provider-resource-types";
 
 export type ImageCapabilityProfile = {
@@ -15,17 +14,7 @@ export type ImageCapabilityProfile = {
   routeBackfillValue: string;
 };
 
-export const defaultImageCapabilityProfile: ImageCapabilityProfile = {
-  displayName: "订阅生图",
-  publicModel: codexImageModelName,
-  upstreamModel: codexImageUpstreamModel,
-  capabilityOption: "image_generation_capability",
-  capabilityCheckedAtOption: "image_generation_capability_checked_at",
-  capabilitySupportedValue: "supported",
-  capabilityUnsupportedValue: "unsupported",
-  routeBackfillOption: "image_generation_route_backfill_v1",
-  routeBackfillValue: "completed",
-};
+const defaultImageCapabilityDisplayName = "订阅生图";
 
 export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescriptor, "metadata" | "title"> | null): ImageCapabilityProfile | null {
   if (!action) return null;
@@ -33,7 +22,7 @@ export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescr
   const upstreamModel = action.metadata?.upstream_model?.trim() ?? "";
   if (!publicModel || !upstreamModel) return null;
   return {
-    displayName: action.metadata?.display_name?.trim() || action.title?.trim() || defaultImageCapabilityProfile.displayName,
+    displayName: action.metadata?.display_name?.trim() || action.title?.trim() || defaultImageCapabilityDisplayName,
     publicModel,
     upstreamModel,
     resourceType: action.metadata?.provider_resource_type?.trim() || action.metadata?.resource_type?.trim() || undefined,
@@ -80,16 +69,17 @@ function adminUIContributionLayout(contribution: AdminUIContribution) {
 }
 
 export function providerImageRouteEnabled(routes: ModelRoute[], providerID: string, profile?: ImageCapabilityProfile | null) {
-  const imageProfile = profile ?? defaultImageCapabilityProfile;
+  if (!profile) return false;
   return routes.some((route) =>
-    route.model_name === imageProfile?.publicModel &&
+    route.model_name === profile.publicModel &&
     route.provider_id === providerID &&
-    route.provider_model === imageProfile?.upstreamModel &&
+    route.provider_model === profile.upstreamModel &&
     route.status === "active",
   );
 }
 
 export function providerImageCapabilityResources(resources: ProviderResource[], providerID: string, profile?: ImageCapabilityProfile | null) {
+  if (!profile) return [];
   return resources.filter((resource) =>
     resource.provider_id === providerID &&
     (profile?.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResource(resource)),
@@ -97,19 +87,19 @@ export function providerImageCapabilityResources(resources: ProviderResource[], 
 }
 
 export function defaultProviderImageCapabilityResourceID(resources: ProviderResource[], providerID: string, selectedAccountID: string, profile?: ImageCapabilityProfile | null) {
-  const imageProfile = profile ?? defaultImageCapabilityProfile;
-  const candidates = providerImageCapabilityResources(resources, providerID, imageProfile);
+  if (!profile) return "";
+  const candidates = providerImageCapabilityResources(resources, providerID, profile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
   if (selectedAccountID !== "all" && available.some((resource) => resource.id === selectedAccountID)) return selectedAccountID;
-  return available.find((resource) => resource.options?.[imageProfile.capabilityOption] === imageProfile.capabilitySupportedValue)?.id ?? available[0]?.id ?? "";
+  return available.find((resource) => resource.options?.[profile.capabilityOption] === profile.capabilitySupportedValue)?.id ?? available[0]?.id ?? "";
 }
 
 export function providerImageCapabilityState(resources: ProviderResource[], providerID: string, routeEnabled: boolean, profile?: ImageCapabilityProfile | null) {
-  const imageProfile = profile ?? defaultImageCapabilityProfile;
-  const candidates = providerImageCapabilityResources(resources, providerID, imageProfile);
+  if (!profile) return "untested";
+  const candidates = providerImageCapabilityResources(resources, providerID, profile);
   const available = candidates.filter((resource) => resource.status === "active" && resource.healthy !== false);
-  const supported = available.filter((resource) => resource.options?.[imageProfile.capabilityOption] === imageProfile.capabilitySupportedValue).length;
-  const unsupported = available.filter((resource) => resource.options?.[imageProfile.capabilityOption] === imageProfile.capabilityUnsupportedValue).length;
+  const supported = available.filter((resource) => resource.options?.[profile.capabilityOption] === profile.capabilitySupportedValue).length;
+  const unsupported = available.filter((resource) => resource.options?.[profile.capabilityOption] === profile.capabilityUnsupportedValue).length;
   if (routeEnabled && supported > 0) return "enabled";
   if (routeEnabled) return "enabled_without_account";
   if (available.length > 0 && unsupported === available.length) return "unsupported";
