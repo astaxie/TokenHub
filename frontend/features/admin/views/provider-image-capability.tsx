@@ -3,8 +3,8 @@ import { useMemo, useState } from "react";
 import { type ApiContext, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
 import { defaultProviderImageCapabilityResourceID, imageCapabilityProfileFromAction, providerImageCapabilityResources, providerImageCapabilityState, providerImageRouteEnabled } from "../domain/provider-image-capability";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
-import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { providerPluginActionPath } from "../resources/provider-model-config";
+import { adminFetch, isAuthExpiredError } from "../resources/payloads";
+import { providerPluginActionPath, readPluginActionError } from "../resources/provider-model-config";
 import { formatImageGenerationCapabilityTag, providerResourceAccountLabel } from "./provider-account-ui";
 
 type ProviderImageCapabilityResult = {
@@ -80,7 +80,7 @@ export function ProviderImageCapability({
         method: "POST",
         body: JSON.stringify({ provider_id: provider.id, resource_id: targetResourceID, enabled: enabledValue }),
       });
-      if (!response.ok) throw new Error(await readAdminError(response, tx("配置订阅生图")));
+      if (!response.ok) throw new Error(await readPluginActionError(response, action, tx("配置订阅生图")));
       const result = unwrapProviderImageCapabilityResult(await response.json());
       setNotice(tx(result.enabled ? "订阅生图测试通过并已启用。" : "订阅生图已停用；能力测试结果已保留。"));
       await onChanged().catch(() => undefined);

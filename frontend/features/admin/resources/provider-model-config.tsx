@@ -347,14 +347,14 @@ export async function readPluginActionError(resp: Response, action: Pick<PluginA
 export function pluginActionErrorMessage(action: Pick<PluginActionDescriptor, "metadata"> | undefined, code: string | undefined) {
   if (!code) return "";
   const direct = action?.metadata?.[`error_message.${code}`]?.trim();
-  if (direct) return direct;
+  if (direct) return tx(direct);
   const raw = action?.metadata?.error_messages_json?.trim();
   if (!raw) return "";
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
     const value = (parsed as Record<string, unknown>)[code];
-    return typeof value === "string" ? value.trim() : "";
+    return typeof value === "string" ? tx(value.trim()) : "";
   } catch {
     return "";
   }

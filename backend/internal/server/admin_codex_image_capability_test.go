@@ -712,6 +712,26 @@ func TestProviderImageRouteProfilesComeFromPluginSync(t *testing.T) {
 	}
 }
 
+func TestOpenAICodexImageCapabilityActionExposesErrorMetadata(t *testing.T) {
+	descriptor := openAICodexImageCapabilityActionDescriptor()
+	for _, code := range []string{
+		"codex_image_forbidden",
+		"codex_rate_limited",
+		"codex_upstream_unavailable",
+		"codex_upstream_timeout",
+		"codex_image_request_failed",
+		"codex_image_response_failed",
+		"codex_quota_exhausted",
+		"provider_resource_reauthorization_required",
+		"image_result_missing",
+		"image_result_invalid",
+	} {
+		if descriptor.Metadata["error_message."+code] == "" {
+			t.Fatalf("descriptor missing error message metadata for %s", code)
+		}
+	}
+}
+
 func syncBuiltInImageCapabilityProfilesForTest(store *GormStore) {
 	store.setProviderImageCapabilityRouteProfiles(providerImageCapabilityRouteProfilesFromActions([]pluginmeta.ActionDescriptor{
 		openAICodexImageCapabilityActionDescriptor(),

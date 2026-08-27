@@ -148,6 +148,55 @@ describe("ProviderImageCapability", () => {
     expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body)).resource_id).toBe("rsrc_kimi");
   });
 
+  it("maps image capability action errors from plugin metadata", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: "kimi_image_forbidden", message: "raw provider message" },
+    }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderImageCapability
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={[{
+          ...action,
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.image_capability.configure",
+          subject: "kimi_subscription",
+          metadata: {
+            display_name: "Kimi Subscription ImageGen",
+            provider_resource_type: "kimi_subscription_account",
+            public_model: "kimi-image",
+            upstream_model: "moonshot-image",
+            "error_message.kimi_image_forbidden": "Kimi account cannot create images. Choose another account and retry.",
+          },
+        }]}
+        provider={{ ...provider, id: "prv_kimi", name: "Kimi", type: "kimi_subscription" }}
+        routes={[]}
+        resources={[{
+          ...resource,
+          id: "rsrc_kimi",
+          provider_id: "prv_kimi",
+          name: "Kimi Account",
+          resource_type: "kimi_subscription_account",
+        }]}
+        selectedAccountID="rsrc_kimi"
+        onChanged={onChanged}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "开始测试并启用" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Kimi account cannot create images. Choose another account and retry.");
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
   it("unwraps plugin action result envelopes", () => {
     expect(unwrapProviderImageCapabilityResult({
       data: { enabled: true, tested: true, resource_id: "rsrc_codex" },
