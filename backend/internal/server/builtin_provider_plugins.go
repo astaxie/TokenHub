@@ -228,9 +228,53 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	}
 }
 
+func registerBuiltinProviderCatalogPlugins(registry *pluginmeta.Registry) {
+	if registry == nil {
+		return
+	}
+	registerBuiltinProviderCatalogPlugin(registry, "tokenhub.provider-catalog.siliconflow", "SiliconFlow", builtinProviderPluginCatalogEntry(
+		"siliconflow",
+		"SiliconFlow",
+		ProviderOpenAICompatible,
+		"https://api.siliconflow.cn/v1",
+		"https://cloud.siliconflow.com/models",
+		[]string{"custom"},
+		nil,
+	))
+}
+
+func registerBuiltinProviderCatalogPlugin(registry *pluginmeta.Registry, pluginID string, name string, entry *pluginProviderCatalogEntry) {
+	if entry == nil {
+		return
+	}
+	encoded, err := json.Marshal(entry)
+	if err != nil {
+		panic(err)
+	}
+	if err := registry.Register(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    name,
+		Version: "built-in",
+		Source:  pluginmeta.SourceBuiltIn,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{{
+			Kind:    "provider_catalog",
+			Name:    "entry",
+			Subject: entry.Type,
+			Value:   string(encoded),
+		}},
+	}); err != nil {
+		panic(err)
+	}
+}
+
 func builtinProviderPluginCatalogSeedEntries() []ProviderCatalogEntry {
 	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
 	registerBuiltinProviderAdapters(registry, map[string]ProviderAdapter{}, &CodexSubscriptionAdapter{})
+	registerBuiltinProviderCatalogPlugins(registry.plugins)
 	return providerCatalogSeedEntriesFromRegistry(registry)
 }
 

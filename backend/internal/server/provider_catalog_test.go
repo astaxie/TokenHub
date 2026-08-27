@@ -264,6 +264,29 @@ func TestProviderCatalogSeedIncludesCatalogOnlyBuiltInPlugins(t *testing.T) {
 	}
 }
 
+func TestBuiltinProviderCatalogDerivesFromPluginSeeds(t *testing.T) {
+	entries := builtinProviderCatalog(true)
+	var openAI ProviderCatalogEntry
+	var siliconFlow ProviderCatalogEntry
+	for _, entry := range entries {
+		switch entry.ID {
+		case "openai":
+			openAI = entry
+		case "siliconflow":
+			siliconFlow = entry
+		}
+	}
+	if openAI.Source != "plugin:built_in" || openAI.Type != ProviderOpenAI || openAI.ModelsCount == 0 {
+		t.Fatalf("expected OpenAI builtin catalog to come from built-in plugin seed, got %+v", openAI)
+	}
+	if siliconFlow.Source != "plugin:built_in" || siliconFlow.Type != ProviderOpenAICompatible {
+		t.Fatalf("expected SiliconFlow builtin catalog-only plugin seed, got %+v", siliconFlow)
+	}
+	if !providerCatalogContains(entries, "custom") {
+		t.Fatalf("expected custom provider catalog fallback in builtin catalog: %+v", entries)
+	}
+}
+
 func TestProviderCatalogServiceRefreshesFromUpstream(t *testing.T) {
 	store := NewMemoryStore()
 	localCatalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")

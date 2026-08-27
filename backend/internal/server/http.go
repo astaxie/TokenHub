@@ -191,6 +191,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	pluginBackgroundRunner := pluginmeta.NewBackgroundJobRunner(pluginBackgroundJobs)
 	registry := NewAdapterRegistryWithPlugins(pluginRegistry)
 	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
+	registerBuiltinProviderCatalogPlugins(pluginRegistry)
 	codexSubscription.SupportsResourceModels = func(providerType string, resourceType string) bool {
 		descriptor, ok := registry.Describe(providerType)
 		return ok && adapterSupportsResourceType(descriptor, resourceType)

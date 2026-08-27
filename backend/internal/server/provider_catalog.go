@@ -485,17 +485,11 @@ func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []st
 }
 
 func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
-	entries := []ProviderCatalogEntry{
-		builtinCatalogEntry("openai", "OpenAI", ProviderOpenAI, "https://api.openai.com/v1", "https://platform.openai.com/docs/models", []string{"gpt-5", "gpt-5-mini", "gpt-4.1-mini", "text-embedding-3-small"}),
-		builtinCatalogEntry("anthropic", "Anthropic", ProviderAnthropic, "https://api.anthropic.com", "https://docs.anthropic.com", []string{"claude-sonnet-4.5", "claude-haiku-4.5"}),
-		builtinCatalogEntry("google", "Google Gemini", ProviderGemini, "https://generativelanguage.googleapis.com/v1beta", "https://ai.google.dev/gemini-api/docs", []string{"gemini-2.5-pro", "gemini-2.5-flash"}),
-		deepSeekBuiltinCatalogEntry(),
-		builtinCatalogEntry("qwen", "Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://help.aliyun.com/zh/model-studio", []string{"qwen-max", "qwen-plus"}),
-		{ID: "siliconflow", Name: "SiliconFlow", DisplayName: "SiliconFlow", Type: ProviderOpenAICompatible, BaseURL: "https://api.siliconflow.cn/v1", DocURL: "https://cloud.siliconflow.com/models", Source: "builtin"},
-		{ID: "ollama", Name: "Ollama", DisplayName: "Ollama", Type: "local", BaseURL: "http://127.0.0.1:11434/v1", DocURL: "https://ollama.com", Source: "builtin"},
-		kronkCatalogEntry(),
-		customProviderCatalogEntry(),
+	entries := builtinProviderPluginCatalogSeedEntries()
+	if !providerCatalogHasEntry(entries, "custom") {
+		entries = append(entries, customProviderCatalogEntry())
 	}
+	sortCatalogEntries(entries)
 	if includeModels {
 		return entries
 	}
