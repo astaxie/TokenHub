@@ -16,9 +16,22 @@ import (
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
+func addOpenAIAccountRefreshProvider(store *GormStore, name string) Provider {
+	return store.AddProvider(Provider{
+		Name:    name,
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+		Options: map[string]string{
+			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+		},
+	})
+}
+
 func TestProviderCredentialRefreshServiceRenewsExpiringOpenAIAccounts(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{Name: "Codex OAuth", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ProviderID: provider.ID, Name: "Codex OAuth Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
 		Credentials: &ProviderResourceCredentials{
@@ -111,6 +124,41 @@ func TestProviderCredentialRefreshServiceUsesNativeRefreshProfilePolicy(t *testi
 	}
 	if credentials.AccessToken != "profile-access-after" || credentials.RefreshToken != "profile-refresh-after" {
 		t.Fatalf("expected profile-refreshed credentials to be stored, got %+v", credentials)
+	}
+}
+
+func TestProviderCredentialRefreshRequiresNativeRefreshProfilePolicy(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{Name: "Legacy Codex Without Policy", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID: provider.ID, Name: "Legacy Codex Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType: "oauth", AccessToken: "legacy-access-before", RefreshToken: "legacy-refresh-before", ClientID: openAIAccountOAuthClientID,
+			ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int64
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(w, "unexpected token renewal", http.StatusInternalServerError)
+	}))
+	defer tokenServer.Close()
+	previousEndpoint := openAIAccountOAuthTokenEndpoint
+	openAIAccountOAuthTokenEndpoint = tokenServer.URL
+	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
+
+	credentials, err := store.RefreshProviderResourceCredentials(context.Background(), resource.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("provider without refresh profile sent %d token requests, want 0", requests.Load())
+	}
+	if credentials.AccessToken != "legacy-access-before" || credentials.RefreshToken != "legacy-refresh-before" {
+		t.Fatalf("unsupported provider credentials changed: %+v", credentials)
 	}
 }
 
@@ -268,7 +316,7 @@ func TestProviderCredentialRefreshServicePersistsPluginReauthorizationMarker(t *
 
 func TestProviderCredentialRefreshUpdatesDerivedIdentityClaims(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "Codex OAuth Identity", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "Codex OAuth Identity")
 	resource, err := store.AddProviderResource(ProviderResource{
 		ProviderID: provider.ID, Name: "Codex OAuth Identity Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
 		Credentials: &ProviderResourceCredentials{
@@ -316,7 +364,7 @@ func TestProviderCredentialRefreshUpdatesDerivedIdentityClaims(t *testing.T) {
 
 func TestProviderCredentialRefreshServiceSkipsHealthyOrUnsupportedResources(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "OAuth Resources", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "OAuth Resources")
 	unsupportedProvider := store.AddProvider(Provider{Name: "API Key Resources", Type: ProviderOpenAICompatible, Status: StatusActive, Healthy: true})
 	for _, resource := range []ProviderResource{
 		{ProviderID: provider.ID, Name: "No Refresh Token", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true, Credentials: &ProviderResourceCredentials{AccessToken: "access-no-refresh", ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339)}},
@@ -345,7 +393,7 @@ func TestProviderCredentialRefreshServiceSkipsHealthyOrUnsupportedResources(t *t
 
 func TestProviderCredentialRefreshServiceStopsRetryingInvalidatedRefreshTokens(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "Invalidated OAuth", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "Invalidated OAuth")
 	resource, err := store.AddProviderResource(ProviderResource{
 		ProviderID: provider.ID, Name: "Invalidated Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
 		Credentials: &ProviderResourceCredentials{AccessToken: "expired-access", RefreshToken: "invalidated-refresh", ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339)},
@@ -396,7 +444,7 @@ func TestProviderCredentialRefreshServiceStopsRetryingInvalidatedRefreshTokens(t
 
 func TestProviderCredentialRefreshDoesNotInvalidateReplacementCredentials(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "Reauthorized OAuth", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "Reauthorized OAuth")
 	resource, err := store.AddProviderResource(ProviderResource{
 		ProviderID: provider.ID, Name: "Reauthorized Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
 		Credentials: &ProviderResourceCredentials{
@@ -480,7 +528,7 @@ func TestProviderCredentialRefreshDoesNotInvalidateReplacementCredentials(t *tes
 
 func TestProviderResourceCredentialMetadataPreservesOAuthState(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "OAuth Metadata", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "OAuth Metadata")
 	resource, err := store.AddProviderResource(ProviderResource{
 		ProviderID: provider.ID, Name: "OAuth Metadata Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
 		Credentials: &ProviderResourceCredentials{
@@ -524,7 +572,7 @@ func TestProviderResourceCredentialMetadataPreservesOAuthState(t *testing.T) {
 
 func TestProviderCredentialRefreshSurvivesConcurrentMetadataEdit(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "Concurrent OAuth Metadata", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "Concurrent OAuth Metadata")
 	resource, err := store.AddProviderResource(ProviderResource{
 		ProviderID: provider.ID, Name: "Before Metadata Edit", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
 		Credentials: &ProviderResourceCredentials{
@@ -584,7 +632,7 @@ func TestProviderCredentialRefreshSurvivesConcurrentMetadataEdit(t *testing.T) {
 
 func TestProviderCredentialRefreshServiceRenewsAccountsConcurrently(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "Concurrent OAuth", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "Concurrent OAuth")
 	for index, refreshToken := range []string{"blocked-1", "blocked-2", "blocked-3", "ready"} {
 		if _, err := store.AddProviderResource(ProviderResource{
 			ProviderID: provider.ID, Name: refreshToken, ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true, Priority: index,
@@ -645,7 +693,7 @@ func TestProviderCredentialRefreshServiceRenewsAccountsConcurrently(t *testing.T
 
 func TestProviderCredentialRefreshServiceDoesNotLogOAuthResponse(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{Name: "Logging OAuth", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	provider := addOpenAIAccountRefreshProvider(store, "Logging OAuth")
 	if _, err := store.AddProviderResource(ProviderResource{
 		ProviderID: provider.ID, Name: "Logging Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
 		Credentials: &ProviderResourceCredentials{AccessToken: "expired-access", RefreshToken: "refresh-secret", ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339)},

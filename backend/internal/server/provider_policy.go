@@ -214,9 +214,6 @@ func providerCredentialRefreshProfile(provider Provider) string {
 	if value, ok := provider.Options[providerCredentialRefreshProfileOption]; ok {
 		return strings.ToLower(strings.TrimSpace(value))
 	}
-	if provider.Type == ProviderOpenAICodex {
-		return providerCredentialRefreshProfileOpenAIAccountOAuth
-	}
 	return ""
 }
 

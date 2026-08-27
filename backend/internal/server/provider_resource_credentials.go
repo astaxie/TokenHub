@@ -531,7 +531,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		}
 		creds := s.providerResourceCredentialsForRuntime(resource)
 		authentication := creds
-		if !supportsNativeOpenAIAccountCredentialRefresh(provider, resource, s) {
+		if !supportsNativeProviderResourceCredentialRefresh(provider, resource, s) {
 			result = creds
 			s.mu.Unlock()
 			return nil
@@ -539,7 +539,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		if resource.Options[providerResourceReauthorizationRequiredOption] == "true" {
 			result = creds
 			s.mu.Unlock()
-			return NewHTTPError(409, "provider_resource_reauthorization_required", "OpenAI/Codex account session has ended. Reauthorize the account.")
+			return NewHTTPError(409, "provider_resource_reauthorization_required", "Provider resource account session has ended. Reauthorize the account.")
 		}
 		needsRefresh, expired := providerResourceCredentialsNeedRefresh(creds, openAIAccountOAuthRefreshLead)
 		if !force && !needsRefresh {
@@ -567,7 +567,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 					if loadErr := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; loadErr != nil {
 						return loadErr
 					}
-					if !supportsNativeOpenAIAccountCredentialRefresh(provider, current, s) ||
+					if !supportsNativeProviderResourceCredentialRefresh(provider, current, s) ||
 						!openAIAccountAuthenticationEqual(s.providerResourceCredentialsForRuntime(current), authentication) {
 						return nil
 					}
@@ -592,7 +592,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			if err := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; err != nil {
 				return notFound(err, "provider_resource_not_found", "Provider resource not found")
 			}
-			if !supportsNativeOpenAIAccountCredentialRefresh(provider, current, s) {
+			if !supportsNativeProviderResourceCredentialRefresh(provider, current, s) {
 				result = refreshed
 				return nil
 			}
@@ -629,7 +629,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 	return result, nil
 }
 
-func supportsNativeOpenAIAccountCredentialRefresh(provider Provider, resource ProviderResource, store *GormStore) bool {
+func supportsNativeProviderResourceCredentialRefresh(provider Provider, resource ProviderResource, store *GormStore) bool {
 	if providerCredentialRefreshProfile(provider) != providerCredentialRefreshProfileOpenAIAccountOAuth {
 		return false
 	}
@@ -647,7 +647,7 @@ func (s *GormStore) SupportsNativeProviderResourceCredentialRefresh(resource Pro
 	if !ok {
 		return false
 	}
-	return supportsNativeOpenAIAccountCredentialRefresh(provider, resource, s)
+	return supportsNativeProviderResourceCredentialRefresh(provider, resource, s)
 }
 
 func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResource) ProviderResourceCredentials {

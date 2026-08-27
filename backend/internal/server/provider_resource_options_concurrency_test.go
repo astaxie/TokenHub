@@ -285,6 +285,9 @@ func TestProviderCredentialRefreshPreservesConcurrentAvailabilityState(t *testin
 
 			provider := storeA.AddProvider(Provider{
 				Name: "Refresh Availability State", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+				Options: map[string]string{
+					providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+				},
 			})
 			cooldown := time.Now().UTC().Add(time.Minute)
 			resource, err := storeA.AddProviderResource(ProviderResource{
