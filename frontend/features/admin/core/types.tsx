@@ -342,6 +342,8 @@ export type GatewayHookDescriptor = {
   hook_id: string;
   stage: string;
   priority: number;
+  subject?: string;
+  metadata?: Record<string, string>;
   reads?: string[];
   writes?: string[];
   failure_policy: string;

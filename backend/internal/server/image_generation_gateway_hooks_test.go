@@ -112,6 +112,7 @@ func TestImageProviderCallHookServesGatewayImageWithoutBuiltinAdapter(t *testing
 		HookID:        "image-provider-call",
 		Stage:         pluginmeta.StageProviderCall,
 		Priority:      1000,
+		Subject:       "third_party_image_plugin",
 		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest, pluginmeta.DataProviderCredentials, pluginmeta.DataRouteCandidates},
 		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
 		FailurePolicy: pluginmeta.FailurePolicySkipRoute,
@@ -164,6 +165,61 @@ func TestImageProviderCallHookServesGatewayImageWithoutBuiltinAdapter(t *testing
 	}
 	if !strings.Contains(response.Body, encodeBase64(imageBytes)) || !strings.Contains(response.Body, "served by image plugin") {
 		t.Fatalf("image response was not served by provider plugin: %s", response.Body)
+	}
+}
+
+func TestImageProviderCallRouteRequiresMatchingHookSubject(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_image_subject", Name: "Image Subject", Type: "third_party_image_plugin", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_image_subject", ProviderID: provider.ID, Name: "Image Subject Account",
+		ResourceType: "third_party_image_account", Status: StatusActive, Healthy: true,
+		Options: map[string]string{"third_party_image_capability": "available"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "plugin-image-model", Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_subject", ModelName: "plugin-image-model", ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: "upstream-image-model", Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-subject-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-other-provider",
+		HookID:        "other-provider-call",
+		Stage:         pluginmeta.StageProviderCall,
+		Priority:      1000,
+		Subject:       "other_provider",
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicySkipRoute,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register unrelated provider call hook: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.test-image-provider",
+		ActionID:   "third_party_image.capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "third_party_image_plugin",
+		Metadata: map[string]string{
+			"provider_resource_type":     "third_party_image_account",
+			"public_model":               "plugin-image-model",
+			"upstream_model":             "upstream-image-model",
+			"capability_option":          "third_party_image_capability",
+			"capability_supported_value": "available",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatalf("register image capability action: %v", err)
+	}
+
+	routes, err := server.imageRouteCandidates("plugin-image-model")
+	if err != nil {
+		t.Fatalf("image route candidates returned error: %v", err)
+	}
+	if len(routes) != 0 {
+		t.Fatalf("image route candidates = %+v, want no route without matching provider_call hook subject", routes)
 	}
 }
 

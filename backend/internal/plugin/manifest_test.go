@@ -79,6 +79,9 @@ capabilities:
     - id: codex_affinity
       stage: route_rank
       priority: 1200
+      subject: openai_codex
+      metadata:
+        protocol: codex/responses
       failure_policy: fail_open
       reads:
         - route_candidates
@@ -195,6 +198,9 @@ permissions:
 	}
 	if hooks[0].PluginID != manifest.ID || hooks[0].Stage != StageRouteRank {
 		t.Fatalf("gateway hook = %+v", hooks[0])
+	}
+	if hooks[0].Subject != "openai_codex" || hooks[0].Metadata["protocol"] != "codex/responses" {
+		t.Fatalf("gateway hook metadata = %+v", hooks[0])
 	}
 	actions := manifest.Actions()
 	if len(actions) != 1 || actions[0].ActionID != "codex.quota.read" || actions[0].Kind != ActionKindRead {

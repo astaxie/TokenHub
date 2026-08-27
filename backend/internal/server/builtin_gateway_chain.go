@@ -2,9 +2,11 @@ package server
 
 import pluginmeta "tokenhub/backend/internal/plugin"
 
+const tokenHubCoreGatewayChainPluginID = "tokenhub.chain.core"
+
 func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pluginmeta.GatewayChainRegistry, runners ...*pluginmeta.GatewayHookRunner) {
 	mustRegisterPlugin(registry, pluginmeta.Descriptor{
-		ID:           "tokenhub.chain.core",
+		ID:           tokenHubCoreGatewayChainPluginID,
 		Name:         "TokenHub Core Gateway Chain",
 		Version:      "built-in",
 		Source:       pluginmeta.SourceBuiltIn,
@@ -18,7 +20,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 	}
 	for _, hook := range []pluginmeta.GatewayHookDescriptor{
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "decode_normalize",
 			Stage:         pluginmeta.StageDecodeNormalize,
 			Priority:      100,
@@ -29,7 +31,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "admission",
 			Stage:         pluginmeta.StageAdmission,
 			Priority:      100,
@@ -40,7 +42,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "guardrail_pre",
 			Stage:         pluginmeta.StageGuardrailPre,
 			Priority:      100,
@@ -51,7 +53,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "privacy_pre",
 			Stage:         pluginmeta.StagePrivacyPre,
 			Priority:      100,
@@ -62,7 +64,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "cache_lookup",
 			Stage:         pluginmeta.StageCacheLookup,
 			Priority:      100,
@@ -73,7 +75,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "route_candidates",
 			Stage:         pluginmeta.StageRouteCandidates,
 			Priority:      100,
@@ -84,7 +86,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "route_rank",
 			Stage:         pluginmeta.StageRouteRank,
 			Priority:      100,
@@ -95,7 +97,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "guardrail_post",
 			Stage:         pluginmeta.StageGuardrailPost,
 			Priority:      100,
@@ -106,7 +108,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "provider_call",
 			Stage:         pluginmeta.StageProviderCall,
 			Priority:      100,
@@ -117,7 +119,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "cache_write",
 			Stage:         pluginmeta.StageCacheWrite,
 			Priority:      100,
@@ -128,7 +130,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "usage_attribution",
 			Stage:         pluginmeta.StageUsageAttribution,
 			Priority:      100,
@@ -139,7 +141,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 			Mandatory:     true,
 		},
 		{
-			PluginID:      "tokenhub.chain.core",
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "trace_export",
 			Stage:         pluginmeta.StageTraceExport,
 			Priority:      100,

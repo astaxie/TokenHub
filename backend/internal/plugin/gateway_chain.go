@@ -68,6 +68,8 @@ type GatewayHookDescriptor struct {
 	HookID        string                   `json:"hook_id"`
 	Stage         GatewayHookStage         `json:"stage"`
 	Priority      int                      `json:"priority"`
+	Subject       string                   `json:"subject,omitempty"`
+	Metadata      map[string]string        `json:"metadata,omitempty"`
 	Reads         []GatewayDataClass       `json:"reads,omitempty"`
 	Writes        []GatewayDataClass       `json:"writes,omitempty"`
 	FailurePolicy GatewayHookFailurePolicy `json:"failure_policy"`
@@ -102,6 +104,8 @@ func (r *GatewayChainRegistry) RegisterHook(descriptor GatewayHookDescriptor) er
 	}
 	descriptor.PluginID = strings.TrimSpace(descriptor.PluginID)
 	descriptor.HookID = strings.TrimSpace(descriptor.HookID)
+	descriptor.Subject = strings.TrimSpace(descriptor.Subject)
+	descriptor.Metadata = normalizeStringMap(descriptor.Metadata)
 	if descriptor.PluginID == "" {
 		return fmt.Errorf("gateway hook plugin id is required")
 	}

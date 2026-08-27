@@ -41,6 +41,27 @@ describe("PluginsView", () => {
     expect(screen.getByRole("link", { name: /下载/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi/1.2.3.zip");
   });
 
+  it("renders gateway hook subjects", () => {
+    const data = emptyData();
+    data.pluginChain.hooks = [{
+      plugin_id: "tokenhub.provider.kimi",
+      hook_id: "kimi-provider-call",
+      stage: "provider_call",
+      priority: 1000,
+      subject: "kimi_subscription",
+      failure_policy: "skip_route",
+      timeout_millis: 5000,
+      mandatory: false,
+      reads: ["provider_request"],
+      writes: ["provider_response", "usage"],
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(screen.getByText("适用对象")).toBeInTheDocument();
+    expect(screen.getByText("kimi_subscription")).toBeInTheDocument();
+  });
+
   it("updates local plugin state through the admin endpoint", async () => {
     const data = emptyData();
     data.plugins = [{

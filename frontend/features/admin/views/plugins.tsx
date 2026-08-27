@@ -534,6 +534,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                     <th>{tx("阶段")}</th>
                     <th>{tx("Hook")}</th>
                     <th>{tx("插件")}</th>
+                    <th>{tx("适用对象")}</th>
                     <th>{tx("策略")}</th>
                     <th>{tx("读")}</th>
                     <th>{tx("写")}</th>
@@ -550,6 +551,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                         </div>
                       </td>
                       <td>{hook.plugin_id}</td>
+                      <td>{hook.subject || tx("未声明")}</td>
                       <td>{hook.failure_policy}</td>
                       <td>{hook.reads?.join(", ") || "-"}</td>
                       <td>{hook.writes?.join(", ") || "-"}</td>

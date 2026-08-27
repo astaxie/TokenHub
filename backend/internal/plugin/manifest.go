@@ -161,6 +161,8 @@ type GatewayHookManifest struct {
 	ID            string                   `yaml:"id"`
 	Stage         GatewayHookStage         `yaml:"stage"`
 	Priority      int                      `yaml:"priority"`
+	Subject       string                   `yaml:"subject"`
+	Metadata      map[string]string        `yaml:"metadata"`
 	Reads         []GatewayDataClass       `yaml:"reads"`
 	Writes        []GatewayDataClass       `yaml:"writes"`
 	FailurePolicy GatewayHookFailurePolicy `yaml:"failure_policy"`
@@ -775,6 +777,8 @@ func (m Manifest) GatewayHooks() []GatewayHookDescriptor {
 			HookID:        hook.ID,
 			Stage:         hook.Stage,
 			Priority:      hook.Priority,
+			Subject:       hook.Subject,
+			Metadata:      hook.Metadata,
 			Reads:         hook.Reads,
 			Writes:        hook.Writes,
 			FailurePolicy: hook.FailurePolicy,
