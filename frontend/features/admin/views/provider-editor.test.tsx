@@ -291,7 +291,7 @@ describe("ProviderUpsertModal", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/provider-catalog/openai-codex"))).toBe(false);
   });
 
-  it("renders quota panel copy from non-Codex Provider plugin metadata", async () => {
+  it("uses resource-scoped quota panel actions from non-Codex Provider plugin metadata", async () => {
     const user = userEvent.setup();
     setActiveLanguage("zh-CN");
     const kimiCatalog = {
@@ -324,6 +324,12 @@ describe("ProviderUpsertModal", () => {
           headers: { "content-type": "application/json" },
         });
       }
+      if (url.includes("/api/admin/plugins/tokenhub.provider.kimi/actions/kimi.enterprise.quota.read")) {
+        return new Response(JSON.stringify({ data: { fetched_at: 124, plan_type: "enterprise" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -343,8 +349,19 @@ describe("ProviderUpsertModal", () => {
           capability: "quota.read",
           subject: "kimi_subscription",
           metadata: {
+            provider_resource_type: "kimi_subscription_account",
             panel_title: "Kimi subscription quota",
             panel_description: "Quota view provided by the Kimi provider plugin.",
+          },
+        }, {
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.enterprise.quota.read",
+          kind: "read",
+          capability: "quota.read",
+          subject: "kimi_subscription",
+          metadata: {
+            provider_resource_type: "kimi_enterprise_account",
+            panel_title: "Kimi enterprise quota",
           },
         }]}
         plugins={[{
@@ -354,7 +371,10 @@ describe("ProviderUpsertModal", () => {
           source: "built_in",
           kinds: ["provider"],
           placements: [],
-          capabilities: [{ kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" }],
+          capabilities: [
+            { kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" },
+            { kind: "provider_resource_type", name: "kimi_enterprise_account", subject: "kimi_subscription" },
+          ],
         }]}
         provider={provider}
         resources={[{
@@ -365,6 +385,15 @@ describe("ProviderUpsertModal", () => {
           status: "active",
           healthy: true,
           priority: 1,
+          weight: 100,
+        }, {
+          id: "rsrc_kimi_enterprise",
+          provider_id: "prv_kimi",
+          name: "Kimi Enterprise Account",
+          resource_type: "kimi_enterprise_account",
+          status: "active",
+          healthy: true,
+          priority: 2,
           weight: 100,
         }]}
         setError={vi.fn()}
@@ -380,5 +409,7 @@ describe("ProviderUpsertModal", () => {
     expect(await screen.findByText("Kimi subscription quota")).toBeInTheDocument();
     expect(screen.getByText("Quota view provided by the Kimi provider plugin.")).toBeInTheDocument();
     expect(screen.queryByText(/ChatGPT\/Codex/)).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/actions/kimi.quota.read"))).toBe(true));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/actions/kimi.enterprise.quota.read"))).toBe(true));
   });
 });

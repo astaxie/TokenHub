@@ -13,7 +13,7 @@ import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpst
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
-import { assertProviderAccountResourceReady, defaultProviderResourceName, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceDraftDefaults, runProviderResourcePluginAction } from "../resources/provider-model-config";
+import { assertProviderAccountResourceReady, defaultProviderResourceName, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceActionSelection, providerResourceDraftDefaults, providerResourceSelectionSupportsAction, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
@@ -181,7 +181,6 @@ export function ProviderUpsertModal({
   const lastCreateStep = createSteps.length - 1;
   const accountCallbackURL = useMemo(() => providerAccountOAuthCallbackURL(), []);
   const accountOAuthRedirectURI = useMemo(() => providerPluginActionForCapability(pluginActions, values.type, "oauth.start")?.metadata?.oauth_redirect_uri?.trim() || accountCallbackURL, [accountCallbackURL, pluginActions, values.type]);
-  const accountQuotaAction = providerPluginActionForCapability(pluginActions, values.type, "quota.read");
   const modalRef = useRef<HTMLFormElement | null>(null);
   const preserveCatalogValuesOnReload = useRef(false);
   const loadedCustomConnection = useRef("");
@@ -199,6 +198,7 @@ export function ProviderUpsertModal({
   );
   const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
   const selectedAccountResources = useMemo(() => selectedAccountID === "all" ? accountResources : accountResources.filter((resource) => resource.id === selectedAccountID), [accountResources, selectedAccountID]);
+  const { actionsByResourceID: accountQuotaActionsByResourceID, firstAction: accountQuotaAction, selectedResources: selectedQuotaAccountResources } = useMemo(() => providerResourceActionSelection(pluginActions, values.type, accountResources, selectedAccountResources, "quota.read"), [accountResources, pluginActions, selectedAccountResources, values.type]);
   const categoryCatalog = useMemo(() => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory)), [modelCategory, selectableProviderCatalog]);
   const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory, standardModels), [modelCategory, standardModels]);
   const selectedCatalogTemplateEntry = catalogID === "custom" ? customCatalogEntry : selectableProviderCatalog.find((entry) => entry.id === catalogID);
@@ -446,12 +446,12 @@ export function ProviderUpsertModal({
 
   useEffect(() => {
     if (mode !== "edit" || editTab !== "advanced" || !accountQuotaAction) return;
-    for (const resource of selectedAccountResources) {
+    for (const resource of selectedQuotaAccountResources) {
       if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
     }
-    const timer = window.setInterval(() => { for (const resource of selectedAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => { for (const resource of selectedQuotaAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
-  }, [accountQuotaAction, editTab, mode, selectedAccountResources]);
+  }, [accountQuotaAction, editTab, mode, selectedQuotaAccountResources]);
 
   const selectedAccountCatalog = useMemo(
     () => {
@@ -732,8 +732,9 @@ export function ProviderUpsertModal({
     setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: true }));
     setAccountQuotaErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
     try {
-      if (!accountQuotaAction) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, accountQuotaAction, { refresh: force }, tx("查询订阅额度"));
+      const action = accountQuotaActionsByResourceID[resource.id];
+      if (!action) throw new Error(tx("该插件动作尚未注册。"));
+      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: force }, tx("查询订阅额度"));
       setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
       return true;
     } catch (err) {
@@ -1443,14 +1444,14 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} /> : null}
-            {mode === "edit" && editTab === "advanced" && accountQuotaAction && accountResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && accountQuotaAction && selectedQuotaAccountResources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
                   <h3>{accountQuotaAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
                   <p>{accountQuotaAction.metadata?.panel_description?.trim() || tx("实时查询账号订阅用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
                 </div>
                 <div className="provider-quota-list">
-                  {selectedAccountResources.map((resource) => {
+                  {selectedQuotaAccountResources.map((resource) => {
                     const quota = accountQuotas[resource.id];
                     const primary = quota?.rate_limit?.primary_window;
                     const secondary = quota?.rate_limit?.secondary_window;
@@ -1555,7 +1556,7 @@ export function ProviderUpsertModal({
                 </div>
               </section>
             ) : null}
-            {mode === "edit" && editTab === "advanced" && accountResources.length > 0 && providerPluginActionForCapability(pluginActions, values.type, "probe.run") ? (
+            {mode === "edit" && editTab === "advanced" && accountResources.length > 0 && providerResourceSelectionSupportsAction(pluginActions, values.type, selectedAccountResources, "probe.run") ? (
               <ProviderResourceProbePanel api={api} accountCatalogErrors={accountCatalogErrors} accountCatalogLoading={accountCatalogLoading} accountResources={accountResources} pluginActions={pluginActions} providerType={values.type} selectedAccountCatalog={selectedAccountCatalog} selectedAccountID={selectedAccountID} selectedAccountResources={selectedAccountResources} />
             ) : null}
             {mode === "create" && createStep === 1 && !quickAPIConnect ? (

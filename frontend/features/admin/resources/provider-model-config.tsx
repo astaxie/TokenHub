@@ -294,6 +294,35 @@ export function providerPluginActionForResourceCapability(actions: PluginActionD
     candidates.find((action) => !action.metadata?.provider_resource_type?.trim());
 }
 
+export function providerResourceActionsByID(actions: PluginActionDescriptor[], providerType: string, resources: ProviderResource[], capability: string): Record<string, PluginActionDescriptor> {
+  return Object.fromEntries(resources.flatMap((resource) => {
+    const action = providerPluginActionForResourceCapability(actions, providerType, resource.resource_type, capability);
+    return action ? [[resource.id, action] as const] : [];
+  }));
+}
+
+export function firstProviderResourceActionForSelection(actionsByResourceID: Record<string, PluginActionDescriptor>, resources: ProviderResource[]) {
+  return resources.map((resource) => actionsByResourceID[resource.id]).find(Boolean);
+}
+
+export function providerResourceActionSelection(actions: PluginActionDescriptor[], providerType: string, resources: ProviderResource[], selectedResources: ProviderResource[], capability: string) {
+  const actionsByResourceID = providerResourceActionsByID(actions, providerType, resources, capability);
+  const selected = selectedResources.filter((resource) => actionsByResourceID[resource.id]);
+  return { actionsByResourceID, firstAction: firstProviderResourceActionForSelection(actionsByResourceID, selected), selectedResources: selected };
+}
+
+export function providerResourceSelectionSupportsAction(actions: PluginActionDescriptor[], providerType: string, resources: ProviderResource[], capability: string) {
+  const resourceTypes = Array.from(new Set(resources.map((resource) => resource.resource_type.trim()).filter(Boolean)));
+  if (resourceTypes.length === 1) {
+    return Boolean(providerPluginActionForResourceCapability(actions, providerType, resourceTypes[0], capability));
+  }
+  return Boolean(actions.find((action) =>
+    action.capability === capability &&
+    (!action.subject || action.subject === providerType) &&
+    !action.metadata?.provider_resource_type?.trim(),
+  ));
+}
+
 export function unwrapPluginActionData<T>(payload: unknown): T {
   if (payload && typeof payload === "object" && "data" in payload) return (payload as { data: T }).data;
   return payload as T;
