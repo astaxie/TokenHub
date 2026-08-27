@@ -627,6 +627,7 @@ func (s *Server) removeProviderResourceModel(resourceID string, modelName string
 }
 
 func (s *Server) codexProviderCatalogFromStandardModels(selected []string) ProviderCatalogEntry {
+	entry := s.codexProviderCatalogMetadata()
 	modelsByName := map[string]Model{}
 	for _, model := range s.store.ListModels() {
 		modelsByName[normalizeModelLookupName(model.Name)] = model
@@ -654,19 +655,21 @@ func (s *Server) codexProviderCatalogFromStandardModels(selected []string) Provi
 		})
 	}
 	categories, counts := catalogCategorySummary(models)
-	return ProviderCatalogEntry{
-		ID:             codexProviderCatalogID,
-		Name:           "OpenAI Codex",
-		DisplayName:    "OpenAI Codex",
-		Type:           ProviderOpenAICodex,
-		BaseURL:        openAICodexBaseURL,
-		DocURL:         "https://developers.openai.com/codex",
-		Categories:     categories,
-		CategoryCounts: counts,
-		ModelsCount:    len(models),
-		Source:         "openai-codex-live",
-		Models:         models,
+	if len(models) > 0 {
+		entry.Categories = categories
+		entry.CategoryCounts = counts
 	}
+	entry.ModelsCount = len(models)
+	entry.Models = models
+	return entry
+}
+
+func (s *Server) codexProviderCatalogFromSubmittedModels(models []ProviderCatalogModel) ProviderCatalogEntry {
+	candidates := append([]ProviderCatalogModel(nil), models...)
+	for index := range candidates {
+		candidates[index].Category = "codex"
+	}
+	return providerCatalogEntryWithSubmittedModels(s.codexProviderCatalogMetadata(), candidates, "codex")
 }
 
 func codexProviderCatalogFromModels(models []ProviderCatalogModel) ProviderCatalogEntry {
@@ -683,6 +686,15 @@ func codexProviderCatalogFromModels(models []ProviderCatalogModel) ProviderCatal
 	entry.DocURL = "https://developers.openai.com/codex"
 	entry.Source = "openai-codex-live"
 	return entry
+}
+
+func (s *Server) codexProviderCatalogMetadata() ProviderCatalogEntry {
+	if s != nil {
+		if entry, ok := s.pluginProviderCatalogCapabilityEntryForType(ProviderOpenAICodex); ok {
+			return entry
+		}
+	}
+	return codexProviderCatalogFromModels(nil)
 }
 
 func cloneStringMap(values map[string]string) map[string]string {

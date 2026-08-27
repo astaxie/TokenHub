@@ -128,7 +128,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				return
 			}
 			var supported bool
-			catalogProviderType := codexProviderCatalogFromModels(nil).Type
+			catalogProviderType := s.codexProviderCatalogMetadata().Type
 			entry, supported, err = s.executeProviderCredentialModelsAction(r.Context(), user, catalogProviderType, credentials)
 			if !supported {
 				entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
@@ -308,7 +308,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		catalogSource = catalog.Source
 	} else if catalogID == codexProviderCatalogID {
 		if len(req.CustomModels) > 0 {
-			catalog = codexProviderCatalogFromModels(req.CustomModels)
+			catalog = s.codexProviderCatalogFromSubmittedModels(req.CustomModels)
 		} else {
 			catalog = s.codexProviderCatalogFromStandardModels(req.SelectedModels)
 		}
