@@ -47,6 +47,7 @@ capabilities:
     session_affinity_kind: codex_session
     claude_code_attribution_default: strip
     default_base_url: https://chatgpt.example/backend-api/codex
+    error_profile: kronk
     model_discovery:
       path: /codex/models
       auth: query_param
@@ -111,8 +112,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 21 {
-		t.Fatalf("descriptor capabilities = %v, want 21 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 22 {
+		t.Fatalf("descriptor capabilities = %v, want 22 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -134,6 +135,9 @@ permissions:
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "default_base_url", Subject: "openai_codex", Value: "https://chatgpt.example/backend-api/codex"}) {
 		t.Fatalf("descriptor is missing provider default base URL capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "error_profile", Subject: "openai_codex", Value: "kronk"}) {
+		t.Fatalf("descriptor is missing provider error profile capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "model_discovery_path", Subject: "openai_codex", Value: "/codex/models"}) {
 		t.Fatalf("descriptor is missing provider model discovery path capability: %+v", descriptor.Capabilities)

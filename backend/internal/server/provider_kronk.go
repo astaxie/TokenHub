@@ -186,7 +186,9 @@ func KronkProviderCatalogFromUpstream(ctx context.Context, client *http.Client, 
 	if strings.TrimSpace(req.BaseURL) == "" {
 		req.BaseURL = kronkDefaultBaseURL
 	}
-	entry, err := CustomProviderCatalogFromUpstream(ctx, client, req)
+	entry, err := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, client, req, AdapterDescriptor{
+		ProviderPolicy: AdapterProviderPolicy{ErrorProfile: providerErrorProfileKronk},
+	})
 	if err != nil {
 		if httpErr := AsHTTPError(err); httpErr.Code != "provider_models_empty" {
 			return ProviderCatalogEntry{}, err

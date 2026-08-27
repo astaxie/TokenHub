@@ -129,6 +129,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !reflect.DeepEqual(anthropic.ProviderPolicy.RouteProtocols, []string{"anthropic"}) {
 		t.Fatalf("Anthropic route protocols = %v", anthropic.ProviderPolicy.RouteProtocols)
 	}
+	if anthropic.ProviderPolicy.ErrorProfile != "" {
+		t.Fatalf("Anthropic error profile = %q, want generic", anthropic.ProviderPolicy.ErrorProfile)
+	}
 	if !anthropic.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("Anthropic should support custom headers")
 	}
@@ -150,6 +153,14 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	}
 	if azure.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("Azure OpenAI should not support custom headers")
+	}
+
+	kronk, ok := server.adapterRegistry.Describe(ProviderKronk)
+	if !ok {
+		t.Fatal("Kronk adapter descriptor is missing")
+	}
+	if kronk.ProviderPolicy.ErrorProfile != providerErrorProfileKronk {
+		t.Fatalf("Kronk error profile = %q, want %q", kronk.ProviderPolicy.ErrorProfile, providerErrorProfileKronk)
 	}
 
 	codex, ok := server.adapterRegistry.Describe(ProviderOpenAICodex)
@@ -210,6 +221,9 @@ func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T
 	if !descriptor.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("bare adapter registration should keep custom headers enabled by default")
 	}
+	if descriptor.ProviderPolicy.ErrorProfile != "" {
+		t.Fatalf("bare adapter error profile = %q, want generic", descriptor.ProviderPolicy.ErrorProfile)
+	}
 }
 
 func TestBuiltinProviderPluginsExposeAdapterCapabilities(t *testing.T) {
@@ -255,6 +269,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
 			{Kind: "provider_policy", Name: "default_base_url", Subject: providerType, Value: "https://subscription.example/v1"},
+			{Kind: "provider_policy", Name: "error_profile", Subject: providerType, Value: providerErrorProfileKronk},
 			{Kind: "provider_policy", Name: "model_discovery_path", Subject: providerType, Value: "/subscription/models"},
 			{Kind: "provider_policy", Name: "model_discovery_auth", Subject: providerType, Value: "query_param"},
 			{Kind: "provider_policy", Name: "model_discovery_api_key_query_param", Subject: providerType, Value: "access_token"},
@@ -295,6 +310,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.DefaultBaseURL != "https://subscription.example/v1" {
 		t.Fatalf("plugin provider default base URL = %+v, want subscription URL", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.ErrorProfile != providerErrorProfileKronk {
+		t.Fatalf("plugin provider error profile = %+v, want Kronk profile", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.ModelDiscovery.Path != "/subscription/models" ||
 		descriptor.ProviderPolicy.ModelDiscovery.Auth != "query_param" ||

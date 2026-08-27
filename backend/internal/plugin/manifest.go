@@ -74,6 +74,7 @@ type ManifestProvider struct {
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
 	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
 	DefaultBaseURL               string                  `yaml:"default_base_url"`
+	ErrorProfile                 string                  `yaml:"error_profile"`
 	ModelDiscovery               ManifestModelDiscovery  `yaml:"model_discovery"`
 	Catalog                      ManifestProviderCatalog `yaml:"catalog"`
 }
@@ -348,8 +349,9 @@ func (m Manifest) validateProviderPolicy() error {
 	scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope)
 	affinityKind := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityKind)
 	defaultBaseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL)
+	errorProfile := strings.TrimSpace(m.Capabilities.Provider.ErrorProfile)
 	modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
-	if scope == "" && affinityKind == "" && defaultBaseURL == "" && !modelDiscovery.Configured() {
+	if scope == "" && affinityKind == "" && defaultBaseURL == "" && errorProfile == "" && !modelDiscovery.Configured() {
 		return nil
 	}
 	if len(m.Capabilities.ProviderTypes) == 0 {
@@ -366,6 +368,9 @@ func (m Manifest) validateProviderPolicy() error {
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return fmt.Errorf("provider default_base_url must be an absolute URL")
 		}
+	}
+	if errorProfile != "" && errorProfile != "generic" && errorProfile != "kronk" {
+		return fmt.Errorf("provider error_profile must be generic or kronk")
 	}
 	if modelDiscovery.Path != "" && !strings.HasPrefix(modelDiscovery.Path, "/") {
 		return fmt.Errorf("provider model_discovery path must start with /")
@@ -473,6 +478,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "default_base_url",
 				Subject: providerType,
 				Value:   strings.TrimRight(baseURL, "/"),
+			})
+		}
+		if profile := strings.TrimSpace(m.Capabilities.Provider.ErrorProfile); profile != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "error_profile",
+				Subject: providerType,
+				Value:   profile,
 			})
 		}
 		modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()

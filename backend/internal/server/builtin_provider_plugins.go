@@ -16,6 +16,7 @@ type builtinProviderAdapter struct {
 	routeRequiresResource        bool
 	sessionAffinityKind          string
 	claudeCodeAttributionDefault string
+	errorProfile                 string
 	authModes                    []string
 	modelDiscovery               AdapterModelDiscoveryPolicy
 	resourceTypes                []pluginmeta.ManifestProviderResourceType
@@ -70,6 +71,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.kronk", "Kronk", builtinProviderAdapter{
 		providerType: ProviderKronk,
 		adapter:      adapters[ProviderKronk],
+		errorProfile: "kronk",
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			ProviderKronk,
 			"Kronk",
@@ -343,6 +345,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "default_base_url",
 			Subject: adapter.providerType,
 			Value:   strings.TrimRight(strings.TrimSpace(adapter.catalogEntry.BaseURL), "/"),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.errorProfile != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "error_profile",
+			Subject: adapter.providerType,
+			Value:   adapter.errorProfile,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

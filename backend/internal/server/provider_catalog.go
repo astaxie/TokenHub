@@ -649,10 +649,10 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		if providerType == ProviderKronk {
-			return ProviderCatalogEntry{}, checkProviderResponseForProvider(resp, Provider{
-				Type: ProviderKronk, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
-			})
+		if descriptor.ProviderPolicy.ErrorProfile != "" {
+			return ProviderCatalogEntry{}, checkProviderResponseForProviderPolicy(resp, Provider{
+				Type: providerType, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
+			}, descriptor.ProviderPolicy)
 		}
 		return ProviderCatalogEntry{}, providerModelsUpstreamError(resp.StatusCode)
 	}

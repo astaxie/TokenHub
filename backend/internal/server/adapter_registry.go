@@ -44,6 +44,7 @@ type AdapterProviderPolicy struct {
 	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
 	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
 	DefaultBaseURL               string                      `json:"default_base_url,omitempty"`
+	ErrorProfile                 string                      `json:"error_profile,omitempty"`
 	ModelDiscovery               AdapterModelDiscoveryPolicy `json:"model_discovery,omitempty"`
 }
 
@@ -191,6 +192,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
 		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
 		DefaultBaseURL:               adapterDefaultBaseURL(r, descriptor.Type),
+		ErrorProfile:                 adapterErrorProfile(r, descriptor.Type),
 		ModelDiscovery:               adapterModelDiscovery(r, descriptor.Type),
 	}
 	return descriptor
@@ -245,6 +247,13 @@ func adapterClaudeCodeAttributionDefault(registry *AdapterRegistry, providerType
 func adapterDefaultBaseURL(registry *AdapterRegistry, providerType string) string {
 	if value, ok := providerPolicyStringCapability(registry, providerType, "default_base_url"); ok {
 		return strings.TrimRight(strings.TrimSpace(value), "/")
+	}
+	return ""
+}
+
+func adapterErrorProfile(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, "error_profile"); ok {
+		return strings.ToLower(strings.TrimSpace(value))
 	}
 	return ""
 }

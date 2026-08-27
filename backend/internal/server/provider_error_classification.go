@@ -14,6 +14,8 @@ import (
 // misbehaving upstream from making the gateway buffer an arbitrary amount.
 const providerErrorBodyPrefix = 4096
 
+const providerErrorProfileKronk = "kronk"
+
 // An upstream failure has to answer three separate questions, and collapsing them
 // into one status code answers none of them well:
 //
@@ -120,16 +122,27 @@ func checkProviderResponse(resp *http.Response) error {
 }
 
 func checkProviderResponseForProvider(resp *http.Response, provider Provider) error {
+	return checkProviderResponseForProviderPolicy(resp, provider, AdapterProviderPolicy{ErrorProfile: providerErrorProfile(provider)})
+}
+
+func checkProviderResponseForProviderPolicy(resp *http.Response, provider Provider, policy AdapterProviderPolicy) error {
 	if resp.StatusCode < http.StatusBadRequest {
 		return nil
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, providerErrorBodyPrefix))
 	data = redactProviderErrorSecrets(data, provider)
-	if provider.Type == ProviderKronk {
+	if policy.ErrorProfile == providerErrorProfileKronk {
 		return newKronkProviderHTTPError(resp.StatusCode, resp.Header, data)
 	}
 	return newProviderHTTPError(resp.StatusCode, resp.Header, data)
+}
+
+func providerErrorProfile(provider Provider) string {
+	if provider.Type == ProviderKronk {
+		return providerErrorProfileKronk
+	}
+	return ""
 }
 
 func newKronkProviderHTTPError(upstreamStatus int, headers http.Header, data []byte) error {
