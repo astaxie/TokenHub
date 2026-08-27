@@ -62,7 +62,7 @@ func (s *Server) handleAdminProviderImageCapability(w http.ResponseWriter, r *ht
 	enabled := *req.Enabled
 	result, supported, err := s.executeProviderResourceImageCapabilityAction(r.Context(), user, resourceID, enabled)
 	if !supported {
-		result, err = s.configureCodexImageCapability(r.Context(), resourceID, enabled)
+		err = NewHTTPError(http.StatusBadRequest, "provider_image_capability_unsupported", "Image capability configuration is not available for this provider resource")
 	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
