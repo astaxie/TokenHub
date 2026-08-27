@@ -4,7 +4,7 @@ import { type ApiContext, type ModelRoute, type PluginActionDescriptor, type Pro
 import { defaultProviderImageCapabilityResourceID, imageCapabilityProfileFromAction, providerImageCapabilityResources, providerImageCapabilityState, providerImageRouteEnabled } from "../domain/provider-image-capability";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { providerPluginActionForCapability, providerPluginActionPath } from "../resources/provider-model-config";
+import { providerPluginActionPath } from "../resources/provider-model-config";
 import { formatImageGenerationCapabilityTag, providerResourceAccountLabel } from "./provider-account-ui";
 
 type ProviderImageCapabilityResult = {
@@ -35,8 +35,8 @@ export function ProviderImageCapability({
   setNotice: (value: string) => void;
 }) {
   const action = useMemo(
-    () => providerPluginActionForCapability(pluginActions, provider.type, "image.capability.configure"),
-    [pluginActions, provider.type],
+    () => providerImageCapabilityAction(pluginActions, provider, resources, selectedAccountID),
+    [pluginActions, provider, resources, selectedAccountID],
   );
   const imageProfile = useMemo(() => imageCapabilityProfileFromAction(action), [action]);
   const providerResources = useMemo(() => providerImageCapabilityResources(resources, provider.id, imageProfile), [imageProfile, provider.id, resources]);
@@ -169,6 +169,30 @@ export function ProviderImageCapability({
       ) : null}
     </>
   );
+}
+
+function providerImageCapabilityAction(actions: PluginActionDescriptor[], provider: Provider, resources: ProviderResource[], selectedAccountID: string) {
+  const candidates = actions.filter((action) =>
+    action.capability === "image.capability.configure" &&
+    (!action.subject || action.subject === provider.type) &&
+    imageCapabilityProfileFromAction(action),
+  );
+  const selectedResourceType = selectedAccountID === "all"
+    ? ""
+    : resources.find((resource) => resource.provider_id === provider.id && resource.id === selectedAccountID)?.resource_type.trim() ?? "";
+  if (selectedResourceType) {
+    return candidates.find((action) => imageCapabilityProfileFromAction(action)?.resourceType === selectedResourceType) ??
+      candidates.find((action) => !imageCapabilityProfileFromAction(action)?.resourceType);
+  }
+  return candidates.find((action) => {
+    const resourceType = imageCapabilityProfileFromAction(action)?.resourceType;
+    return resourceType && resources.some((resource) =>
+      resource.provider_id === provider.id &&
+      resource.resource_type === resourceType &&
+      resource.status === "active" &&
+      resource.healthy !== false,
+    );
+  }) ?? candidates.find((action) => !imageCapabilityProfileFromAction(action)?.resourceType);
 }
 
 export function unwrapProviderImageCapabilityResult(payload: unknown): ProviderImageCapabilityResult {

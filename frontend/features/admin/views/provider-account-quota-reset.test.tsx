@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { PluginActionDescriptor } from "../core/types";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 
 const resource = {
@@ -13,13 +14,30 @@ const resource = {
   priority: 1,
   weight: 100,
 };
-const pluginActions = [
+const pluginActions: PluginActionDescriptor[] = [
+  {
+    plugin_id: "tokenhub.provider.openai-codex",
+    action_id: "openai_codex.wrong.quota.reset_credits.read",
+    kind: "read",
+    capability: "quota.reset_credits.read",
+    subject: "openai_codex",
+    metadata: { provider_resource_type: "wrong_subscription" },
+  },
   {
     plugin_id: "tokenhub.provider.openai-codex",
     action_id: "openai_codex.quota.reset_credits.read",
     kind: "read",
     capability: "quota.reset_credits.read",
     subject: "openai_codex",
+    metadata: { provider_resource_type: "openai_subscription" },
+  },
+  {
+    plugin_id: "tokenhub.provider.openai-codex",
+    action_id: "openai_codex.wrong.quota.reset",
+    kind: "mutate",
+    capability: "quota.reset",
+    subject: "openai_codex",
+    metadata: { danger_confirmation: "wrong-danger-confirmation", provider_resource_type: "wrong_subscription" },
   },
   {
     plugin_id: "tokenhub.provider.openai-codex",
@@ -27,7 +45,7 @@ const pluginActions = [
     kind: "mutate",
     capability: "quota.reset",
     subject: "openai_codex",
-    metadata: { danger_confirmation: "plugin-danger-confirmation" },
+    metadata: { danger_confirmation: "plugin-danger-confirmation", provider_resource_type: "openai_subscription" },
   },
 ];
 
@@ -131,8 +149,8 @@ describe("ProviderAccountQuotaReset", () => {
         removeItem: vi.fn(),
       },
     });
-    const actionsWithoutDanger = pluginActions.map((action) => action.capability === "quota.reset"
-      ? { ...action, metadata: undefined }
+    const actionsWithoutDanger = pluginActions.map((action) => action.action_id === "openai_codex.quota.reset"
+      ? { ...action, metadata: { provider_resource_type: "openai_subscription" } }
       : action);
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApiContext, PluginActionDescriptor, ProviderResource } from "../core/types";
 import { activeLanguage, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { providerPluginActionForCapability, providerPluginActionPath, runProviderResourcePluginAction, unwrapPluginActionData } from "../resources/provider-model-config";
+import { providerPluginActionForResourceCapability, providerPluginActionPath, runProviderResourcePluginAction, unwrapPluginActionData } from "../resources/provider-model-config";
 import { providerResourceAccountLabel, QuotaMetric } from "./provider-account-ui";
 
 type ProviderResetCredit = {
@@ -65,8 +65,8 @@ export function ProviderAccountQuotaReset({
   const [resetNotice, setResetNotice] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const quotaWasBusy = useRef(quotaBusy);
-  const resetCreditsAction = useMemo(() => providerPluginActionForCapability(pluginActions, providerType, "quota.reset_credits.read"), [pluginActions, providerType]);
-  const resetAction = useMemo(() => providerPluginActionForCapability(pluginActions, providerType, "quota.reset"), [pluginActions, providerType]);
+  const resetCreditsAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset_credits.read"), [pluginActions, providerType, resource.resource_type]);
+  const resetAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset"), [pluginActions, providerType, resource.resource_type]);
 
   const loadResetCredits = useCallback(async () => {
     if (!resetCreditsAction) return false;

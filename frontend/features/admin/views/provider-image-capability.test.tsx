@@ -101,18 +101,32 @@ describe("ProviderImageCapability", () => {
     render(
       <ProviderImageCapability
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
-        pluginActions={[{
-          ...action,
-          plugin_id: "tokenhub.provider.kimi",
-          action_id: "kimi.image_capability.configure",
-          subject: "kimi_subscription",
-          metadata: {
-            display_name: "Kimi Subscription ImageGen",
-            provider_resource_type: "kimi_subscription_account",
-            public_model: "kimi-image",
-            upstream_model: "moonshot-image",
+        pluginActions={[
+          {
+            ...action,
+            plugin_id: "tokenhub.provider.kimi",
+            action_id: "kimi.wrong_image_capability.configure",
+            subject: "kimi_subscription",
+            metadata: {
+              display_name: "Wrong Subscription ImageGen",
+              provider_resource_type: "kimi_other_account",
+              public_model: "wrong-image",
+              upstream_model: "wrong-upstream-image",
+            },
           },
-        }]}
+          {
+            ...action,
+            plugin_id: "tokenhub.provider.kimi",
+            action_id: "kimi.image_capability.configure",
+            subject: "kimi_subscription",
+            metadata: {
+              display_name: "Kimi Subscription ImageGen",
+              provider_resource_type: "kimi_subscription_account",
+              public_model: "kimi-image",
+              upstream_model: "moonshot-image",
+            },
+          },
+        ]}
         provider={{ ...provider, id: "prv_kimi", name: "Kimi", type: "kimi_subscription" }}
         routes={[]}
         resources={[
