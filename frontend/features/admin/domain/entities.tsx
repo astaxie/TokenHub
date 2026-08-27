@@ -1,7 +1,7 @@
 import { appRole } from "../core/navigation";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
-import { defaultImageCapabilityProfile, imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfiles } from "./provider-image-capability";
-import { codexImageModelName, codexProviderType } from "./codex-provider-profile";
+import { imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfiles } from "./provider-image-capability";
+import { codexImageModelName } from "./codex-provider-profile";
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabelFromData, roleLabel, splitList } from "./labels";
@@ -486,12 +486,7 @@ export function modelHasImageCapability(data: AppData, model: Model | undefined)
 
 export function providerImageCapabilityProfileForModel(data: AppData, providerType: string, model: Pick<Model, "name" | "metadata"> | string | undefined) {
   const modelName = typeof model === "string" ? model : model?.name ?? "";
-  const profile = imageCapabilityProfileForModel(providerImageCapabilityProfiles(data.pluginUI, data.pluginActions, providerType), modelName);
-  if (profile) return profile;
-  if (providerType === codexProviderType && (modelName === codexImageModelName || (typeof model === "object" && model?.metadata?.execution_type === "codex_subscription_image_generation"))) {
-    return defaultImageCapabilityProfile;
-  }
-  return null;
+  return imageCapabilityProfileForModel(providerImageCapabilityProfiles(data.pluginUI, data.pluginActions, providerType), modelName);
 }
 
 export function routeImageCapabilityProfile(route: ModelRoute, data: AppData) {
