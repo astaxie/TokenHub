@@ -551,7 +551,7 @@ export function EditModal<T>({
           <button className="icon-button" onClick={onClose} type="button" title={tx("关闭")}>×</button>
         </div>
         <div className="modal-body">
-          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values) ?? true)).map((field) => (
+          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values, data, currentUser) ?? true)).map((field) => (
             <FieldInput
               key={field.key}
               field={field}

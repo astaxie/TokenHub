@@ -1208,7 +1208,7 @@ export type FieldConfig = {
   createOnly?: boolean;
   emptyOptionsText?: string;
   emptySelectionText?: string;
-  visible?: (values: Record<string, string>) => boolean;
+  visible?: (values: Record<string, string>, data?: AppData, currentUser?: AdminUser | null) => boolean;
 };
 
 export type ProviderCredentialMode = "provider_api_key" | "account_integration";

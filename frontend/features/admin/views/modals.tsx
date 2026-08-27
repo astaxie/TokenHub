@@ -85,7 +85,7 @@ export function IdentityProviderEditModal({
 
   function renderField(key: string, override?: Partial<FieldConfig>) {
     const field = fieldConfig(key, override);
-    if (!field || !(field.visible?.(values) ?? true)) return null;
+    if (!field || !(field.visible?.(values, data, currentUser) ?? true)) return null;
     return (
       <FieldInput
         key={key}

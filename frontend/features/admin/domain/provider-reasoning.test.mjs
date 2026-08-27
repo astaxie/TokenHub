@@ -3,13 +3,12 @@ import test from "node:test";
 import { importTypeScript } from "./typescript-test-loader.mjs";
 
 const {
-  providerSupportsAnthropicReasoning,
   providerTypeOptionsSupportAnthropicReasoning,
 } = await importTypeScript(new URL("./provider-reasoning-policy.ts", import.meta.url));
 
-test("provider reasoning compatibility falls back to legacy provider types without descriptors", () => {
-  assert.equal(providerSupportsAnthropicReasoning("openai_compatible"), true);
-  assert.equal(providerTypeOptionsSupportAnthropicReasoning([], "openai_compatible"), true);
+test("provider reasoning compatibility does not infer support from provider type names", () => {
+  assert.equal(providerTypeOptionsSupportAnthropicReasoning([], "openai_compatible"), false);
+  assert.equal(providerTypeOptionsSupportAnthropicReasoning([{ value: "openai_compatible" }], "openai_compatible"), false);
   assert.equal(providerTypeOptionsSupportAnthropicReasoning([], "openai_codex"), false);
 });
 

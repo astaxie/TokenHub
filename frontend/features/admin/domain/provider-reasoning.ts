@@ -6,7 +6,7 @@ import {
   providerReasoningOverrideFormValues,
   serializeProviderReasoningOptions,
 } from "./provider-reasoning-options";
-export { providerSupportsAnthropicReasoning, providerTypeOptionsSupportAnthropicReasoning } from "./provider-reasoning-policy";
+export { providerTypeOptionsSupportAnthropicReasoning } from "./provider-reasoning-policy";
 
 export { providerHasReasoningOverrides, providerReasoningFormValues, providerReasoningOverrideFormValues };
 
