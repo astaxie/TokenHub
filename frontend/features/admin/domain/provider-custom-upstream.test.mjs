@@ -19,8 +19,12 @@ const bearerAnthropicValues = {
   anthropic_auth_type: "bearer",
 };
 
+const anthropicProviderTypeOptions = [
+  { value: "anthropic", label: "Anthropic", supportsCustomHeaders: true, authModes: ["bearer", "x-api-key"] },
+];
+
 test("create discovery sends the selected Anthropic auth mode", () => {
-  assert.deepEqual(customUpstreamDiscoveryPayload(bearerAnthropicValues, "", "chat"), {
+  assert.deepEqual(customUpstreamDiscoveryPayload(bearerAnthropicValues, "", "chat", {}, anthropicProviderTypeOptions), {
     provider_id: "",
     name: "Bearer Anthropic",
     type: "anthropic",
@@ -34,7 +38,7 @@ test("create discovery sends the selected Anthropic auth mode", () => {
 test("edit discovery sends the provider ID and selected Anthropic auth mode", () => {
   const values = { ...bearerAnthropicValues, api_key: "" };
 
-  assert.deepEqual(customUpstreamDiscoveryPayload(values, "provider-anthropic", "all"), {
+  assert.deepEqual(customUpstreamDiscoveryPayload(values, "provider-anthropic", "all", {}, anthropicProviderTypeOptions), {
     provider_id: "provider-anthropic",
     name: "Bearer Anthropic",
     type: "anthropic",
@@ -51,7 +55,7 @@ test("discovery includes custom header payloads", () => {
     sensitive_headers: ["X-Tenant"],
   };
 
-  assert.deepEqual(customUpstreamDiscoveryPayload(bearerAnthropicValues, "", "chat", headers), {
+  assert.deepEqual(customUpstreamDiscoveryPayload(bearerAnthropicValues, "", "chat", headers, anthropicProviderTypeOptions), {
     provider_id: "",
     name: "Bearer Anthropic",
     type: "anthropic",
@@ -63,8 +67,8 @@ test("discovery includes custom header payloads", () => {
   });
 });
 
-test("Anthropic discovery defaults to x-api-key while other provider types omit the mode", () => {
-  assert.equal(providerAuthMode({ type: "anthropic" }), "x-api-key");
+test("discovery omits auth mode when provider metadata does not declare modes", () => {
+  assert.equal(providerAuthMode({ type: "anthropic" }), "");
   assert.equal(providerAuthMode({ type: "openai_compatible", anthropic_auth_type: "bearer" }), "");
 });
 
@@ -103,8 +107,8 @@ test("changing the Anthropic auth selector invalidates the custom model cache ke
   const apiKeyConnection = customUpstreamConnectionKey({
     ...bearerAnthropicValues,
     anthropic_auth_type: "x-api-key",
-  });
-  const bearerConnection = customUpstreamConnectionKey(bearerAnthropicValues);
+  }, anthropicProviderTypeOptions);
+  const bearerConnection = customUpstreamConnectionKey(bearerAnthropicValues, anthropicProviderTypeOptions);
 
   assert.notEqual(apiKeyConnection, bearerConnection);
   assert.equal(customUpstreamModelsAreCurrent(1, apiKeyConnection, bearerConnection), false);

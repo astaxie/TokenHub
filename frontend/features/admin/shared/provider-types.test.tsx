@@ -147,6 +147,11 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeSupportsCustomHeaders([], "azure_openai")).toBe(true);
   });
 
+  it("does not infer auth modes from built-in provider type names", () => {
+    expect(providerTypeAuthModes([], "anthropic")).toEqual([]);
+    expect(providerTypePreferredAuthMode([], "anthropic")).toBe("");
+  });
+
   it("carries provider header policy from plugin capabilities", () => {
     const data = emptyData();
     data.plugins = [{

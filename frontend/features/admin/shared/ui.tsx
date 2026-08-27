@@ -532,9 +532,7 @@ export function providerTypeRouteProtocols(providerTypeOptions: ProviderTypeOpti
 }
 
 export function providerTypeAuthModes(providerTypeOptions: ProviderTypeOption[], providerType: string) {
-  const modes = providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
-  if (modes.length > 0) return modes;
-  return providerType === "anthropic" ? ["bearer", "x-api-key"] : [];
+  return providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
 }
 
 export function providerTypePreferredAuthMode(providerTypeOptions: ProviderTypeOption[], providerType: string) {

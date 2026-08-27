@@ -52,9 +52,7 @@ export function customUpstreamConnectionKey(values: Record<string, string>, prov
 }
 
 function providerAuthModes(providerTypeOptions: ProviderAuthModeOption[], providerType: string) {
-  const modes = providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
-  if (modes.length > 0) return modes;
-  return providerType === "anthropic" ? ["bearer", "x-api-key"] : [];
+  return providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
 }
 
 function preferredProviderAuthMode(modes: string[]) {
