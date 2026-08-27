@@ -23,6 +23,17 @@ func TestKronkCatalogTemplateHasLocalDefaults(t *testing.T) {
 	}
 }
 
+func TestKronkProviderPluginRegistersModelsPreviewAction(t *testing.T) {
+	server := New(NewMemoryStore())
+	action, ok := server.providerPluginCapabilityActionDescriptor(ProviderKronk, AdapterCapabilityModels, "models.preview", "")
+	if !ok {
+		t.Fatal("expected Kronk models preview action")
+	}
+	if action.PluginID != "tokenhub.provider.kronk" || action.ActionID != "kronk.models.preview" {
+		t.Fatalf("Kronk models preview action = %+v", action)
+	}
+}
+
 func TestKronkDiscoveryPreservesModelIDsAndOptionalBearerToken(t *testing.T) {
 	for _, testCase := range []struct {
 		name  string

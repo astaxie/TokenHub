@@ -420,6 +420,51 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: catalog}, nil
 	}))
+	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kronk",
+		ActionID:   "kronk.models.preview",
+		Kind:       pluginmeta.ActionKindRead,
+		Title:      "Preview Kronk models",
+		Capability: "models.preview",
+		Subject:    ProviderKronk,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"provider_id": map[string]any{"type": "string"},
+				"id":          map[string]any{"type": "string"},
+				"name":        map[string]any{"type": "string"},
+				"base_url":    map[string]any{"type": "string"},
+				"api_key":     map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"id", "models_count", "models"}, map[string]string{
+			"id":              "string",
+			"name":            "string",
+			"display_name":    "string",
+			"type":            "string",
+			"base_url":        "string",
+			"doc_url":         "string",
+			"categories":      "array",
+			"category_counts": "object",
+			"models_count":    "integer",
+			"source":          "string",
+			"etag":            "string",
+			"models":          "array",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var req ProviderCreateRequest
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &req); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		req.Type = ProviderKronk
+		catalog, err := server.discoverKronkCatalog(ctx, req)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: catalog}, nil
+	}))
 	imageCapabilityAction := openAICodexImageCapabilityActionDescriptor()
 	mustRegisterPluginAction(server.pluginActions, imageCapabilityAction, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {

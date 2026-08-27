@@ -269,7 +269,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 			writeError(w, r, err)
 			return
 		}
-		entry, err := s.discoverKronkCatalog(r.Context(), req)
+		entry, err := s.discoverProviderCatalogFromCreateRequest(r.Context(), user, kronkProviderCatalogRequest(req))
 		if err != nil {
 			writeError(w, r, err)
 			return
