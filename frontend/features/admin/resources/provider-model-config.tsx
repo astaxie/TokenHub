@@ -168,7 +168,7 @@ function providerTypeForResourceValues(data: AppData, values?: Record<string, st
 export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Provider, data: AppData) {
   const accountResource = data.providerResources.find((resource) => resource.provider_id === provider.id && isProviderAccountResourceForData(data, resource) && resource.status === "active");
   if (accountResource) {
-    const action = providerPluginActionForCapability(data.pluginActions, provider.type, "probe.run");
+    const action = providerPluginActionForResourceCapability(data.pluginActions, provider.type, accountResource.resource_type, "probe.run");
     if (action) {
       await runProviderResourcePluginAction(ctx, accountResource, action, providerAccountProbePayload(action, accountResource), providerAccountProbeFallbackLabel(accountResource));
       return;
@@ -278,7 +278,7 @@ export function providerResourceCredentialRefreshAction(data: AppData, item: Pro
 
 export function providerResourceCredentialRefreshActionForProviderType(actions: PluginActionDescriptor[], item: ProviderResource, providerType: string): PluginActionDescriptor | undefined {
   if (item.credential_summary?.has_refresh_token !== "true") return undefined;
-  return providerPluginActionForCapability(actions, providerType, "credentials.refresh");
+  return providerPluginActionForResourceCapability(actions, providerType, item.resource_type, "credentials.refresh");
 }
 
 export function providerPluginActionForCapability(actions: PluginActionDescriptor[], providerType: string, capability: string): PluginActionDescriptor | undefined {
@@ -286,6 +286,16 @@ export function providerPluginActionForCapability(actions: PluginActionDescripto
     action.capability === capability &&
     (!action.subject || action.subject === providerType),
   );
+}
+
+export function providerPluginActionForResourceCapability(actions: PluginActionDescriptor[], providerType: string, resourceType: string, capability: string): PluginActionDescriptor | undefined {
+  const candidates = actions.filter((action) =>
+    action.capability === capability &&
+    (!action.subject || action.subject === providerType),
+  );
+  const normalizedResourceType = resourceType.trim();
+  return candidates.find((action) => action.metadata?.provider_resource_type?.trim() === normalizedResourceType) ??
+    candidates.find((action) => !action.metadata?.provider_resource_type?.trim());
 }
 
 export function unwrapPluginActionData<T>(payload: unknown): T {

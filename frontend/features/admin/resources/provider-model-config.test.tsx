@@ -84,6 +84,42 @@ describe("providerResourceConfig", () => {
     });
   });
 
+  it("matches credential refresh actions by provider resource type metadata", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    const resource = {
+      id: "rsrc_kimi_oauth",
+      provider_id: "prv_kimi",
+      name: "Kimi OAuth Account",
+      resource_type: "kimi_oauth_account",
+      status: "active",
+      healthy: true,
+      priority: 1,
+      weight: 100,
+      credential_summary: { has_refresh_token: "true" },
+    };
+    data.pluginActions = [
+      {
+        plugin_id: "tokenhub.provider.kimi",
+        action_id: "kimi.pat.refresh",
+        kind: "mutate",
+        capability: "credentials.refresh",
+        subject: "kimi_subscription",
+        metadata: { provider_resource_type: "kimi_pat_account" },
+      },
+      {
+        plugin_id: "tokenhub.provider.kimi",
+        action_id: "kimi.oauth.refresh",
+        kind: "mutate",
+        capability: "credentials.refresh",
+        subject: "kimi_subscription",
+        metadata: { provider_resource_type: "kimi_oauth_account" },
+      },
+    ];
+
+    expect(providerResourceCredentialRefreshAction(data, resource)?.action_id).toBe("kimi.oauth.refresh");
+  });
+
   it("runs provider resource plugin actions that return data", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { fetched_at: 123, plan_type: "pro" } }), {
       status: 200,
@@ -151,11 +187,22 @@ describe("providerResourceConfig", () => {
     }];
     data.pluginActions = [{
       plugin_id: "tokenhub.provider.kimi",
+      action_id: "kimi.other.probe.run",
+      kind: "test",
+      capability: "probe.run",
+      subject: "kimi_subscription",
+      metadata: {
+        provider_resource_type: "kimi_other_account",
+        default_payload_json: JSON.stringify({ model: "wrong-model", prompt: "wrong" }),
+      },
+    }, {
+      plugin_id: "tokenhub.provider.kimi",
       action_id: "kimi.probe.run",
       kind: "test",
       capability: "probe.run",
       subject: "kimi_subscription",
       metadata: {
+        provider_resource_type: "kimi_subscription_account",
         default_payload_json: JSON.stringify({ model: "kimi-k2", prompt: "ping" }),
       },
     }];
