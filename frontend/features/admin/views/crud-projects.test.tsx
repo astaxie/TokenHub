@@ -3,12 +3,13 @@ import { emptyData } from "../domain/catalog";
 import { providerChannelAccountDetail, providerMonitorSamples, providerQuotaReadAction } from "./crud-projects";
 
 describe("providerQuotaReadAction", () => {
-  it("matches quota plugin actions by the resource Provider type", () => {
+  it("matches quota plugin actions by Provider and resource type metadata", () => {
     const data = emptyData();
     data.providers = [{ id: "prv_codex", name: "Codex", type: "openai_codex", status: "active", healthy: true, priority: 1 }];
     data.pluginActions = [
       { plugin_id: "tokenhub.provider.other", action_id: "quota.read", kind: "read", capability: "quota.read", subject: "other_provider" },
-      { plugin_id: "tokenhub.provider.openai-codex", action_id: "openai_codex.quota.read", kind: "read", capability: "quota.read", subject: "openai_codex" },
+      { plugin_id: "tokenhub.provider.openai-codex", action_id: "openai_codex.wrong.quota.read", kind: "read", capability: "quota.read", subject: "openai_codex", metadata: { provider_resource_type: "wrong_account" } },
+      { plugin_id: "tokenhub.provider.openai-codex", action_id: "openai_codex.quota.read", kind: "read", capability: "quota.read", subject: "openai_codex", metadata: { provider_resource_type: "openai_subscription" } },
     ];
 
     expect(providerQuotaReadAction(data, {

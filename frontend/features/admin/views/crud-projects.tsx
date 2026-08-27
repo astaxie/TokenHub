@@ -11,7 +11,7 @@ import { isProviderAccountResource } from "../domain/provider-resource-types";
 import { enumValueLabel, providerTypeLabelFromData, reportDatasetLabel, roleLabel } from "../domain/labels";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { reportExportDefinitions } from "../resources/governance-config";
-import { providerPluginActionForCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
+import { providerPluginActionForResourceCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
 import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
@@ -459,7 +459,7 @@ export function ProviderChannelTable({
 
 export function providerQuotaReadAction(data: AppData, resource: ProviderResource) {
   const providerType = data.providers.find((provider) => provider.id === resource.provider_id)?.type ?? "";
-  return providerPluginActionForCapability(data.pluginActions, providerType, "quota.read");
+  return providerPluginActionForResourceCapability(data.pluginActions, providerType, resource.resource_type, "quota.read");
 }
 
 export function ProviderCodexQuota({
