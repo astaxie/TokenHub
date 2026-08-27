@@ -339,7 +339,8 @@ func (s *Server) exchangeOpenAIAccountOAuth(ctx context.Context, req providerAcc
 }
 
 func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelection) (RouteSelection, error) {
-	if route.Resource == nil || !isOpenAIAccountResource(route.Resource.ResourceType) {
+	supportChecker, ok := s.store.(providerNativeCredentialRefreshSupportChecker)
+	if route.Resource == nil || !ok || !supportChecker.SupportsNativeProviderResourceCredentialRefresh(*route.Resource) {
 		return route, nil
 	}
 	creds, err := s.store.RefreshProviderResourceCredentials(ctx, routeResourceID(route), false)
@@ -353,7 +354,7 @@ func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelecti
 		route.Provider.Options = map[string]string{}
 	}
 	route.Provider.Options["resource_id"] = routeResourceID(route)
-	applyOpenAIAccountOptions(route.Provider.Options, creds)
+	applyProviderAccountOptions(route.Provider.Options, route.Resource.ResourceType, creds)
 	return route, nil
 }
 

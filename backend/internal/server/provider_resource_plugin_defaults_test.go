@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"testing"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -306,5 +307,42 @@ func TestProviderResourceCachedCatalogSourceUsesPluginCatalogSource(t *testing.T
 	}
 	if catalog.Source != "vendor-cache" || catalog.ID != "vendor-catalog" || catalog.Type != "vendor_subscription" {
 		t.Fatalf("cached provider resource catalog = %+v", catalog)
+	}
+}
+
+func TestPrepareRouteForUpstreamUsesRefreshProfilePolicy(t *testing.T) {
+	store := NewMemoryStore()
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{
+		"profiled_provider": {"profiled_account"},
+	})
+	provider := store.AddProvider(Provider{
+		ID: "prv_profiled_route", Name: "Profiled Route", Type: "profiled_provider",
+		Status: StatusActive, Healthy: true,
+		Options: map[string]string{
+			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+		},
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_profiled_route", ProviderID: provider.ID, Name: "Profiled Account",
+		ResourceType: "profiled_account", Status: StatusActive, Healthy: true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType: "oauth", AccessToken: "profiled-route-access", RefreshToken: "profiled-route-refresh",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create profiled route resource: %v", err)
+	}
+
+	prepared, err := (&Server{store: store}).prepareRouteForUpstream(context.Background(), RouteSelection{
+		Provider: provider,
+		Resource: &resource,
+	})
+	if err != nil {
+		t.Fatalf("prepare route: %v", err)
+	}
+	if prepared.Provider.APIKey != "profiled-route-access" ||
+		prepared.Provider.Options["resource_id"] != resource.ID ||
+		prepared.Provider.Options["credential_source"] != "profiled_account" {
+		t.Fatalf("prepared provider did not use plugin resource credentials: %+v", prepared.Provider)
 	}
 }
