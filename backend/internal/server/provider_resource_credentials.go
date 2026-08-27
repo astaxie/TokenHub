@@ -12,6 +12,7 @@ import (
 const (
 	providerResourceReauthorizationRequiredOption = "oauth_reauthorization_required"
 	openAIAccountReauthorizationRequiredOption    = providerResourceReauthorizationRequiredOption
+	providerAccountCredentialSourceFallback       = "provider_account"
 	providerResourceIdentityProfileOpenAIIDToken  = "openai_account_id_token"
 )
 
@@ -452,7 +453,7 @@ func applyProviderAccountOptions(options map[string]string, resourceType string,
 	} {
 		delete(options, key)
 	}
-	options["credential_source"] = firstNonEmpty(strings.TrimSpace(resourceType), ProviderResourceOpenAISubscription)
+	options["credential_source"] = firstNonEmpty(strings.TrimSpace(resourceType), providerAccountCredentialSourceFallback)
 	options["auth_type"] = firstNonEmpty(creds.AuthType, options["auth_type"], "oauth")
 	if strings.TrimSpace(creds.RefreshToken) != "" {
 		options["has_refresh_token"] = "true"

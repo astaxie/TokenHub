@@ -154,6 +154,20 @@ func TestProviderResourceAccountClassificationKeepsLegacyFallbackWithoutMetadata
 	}
 }
 
+func TestProviderAccountOptionsFallbackIsProviderNeutral(t *testing.T) {
+	options := map[string]string{}
+	applyProviderAccountOptions(options, "", ProviderResourceCredentials{AuthType: "oauth"})
+	if options["credential_source"] != providerAccountCredentialSourceFallback {
+		t.Fatalf("credential source = %q, want provider-neutral fallback", options["credential_source"])
+	}
+
+	openAIOptions := map[string]string{}
+	applyOpenAIAccountOptions(openAIOptions, ProviderResourceCredentials{AuthType: "oauth"})
+	if openAIOptions["credential_source"] != ProviderResourceOpenAISubscription {
+		t.Fatalf("OpenAI credential source = %q, want explicit OpenAI subscription", openAIOptions["credential_source"])
+	}
+}
+
 func TestProviderResourceCredentialIdentityProfileControlsIDTokenClaims(t *testing.T) {
 	store := NewMemoryStore()
 	store.ConfigureProviderResourceTypePolicy(map[string][]string{
