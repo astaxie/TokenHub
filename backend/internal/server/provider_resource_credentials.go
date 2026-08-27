@@ -59,8 +59,8 @@ type openAIOrganizationClaim struct {
 	IsDefault bool   `json:"is_default"`
 }
 
-func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource) {
-	if resource == nil || !isProviderAccountResource(resource.ResourceType) {
+func (s *GormStore) prepareProviderResourceForCreate(providerType string, resource *ProviderResource) {
+	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
 	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
@@ -73,8 +73,8 @@ func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource)
 	s.mergeProviderAccountCredentials(resource, nil)
 }
 
-func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource, patch ProviderResource) {
-	if resource == nil || !isProviderAccountResource(resource.ResourceType) {
+func (s *GormStore) prepareProviderResourceForUpdate(providerType string, resource *ProviderResource, patch ProviderResource) {
+	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
 	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
@@ -111,6 +111,47 @@ func (s *GormStore) ConfigureProviderResourceTypeDefaults(defaults map[string]ma
 		defer s.mu.Unlock()
 	}
 	s.providerResourceDefaults = normalized
+}
+
+func (s *GormStore) ConfigureProviderResourceTypePolicy(resourceTypes map[string][]string) {
+	if s == nil {
+		return
+	}
+	normalized := make(map[string]map[string]struct{}, len(resourceTypes))
+	for providerType, values := range resourceTypes {
+		providerType = strings.ToLower(strings.TrimSpace(providerType))
+		if providerType == "" {
+			continue
+		}
+		normalized[providerType] = map[string]struct{}{}
+		for _, resourceType := range values {
+			resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+			if resourceType == "" || resourceType == ProviderResourceAPIKey {
+				continue
+			}
+			normalized[providerType][resourceType] = struct{}{}
+		}
+	}
+	if s.mu != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	s.providerResourceTypes = normalized
+}
+
+func (s *GormStore) IsProviderAccountResourceType(providerType string, resourceType string) bool {
+	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+	if resourceType == "" || resourceType == ProviderResourceAPIKey {
+		return false
+	}
+	if s != nil {
+		providerType = strings.ToLower(strings.TrimSpace(providerType))
+		if accountTypes, configured := s.providerResourceTypes[providerType]; configured {
+			_, ok := accountTypes[resourceType]
+			return ok
+		}
+	}
+	return isProviderAccountResource(resourceType)
 }
 
 func (s *GormStore) applyProviderResourceTypeDefaults(resource *ProviderResource) {
@@ -374,8 +415,22 @@ func providerResourceCredentialInputPresent(resource ProviderResource) bool {
 	return resource.Credentials != nil || strings.TrimSpace(resource.APIKey) != ""
 }
 
+func (s *GormStore) providerResourceCredentialSummary(providerType string, resource ProviderResource) map[string]string {
+	if !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
+		return nil
+	}
+	return providerAccountCredentialSummaryFromOptions(resource.Options)
+}
+
 func providerResourceCredentialSummary(resource ProviderResource) map[string]string {
 	if !isProviderAccountResource(resource.ResourceType) {
+		return nil
+	}
+	return providerAccountCredentialSummaryFromOptions(resource.Options)
+}
+
+func providerAccountCredentialSummaryFromOptions(options map[string]string) map[string]string {
+	if len(options) == 0 {
 		return nil
 	}
 	summary := map[string]string{}
@@ -391,7 +446,7 @@ func providerResourceCredentialSummary(resource ProviderResource) map[string]str
 		"has_refresh_token",
 		providerResourceReauthorizationRequiredOption,
 	} {
-		if value := strings.TrimSpace(resource.Options[key]); value != "" {
+		if value := strings.TrimSpace(options[key]); value != "" {
 			summary[key] = value
 		}
 	}
@@ -399,6 +454,16 @@ func providerResourceCredentialSummary(resource ProviderResource) map[string]str
 		return nil
 	}
 	return summary
+}
+
+func (s *GormStore) redactProviderResourceSecrets(providerType string, resource *ProviderResource) {
+	if resource == nil {
+		return
+	}
+	resource.APIKey = ""
+	resource.CredentialBlob = ""
+	resource.Credentials = nil
+	resource.CredentialSummary = s.providerResourceCredentialSummary(providerType, *resource)
 }
 
 func redactProviderResourceSecrets(resource *ProviderResource) {

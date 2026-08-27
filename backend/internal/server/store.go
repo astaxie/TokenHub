@@ -152,6 +152,7 @@ type Store interface {
 	GetProviderResource(id string) (ProviderResource, bool)
 	UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error)
 	UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error)
+	IsProviderAccountResourceType(providerType string, resourceType string) bool
 	DeleteProviderResource(id string) error
 	SetProviderResourceHealth(resourceID string, healthy bool) (ProviderResource, error)
 	BulkOperateProviderResources(action string, ids []string) (ProviderResourceBulkResult, error)
@@ -313,6 +314,7 @@ type GormStore struct {
 	imageCapabilityRetry     time.Duration
 	imageCapabilityProfiles  []providerImageCapabilityRouteProfile
 	providerResourceDefaults map[string]map[string]string
+	providerResourceTypes    map[string]map[string]struct{}
 	billingRedis             *redisBillingCoordinator
 	billingRepository        billing.Repository
 	billingPersistence       *billingpersistence.Store

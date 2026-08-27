@@ -34,11 +34,19 @@ func newProviderCredentialRefreshService(store Store, pluginRefresh ...providerC
 
 func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 	resources := make([]ProviderResource, 0)
+	providersByID := map[string]Provider{}
+	for _, provider := range s.store.ListProviders() {
+		providersByID[provider.ID] = provider
+	}
 	for _, resource := range s.store.ListProviderResources() {
 		if ctx.Err() != nil {
 			return
 		}
-		if !isProviderAccountResource(resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[providerResourceReauthorizationRequiredOption] == "true" {
+		providerType := ""
+		if provider, ok := providersByID[resource.ProviderID]; ok {
+			providerType = provider.Type
+		}
+		if !s.store.IsProviderAccountResourceType(providerType, resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[providerResourceReauthorizationRequiredOption] == "true" {
 			continue
 		}
 		resources = append(resources, resource)

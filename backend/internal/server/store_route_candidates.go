@@ -98,16 +98,16 @@ func (availability providerResourceAvailability) err() error {
 	}
 }
 
-func routeCandidateResourceRequired(provider Provider, resource ProviderResource) bool {
-	return providerRouteRequiresResource(provider) || isProviderAccountResource(resource.ResourceType)
+func (s *GormStore) routeCandidateResourceRequired(provider Provider, resource ProviderResource) bool {
+	return providerRouteRequiresResource(provider) || s.IsProviderAccountResourceType(provider.Type, resource.ResourceType)
 }
 
-func routeCandidateResourcesRequireSelection(provider Provider, resources []ProviderResource) bool {
+func (s *GormStore) routeCandidateResourcesRequireSelection(provider Provider, resources []ProviderResource) bool {
 	if routeCandidateProviderRequiresResource(provider) {
 		return true
 	}
 	for _, resource := range resources {
-		if isProviderAccountResource(resource.ResourceType) {
+		if s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) {
 			return true
 		}
 	}
@@ -170,7 +170,7 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 			}
 			matched = true
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
-				availability.observeUnavailable(routeCandidateResourceRequired(provider, resource), resource, now)
+				availability.observeUnavailable(s.routeCandidateResourceRequired(provider, resource), resource, now)
 				continue
 			}
 			resourceRoute := route
@@ -182,7 +182,7 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 			eligible = true
 		}
 		if !eligible {
-			if routeCandidateResourcesRequireSelection(provider, implicitResources[provider.ID]) {
+			if s.routeCandidateResourcesRequireSelection(provider, implicitResources[provider.ID]) {
 				if !matched {
 					availability.observeMissing(true)
 				}
@@ -258,7 +258,7 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 			}
 			matched = true
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
-				availability.observeUnavailable(routeCandidateResourceRequired(provider, resource), resource, now)
+				availability.observeUnavailable(s.routeCandidateResourceRequired(provider, resource), resource, now)
 				continue
 			}
 			resourceRoute := route
@@ -270,7 +270,7 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 			eligible = true
 		}
 		if !eligible {
-			if routeCandidateResourcesRequireSelection(provider, resources) {
+			if s.routeCandidateResourcesRequireSelection(provider, resources) {
 				if !matched {
 					availability.observeMissing(true)
 				}

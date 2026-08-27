@@ -71,12 +71,19 @@ type providerResourceTypeDefaultsConfigurator interface {
 	ConfigureProviderResourceTypeDefaults(defaults map[string]map[string]string)
 }
 
+type providerResourceTypePolicyConfigurator interface {
+	ConfigureProviderResourceTypePolicy(resourceTypes map[string][]string)
+}
+
 func configureProviderResourceTypeDefaults(store Store, registry *AdapterRegistry) {
 	configurator, ok := store.(providerResourceTypeDefaultsConfigurator)
-	if !ok {
-		return
+	if ok {
+		configurator.ConfigureProviderResourceTypeDefaults(providerResourceTypeDefaultsFromRegistry(registry))
 	}
-	configurator.ConfigureProviderResourceTypeDefaults(providerResourceTypeDefaultsFromRegistry(registry))
+	policyConfigurator, ok := store.(providerResourceTypePolicyConfigurator)
+	if ok {
+		policyConfigurator.ConfigureProviderResourceTypePolicy(providerResourceTypePolicyFromRegistry(registry))
+	}
 }
 
 func providerResourceTypeDefaultsFromRegistry(registry *AdapterRegistry) map[string]map[string]string {
@@ -97,6 +104,37 @@ func providerResourceTypeDefaultsFromRegistry(registry *AdapterRegistry) map[str
 		}
 	}
 	return defaults
+}
+
+func providerResourceTypePolicyFromRegistry(registry *AdapterRegistry) map[string][]string {
+	if registry == nil {
+		return nil
+	}
+	policy := map[string][]string{}
+	for _, descriptor := range registry.List() {
+		providerType := strings.ToLower(strings.TrimSpace(descriptor.Type))
+		if providerType == "" {
+			continue
+		}
+		resourceTypes := []string{}
+		hasResourceTypeMetadata := false
+		for _, resourceType := range descriptor.ResourceTypes {
+			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
+			if resourceTypeName == "" {
+				continue
+			}
+			hasResourceTypeMetadata = true
+			if resourceTypeName == ProviderResourceAPIKey {
+				continue
+			}
+			resourceTypes = append(resourceTypes, resourceTypeName)
+		}
+		if !hasResourceTypeMetadata {
+			continue
+		}
+		policy[providerType] = sortedUniqueStrings(resourceTypes)
+	}
+	return policy
 }
 
 func reconcileProviderPluginPolicies(store Store, registry *AdapterRegistry) {

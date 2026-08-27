@@ -346,13 +346,13 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	); err != nil {
 		return ProviderResource{}, err
 	}
-	s.prepareProviderResourceForCreate(&resource)
+	s.prepareProviderResourceForCreate(provider.Type, &resource)
 	resource.APIKey = s.encryptSecret(resource.APIKey)
 	if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
 		return ProviderResource{}, err
 	}
 	resource.Headers = maskedProviderHeaders(s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders), resource.SensitiveHeaders)
-	redactProviderResourceSecrets(&resource)
+	s.redactProviderResourceSecrets(provider.Type, &resource)
 	return resource, nil
 }
 
@@ -376,12 +376,15 @@ func (s *GormStore) ListProviderResources() []ProviderResource {
 			copy := observation
 			items[i].Observation = &copy
 		}
-		redactProviderResourceSecrets(&items[i])
-		items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
 		if provider, ok := providersByID[items[i].ProviderID]; ok {
+			s.redactProviderResourceSecrets(provider.Type, &items[i])
+			items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
 			if err := validateEffectiveProviderHeaders(provider.Type, s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), items[i].Headers); err != nil {
 				items[i].HeaderValidationErrors = []string{AsHTTPError(err).Code}
 			}
+		} else {
+			redactProviderResourceSecrets(&items[i])
+			items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
 		}
 		items[i].Headers = maskedProviderHeaders(items[i].Headers, items[i].SensitiveHeaders)
 	}
@@ -394,13 +397,15 @@ func (s *GormStore) GetProviderResource(id string) (ProviderResource, bool) {
 		return ProviderResource{}, false
 	}
 	resource.APIKey = s.decryptSecret(resource.APIKey)
-	resource.CredentialSummary = providerResourceCredentialSummary(resource)
 	resource.Headers, resource.HeaderValidationErrors = s.revealProviderHeaderConfig(resource.Headers, resource.SensitiveHeaders)
 	var provider Provider
 	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err == nil {
+		resource.CredentialSummary = s.providerResourceCredentialSummary(provider.Type, resource)
 		if validationErr := validateEffectiveProviderHeaders(provider.Type, s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), resource.Headers); validationErr != nil {
 			resource.HeaderValidationErrors = []string{AsHTTPError(validationErr).Code}
 		}
+	} else {
+		resource.CredentialSummary = providerResourceCredentialSummary(resource)
 	}
 	return resource, true
 }
@@ -513,11 +518,14 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	for _, profile := range beforeImageCapabilityProfiles {
 		beforeImageCapabilities[profile.key()] = strings.TrimSpace(before.Options[profile.CapabilityOption])
 	}
+	var provider Provider
 	if patch.ProviderID != "" && patch.ProviderID != resource.ProviderID {
-		if err := db.First(&Provider{}, "id = ?", patch.ProviderID).Error; err != nil {
+		if err := db.First(&provider, "id = ?", patch.ProviderID).Error; err != nil {
 			return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 		}
 		resource.ProviderID = patch.ProviderID
+	} else if err := db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
+		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 	}
 	if patch.Name != "" {
 		nextName := strings.TrimSpace(patch.Name)
@@ -569,15 +577,11 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		resource.SensitiveHeaders = sensitive
 	}
 	if patch.Options != nil {
-		if isProviderAccountResource(resource.ResourceType) {
+		if s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) {
 			resource.Options = s.preserveProviderAccountProtectedOptions(resource.Options, patch, resource.ResourceType)
 		} else {
 			resource.Options = patch.Options
 		}
-	}
-	var provider Provider
-	if err := db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
-		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 	}
 	if err := ensureProviderResourceAdapterCompatibility(db, &provider, resource.ResourceType); err != nil {
 		return ProviderResource{}, err
@@ -590,7 +594,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		return ProviderResource{}, err
 	}
 	resource.UpdatedAt = time.Now().UTC()
-	s.prepareProviderResourceForUpdate(&resource, patch)
+	s.prepareProviderResourceForUpdate(provider.Type, &resource, patch)
 	afterCredentials := s.providerResourceCredentialsForRuntime(resource)
 	imageCapabilityProfiles := mergeProviderImageCapabilityRouteProfiles(
 		beforeImageCapabilityProfiles,
@@ -962,7 +966,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
 			continue
 		}
-		s.prepareProviderResourceForCreate(&resource)
+		s.prepareProviderResourceForCreate(provider.Type, &resource)
 		resource.APIKey = s.encryptSecret(resource.APIKey)
 		if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
 			result.Failed++
@@ -970,7 +974,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			continue
 		}
 		resource.Headers = maskedProviderHeaders(s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders), resource.SensitiveHeaders)
-		redactProviderResourceSecrets(&resource)
+		s.redactProviderResourceSecrets(provider.Type, &resource)
 		result.Success++
 		result.Resources = append(result.Resources, resource)
 	}
