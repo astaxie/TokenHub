@@ -80,3 +80,213 @@ func TestImageGatewayPreflightHooksRewritePromptBeforeJobRuns(t *testing.T) {
 		})
 	}
 }
+
+func TestImageProviderCallHookServesGatewayImageWithoutBuiltinAdapter(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Provider Plugin Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-provider-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_provider_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_provider_plugin", Name: "Image Provider Plugin", Type: "third_party_image_plugin", Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_provider_plugin", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderModel: "upstream-image-model", Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-provider-plugin-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		t.Fatal("image runner should not be called when provider_call hook handles the route")
+		return nil, "", Usage{}, nil
+	}
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-provider",
+		HookID:        "image-provider-call",
+		Stage:         pluginmeta.StageProviderCall,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest, pluginmeta.DataProviderCredentials, pluginmeta.DataRouteCandidates},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicySkipRoute,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register image provider call hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var request ProviderImageGenerationRequest
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderRequest], &request); err != nil {
+			t.Fatalf("decode provider image request: %v", err)
+		}
+		if request.Model != "upstream-image-model" || request.Prompt != "plugin image prompt" {
+			t.Fatalf("provider image request = model %q prompt %q, want upstream model and prompt", request.Model, request.Prompt)
+		}
+		if _, ok := input.Data[pluginmeta.DataProviderCredentials]; !ok {
+			t.Fatal("provider credentials were not available to image provider hook")
+		}
+		return rawProviderCallResult(t, gatewayImageProviderResponse{
+			DataBase64:    encodeBase64(imageBytes),
+			RevisedPrompt: "served by image plugin",
+		}, Usage{PromptTokens: 5, CompletionTokens: 7, TotalTokens: 12}), nil
+	})); err != nil {
+		t.Fatalf("register image provider call handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "plugin image prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, encodeBase64(imageBytes)) || !strings.Contains(response.Body, "served by image plugin") {
+		t.Fatalf("image response was not served by provider plugin: %s", response.Body)
+	}
+}
+
+func TestImageRequestTransformHookRewritesProviderRequestBeforeInvoke(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Request Transform Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-transform-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_transform_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_transform", Name: "Image Transform", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_transform", ProviderID: provider.ID, Name: "Image Transform Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_transform", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-transform-plugin-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-transform",
+		HookID:        "provider-request",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicySkipRoute,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register image request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var request ProviderImageGenerationRequest
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderRequest], &request); err != nil {
+			t.Fatalf("decode provider image request: %v", err)
+		}
+		request.Prompt = "provider-stage prompt"
+		request.Quality = "high"
+		return rawProviderRequestPatch(t, request), nil
+	})); err != nil {
+		t.Fatalf("register image request transform handler: %v", err)
+	}
+	var selectedJob ImageJob
+	server.imageRunner = func(_ context.Context, _ RouteSelection, job ImageJob) ([]byte, string, Usage, error) {
+		selectedJob = job
+		return imageBytes, "", Usage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4}, nil
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "original provider prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)
+	}
+	if selectedJob.Prompt != "provider-stage prompt" || selectedJob.Quality != "high" {
+		t.Fatalf("image job = prompt %q quality %q, want provider-stage patch", selectedJob.Prompt, selectedJob.Quality)
+	}
+}
+
+func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Post Plugin Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-post-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_post_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_post", Name: "Image Post", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_post", ProviderID: provider.ID, Name: "Image Post Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_post", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-post-plugin-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		return imageBytes, "runner prompt", Usage{PromptTokens: 2, CompletionTokens: 2, TotalTokens: 4}, nil
+	}
+
+	responsePost := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-post",
+		HookID:        "response",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	usageAttribution := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-post",
+		HookID:        "usage",
+		Stage:         pluginmeta.StageUsageAttribution,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataUsage, pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	cacheWrite := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-post",
+		HookID:        "cache-write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody, pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	for _, hook := range []pluginmeta.GatewayHookDescriptor{responsePost, usageAttribution, cacheWrite} {
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register image post hook %s: %v", hook.HookID, err)
+		}
+	}
+	if err := server.gatewayHooks.RegisterHandler(responsePost, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var response gatewayImageProviderResponse
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
+			t.Fatalf("decode image response: %v", err)
+		}
+		response.RevisedPrompt = "post-stage revised prompt"
+		return rawProviderResponsePatch(t, response), nil
+	})); err != nil {
+		t.Fatalf("register image response post handler: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(usageAttribution, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if _, ok := input.Data[pluginmeta.DataProviderResponse]; !ok {
+			t.Fatal("provider response was not available to image usage hook")
+		}
+		return rawUsagePatch(t, Usage{PromptTokens: 4, CompletionTokens: 5, TotalTokens: 9}), nil
+	})); err != nil {
+		t.Fatalf("register image usage attribution handler: %v", err)
+	}
+	sawCacheWrite := false
+	if err := server.gatewayHooks.RegisterHandler(cacheWrite, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		sawCacheWrite = len(input.Data[pluginmeta.DataRequestBody]) > 0 && len(input.Data[pluginmeta.DataProviderResponse]) > 0 && len(input.Data[pluginmeta.DataUsage]) > 0
+		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+	})); err != nil {
+		t.Fatalf("register image cache write handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "post hook prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "post-stage revised prompt") || !strings.Contains(response.Body, `"total_tokens":9`) {
+		t.Fatalf("image response was not post-processed: %s", response.Body)
+	}
+	if !sawCacheWrite {
+		t.Fatal("image cache_write hook did not receive request, response, and usage data")
+	}
+}

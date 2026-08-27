@@ -34,7 +34,7 @@ type gatewayRouteOrderPatch struct {
 }
 
 func (s *Server) runGatewayAuthContextHooks(ctx context.Context, call *CallContext, headers http.Header) error {
-	if s == nil || call == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageAuthContext)) == 0 {
+	if call == nil || !s.hasGatewayHookStage(pluginmeta.StageAuthContext) {
 		return nil
 	}
 	input := pluginmeta.GatewayHookInput{

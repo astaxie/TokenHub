@@ -60,8 +60,10 @@ type imageJobWork struct {
 }
 
 type imageRunResult struct {
-	data          []byte
-	revisedPrompt string
+	data            []byte
+	revisedPrompt   string
+	providerRequest ProviderImageGenerationRequest
+	cacheHit        bool
 }
 
 func defaultImageStorageDir() string {
@@ -723,15 +725,7 @@ func (s *Server) processImageJob(work imageJobWork) {
 			}
 		}
 		defer release()
-		runner := s.imageRunner
-		if runner == nil {
-			runner = s.imageRunnerForRoute(job, route)
-		}
-		imageBytes, revisedPrompt, responseUsage, err := runner(ctx, route, job)
-		if err != nil {
-			return imageRunResult{}, responseUsage, err
-		}
-		return imageRunResult{data: imageBytes, revisedPrompt: revisedPrompt}, responseUsage, nil
+		return s.invokeImageRouteWithGatewayHooks(ctx, work.call, route, job)
 	})
 	s.store.RecordRouteAttempts(work.call.RequestID, attempts)
 	// Thread the attempt outcomes into the call context so the shared observation
@@ -746,6 +740,12 @@ func (s *Server) processImageJob(work imageJobWork) {
 			return
 		}
 		httpErr := AsHTTPError(invokeErr)
+		s.finishImageJobFailure(work, job, route, usage, httpErr.Status, httpErr.Code, httpErr.Message)
+		return
+	}
+	result, usage, err = s.finishImageGatewayHooks(ctx, work.call, route, result, usage)
+	if err != nil {
+		httpErr := AsHTTPError(err)
 		s.finishImageJobFailure(work, job, route, usage, httpErr.Status, httpErr.Code, httpErr.Message)
 		return
 	}
@@ -1249,7 +1249,7 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 		if len(filtered) == 0 {
 			return nil, ErrProviderMissing
 		}
-		return s.routesWithAdapterCapability(filtered, AdapterCapabilityImageGenerate), nil
+		return s.routesWithAdapterCapabilityOrProviderCall(filtered, AdapterCapabilityImageGenerate), nil
 	}
 	routes, err := s.store.SelectRouteCandidates(openAIImageModelName)
 	if err != nil {
@@ -1261,7 +1261,7 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 			filtered = append(filtered, route)
 		}
 	}
-	return s.routesWithAdapterCapability(filtered, AdapterCapabilityImageGenerate), nil
+	return s.routesWithAdapterCapabilityOrProviderCall(filtered, AdapterCapabilityImageGenerate), nil
 }
 
 func (s *Server) routeMatchesProviderImageCapabilityProfile(route RouteSelection) bool {
