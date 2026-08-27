@@ -139,6 +139,9 @@ func checkProviderResponseForProviderPolicy(resp *http.Response, provider Provid
 }
 
 func providerErrorProfile(provider Provider) string {
+	if profile := providerConfiguredErrorProfile(provider); profile != "" {
+		return profile
+	}
 	if provider.Type == ProviderKronk {
 		return providerErrorProfileKronk
 	}

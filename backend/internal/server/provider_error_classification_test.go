@@ -271,6 +271,21 @@ func TestClassifyProviderStatusTable(t *testing.T) {
 	}
 }
 
+func TestProviderErrorProfileComesFromProviderPolicyOptions(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`{"code":"resource_exhausted","message":"no capacity"}`)),
+	}
+	err := checkProviderResponseForProvider(resp, Provider{
+		Type:    "external_policy_provider",
+		Options: map[string]string{providerErrorProfileOption: providerErrorProfileKronk},
+	})
+	if httpErr := AsHTTPError(err); httpErr == nil || httpErr.Code != "provider_resource_exhausted" || httpErr.Status != http.StatusServiceUnavailable {
+		t.Fatalf("policy error profile was not applied: %#v", err)
+	}
+}
+
 // A candidate bound by session affinity must not be abandoned for a transient
 // fault, which is the one case where the disposition alone is not the answer.
 func TestBoundRouteDoesNotFailOverOnTransientFault(t *testing.T) {

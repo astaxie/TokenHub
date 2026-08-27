@@ -396,6 +396,7 @@ func TestReconcileProviderPluginPoliciesPersistsExternalProviderPolicy(t *testin
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
+			{Kind: "provider_policy", Name: "error_profile", Subject: providerType, Value: providerErrorProfileKronk},
 		},
 	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
 		t.Fatalf("register plugin adapter: %v", err)
@@ -412,7 +413,10 @@ func TestReconcileProviderPluginPoliciesPersistsExternalProviderPolicy(t *testin
 	if !ok {
 		t.Fatal("provider disappeared")
 	}
-	if stored.Options["custom"] != "preserved" || stored.Options[providerRouteRequiresResourceOption] != "true" || stored.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource {
+	if stored.Options["custom"] != "preserved" ||
+		stored.Options[providerRouteRequiresResourceOption] != "true" ||
+		stored.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource ||
+		stored.Options[providerErrorProfileOption] != providerErrorProfileKronk {
 		t.Fatalf("external provider policy was not reconciled: %+v", stored.Options)
 	}
 }

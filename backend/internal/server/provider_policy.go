@@ -11,6 +11,7 @@ const (
 	providerCredentialsScopeOption      = "credentials_scope"
 	providerCredentialsScopeProvider    = "provider"
 	providerCredentialsScopeResource    = "resource"
+	providerErrorProfileOption          = "error_profile"
 	providerRouteRequiresResourceOption = "route_requires_resource"
 )
 
@@ -31,6 +32,11 @@ func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor)
 		provider.Options[providerCredentialsScopeOption] = providerCredentialsScopeResource
 	case providerCredentialsScopeProvider:
 		delete(provider.Options, providerCredentialsScopeOption)
+	}
+	if errorProfile := strings.TrimSpace(descriptor.ProviderPolicy.ErrorProfile); errorProfile != "" {
+		provider.Options[providerErrorProfileOption] = errorProfile
+	} else {
+		delete(provider.Options, providerErrorProfileOption)
 	}
 }
 
@@ -166,6 +172,13 @@ func providerUsesResourceCredentials(provider Provider) bool {
 	return false
 }
 
+func providerConfiguredErrorProfile(provider Provider) string {
+	if value, ok := provider.Options[providerErrorProfileOption]; ok {
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+	return ""
+}
+
 func patchedProviderPolicy(current Provider, patch Provider) Provider {
 	current.Type = firstNonEmpty(patch.Type, current.Type)
 	if patch.Options != nil {
@@ -175,7 +188,7 @@ func patchedProviderPolicy(current Provider, patch Provider) Provider {
 }
 
 func providerPolicyOptionsChanged(before map[string]string, after map[string]string) bool {
-	for _, key := range []string{providerRouteRequiresResourceOption, providerCredentialsScopeOption} {
+	for _, key := range []string{providerRouteRequiresResourceOption, providerCredentialsScopeOption, providerErrorProfileOption} {
 		if strings.TrimSpace(before[key]) != strings.TrimSpace(after[key]) {
 			return true
 		}
