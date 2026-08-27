@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -12,22 +14,29 @@ func (s *Server) providerCatalogEntriesWithPlugins(entries []ProviderCatalogEntr
 	if len(pluginEntries) == 0 {
 		return entries, false
 	}
-	seen := map[string]struct{}{}
-	for _, entry := range entries {
+	merged := append([]ProviderCatalogEntry(nil), entries...)
+	indexByID := map[string]int{}
+	for index, entry := range merged {
 		if entry.ID != "" {
-			seen[entry.ID] = struct{}{}
+			indexByID[entry.ID] = index
 		}
 	}
-	merged := append([]ProviderCatalogEntry(nil), entries...)
+	changed := false
 	for _, entry := range pluginEntries {
-		if _, ok := seen[entry.ID]; ok {
+		if index, ok := indexByID[entry.ID]; ok {
+			enriched, updated := mergeProviderCatalogEntryWithPluginMetadata(merged[index], entry)
+			if updated {
+				merged[index] = enriched
+				changed = true
+			}
 			continue
 		}
-		seen[entry.ID] = struct{}{}
+		indexByID[entry.ID] = len(merged)
 		merged = append(merged, entry)
+		changed = true
 	}
 	sortCatalogEntries(merged)
-	return merged, len(merged) != len(entries)
+	return merged, changed
 }
 
 func (s *Server) pluginProviderCatalogEntry(id string) (ProviderCatalogEntry, bool) {
@@ -41,6 +50,25 @@ func (s *Server) pluginProviderCatalogEntry(id string) (ProviderCatalogEntry, bo
 		}
 	}
 	return ProviderCatalogEntry{}, false
+}
+
+func (s *Server) providerCatalogEntryWithPlugins(ctx context.Context, id string, refresh bool) (ProviderCatalogEntry, string, bool, error) {
+	entry, source, ok, err := s.providerCatalog.Get(ctx, id, refresh)
+	if err != nil {
+		return ProviderCatalogEntry{}, source, false, err
+	}
+	pluginEntry, pluginOK := s.pluginProviderCatalogEntry(id)
+	if !pluginOK {
+		return entry, source, ok, nil
+	}
+	if !ok {
+		return pluginEntry, pluginEntry.Source, true, nil
+	}
+	merged, changed := mergeProviderCatalogEntryWithPluginMetadata(entry, pluginEntry)
+	if changed {
+		source = firstNonEmpty(source, "catalog") + "+plugins"
+	}
+	return merged, source, true, nil
 }
 
 func (s *Server) pluginProviderCatalogCapabilityEntryForType(providerType string) (ProviderCatalogEntry, bool) {
@@ -96,6 +124,51 @@ func providerCatalogEntryFromPlugin(plugin pluginmeta.Descriptor, adapter Adapte
 		Type:        adapter.Type,
 		Source:      "plugin:" + string(plugin.Source),
 	}
+}
+
+func mergeProviderCatalogEntryWithPluginMetadata(base ProviderCatalogEntry, pluginEntry ProviderCatalogEntry) (ProviderCatalogEntry, bool) {
+	merged := base
+	if pluginEntry.ID != "" {
+		merged.ID = pluginEntry.ID
+	}
+	if pluginEntry.Name != "" {
+		merged.Name = pluginEntry.Name
+	}
+	if pluginEntry.DisplayName != "" {
+		merged.DisplayName = pluginEntry.DisplayName
+	}
+	if pluginEntry.Type != "" {
+		merged.Type = pluginEntry.Type
+	}
+	if pluginEntry.BaseURL != "" {
+		merged.BaseURL = pluginEntry.BaseURL
+	}
+	if pluginEntry.DocURL != "" {
+		merged.DocURL = pluginEntry.DocURL
+	}
+	if pluginEntry.Source != "" {
+		merged.Source = pluginEntry.Source
+	}
+	if pluginEntry.ETag != "" {
+		merged.ETag = pluginEntry.ETag
+	}
+	if len(pluginEntry.Models) > 0 {
+		merged.Models = append([]ProviderCatalogModel(nil), pluginEntry.Models...)
+		merged.ModelsCount = len(pluginEntry.Models)
+		merged.Categories, merged.CategoryCounts = catalogCategorySummary(merged.Models)
+	} else {
+		if pluginEntry.ModelsCount > 0 && len(merged.Models) == 0 {
+			merged.ModelsCount = pluginEntry.ModelsCount
+		}
+		if len(pluginEntry.Categories) > 0 && len(merged.Categories) == 0 {
+			merged.Categories = append([]string(nil), pluginEntry.Categories...)
+			merged.CategoryCounts = map[string]int{}
+			for _, category := range merged.Categories {
+				merged.CategoryCounts[category] = 0
+			}
+		}
+	}
+	return merged, !reflect.DeepEqual(base, merged)
 }
 
 type pluginProviderCatalogEntry struct {

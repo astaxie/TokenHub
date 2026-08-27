@@ -144,7 +144,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}
-	if entry, ok := s.pluginProviderCatalogEntry(id); ok {
+	if entry, ok := s.pluginProviderCatalogEntry(id); ok && !(id == ProviderKronk && r.Method == http.MethodPost) {
 		if r.Method == http.MethodPost {
 			var credentials ProviderResourceCredentials
 			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {
@@ -188,7 +188,13 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				return
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		merged, source, _, mergeErr := s.providerCatalogEntryWithPlugins(r.Context(), id, r.URL.Query().Get("refresh") == "true")
+		if mergeErr != nil {
+			writeError(w, r, mergeErr)
+			return
+		}
+		entry = merged
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": source})
 		return
 	}
 	if id == "custom" && r.Method == http.MethodPost {
@@ -280,7 +286,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		return
 	}
 	refresh := r.URL.Query().Get("refresh") == "true"
-	entry, source, ok, err := s.providerCatalog.Get(r.Context(), id, refresh)
+	entry, source, ok, err := s.providerCatalogEntryWithPlugins(r.Context(), id, refresh)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -314,25 +320,19 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		}
 		catalogSource = catalog.Source
 	} else if catalogID != "" {
-		entry, pluginOK := s.pluginProviderCatalogEntry(catalogID)
-		if pluginOK {
-			if len(req.CustomModels) > 0 {
-				catalog = providerCatalogEntryWithSubmittedModels(entry, req.CustomModels, req.ModelCategory)
-			} else {
-				catalog = entry
-			}
-			catalogSource = entry.Source
-		} else {
-			entry, source, ok, err := s.providerCatalog.Get(ctx, catalogID, false)
-			if err != nil {
-				return Provider{}, ProviderCatalogEntry{}, source, err
-			}
-			if !ok {
-				return Provider{}, ProviderCatalogEntry{}, source, NewHTTPError(400, "provider_catalog_not_found", "Provider catalog entry not found")
-			}
-			catalog = entry
-			catalogSource = source
+		entry, source, ok, err := s.providerCatalogEntryWithPlugins(ctx, catalogID, false)
+		if err != nil {
+			return Provider{}, ProviderCatalogEntry{}, source, err
 		}
+		if !ok {
+			return Provider{}, ProviderCatalogEntry{}, source, NewHTTPError(400, "provider_catalog_not_found", "Provider catalog entry not found")
+		}
+		if _, pluginOK := s.pluginProviderCatalogEntry(catalogID); pluginOK && len(req.CustomModels) > 0 {
+			catalog = providerCatalogEntryWithSubmittedModels(entry, req.CustomModels, req.ModelCategory)
+		} else {
+			catalog = entry
+		}
+		catalogSource = source
 	}
 	if catalog.ID == "custom" {
 		if len(req.CustomModels) > 0 {

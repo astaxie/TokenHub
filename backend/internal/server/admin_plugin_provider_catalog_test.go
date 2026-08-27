@@ -609,3 +609,53 @@ func TestProviderCatalogIncludesBuiltInPluginCatalogEntries(t *testing.T) {
 		t.Fatalf("built-in plugin catalog entry missing from %+v", merged)
 	}
 }
+
+func TestProviderCatalogMergesBuiltInPluginMetadataWithCatalogModels(t *testing.T) {
+	server := New(NewMemoryStore())
+	entries := []ProviderCatalogEntry{{
+		ID:          "openai",
+		Name:        "Catalog OpenAI",
+		DisplayName: "Catalog OpenAI",
+		Type:        ProviderOpenAICompatible,
+		BaseURL:     "https://catalog.example/v1",
+		Source:      "local-provider-catalog",
+		ModelsCount: 1,
+		Models: []ProviderCatalogModel{{
+			ID:   "catalog-model",
+			Name: "catalog-model",
+		}},
+	}}
+
+	merged, changed := server.providerCatalogEntriesWithPlugins(entries)
+	if !changed {
+		t.Fatalf("expected plugin metadata merge")
+	}
+	var openAI ProviderCatalogEntry
+	for _, entry := range merged {
+		if entry.ID == "openai" {
+			openAI = entry
+			break
+		}
+	}
+	if openAI.Name != "OpenAI" || openAI.Type != ProviderOpenAI || openAI.BaseURL != "https://api.openai.com/v1" || openAI.Source != "plugin:built_in" {
+		t.Fatalf("OpenAI catalog metadata was not plugin-backed: %+v", openAI)
+	}
+	if len(openAI.Models) != 1 || openAI.Models[0].ID != "catalog-model" || openAI.ModelsCount != 1 {
+		t.Fatalf("OpenAI catalog models were not preserved: %+v", openAI.Models)
+	}
+}
+
+func TestAdminProviderCatalogItemMergesBuiltInPluginMetadataWithModels(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-catalog-admin"})
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/openai", nil, "plugin-catalog-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET OpenAI catalog: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"source":"builtin+plugins"`) || !strings.Contains(response.Body, `"source":"plugin:built_in"`) {
+		t.Fatalf("OpenAI catalog did not expose plugin-backed metadata: %s", response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"gpt-5"`) {
+		t.Fatalf("OpenAI catalog did not preserve builtin models: %s", response.Body)
+	}
+}

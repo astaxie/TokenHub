@@ -33,6 +33,14 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai", "OpenAI", builtinProviderAdapter{
 		providerType: ProviderOpenAI,
 		adapter:      adapters[ProviderOpenAI],
+		catalogEntry: builtinProviderPluginCatalogEntry(
+			"openai",
+			"OpenAI",
+			ProviderOpenAI,
+			"https://api.openai.com/v1",
+			"https://platform.openai.com/docs/models",
+			[]string{"openai"},
+		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -58,6 +66,14 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.kronk", "Kronk", builtinProviderAdapter{
 		providerType: ProviderKronk,
 		adapter:      adapters[ProviderKronk],
+		catalogEntry: builtinProviderPluginCatalogEntry(
+			ProviderKronk,
+			"Kronk",
+			ProviderKronk,
+			kronkDefaultBaseURL,
+			kronkDocURL,
+			[]string{"custom"},
+		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -110,6 +126,14 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.azure-openai", "Azure OpenAI", builtinProviderAdapter{
 		providerType: ProviderAzureOpenAI,
 		adapter:      adapters[ProviderAzureOpenAI],
+		catalogEntry: builtinProviderPluginCatalogEntry(
+			"azure-openai",
+			"Azure OpenAI",
+			ProviderAzureOpenAI,
+			"",
+			"https://learn.microsoft.com/azure/ai-services/openai/",
+			[]string{"microsoft", "openai"},
+		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -121,6 +145,14 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		providerType: ProviderAnthropic,
 		adapter:      adapters[ProviderAnthropic],
 		authModes:    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		catalogEntry: builtinProviderPluginCatalogEntry(
+			"anthropic",
+			"Anthropic",
+			ProviderAnthropic,
+			"https://api.anthropic.com",
+			"https://docs.anthropic.com",
+			[]string{"claude"},
+		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -130,6 +162,14 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.gemini", "Gemini", builtinProviderAdapter{
 		providerType: ProviderGemini,
 		adapter:      adapters[ProviderGemini],
+		catalogEntry: builtinProviderPluginCatalogEntry(
+			"google",
+			"Google Gemini",
+			ProviderGemini,
+			"https://generativelanguage.googleapis.com/v1beta",
+			"https://ai.google.dev/gemini-api/docs",
+			[]string{"gemini"},
+		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -141,6 +181,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		registerBuiltinProviderPlugin(registry, "tokenhub.provider."+adapterType, adapterType, builtinProviderAdapter{
 			providerType: adapterType,
 			adapter:      adapters[adapterType],
+			catalogEntry: builtinProviderPluginCatalogEntryForType(adapterType),
 			capabilities: []AdapterCapability{
 				AdapterCapabilityChat,
 				AdapterCapabilityChatStream,
@@ -150,6 +191,53 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 				AdapterCapabilityProbe,
 			},
 		})
+	}
+}
+
+func builtinProviderPluginCatalogEntryForType(providerType string) *pluginProviderCatalogEntry {
+	switch providerType {
+	case "deepseek":
+		return builtinProviderPluginCatalogEntry(
+			"deepseek",
+			"DeepSeek",
+			"deepseek",
+			"https://api.deepseek.com",
+			"https://api-docs.deepseek.com",
+			[]string{"deepseek"},
+		)
+	case "qwen":
+		return builtinProviderPluginCatalogEntry(
+			"qwen",
+			"Qwen",
+			"qwen",
+			"https://dashscope.aliyuncs.com/compatible-mode/v1",
+			"https://help.aliyun.com/zh/model-studio",
+			[]string{"qwen"},
+		)
+	case "local":
+		return builtinProviderPluginCatalogEntry(
+			"ollama",
+			"Ollama",
+			"local",
+			"http://127.0.0.1:11434/v1",
+			"https://ollama.com",
+			[]string{"llama"},
+		)
+	default:
+		return nil
+	}
+}
+
+func builtinProviderPluginCatalogEntry(id string, name string, providerType string, baseURL string, docURL string, categories []string) *pluginProviderCatalogEntry {
+	return &pluginProviderCatalogEntry{
+		ID:          id,
+		Name:        name,
+		DisplayName: name,
+		Type:        providerType,
+		BaseURL:     baseURL,
+		DocURL:      docURL,
+		Categories:  categories,
+		Source:      "plugin:built_in",
 	}
 }
 
