@@ -65,9 +65,10 @@ export function providerUpdatePayload(values: Record<string, string>, data?: Pic
 
 export function providerResourcePayload(values: Record<string, string>) {
   const isAccountResource = isProviderAccountResourceType(values.resource_type);
+  const authType = values.auth_type?.trim();
   const credentials = isAccountResource
     ? {
-        auth_type: values.auth_type || "oauth",
+        ...(authType ? { auth_type: authType } : {}),
         access_token: values.access_token,
         refresh_token: values.refresh_token,
         id_token: values.id_token,
@@ -114,9 +115,10 @@ export function providerResourceUpdatePayload(values: Record<string, string>) {
 }
 
 export function providerResourceOptions(values: Record<string, string>) {
+  const authType = values.auth_type?.trim();
   const accountOptions: Record<string, string> = isProviderAccountResourceType(values.resource_type) ? {
     credential_source: values.resource_type,
-    auth_type: values.auth_type || "oauth",
+    ...(authType ? { auth_type: authType } : {}),
     account_email: values.account_email,
     account_id: values.account_id,
     organization_id: values.organization_id,

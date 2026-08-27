@@ -624,6 +624,24 @@ describe("providerResourceConfig", () => {
     });
   });
 
+  it("leaves plugin account auth type unset when metadata has no default", () => {
+    const payload = providerResourcePayload({
+      provider_id: "prv_vendor",
+      name: "Vendor Account",
+      resource_type: "vendor_account",
+      access_token: "vendor-token",
+    }) as { credentials?: Record<string, string>; options?: Record<string, string> };
+
+    expect(payload.credentials).toMatchObject({
+      access_token: "vendor-token",
+    });
+    expect(payload.credentials).not.toHaveProperty("auth_type");
+    expect(payload.options).toMatchObject({
+      credential_source: "vendor_account",
+    });
+    expect(payload.options).not.toHaveProperty("auth_type");
+  });
+
   it("tests subscription-backed Providers through resource probe plugin actions", async () => {
     const data = emptyData();
     data.providers = [{ id: "prv_codex", name: "Codex", type: "openai_codex", status: "active", healthy: true, priority: 1 }];
