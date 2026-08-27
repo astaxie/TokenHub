@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"sort"
 	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -110,6 +111,29 @@ func (s *Server) pluginProviderCatalogEntries() []ProviderCatalogEntry {
 	}
 	sortCatalogEntries(entries)
 	return entries
+}
+
+func (s *Server) providerCatalogMultiMethodRouteIDs() []string {
+	ids := map[string]bool{"custom": true}
+	for _, entry := range s.pluginProviderCatalogEntries() {
+		if !validStaticProviderCatalogRouteID(entry.ID) {
+			continue
+		}
+		if _, ok := s.providerPluginCapabilityActionDescriptor(entry.Type, AdapterCapabilityModels, "models.preview", ""); ok {
+			ids[entry.ID] = true
+		}
+	}
+	values := make([]string, 0, len(ids))
+	for id := range ids {
+		values = append(values, id)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func validStaticProviderCatalogRouteID(id string) bool {
+	id = strings.TrimSpace(id)
+	return id != "" && !strings.Contains(id, "/") && !strings.Contains(id, "{") && !strings.Contains(id, "}")
 }
 
 func providerCatalogTypesFromRegistry(registry *AdapterRegistry) map[string]string {

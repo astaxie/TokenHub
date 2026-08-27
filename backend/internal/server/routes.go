@@ -104,7 +104,7 @@ func (s *Server) routes() {
 	// operation. Only their method patterns are explicit: the subtree handler
 	// remains the ID-aware fallback for other methods and legacy path shapes.
 	catalogMultiMethodNotAllowed := s.adminMethodNotAllowed("provider", http.MethodGet+", "+http.MethodPost)
-	for _, catalogID := range []string{codexProviderCatalogID, "custom", ProviderKronk} {
+	for _, catalogID := range s.providerCatalogMultiMethodRouteIDs() {
 		pattern := "/api/admin/provider-catalog/" + catalogID
 		s.mux.HandleFunc(http.MethodGet+" "+pattern, s.handleAdminProviderCatalogItem)
 		s.mux.HandleFunc(http.MethodPost+" "+pattern, s.handleAdminProviderCatalogItem)

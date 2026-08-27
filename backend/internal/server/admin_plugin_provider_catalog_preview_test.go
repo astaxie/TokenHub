@@ -75,3 +75,45 @@ func TestAdminPluginProviderCatalogPostUsesModelsPreviewAction(t *testing.T) {
 		t.Fatalf("plugin catalog response = %s", response.Body)
 	}
 }
+
+func TestProviderCatalogMultiMethodRouteIDsComeFromModelsPreviewPlugins(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "preview_route_provider"
+	pluginID := "tokenhub.provider.preview-route"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Preview Route Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityModels), Subject: providerType},
+			{Kind: "provider_catalog", Name: "entry", Subject: providerType, Value: `{"id":"preview-route","name":"Preview Route","type":"preview_route_provider"}`},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register preview route provider: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "preview_route.models",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "models.preview",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatalf("register preview route action: %v", err)
+	}
+
+	ids := server.providerCatalogMultiMethodRouteIDs()
+	if !stringInList("custom", ids) || !stringInList("preview-route", ids) {
+		t.Fatalf("multi-method catalog route IDs = %v", ids)
+	}
+	if stringInList(providerType, ids) {
+		t.Fatalf("multi-method catalog route IDs used provider type instead of catalog ID: %v", ids)
+	}
+}
