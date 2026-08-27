@@ -52,6 +52,43 @@ func TestProviderCreateUsesBuiltInPluginDefaultBaseURL(t *testing.T) {
 	}
 }
 
+func TestProviderStoreCreateUsesConfiguredPluginDefaultBaseURL(t *testing.T) {
+	store := NewMemoryStore()
+	store.ConfigureProviderTypeDefaults(map[string]string{
+		"default_base_url_plugin": "https://default.example/v1/",
+	})
+
+	provider := store.AddProvider(Provider{
+		Name:    "Plugin Default",
+		Type:    "default_base_url_plugin",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	if provider.BaseURL != "https://default.example/v1" {
+		t.Fatalf("provider base URL = %q, want configured plugin default", provider.BaseURL)
+	}
+}
+
+func TestProviderTypeDefaultBaseURLsFromRegistry(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	providerType := "registry_default_base_url_plugin"
+	descriptor := pluginmeta.BuiltInProvider("tokenhub.provider.registry-default-base-url", "Registry Default Base URL", []string{providerType}, nil)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "default_base_url",
+		Subject: providerType,
+		Value:   "https://registry-default.example/v1/",
+	})
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{Type: providerType, Adapter: MockAdapter{}}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+
+	defaults := providerTypeDefaultBaseURLsFromRegistry(registry)
+	if defaults[providerType] != "https://registry-default.example/v1" {
+		t.Fatalf("provider default base URLs = %+v, want trimmed plugin default", defaults)
+	}
+}
+
 func TestNormalizeProviderBaseURLDoesNotSupplyBuiltInDefaults(t *testing.T) {
 	for _, providerID := range []string{"openai", "anthropic", "google", "ollama", "lmstudio", ProviderKronk} {
 		if got := normalizeProviderBaseURL(providerID, ""); got != "" {

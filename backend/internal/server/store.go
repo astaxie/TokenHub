@@ -313,6 +313,7 @@ type GormStore struct {
 	clusterLockTTL           time.Duration
 	imageCapabilityRetry     time.Duration
 	imageCapabilityProfiles  []providerImageCapabilityRouteProfile
+	providerDefaultBaseURLs  map[string]string
 	providerResourceDefaults map[string]map[string]string
 	providerResourceTypes    map[string]map[string]struct{}
 	billingRedis             *redisBillingCoordinator

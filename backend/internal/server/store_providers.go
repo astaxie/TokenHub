@@ -34,11 +34,7 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 	if providerUsesResourceCredentials(provider) {
 		provider.APIKey = ""
 	}
-	if provider.Type == ProviderOpenAICodex {
-		if codexProviderBaseURLNeedsNormalization(provider.BaseURL) {
-			provider.BaseURL = openAICodexBaseURL
-		}
-	}
+	s.applyProviderTypeDefaults(&provider)
 	if headers, sensitive, err := s.protectProviderHeaders(provider.Headers, provider.SensitiveHeaders, nil, nil); err == nil {
 		provider.Headers = headers
 		provider.SensitiveHeaders = sensitive

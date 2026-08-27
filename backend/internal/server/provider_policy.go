@@ -77,11 +77,19 @@ type providerResourceTypeDefaultsConfigurator interface {
 	ConfigureProviderResourceTypeDefaults(defaults map[string]map[string]string)
 }
 
+type providerTypeDefaultsConfigurator interface {
+	ConfigureProviderTypeDefaults(defaultBaseURLs map[string]string)
+}
+
 type providerResourceTypePolicyConfigurator interface {
 	ConfigureProviderResourceTypePolicy(resourceTypes map[string][]string)
 }
 
 func configureProviderResourceTypeDefaults(store Store, registry *AdapterRegistry) {
+	providerConfigurator, ok := store.(providerTypeDefaultsConfigurator)
+	if ok {
+		providerConfigurator.ConfigureProviderTypeDefaults(providerTypeDefaultBaseURLsFromRegistry(registry))
+	}
 	configurator, ok := store.(providerResourceTypeDefaultsConfigurator)
 	if ok {
 		configurator.ConfigureProviderResourceTypeDefaults(providerResourceTypeDefaultsFromRegistry(registry))
@@ -108,6 +116,22 @@ func providerResourceTypeDefaultsFromRegistry(registry *AdapterRegistry) map[str
 			}
 			defaults[resourceTypeName] = cloneStringMap(resourceType.Defaults)
 		}
+	}
+	return defaults
+}
+
+func providerTypeDefaultBaseURLsFromRegistry(registry *AdapterRegistry) map[string]string {
+	if registry == nil {
+		return nil
+	}
+	defaults := map[string]string{}
+	for _, descriptor := range registry.List() {
+		providerType := strings.ToLower(strings.TrimSpace(descriptor.Type))
+		baseURL := strings.TrimRight(strings.TrimSpace(descriptor.ProviderPolicy.DefaultBaseURL), "/")
+		if providerType == "" || baseURL == "" {
+			continue
+		}
+		defaults[providerType] = baseURL
 	}
 	return defaults
 }

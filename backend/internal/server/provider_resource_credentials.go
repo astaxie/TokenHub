@@ -113,6 +113,40 @@ func (s *GormStore) ConfigureProviderResourceTypeDefaults(defaults map[string]ma
 	s.providerResourceDefaults = normalized
 }
 
+func (s *GormStore) ConfigureProviderTypeDefaults(defaultBaseURLs map[string]string) {
+	if s == nil {
+		return
+	}
+	normalized := make(map[string]string, len(defaultBaseURLs))
+	for providerType, baseURL := range defaultBaseURLs {
+		providerType = strings.ToLower(strings.TrimSpace(providerType))
+		baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		if providerType == "" || baseURL == "" {
+			continue
+		}
+		normalized[providerType] = baseURL
+	}
+	if s.mu != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	s.providerDefaultBaseURLs = normalized
+}
+
+func (s *GormStore) applyProviderTypeDefaults(provider *Provider) {
+	if s == nil || provider == nil {
+		return
+	}
+	if strings.TrimSpace(provider.BaseURL) == "" {
+		if baseURL := s.providerTypeDefaultBaseURL(provider.Type); baseURL != "" {
+			provider.BaseURL = baseURL
+		}
+	}
+	if provider.Type == ProviderOpenAICodex && codexProviderBaseURLNeedsNormalization(provider.BaseURL) {
+		provider.BaseURL = firstNonEmpty(s.providerTypeDefaultBaseURL(provider.Type), openAICodexBaseURL)
+	}
+}
+
 func (s *GormStore) ConfigureProviderResourceTypePolicy(resourceTypes map[string][]string) {
 	if s == nil {
 		return
@@ -674,6 +708,13 @@ func (s *GormStore) providerResourceTypeDefault(resourceType string, key string)
 	}
 	defaults := s.providerResourceDefaults[strings.ToLower(strings.TrimSpace(resourceType))]
 	return strings.TrimSpace(defaults[strings.ToLower(strings.TrimSpace(key))])
+}
+
+func (s *GormStore) providerTypeDefaultBaseURL(providerType string) string {
+	if s == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.providerDefaultBaseURLs[strings.ToLower(strings.TrimSpace(providerType))])
 }
 
 func addNonEmpty(values map[string]string, key string, value string) {
