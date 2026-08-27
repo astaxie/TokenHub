@@ -134,10 +134,6 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
   };
 }
 
-export function openAIAccountFieldVisible(values: Record<string, string>) {
-  return isOpenAISubscriptionResourceType(values.resource_type);
-}
-
 export function accountResourceFieldVisible(values: Record<string, string>, data?: AppData) {
   return data ? isProviderAccountResourceTypeForData(data, providerTypeForResourceValues(data, values), values.resource_type) : isProviderAccountResourceType(values.resource_type);
 }
