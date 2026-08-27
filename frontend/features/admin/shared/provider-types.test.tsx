@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerTypeAuthModes, providerTypeModelDiscovery, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
+import { providerTypeAuthModes, providerTypeModelDiscovery, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
 import { providerTypeLabelFromData } from "../domain/labels";
 
@@ -123,6 +123,8 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeSupportsCustomHeaders(options, "native_subscription")).toBe(false);
     expect(providerTypeAuthModes(options, "native_subscription")).toEqual(["bearer", "x-api-key"]);
     expect(providerTypePreferredAuthMode(options, "native_subscription")).toBe("x-api-key");
+    expect(providerTypeRequiresAPIKey(options, "native_subscription")).toBe(false);
+    expect(providerTypeRequiresAPIKey(options, "openai_compatible")).toBe(true);
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(options.find((option) => option.value === "native_subscription")?.apiKeyRequired).toBe(false);
     expect(options.find((option) => option.value === "native_subscription")?.claudeCodeAttributionDefault).toBe("preserve");

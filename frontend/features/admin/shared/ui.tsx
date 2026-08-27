@@ -549,6 +549,10 @@ export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderT
   return providerTypeOptions.find((option) => option.value === providerType)?.supportsCustomHeaders ?? defaultProviderTypeSupportsCustomHeaders();
 }
 
+export function providerTypeRequiresAPIKey(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.apiKeyRequired ?? true;
+}
+
 export function providerTypeRouteProtocols(providerTypeOptions: ProviderTypeOption[], providerType: string) {
   return providerTypeOptions.find((option) => option.value === providerType)?.routeProtocols ?? [];
 }

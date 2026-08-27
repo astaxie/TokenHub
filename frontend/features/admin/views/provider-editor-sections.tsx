@@ -4,7 +4,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
-import { legacyProviderTypeOptions, providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { legacyProviderTypeOptions, providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -21,6 +21,7 @@ export function ProviderConnectionFields({
   providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
   validationErrors = [],
 }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[]; validationErrors?: string[] }) {
+  const apiKeyRequired = providerTypeRequiresAPIKey(providerTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid provider-connect-form-grid">
@@ -29,7 +30,7 @@ export function ProviderConnectionFields({
           <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
         </label>
         <label className="field">
-          <span>{values.type === "kronk" ? tx("Application Token（可选）") : "API Key"}</span>
+          <span>{apiKeyRequired ? "API Key" : tx("Application Token（可选）")}</span>
           <input
             autoComplete="new-password"
             value={values.api_key ?? ""}
@@ -39,11 +40,11 @@ export function ProviderConnectionFields({
               if (event.target.value.trim()) onUpdate("clear_api_key", "false");
             }}
           />
-          <small>{tx(values.type === "kronk" ? "留空表示不修改现有 token；填写新值才会覆盖。" : "留空表示不修改现有 Key；填写新值才会覆盖。")}</small>
+          <small>{tx(apiKeyRequired ? "留空表示不修改现有 Key；填写新值才会覆盖。" : "留空表示不修改现有 token；填写新值才会覆盖。")}</small>
         </label>
-        {values.type === "kronk" ? (
+        {!apiKeyRequired ? (
           <div className="field">
-            <span>{tx("Kronk 认证")}</span>
+            <span>{tx("Provider 认证")}</span>
             <label className="checkbox-line">
               <input checked={values.clear_api_key === "true"} type="checkbox" onChange={(event) => {
                 onUpdate("clear_api_key", String(event.target.checked));
