@@ -6,7 +6,9 @@ func TestProviderResourceUsesPluginResourceTypeDefaultBaseURL(t *testing.T) {
 	store := NewMemoryStore()
 	store.ConfigureProviderResourceTypeDefaults(map[string]map[string]string{
 		"kimi_subscription_account": {
-			"base_url": "https://kimi.example/v1",
+			"auth_type":       "personal_access_token",
+			"base_url":        "https://kimi.example/v1",
+			"max_concurrency": "7",
 		},
 	})
 	provider := store.AddProvider(Provider{
@@ -23,6 +25,15 @@ func TestProviderResourceUsesPluginResourceTypeDefaultBaseURL(t *testing.T) {
 	}
 	if created.BaseURL != "https://kimi.example/v1" {
 		t.Fatalf("created resource base URL = %q, want plugin default", created.BaseURL)
+	}
+	if created.MaxConcurrency != 7 {
+		t.Fatalf("created resource max concurrency = %d, want plugin default", created.MaxConcurrency)
+	}
+	if created.CredentialSummary["auth_type"] != "personal_access_token" {
+		t.Fatalf("created credential summary = %+v, want plugin auth type default", created.CredentialSummary)
+	}
+	if creds := store.providerResourceCredentialsForRuntime(created); creds.AuthType != "personal_access_token" {
+		t.Fatalf("runtime auth type = %q, want plugin default", creds.AuthType)
 	}
 
 	updated, err := store.UpdateProviderResource(created.ID, ProviderResource{

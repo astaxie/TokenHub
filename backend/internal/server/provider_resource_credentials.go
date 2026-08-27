@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -93,7 +94,14 @@ func (s *GormStore) ConfigureProviderResourceTypeDefaults(defaults map[string]ma
 		if resourceType == "" || len(values) == 0 {
 			continue
 		}
-		normalized[resourceType] = cloneStringMap(values)
+		normalizedValues := map[string]string{}
+		for key, value := range values {
+			key = strings.ToLower(strings.TrimSpace(key))
+			if key != "" {
+				normalizedValues[key] = strings.TrimSpace(value)
+			}
+		}
+		normalized[resourceType] = normalizedValues
 	}
 	if s.mu != nil {
 		s.mu.Lock()
@@ -103,15 +111,31 @@ func (s *GormStore) ConfigureProviderResourceTypeDefaults(defaults map[string]ma
 }
 
 func (s *GormStore) applyProviderResourceTypeDefaults(resource *ProviderResource) {
-	if s == nil || resource == nil || strings.TrimSpace(resource.BaseURL) != "" {
+	if s == nil || resource == nil {
 		return
 	}
 	resourceType := strings.ToLower(strings.TrimSpace(resource.ResourceType))
-	if defaults := s.providerResourceDefaults[resourceType]; defaults != nil {
+	defaults := s.providerResourceDefaults[resourceType]
+	if strings.TrimSpace(resource.BaseURL) == "" {
 		if baseURL := strings.TrimSpace(defaults["base_url"]); baseURL != "" {
 			resource.BaseURL = baseURL
-			return
 		}
+	}
+	if authType := strings.TrimSpace(defaults["auth_type"]); authType != "" {
+		if resource.Options == nil {
+			resource.Options = map[string]string{}
+		}
+		if strings.TrimSpace(resource.Options["auth_type"]) == "" {
+			resource.Options["auth_type"] = authType
+		}
+	}
+	if resource.MaxConcurrency == 0 {
+		if maxConcurrency, err := strconv.ParseInt(strings.TrimSpace(defaults["max_concurrency"]), 10, 64); err == nil && maxConcurrency > 0 {
+			resource.MaxConcurrency = maxConcurrency
+		}
+	}
+	if strings.TrimSpace(resource.BaseURL) != "" {
+		return
 	}
 	if isOpenAIAccountResource(resource.ResourceType) {
 		resource.BaseURL = openAICodexBaseURL
@@ -172,7 +196,7 @@ func (s *GormStore) mergeProviderAccountCredentials(resource *ProviderResource, 
 		creds.AccessToken = resource.APIKey
 	}
 	if strings.TrimSpace(creds.AuthType) == "" {
-		creds.AuthType = firstNonEmpty(resource.Options["auth_type"], "oauth")
+		creds.AuthType = firstNonEmpty(resource.Options["auth_type"], s.providerResourceTypeDefault(resource.ResourceType, "auth_type"), "oauth")
 	}
 	if isOpenAIAccountResource(resource.ResourceType) {
 		if claims := decodeOpenAIIDTokenClaims(creds.IDToken); claims != nil {
@@ -512,7 +536,7 @@ func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResou
 		}
 	}
 	if resource.Options != nil {
-		creds.AuthType = firstNonEmpty(creds.AuthType, resource.Options["auth_type"], "oauth")
+		creds.AuthType = firstNonEmpty(creds.AuthType, resource.Options["auth_type"], s.providerResourceTypeDefault(resource.ResourceType, "auth_type"), "oauth")
 		creds.ExpiresAt = firstNonEmpty(creds.ExpiresAt, resource.Options["token_expires_at"])
 		creds.AccountID = firstNonEmpty(creds.AccountID, resource.Options["account_id"])
 		creds.UserID = firstNonEmpty(creds.UserID, resource.Options["user_id"])
@@ -522,7 +546,7 @@ func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResou
 		creds.Scopes = firstNonEmpty(creds.Scopes, resource.Options["scopes"])
 	}
 	if strings.TrimSpace(creds.AuthType) == "" {
-		creds.AuthType = "oauth"
+		creds.AuthType = firstNonEmpty(s.providerResourceTypeDefault(resource.ResourceType, "auth_type"), "oauth")
 	}
 	return creds
 }
@@ -574,6 +598,14 @@ func setOptionIfValue(options map[string]string, key string, value string) {
 	if value != "" {
 		options[key] = value
 	}
+}
+
+func (s *GormStore) providerResourceTypeDefault(resourceType string, key string) string {
+	if s == nil {
+		return ""
+	}
+	defaults := s.providerResourceDefaults[strings.ToLower(strings.TrimSpace(resourceType))]
+	return strings.TrimSpace(defaults[strings.ToLower(strings.TrimSpace(key))])
 }
 
 func addNonEmpty(values map[string]string, key string, value string) {
