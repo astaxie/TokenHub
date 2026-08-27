@@ -201,6 +201,34 @@ func TestPluginImagePublicModelAppearsInModelsList(t *testing.T) {
 	}
 }
 
+func TestPluginImageAccountLockUsesResourceTypePolicy(t *testing.T) {
+	store := NewMemoryStore()
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{
+		"kimi_subscription": {"kimi_subscription_account"},
+	})
+	server := &Server{store: store}
+	profile := providerImageCapabilityRouteProfile{ResourceType: "kimi_subscription_account"}
+
+	if !server.imageRouteUsesAccountLock(RouteSelection{
+		Provider: Provider{Type: "kimi_subscription"},
+		Resource: &ProviderResource{ResourceType: "kimi_subscription_account"},
+	}, profile) {
+		t.Fatal("expected declared plugin account resource to use the image account lock")
+	}
+	if server.imageRouteUsesAccountLock(RouteSelection{
+		Provider: Provider{Type: "kimi_subscription"},
+		Resource: &ProviderResource{ResourceType: "kimi_ephemeral_token"},
+	}, profile) {
+		t.Fatal("expected undeclared plugin resource to bypass the image account lock")
+	}
+	if server.imageRouteUsesAccountLock(RouteSelection{
+		Provider: Provider{Type: "kimi_subscription"},
+		Resource: &ProviderResource{ResourceType: ProviderResourceAPIKey},
+	}, providerImageCapabilityRouteProfile{}) {
+		t.Fatal("expected API key resource to bypass the image account lock")
+	}
+}
+
 type pluginPublicImageAdapter struct {
 	image []byte
 	model *string

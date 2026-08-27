@@ -715,7 +715,7 @@ func (s *Server) processImageJob(work imageJobWork) {
 	routed := RoutedCall{Call: work.call, Routes: routes}
 	result, route, usage, attempts, invokeErr := executeRoutedWithStore(ctx, s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (imageRunResult, Usage, error) {
 		release := func() {}
-		if profile, ok := s.providerImageCapabilityRouteProfileForModel(job.Model); ok && route.Resource != nil && isProviderAccountResource(profile.ResourceType) {
+		if profile, ok := s.providerImageCapabilityRouteProfileForModel(job.Model); ok && s.imageRouteUsesAccountLock(route, profile) {
 			var err error
 			release, err = s.acquireImageAccount(ctx, routeResourceID(route))
 			if err != nil {
@@ -776,6 +776,19 @@ func (s *Server) processImageJob(work imageJobWork) {
 	}
 	job.RevisedPrompt = result.revisedPrompt
 	s.recordRequestPayload(work.call.RequestID, imageAuditRequest(job), map[string]any{"image_job_id": job.ID, "status": job.Status})
+}
+
+func (s *Server) imageRouteUsesAccountLock(route RouteSelection, profile providerImageCapabilityRouteProfile) bool {
+	if route.Resource == nil {
+		return false
+	}
+	if profile.ResourceType != "" && route.Resource.ResourceType != profile.ResourceType {
+		return false
+	}
+	if s.store == nil {
+		return isProviderAccountResource(route.Resource.ResourceType)
+	}
+	return s.store.IsProviderAccountResourceType(route.Provider.Type, route.Resource.ResourceType)
 }
 
 func (s *Server) acquireImageAccount(ctx context.Context, resourceID string) (func(), error) {
