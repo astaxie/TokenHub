@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ApiContext, Provider, ProviderResource } from "../core/types";
+import type { AdapterDescriptor, ApiContext, PluginDescriptor, Provider, ProviderResource } from "../core/types";
 import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { effectiveProviderHeaderEntries, parseProviderHeaderEntries, providerHeaderEntryErrors, providerHeadersFormValue } from "../domain/provider-headers";
-import { isOpenAISubscriptionResource } from "../domain/provider-resource-types";
+import { isProviderAccountResourceForData } from "../domain/provider-resource-types";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerResourceToForm, providerResourceUpdatePayload, readAdminError } from "../resources/payloads";
 import { providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
+const emptyProviderAdapters: AdapterDescriptor[] = [];
+const emptyPlugins: PluginDescriptor[] = [];
+
 export function ProviderResourceReasoningSettings({
   api,
   provider,
   providerType,
   providerTypeOptions = [],
+  providerAdapters = emptyProviderAdapters,
+  plugins = emptyPlugins,
   resources,
   onSaved,
 }: {
@@ -21,12 +26,15 @@ export function ProviderResourceReasoningSettings({
   provider: Provider;
   providerType: string;
   providerTypeOptions?: ProviderTypeOption[];
+  providerAdapters?: AdapterDescriptor[];
+  plugins?: PluginDescriptor[];
   resources: ProviderResource[];
   onSaved: () => Promise<void> | void;
 }) {
+  const resourceTypeData = useMemo(() => ({ plugins, providerAdapters, providers: [provider] }), [plugins, providerAdapters, provider]);
   const scopedResources = useMemo(
-    () => resources.filter((resource) => resource.provider_id === provider.id && !isOpenAISubscriptionResource(resource)),
-    [provider.id, resources],
+    () => resources.filter((resource) => resource.provider_id === provider.id && !isProviderAccountResourceForData(resourceTypeData, resource)),
+    [provider.id, resourceTypeData, resources],
   );
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [busyID, setBusyID] = useState("");

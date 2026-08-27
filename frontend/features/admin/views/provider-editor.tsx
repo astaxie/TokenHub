@@ -26,7 +26,7 @@ import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderPluginPanels } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { isProviderAccountResource } from "../domain/provider-resource-types";
+import { isProviderAccountResourceForData, isProviderAccountResourceTypeForData } from "../domain/provider-resource-types";
 import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
 type OpenAIAccountQuota = {
   account_id?: string;
@@ -54,6 +54,7 @@ type OpenAIAccountQuota = {
 type ProviderEditTab = "connect" | "models" | "advanced";
 type ProviderAccountConfirmation = { action: "enable" | "disable" | "delete"; resource: ProviderResource };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
+const emptyProviderAdapters: AdapterDescriptor[] = [], emptyPluginDescriptors: PluginDescriptor[] = [], emptyProviderResources: ProviderResource[] = [];
 export function ProviderUpsertModal({
   mode,
   provider,
@@ -62,15 +63,15 @@ export function ProviderUpsertModal({
   standardModels,
   routes = [],
   providerModels = [],
-  resources = [],
+  resources = emptyProviderResources,
   loading,
   onClose,
   onSaved,
   onAccountsChanged,
   setLoading,
   setError,
-  setNotice, providerTypeOptions, providerAdapters = [], pluginUI = [], pluginActions = [],
-  plugins = [],
+  setNotice, providerTypeOptions, providerAdapters = emptyProviderAdapters, pluginUI = [], pluginActions = [],
+  plugins = emptyPluginDescriptors,
 }: {
   mode: "create" | "edit";
   provider?: Provider;
@@ -91,7 +92,7 @@ export function ProviderUpsertModal({
   const providerTypeLabel = (type: string | undefined) => providerTypeLabelFromData({ plugins, providerCatalog: catalog }, type);
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins, providerAdapters), [catalog, plugins, providerAdapters]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0];
-  const editingAccountProvider = mode === "edit" && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResource(resource));
+  const editingAccountProvider = mode === "edit" && Boolean(provider) && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResourceForData({ plugins, providerAdapters, providers: provider ? [provider] : [] }, resource));
   const editingAccountProviderCatalogEntry = useMemo(() => accountProviderCatalogOptions.find((entry) => entry.type === provider?.type) ?? (provider ? accountProviderCatalogEntryFromProvider(provider) : defaultAccountProviderCatalogEntry), [accountProviderCatalogOptions, defaultAccountProviderCatalogEntry, provider]);
   const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
@@ -192,9 +193,9 @@ export function ProviderUpsertModal({
   );
   const accountResources = useMemo(
     () => resources.filter((resource) =>
-      isProviderAccountResource(resource) && (mode === "create" || resource.provider_id === provider?.id),
+      isProviderAccountResourceTypeForData({ plugins, providerAdapters }, provider?.type ?? values.type, resource.resource_type) && (mode === "create" || resource.provider_id === provider?.id),
     ),
-    [mode, provider?.id, resources],
+    [mode, plugins, provider?.id, provider?.type, providerAdapters, resources, values.type],
   );
   const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
   const selectedAccountResources = useMemo(() => selectedAccountID === "all" ? accountResources : accountResources.filter((resource) => resource.id === selectedAccountID), [accountResources, selectedAccountID]);
@@ -1440,7 +1441,7 @@ export function ProviderUpsertModal({
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
                 <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
-            {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerTypeOptions={providerTypeOptions} resources={resources} /> : null}
+            {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} /> : null}
             {mode === "edit" && editTab === "advanced" && accountQuotaAction && accountResources.length > 0 ? (
               <section className="provider-quota-panel">
