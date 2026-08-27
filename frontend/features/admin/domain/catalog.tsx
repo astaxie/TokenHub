@@ -4,7 +4,8 @@ import { formatMoney } from "./formatting";
 import { compactList } from "./labels";
 import { tx } from "../i18n/runtime";
 import { modelCategoryLabels, preferredModelCategories } from "./model-categories";
-import { isOpenAISubscriptionResource } from "./provider-resource-types";
+import { accountProviderCatalogCategory, accountProviderCatalogOptionsFromPlugins } from "./provider-account-catalog";
+import { isProviderAccountResourceForData } from "./provider-resource-types";
 
 export function emptyData(): AppData {
   return {
@@ -376,10 +377,9 @@ export function modelCategory(model: Model | ProviderCatalogModel | undefined) {
 }
 
 export function providerCategories(provider: Provider, data: AppData) {
-  if (data.providerResources.some((resource) =>
-    resource.provider_id === provider.id && isOpenAISubscriptionResource(resource),
-  )) {
-    return ["codex"];
+  if (data.providerResources.some((resource) => resource.provider_id === provider.id && isProviderAccountResourceForData(data, resource))) {
+    const accountCatalog = accountProviderCatalogOptionsFromPlugins(data.providerCatalog, data.plugins, data.providerAdapters).find((entry) => entry.type === provider.type);
+    if (accountCatalog) return [accountProviderCatalogCategory(accountCatalog)];
   }
   const routeModels = providerRoutesFor(provider, data)
     .map((route) => data.models.find((model) => model.name === route.model_name))
