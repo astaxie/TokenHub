@@ -397,18 +397,7 @@ func providerResourceCachedCatalogIdentityFor(provider Provider, resource *Provi
 			providerType: firstNonEmpty(strings.TrimSpace(catalog.Type), provider.Type),
 			baseURL:      firstNonEmpty(strings.TrimSpace(catalog.BaseURL), provider.BaseURL),
 			docURL:       strings.TrimSpace(catalog.DocURL),
-			source:       cachedProviderCatalogSource(provider, resource),
-		}
-	}
-	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
-		return providerResourceCachedCatalogIdentity{
-			id:           codexProviderCatalogID,
-			name:         "OpenAI Codex",
-			displayName:  "OpenAI Codex",
-			providerType: ProviderOpenAICodex,
-			baseURL:      openAICodexBaseURL,
-			docURL:       "https://developers.openai.com/codex",
-			source:       "openai-codex-cache",
+			source:       cachedProviderCatalogSource(catalog),
 		}
 	}
 	name := firstNonEmpty(strings.TrimSpace(provider.Name), strings.TrimSpace(provider.Type))
@@ -422,9 +411,10 @@ func providerResourceCachedCatalogIdentityFor(provider Provider, resource *Provi
 	}
 }
 
-func cachedProviderCatalogSource(provider Provider, resource *ProviderResource) string {
-	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
-		return "openai-codex-cache"
+func cachedProviderCatalogSource(catalog ProviderCatalogEntry) string {
+	source := strings.TrimSpace(catalog.Source)
+	if strings.HasSuffix(source, "-live") {
+		return strings.TrimSuffix(source, "-live") + "-cache"
 	}
 	return "provider-resource-cache"
 }

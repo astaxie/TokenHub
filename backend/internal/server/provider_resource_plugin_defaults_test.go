@@ -280,3 +280,31 @@ func TestProviderResourceCredentialInputOptionalFromRegistry(t *testing.T) {
 		t.Fatalf("registry optional credential input resource types = %+v", resourceTypes)
 	}
 }
+
+func TestProviderResourceCachedCatalogSourceUsesPluginCatalogSource(t *testing.T) {
+	catalog, ok := providerResourceCachedCatalog(
+		Provider{ID: "prv_vendor", Name: "Vendor", Type: "vendor_subscription"},
+		&ProviderResource{
+			ID:           "rsrc_vendor",
+			ProviderID:   "prv_vendor",
+			Name:         "Vendor Account",
+			ResourceType: "vendor_account",
+			Options: map[string]string{
+				providerResourceModelCatalogOption: `[{"id":"vendor-model","name":"Vendor Model"}]`,
+			},
+		},
+		ProviderCatalogEntry{
+			ID:          "vendor-catalog",
+			Name:        "Vendor Catalog",
+			DisplayName: "Vendor Catalog",
+			Type:        "vendor_subscription",
+			Source:      "vendor-live",
+		},
+	)
+	if !ok {
+		t.Fatal("expected cached provider resource catalog")
+	}
+	if catalog.Source != "vendor-cache" || catalog.ID != "vendor-catalog" || catalog.Type != "vendor_subscription" {
+		t.Fatalf("cached provider resource catalog = %+v", catalog)
+	}
+}
