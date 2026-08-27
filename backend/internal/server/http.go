@@ -257,6 +257,15 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		providerProxyPolicy: providerProxyPolicy,
 	}
 	registerBuiltinPluginActions(s)
+	codexSubscription.ImageCapabilityProfiles = func(providerType string) []providerImageCapabilityRouteProfile {
+		profiles := []providerImageCapabilityRouteProfile{}
+		for _, profile := range providerImageCapabilityRouteProfilesFromActions(pluginActions.List()) {
+			if profile.ProviderType == strings.TrimSpace(providerType) {
+				profiles = append(profiles, profile)
+			}
+		}
+		return profiles
+	}
 	s.syncProviderImageCapabilityRouteProfiles()
 	s.credentialRefresh.pluginRefresh = s.refreshProviderResourceCredentialsWithPluginAction
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{

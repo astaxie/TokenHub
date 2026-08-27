@@ -32,6 +32,9 @@ func (a CodexSubscriptionAdapter) ProviderOperationKey(provider Provider, operat
 	if operation != ProviderAdminOperationDeleteProvider {
 		return "", false
 	}
+	if len(a.imageCapabilityProfilesForProvider(provider.Type)) == 0 {
+		return "", false
+	}
 	return codexImageCapabilityClusterKey(provider.ID), true
 }
 
@@ -39,10 +42,29 @@ func (a CodexSubscriptionAdapter) ProviderResourceOperationKey(provider Provider
 	if operation != ProviderAdminOperationUpdateResource && operation != ProviderAdminOperationDeleteResource {
 		return "", false
 	}
-	if resource.ResourceType != ProviderResourceOpenAISubscription {
-		return "", false
+	for _, profile := range a.imageCapabilityProfilesForProvider(provider.Type) {
+		if profile.ResourceType != "" && profile.ResourceType != resource.ResourceType {
+			continue
+		}
+		return codexImageCapabilityClusterKey(firstNonEmpty(resource.ProviderID, provider.ID)), true
 	}
-	return codexImageCapabilityClusterKey(firstNonEmpty(resource.ProviderID, provider.ID)), true
+	return "", false
+}
+
+func (a CodexSubscriptionAdapter) imageCapabilityProfilesForProvider(providerType string) []providerImageCapabilityRouteProfile {
+	if a.ImageCapabilityProfiles == nil {
+		return nil
+	}
+	providerType = strings.TrimSpace(providerType)
+	profiles := []providerImageCapabilityRouteProfile{}
+	for _, profile := range a.ImageCapabilityProfiles(providerType) {
+		profile.withDefaults()
+		if profile.ProviderType != "" && profile.ProviderType != providerType {
+			continue
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles
 }
 
 func codexImageCapabilityClusterKey(providerID string) string {

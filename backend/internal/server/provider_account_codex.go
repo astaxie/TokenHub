@@ -42,12 +42,13 @@ type CodexSubscriptionAdapter struct {
 	// Client deliberately carries no total deadline: a Codex stream is bounded by
 	// how long it stays silent, not by how long it runs. StreamIdleTimeout is that
 	// budget; zero keeps the historical five minutes.
-	StreamIdleTimeout      time.Duration
-	RefreshCredentials     func(context.Context, string, bool) (ProviderResourceCredentials, error)
-	SupportsResourceModels func(providerType string, resourceType string) bool
-	ModelsURL              string
-	QuotaURL               string
-	MaxRequestRetries      int
+	StreamIdleTimeout       time.Duration
+	RefreshCredentials      func(context.Context, string, bool) (ProviderResourceCredentials, error)
+	SupportsResourceModels  func(providerType string, resourceType string) bool
+	ImageCapabilityProfiles func(providerType string) []providerImageCapabilityRouteProfile
+	ModelsURL               string
+	QuotaURL                string
+	MaxRequestRetries       int
 }
 
 type ProviderProbeRequest struct {

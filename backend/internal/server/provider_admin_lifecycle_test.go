@@ -55,7 +55,11 @@ func TestProviderAdminOperationKeyUsesAdapterLifecycle(t *testing.T) {
 }
 
 func TestCodexAdminLifecyclePreservesImageCapabilityLockKeys(t *testing.T) {
-	adapter := CodexSubscriptionAdapter{}
+	adapter := CodexSubscriptionAdapter{
+		ImageCapabilityProfiles: func(string) []providerImageCapabilityRouteProfile {
+			return []providerImageCapabilityRouteProfile{codexImageCapabilityRouteProfile()}
+		},
+	}
 	provider := Provider{ID: "prv_codex", Type: ProviderOpenAICodex}
 
 	key, ok := adapter.ProviderOperationKey(provider, ProviderAdminOperationDeleteProvider)
@@ -76,5 +80,35 @@ func TestCodexAdminLifecyclePreservesImageCapabilityLockKeys(t *testing.T) {
 		ResourceType: ProviderResourceAPIKey,
 	}, ProviderAdminOperationDeleteResource); ok || key != "" {
 		t.Fatalf("non-subscription resource key = %q, %v", key, ok)
+	}
+}
+
+func TestCodexAdminLifecycleUsesImageCapabilityProfileResourceType(t *testing.T) {
+	adapter := CodexSubscriptionAdapter{
+		ImageCapabilityProfiles: func(string) []providerImageCapabilityRouteProfile {
+			return []providerImageCapabilityRouteProfile{{
+				ProviderType:  ProviderOpenAICodex,
+				ResourceType:  "codex_enterprise_account",
+				PublicModel:   codexImageModelName,
+				UpstreamModel: codexImageUpstreamModel,
+			}}
+		},
+	}
+	provider := Provider{ID: "prv_codex_profile", Type: ProviderOpenAICodex}
+
+	key, ok := adapter.ProviderResourceOperationKey(provider, ProviderResource{
+		ID:           "rsrc_codex_enterprise",
+		ProviderID:   provider.ID,
+		ResourceType: "codex_enterprise_account",
+	}, ProviderAdminOperationUpdateResource)
+	if !ok || key != "codex-image-capability:prv_codex_profile" {
+		t.Fatalf("profile resource update key = %q, %v", key, ok)
+	}
+	if key, ok := adapter.ProviderResourceOperationKey(provider, ProviderResource{
+		ID:           "rsrc_codex_subscription",
+		ProviderID:   provider.ID,
+		ResourceType: ProviderResourceOpenAISubscription,
+	}, ProviderAdminOperationUpdateResource); ok || key != "" {
+		t.Fatalf("non-profile resource update key = %q, %v", key, ok)
 	}
 }
