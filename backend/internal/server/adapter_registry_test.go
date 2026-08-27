@@ -135,6 +135,11 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !reflect.DeepEqual(anthropic.ProviderPolicy.AuthModes, []string{anthropicAuthTypeBearer, anthropicAuthTypeAPIKey}) {
 		t.Fatalf("Anthropic auth modes = %v", anthropic.ProviderPolicy.AuthModes)
 	}
+	if anthropic.ProviderPolicy.ModelDiscovery.Path != "/v1/models" ||
+		anthropic.ProviderPolicy.ModelDiscovery.Auth != "provider_auth_mode" ||
+		anthropic.ProviderPolicy.ModelDiscovery.Headers["anthropic-version"] != "2023-06-01" {
+		t.Fatalf("Anthropic model discovery policy = %+v", anthropic.ProviderPolicy.ModelDiscovery)
+	}
 
 	azure, ok := server.adapterRegistry.Describe(ProviderAzureOpenAI)
 	if !ok {
@@ -246,6 +251,10 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
+			{Kind: "provider_policy", Name: "model_discovery_path", Subject: providerType, Value: "/subscription/models"},
+			{Kind: "provider_policy", Name: "model_discovery_auth", Subject: providerType, Value: "query_param"},
+			{Kind: "provider_policy", Name: "model_discovery_api_key_query_param", Subject: providerType, Value: "access_token"},
+			{Kind: "provider_policy", Name: "model_discovery_headers", Subject: providerType, Value: `{"x-subscription-version":"2026-01-01"}`},
 			{Kind: "provider_resource_type", Name: "subscription_account", Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
 				Type:        "subscription_account",
 				DisplayName: "Subscription Account",
@@ -279,6 +288,12 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.ClaudeCodeAttributionDefault != claudeCodeAttributionStrip {
 		t.Fatalf("plugin provider Claude Code attribution default = %+v, want strip", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.ModelDiscovery.Path != "/subscription/models" ||
+		descriptor.ProviderPolicy.ModelDiscovery.Auth != "query_param" ||
+		descriptor.ProviderPolicy.ModelDiscovery.APIKeyQueryParam != "access_token" ||
+		descriptor.ProviderPolicy.ModelDiscovery.Headers["x-subscription-version"] != "2026-01-01" {
+		t.Fatalf("plugin provider model discovery policy = %+v", descriptor.ProviderPolicy.ModelDiscovery)
 	}
 	if len(descriptor.ResourceTypes) != 1 {
 		t.Fatalf("plugin provider resource types = %+v, want one resource type", descriptor.ResourceTypes)

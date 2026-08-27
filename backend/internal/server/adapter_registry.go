@@ -36,13 +36,21 @@ type AdapterDescriptor struct {
 }
 
 type AdapterProviderPolicy struct {
-	RouteProtocols               []string `json:"route_protocols,omitempty"`
-	AuthModes                    []string `json:"auth_modes,omitempty"`
-	SupportsCustomHeaders        bool     `json:"supports_custom_headers"`
-	RouteRequiresResource        bool     `json:"route_requires_resource"`
-	CredentialsScope             string   `json:"credentials_scope,omitempty"`
-	SessionAffinityKind          string   `json:"session_affinity_kind,omitempty"`
-	ClaudeCodeAttributionDefault string   `json:"claude_code_attribution_default,omitempty"`
+	RouteProtocols               []string                    `json:"route_protocols,omitempty"`
+	AuthModes                    []string                    `json:"auth_modes,omitempty"`
+	SupportsCustomHeaders        bool                        `json:"supports_custom_headers"`
+	RouteRequiresResource        bool                        `json:"route_requires_resource"`
+	CredentialsScope             string                      `json:"credentials_scope,omitempty"`
+	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
+	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
+	ModelDiscovery               AdapterModelDiscoveryPolicy `json:"model_discovery,omitempty"`
+}
+
+type AdapterModelDiscoveryPolicy struct {
+	Path             string            `json:"path,omitempty"`
+	Auth             string            `json:"auth,omitempty"`
+	APIKeyQueryParam string            `json:"api_key_query_param,omitempty"`
+	Headers          map[string]string `json:"headers,omitempty"`
 }
 
 // AdapterRegistry is the single source of truth for which adapter serves a
@@ -181,6 +189,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		CredentialsScope:             adapterCredentialsScope(r, descriptor.Type),
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
 		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
+		ModelDiscovery:               adapterModelDiscovery(r, descriptor.Type),
 	}
 	return descriptor
 }
@@ -229,6 +238,26 @@ func adapterClaudeCodeAttributionDefault(registry *AdapterRegistry, providerType
 		return normalizeClaudeCodeAttributionPolicyOrEmpty(value)
 	}
 	return ""
+}
+
+func adapterModelDiscovery(registry *AdapterRegistry, providerType string) AdapterModelDiscoveryPolicy {
+	policy := AdapterModelDiscoveryPolicy{}
+	if value, ok := providerPolicyStringCapability(registry, providerType, "model_discovery_path"); ok {
+		policy.Path = strings.TrimSpace(value)
+	}
+	if value, ok := providerPolicyStringCapability(registry, providerType, "model_discovery_auth"); ok {
+		policy.Auth = strings.ToLower(strings.TrimSpace(value))
+	}
+	if value, ok := providerPolicyStringCapability(registry, providerType, "model_discovery_api_key_query_param"); ok {
+		policy.APIKeyQueryParam = strings.TrimSpace(value)
+	}
+	if value, ok := providerPolicyStringCapability(registry, providerType, "model_discovery_headers"); ok {
+		var headers map[string]string
+		if err := json.Unmarshal([]byte(value), &headers); err == nil {
+			policy.Headers = normalizedStringMap(headers)
+		}
+	}
+	return policy
 }
 
 func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string, name string) (bool, bool) {

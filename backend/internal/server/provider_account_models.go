@@ -364,6 +364,7 @@ func providerResourceCachedCatalog(provider Provider, resource *ProviderResource
 		DisplayName:    metadata.displayName,
 		Type:           metadata.providerType,
 		BaseURL:        metadata.baseURL,
+		DocURL:         metadata.docURL,
 		Categories:     categories,
 		CategoryCounts: counts,
 		ModelsCount:    len(models),
@@ -379,6 +380,7 @@ type providerResourceCachedCatalogIdentity struct {
 	displayName  string
 	providerType string
 	baseURL      string
+	docURL       string
 	source       string
 }
 
@@ -394,7 +396,8 @@ func providerResourceCachedCatalogIdentityFor(provider Provider, resource *Provi
 			displayName:  firstNonEmpty(strings.TrimSpace(catalog.DisplayName), name),
 			providerType: firstNonEmpty(strings.TrimSpace(catalog.Type), provider.Type),
 			baseURL:      firstNonEmpty(strings.TrimSpace(catalog.BaseURL), provider.BaseURL),
-			source:       firstNonEmpty(strings.TrimSpace(catalog.Source), "provider-resource-cache"),
+			docURL:       strings.TrimSpace(catalog.DocURL),
+			source:       cachedProviderCatalogSource(provider, resource),
 		}
 	}
 	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
@@ -404,6 +407,7 @@ func providerResourceCachedCatalogIdentityFor(provider Provider, resource *Provi
 			displayName:  "OpenAI Codex",
 			providerType: ProviderOpenAICodex,
 			baseURL:      openAICodexBaseURL,
+			docURL:       "https://developers.openai.com/codex",
 			source:       "openai-codex-cache",
 		}
 	}
@@ -416,6 +420,13 @@ func providerResourceCachedCatalogIdentityFor(provider Provider, resource *Provi
 		baseURL:      provider.BaseURL,
 		source:       "provider-resource-cache",
 	}
+}
+
+func cachedProviderCatalogSource(provider Provider, resource *ProviderResource) string {
+	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
+		return "openai-codex-cache"
+	}
+	return "provider-resource-cache"
 }
 
 func (s *Server) persistCodexResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {

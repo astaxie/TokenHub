@@ -51,14 +51,15 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 			return s.store.TestProviderResource(resourceID)
 		}
 		effective := effectiveProviderResourceConfig(provider, &resource)
+		descriptor, _ := s.registry.Describe(effective.Type)
 		if err := validateProviderHeaderSupportWithRegistry(s.registry, effective.Type, effective.Headers); err != nil {
 			return nil, err
 		}
 		startedAt := time.Now()
-		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
+		_, probeErr := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.client, ProviderCreateRequest{
 			Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
 			Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
-		})
+		}, descriptor)
 		s.finishProbe(ctx, provider, resource, startedAt, probeErr, Usage{})
 		if probeErr != nil {
 			return nil, probeErr
@@ -129,10 +130,11 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, err
 		}
-		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
+		descriptor, _ := s.registry.Describe(effectiveProvider.Type)
+		_, probeErr := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.client, ProviderCreateRequest{
 			Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
 			Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
-		})
+		}, descriptor)
 		if probeErr != nil {
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, probeErr

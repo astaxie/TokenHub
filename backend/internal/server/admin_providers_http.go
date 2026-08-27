@@ -144,7 +144,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}
-	if entry, ok := s.pluginProviderCatalogEntry(id); ok && !(id == ProviderKronk && r.Method == http.MethodPost) {
+	if entry, ok := s.pluginProviderCatalogEntry(id); ok && (r.Method == http.MethodGet || r.Method == http.MethodPost) && !(id == ProviderKronk && r.Method == http.MethodPost) {
 		if r.Method == http.MethodPost {
 			var credentials ProviderResourceCredentials
 			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {

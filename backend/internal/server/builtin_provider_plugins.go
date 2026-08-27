@@ -14,6 +14,7 @@ type builtinProviderAdapter struct {
 	sessionAffinityKind          string
 	claudeCodeAttributionDefault string
 	authModes                    []string
+	modelDiscovery               AdapterModelDiscoveryPolicy
 	resourceTypes                []pluginmeta.ManifestProviderResourceType
 	catalogEntry                 *pluginProviderCatalogEntry
 	capabilities                 []AdapterCapability
@@ -146,6 +147,13 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		adapter:                      adapters[ProviderAnthropic],
 		authModes:                    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
 		claudeCodeAttributionDefault: claudeCodeAttributionPreserve,
+		modelDiscovery: AdapterModelDiscoveryPolicy{
+			Path: "/v1/models",
+			Auth: "provider_auth_mode",
+			Headers: map[string]string{
+				"anthropic-version": "2023-06-01",
+			},
+		},
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"anthropic",
 			"Anthropic",
@@ -163,6 +171,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.gemini", "Gemini", builtinProviderAdapter{
 		providerType: ProviderGemini,
 		adapter:      adapters[ProviderGemini],
+		modelDiscovery: AdapterModelDiscoveryPolicy{
+			Auth:             "query_param",
+			APIKeyQueryParam: "key",
+		},
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"google",
 			"Google Gemini",
@@ -306,6 +318,44 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Value:   authMode,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.modelDiscovery.Path != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "model_discovery_path",
+			Subject: adapter.providerType,
+			Value:   adapter.modelDiscovery.Path,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.modelDiscovery.Auth != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "model_discovery_auth",
+			Subject: adapter.providerType,
+			Value:   adapter.modelDiscovery.Auth,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.modelDiscovery.APIKeyQueryParam != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "model_discovery_api_key_query_param",
+			Subject: adapter.providerType,
+			Value:   adapter.modelDiscovery.APIKeyQueryParam,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if len(adapter.modelDiscovery.Headers) > 0 {
+		if data, err := json.Marshal(normalizedStringMap(adapter.modelDiscovery.Headers)); err == nil {
+			descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "model_discovery_headers",
+				Subject: adapter.providerType,
+				Value:   string(data),
+			})
+			descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+		}
 	}
 	if adapter.catalogEntry != nil {
 		if data, err := json.Marshal(adapter.catalogEntry); err == nil {

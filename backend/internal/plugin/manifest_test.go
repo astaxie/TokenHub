@@ -46,6 +46,12 @@ capabilities:
     credentials_scope: resource
     session_affinity_kind: codex_session
     claude_code_attribution_default: strip
+    model_discovery:
+      path: /codex/models
+      auth: query_param
+      api_key_query_param: token
+      headers:
+        x-codex-version: "2026-01-01"
   gateway:
     - responses
     - responses_stream
@@ -104,8 +110,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 16 {
-		t.Fatalf("descriptor capabilities = %v, want 16 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 20 {
+		t.Fatalf("descriptor capabilities = %v, want 20 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -124,6 +130,18 @@ permissions:
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "claude_code_attribution_default", Subject: "openai_codex", Value: "strip"}) {
 		t.Fatalf("descriptor is missing provider Claude Code attribution default capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "model_discovery_path", Subject: "openai_codex", Value: "/codex/models"}) {
+		t.Fatalf("descriptor is missing provider model discovery path capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "model_discovery_auth", Subject: "openai_codex", Value: "query_param"}) {
+		t.Fatalf("descriptor is missing provider model discovery auth capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "model_discovery_api_key_query_param", Subject: "openai_codex", Value: "token"}) {
+		t.Fatalf("descriptor is missing provider model discovery query param capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "model_discovery_headers", Subject: "openai_codex", Value: `{"x-codex-version":"2026-01-01"}`}) {
+		t.Fatalf("descriptor is missing provider model discovery headers capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_protocol", Subject: "openai_codex", Value: "codex/responses"}) {
 		t.Fatalf("descriptor is missing provider route protocol capability: %+v", descriptor.Capabilities)
@@ -149,6 +167,12 @@ permissions:
 	}
 	if manifest.Capabilities.Provider.SessionAffinityKind != "codex_session" {
 		t.Fatalf("provider session affinity kind = %q", manifest.Capabilities.Provider.SessionAffinityKind)
+	}
+	if manifest.Capabilities.Provider.ModelDiscovery.Path != "/codex/models" ||
+		manifest.Capabilities.Provider.ModelDiscovery.Auth != "query_param" ||
+		manifest.Capabilities.Provider.ModelDiscovery.APIKeyQueryParam != "token" ||
+		manifest.Capabilities.Provider.ModelDiscovery.Headers["x-codex-version"] != "2026-01-01" {
+		t.Fatalf("provider model discovery policy = %+v", manifest.Capabilities.Provider.ModelDiscovery)
 	}
 	hooks := manifest.GatewayHooks()
 	if len(hooks) != 1 {

@@ -73,7 +73,15 @@ type ManifestProvider struct {
 	CredentialsScope             string                  `yaml:"credentials_scope"`
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
 	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
+	ModelDiscovery               ManifestModelDiscovery  `yaml:"model_discovery"`
 	Catalog                      ManifestProviderCatalog `yaml:"catalog"`
+}
+
+type ManifestModelDiscovery struct {
+	Path             string            `json:"path,omitempty" yaml:"path"`
+	Auth             string            `json:"auth,omitempty" yaml:"auth"`
+	APIKeyQueryParam string            `json:"api_key_query_param,omitempty" yaml:"api_key_query_param"`
+	Headers          map[string]string `json:"headers,omitempty" yaml:"headers"`
 }
 
 type ManifestProviderResourceType struct {
@@ -338,7 +346,8 @@ func (m Manifest) Validate() error {
 func (m Manifest) validateProviderPolicy() error {
 	scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope)
 	affinityKind := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityKind)
-	if scope == "" && affinityKind == "" {
+	modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
+	if scope == "" && affinityKind == "" && !modelDiscovery.Configured() {
 		return nil
 	}
 	if len(m.Capabilities.ProviderTypes) == 0 {
@@ -349,6 +358,12 @@ func (m Manifest) validateProviderPolicy() error {
 	}
 	if scope != "" && scope != "provider" && scope != "resource" {
 		return fmt.Errorf("provider credentials_scope must be provider or resource")
+	}
+	if modelDiscovery.Path != "" && !strings.HasPrefix(modelDiscovery.Path, "/") {
+		return fmt.Errorf("provider model_discovery path must start with /")
+	}
+	if modelDiscovery.Auth != "" && modelDiscovery.Auth != "bearer_header" && modelDiscovery.Auth != "query_param" && modelDiscovery.Auth != "provider_auth_mode" {
+		return fmt.Errorf("provider model_discovery auth must be bearer_header, query_param, or provider_auth_mode")
 	}
 	if affinityKind == "" {
 		return nil
@@ -444,6 +459,41 @@ func (m Manifest) Descriptor() Descriptor {
 				Value:   policy,
 			})
 		}
+		modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
+		if modelDiscovery.Path != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "model_discovery_path",
+				Subject: providerType,
+				Value:   modelDiscovery.Path,
+			})
+		}
+		if modelDiscovery.Auth != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "model_discovery_auth",
+				Subject: providerType,
+				Value:   modelDiscovery.Auth,
+			})
+		}
+		if modelDiscovery.APIKeyQueryParam != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "model_discovery_api_key_query_param",
+				Subject: providerType,
+				Value:   modelDiscovery.APIKeyQueryParam,
+			})
+		}
+		if len(modelDiscovery.Headers) > 0 {
+			if data, err := json.Marshal(modelDiscovery.Headers); err == nil {
+				descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+					Kind:    "provider_policy",
+					Name:    "model_discovery_headers",
+					Subject: providerType,
+					Value:   string(data),
+				})
+			}
+		}
 		for _, protocol := range m.Capabilities.Provider.RouteProtocols {
 			protocol = strings.TrimSpace(protocol)
 			if protocol == "" {
@@ -519,6 +569,19 @@ func (m Manifest) Descriptor() Descriptor {
 		})
 	}
 	return NormalizeDescriptor(descriptor)
+}
+
+func (discovery ManifestModelDiscovery) Normalized() ManifestModelDiscovery {
+	discovery.Path = strings.TrimSpace(discovery.Path)
+	discovery.Auth = strings.ToLower(strings.TrimSpace(discovery.Auth))
+	discovery.APIKeyQueryParam = strings.TrimSpace(discovery.APIKeyQueryParam)
+	discovery.Headers = normalizeStringMap(discovery.Headers)
+	return discovery
+}
+
+func (discovery ManifestModelDiscovery) Configured() bool {
+	discovery = discovery.Normalized()
+	return discovery.Path != "" || discovery.Auth != "" || discovery.APIKeyQueryParam != "" || len(discovery.Headers) > 0
 }
 
 func (distribution ManifestDistribution) Descriptor() *Distribution {

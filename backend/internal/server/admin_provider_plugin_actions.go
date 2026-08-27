@@ -95,7 +95,8 @@ func (s *Server) discoverProviderCatalogFromCreateRequest(ctx context.Context, u
 	if err != nil || supported {
 		return catalog, err
 	}
-	return CustomProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
+	descriptor, _ := s.adapterRegistry.Describe(req.Type)
+	return CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.upstreamClient, req, descriptor)
 }
 
 func providerCatalogEntryFromActionData(data any) (ProviderCatalogEntry, bool) {

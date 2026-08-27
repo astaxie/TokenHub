@@ -578,6 +578,10 @@ func customProviderCatalogEntry() ProviderCatalogEntry {
 }
 
 func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client, req ProviderCreateRequest) (ProviderCatalogEntry, error) {
+	return CustomProviderCatalogFromUpstreamWithDescriptor(ctx, client, req, AdapterDescriptor{})
+}
+
+func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client *http.Client, req ProviderCreateRequest, descriptor AdapterDescriptor) (ProviderCatalogEntry, error) {
 	if err := validateProviderHeaderSupport(req.Type, req.Headers); err != nil {
 		return ProviderCatalogEntry{}, err
 	}
@@ -589,10 +593,8 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		return ProviderCatalogEntry{}, err
 	}
 	providerType := strings.ToLower(strings.TrimSpace(req.Type))
-	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
-	if providerType == ProviderAnthropic {
-		modelsURL = anthropicEndpointURL(baseURL, "/v1/models")
-	}
+	discovery := providerModelDiscoveryPolicy(descriptor)
+	modelsURL := providerModelDiscoveryURL(baseURL, discovery.Path)
 	endpoint, err := url.Parse(modelsURL)
 	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
@@ -606,28 +608,11 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to create upstream models request")
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
-	if providerType == ProviderGemini {
-		if apiKey != "" {
-			query := endpoint.Query()
-			query.Set("key", apiKey)
-			endpoint.RawQuery = query.Encode()
-			httpReq.URL = endpoint
-		}
-	} else if providerType == ProviderAnthropic {
-		if apiKey != "" {
-			provider := Provider{Type: providerType, APIKey: apiKey, Options: req.Options}
-			if err := configureProviderAuthMode(&provider, req.AnthropicAuthType); err != nil {
-				return ProviderCatalogEntry{}, err
-			}
-			applyAnthropicProviderAuth(httpReq, provider)
-		}
-		version := strings.TrimSpace(req.Options["anthropic_version"])
-		if version == "" {
-			version = "2023-06-01"
-		}
-		httpReq.Header.Set("anthropic-version", version)
-	} else if apiKey != "" {
-		httpReq.Header.Set("authorization", "Bearer "+apiKey)
+	if err := applyProviderModelDiscoveryAuth(httpReq, endpoint, req, descriptor, discovery); err != nil {
+		return ProviderCatalogEntry{}, err
+	}
+	for name, value := range providerModelDiscoveryHeaders(req.Options, discovery.Headers) {
+		httpReq.Header.Set(name, value)
 	}
 	headers, err := normalizeProviderHeaders(req.Headers)
 	if err != nil {
@@ -672,6 +657,106 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		Source:         "custom-upstream",
 		Models:         models,
 	}, nil
+}
+
+func providerModelDiscoveryPolicy(descriptor AdapterDescriptor) AdapterModelDiscoveryPolicy {
+	policy := descriptor.ProviderPolicy.ModelDiscovery
+	policy.Path = strings.TrimSpace(policy.Path)
+	if policy.Path == "" {
+		policy.Path = "/models"
+	}
+	policy.Auth = strings.ToLower(strings.TrimSpace(policy.Auth))
+	if policy.Auth == "" {
+		policy.Auth = "bearer_header"
+	}
+	policy.APIKeyQueryParam = strings.TrimSpace(policy.APIKeyQueryParam)
+	policy.Headers = normalizedStringMap(policy.Headers)
+	return policy
+}
+
+func providerModelDiscoveryURL(baseURL string, path string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	path = "/" + strings.TrimLeft(strings.TrimSpace(path), "/")
+	if strings.HasSuffix(strings.ToLower(baseURL), "/v1") && strings.HasPrefix(strings.ToLower(path), "/v1/") {
+		path = path[len("/v1"):]
+	}
+	return baseURL + path
+}
+
+func applyProviderModelDiscoveryAuth(httpReq *http.Request, endpoint *url.URL, req ProviderCreateRequest, descriptor AdapterDescriptor, discovery AdapterModelDiscoveryPolicy) error {
+	apiKey := strings.TrimSpace(req.APIKey)
+	if apiKey == "" {
+		return nil
+	}
+	switch discovery.Auth {
+	case "bearer_header":
+		httpReq.Header.Set("authorization", "Bearer "+apiKey)
+	case "query_param":
+		queryParam := firstNonEmpty(discovery.APIKeyQueryParam, "key")
+		query := endpoint.Query()
+		query.Set(queryParam, apiKey)
+		endpoint.RawQuery = query.Encode()
+		httpReq.URL = endpoint
+	case "provider_auth_mode":
+		mode, err := providerModelDiscoveryAuthMode(req, descriptor)
+		if err != nil {
+			return err
+		}
+		switch mode {
+		case anthropicAuthTypeBearer:
+			httpReq.Header.Set("authorization", "Bearer "+apiKey)
+		case anthropicAuthTypeAPIKey:
+			httpReq.Header.Set("x-api-key", apiKey)
+		case "":
+		default:
+			return providerAuthModeInvalidError(req.Type)
+		}
+	default:
+		return NewHTTPError(http.StatusBadRequest, "provider_model_discovery_auth_invalid", "Provider model discovery authentication mode is not supported")
+	}
+	return nil
+}
+
+func providerModelDiscoveryAuthMode(req ProviderCreateRequest, descriptor AdapterDescriptor) (string, error) {
+	provider := Provider{Type: strings.TrimSpace(req.Type), APIKey: strings.TrimSpace(req.APIKey), Options: req.Options}
+	if err := configureProviderAuthMode(&provider, req.AnthropicAuthType, descriptor.ProviderPolicy.AuthModes...); err != nil {
+		return "", err
+	}
+	if mode := providerConfiguredAuthMode(provider); mode != "" {
+		return mode, nil
+	}
+	return preferredProviderAuthMode(descriptor.ProviderPolicy.AuthModes), nil
+}
+
+func preferredProviderAuthMode(modes []string) string {
+	for _, mode := range modes {
+		if strings.EqualFold(strings.TrimSpace(mode), anthropicAuthTypeAPIKey) {
+			return anthropicAuthTypeAPIKey
+		}
+	}
+	for _, mode := range modes {
+		if mode = strings.ToLower(strings.TrimSpace(mode)); mode != "" {
+			return mode
+		}
+	}
+	return ""
+}
+
+func providerModelDiscoveryHeaders(options map[string]string, defaults map[string]string) map[string]string {
+	headers := normalizedStringMap(defaults)
+	if len(headers) == 0 {
+		return nil
+	}
+	for name := range headers {
+		if value := strings.TrimSpace(options[providerModelDiscoveryHeaderOption(name)]); value != "" {
+			headers[name] = value
+		}
+	}
+	return headers
+}
+
+func providerModelDiscoveryHeaderOption(header string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(header)), "-", "_")
 }
 
 func providerModelsUpstreamError(status int) *HTTPError {
