@@ -629,7 +629,7 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to test the connection"))
 		return
 	}
-	if strings.TrimSpace(req.APIKey) == "" && strings.TrimSpace(req.Type) != ProviderKronk {
+	if strings.TrimSpace(req.APIKey) == "" && providerTestConnectionRequiresAPIKey(s.adapterRegistry, req.Type) {
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "provider_api_key_required", "API key is required to test the connection"))
 		return
 	}
@@ -643,16 +643,11 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 	var catalog ProviderCatalogEntry
 	var health any
 	var err error
-	if strings.TrimSpace(req.Type) == ProviderKronk {
-		adapter, ok := resolveProviderHealthProber(s.adapterRegistry, ProviderKronk)
-		if !ok {
-			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable"))
-			return
-		}
+	if adapter, ok := resolveProviderHealthProber(s.adapterRegistry, strings.TrimSpace(req.Type)); ok {
 		provider := Provider{Name: req.Name, Type: req.Type, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
 		health, err = adapter.ProbeProvider(ctx, provider)
 		if err == nil {
-			catalog, err = KronkProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
+			catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
 		}
 	} else {
 		catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
@@ -667,6 +662,14 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		"models_count": catalog.ModelsCount,
 		"health":       health,
 	})
+}
+
+func providerTestConnectionRequiresAPIKey(registry *AdapterRegistry, providerType string) bool {
+	descriptor, ok := registry.Describe(strings.TrimSpace(providerType))
+	if !ok {
+		return true
+	}
+	return descriptor.ProviderPolicy.APIKeyRequired
 }
 
 func (s *Server) serveAdminProviderPatch(w http.ResponseWriter, r *http.Request, user AdminUser, providerID string) {

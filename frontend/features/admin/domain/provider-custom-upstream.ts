@@ -3,6 +3,7 @@ import { type PluginActionDescriptor, type ProviderCatalogEntry } from "../core/
 type ProviderAuthModeOption = {
   value: string;
   authModes?: string[];
+  apiKeyRequired?: boolean;
 };
 
 const legacyProviderTypeFallback = "openai_compatible";
@@ -49,8 +50,11 @@ export function providerCatalogDiscoveryRouteID(catalogID: string, entry: Provid
   return providerCatalogSupportsModelPreview(entry, actions) ? catalogID : "";
 }
 
-export function providerCatalogAPIKeyRequired(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+export function providerCatalogAPIKeyRequired(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = [], providerTypeOptions: ProviderAuthModeOption[] = []) {
   if (catalogID === "custom") return true;
+  const option = providerTypeOptions.find((item) => item.value === entry?.type);
+  if (option?.apiKeyRequired === false) return false;
+  if (option?.apiKeyRequired === true) return true;
   const action = providerCatalogModelsPreviewAction(entry, actions);
   if (!action) return true;
   return pluginActionRequiredFields(action).has("api_key");

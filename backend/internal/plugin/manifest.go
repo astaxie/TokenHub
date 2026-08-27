@@ -69,6 +69,7 @@ type ManifestProvider struct {
 	RouteProtocols               []string                `yaml:"route_protocols"`
 	AuthModes                    []string                `yaml:"auth_modes"`
 	SupportsCustomHeaders        *bool                   `yaml:"supports_custom_headers"`
+	APIKeyRequired               *bool                   `yaml:"api_key_required"`
 	RouteRequiresResource        *bool                   `yaml:"route_requires_resource"`
 	CredentialsScope             string                  `yaml:"credentials_scope"`
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
@@ -351,7 +352,7 @@ func (m Manifest) validateProviderPolicy() error {
 	defaultBaseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL)
 	errorProfile := strings.TrimSpace(m.Capabilities.Provider.ErrorProfile)
 	modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
-	if scope == "" && affinityKind == "" && defaultBaseURL == "" && errorProfile == "" && !modelDiscovery.Configured() {
+	if m.Capabilities.Provider.APIKeyRequired == nil && scope == "" && affinityKind == "" && defaultBaseURL == "" && errorProfile == "" && !modelDiscovery.Configured() {
 		return nil
 	}
 	if len(m.Capabilities.ProviderTypes) == 0 {
@@ -438,6 +439,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "supports_custom_headers",
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.SupportsCustomHeaders),
+			})
+		}
+		if m.Capabilities.Provider.APIKeyRequired != nil {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "api_key_required",
+				Subject: providerType,
+				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.APIKeyRequired),
 			})
 		}
 		if m.Capabilities.Provider.RouteRequiresResource != nil {

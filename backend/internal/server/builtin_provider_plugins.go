@@ -11,6 +11,7 @@ type builtinProviderAdapter struct {
 	providerType                 string
 	adapter                      any
 	supportsCustomHeaders        *bool
+	apiKeyRequired               *bool
 	routeProtocols               []string
 	credentialsScope             string
 	routeRequiresResource        bool
@@ -69,9 +70,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.kronk", "Kronk", builtinProviderAdapter{
-		providerType: ProviderKronk,
-		adapter:      adapters[ProviderKronk],
-		errorProfile: "kronk",
+		providerType:   ProviderKronk,
+		adapter:        adapters[ProviderKronk],
+		apiKeyRequired: boolPointer(false),
+		errorProfile:   "kronk",
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			ProviderKronk,
 			"Kronk",
@@ -287,6 +289,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "supports_custom_headers",
 			Subject: adapter.providerType,
 			Value:   boolString(*adapter.supportsCustomHeaders),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.apiKeyRequired != nil {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    providerAPIKeyRequiredOption,
+			Subject: adapter.providerType,
+			Value:   boolString(*adapter.apiKeyRequired),
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

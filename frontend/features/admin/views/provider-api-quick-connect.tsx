@@ -139,7 +139,7 @@ export function ProviderAPIQuickConnect({
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
   const connectionTestRun = useRef(0);
   const custom = catalogID === "custom";
-  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions);
+  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, providerTypeOptions);
   const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
   const connectionReady = Boolean(values.base_url?.trim() && (!apiKeyRequired || values.api_key?.trim()));
 

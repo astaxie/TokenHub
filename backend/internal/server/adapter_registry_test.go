@@ -162,6 +162,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if kronk.ProviderPolicy.ErrorProfile != providerErrorProfileKronk {
 		t.Fatalf("Kronk error profile = %q, want %q", kronk.ProviderPolicy.ErrorProfile, providerErrorProfileKronk)
 	}
+	if kronk.ProviderPolicy.APIKeyRequired {
+		t.Fatal("Kronk should declare Provider API keys optional")
+	}
 
 	codex, ok := server.adapterRegistry.Describe(ProviderOpenAICodex)
 	if !ok {
@@ -186,6 +189,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	}
 	if compatible.ProviderPolicy.RouteRequiresResource {
 		t.Fatal("OpenAI-compatible should keep route resources optional")
+	}
+	if !compatible.ProviderPolicy.APIKeyRequired {
+		t.Fatal("OpenAI-compatible should require Provider API keys by default")
 	}
 	if compatible.ProviderPolicy.CredentialsScope != providerCredentialsScopeProvider {
 		t.Fatalf("OpenAI-compatible credentials scope = %q, want provider", compatible.ProviderPolicy.CredentialsScope)
@@ -263,6 +269,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: providerAPIKeyRequiredOption, Subject: providerType, Value: "false"},
 			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "oauth"},
 			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "personal_access_token"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
@@ -295,6 +302,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if !descriptor.ProviderPolicy.RouteRequiresResource {
 		t.Fatalf("plugin provider policy = %+v, want route resource required", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.APIKeyRequired {
+		t.Fatalf("plugin provider API key policy = %+v, want optional", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
 		t.Fatalf("plugin provider credentials scope = %+v, want resource", descriptor.ProviderPolicy)

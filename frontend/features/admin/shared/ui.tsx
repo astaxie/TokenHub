@@ -427,6 +427,7 @@ export type ProviderTypeOption = {
   value: string;
   label: string;
   supportsCustomHeaders: boolean;
+  apiKeyRequired?: boolean;
   authModes?: string[];
   routeProtocols?: string[];
   claudeCodeAttributionDefault?: string;
@@ -527,6 +528,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     value,
     label: providerTypeOptionLabel(value, labelByType),
     supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
+    apiKeyRequired: adapterProviderType(data.providerAdapters, value)?.provider_policy?.api_key_required ?? true,
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
     claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
@@ -537,6 +539,10 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
 
 function providerTypeOptionLabel(providerType: string, labels: Map<string, string>) {
   return labels.get(providerType) ?? providerTypeLabel(providerType);
+}
+
+function adapterProviderType(adapters: AppData["providerAdapters"], providerType: string) {
+  return adapters?.find((adapter) => adapter.type === providerType);
 }
 
 export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {

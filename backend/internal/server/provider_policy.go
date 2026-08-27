@@ -7,6 +7,7 @@ import (
 
 const (
 	providerAuthModeOption              = "auth_mode"
+	providerAPIKeyRequiredOption        = "api_key_required"
 	providerCredentialsScopeOption      = "credentials_scope"
 	providerCredentialsScopeProvider    = "provider"
 	providerCredentialsScopeResource    = "resource"

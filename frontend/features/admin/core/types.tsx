@@ -273,6 +273,7 @@ export type AdapterDescriptor = {
     route_protocols?: string[];
     auth_modes?: string[];
     supports_custom_headers: boolean;
+    api_key_required?: boolean;
     route_requires_resource?: boolean;
     credentials_scope?: string;
     session_affinity_kind?: string;

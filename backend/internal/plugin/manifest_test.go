@@ -42,6 +42,7 @@ capabilities:
       - x-api-key
       - bearer
     supports_custom_headers: false
+    api_key_required: false
     route_requires_resource: true
     credentials_scope: resource
     session_affinity_kind: codex_session
@@ -112,14 +113,17 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 22 {
-		t.Fatalf("descriptor capabilities = %v, want 22 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 23 {
+		t.Fatalf("descriptor capabilities = %v, want 23 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "supports_custom_headers", Subject: "openai_codex", Value: "false"}) {
 		t.Fatalf("descriptor is missing provider policy capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "api_key_required", Subject: "openai_codex", Value: "false"}) {
+		t.Fatalf("descriptor is missing provider API key policy capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_requires_resource", Subject: "openai_codex", Value: "true"}) {
 		t.Fatalf("descriptor is missing provider route resource policy capability: %+v", descriptor.Capabilities)
@@ -166,6 +170,9 @@ permissions:
 	}
 	if manifest.Capabilities.Provider.SupportsCustomHeaders == nil || *manifest.Capabilities.Provider.SupportsCustomHeaders {
 		t.Fatalf("provider custom header policy = %+v", manifest.Capabilities.Provider.SupportsCustomHeaders)
+	}
+	if manifest.Capabilities.Provider.APIKeyRequired == nil || *manifest.Capabilities.Provider.APIKeyRequired {
+		t.Fatalf("provider API key policy = %+v", manifest.Capabilities.Provider.APIKeyRequired)
 	}
 	if manifest.Capabilities.Provider.RouteRequiresResource == nil || !*manifest.Capabilities.Provider.RouteRequiresResource {
 		t.Fatalf("provider route resource policy = %+v", manifest.Capabilities.Provider.RouteRequiresResource)

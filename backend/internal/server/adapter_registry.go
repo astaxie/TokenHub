@@ -39,6 +39,7 @@ type AdapterProviderPolicy struct {
 	RouteProtocols               []string                    `json:"route_protocols,omitempty"`
 	AuthModes                    []string                    `json:"auth_modes,omitempty"`
 	SupportsCustomHeaders        bool                        `json:"supports_custom_headers"`
+	APIKeyRequired               bool                        `json:"api_key_required"`
 	RouteRequiresResource        bool                        `json:"route_requires_resource"`
 	CredentialsScope             string                      `json:"credentials_scope,omitempty"`
 	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
@@ -187,6 +188,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		RouteProtocols:               adapterRouteProtocols(r, descriptor),
 		AuthModes:                    adapterAuthModes(r, descriptor.Type),
 		SupportsCustomHeaders:        adapterSupportsProviderHeaders(r, descriptor.Type),
+		APIKeyRequired:               adapterAPIKeyRequired(r, descriptor.Type),
 		RouteRequiresResource:        adapterRequiresRouteResource(r, descriptor.Type),
 		CredentialsScope:             adapterCredentialsScope(r, descriptor.Type),
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
@@ -214,6 +216,13 @@ func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType stri
 		return value
 	}
 	return defaultProviderTypeSupportsHeaders(providerType)
+}
+
+func adapterAPIKeyRequired(registry *AdapterRegistry, providerType string) bool {
+	if value, ok := providerPolicyBoolCapability(registry, providerType, providerAPIKeyRequiredOption); ok {
+		return value
+	}
+	return true
 }
 
 func adapterRequiresRouteResource(registry *AdapterRegistry, providerType string) bool {

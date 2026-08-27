@@ -143,6 +143,18 @@ test("provider catalog discovery preview follows plugin actions", () => {
   assert.equal(providerCatalogSupportsModelPreview({ id: "other", type: "other_provider" }, actions), false);
 });
 
+test("provider catalog API key requirement prefers provider policy metadata", () => {
+  const entry = { id: "policy-provider", type: "policy_provider" };
+  const actions = [{
+    action_id: "policy.models.preview",
+    capability: "models.preview",
+    subject: "policy_provider",
+    input_schema: { type: "object", required: ["base_url", "api_key"] },
+  }];
+
+  assert.equal(providerCatalogAPIKeyRequired("policy-provider", entry, actions, [{ value: "policy_provider", apiKeyRequired: false }]), false);
+});
+
 test("provider catalog preview can require API keys through action schema", () => {
   const entry = { id: "strict", type: "strict_provider" };
   const actions = [{
