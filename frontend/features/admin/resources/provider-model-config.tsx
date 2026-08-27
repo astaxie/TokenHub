@@ -35,7 +35,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       { key: "base_url", label: "Base URL" },
       { key: "api_key", label: "API Key", type: "password", help: "编辑时留空表示不修改现有 Key；只有填写新值才会覆盖。" },
       { key: "priority", label: "优先级", type: "number", placeholder: "留空自动追加", help: "数字越小越先调用；新增时留空会自动排在该统一模型已有 Provider 后面。" },
-      { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["preserve", "strip"], help: "Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。" },
+      { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["preserve", "strip"], help: "Provider 插件可声明默认策略；未声明时默认移除归因块。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
       { key: "healthy", label: "健康", type: "boolean" },
       ...providerReasoningFieldConfigs((values) => providerSupportsAnthropicReasoning(values.type)),

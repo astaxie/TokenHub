@@ -133,7 +133,7 @@ export function ProviderAdvancedFields({
             <option value="preserve">{tx("保留归因块")}</option>
             <option value="strip">{tx("移除归因块")}</option>
           </select>
-          <small>{tx("Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。")}</small>
+          <small>{tx("Provider 插件可声明默认策略；未声明时默认移除归因块。")}</small>
         </label>
       </div>
       {showReasoningCompatibility ? <details className="provider-account-runtime">
