@@ -305,6 +305,46 @@ func (s *Server) handleAdminPlaygroundChatStream(w http.ResponseWriter, r *http.
 		writeError(w, r, err)
 		return
 	}
+	if err := s.runGatewayPrivacyPreHooks(r.Context(), call, r.Header, req, func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ChatCompletionRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		req = patched
+		return nil
+	}); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayChatContextOptimizeHooks(r.Context(), call, &req); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
 	if err := s.runGatewayChatGuardrailPreHooks(r.Context(), call, &req); err != nil {
 		httpErr := AsHTTPError(err)
 		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
