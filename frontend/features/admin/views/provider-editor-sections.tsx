@@ -64,13 +64,13 @@ export function ProviderConnectionFields({
   );
 }
 
-export function AnthropicAuthTypeField({ values, onUpdate, providerTypeOptions = [] }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[] }) {
+export function ProviderAuthModeField({ values, onUpdate, providerTypeOptions = [] }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[] }) {
   const authModes = providerTypeAuthModes(providerTypeOptions, values.type);
   if (authModes.length === 0) return null;
   const authModeValue = values.anthropic_auth_type || providerTypePreferredAuthMode(providerTypeOptions, values.type);
   return (
     <label className="field">
-      <span>{tx("Anthropic 认证方式")}</span>
+      <span>{tx("认证方式")}</span>
       <select value={authModeValue} onChange={(event) => onUpdate("anthropic_auth_type", event.target.value)}>
         {authModes.map((mode) => <option key={mode} value={mode}>{providerAuthModeLabel(mode)}</option>)}
       </select>
@@ -80,8 +80,8 @@ export function AnthropicAuthTypeField({ values, onUpdate, providerTypeOptions =
 }
 
 function providerAuthModeLabel(mode: string) {
-  if (mode === "x-api-key") return tx("x-api-key（Anthropic 官方）");
-  if (mode === "bearer") return tx("Authorization Bearer（兼容服务）");
+  if (mode === "x-api-key") return "x-api-key";
+  if (mode === "bearer") return "Authorization Bearer";
   return mode;
 }
 
@@ -122,7 +122,7 @@ export function ProviderAdvancedFields({
             <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
           </label>
         ) : null}
-        <AnthropicAuthTypeField values={values} onUpdate={onUpdate} providerTypeOptions={providerTypeOptions} />
+        <ProviderAuthModeField values={values} onUpdate={onUpdate} providerTypeOptions={providerTypeOptions} />
         <label className="field">
           <span>{tx("优先级")}</span>
           <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />

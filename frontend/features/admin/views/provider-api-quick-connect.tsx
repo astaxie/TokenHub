@@ -9,7 +9,7 @@ import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredF
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { legacyProviderTypeOptions, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
-import { AnthropicAuthTypeField } from "./provider-editor-sections";
+import { ProviderAuthModeField } from "./provider-editor-sections";
 
 type ProviderConnectionTestState = {
   status: "idle" | "testing" | "success" | "error";
@@ -347,7 +347,7 @@ export function ProviderAPIQuickConnect({
                 {providerTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <AnthropicAuthTypeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={providerTypeOptions} />
+            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={providerTypeOptions} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />

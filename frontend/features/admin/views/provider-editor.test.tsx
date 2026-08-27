@@ -179,7 +179,7 @@ describe("ProviderUpsertModal", () => {
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.click(screen.getByRole("tab", { name: "高级" }));
 
-    expect(screen.getByText("Anthropic 认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
+    expect(screen.getByText("认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
   });
 
   it("shows the provider OAuth callback from plugin action metadata", async () => {
