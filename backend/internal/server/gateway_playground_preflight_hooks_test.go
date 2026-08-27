@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -84,5 +85,48 @@ func TestPlaygroundChatStreamRunsPrivacyAndContextOptimizeHooks(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body, "Echo: masked prompt") || strings.Contains(resp.Body, "secret prompt") {
 		t.Fatalf("playground stream did not use the privacy-redacted request: %s", resp.Body)
+	}
+}
+
+func TestPlaygroundRoutedCallRunsRouteCandidateHooks(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddProvider(Provider{ID: "prv_a", Name: "Provider A", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	store.AddProvider(Provider{ID: "prv_b", Name: "Provider B", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	store.AddRoute(ModelRoute{ID: "route_a", ModelName: "gpt-playground-candidates", ProviderID: "prv_a", ProviderModel: "mock-a", Status: StatusActive, Priority: 1, Weight: 100, Strategy: RouteStrategyPriorityOnly})
+	store.AddRoute(ModelRoute{ID: "route_b", ModelName: "gpt-playground-candidates", ProviderID: "prv_b", ProviderModel: "mock-b", Status: StatusActive, Priority: 1, Weight: 100, Strategy: RouteStrategyPriorityOnly})
+	server := New(store)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-playground-router",
+		HookID:        "select-b",
+		Stage:         pluginmeta.StageRouteCandidates,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register route candidates hook: %v", err)
+	}
+	sawCandidates := false
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var candidates []gatewayRouteCandidateView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataRouteCandidates], &candidates); err != nil {
+			t.Fatalf("decode route candidates: %v", err)
+		}
+		sawCandidates = len(candidates) == 2
+		return routeRankPatchResult(t, "route_b"), nil
+	})); err != nil {
+		t.Fatalf("register route candidates handler: %v", err)
+	}
+
+	routed, err := server.preparePlaygroundRoutedCall(context.Background(), ChatCompletionRequest{Model: "gpt-playground-candidates"}, server.newPlaygroundCallContext(AdminUser{ID: "dev_admin"}, "gpt-playground-candidates", time.Now()))
+	if err != nil {
+		t.Fatalf("prepare playground routed call: %v", err)
+	}
+	if !sawCandidates {
+		t.Fatal("route candidates hook did not receive playground candidates")
+	}
+	if got := routeIDs(routed.Routes); len(got) != 1 || got[0] != "route_b" {
+		t.Fatalf("playground route IDs = %v, want [route_b]", got)
 	}
 }

@@ -507,6 +507,10 @@ func (s *Server) preparePlaygroundRoutedCall(ctx context.Context, req ChatComple
 	if err != nil {
 		return routed, err
 	}
+	routes, err = s.runGatewayRouteCandidatesHooks(ctx, routed.Call, routes)
+	if err != nil {
+		return routed, err
+	}
 	routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routes)
 	return routed, nil
 }
