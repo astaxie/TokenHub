@@ -43,6 +43,9 @@ func applyProviderDescriptorDefaults(provider *Provider, descriptor AdapterDescr
 }
 
 func providerDescriptorDefaultBaseURL(descriptor AdapterDescriptor) string {
+	if baseURL := strings.TrimSpace(descriptor.ProviderPolicy.DefaultBaseURL); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
 	for _, resourceType := range descriptor.ResourceTypes {
 		if !resourceType.Default {
 			continue

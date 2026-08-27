@@ -277,6 +277,7 @@ export type AdapterDescriptor = {
     credentials_scope?: string;
     session_affinity_kind?: string;
     claude_code_attribution_default?: string;
+    default_base_url?: string;
     model_discovery?: AdapterModelDiscoveryPolicy;
   };
 };

@@ -430,6 +430,7 @@ export type ProviderTypeOption = {
   authModes?: string[];
   routeProtocols?: string[];
   claudeCodeAttributionDefault?: string;
+  defaultBaseURL?: string;
   modelDiscovery?: {
     path?: string;
     auth?: string;
@@ -445,6 +446,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
   const claudeCodeAttributionDefaultByType = new Map<string, string>();
+  const defaultBaseURLByType = new Map<string, string>();
   const modelDiscoveryByType = new Map<string, ProviderTypeOption["modelDiscovery"]>();
   let hasPluginProviderSource = false;
   for (const adapter of data.providerAdapters ?? []) {
@@ -454,6 +456,9 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
     if (adapter.provider_policy?.claude_code_attribution_default) {
       claudeCodeAttributionDefaultByType.set(adapter.type, adapter.provider_policy.claude_code_attribution_default);
+    }
+    if (adapter.provider_policy?.default_base_url?.trim()) {
+      defaultBaseURLByType.set(adapter.type, adapter.provider_policy.default_base_url.trim().replace(/\/+$/, ""));
     }
     const modelDiscovery = providerTypeModelDiscoveryFromAdapter(adapter.provider_policy?.model_discovery);
     if (modelDiscovery) modelDiscoveryByType.set(adapter.type, modelDiscovery);
@@ -525,6 +530,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
     claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
+    defaultBaseURL: defaultBaseURLByType.get(value),
     modelDiscovery: modelDiscoveryByType.get(value),
   }));
 }

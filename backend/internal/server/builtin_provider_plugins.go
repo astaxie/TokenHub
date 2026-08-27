@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -304,6 +305,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    claudeCodeAttributionDefaultPolicy,
 			Subject: adapter.providerType,
 			Value:   adapter.claudeCodeAttributionDefault,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.catalogEntry != nil && adapter.catalogEntry.BaseURL != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "default_base_url",
+			Subject: adapter.providerType,
+			Value:   strings.TrimRight(strings.TrimSpace(adapter.catalogEntry.BaseURL), "/"),
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

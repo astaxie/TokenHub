@@ -73,6 +73,7 @@ type ManifestProvider struct {
 	CredentialsScope             string                  `yaml:"credentials_scope"`
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
 	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
+	DefaultBaseURL               string                  `yaml:"default_base_url"`
 	ModelDiscovery               ManifestModelDiscovery  `yaml:"model_discovery"`
 	Catalog                      ManifestProviderCatalog `yaml:"catalog"`
 }
@@ -346,8 +347,9 @@ func (m Manifest) Validate() error {
 func (m Manifest) validateProviderPolicy() error {
 	scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope)
 	affinityKind := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityKind)
+	defaultBaseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL)
 	modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
-	if scope == "" && affinityKind == "" && !modelDiscovery.Configured() {
+	if scope == "" && affinityKind == "" && defaultBaseURL == "" && !modelDiscovery.Configured() {
 		return nil
 	}
 	if len(m.Capabilities.ProviderTypes) == 0 {
@@ -358,6 +360,12 @@ func (m Manifest) validateProviderPolicy() error {
 	}
 	if scope != "" && scope != "provider" && scope != "resource" {
 		return fmt.Errorf("provider credentials_scope must be provider or resource")
+	}
+	if defaultBaseURL != "" {
+		parsed, err := url.Parse(defaultBaseURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("provider default_base_url must be an absolute URL")
+		}
 	}
 	if modelDiscovery.Path != "" && !strings.HasPrefix(modelDiscovery.Path, "/") {
 		return fmt.Errorf("provider model_discovery path must start with /")
@@ -457,6 +465,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "claude_code_attribution_default",
 				Subject: providerType,
 				Value:   policy,
+			})
+		}
+		if baseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL); baseURL != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "default_base_url",
+				Subject: providerType,
+				Value:   strings.TrimRight(baseURL, "/"),
 			})
 		}
 		modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()

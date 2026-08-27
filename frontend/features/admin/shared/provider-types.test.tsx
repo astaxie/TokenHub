@@ -105,6 +105,7 @@ describe("providerTypeOptionsFromData", () => {
       provider_policy: {
         auth_modes: ["x-api-key", "bearer"],
         claude_code_attribution_default: "preserve",
+        default_base_url: "https://native.example/v1/",
         model_discovery: {
           path: "/native/models",
           auth: "query_param",
@@ -123,6 +124,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypePreferredAuthMode(options, "native_subscription")).toBe("x-api-key");
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(options.find((option) => option.value === "native_subscription")?.claudeCodeAttributionDefault).toBe("preserve");
+    expect(options.find((option) => option.value === "native_subscription")?.defaultBaseURL).toBe("https://native.example/v1");
     expect(providerTypeModelDiscovery(options, "native_subscription")).toEqual({
       path: "/native/models",
       auth: "query_param",
