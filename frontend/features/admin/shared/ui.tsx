@@ -524,7 +524,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   }
   if (!hasPluginProviderSource) legacyProviderTypeOptions.forEach((type) => types.add(type));
   if (values?.type) types.add(values.type);
-  return [...types].sort(providerTypeSort).map((value) => ({
+  return [...types].map((value) => ({
     value,
     label: providerTypeOptionLabel(value, labelByType),
     supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
@@ -626,13 +626,4 @@ function providerAuthModeList(authModes?: Set<string>) {
 
 function providerRouteProtocolList(protocols?: Set<string>) {
   return protocols ? [...protocols].sort() : undefined;
-}
-
-function providerTypeSort(left: string, right: string) {
-  const leftIndex = legacyProviderTypeOptions.indexOf(left);
-  const rightIndex = legacyProviderTypeOptions.indexOf(right);
-  if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex;
-  if (leftIndex >= 0) return -1;
-  if (rightIndex >= 0) return 1;
-  return left.localeCompare(right);
 }

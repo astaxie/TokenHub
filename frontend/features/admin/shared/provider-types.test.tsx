@@ -96,6 +96,26 @@ describe("providerTypeOptionsFromData", () => {
     expect(descriptorFirst).toEqual(["openai_compatible"]);
   });
 
+  it("keeps plugin provider discovery order instead of legacy provider precedence", () => {
+    const data = emptyData();
+    data.providerAdapters = [
+      {
+        type: "zeta_subscription",
+        capabilities: ["responses"],
+        plugin_id: "tokenhub.provider.zeta",
+        provider_policy: { route_protocols: ["responses"], supports_custom_headers: false },
+      },
+      {
+        type: "openai",
+        capabilities: ["chat"],
+        plugin_id: "tokenhub.provider.openai",
+        provider_policy: { route_protocols: ["chat"], supports_custom_headers: true },
+      },
+    ];
+
+    expect(providerTypeOptionsFromData(data).map((option) => option.value)).toEqual(["zeta_subscription", "openai"]);
+  });
+
   it("carries provider header policy from adapter descriptors", () => {
     const data = emptyData();
     data.providerAdapters = [{
