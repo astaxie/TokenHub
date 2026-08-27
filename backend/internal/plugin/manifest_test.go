@@ -280,6 +280,7 @@ capabilities:
         - oauth
         - personal_access_token
       credential_identity_profile: openai_account_id_token
+      credential_input_optional: true
       default: true
       defaults:
         auth_type: oauth
@@ -315,6 +316,9 @@ capabilities:
 	}
 	if resourceType.CredentialIdentityProfile != "openai_account_id_token" {
 		t.Fatalf("provider resource type credential identity profile = %q", resourceType.CredentialIdentityProfile)
+	}
+	if !resourceType.CredentialInputOptional {
+		t.Fatalf("provider resource type credential input optional = false")
 	}
 }
 

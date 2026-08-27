@@ -463,6 +463,9 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	if resourceType.CredentialIdentityProfile != providerResourceIdentityProfileOpenAIIDToken {
 		t.Fatalf("Codex resource type credential identity profile = %q", resourceType.CredentialIdentityProfile)
 	}
+	if !resourceType.CredentialInputOptional {
+		t.Fatalf("Codex resource type credential input optional = false")
+	}
 	if !reflect.DeepEqual(resourceType.AuthModes, []string{"oauth", "personal_access_token"}) {
 		t.Fatalf("Codex resource type auth modes = %+v", resourceType.AuthModes)
 	}

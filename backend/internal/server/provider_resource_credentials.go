@@ -64,7 +64,7 @@ func (s *GormStore) prepareProviderResourceForCreate(providerType string, resour
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
-	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
+	if !s.providerResourceCredentialInputOptional(resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
 		return
 	}
 	s.applyProviderResourceTypeDefaults(resource)
@@ -78,7 +78,7 @@ func (s *GormStore) prepareProviderResourceForUpdate(providerType string, resour
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
-	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
+	if !s.providerResourceCredentialInputOptional(resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
 		return
 	}
 	s.applyProviderResourceTypeDefaults(resource)
@@ -193,6 +193,24 @@ func (s *GormStore) ConfigureProviderResourceCredentialIdentityProfiles(profiles
 	s.providerResourceIdentity = normalized
 }
 
+func (s *GormStore) ConfigureProviderResourceCredentialInputOptional(resourceTypes map[string]bool) {
+	if s == nil {
+		return
+	}
+	normalized := make(map[string]bool, len(resourceTypes))
+	for resourceType, optional := range resourceTypes {
+		resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+		if resourceType != "" && optional {
+			normalized[resourceType] = true
+		}
+	}
+	if s.mu != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	s.providerResourceOptional = normalized
+}
+
 func (s *GormStore) IsProviderAccountResourceType(providerType string, resourceType string) bool {
 	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
 	if resourceType == "" || resourceType == ProviderResourceAPIKey {
@@ -213,6 +231,13 @@ func (s *GormStore) providerResourceCredentialIdentityProfile(resourceType strin
 		return ""
 	}
 	return s.providerResourceIdentity[strings.ToLower(strings.TrimSpace(resourceType))]
+}
+
+func (s *GormStore) providerResourceCredentialInputOptional(resourceType string) bool {
+	if s == nil {
+		return false
+	}
+	return s.providerResourceOptional[strings.ToLower(strings.TrimSpace(resourceType))]
 }
 
 func (s *GormStore) applyProviderResourceTypeDefaults(resource *ProviderResource) {
@@ -657,7 +682,7 @@ func supportsNativeProviderResourceCredentialRefresh(provider Provider, resource
 	if store != nil {
 		return store.IsProviderAccountResourceType(provider.Type, resource.ResourceType)
 	}
-	return isOpenAIAccountResource(resource.ResourceType)
+	return false
 }
 
 func (s *GormStore) SupportsNativeProviderResourceCredentialRefresh(resource ProviderResource) bool {

@@ -392,7 +392,7 @@ func adapterResourceTypeFromCapability(capability pluginmeta.CapabilityDescripto
 }
 
 func adapterResourceTypeHasMetadata(resourceType pluginmeta.ManifestProviderResourceType) bool {
-	return resourceType.DisplayName != "" || len(resourceType.AuthModes) > 0 || len(resourceType.Defaults) > 0 || resourceType.CredentialIdentityProfile != "" || resourceType.Default
+	return resourceType.DisplayName != "" || len(resourceType.AuthModes) > 0 || len(resourceType.Defaults) > 0 || resourceType.CredentialIdentityProfile != "" || resourceType.CredentialInputOptional || resourceType.Default
 }
 
 func sortedUniqueStrings(items []string) []string {

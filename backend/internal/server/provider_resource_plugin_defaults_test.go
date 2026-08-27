@@ -93,6 +93,47 @@ func TestProviderResourceAccountClassificationUsesPluginMetadata(t *testing.T) {
 	}
 }
 
+func TestProviderResourceCredentialInputOptionalUsesPluginMetadata(t *testing.T) {
+	store := NewMemoryStore()
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{
+		"optional_provider": {"optional_account"},
+		"required_provider": {"required_account"},
+	})
+	store.ConfigureProviderResourceCredentialInputOptional(map[string]bool{
+		"optional_account": true,
+	})
+
+	optionalProvider := store.AddProvider(Provider{
+		ID: "prv_optional_account", Name: "Optional Account Provider", Type: "optional_provider",
+		Status: StatusActive, Healthy: true,
+	})
+	optional, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_optional_account", ProviderID: optionalProvider.ID, Name: "Optional Account",
+		ResourceType: "optional_account",
+	})
+	if err != nil {
+		t.Fatalf("create optional account resource: %v", err)
+	}
+	if optional.CredentialSummary["credential_source"] != "optional_account" {
+		t.Fatalf("optional account credential summary = %+v", optional.CredentialSummary)
+	}
+
+	requiredProvider := store.AddProvider(Provider{
+		ID: "prv_required_account", Name: "Required Account Provider", Type: "required_provider",
+		Status: StatusActive, Healthy: true,
+	})
+	required, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_required_account", ProviderID: requiredProvider.ID, Name: "Required Account",
+		ResourceType: "required_account",
+	})
+	if err != nil {
+		t.Fatalf("create required account resource: %v", err)
+	}
+	if required.CredentialSummary != nil {
+		t.Fatalf("required account without credentials summary = %+v, want nil", required.CredentialSummary)
+	}
+}
+
 func TestProviderResourceAccountClassificationKeepsLegacyFallbackWithoutMetadata(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{
@@ -216,5 +257,26 @@ func TestProviderResourceCredentialIdentityProfilesFromRegistry(t *testing.T) {
 	profiles := providerResourceCredentialIdentityProfilesFromRegistry(registry)
 	if profiles["profiled_account"] != providerResourceIdentityProfileOpenAIIDToken {
 		t.Fatalf("registry credential identity profiles = %+v", profiles)
+	}
+}
+
+func TestProviderResourceCredentialInputOptionalFromRegistry(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.BuiltInProviderWithResourceTypeMetadata(
+		"tokenhub.provider.optional",
+		"Optional Provider",
+		[]string{"optional_provider"},
+		[]pluginmeta.ManifestProviderResourceType{{
+			Type:                    "optional_account",
+			CredentialInputOptional: true,
+		}},
+		nil,
+	), AdapterRegistration{Type: "optional_provider", Adapter: MockAdapter{}}); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	resourceTypes := providerResourceCredentialInputOptionalFromRegistry(registry)
+	if !resourceTypes["optional_account"] {
+		t.Fatalf("registry optional credential input resource types = %+v", resourceTypes)
 	}
 }

@@ -93,6 +93,7 @@ type ManifestProviderResourceType struct {
 	AuthModes                 []string          `json:"auth_modes,omitempty" yaml:"auth_modes"`
 	Defaults                  map[string]string `json:"defaults,omitempty" yaml:"defaults"`
 	CredentialIdentityProfile string            `json:"credential_identity_profile,omitempty" yaml:"credential_identity_profile"`
+	CredentialInputOptional   bool              `json:"credential_input_optional,omitempty" yaml:"credential_input_optional"`
 	Default                   bool              `json:"default,omitempty" yaml:"default"`
 }
 
@@ -699,7 +700,7 @@ func isHexSHA256(value string) bool {
 }
 
 func (resourceType ManifestProviderResourceType) CapabilityValue() string {
-	if strings.TrimSpace(resourceType.DisplayName) == "" && len(resourceType.AuthModes) == 0 && len(resourceType.Defaults) == 0 && strings.TrimSpace(resourceType.CredentialIdentityProfile) == "" && !resourceType.Default {
+	if strings.TrimSpace(resourceType.DisplayName) == "" && len(resourceType.AuthModes) == 0 && len(resourceType.Defaults) == 0 && strings.TrimSpace(resourceType.CredentialIdentityProfile) == "" && !resourceType.CredentialInputOptional && !resourceType.Default {
 		return ""
 	}
 	resourceType.Type = strings.TrimSpace(resourceType.Type)

@@ -117,6 +117,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			DisplayName:               "OpenAI Codex Subscription",
 			AuthModes:                 []string{"oauth", "personal_access_token"},
 			CredentialIdentityProfile: providerResourceIdentityProfileOpenAIIDToken,
+			CredentialInputOptional:   true,
 			Default:                   true,
 			Defaults: map[string]string{
 				"auth_type":       "oauth",

@@ -608,7 +608,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	if patch.Credentials != nil && strings.TrimSpace(patch.Credentials.AccessToken) != "" {
 		shouldEncryptAPIKey = true
 	}
-	if isOpenAIAccountResource(resource.ResourceType) && strings.TrimSpace(resource.APIKey) != "" && !strings.HasPrefix(resource.APIKey, "enc:v1:") {
+	if s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) && strings.TrimSpace(resource.APIKey) != "" && !strings.HasPrefix(resource.APIKey, "enc:v1:") {
 		shouldEncryptAPIKey = true
 	}
 	if shouldEncryptAPIKey {

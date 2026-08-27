@@ -96,6 +96,10 @@ type providerResourceCredentialIdentityProfileConfigurator interface {
 	ConfigureProviderResourceCredentialIdentityProfiles(profiles map[string]string)
 }
 
+type providerResourceCredentialInputOptionalConfigurator interface {
+	ConfigureProviderResourceCredentialInputOptional(resourceTypes map[string]bool)
+}
+
 func configureProviderResourceTypeDefaults(store Store, registry *AdapterRegistry) {
 	providerConfigurator, ok := store.(providerTypeDefaultsConfigurator)
 	if ok {
@@ -112,6 +116,10 @@ func configureProviderResourceTypeDefaults(store Store, registry *AdapterRegistr
 	identityConfigurator, ok := store.(providerResourceCredentialIdentityProfileConfigurator)
 	if ok {
 		identityConfigurator.ConfigureProviderResourceCredentialIdentityProfiles(providerResourceCredentialIdentityProfilesFromRegistry(registry))
+	}
+	inputConfigurator, ok := store.(providerResourceCredentialInputOptionalConfigurator)
+	if ok {
+		inputConfigurator.ConfigureProviderResourceCredentialInputOptional(providerResourceCredentialInputOptionalFromRegistry(registry))
 	}
 }
 
@@ -198,6 +206,22 @@ func providerResourceCredentialIdentityProfilesFromRegistry(registry *AdapterReg
 		}
 	}
 	return profiles
+}
+
+func providerResourceCredentialInputOptionalFromRegistry(registry *AdapterRegistry) map[string]bool {
+	if registry == nil {
+		return nil
+	}
+	resourceTypes := map[string]bool{}
+	for _, descriptor := range registry.List() {
+		for _, resourceType := range descriptor.ResourceTypes {
+			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
+			if resourceTypeName != "" && resourceType.CredentialInputOptional {
+				resourceTypes[resourceTypeName] = true
+			}
+		}
+	}
+	return resourceTypes
 }
 
 func reconcileProviderPluginPolicies(store Store, registry *AdapterRegistry) {
