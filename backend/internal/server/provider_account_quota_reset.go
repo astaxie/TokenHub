@@ -192,7 +192,7 @@ func validateOpenAIAccountQuotaResetRequest(req openAIAccountQuotaResetRequest, 
 }
 
 func (s *Server) queryOpenAIAccountQuotaResetCredits(ctx context.Context, resourceID string) (openAIAccountQuotaResetCredits, error) {
-	if _, _, err := s.openAIAccountQuotaResetResource(resourceID); err != nil {
+	if _, _, err := s.providerResourceForQuotaResetCapability(resourceID, "quota.reset_credits.read"); err != nil {
 		return openAIAccountQuotaResetCredits{}, err
 	}
 	details, _, err := s.fetchOpenAIAccountQuotaResetCredits(ctx, resourceID)
@@ -205,7 +205,7 @@ func (s *Server) queryOpenAIAccountQuotaResetCredits(ctx context.Context, resour
 func (s *Server) resetOpenAIAccountQuota(ctx context.Context, resourceID string, req openAIAccountQuotaResetRequest) (openAIAccountQuotaResetResult, error) {
 	var result openAIAccountQuotaResetResult
 	err := s.store.RunClusterOperation(ctx, "provider-quota-reset:"+resourceID, func(leaseCtx context.Context) error {
-		if _, _, validateErr := s.openAIAccountQuotaResetResource(resourceID); validateErr != nil {
+		if _, _, validateErr := s.providerResourceForQuotaResetCapability(resourceID, "quota.reset"); validateErr != nil {
 			return validateErr
 		}
 
@@ -549,7 +549,7 @@ func (s *Server) openAIAccountQuotaResetPendingOperation(resourceID string) *ope
 	}
 }
 
-func (s *Server) openAIAccountQuotaResetResource(resourceID string) (ProviderResource, Provider, error) {
+func (s *Server) providerResourceForQuotaResetCapability(resourceID string, actionCapability string) (ProviderResource, Provider, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
@@ -558,11 +558,14 @@ func (s *Server) openAIAccountQuotaResetResource(resourceID string) (ProviderRes
 	if !ok {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	if provider.Type != ProviderOpenAICodex || resource.ResourceType != ProviderResourceOpenAISubscription {
-		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_reset_unsupported", "Quota reset is only available for Codex OpenAI subscription resources")
-	}
 	if provider.Status != StatusActive || resource.Status != StatusActive {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusConflict, "provider_resource_inactive", "Provider and subscription resource must be active")
+	}
+	if _, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityQuota, actionCapability, resource.ResourceType); ok {
+		return resource, provider, nil
+	}
+	if provider.Type != ProviderOpenAICodex || resource.ResourceType != ProviderResourceOpenAISubscription {
+		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_reset_unsupported", "Quota reset is not available for this provider resource")
 	}
 	return resource, provider, nil
 }
