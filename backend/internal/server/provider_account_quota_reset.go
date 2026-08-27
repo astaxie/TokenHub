@@ -564,10 +564,7 @@ func (s *Server) providerResourceForQuotaResetCapability(resourceID string, acti
 	if _, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityQuota, actionCapability, resource.ResourceType); ok {
 		return resource, provider, nil
 	}
-	if provider.Type != ProviderOpenAICodex || resource.ResourceType != ProviderResourceOpenAISubscription {
-		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_reset_unsupported", "Quota reset is not available for this provider resource")
-	}
-	return resource, provider, nil
+	return ProviderResource{}, Provider{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_reset_unsupported", "Quota reset is not available for this provider resource")
 }
 
 func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resourceID string) (openAIAccountQuotaResetCredits, ProviderResourceCredentials, error) {
