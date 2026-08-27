@@ -36,12 +36,6 @@ var providerAccountProtectedOptions = []string{
 	providerResourceReauthorizationRequiredOption,
 }
 
-var openAIAccountProtectedOptions = []string{
-	codexImageCapabilityOption,
-	codexImageCapabilityCheckedAtOption,
-	codexImageRouteBackfillOption,
-}
-
 type openAIIDTokenClaims struct {
 	Email      string            `json:"email"`
 	OpenAIAuth *openAIAuthClaims `json:"https://api.openai.com/auth,omitempty"`
@@ -288,9 +282,6 @@ func (s *GormStore) preserveProviderAccountProtectedOptions(current map[string]s
 
 func (s *GormStore) providerAccountProtectedOptionKeys(resourceType string) []string {
 	options := append([]string{}, providerAccountProtectedOptions...)
-	if isOpenAIAccountResource(resourceType) {
-		options = append(options, openAIAccountProtectedOptions...)
-	}
 	normalizedResourceType := strings.TrimSpace(resourceType)
 	for _, profile := range s.providerImageCapabilityRouteProfiles() {
 		if profile.ResourceType != "" && profile.ResourceType != normalizedResourceType {
