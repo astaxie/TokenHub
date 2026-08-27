@@ -107,7 +107,7 @@ func (s *Server) runGatewayProviderImageRequestTransformHooks(ctx context.Contex
 	if req == nil {
 		return nil
 	}
-	return s.runGatewayRequestTransformHooks(ctx, call, route, *req, func(data json.RawMessage) error {
+	return s.runGatewayRequestTransformHooks(ctx, call, route, *req, providerRouteProtocolImageGeneration, func(data json.RawMessage) error {
 		originalAction := req.Action
 		originalModel := req.Model
 		var patched ProviderImageGenerationRequest

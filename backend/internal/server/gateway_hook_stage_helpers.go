@@ -25,12 +25,20 @@ func (s *Server) hasGatewayProviderCallHookForRoute(route RouteSelection, protoc
 }
 
 func (s *Server) gatewayProviderCallHooksForRoute(route RouteSelection, protocol string) []pluginmeta.GatewayHookDescriptor {
-	if !s.hasGatewayHookStage(pluginmeta.StageProviderCall) {
+	return s.gatewayRouteHooksForRoute(pluginmeta.StageProviderCall, route, protocol, false)
+}
+
+func (s *Server) gatewayRequestTransformHooksForRoute(route RouteSelection, protocol string) []pluginmeta.GatewayHookDescriptor {
+	return s.gatewayRouteHooksForRoute(pluginmeta.StageRequestTransform, route, protocol, true)
+}
+
+func (s *Server) gatewayRouteHooksForRoute(stage pluginmeta.GatewayHookStage, route RouteSelection, protocol string, includeCore bool) []pluginmeta.GatewayHookDescriptor {
+	if !s.hasGatewayHookStage(stage) {
 		return nil
 	}
 	hooks := []pluginmeta.GatewayHookDescriptor{}
-	for _, hook := range s.gatewayChain.Hooks(pluginmeta.StageProviderCall) {
-		if hook.PluginID == tokenHubCoreGatewayChainPluginID {
+	for _, hook := range s.gatewayChain.Hooks(stage) {
+		if !includeCore && hook.PluginID == tokenHubCoreGatewayChainPluginID {
 			continue
 		}
 		if gatewayHookMatchesProviderRoute(hook, route, protocol) {

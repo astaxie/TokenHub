@@ -330,7 +330,7 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 		if omitReasoningEffort {
 			upstream = withoutResponsesReasoningEffort(upstream)
 		}
-		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &upstream); transformErr != nil {
+		if transformErr := s.runGatewayResponsesRequestTransformHooksForProtocol(ctx, routed.Call, prepared, &upstream, providerRouteProtocolGemini); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}
 		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, upstream, providerRouteProtocolGemini); err != nil || handled {
@@ -370,7 +370,7 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		if omitReasoningEffort {
 			upstream = withoutResponsesReasoningEffort(upstream)
 		}
-		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &upstream); transformErr != nil {
+		if transformErr := s.runGatewayResponsesRequestTransformHooksForProtocol(ctx, routed.Call, prepared, &upstream, providerRouteProtocolGemini); transformErr != nil {
 			return struct{}{}, Usage{}, transformErr
 		}
 		tracker.onFirstWrite = func() {
