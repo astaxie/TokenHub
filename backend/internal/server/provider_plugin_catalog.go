@@ -89,25 +89,38 @@ func (s *Server) pluginProviderCatalogCapabilityEntryForType(providerType string
 }
 
 func (s *Server) pluginProviderCatalogEntries() []ProviderCatalogEntry {
-	if s == nil || s.pluginRegistry == nil || s.adapterRegistry == nil {
+	if s == nil || s.pluginRegistry == nil {
 		return nil
 	}
-	entries := []ProviderCatalogEntry{}
-	for _, adapter := range s.adapterRegistry.List() {
-		if adapter.PluginID == "" {
-			continue
-		}
-		plugin, ok := s.pluginRegistry.Describe(adapter.PluginID)
-		if !ok {
-			continue
-		}
-		if plugin.Source == pluginmeta.SourceBuiltIn {
-			if entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter); ok {
-				entries = append(entries, entry)
+	entriesByID := map[string]ProviderCatalogEntry{}
+	explicitTypes := map[string]struct{}{}
+	for _, descriptor := range s.pluginRegistry.List() {
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(descriptor) {
+			if entry.ID == "" || entry.Type == "" {
+				continue
 			}
-			continue
+			explicitTypes[entry.Type] = struct{}{}
+			mergeProviderCatalogEntry(entriesByID, entry)
 		}
-		entries = append(entries, providerCatalogEntryFromPlugin(plugin, adapter))
+	}
+	if s.adapterRegistry != nil {
+		for _, adapter := range s.adapterRegistry.List() {
+			if adapter.PluginID == "" {
+				continue
+			}
+			if _, ok := explicitTypes[adapter.Type]; ok {
+				continue
+			}
+			plugin, ok := s.pluginRegistry.Describe(adapter.PluginID)
+			if !ok {
+				continue
+			}
+			mergeProviderCatalogEntry(entriesByID, providerCatalogEntryFromPlugin(plugin, adapter))
+		}
+	}
+	entries := make([]ProviderCatalogEntry, 0, len(entriesByID))
+	for _, entry := range entriesByID {
+		entries = append(entries, entry)
 	}
 	sortCatalogEntries(entries)
 	return entries
@@ -141,19 +154,12 @@ func providerCatalogTypesFromRegistry(registry *AdapterRegistry) map[string]stri
 		return nil
 	}
 	types := map[string]string{}
-	for _, adapter := range registry.List() {
-		if adapter.PluginID == "" {
-			continue
+	for _, plugin := range registry.ListPlugins() {
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(plugin) {
+			if entry.ID != "" && entry.Type != "" {
+				types[entry.ID] = entry.Type
+			}
 		}
-		plugin, ok := adapterPluginDescriptor(registry, adapter.Type)
-		if !ok {
-			continue
-		}
-		entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter)
-		if !ok || entry.ID == "" || entry.Type == "" {
-			continue
-		}
-		types[entry.ID] = entry.Type
 	}
 	if len(types) == 0 {
 		return nil
@@ -165,19 +171,17 @@ func providerCatalogSeedEntriesFromRegistry(registry *AdapterRegistry) []Provide
 	if registry == nil {
 		return nil
 	}
-	entries := []ProviderCatalogEntry{}
-	for _, adapter := range registry.List() {
-		if adapter.PluginID == "" {
+	entriesByID := map[string]ProviderCatalogEntry{}
+	for _, plugin := range registry.ListPlugins() {
+		if plugin.Source != pluginmeta.SourceBuiltIn {
 			continue
 		}
-		plugin, ok := adapterPluginDescriptor(registry, adapter.Type)
-		if !ok || plugin.Source != pluginmeta.SourceBuiltIn {
-			continue
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(plugin) {
+			mergeProviderCatalogEntry(entriesByID, entry)
 		}
-		entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter)
-		if !ok {
-			continue
-		}
+	}
+	entries := make([]ProviderCatalogEntry, 0, len(entriesByID))
+	for _, entry := range entriesByID {
 		entries = append(entries, entry)
 	}
 	sortCatalogEntries(entries)
@@ -185,6 +189,18 @@ func providerCatalogSeedEntriesFromRegistry(registry *AdapterRegistry) []Provide
 		return nil
 	}
 	return entries
+}
+
+func mergeProviderCatalogEntry(entries map[string]ProviderCatalogEntry, entry ProviderCatalogEntry) {
+	if entries == nil || entry.ID == "" {
+		return
+	}
+	if existing, ok := entries[entry.ID]; ok {
+		merged, _ := mergeProviderCatalogEntryWithPluginMetadata(existing, entry)
+		entries[entry.ID] = merged
+		return
+	}
+	entries[entry.ID] = entry
 }
 
 func providerCatalogEntryFromPlugin(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) ProviderCatalogEntry {
@@ -292,16 +308,39 @@ func providerCatalogEntryFromPluginCapability(plugin pluginmeta.Descriptor, adap
 		if capability.Subject != "" && capability.Subject != adapter.Type {
 			continue
 		}
-		var manifestEntry pluginProviderCatalogEntry
-		if err := json.Unmarshal([]byte(capability.Value), &manifestEntry); err != nil {
-			continue
-		}
-		entry := manifestEntry.providerCatalogEntry(plugin, adapter)
+		entry, ok := providerCatalogEntryFromPluginCatalogCapability(plugin, capability, adapter)
 		if entry.ID != "" && entry.Type != "" {
 			return entry, true
 		}
+		if !ok {
+			continue
+		}
 	}
 	return ProviderCatalogEntry{}, false
+}
+
+func providerCatalogEntriesFromPluginCapabilities(plugin pluginmeta.Descriptor) []ProviderCatalogEntry {
+	entries := []ProviderCatalogEntry{}
+	for _, capability := range plugin.Capabilities {
+		if capability.Kind != "provider_catalog" || capability.Name != "entry" || strings.TrimSpace(capability.Value) == "" {
+			continue
+		}
+		adapter := AdapterDescriptor{Type: strings.TrimSpace(capability.Subject)}
+		entry, ok := providerCatalogEntryFromPluginCatalogCapability(plugin, capability, adapter)
+		if ok && entry.ID != "" && entry.Type != "" {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func providerCatalogEntryFromPluginCatalogCapability(plugin pluginmeta.Descriptor, capability pluginmeta.CapabilityDescriptor, adapter AdapterDescriptor) (ProviderCatalogEntry, bool) {
+	var manifestEntry pluginProviderCatalogEntry
+	if err := json.Unmarshal([]byte(capability.Value), &manifestEntry); err != nil {
+		return ProviderCatalogEntry{}, false
+	}
+	entry := manifestEntry.providerCatalogEntry(plugin, adapter)
+	return entry, true
 }
 
 func (entry pluginProviderCatalogEntry) providerCatalogEntry(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) ProviderCatalogEntry {

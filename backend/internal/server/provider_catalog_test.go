@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestNormalizeProviderCatalogModelUsesExplicitCanonicalName(t *testing.T) {
@@ -228,6 +230,37 @@ func TestProviderCatalogServiceSeedsFromBuiltInProviderPlugins(t *testing.T) {
 	}
 	if !providerCatalogContains(entries, "custom") {
 		t.Fatalf("expected custom provider catalog fallback in plugin seed: %+v", entries)
+	}
+}
+
+func TestProviderCatalogSeedIncludesCatalogOnlyBuiltInPlugins(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.catalog-only-builtin",
+		Name:    "Catalog Only Built-in",
+		Version: "built-in",
+		Source:  pluginmeta.SourceBuiltIn,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{{
+			Kind:    "provider_catalog",
+			Name:    "entry",
+			Subject: "catalog_only_builtin",
+			Value:   `{"id":"catalog-only-builtin","name":"Catalog Only Built-in","type":"catalog_only_builtin"}`,
+		}},
+	}); err != nil {
+		t.Fatalf("register catalog-only built-in plugin: %v", err)
+	}
+
+	entries := providerCatalogSeedEntriesFromRegistry(registry)
+	if len(entries) != 1 || entries[0].ID != "catalog-only-builtin" || entries[0].Type != "catalog_only_builtin" {
+		t.Fatalf("catalog-only built-in seed entries = %+v", entries)
+	}
+	types := providerCatalogTypesFromRegistry(registry)
+	if types["catalog-only-builtin"] != "catalog_only_builtin" {
+		t.Fatalf("catalog-only built-in catalog types = %+v", types)
 	}
 }
 

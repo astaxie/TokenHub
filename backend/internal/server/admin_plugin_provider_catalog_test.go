@@ -708,6 +708,53 @@ func TestProviderCatalogIncludesBuiltInPluginCatalogEntries(t *testing.T) {
 	}
 }
 
+func TestProviderCatalogIncludesCatalogOnlyPluginEntries(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "catalog_only_subscription"
+	entry := pluginProviderCatalogEntry{
+		ID:          "catalog-only",
+		Name:        "Catalog Only",
+		DisplayName: "Catalog Only Subscription",
+		Type:        providerType,
+		BaseURL:     "https://catalog-only.example/v1",
+		Source:      "plugin:local_file",
+	}
+	encoded, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.pluginRegistry.Register(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.catalog-only",
+		Name:    "Catalog Only Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_catalog", Name: "entry", Subject: providerType, Value: string(encoded)},
+		},
+	}); err != nil {
+		t.Fatalf("register catalog-only plugin: %v", err)
+	}
+
+	merged, changed := server.providerCatalogEntriesWithPlugins(nil)
+	if !changed {
+		t.Fatalf("catalog-only plugin catalog merge changed=%t entries=%+v", changed, merged)
+	}
+	var found ProviderCatalogEntry
+	for _, candidate := range merged {
+		if candidate.ID == entry.ID {
+			found = candidate
+			break
+		}
+	}
+	if found.Type != providerType || found.DisplayName != entry.DisplayName || found.BaseURL != entry.BaseURL {
+		t.Fatalf("catalog-only plugin entry = %+v", found)
+	}
+}
+
 func TestProviderCatalogMergesBuiltInPluginMetadataWithCatalogModels(t *testing.T) {
 	server := New(NewMemoryStore())
 	entries := []ProviderCatalogEntry{{
