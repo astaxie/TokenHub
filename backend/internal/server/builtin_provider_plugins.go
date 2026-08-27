@@ -47,6 +47,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			"https://api.openai.com/v1",
 			"https://platform.openai.com/docs/models",
 			[]string{"openai"},
+			[]string{"gpt-5", "gpt-5-mini", "gpt-4.1-mini", "text-embedding-3-small"},
 		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
@@ -82,6 +83,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			kronkDefaultBaseURL,
 			kronkDocURL,
 			[]string{"custom"},
+			nil,
 		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
@@ -148,6 +150,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			"",
 			"https://learn.microsoft.com/azure/ai-services/openai/",
 			[]string{"microsoft", "openai"},
+			nil,
 		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
@@ -176,6 +179,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			"https://api.anthropic.com",
 			"https://docs.anthropic.com",
 			[]string{"claude"},
+			[]string{"claude-sonnet-4.5", "claude-haiku-4.5"},
 		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
@@ -198,6 +202,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			"https://generativelanguage.googleapis.com/v1beta",
 			"https://ai.google.dev/gemini-api/docs",
 			[]string{"gemini"},
+			[]string{"gemini-2.5-pro", "gemini-2.5-flash"},
 		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
@@ -226,14 +231,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 func builtinProviderPluginCatalogEntryForType(providerType string) *pluginProviderCatalogEntry {
 	switch providerType {
 	case "deepseek":
-		return builtinProviderPluginCatalogEntry(
-			"deepseek",
-			"DeepSeek",
-			"deepseek",
-			"https://api.deepseek.com",
-			"https://api-docs.deepseek.com",
-			[]string{"deepseek"},
-		)
+		return builtinProviderPluginCatalogEntryFromProviderCatalog(deepSeekBuiltinCatalogEntry())
 	case "qwen":
 		return builtinProviderPluginCatalogEntry(
 			"qwen",
@@ -242,6 +240,7 @@ func builtinProviderPluginCatalogEntryForType(providerType string) *pluginProvid
 			"https://dashscope.aliyuncs.com/compatible-mode/v1",
 			"https://help.aliyun.com/zh/model-studio",
 			[]string{"qwen"},
+			[]string{"qwen-max", "qwen-plus"},
 		)
 	case "local":
 		return builtinProviderPluginCatalogEntry(
@@ -251,22 +250,72 @@ func builtinProviderPluginCatalogEntryForType(providerType string) *pluginProvid
 			"http://127.0.0.1:11434/v1",
 			"https://ollama.com",
 			[]string{"llama"},
+			nil,
 		)
 	default:
 		return nil
 	}
 }
 
-func builtinProviderPluginCatalogEntry(id string, name string, providerType string, baseURL string, docURL string, categories []string) *pluginProviderCatalogEntry {
-	return &pluginProviderCatalogEntry{
+func builtinProviderPluginCatalogEntry(id string, name string, providerType string, baseURL string, docURL string, categories []string, modelIDs []string) *pluginProviderCatalogEntry {
+	entry := &pluginProviderCatalogEntry{
 		ID:          id,
 		Name:        name,
 		DisplayName: name,
 		Type:        providerType,
 		BaseURL:     baseURL,
 		DocURL:      docURL,
-		Categories:  categories,
+		Categories:  catalogUniqueStrings(categories),
 		Source:      "plugin:built_in",
+	}
+	if len(modelIDs) > 0 {
+		catalog := builtinCatalogEntry(id, name, providerType, baseURL, docURL, modelIDs)
+		enriched := builtinProviderPluginCatalogEntryFromProviderCatalog(catalog)
+		enriched.Source = "plugin:built_in"
+		return enriched
+	}
+	return entry
+}
+
+func builtinProviderPluginCatalogEntryFromProviderCatalog(catalog ProviderCatalogEntry) *pluginProviderCatalogEntry {
+	models := make([]pluginProviderCatalogModel, 0, len(catalog.Models))
+	for _, model := range catalog.Models {
+		models = append(models, pluginProviderCatalogModel{
+			ID:                        model.ID,
+			Name:                      model.Name,
+			DisplayName:               model.DisplayName,
+			CanonicalName:             model.CanonicalName,
+			Category:                  model.Category,
+			Family:                    model.Family,
+			Type:                      model.Type,
+			ContextWindow:             model.ContextWindow,
+			MaxOutputTokens:           model.MaxOutputTokens,
+			InputPriceUSDPer1M:        model.InputPriceUSDPer1M,
+			CacheReadPriceUSDPer1M:    model.CacheReadPriceUSDPer1M,
+			CacheWritePriceUSDPer1M:   model.CacheWritePriceUSDPer1M,
+			CacheWrite5mPriceUSDPer1M: model.CacheWrite5mPriceUSDPer1M,
+			CacheWrite1hPriceUSDPer1M: model.CacheWrite1hPriceUSDPer1M,
+			OutputPriceUSDPer1M:       model.OutputPriceUSDPer1M,
+			InputModalities:           model.InputModalities,
+			OutputModalities:          model.OutputModalities,
+			Capabilities:              model.Capabilities,
+			SupportedParameters:       model.SupportedParameters,
+			LastUpdated:               model.LastUpdated,
+			Metadata:                  model.Metadata,
+		})
+	}
+	return &pluginProviderCatalogEntry{
+		ID:          catalog.ID,
+		Name:        catalog.Name,
+		DisplayName: catalog.DisplayName,
+		Type:        catalog.Type,
+		BaseURL:     catalog.BaseURL,
+		DocURL:      catalog.DocURL,
+		Categories:  catalogUniqueStrings(catalog.Categories),
+		ModelsCount: catalog.ModelsCount,
+		Source:      "plugin:built_in",
+		ETag:        catalog.ETag,
+		Models:      models,
 	}
 }
 

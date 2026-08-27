@@ -203,6 +203,34 @@ func TestProviderCatalogServiceUsesPluginCatalogTypes(t *testing.T) {
 	}
 }
 
+func TestProviderCatalogServiceSeedsFromBuiltInProviderPlugins(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(NewMemoryStore())
+	service := newProviderCatalogService(store, filepath.Join(t.TempDir(), "missing-provider-catalog.json"))
+	service.UsePluginCatalogTypes(server.adapterRegistry)
+
+	entries, source, err := service.List(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != "builtin" {
+		t.Fatalf("expected builtin snapshot source, got %q", source)
+	}
+	var openAI ProviderCatalogEntry
+	for _, entry := range entries {
+		if entry.ID == "openai" {
+			openAI = entry
+			break
+		}
+	}
+	if openAI.Source != "plugin:built_in" || openAI.Type != ProviderOpenAI || openAI.ModelsCount == 0 {
+		t.Fatalf("expected OpenAI catalog seed from built-in plugin descriptor, got %+v", openAI)
+	}
+	if !providerCatalogContains(entries, "custom") {
+		t.Fatalf("expected custom provider catalog fallback in plugin seed: %+v", entries)
+	}
+}
+
 func TestProviderCatalogServiceRefreshesFromUpstream(t *testing.T) {
 	store := NewMemoryStore()
 	localCatalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")

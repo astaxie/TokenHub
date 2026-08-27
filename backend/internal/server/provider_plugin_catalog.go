@@ -161,6 +161,32 @@ func providerCatalogTypesFromRegistry(registry *AdapterRegistry) map[string]stri
 	return types
 }
 
+func providerCatalogSeedEntriesFromRegistry(registry *AdapterRegistry) []ProviderCatalogEntry {
+	if registry == nil {
+		return nil
+	}
+	entries := []ProviderCatalogEntry{}
+	for _, adapter := range registry.List() {
+		if adapter.PluginID == "" {
+			continue
+		}
+		plugin, ok := adapterPluginDescriptor(registry, adapter.Type)
+		if !ok || plugin.Source != pluginmeta.SourceBuiltIn {
+			continue
+		}
+		entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter)
+		if !ok {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	sortCatalogEntries(entries)
+	if len(entries) == 0 {
+		return nil
+	}
+	return entries
+}
+
 func providerCatalogEntryFromPlugin(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) ProviderCatalogEntry {
 	if entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter); ok {
 		return entry
@@ -201,7 +227,7 @@ func mergeProviderCatalogEntryWithPluginMetadata(base ProviderCatalogEntry, plug
 	if pluginEntry.ETag != "" {
 		merged.ETag = pluginEntry.ETag
 	}
-	if len(pluginEntry.Models) > 0 {
+	if len(pluginEntry.Models) > 0 && len(merged.Models) == 0 {
 		merged.Models = append([]ProviderCatalogModel(nil), pluginEntry.Models...)
 		merged.ModelsCount = len(pluginEntry.Models)
 		merged.Categories, merged.CategoryCounts = catalogCategorySummary(merged.Models)

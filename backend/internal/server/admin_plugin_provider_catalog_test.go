@@ -750,8 +750,8 @@ func TestAdminProviderCatalogItemMergesBuiltInPluginMetadataWithModels(t *testin
 	if response.Code != http.StatusOK {
 		t.Fatalf("GET OpenAI catalog: expected 200, got %d: %s", response.Code, response.Body)
 	}
-	if !strings.Contains(response.Body, `"source":"builtin+plugins"`) || !strings.Contains(response.Body, `"source":"plugin:built_in"`) {
-		t.Fatalf("OpenAI catalog did not expose plugin-backed metadata: %s", response.Body)
+	if !strings.Contains(response.Body, `"source":"builtin"`) || !strings.Contains(response.Body, `"source":"plugin:built_in"`) {
+		t.Fatalf("OpenAI catalog did not expose plugin-backed seed metadata: %s", response.Body)
 	}
 	if !strings.Contains(response.Body, `"id":"gpt-5"`) {
 		t.Fatalf("OpenAI catalog did not preserve builtin models: %s", response.Body)

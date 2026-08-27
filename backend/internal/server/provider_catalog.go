@@ -28,6 +28,7 @@ type providerCatalogService struct {
 	upstreamURL    string
 	upstreamClient providerCatalogHTTPClient
 	catalogTypes   map[string]string
+	builtinEntries []ProviderCatalogEntry
 }
 
 func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
@@ -49,6 +50,7 @@ func newProviderCatalogService(store Store, catalogFile string, clients ...provi
 
 func (s *providerCatalogService) UsePluginCatalogTypes(registry *AdapterRegistry) {
 	s.catalogTypes = providerCatalogTypesFromRegistry(registry)
+	s.builtinEntries = providerCatalogSeedEntriesFromRegistry(registry)
 }
 
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
@@ -134,7 +136,7 @@ func (s *providerCatalogService) loadStored(includeModels bool) ([]ProviderCatal
 	if found && len(entries) > 0 {
 		return entries, source, fetchedAt, nil
 	}
-	entries = builtinProviderCatalog(true)
+	entries = s.builtinProviderCatalog(true)
 	sortCatalogEntries(entries)
 	fetchedAt = time.Now().UTC()
 	if err := s.store.SaveProviderCatalogSnapshot(entries, "builtin", fetchedAt); err != nil {
@@ -154,6 +156,27 @@ func seedBuiltinProviderCatalog(store Store) error {
 	entries := builtinProviderCatalog(true)
 	sortCatalogEntries(entries)
 	return store.SaveProviderCatalogSnapshot(entries, "builtin", time.Now().UTC())
+}
+
+func (s *providerCatalogService) builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
+	if len(s.builtinEntries) == 0 {
+		return builtinProviderCatalog(includeModels)
+	}
+	entries := cloneCatalogEntries(s.builtinEntries, includeModels)
+	if !providerCatalogHasEntry(entries, "custom") {
+		entries = append(entries, customProviderCatalogEntry())
+	}
+	sortCatalogEntries(entries)
+	return entries
+}
+
+func providerCatalogHasEntry(entries []ProviderCatalogEntry, id string) bool {
+	for _, entry := range entries {
+		if entry.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogEntry, string, error) {
