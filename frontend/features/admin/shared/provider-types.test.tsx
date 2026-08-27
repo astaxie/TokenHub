@@ -104,6 +104,7 @@ describe("providerTypeOptionsFromData", () => {
       plugin_id: "tokenhub.provider.native-subscription",
       provider_policy: {
         auth_modes: ["x-api-key", "bearer"],
+        claude_code_attribution_default: "preserve",
         route_protocols: ["native/responses"],
         supports_custom_headers: false,
       },
@@ -115,6 +116,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeAuthModes(options, "native_subscription")).toEqual(["bearer", "x-api-key"]);
     expect(providerTypePreferredAuthMode(options, "native_subscription")).toBe("x-api-key");
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
+    expect(options.find((option) => option.value === "native_subscription")?.claudeCodeAttributionDefault).toBe("preserve");
     expect(providerTypeSupportsCustomHeaders(options, "openai_compatible")).toBe(true);
     expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(true);
     expect(providerTypeSupportsCustomHeaders(options, "openai_codex")).toBe(true);
@@ -161,6 +163,7 @@ describe("providerTypeOptionsFromData", () => {
         { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "personal_access_token" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "responses" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "images/generations" },
+        { kind: "provider_policy", name: "claude_code_attribution_default", subject: "oauth_subscription", value: "strip" },
       ],
     }];
 
@@ -170,6 +173,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeAuthModes(options, "oauth_subscription")).toEqual(["oauth", "personal_access_token"]);
     expect(providerTypePreferredAuthMode(options, "oauth_subscription")).toBe("oauth");
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
+    expect(options.find((option) => option.value === "oauth_subscription")?.claudeCodeAttributionDefault).toBe("strip");
   });
 
   it("resolves provider type labels from catalog entries before plugin names", () => {

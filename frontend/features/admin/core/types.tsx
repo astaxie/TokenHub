@@ -276,6 +276,7 @@ export type AdapterDescriptor = {
     route_requires_resource?: boolean;
     credentials_scope?: string;
     session_affinity_kind?: string;
+    claude_code_attribution_default?: string;
   };
 };
 

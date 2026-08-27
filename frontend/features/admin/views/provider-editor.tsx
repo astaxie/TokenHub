@@ -138,7 +138,7 @@ export function ProviderUpsertModal({
     priority: String(provider?.priority ?? 10),
     claude_code_attribution_policy: mode === "edit"
       ? provider?.options?.claude_code_attribution_policy ?? "preserve"
-      : defaultProviderClaudeCodeAttributionPolicy(initialEntry?.type ?? "openai_compatible", initialEntry?.id ?? "custom"),
+      : defaultProviderClaudeCodeAttributionPolicy(initialEntry?.type ?? "openai_compatible", initialEntry?.id ?? "custom", providerTypeOptions),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
     custom_headers: providerHeadersFormValue(provider?.headers, provider?.sensitive_headers),
@@ -558,7 +558,7 @@ export function ProviderUpsertModal({
       ...current,
       [key]: value,
       ...(mode === "create" && key === "type"
-        ? { claude_code_attribution_policy: defaultProviderClaudeCodeAttributionPolicy(value, catalogID) }
+        ? { claude_code_attribution_policy: defaultProviderClaudeCodeAttributionPolicy(value, catalogID, providerTypeOptions) }
         : {}),
     }));
     if (mode !== "create") return;
@@ -871,7 +871,7 @@ export function ProviderUpsertModal({
       base_url: mode === "create" ? entry.base_url ?? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
       claude_code_attribution_policy: mode === "create"
-        ? defaultProviderClaudeCodeAttributionPolicy(entry.type, entry.id)
+        ? defaultProviderClaudeCodeAttributionPolicy(entry.type, entry.id, providerTypeOptions)
         : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(nextName, entry.base_url, entry.type);
@@ -895,7 +895,7 @@ export function ProviderUpsertModal({
       base_url: mode === "create" ? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
       claude_code_attribution_policy: mode === "create"
-        ? defaultProviderClaudeCodeAttributionPolicy(current.type, "custom")
+        ? defaultProviderClaudeCodeAttributionPolicy(current.type, "custom", providerTypeOptions)
         : current.claude_code_attribution_policy,
     }));
     syncAccountDefaults(values.name || "Provider", "");

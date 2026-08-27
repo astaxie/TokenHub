@@ -45,6 +45,7 @@ capabilities:
     route_requires_resource: true
     credentials_scope: resource
     session_affinity_kind: codex_session
+    claude_code_attribution_default: strip
   gateway:
     - responses
     - responses_stream
@@ -103,8 +104,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 15 {
-		t.Fatalf("descriptor capabilities = %v, want 15 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 16 {
+		t.Fatalf("descriptor capabilities = %v, want 16 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -120,6 +121,9 @@ permissions:
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "session_affinity_kind", Subject: "openai_codex", Value: "codex_session"}) {
 		t.Fatalf("descriptor is missing provider session affinity policy capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "claude_code_attribution_default", Subject: "openai_codex", Value: "strip"}) {
+		t.Fatalf("descriptor is missing provider Claude Code attribution default capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "route_protocol", Subject: "openai_codex", Value: "codex/responses"}) {
 		t.Fatalf("descriptor is missing provider route protocol capability: %+v", descriptor.Capabilities)

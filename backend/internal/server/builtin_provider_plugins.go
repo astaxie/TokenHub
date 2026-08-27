@@ -3,14 +3,15 @@ package server
 import pluginmeta "tokenhub/backend/internal/plugin"
 
 type builtinProviderAdapter struct {
-	providerType          string
-	adapter               any
-	credentialsScope      string
-	routeRequiresResource bool
-	sessionAffinityKind   string
-	authModes             []string
-	resourceTypes         []pluginmeta.ManifestProviderResourceType
-	capabilities          []AdapterCapability
+	providerType                 string
+	adapter                      any
+	credentialsScope             string
+	routeRequiresResource        bool
+	sessionAffinityKind          string
+	claudeCodeAttributionDefault string
+	authModes                    []string
+	resourceTypes                []pluginmeta.ManifestProviderResourceType
+	capabilities                 []AdapterCapability
 }
 
 func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]ProviderAdapter, codexSubscription *CodexSubscriptionAdapter) {
@@ -178,6 +179,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "session_affinity_kind",
 			Subject: adapter.providerType,
 			Value:   adapter.sessionAffinityKind,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.claudeCodeAttributionDefault != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    claudeCodeAttributionDefaultPolicy,
+			Subject: adapter.providerType,
+			Value:   adapter.claudeCodeAttributionDefault,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

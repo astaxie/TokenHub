@@ -124,6 +124,15 @@ func TestDefaultClaudeCodeAttributionPolicyForNewProvider(t *testing.T) {
 	}
 }
 
+func TestDefaultClaudeCodeAttributionPolicyFollowsAdapterDescriptor(t *testing.T) {
+	descriptor := AdapterDescriptor{
+		ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionPreserve},
+	}
+	if got := defaultClaudeCodeAttributionPolicyForDescriptor(descriptor, "anthropic_compatible_plugin", "custom"); got != claudeCodeAttributionPreserve {
+		t.Fatalf("descriptor default policy = %q, want %q", got, claudeCodeAttributionPreserve)
+	}
+}
+
 func TestAdminProviderClaudeCodeAttributionDefaultsOnlyOnCreate(t *testing.T) {
 	app := newTestServer()
 	thirdParty := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{

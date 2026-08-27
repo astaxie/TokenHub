@@ -245,6 +245,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "personal_access_token"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
+			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
 			{Kind: "provider_resource_type", Name: "subscription_account", Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
 				Type:        "subscription_account",
 				DisplayName: "Subscription Account",
@@ -275,6 +276,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("plugin provider session affinity kind = %+v, want codex session", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.ClaudeCodeAttributionDefault != claudeCodeAttributionStrip {
+		t.Fatalf("plugin provider Claude Code attribution default = %+v, want strip", descriptor.ProviderPolicy)
 	}
 	if len(descriptor.ResourceTypes) != 1 {
 		t.Fatalf("plugin provider resource types = %+v, want one resource type", descriptor.ResourceTypes)

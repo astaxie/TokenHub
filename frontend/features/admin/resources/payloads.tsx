@@ -36,7 +36,7 @@ export function providerPayload(values: Record<string, string>, data?: Pick<AppD
     priority: numberOr(values.priority, 10),
     ...providerHeadersPayload(values.custom_headers),
     anthropic_auth_type: providerAnthropicAuthType(values, providerTypeOptions),
-    claude_code_attribution_policy: values.claude_code_attribution_policy || defaultProviderClaudeCodeAttributionPolicy(values.type, values.catalog_id),
+    claude_code_attribution_policy: values.claude_code_attribution_policy || defaultProviderClaudeCodeAttributionPolicy(values.type, values.catalog_id, providerTypeOptions),
     catalog_id: values.catalog_id,
     model_category: values.model_category,
     options: { ...providerReasoningOptions(values), ...providerPluginOptionValues(values) },

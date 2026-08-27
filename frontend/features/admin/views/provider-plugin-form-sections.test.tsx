@@ -84,6 +84,16 @@ describe("ProviderPluginFormSections", () => {
   it("writes plugin form values into the provider options payload", () => {
     const tenantKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "tenant_id");
     const cacheKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "cache_enabled");
+    const data = {
+      plugins: [],
+      providerCatalog: [],
+      providers: [],
+      providerAdapters: [{
+        type: "plugin_provider",
+        capabilities: ["chat"],
+        provider_policy: { supports_custom_headers: true, claude_code_attribution_default: "preserve" },
+      }],
+    };
     const payload = providerPayload({
       id: "prv_plugin",
       name: "Plugin Provider",
@@ -95,8 +105,9 @@ describe("ProviderPluginFormSections", () => {
       api_key: "secret",
       [tenantKey]: "tenant-updated",
       [cacheKey]: "false",
-    });
+    }, data);
 
+    expect(payload.claude_code_attribution_policy).toBe("preserve");
     expect(payload.options).toMatchObject({
       tenant_id: "tenant-updated",
       cache_enabled: "false",

@@ -429,6 +429,7 @@ export type ProviderTypeOption = {
   supportsCustomHeaders: boolean;
   authModes?: string[];
   routeProtocols?: string[];
+  claudeCodeAttributionDefault?: string;
 };
 
 export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">, values?: Record<string, string>) {
@@ -437,12 +438,16 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const policyByType = new Map<string, boolean>();
   const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
+  const claudeCodeAttributionDefaultByType = new Map<string, string>();
   let hasPluginProviderSource = false;
   for (const adapter of data.providerAdapters ?? []) {
     if (!adapter.type) continue;
     hasPluginProviderSource = true;
     types.add(adapter.type);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
+    if (adapter.provider_policy?.claude_code_attribution_default) {
+      claudeCodeAttributionDefaultByType.set(adapter.type, adapter.provider_policy.claude_code_attribution_default);
+    }
     for (const authMode of adapter.provider_policy?.auth_modes ?? []) {
       addProviderAuthMode(authModesByType, adapter.type, authMode);
     }
@@ -479,6 +484,14 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         types.add(providerType);
         addProviderAuthMode(authModesByType, providerType, capability.value);
       }
+      if (capability.kind === "provider_policy" && capability.name === "claude_code_attribution_default") {
+        const providerType = String(capability.subject || "").trim();
+        const policy = String(capability.value || "").trim();
+        if (!providerType || !policy) continue;
+        hasPluginProviderSource = true;
+        types.add(providerType);
+        claudeCodeAttributionDefaultByType.set(providerType, policy);
+      }
     }
   }
   for (const entry of data.providerCatalog ?? []) {
@@ -502,6 +515,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
+    claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
   }));
 }
 

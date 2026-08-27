@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	claudeCodeAttributionPolicyOption = "claude_code_attribution_policy"
-	claudeCodeAttributionPreserve     = "preserve"
-	claudeCodeAttributionStrip        = "strip"
-	claudeCodeAttributionPrefix       = "x-anthropic-billing-header:"
+	claudeCodeAttributionPolicyOption  = "claude_code_attribution_policy"
+	claudeCodeAttributionDefaultPolicy = "claude_code_attribution_default"
+	claudeCodeAttributionPreserve      = "preserve"
+	claudeCodeAttributionStrip         = "strip"
+	claudeCodeAttributionPrefix        = "x-anthropic-billing-header:"
 )
 
 func anthropicRequestForRoute(req anthropicMessagesRequest, route RouteSelection) anthropicMessagesRequest {
@@ -40,6 +41,13 @@ func anthropicRequestForRoute(req anthropicMessagesRequest, route RouteSelection
 }
 
 func defaultClaudeCodeAttributionPolicy(providerType string, catalogID string) string {
+	return defaultClaudeCodeAttributionPolicyForDescriptor(AdapterDescriptor{}, providerType, catalogID)
+}
+
+func defaultClaudeCodeAttributionPolicyForDescriptor(descriptor AdapterDescriptor, providerType string, catalogID string) string {
+	if policy := normalizeClaudeCodeAttributionPolicyOrEmpty(descriptor.ProviderPolicy.ClaudeCodeAttributionDefault); policy != "" {
+		return policy
+	}
 	if strings.TrimSpace(providerType) != ProviderAnthropic {
 		return claudeCodeAttributionStrip
 	}
@@ -48,6 +56,14 @@ func defaultClaudeCodeAttributionPolicy(providerType string, catalogID string) s
 		return claudeCodeAttributionPreserve
 	}
 	return claudeCodeAttributionStrip
+}
+
+func normalizeClaudeCodeAttributionPolicyOrEmpty(value string) string {
+	policy := strings.ToLower(strings.TrimSpace(value))
+	if policy == claudeCodeAttributionPreserve || policy == claudeCodeAttributionStrip {
+		return policy
+	}
+	return ""
 }
 
 func applyClaudeCodeAttributionPolicy(options map[string]string, requested *string) (map[string]string, error) {
@@ -80,8 +96,7 @@ func validateClaudeCodeAttributionOptions(options map[string]string) error {
 }
 
 func normalizeClaudeCodeAttributionPolicy(value string) (string, error) {
-	policy := strings.ToLower(strings.TrimSpace(value))
-	if policy == claudeCodeAttributionPreserve || policy == claudeCodeAttributionStrip {
+	if policy := normalizeClaudeCodeAttributionPolicyOrEmpty(value); policy != "" {
 		return policy, nil
 	}
 	return "", NewHTTPError(

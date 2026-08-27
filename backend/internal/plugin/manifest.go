@@ -66,13 +66,14 @@ type ManifestCapabilities struct {
 }
 
 type ManifestProvider struct {
-	RouteProtocols        []string                `yaml:"route_protocols"`
-	AuthModes             []string                `yaml:"auth_modes"`
-	SupportsCustomHeaders *bool                   `yaml:"supports_custom_headers"`
-	RouteRequiresResource *bool                   `yaml:"route_requires_resource"`
-	CredentialsScope      string                  `yaml:"credentials_scope"`
-	SessionAffinityKind   string                  `yaml:"session_affinity_kind"`
-	Catalog               ManifestProviderCatalog `yaml:"catalog"`
+	RouteProtocols               []string                `yaml:"route_protocols"`
+	AuthModes                    []string                `yaml:"auth_modes"`
+	SupportsCustomHeaders        *bool                   `yaml:"supports_custom_headers"`
+	RouteRequiresResource        *bool                   `yaml:"route_requires_resource"`
+	CredentialsScope             string                  `yaml:"credentials_scope"`
+	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
+	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
+	Catalog                      ManifestProviderCatalog `yaml:"catalog"`
 }
 
 type ManifestProviderResourceType struct {
@@ -433,6 +434,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "session_affinity_kind",
 				Subject: providerType,
 				Value:   kind,
+			})
+		}
+		if policy := strings.TrimSpace(m.Capabilities.Provider.ClaudeCodeAttributionDefault); policy != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "claude_code_attribution_default",
+				Subject: providerType,
+				Value:   policy,
 			})
 		}
 		for _, protocol := range m.Capabilities.Provider.RouteProtocols {

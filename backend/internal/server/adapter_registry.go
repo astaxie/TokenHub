@@ -36,12 +36,13 @@ type AdapterDescriptor struct {
 }
 
 type AdapterProviderPolicy struct {
-	RouteProtocols        []string `json:"route_protocols,omitempty"`
-	AuthModes             []string `json:"auth_modes,omitempty"`
-	SupportsCustomHeaders bool     `json:"supports_custom_headers"`
-	RouteRequiresResource bool     `json:"route_requires_resource"`
-	CredentialsScope      string   `json:"credentials_scope,omitempty"`
-	SessionAffinityKind   string   `json:"session_affinity_kind,omitempty"`
+	RouteProtocols               []string `json:"route_protocols,omitempty"`
+	AuthModes                    []string `json:"auth_modes,omitempty"`
+	SupportsCustomHeaders        bool     `json:"supports_custom_headers"`
+	RouteRequiresResource        bool     `json:"route_requires_resource"`
+	CredentialsScope             string   `json:"credentials_scope,omitempty"`
+	SessionAffinityKind          string   `json:"session_affinity_kind,omitempty"`
+	ClaudeCodeAttributionDefault string   `json:"claude_code_attribution_default,omitempty"`
 }
 
 // AdapterRegistry is the single source of truth for which adapter serves a
@@ -173,12 +174,13 @@ func (r *AdapterRegistry) List() []AdapterDescriptor {
 func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) AdapterDescriptor {
 	descriptor.ResourceTypes = adapterProviderResourceTypes(r, descriptor.Type)
 	descriptor.ProviderPolicy = AdapterProviderPolicy{
-		RouteProtocols:        adapterRouteProtocols(r, descriptor),
-		AuthModes:             adapterAuthModes(r, descriptor.Type),
-		SupportsCustomHeaders: adapterSupportsProviderHeaders(r, descriptor.Type),
-		RouteRequiresResource: adapterRequiresRouteResource(r, descriptor.Type),
-		CredentialsScope:      adapterCredentialsScope(r, descriptor.Type),
-		SessionAffinityKind:   adapterSessionAffinityKind(r, descriptor.Type),
+		RouteProtocols:               adapterRouteProtocols(r, descriptor),
+		AuthModes:                    adapterAuthModes(r, descriptor.Type),
+		SupportsCustomHeaders:        adapterSupportsProviderHeaders(r, descriptor.Type),
+		RouteRequiresResource:        adapterRequiresRouteResource(r, descriptor.Type),
+		CredentialsScope:             adapterCredentialsScope(r, descriptor.Type),
+		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
+		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
 	}
 	return descriptor
 }
@@ -220,6 +222,13 @@ func adapterSessionAffinityKind(registry *AdapterRegistry, providerType string) 
 		return value
 	}
 	return AffinityKindProviderSession
+}
+
+func adapterClaudeCodeAttributionDefault(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, claudeCodeAttributionDefaultPolicy); ok {
+		return normalizeClaudeCodeAttributionPolicyOrEmpty(value)
+	}
+	return ""
 }
 
 func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string, name string) (bool, bool) {
