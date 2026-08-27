@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func (s *Server) executeProviderProbeAction(ctx context.Context, user AdminUser, providerID string) (any, bool, error) {
@@ -52,6 +53,9 @@ func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Conte
 	catalog, ok := providerCatalogEntryFromActionData(result.Data)
 	if !ok {
 		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "provider_models_invalid_result", "Provider models action returned an invalid result")
+	}
+	if err := s.persistProviderResourceModels(resourceID, catalog.Models, time.Now().UTC()); err != nil {
+		return ProviderCatalogEntry{}, true, err
 	}
 	return catalog, true, nil
 }

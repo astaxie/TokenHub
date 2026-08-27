@@ -111,6 +111,14 @@ func TestAdminPluginProviderCatalogGetUsesModelsReadAction(t *testing.T) {
 	if actionCalls != 1 || !strings.Contains(response.Body, `"source":"plugin-resource-live"`) || !strings.Contains(response.Body, `"id":"resource-model"`) {
 		t.Fatalf("plugin resource catalog response/calls: calls=%d body=%s", actionCalls, response.Body)
 	}
+	stored, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("expected resource to be stored")
+	}
+	if !strings.Contains(stored.Options[providerResourceSupportedModelsOption], "resource-model") ||
+		!strings.Contains(stored.Options[providerResourceModelCatalogOption], "resource-model") {
+		t.Fatalf("plugin models.read did not persist resource model cache: %+v", stored.Options)
+	}
 	otherProvider := store.AddProvider(Provider{
 		ID: "prv_other_catalog", Name: "Other Catalog Provider", Type: "other_catalog_provider",
 		Status: StatusActive, Healthy: true,
