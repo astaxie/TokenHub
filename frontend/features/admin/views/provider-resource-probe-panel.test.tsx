@@ -29,18 +29,32 @@ describe("ProviderResourceProbePanel", () => {
         accountCatalogErrors={{}}
         accountCatalogLoading={false}
         accountResources={[resource()]}
-        pluginActions={[{
-          plugin_id: "tokenhub.provider.kimi",
-          action_id: "kimi.probe.run",
-          kind: "test",
-          capability: "probe.run",
-          subject: "kimi_subscription",
-          metadata: {
-            default_payload_json: `{"model":"kimi-fast"}`,
-            probe_fields: "model,prompt",
-            provider_resource_type: "kimi_subscription_account",
+        pluginActions={[
+          {
+            plugin_id: "tokenhub.provider.kimi",
+            action_id: "kimi.wrong.probe.run",
+            kind: "test",
+            capability: "probe.run",
+            subject: "kimi_subscription",
+            metadata: {
+              default_payload_json: `{"model":"wrong-model"}`,
+              probe_fields: "model,prompt",
+              provider_resource_type: "kimi_other_account",
+            },
           },
-        }]}
+          {
+            plugin_id: "tokenhub.provider.kimi",
+            action_id: "kimi.probe.run",
+            kind: "test",
+            capability: "probe.run",
+            subject: "kimi_subscription",
+            metadata: {
+              default_payload_json: `{"model":"kimi-fast"}`,
+              probe_fields: "model,prompt",
+              provider_resource_type: "kimi_subscription_account",
+            },
+          },
+        ]}
         providerType="kimi_subscription"
         selectedAccountCatalog={{
           id: "kimi-subscription",

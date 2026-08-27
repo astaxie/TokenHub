@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderResource } from "../core/types";
 import { tx } from "../i18n/runtime";
 import { isAuthExpiredError } from "../resources/payloads";
-import { providerPluginActionDefaultPayload, providerPluginActionForCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
+import { providerPluginActionDefaultPayload, providerPluginActionForResourceCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { providerResourceAccountLabel, QuotaMetric } from "./provider-account-ui";
 
 type ProviderResourceProbeValues = {
@@ -49,7 +49,7 @@ export function ProviderResourceProbePanel({
   selectedAccountID: string;
   selectedAccountResources: ProviderResource[];
 }) {
-  const action = providerPluginActionForCapability(pluginActions, providerType, "probe.run");
+  const action = providerResourceProbeAction(pluginActions, providerType, selectedAccountResources);
   const fields = useMemo(() => probePanelFields(action), [action]);
   const probeModels = useMemo(() => selectedAccountCatalog?.models ?? [], [selectedAccountCatalog?.models]);
   const [values, setValues] = useState<ProviderResourceProbeValues>(() => probePanelDefaults(action));
@@ -156,6 +156,18 @@ export function ProviderResourceProbePanel({
       </div>
       {errors.selection ? <p className="provider-quota-error">{errors.selection}</p> : null}
     </section>
+  );
+}
+
+function providerResourceProbeAction(actions: PluginActionDescriptor[], providerType: string, resources: ProviderResource[]) {
+  const resourceTypes = Array.from(new Set(resources.map((resource) => resource.resource_type.trim()).filter(Boolean)));
+  if (resourceTypes.length === 1) {
+    return providerPluginActionForResourceCapability(actions, providerType, resourceTypes[0], "probe.run");
+  }
+  return actions.find((action) =>
+    action.capability === "probe.run" &&
+    (!action.subject || action.subject === providerType) &&
+    !action.metadata?.provider_resource_type?.trim(),
   );
 }
 
