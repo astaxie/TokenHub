@@ -33,7 +33,7 @@ type gatewayStreamTransformWriter struct {
 }
 
 func (s *Server) hasGatewayStreamTransformHooks() bool {
-	return s != nil && s.gatewayHooks != nil && s.gatewayChain != nil && len(s.gatewayChain.Hooks(pluginmeta.StageStreamTransform)) > 0
+	return s.hasGatewayHookStage(pluginmeta.StageStreamTransform)
 }
 
 func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallContext, route RouteSelection, sink io.Writer) *gatewayStreamTransformWriter {

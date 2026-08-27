@@ -96,6 +96,41 @@ func TestGatewayCompletionRunsTraceExportHooks(t *testing.T) {
 	}
 }
 
+func TestGatewayCompletionTraceExportRequiresChainRegistration(t *testing.T) {
+	app := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID: "tokenhub.test-trace",
+		HookID:   "unregistered-capture",
+		Stage:    pluginmeta.StageTraceExport,
+		Priority: 2000,
+		Reads:    []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+	}
+	called := false
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		called = true
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Kind: CompletionKindRejected,
+		Call: CallContext{
+			RequestID: "req_trace_hook_unregistered",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Usage:      Usage{TotalTokens: 7},
+		StatusCode: http.StatusForbidden,
+		ErrorCode:  "blocked",
+	})
+
+	if called {
+		t.Fatal("trace export handler ran without chain registration")
+	}
+}
+
 // TestGatewayCallEmitsExactlyOneCompletion is the load-bearing test for tracing.
 // Langfuse v4 turns a re-ingested span into a duplicate observation and inflates
 // every metric derived from it, so a path that emits twice is a data-corruption bug

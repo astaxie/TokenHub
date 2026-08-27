@@ -78,7 +78,7 @@ func (s *Server) runGatewayAuthContextHooks(ctx context.Context, call *CallConte
 }
 
 func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContext, payload any) (any, Usage, bool, error) {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageCacheLookup)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageCacheLookup) {
 		return nil, Usage{}, false, nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -122,7 +122,7 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 }
 
 func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext, payload any, response any, usage Usage) {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageCacheWrite)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageCacheWrite) {
 		return
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -156,7 +156,7 @@ func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext
 }
 
 func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallContext, route RouteSelection, response any) (any, error) {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageResponsePost)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageResponsePost) {
 		return response, nil
 	}
 	body, ok := marshalGatewayHookData(response)
@@ -201,7 +201,7 @@ func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallConte
 }
 
 func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage) (any, error) {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageGuardrailPost)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageGuardrailPost) {
 		return response, nil
 	}
 	body, ok := marshalGatewayHookData(response)
@@ -256,7 +256,7 @@ func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallCont
 }
 
 func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallContext, route RouteSelection, response any, usage Usage) (Usage, error) {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageUsageAttribution)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageUsageAttribution) {
 		return usage, nil
 	}
 	usageBody, ok := marshalGatewayHookData(usage)
@@ -308,7 +308,7 @@ func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallC
 }
 
 func (s *Server) runGatewayAdmissionHooks(ctx context.Context, call CallContext, headers http.Header, payload any, tokenReservation int64) error {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageAdmission)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageAdmission) {
 		return nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -339,7 +339,7 @@ func (s *Server) runGatewayAdmissionHooks(ctx context.Context, call CallContext,
 }
 
 func (s *Server) runGatewayDecodeNormalizeHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageDecodeNormalize)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageDecodeNormalize) {
 		return nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -492,7 +492,7 @@ func (s *Server) runGatewayImagePrivacyPreHooks(ctx context.Context, call CallCo
 }
 
 func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StagePrivacyPre) {
 		return nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -531,7 +531,7 @@ func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext
 }
 
 func (s *Server) runGatewayGuardrailPreHooks(ctx context.Context, call CallContext, payload any, targets []guardrailTextTarget, apply func(json.RawMessage) error) error {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageGuardrailPre)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageGuardrailPre) {
 		return nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -656,7 +656,7 @@ func (s *Server) runGatewayGeminiContextOptimizeHooks(ctx context.Context, call 
 }
 
 func (s *Server) runGatewayContextOptimizeHooks(ctx context.Context, call CallContext, payload any, apply func(json.RawMessage) error) error {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageContextOptimize)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageContextOptimize) {
 		return nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -735,7 +735,7 @@ func (s *Server) runGatewayImageContextOptimizeHooks(ctx context.Context, call C
 }
 
 func (s *Server) runGatewayRequestTransformHooks(ctx context.Context, call CallContext, route RouteSelection, payload any, apply func(json.RawMessage) error) error {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageRequestTransform)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageRequestTransform) {
 		return nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -850,7 +850,7 @@ func (s *Server) runGatewayCompactRequestTransformHooks(ctx context.Context, cal
 }
 
 func (s *Server) runGatewayProviderCallHooks(ctx context.Context, call CallContext, route RouteSelection, payload any) (any, Usage, bool, error) {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(s.gatewayChain.Hooks(pluginmeta.StageProviderCall)) == 0 {
+	if !s.hasGatewayHookStage(pluginmeta.StageProviderCall) {
 		return nil, Usage{}, false, nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -918,7 +918,7 @@ func (s *Server) runGatewayProviderCallHooks(ctx context.Context, call CallConte
 }
 
 func (s *Server) runGatewayRouteCandidatesHooks(ctx context.Context, call CallContext, routes []RouteSelection) ([]RouteSelection, error) {
-	if s == nil || s.gatewayHooks == nil || s.gatewayChain == nil || len(routes) == 0 || len(s.gatewayChain.Hooks(pluginmeta.StageRouteCandidates)) == 0 {
+	if len(routes) == 0 || !s.hasGatewayHookStage(pluginmeta.StageRouteCandidates) {
 		return routes, nil
 	}
 	input := pluginmeta.GatewayHookInput{
@@ -968,7 +968,7 @@ func (s *Server) runGatewayRouteCandidatesHooks(ctx context.Context, call CallCo
 }
 
 func (s *Server) runGatewayRouteRankHooks(ctx context.Context, call CallContext, planned []RouteSelection) []RouteSelection {
-	if s == nil || s.gatewayHooks == nil || len(planned) < 2 {
+	if len(planned) < 2 || !s.hasGatewayHookStage(pluginmeta.StageRouteRank) {
 		return planned
 	}
 	input := pluginmeta.GatewayHookInput{
@@ -1013,7 +1013,7 @@ func (s *Server) runGatewayRouteRankHooks(ctx context.Context, call CallContext,
 }
 
 func (s *Server) runGatewayTraceExportHooks(ctx context.Context, completion GatewayCallCompletion) {
-	if s == nil || s.gatewayHooks == nil {
+	if !s.hasGatewayHookStage(pluginmeta.StageTraceExport) {
 		return
 	}
 	input := pluginmeta.GatewayHookInput{
