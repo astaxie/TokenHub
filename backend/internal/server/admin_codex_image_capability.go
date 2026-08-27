@@ -291,35 +291,60 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 }
 
 func backfillCodexImageRoutes(store Store) {
+	backfillProviderImageCapabilityRoutes(store)
+}
+
+func backfillProviderImageCapabilityRoutes(store Store) {
+	for _, profile := range providerImageCapabilityRouteProfilesForBackfill(store) {
+		backfillProviderImageCapabilityRoutesForProfile(store, profile)
+	}
+}
+
+type providerImageCapabilityRouteProfileReader interface {
+	providerImageCapabilityRouteProfiles() []providerImageCapabilityRouteProfile
+}
+
+func providerImageCapabilityRouteProfilesForBackfill(store Store) []providerImageCapabilityRouteProfile {
+	if reader, ok := store.(providerImageCapabilityRouteProfileReader); ok {
+		return reader.providerImageCapabilityRouteProfiles()
+	}
+	return []providerImageCapabilityRouteProfile{codexImageCapabilityRouteProfile()}
+}
+
+func backfillProviderImageCapabilityRoutesForProfile(store Store, profile providerImageCapabilityRouteProfile) {
+	profile.withDefaults()
+	if profile.ProviderType == "" || profile.PublicModel == "" || profile.UpstreamModel == "" {
+		return
+	}
 	resources := store.ListProviderResources()
 	for _, provider := range store.ListProviders() {
-		if provider.Type != ProviderOpenAICodex || provider.Status != StatusActive || !provider.Healthy ||
-			!providerHasSupportedCodexImageResource(resources, provider.ID) || codexImageRouteBackfillDone(resources, provider.ID) {
+		if provider.Type != profile.ProviderType || provider.Status != StatusActive || !provider.Healthy ||
+			!providerHasSupportedImageCapabilityResource(resources, provider.ID, profile) || providerImageCapabilityRouteBackfillDone(resources, provider.ID, profile) {
 			continue
 		}
 		err := store.RunClusterOperation(context.Background(), codexImageCapabilityClusterKey(provider.ID), func(context.Context) error {
 			currentResources := store.ListProviderResources()
-			if !providerHasSupportedCodexImageResource(currentResources, provider.ID) || codexImageRouteBackfillDone(currentResources, provider.ID) {
+			if !providerHasSupportedImageCapabilityResource(currentResources, provider.ID, profile) || providerImageCapabilityRouteBackfillDone(currentResources, provider.ID, profile) {
 				return nil
 			}
 			routeExists := false
 			for _, route := range store.ListRoutes() {
-				if codexImageRouteMatches(route, provider.ID) {
+				if providerImageCapabilityRouteMatches(route, provider.ID, profile) {
 					routeExists = true
 					break
 				}
 			}
 			if !routeExists {
-				if _, err := store.CreateRoute(defaultCodexImageRoute(provider.ID)); err != nil {
+				if _, err := store.CreateRoute(defaultProviderImageCapabilityRoute(provider.ID, profile)); err != nil {
 					return err
 				}
 			}
 			for _, resource := range currentResources {
-				if resource.ProviderID != provider.ID || strings.TrimSpace(resource.Options[codexImageCapabilityOption]) != codexImageCapabilitySupported {
+				if resource.ProviderID != provider.ID || strings.TrimSpace(resource.Options[profile.CapabilityOption]) != profile.CapabilitySupportedValue {
 					continue
 				}
 				if _, err := store.UpdateProviderResourceOptions(resource.ID, map[string]string{
-					codexImageRouteBackfillOption: codexImageRouteBackfillCompleted,
+					profile.RouteBackfillOption: profile.RouteBackfillValue,
 				}); err != nil {
 					return err
 				}
@@ -327,14 +352,19 @@ func backfillCodexImageRoutes(store Store) {
 			return nil
 		})
 		if err != nil {
-			log.Printf("[tokenhub] failed to backfill Codex image route provider=%s: %v", provider.ID, err)
+			log.Printf("[tokenhub] failed to backfill provider image route provider=%s model=%s: %v", provider.ID, profile.PublicModel, err)
 		}
 	}
 }
 
 func codexImageRouteBackfillDone(resources []ProviderResource, providerID string) bool {
+	return providerImageCapabilityRouteBackfillDone(resources, providerID, codexImageCapabilityRouteProfile())
+}
+
+func providerImageCapabilityRouteBackfillDone(resources []ProviderResource, providerID string, profile providerImageCapabilityRouteProfile) bool {
+	profile.withDefaults()
 	for _, resource := range resources {
-		if resource.ProviderID == providerID && resource.Options[codexImageRouteBackfillOption] == codexImageRouteBackfillCompleted {
+		if resource.ProviderID == providerID && resource.Options[profile.RouteBackfillOption] == profile.RouteBackfillValue {
 			return true
 		}
 	}
@@ -342,5 +372,9 @@ func codexImageRouteBackfillDone(resources []ProviderResource, providerID string
 }
 
 func providerHasSupportedCodexImageResource(resources []ProviderResource, providerID string) bool {
-	return codexImageRouteHasSupportedResource(ModelRoute{ProviderID: providerID}, resources)
+	return providerHasSupportedImageCapabilityResource(resources, providerID, codexImageCapabilityRouteProfile())
+}
+
+func providerHasSupportedImageCapabilityResource(resources []ProviderResource, providerID string, profile providerImageCapabilityRouteProfile) bool {
+	return providerImageCapabilityRouteHasSupportedResource(ModelRoute{ProviderID: providerID}, resources, profile)
 }

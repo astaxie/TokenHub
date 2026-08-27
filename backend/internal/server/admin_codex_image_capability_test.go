@@ -656,6 +656,46 @@ func TestCodexImageRouteBackfillPreservesDisabledRoute(t *testing.T) {
 	}
 }
 
+func TestProviderImageRouteBackfillUsesPluginProfiles(t *testing.T) {
+	store := NewMemoryStore()
+	profile := providerImageCapabilityRouteProfile{
+		ProviderType:        "kimi_subscription",
+		ResourceType:        "kimi_subscription_account",
+		PublicModel:         "kimi-image",
+		UpstreamModel:       "moonshot-image",
+		CapabilityOption:    "kimi_image_capability",
+		RouteBackfillOption: "kimi_image_route_backfill_v1",
+	}
+	profile.withDefaults()
+	store.setProviderImageCapabilityRouteProfiles([]providerImageCapabilityRouteProfile{profile})
+	provider := store.AddProvider(Provider{
+		ID: "prv_kimi_image_backfill", Name: "Kimi Image Backfill", Type: profile.ProviderType, Status: StatusActive, Healthy: true,
+	})
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_kimi_image_backfill", ProviderID: provider.ID, Name: "Kimi Image Account",
+		ResourceType: profile.ResourceType, Status: StatusActive, Healthy: true,
+		Options: map[string]string{profile.CapabilityOption: profile.CapabilitySupportedValue},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	backfillProviderImageCapabilityRoutes(store)
+
+	var matches []ModelRoute
+	for _, route := range store.ListRoutes() {
+		if providerImageCapabilityRouteMatches(route, provider.ID, profile) {
+			matches = append(matches, route)
+		}
+	}
+	if len(matches) != 1 || matches[0].Status != StatusActive {
+		t.Fatalf("plugin image route was not backfilled: %+v", matches)
+	}
+	resource, _ := store.GetProviderResource("rsrc_kimi_image_backfill")
+	if resource.Options[profile.RouteBackfillOption] != profile.RouteBackfillValue {
+		t.Fatalf("plugin backfill completion was not recorded: %+v", resource.Options)
+	}
+}
+
 func newCodexImageCapabilityTestServer(t *testing.T, baseURL string) (*GormStore, *Server, ProviderResource) {
 	t.Helper()
 	store := NewMemoryStore()
