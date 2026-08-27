@@ -131,6 +131,70 @@ func TestAdminPluginProviderCatalogGetUsesModelsReadAction(t *testing.T) {
 	}
 }
 
+func TestAdminCustomProviderCatalogPostUsesModelsPreviewAction(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "preview_catalog_provider"
+	pluginID := "tokenhub.provider.preview-catalog"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Preview Catalog Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+			pluginmeta.PlacementManagementAction,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityModels), Subject: providerType},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register preview catalog provider: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "preview_catalog.models.preview",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "models.preview",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var observed ProviderCreateRequest
+		if err := json.Unmarshal(invocation.Payload, &observed); err != nil {
+			t.Fatalf("decode preview catalog payload: %v", err)
+		}
+		if observed.Type != providerType || observed.BaseURL != "https://preview.example/v1" || observed.APIKey != "preview-secret" || invocation.Actor.ID != "dev_admin" {
+			t.Fatalf("unexpected preview catalog invocation: payload=%+v actor=%+v", observed, invocation.Actor)
+		}
+		return pluginmeta.ActionResult{Data: ProviderCatalogEntry{
+			ID: providerType, Name: "Preview Catalog Provider", DisplayName: "Preview Catalog Provider",
+			Type: providerType, ModelsCount: 1, Source: "plugin-preview-live",
+			Models: []ProviderCatalogModel{{ID: "preview-action-model", Name: "preview-action-model"}},
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register preview catalog action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-catalog/custom", map[string]any{
+		"name":     "Preview Catalog Provider",
+		"type":     providerType,
+		"base_url": "https://preview.example/v1",
+		"api_key":  "preview-secret",
+	}, "plugin-catalog-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST plugin preview catalog: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if actionCalls != 1 || !strings.Contains(response.Body, `"source":"plugin-preview-live"`) || !strings.Contains(response.Body, `"id":"preview-action-model"`) {
+		t.Fatalf("plugin preview catalog response/calls: calls=%d body=%s", actionCalls, response.Body)
+	}
+}
+
 func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})

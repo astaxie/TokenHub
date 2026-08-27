@@ -245,7 +245,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				err = supportErr
 				continue
 			}
-			entry, err = CustomProviderCatalogFromUpstream(r.Context(), s.upstreamClient, candidate)
+			entry, err = s.discoverProviderCatalogFromCreateRequest(r.Context(), user, candidate)
 			if err == nil {
 				break
 			}
@@ -557,10 +557,10 @@ func (s *Server) handleAdminProviderItemRoute(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleAdminProviderTestConnectionPost(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
-		return
+	user, ok := s.requireAdmin(w, r, "provider", r.Method)
+	if ok {
+		s.serveAdminProviderTestConnection(w, r, user)
 	}
-	s.serveAdminProviderTestConnection(w, r)
 }
 
 func (s *Server) handleAdminProviderPatch(w http.ResponseWriter, r *http.Request) {
@@ -598,7 +598,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 			jsonMethodNotAllowed(http.MethodPost)(w, r)
 			return
 		}
-		s.serveAdminProviderTestConnection(w, r)
+		s.serveAdminProviderTestConnection(w, r, user)
 		return
 	}
 	if len(parts) == 1 {
@@ -630,7 +630,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 	s.serveAdminProviderHealth(w, r, user, parts[0])
 }
 
-func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http.Request, user AdminUser) {
 	var req ProviderCreateRequest
 	if err := s.decodeJSON(w, r, &req); err != nil {
 		writeError(w, r, err)
@@ -666,7 +666,7 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 			catalog, err = KronkProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
 		}
 	} else {
-		catalog, err = CustomProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
+		catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
 	}
 	if err != nil {
 		writeError(w, r, err)

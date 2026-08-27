@@ -71,6 +71,33 @@ func (s *Server) executeProviderCredentialModelsAction(ctx context.Context, user
 	return catalog, true, nil
 }
 
+func (s *Server) executeProviderCreateRequestModelsAction(ctx context.Context, user AdminUser, req ProviderCreateRequest) (ProviderCatalogEntry, bool, error) {
+	providerType := strings.TrimSpace(req.Type)
+	if providerType == "" {
+		return ProviderCatalogEntry{}, false, nil
+	}
+	result, handled, err := s.executeProviderCapabilityAction(ctx, user, providerType, AdapterCapabilityModels, "models.preview", req, providerPluginActionOptions{})
+	if err != nil {
+		return ProviderCatalogEntry{}, true, err
+	}
+	if !handled {
+		return ProviderCatalogEntry{}, false, nil
+	}
+	catalog, ok := providerCatalogEntryFromActionData(result.Data)
+	if !ok {
+		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "provider_models_invalid_result", "Provider models preview action returned an invalid result")
+	}
+	return catalog, true, nil
+}
+
+func (s *Server) discoverProviderCatalogFromCreateRequest(ctx context.Context, user AdminUser, req ProviderCreateRequest) (ProviderCatalogEntry, error) {
+	catalog, supported, err := s.executeProviderCreateRequestModelsAction(ctx, user, req)
+	if err != nil || supported {
+		return catalog, err
+	}
+	return CustomProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
+}
+
 func providerCatalogEntryFromActionData(data any) (ProviderCatalogEntry, bool) {
 	if result, ok := data.(ProviderCatalogEntry); ok {
 		return result, strings.TrimSpace(result.ID) != ""
