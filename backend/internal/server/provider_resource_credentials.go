@@ -212,12 +212,6 @@ func (s *GormStore) applyProviderResourceTypeDefaults(resource *ProviderResource
 			resource.MaxConcurrency = maxConcurrency
 		}
 	}
-	if strings.TrimSpace(resource.BaseURL) != "" {
-		return
-	}
-	if isOpenAIAccountResource(resource.ResourceType) {
-		resource.BaseURL = openAICodexBaseURL
-	}
 }
 
 func (s *GormStore) preserveProviderAccountProtectedOptions(current map[string]string, patch ProviderResource, resourceType string) map[string]string {
