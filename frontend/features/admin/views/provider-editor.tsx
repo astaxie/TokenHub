@@ -134,7 +134,7 @@ export function ProviderUpsertModal({
     base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     clear_api_key: "false",
-    anthropic_auth_type: provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: mode === "edit" ? provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible" }, providerTypeOptions),
+    anthropic_auth_type: provider?.options?.auth_mode ?? provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: mode === "edit" ? provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible" }, providerTypeOptions),
     priority: String(provider?.priority ?? 10),
     claude_code_attribution_policy: mode === "edit"
       ? provider?.options?.claude_code_attribution_policy ?? "preserve"

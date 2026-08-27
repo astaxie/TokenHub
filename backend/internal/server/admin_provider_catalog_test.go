@@ -374,6 +374,58 @@ func TestAdminValidatesAnthropicProviderAuthentication(t *testing.T) {
 	}
 }
 
+func TestAdminPersistsPluginProviderAuthenticationMode(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	providerType := "auth_mode_plugin_provider"
+	pluginID := "tokenhub.provider.auth-mode-plugin"
+	descriptor := pluginmeta.BuiltInProvider(pluginID, "Auth Mode Plugin", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities,
+		pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: providerAuthModeOption, Subject: providerType, Value: "oauth"},
+		pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: providerAuthModeOption, Subject: providerType, Value: "x-api-key"},
+	)
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register auth mode plugin: %v", err)
+	}
+	app := server.Handler()
+
+	valid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_auth_mode_plugin",
+		"name":                "Auth Mode Plugin Provider",
+		"type":                providerType,
+		"base_url":            "https://example.invalid/v1",
+		"api_key":             "plugin-secret",
+		"anthropic_auth_type": "oauth",
+	}, "")
+	if valid.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", valid.Code, valid.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(valid.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Provider.Options[providerAuthModeOption]; got != "oauth" {
+		t.Fatalf("stored plugin auth mode = %q, want oauth", got)
+	}
+	if got := result.Provider.Options[anthropicAuthTypeOption]; got != "" {
+		t.Fatalf("plugin provider stored legacy Anthropic auth option = %q", got)
+	}
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"name":                "Invalid Plugin Auth Mode",
+		"type":                providerType,
+		"base_url":            "https://example.invalid/v1",
+		"anthropic_auth_type": "basic",
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, `"code":"provider_auth_mode_invalid"`) {
+		t.Fatalf("expected invalid plugin auth mode, got %d: %s", invalid.Code, invalid.Body)
+	}
+}
+
 func TestAdminProviderConnectionTestRequiresCredentials(t *testing.T) {
 	app := newTestServer()
 	for _, testCase := range []struct {

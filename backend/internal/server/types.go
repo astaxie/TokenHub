@@ -303,7 +303,7 @@ type ProviderCreateRequest struct {
 	CreateRoutes   *bool                  `json:"create_routes"`
 	SelectedModels []string               `json:"selected_models"`
 	CustomModels   []ProviderCatalogModel `json:"custom_models"`
-	// AnthropicAuthType is a write-only convenience field persisted in Options.
+	// AnthropicAuthType is a legacy write-only field for provider auth mode.
 	AnthropicAuthType string `json:"anthropic_auth_type"`
 }
 

@@ -615,7 +615,7 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	} else if providerType == ProviderAnthropic {
 		if apiKey != "" {
 			provider := Provider{Type: providerType, APIKey: apiKey, Options: req.Options}
-			if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
+			if err := configureProviderAuthMode(&provider, req.AnthropicAuthType); err != nil {
 				return ProviderCatalogEntry{}, err
 			}
 			applyAnthropicProviderAuth(httpReq, provider)
