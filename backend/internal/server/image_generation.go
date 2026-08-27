@@ -1250,7 +1250,7 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 		if len(filtered) == 0 {
 			return nil, ErrProviderMissing
 		}
-		return s.routesWithAdapterCapabilityOrProviderCall(filtered, AdapterCapabilityImageGenerate), nil
+		return s.routesWithAdapterCapabilityOrProviderCall(filtered, AdapterCapabilityImageGenerate, providerRouteProtocolImageGeneration), nil
 	}
 	routes, err := s.store.SelectRouteCandidates(openAIImageModelName)
 	if err != nil {
@@ -1262,7 +1262,7 @@ func (s *Server) imageRouteCandidates(model string) ([]RouteSelection, error) {
 			filtered = append(filtered, route)
 		}
 	}
-	return s.routesWithAdapterCapabilityOrProviderCall(filtered, AdapterCapabilityImageGenerate), nil
+	return s.routesWithAdapterCapabilityOrProviderCall(filtered, AdapterCapabilityImageGenerate, providerRouteProtocolImageGeneration), nil
 }
 
 func (s *Server) routeMatchesProviderImageCapabilityProfile(route RouteSelection) bool {

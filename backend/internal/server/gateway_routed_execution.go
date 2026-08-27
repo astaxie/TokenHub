@@ -20,7 +20,7 @@ func (s *Server) executeRoutedCompact(r *http.Request, routed RoutedCall, reques
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, body); err != nil || handled {
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, body, providerRouteProtocolResponses); err != nil || handled {
 			return resp, usage, err
 		}
 		adapter, err := s.responsesAdapterForRoute(prepared)
@@ -54,7 +54,7 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 			if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 				return nil, Usage{}, transformErr
 			}
-			if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+			if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq, providerRouteProtocolResponses); err != nil || handled {
 				return resp, usage, err
 			}
 			resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
@@ -70,7 +70,7 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 		if transformErr := s.runGatewayChatRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}
-		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq, providerRouteProtocolChatCompletions); err != nil || handled {
 			return resp, usage, err
 		}
 		adapter, err := s.adapterForRoute(route)
@@ -109,7 +109,7 @@ func (s *Server) executeRoutedEmbeddings(r *http.Request, routed RoutedCall, req
 		if transformErr := s.runGatewayEmbeddingsRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}
-		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq, providerRouteProtocolEmbeddings); err != nil || handled {
 			return resp, usage, err
 		}
 		adapter, err := s.adapterForRoute(route)

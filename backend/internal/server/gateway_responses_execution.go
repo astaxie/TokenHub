@@ -22,7 +22,7 @@ func (s *Server) executeRoutedResponsesContext(ctx context.Context, incoming htt
 		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}
-		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq); err != nil || handled {
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq, providerRouteProtocolResponses); err != nil || handled {
 			return resp, usage, err
 		}
 		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, incoming)

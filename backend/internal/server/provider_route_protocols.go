@@ -9,6 +9,9 @@ const (
 	providerRouteProtocolAnthropic       = "anthropic"
 	providerRouteProtocolChatCompletions = "chat/completions"
 	providerRouteProtocolCodexResponses  = "codex/responses"
+	providerRouteProtocolEmbeddings      = "embeddings"
+	providerRouteProtocolGemini          = "gemini"
+	providerRouteProtocolImageGeneration = "images/generations"
 	providerRouteProtocolResponses       = "responses"
 )
 
@@ -21,10 +24,10 @@ func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[st
 		protocols[providerRouteProtocolResponses] = true
 	}
 	if adapterSupports(descriptor, AdapterCapabilityEmbeddings) {
-		protocols["embeddings"] = true
+		protocols[providerRouteProtocolEmbeddings] = true
 	}
 	if adapterSupports(descriptor, AdapterCapabilityImageGenerate) {
-		protocols["images/generations"] = true
+		protocols[providerRouteProtocolImageGeneration] = true
 	}
 	return protocols
 }

@@ -118,11 +118,21 @@ func (r *GatewayHookRunner) RegisterHandler(descriptor GatewayHookDescriptor, ha
 }
 
 func (r *GatewayHookRunner) RunStage(ctx context.Context, stage GatewayHookStage, input GatewayHookInput) (GatewayHookRunReport, error) {
-	report := GatewayHookRunReport{Stage: stage}
 	if r == nil || r.chain == nil {
+		return GatewayHookRunReport{Stage: stage}, nil
+	}
+	return r.RunStageHooks(ctx, stage, input, r.chain.Hooks(stage))
+}
+
+func (r *GatewayHookRunner) RunStageHooks(ctx context.Context, stage GatewayHookStage, input GatewayHookInput, hooks []GatewayHookDescriptor) (GatewayHookRunReport, error) {
+	report := GatewayHookRunReport{Stage: stage}
+	if r == nil {
 		return report, nil
 	}
-	for _, hook := range r.chain.Hooks(stage) {
+	for _, hook := range hooks {
+		if hook.Stage != stage {
+			continue
+		}
 		result, err := r.runHook(ctx, hook, input)
 		report.Results = append(report.Results, result)
 		if err != nil {

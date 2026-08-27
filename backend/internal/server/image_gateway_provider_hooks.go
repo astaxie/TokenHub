@@ -37,7 +37,7 @@ func (s *Server) invokeImageRouteWithGatewayHooks(ctx context.Context, call Call
 		result.cacheHit = true
 		return result, usage, nil
 	}
-	if response, usage, handled, err := s.runGatewayProviderCallHooks(ctx, call, prepared, request); err != nil || handled {
+	if response, usage, handled, err := s.runGatewayProviderCallHooks(ctx, call, prepared, request, providerRouteProtocolImageGeneration); err != nil || handled {
 		if err != nil {
 			return imageRunResult{}, Usage{}, err
 		}

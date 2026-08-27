@@ -849,8 +849,9 @@ func (s *Server) runGatewayCompactRequestTransformHooks(ctx context.Context, cal
 	return body, err
 }
 
-func (s *Server) runGatewayProviderCallHooks(ctx context.Context, call CallContext, route RouteSelection, payload any) (any, Usage, bool, error) {
-	if !s.hasGatewayHookStage(pluginmeta.StageProviderCall) {
+func (s *Server) runGatewayProviderCallHooks(ctx context.Context, call CallContext, route RouteSelection, payload any, protocol string) (any, Usage, bool, error) {
+	hooks := s.gatewayProviderCallHooksForRoute(route, protocol)
+	if len(hooks) == 0 {
 		return nil, Usage{}, false, nil
 	}
 	body, ok := marshalGatewayHookData(payload)
@@ -879,7 +880,7 @@ func (s *Server) runGatewayProviderCallHooks(ctx context.Context, call CallConte
 			input.Data[dataClass] = encoded
 		}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageProviderCall, input)
+	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageProviderCall, input, hooks)
 	if err != nil {
 		if pluginmeta.IsGatewayHookRouteSkipped(err) {
 			return nil, Usage{}, false, &ProviderInvocationError{

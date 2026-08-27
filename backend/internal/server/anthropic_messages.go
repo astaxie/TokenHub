@@ -318,7 +318,7 @@ func (s *Server) executeRoutedAnthropicMessages(
 			return nil, Usage{}, err
 		}
 		upstreamReq := anthropicRequestForRoute(req, route)
-		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq.Raw); err != nil || handled {
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq.Raw, providerRouteProtocolAnthropic); err != nil || handled {
 			if err != nil {
 				return nil, Usage{}, err
 			}

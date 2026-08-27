@@ -333,7 +333,7 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &upstream); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}
-		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, upstream); err != nil || handled {
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, upstream, providerRouteProtocolGemini); err != nil || handled {
 			if err != nil {
 				return nil, usage, err
 			}
