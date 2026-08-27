@@ -60,6 +60,60 @@ func TestProviderCredentialRefreshServiceRenewsExpiringOpenAIAccounts(t *testing
 	}
 }
 
+func TestProviderCredentialRefreshServiceUsesNativeRefreshProfilePolicy(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "profile_oauth_subscription"
+	resourceType := "profile_oauth_account"
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: []string{resourceType}})
+	provider := store.AddProvider(Provider{
+		Name:    "Profile OAuth",
+		Type:    providerType,
+		Status:  StatusActive,
+		Healthy: true,
+		Options: map[string]string{
+			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+		},
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID: provider.ID, Name: "Profile OAuth Account", ResourceType: resourceType, Status: StatusActive, Healthy: true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType: "oauth", AccessToken: "profile-access-before", RefreshToken: "profile-refresh-before", ClientID: openAIAccountOAuthClientID,
+			ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int64
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Get("refresh_token") != "profile-refresh-before" {
+			t.Fatalf("unexpected refresh token: %v", r.Form)
+		}
+		w.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "profile-access-after", "refresh_token": "profile-refresh-after", "expires_in": 3600})
+	}))
+	defer tokenServer.Close()
+	previousEndpoint := openAIAccountOAuthTokenEndpoint
+	openAIAccountOAuthTokenEndpoint = tokenServer.URL
+	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
+
+	newProviderCredentialRefreshService(store).RunDue(context.Background())
+	if requests.Load() != 1 {
+		t.Fatalf("expected one native refresh profile renewal request, got %d", requests.Load())
+	}
+	credentials, err := store.RefreshProviderResourceCredentials(context.Background(), resource.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credentials.AccessToken != "profile-access-after" || credentials.RefreshToken != "profile-refresh-after" {
+		t.Fatalf("expected profile-refreshed credentials to be stored, got %+v", credentials)
+	}
+}
+
 func TestProviderCredentialRefreshServiceRunsPluginCredentialRefreshActions(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{ID: "prv_kimi_scheduler", Name: "Kimi", Type: "kimi_subscription", Status: StatusActive, Healthy: true})

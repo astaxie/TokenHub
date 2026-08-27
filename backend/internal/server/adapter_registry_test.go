@@ -179,6 +179,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if codex.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
 		t.Fatalf("OpenAI Codex credentials scope = %q, want resource", codex.ProviderPolicy.CredentialsScope)
 	}
+	if codex.ProviderPolicy.CredentialRefreshProfile != providerCredentialRefreshProfileOpenAIAccountOAuth {
+		t.Fatalf("OpenAI Codex credential refresh profile = %q, want %q", codex.ProviderPolicy.CredentialRefreshProfile, providerCredentialRefreshProfileOpenAIAccountOAuth)
+	}
 	if codex.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("OpenAI Codex session affinity kind = %q, want codex session", codex.ProviderPolicy.SessionAffinityKind)
 	}

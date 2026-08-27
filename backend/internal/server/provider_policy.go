@@ -6,13 +6,15 @@ import (
 )
 
 const (
-	providerAuthModeOption              = "auth_mode"
-	providerAPIKeyRequiredOption        = "api_key_required"
-	providerCredentialsScopeOption      = "credentials_scope"
-	providerCredentialsScopeProvider    = "provider"
-	providerCredentialsScopeResource    = "resource"
-	providerErrorProfileOption          = "error_profile"
-	providerRouteRequiresResourceOption = "route_requires_resource"
+	providerAuthModeOption                             = "auth_mode"
+	providerAPIKeyRequiredOption                       = "api_key_required"
+	providerCredentialsScopeOption                     = "credentials_scope"
+	providerCredentialsScopeProvider                   = "provider"
+	providerCredentialsScopeResource                   = "resource"
+	providerCredentialRefreshProfileOption             = "credential_refresh_profile"
+	providerCredentialRefreshProfileOpenAIAccountOAuth = "openai_account_oauth"
+	providerErrorProfileOption                         = "error_profile"
+	providerRouteRequiresResourceOption                = "route_requires_resource"
 )
 
 func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor) {
@@ -37,6 +39,11 @@ func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor)
 		provider.Options[providerErrorProfileOption] = errorProfile
 	} else {
 		delete(provider.Options, providerErrorProfileOption)
+	}
+	if refreshProfile := strings.TrimSpace(descriptor.ProviderPolicy.CredentialRefreshProfile); refreshProfile != "" {
+		provider.Options[providerCredentialRefreshProfileOption] = refreshProfile
+	} else {
+		delete(provider.Options, providerCredentialRefreshProfileOption)
 	}
 }
 
@@ -203,6 +210,16 @@ func providerConfiguredErrorProfile(provider Provider) string {
 	return ""
 }
 
+func providerCredentialRefreshProfile(provider Provider) string {
+	if value, ok := provider.Options[providerCredentialRefreshProfileOption]; ok {
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+	if provider.Type == ProviderOpenAICodex {
+		return providerCredentialRefreshProfileOpenAIAccountOAuth
+	}
+	return ""
+}
+
 func patchedProviderPolicy(current Provider, patch Provider) Provider {
 	current.Type = firstNonEmpty(patch.Type, current.Type)
 	if patch.Options != nil {
@@ -212,7 +229,7 @@ func patchedProviderPolicy(current Provider, patch Provider) Provider {
 }
 
 func providerPolicyOptionsChanged(before map[string]string, after map[string]string) bool {
-	for _, key := range []string{providerRouteRequiresResourceOption, providerCredentialsScopeOption, providerErrorProfileOption} {
+	for _, key := range []string{providerRouteRequiresResourceOption, providerCredentialsScopeOption, providerErrorProfileOption, providerCredentialRefreshProfileOption} {
 		if strings.TrimSpace(before[key]) != strings.TrimSpace(after[key]) {
 			return true
 		}

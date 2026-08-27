@@ -554,7 +554,10 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{ID: "prv_refreshing", Name: "Refreshing Provider", Type: "capture", Status: StatusActive, Healthy: true})
+	provider := store.AddProvider(Provider{
+		ID: "prv_refreshing", Name: "Refreshing Provider", Type: "capture", Status: StatusActive, Healthy: true,
+		Options: map[string]string{providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth},
+	})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_refreshing",
 		ProviderID:   provider.ID,

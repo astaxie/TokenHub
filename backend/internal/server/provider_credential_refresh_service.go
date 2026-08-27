@@ -24,6 +24,10 @@ type ProviderCredentialRefreshService struct {
 
 type providerCredentialRefreshFunc func(context.Context, ProviderResource) (bool, error)
 
+type providerNativeCredentialRefreshSupportChecker interface {
+	SupportsNativeProviderResourceCredentialRefresh(resource ProviderResource) bool
+}
+
 func newProviderCredentialRefreshService(store Store, pluginRefresh ...providerCredentialRefreshFunc) *ProviderCredentialRefreshService {
 	service := &ProviderCredentialRefreshService{store: store}
 	if len(pluginRefresh) > 0 {
@@ -94,7 +98,7 @@ func (s *ProviderCredentialRefreshService) renewResource(ctx context.Context, re
 			return
 		}
 	}
-	if !isOpenAIAccountResource(resource.ResourceType) {
+	if supportChecker, ok := s.store.(providerNativeCredentialRefreshSupportChecker); ok && !supportChecker.SupportsNativeProviderResourceCredentialRefresh(resource) {
 		return
 	}
 	if _, err := s.store.RefreshProviderResourceCredentials(ctx, resource.ID, false); err != nil {

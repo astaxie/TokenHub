@@ -524,9 +524,14 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			s.mu.Unlock()
 			return notFound(err, "provider_resource_not_found", "Provider resource not found")
 		}
+		var provider Provider
+		if err := s.db.WithContext(leaseCtx).First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
+			s.mu.Unlock()
+			return notFound(err, "provider_not_found", "Provider not found")
+		}
 		creds := s.providerResourceCredentialsForRuntime(resource)
 		authentication := creds
-		if !isOpenAIAccountResource(resource.ResourceType) {
+		if !supportsNativeOpenAIAccountCredentialRefresh(provider, resource, s) {
 			result = creds
 			s.mu.Unlock()
 			return nil
@@ -562,7 +567,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 					if loadErr := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; loadErr != nil {
 						return loadErr
 					}
-					if !isOpenAIAccountResource(current.ResourceType) ||
+					if !supportsNativeOpenAIAccountCredentialRefresh(provider, current, s) ||
 						!openAIAccountAuthenticationEqual(s.providerResourceCredentialsForRuntime(current), authentication) {
 						return nil
 					}
@@ -587,7 +592,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			if err := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; err != nil {
 				return notFound(err, "provider_resource_not_found", "Provider resource not found")
 			}
-			if !isOpenAIAccountResource(current.ResourceType) {
+			if !supportsNativeOpenAIAccountCredentialRefresh(provider, current, s) {
 				result = refreshed
 				return nil
 			}
@@ -622,6 +627,27 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		return result, err
 	}
 	return result, nil
+}
+
+func supportsNativeOpenAIAccountCredentialRefresh(provider Provider, resource ProviderResource, store *GormStore) bool {
+	if providerCredentialRefreshProfile(provider) != providerCredentialRefreshProfileOpenAIAccountOAuth {
+		return false
+	}
+	if store != nil {
+		return store.IsProviderAccountResourceType(provider.Type, resource.ResourceType)
+	}
+	return isOpenAIAccountResource(resource.ResourceType)
+}
+
+func (s *GormStore) SupportsNativeProviderResourceCredentialRefresh(resource ProviderResource) bool {
+	if s == nil {
+		return false
+	}
+	provider, ok := s.GetProvider(resource.ProviderID)
+	if !ok {
+		return false
+	}
+	return supportsNativeOpenAIAccountCredentialRefresh(provider, resource, s)
 }
 
 func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResource) ProviderResourceCredentials {

@@ -14,6 +14,7 @@ type builtinProviderAdapter struct {
 	apiKeyRequired               *bool
 	routeProtocols               []string
 	credentialsScope             string
+	credentialRefreshProfile     string
 	routeRequiresResource        bool
 	sessionAffinityKind          string
 	claudeCodeAttributionDefault string
@@ -93,13 +94,14 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
-		providerType:          ProviderOpenAICodex,
-		adapter:               codexSubscription,
-		supportsCustomHeaders: boolPointer(false),
-		routeProtocols:        []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
-		credentialsScope:      providerCredentialsScopeResource,
-		routeRequiresResource: true,
-		sessionAffinityKind:   AffinityKindCodexSession,
+		providerType:             ProviderOpenAICodex,
+		adapter:                  codexSubscription,
+		supportsCustomHeaders:    boolPointer(false),
+		routeProtocols:           []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
+		credentialsScope:         providerCredentialsScopeResource,
+		credentialRefreshProfile: providerCredentialRefreshProfileOpenAIAccountOAuth,
+		routeRequiresResource:    true,
+		sessionAffinityKind:      AffinityKindCodexSession,
 		catalogEntry: &pluginProviderCatalogEntry{
 			ID:          codexProviderCatalogID,
 			Name:        "OpenAI Codex",
@@ -329,6 +331,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "credentials_scope",
 			Subject: adapter.providerType,
 			Value:   adapter.credentialsScope,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.credentialRefreshProfile != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    providerCredentialRefreshProfileOption,
+			Subject: adapter.providerType,
+			Value:   adapter.credentialRefreshProfile,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

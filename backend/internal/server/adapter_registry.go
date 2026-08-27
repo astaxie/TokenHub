@@ -46,6 +46,7 @@ type AdapterProviderPolicy struct {
 	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
 	DefaultBaseURL               string                      `json:"default_base_url,omitempty"`
 	ErrorProfile                 string                      `json:"error_profile,omitempty"`
+	CredentialRefreshProfile     string                      `json:"credential_refresh_profile,omitempty"`
 	ModelDiscovery               AdapterModelDiscoveryPolicy `json:"model_discovery,omitempty"`
 }
 
@@ -195,6 +196,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
 		DefaultBaseURL:               adapterDefaultBaseURL(r, descriptor.Type),
 		ErrorProfile:                 adapterErrorProfile(r, descriptor.Type),
+		CredentialRefreshProfile:     adapterCredentialRefreshProfile(r, descriptor.Type),
 		ModelDiscovery:               adapterModelDiscovery(r, descriptor.Type),
 	}
 	return descriptor
@@ -262,6 +264,13 @@ func adapterDefaultBaseURL(registry *AdapterRegistry, providerType string) strin
 
 func adapterErrorProfile(registry *AdapterRegistry, providerType string) string {
 	if value, ok := providerPolicyStringCapability(registry, providerType, "error_profile"); ok {
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+	return ""
+}
+
+func adapterCredentialRefreshProfile(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, providerCredentialRefreshProfileOption); ok {
 		return strings.ToLower(strings.TrimSpace(value))
 	}
 	return ""
