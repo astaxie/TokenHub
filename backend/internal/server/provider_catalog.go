@@ -285,7 +285,7 @@ func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalo
 		DocURL:      catalogStringField(raw, "doc"),
 		Source:      "local-provider-catalog",
 	}
-	entry.Type = inferProviderType(entry.ID, entry.BaseURL)
+	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), inferProviderType(entry.ID, entry.BaseURL))
 	if rawModels, ok := raw["models"].([]any); ok {
 		entry.Models = make([]ProviderCatalogModel, 0, len(rawModels))
 		for _, rawModel := range rawModels {

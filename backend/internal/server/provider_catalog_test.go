@@ -47,6 +47,17 @@ func TestNormalizeProviderCatalogEntryInfersAnthropicProtocolFromBaseURL(t *test
 	}
 }
 
+func TestNormalizeProviderCatalogEntryUsesExplicitProviderType(t *testing.T) {
+	entry := normalizeProviderCatalogEntry("vendor-plugin", map[string]any{
+		"name": "Vendor Plugin",
+		"type": "vendor_subscription",
+		"api":  "https://api.vendor.example/anthropic/v1",
+	})
+	if entry.Type != "vendor_subscription" {
+		t.Fatalf("expected explicit plugin provider type, got %q", entry.Type)
+	}
+}
+
 func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 	var deepSeek ProviderCatalogEntry
 	for _, entry := range builtinProviderCatalog(true) {
