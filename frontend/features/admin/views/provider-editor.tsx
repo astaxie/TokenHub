@@ -9,7 +9,7 @@ import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/fo
 import { providerTypeLabel } from "../domain/labels";
 import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
-import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible } from "../domain/provider-custom-upstream";
+import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, providerAnthropicAuthType } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
@@ -134,7 +134,7 @@ export function ProviderUpsertModal({
     base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     clear_api_key: "false",
-    anthropic_auth_type: provider?.options?.anthropic_auth_type ?? "x-api-key",
+    anthropic_auth_type: provider?.options?.anthropic_auth_type ?? providerAnthropicAuthType({ type: mode === "edit" ? provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible" }, providerTypeOptions),
     priority: String(provider?.priority ?? 10),
     claude_code_attribution_policy: mode === "edit"
       ? provider?.options?.claude_code_attribution_policy ?? "preserve"

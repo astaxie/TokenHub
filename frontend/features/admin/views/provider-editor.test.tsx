@@ -154,6 +154,34 @@ describe("ProviderUpsertModal", () => {
     expect(await screen.findByText("2/3 个可引入模型")).toBeInTheDocument();
   });
 
+  it("defaults Anthropic auth selection from adapter metadata", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    const anthropicEntry = { ...catalogEntry, id: "anthropic-plugin", type: "anthropic" };
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[anthropicEntry]}
+        loading={false}
+        mode="create"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        providerTypeOptions={[{ value: "anthropic", label: "Anthropic", supportsCustomHeaders: true, authModes: ["bearer"] }]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+        standardModels={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+
+    expect(screen.getByText("Anthropic 认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
+  });
+
   it("shows the provider OAuth callback from plugin action metadata", async () => {
     const user = userEvent.setup();
     setActiveLanguage("zh-CN");
