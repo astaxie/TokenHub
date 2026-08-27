@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataFromData } from "../domain/provider-resource-types";
 import { providerResourcePayload, providerResourceToForm } from "./payloads";
-import { accountResourceFieldVisible, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { accountResourceFieldVisible, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, pluginActionErrorMessage, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("keeps provider account runtime fields free of provider-specific plugin options", () => {
@@ -222,6 +222,40 @@ describe("providerResourceConfig", () => {
       prompt: "ping",
     });
     expect(providerPluginActionDefaultPayload({ metadata: { default_payload_json: "[]" } })).toEqual({});
+  });
+
+  it("maps plugin action errors from direct metadata entries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: "kimi_session_expired", message: "raw provider message" },
+    }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(runProviderPluginAction(
+      { baseURL: "http://localhost:8080", adminToken: "admin-token" },
+      {
+        plugin_id: "tokenhub.provider.kimi",
+        action_id: "kimi.probe.run",
+        kind: "test",
+        capability: "probe.run",
+        subject: "kimi_subscription",
+        metadata: { "error_message.kimi_session_expired": "Kimi session expired. Reauthorize this account." },
+      },
+      { provider_id: "prv_kimi" },
+      "Probe failed",
+    )).rejects.toThrow("Kimi session expired. Reauthorize this account.");
+  });
+
+  it("maps plugin action errors from JSON metadata entries", () => {
+    expect(pluginActionErrorMessage({
+      metadata: {
+        error_messages_json: JSON.stringify({
+          vendor_rate_limited: "Vendor account is temporarily rate limited.",
+        }),
+      },
+    }, "vendor_rate_limited")).toBe("Vendor account is temporarily rate limited.");
   });
 
   it("runs provider-level plugin actions without a resource envelope", async () => {

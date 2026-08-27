@@ -222,7 +222,7 @@ export async function runProviderResourcePluginAction<T>(ctx: ApiContext, item: 
     method: "POST",
     body: JSON.stringify(providerResourcePluginPayload(item, payload)),
   });
-  if (!resp.ok) throw new Error(await readAdminError(resp, fallbackLabel));
+  if (!resp.ok) throw new Error(await readPluginActionError(resp, action, fallbackLabel));
   return unwrapPluginActionData<T>(await resp.json());
 }
 
@@ -236,7 +236,7 @@ export async function runProviderPluginActionEnvelope<T>(ctx: ApiContext, action
     method: "POST",
     body: JSON.stringify(payload),
   });
-  if (!resp.ok) throw new Error(await readAdminError(resp, fallbackLabel));
+  if (!resp.ok) throw new Error(await readPluginActionError(resp, action, fallbackLabel));
   return await resp.json() as { data?: T; redirect_url?: string; metadata?: Record<string, string> };
 }
 
@@ -334,6 +334,40 @@ export function unwrapPluginActionData<T>(payload: unknown): T {
 
 export function providerPluginActionPath(action: PluginActionDescriptor) {
   return `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`;
+}
+
+export async function readPluginActionError(resp: Response, action: Pick<PluginActionDescriptor, "metadata"> | undefined, fallback: string) {
+  const body = await resp.clone().text().catch(() => "");
+  const code = pluginActionErrorCode(body);
+  const mapped = pluginActionErrorMessage(action, code);
+  if (mapped) return mapped;
+  return readAdminError(resp, fallback);
+}
+
+export function pluginActionErrorMessage(action: Pick<PluginActionDescriptor, "metadata"> | undefined, code: string | undefined) {
+  if (!code) return "";
+  const direct = action?.metadata?.[`error_message.${code}`]?.trim();
+  if (direct) return direct;
+  const raw = action?.metadata?.error_messages_json?.trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
+    const value = (parsed as Record<string, unknown>)[code];
+    return typeof value === "string" ? value.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function pluginActionErrorCode(body: string) {
+  if (!body) return "";
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: string } };
+    return parsed.error?.code?.trim() ?? "";
+  } catch {
+    return "";
+  }
 }
 
 function providerResourcePluginPayload(item: ProviderResource, payload: Record<string, unknown>) {
