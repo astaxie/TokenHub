@@ -6,15 +6,9 @@ type ProviderAttributionOption = {
   claudeCodeAttributionDefault?: string;
 };
 
-export function defaultProviderClaudeCodeAttributionPolicy(providerType?: string, catalogID?: string, providerTypeOptions: ProviderAttributionOption[] = []) {
+export function defaultProviderClaudeCodeAttributionPolicy(providerType?: string, _catalogID?: string, providerTypeOptions: ProviderAttributionOption[] = []) {
   const pluginDefault = normalizeClaudeCodeAttributionPolicy(providerTypeOptions.find((option) => option.value === providerType)?.claudeCodeAttributionDefault);
-  if (pluginDefault) return pluginDefault;
-  if (providerType?.trim() !== "anthropic") return claudeCodeAttributionStrip;
-  const normalizedCatalogID = catalogID?.trim().toLowerCase() ?? "";
-  if (!normalizedCatalogID || normalizedCatalogID === "custom" || normalizedCatalogID === "anthropic") {
-    return claudeCodeAttributionPreserve;
-  }
-  return claudeCodeAttributionStrip;
+  return pluginDefault || claudeCodeAttributionStrip;
 }
 
 function normalizeClaudeCodeAttributionPolicy(value?: string) {
