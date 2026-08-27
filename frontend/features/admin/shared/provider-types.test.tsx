@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerTypeAuthModes, providerTypeOptionsFromData, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
+import { providerTypeAuthModes, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
 import { providerTypeLabelFromData } from "../domain/labels";
 
@@ -113,6 +113,7 @@ describe("providerTypeOptionsFromData", () => {
 
     expect(providerTypeSupportsCustomHeaders(options, "native_subscription")).toBe(false);
     expect(providerTypeAuthModes(options, "native_subscription")).toEqual(["bearer", "x-api-key"]);
+    expect(providerTypePreferredAuthMode(options, "native_subscription")).toBe("x-api-key");
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(providerTypeSupportsCustomHeaders(options, "openai_compatible")).toBe(true);
     expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(true);
@@ -167,6 +168,7 @@ describe("providerTypeOptionsFromData", () => {
 
     expect(providerTypeSupportsCustomHeaders(options, "oauth_subscription")).toBe(false);
     expect(providerTypeAuthModes(options, "oauth_subscription")).toEqual(["oauth", "personal_access_token"]);
+    expect(providerTypePreferredAuthMode(options, "oauth_subscription")).toBe("oauth");
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
   });
 

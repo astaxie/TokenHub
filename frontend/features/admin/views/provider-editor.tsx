@@ -86,7 +86,7 @@ export function ProviderUpsertModal({
   onAccountsChanged?: () => Promise<void>;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
-  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean }>; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
+  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean; authModes?: string[]; routeProtocols?: string[] }>; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins, providerAdapters), [catalog, plugins, providerAdapters]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0];
@@ -182,7 +182,7 @@ export function ProviderUpsertModal({
   const modalRef = useRef<HTMLFormElement | null>(null);
   const preserveCatalogValuesOnReload = useRef(false);
   const loadedCustomConnection = useRef("");
-  const customConnectionKey = customUpstreamConnectionKey(values);
+  const customConnectionKey = customUpstreamConnectionKey(values, providerTypeOptions);
   const accountNameInputRef = useRef<HTMLInputElement | null>(null);
   const existingRouteModels = useMemo(
     () => new Set(routes.filter((route) => provider && route.provider_id === provider.id).map((route) => route.model_name)),
@@ -257,7 +257,7 @@ export function ProviderUpsertModal({
           values,
           mode === "edit" ? provider?.id ?? "" : "",
           modelCategory,
-          providerHeadersPayload(values.custom_headers),
+          providerHeadersPayload(values.custom_headers), providerTypeOptions,
         )),
       })
         .then(async (resp) => {

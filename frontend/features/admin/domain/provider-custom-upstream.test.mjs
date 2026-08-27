@@ -68,6 +68,21 @@ test("Anthropic discovery defaults to x-api-key while other provider types omit 
   assert.equal(providerAnthropicAuthType({ type: "openai_compatible", anthropic_auth_type: "bearer" }), "");
 });
 
+test("Anthropic discovery default follows adapter auth modes", () => {
+  const providerTypeOptions = [{ value: "anthropic", label: "Anthropic", supportsCustomHeaders: true, authModes: ["bearer"] }];
+
+  assert.equal(providerAnthropicAuthType({ type: "anthropic" }, providerTypeOptions), "bearer");
+  assert.deepEqual(customUpstreamDiscoveryPayload({ type: "anthropic" }, "", "chat", {}, providerTypeOptions), {
+    provider_id: "",
+    name: undefined,
+    type: "anthropic",
+    base_url: undefined,
+    api_key: undefined,
+    anthropic_auth_type: "bearer",
+    model_category: "chat",
+  });
+});
+
 test("changing the Anthropic auth selector invalidates the custom model cache key", () => {
   const apiKeyConnection = customUpstreamConnectionKey({
     ...bearerAnthropicValues,

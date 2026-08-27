@@ -4,7 +4,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
-import { legacyProviderTypeOptions, providerTypeAuthModes, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { legacyProviderTypeOptions, providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -67,10 +67,11 @@ export function ProviderConnectionFields({
 export function AnthropicAuthTypeField({ values, onUpdate, providerTypeOptions = [] }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[] }) {
   const authModes = providerTypeAuthModes(providerTypeOptions, values.type);
   if (authModes.length === 0) return null;
+  const authModeValue = values.anthropic_auth_type || providerTypePreferredAuthMode(providerTypeOptions, values.type);
   return (
     <label className="field">
       <span>{tx("Anthropic 认证方式")}</span>
-      <select value={values.anthropic_auth_type || "x-api-key"} onChange={(event) => onUpdate("anthropic_auth_type", event.target.value)}>
+      <select value={authModeValue} onChange={(event) => onUpdate("anthropic_auth_type", event.target.value)}>
         {authModes.map((mode) => <option key={mode} value={mode}>{providerAuthModeLabel(mode)}</option>)}
       </select>
       <small>{tx("认证密钥始终使用上面的加密 API Key，不需要写入自定义 Headers。")}</small>

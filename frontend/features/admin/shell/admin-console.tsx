@@ -607,7 +607,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setError("");
     try {
       if (modal.item) {
-        await modal.config.update?.(api, modal.item, values);
+        await modal.config.update?.(api, modal.item, values, data);
       } else {
         await modal.config.create?.(api, values, data);
       }

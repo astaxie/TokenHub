@@ -1,6 +1,11 @@
-export function providerAnthropicAuthType(values: Record<string, string>) {
+type ProviderAuthModeOption = {
+  value: string;
+  authModes?: string[];
+};
+
+export function providerAnthropicAuthType(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
   if (values.type !== "anthropic") return "";
-  return values.anthropic_auth_type || "x-api-key";
+  return values.anthropic_auth_type || preferredProviderAuthMode(providerTypeOptions, values.type) || "x-api-key";
 }
 
 const providerConnectionTestFields = new Set(["base_url", "api_key", "type", "anthropic_auth_type", "custom_headers"]);
@@ -14,6 +19,7 @@ export function customUpstreamDiscoveryPayload(
   providerID: string,
   modelCategory: string,
   headers: Record<string, unknown> = {},
+  providerTypeOptions: ProviderAuthModeOption[] = [],
 ) {
   return {
     provider_id: providerID,
@@ -22,7 +28,7 @@ export function customUpstreamDiscoveryPayload(
     base_url: values.base_url,
     api_key: values.api_key,
     ...headers,
-    anthropic_auth_type: providerAnthropicAuthType(values),
+    anthropic_auth_type: providerAnthropicAuthType(values, providerTypeOptions),
     model_category: modelCategory,
   };
 }
@@ -31,14 +37,19 @@ export function customUpstreamDiscoveryPayload(
 // Provider type and effective Anthropic auth mode affect the discovery request,
 // so changing either one must invalidate the cached list even when the Base URL
 // and API key stay the same.
-export function customUpstreamConnectionKey(values: Record<string, string>) {
+export function customUpstreamConnectionKey(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
   return JSON.stringify([
     values.base_url,
     values.api_key,
     values.type || "openai_compatible",
-    providerAnthropicAuthType(values),
+    providerAnthropicAuthType(values, providerTypeOptions),
     values.custom_headers,
   ]);
+}
+
+function preferredProviderAuthMode(providerTypeOptions: ProviderAuthModeOption[], providerType: string) {
+  const modes = providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
+  return modes.includes("x-api-key") ? "x-api-key" : modes[0] ?? "";
 }
 
 export function customUpstreamModelsVisible(

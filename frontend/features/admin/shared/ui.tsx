@@ -523,6 +523,11 @@ export function providerTypeAuthModes(providerTypeOptions: ProviderTypeOption[],
   return providerType === "anthropic" ? ["bearer", "x-api-key"] : [];
 }
 
+export function providerTypePreferredAuthMode(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  const modes = providerTypeAuthModes(providerTypeOptions, providerType);
+  return modes.includes("x-api-key") ? "x-api-key" : modes[0] ?? "";
+}
+
 function defaultProviderTypeSupportsCustomHeaders() {
   return true;
 }

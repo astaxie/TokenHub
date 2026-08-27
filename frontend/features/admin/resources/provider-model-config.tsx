@@ -41,8 +41,8 @@ export function providerConfig(): ResourceConfig<Provider> {
       ...providerReasoningFieldConfigs((values) => providerSupportsAnthropicReasoning(values.type)),
     ],
     list: (ctx) => ctx.providers,
-    create: (ctx, values) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values)),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/providers/${item.id}`, "PATCH", providerUpdatePayload(values)),
+    create: (ctx, values, data) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values, data)),
+    update: (ctx, item, values, data) => adminMutate(ctx, `/api/admin/providers/${item.id}`, "PATCH", providerUpdatePayload(values, data)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/providers/${item.id}`),
     actions: [
       {

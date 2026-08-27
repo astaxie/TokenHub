@@ -171,7 +171,7 @@ export function ProviderAPIQuickConnect({
           base_url: values.base_url,
           api_key: values.api_key,
           ...providerHeadersPayload(values.custom_headers),
-          anthropic_auth_type: providerAnthropicAuthType(values),
+          anthropic_auth_type: providerAnthropicAuthType(values, providerTypeOptions),
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));

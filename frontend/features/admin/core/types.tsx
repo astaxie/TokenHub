@@ -1219,7 +1219,7 @@ export type ResourceConfig<T> = {
   fields: FieldConfig[];
   list: (ctx: AppData) => T[];
   create?: (ctx: ApiContext, values: Record<string, string>, data?: AppData) => Promise<void>;
-  update?: (ctx: ApiContext, item: T, values: Record<string, string>) => Promise<void>;
+  update?: (ctx: ApiContext, item: T, values: Record<string, string>, data?: AppData) => Promise<void>;
   remove?: (ctx: ApiContext, item: T) => Promise<void>;
   canUpdate?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
   canRemove?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;

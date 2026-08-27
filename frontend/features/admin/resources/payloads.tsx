@@ -17,11 +17,13 @@ import { providerEgressTestPayload } from "../domain/provider-egress";
 import { providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { isProviderAccountResourceType, providerResourceAPIKeyType } from "../domain/provider-resource-types";
 import { modelPricingPeriodsInvalidPeriodError, modelPricingPeriodsJSONError, modelPricingPeriodsObjectArrayError, parseModelPricingPeriods } from "../domain/model-pricing-periods";
+import { providerTypeOptionsFromData } from "../shared/ui";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
 import { projectQuotaFields, type ProjectQuotaValues } from "../domain/project-quota";
 
-export function providerPayload(values: Record<string, string>) {
+export function providerPayload(values: Record<string, string>, data?: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">) {
+  const providerTypeOptions = data ? providerTypeOptionsFromData(data, values) : [];
   return {
     id: values.id,
     name: values.name,
@@ -33,7 +35,7 @@ export function providerPayload(values: Record<string, string>) {
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 10),
     ...providerHeadersPayload(values.custom_headers),
-    anthropic_auth_type: providerAnthropicAuthType(values),
+    anthropic_auth_type: providerAnthropicAuthType(values, providerTypeOptions),
     claude_code_attribution_policy: values.claude_code_attribution_policy || defaultProviderClaudeCodeAttributionPolicy(values.type, values.catalog_id),
     catalog_id: values.catalog_id,
     model_category: values.model_category,
@@ -53,8 +55,8 @@ function parseProviderCatalogModels(value?: string): ProviderCatalogModel[] {
   }
 }
 
-export function providerUpdatePayload(values: Record<string, string>) {
-  const payload = providerPayload(values) as Record<string, unknown>;
+export function providerUpdatePayload(values: Record<string, string>, data?: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">) {
+  const payload = providerPayload(values, data) as Record<string, unknown>;
   if (!values.api_key?.trim()) {
     delete payload.api_key;
   }
