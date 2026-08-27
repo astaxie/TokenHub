@@ -3,9 +3,13 @@ type ProviderAuthModeOption = {
   authModes?: string[];
 };
 
-export function providerAnthropicAuthType(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
-  if (values.type !== "anthropic") return "";
-  return values.anthropic_auth_type || preferredProviderAuthMode(providerTypeOptions, values.type) || "x-api-key";
+export function providerAuthMode(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
+  const providerType = values.type || "";
+  const modes = providerAuthModes(providerTypeOptions, providerType);
+  if (modes.length === 0) return "";
+  const configured = values.anthropic_auth_type?.trim();
+  if (configured && modes.includes(configured)) return configured;
+  return preferredProviderAuthMode(modes);
 }
 
 const providerConnectionTestFields = new Set(["base_url", "api_key", "type", "anthropic_auth_type", "custom_headers"]);
@@ -28,13 +32,13 @@ export function customUpstreamDiscoveryPayload(
     base_url: values.base_url,
     api_key: values.api_key,
     ...headers,
-    anthropic_auth_type: providerAnthropicAuthType(values, providerTypeOptions),
+    anthropic_auth_type: providerAuthMode(values, providerTypeOptions),
     model_category: modelCategory,
   };
 }
 
 // Identifies the upstream a custom Provider's model list was loaded from. The
-// Provider type and effective Anthropic auth mode affect the discovery request,
+// Provider type and effective auth mode affect the discovery request,
 // so changing either one must invalidate the cached list even when the Base URL
 // and API key stay the same.
 export function customUpstreamConnectionKey(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
@@ -42,13 +46,18 @@ export function customUpstreamConnectionKey(values: Record<string, string>, prov
     values.base_url,
     values.api_key,
     values.type || "openai_compatible",
-    providerAnthropicAuthType(values, providerTypeOptions),
+    providerAuthMode(values, providerTypeOptions),
     values.custom_headers,
   ]);
 }
 
-function preferredProviderAuthMode(providerTypeOptions: ProviderAuthModeOption[], providerType: string) {
+function providerAuthModes(providerTypeOptions: ProviderAuthModeOption[], providerType: string) {
   const modes = providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
+  if (modes.length > 0) return modes;
+  return providerType === "anthropic" ? ["bearer", "x-api-key"] : [];
+}
+
+function preferredProviderAuthMode(modes: string[]) {
   return modes.includes("x-api-key") ? "x-api-key" : modes[0] ?? "";
 }
 

@@ -7,7 +7,7 @@ const {
   customUpstreamDiscoveryPayload,
   customUpstreamModelsAreCurrent,
   customUpstreamModelsVisible,
-  providerAnthropicAuthType,
+  providerAuthMode,
   providerConnectionTestRunAfterUpdate,
 } = await importTypeScript(new URL("./provider-custom-upstream.ts", import.meta.url));
 
@@ -64,14 +64,14 @@ test("discovery includes custom header payloads", () => {
 });
 
 test("Anthropic discovery defaults to x-api-key while other provider types omit the mode", () => {
-  assert.equal(providerAnthropicAuthType({ type: "anthropic" }), "x-api-key");
-  assert.equal(providerAnthropicAuthType({ type: "openai_compatible", anthropic_auth_type: "bearer" }), "");
+  assert.equal(providerAuthMode({ type: "anthropic" }), "x-api-key");
+  assert.equal(providerAuthMode({ type: "openai_compatible", anthropic_auth_type: "bearer" }), "");
 });
 
 test("Anthropic discovery default follows adapter auth modes", () => {
   const providerTypeOptions = [{ value: "anthropic", label: "Anthropic", supportsCustomHeaders: true, authModes: ["bearer"] }];
 
-  assert.equal(providerAnthropicAuthType({ type: "anthropic" }, providerTypeOptions), "bearer");
+  assert.equal(providerAuthMode({ type: "anthropic" }, providerTypeOptions), "bearer");
   assert.deepEqual(customUpstreamDiscoveryPayload({ type: "anthropic" }, "", "chat", {}, providerTypeOptions), {
     provider_id: "",
     name: undefined,
@@ -79,6 +79,22 @@ test("Anthropic discovery default follows adapter auth modes", () => {
     base_url: undefined,
     api_key: undefined,
     anthropic_auth_type: "bearer",
+    model_category: "chat",
+  });
+});
+
+test("plugin provider discovery follows descriptor auth modes", () => {
+  const providerTypeOptions = [{ value: "subscription_provider", label: "Subscription Provider", supportsCustomHeaders: true, authModes: ["oauth", "x-api-key"] }];
+
+  assert.equal(providerAuthMode({ type: "subscription_provider" }, providerTypeOptions), "x-api-key");
+  assert.equal(providerAuthMode({ type: "subscription_provider", anthropic_auth_type: "oauth" }, providerTypeOptions), "oauth");
+  assert.deepEqual(customUpstreamDiscoveryPayload({ type: "subscription_provider" }, "", "chat", {}, providerTypeOptions), {
+    provider_id: "",
+    name: undefined,
+    type: "subscription_provider",
+    base_url: undefined,
+    api_key: undefined,
+    anthropic_auth_type: "x-api-key",
     model_category: "chat",
   });
 });

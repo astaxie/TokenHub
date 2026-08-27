@@ -4,7 +4,7 @@ import { type AdminUIContribution, type ApiContext, type ProviderCatalogEntry, t
 import { providerTypeLabel } from "../domain/labels";
 import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
 import { formatModelPrice } from "../domain/formatting";
-import { providerAnthropicAuthType, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
+import { providerAuthMode, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { legacyProviderTypeOptions, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
@@ -171,7 +171,7 @@ export function ProviderAPIQuickConnect({
           base_url: values.base_url,
           api_key: values.api_key,
           ...providerHeadersPayload(values.custom_headers),
-          anthropic_auth_type: providerAnthropicAuthType(values, providerTypeOptions),
+          anthropic_auth_type: providerAuthMode(values, providerTypeOptions),
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));
