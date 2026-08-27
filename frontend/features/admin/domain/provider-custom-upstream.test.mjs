@@ -7,8 +7,10 @@ const {
   customUpstreamDiscoveryPayload,
   customUpstreamModelsAreCurrent,
   customUpstreamModelsVisible,
+  defaultProviderTypeValue,
   providerAuthMode,
   providerConnectionTestRunAfterUpdate,
+  providerTypeValue,
 } = await importTypeScript(new URL("./provider-custom-upstream.ts", import.meta.url));
 
 const bearerAnthropicValues = {
@@ -99,6 +101,23 @@ test("plugin provider discovery follows descriptor auth modes", () => {
     base_url: undefined,
     api_key: undefined,
     anthropic_auth_type: "x-api-key",
+    model_category: "chat",
+  });
+});
+
+test("provider type defaults prefer plugin metadata before the legacy fallback", () => {
+  const pluginOnlyProviderTypes = [{ value: "native_subscription", label: "Native Subscription", supportsCustomHeaders: false }];
+
+  assert.equal(defaultProviderTypeValue(pluginOnlyProviderTypes), "native_subscription");
+  assert.equal(providerTypeValue({}, pluginOnlyProviderTypes), "native_subscription");
+  assert.equal(providerTypeValue({ type: "explicit_provider" }, pluginOnlyProviderTypes), "explicit_provider");
+  assert.deepEqual(customUpstreamDiscoveryPayload({}, "", "chat", {}, pluginOnlyProviderTypes), {
+    provider_id: "",
+    name: undefined,
+    type: "native_subscription",
+    base_url: undefined,
+    api_key: undefined,
+    anthropic_auth_type: "",
     model_category: "chat",
   });
 });

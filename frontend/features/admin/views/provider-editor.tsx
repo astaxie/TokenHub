@@ -9,7 +9,7 @@ import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/fo
 import { providerTypeLabelFromData } from "../domain/labels";
 import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
-import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, providerAuthMode } from "../domain/provider-custom-upstream";
+import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
@@ -114,6 +114,7 @@ export function ProviderUpsertModal({
         ?? selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, initialCategory))
         ?? selectableProviderCatalog.find((entry) => entry.id === "custom")
         ?? selectableProviderCatalog[0];
+  const initialProviderType = mode === "edit" ? provider?.type ?? defaultProviderTypeValue(providerTypeOptions) : initialEntry?.type ?? defaultProviderTypeValue(providerTypeOptions);
   const [modelCategory, setModelCategory] = useState(initialCategory);
   const [catalogID, setCatalogID] = useState(initialEntry?.id ?? "custom");
   const selectedCatalogIsAccountProvider = useMemo(() => accountProviderCatalogOptions.some((entry) => entry.id === catalogID), [accountProviderCatalogOptions, catalogID]);
@@ -131,15 +132,15 @@ export function ProviderUpsertModal({
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
     name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name ?? "",
-    type: mode === "edit" ? provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible",
+    type: initialProviderType,
     base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     clear_api_key: "false",
-    anthropic_auth_type: provider?.options?.auth_mode ?? provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: mode === "edit" ? provider?.type ?? "openai_compatible" : initialEntry?.type ?? "openai_compatible" }, providerTypeOptions),
+    anthropic_auth_type: provider?.options?.auth_mode ?? provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: initialProviderType }, providerTypeOptions),
     priority: String(provider?.priority ?? 10),
     claude_code_attribution_policy: mode === "edit"
       ? provider?.options?.claude_code_attribution_policy ?? "preserve"
-      : defaultProviderClaudeCodeAttributionPolicy(initialEntry?.type ?? "openai_compatible", initialEntry?.id ?? "custom", providerTypeOptions),
+      : defaultProviderClaudeCodeAttributionPolicy(initialProviderType, initialEntry?.id ?? "custom", providerTypeOptions),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
     custom_headers: providerHeadersFormValue(provider?.headers, provider?.sensitive_headers),
@@ -223,13 +224,12 @@ export function ProviderUpsertModal({
     preserveCatalogValuesOnReload.current = false;
     if (!preserveCatalogValues) setModelQuery("");
     setModelError("");
-    // A custom Provider has no template: its name, type and Base URL are the
-    // operator's own input, so reloading its models must not rewrite them.
+    // A custom Provider has no template, so model reloads must not rewrite operator input.
     if (entry && mode === "create" && !preserveCatalogValues && catalogID !== "custom") {
       setValues((current) => ({
         ...current,
         name: entry.display_name || entry.name || current.name,
-        type: entry.type || current.type || "openai_compatible",
+        type: entry.type || providerTypeValue(current, providerTypeOptions),
         base_url: entry.base_url ?? "",
       }));
     }
@@ -299,7 +299,7 @@ export function ProviderUpsertModal({
           setValues((current) => ({
             ...current,
             name: payload.data.display_name || payload.data.name || current.name,
-            type: payload.data.type || current.type || "openai_compatible",
+            type: payload.data.type || providerTypeValue(current, providerTypeOptions),
             base_url: payload.data.base_url ?? "",
           }));
         }
@@ -867,7 +867,7 @@ export function ProviderUpsertModal({
       ...current,
       id: mode === "create" ? "" : current.id,
       name: mode === "create" ? entry.display_name || entry.name || current.name : current.name,
-      type: entry.type || current.type || "openai_compatible",
+      type: entry.type || providerTypeValue(current, providerTypeOptions),
       base_url: mode === "create" ? entry.base_url ?? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
       claude_code_attribution_policy: mode === "create"
@@ -891,7 +891,7 @@ export function ProviderUpsertModal({
       ...current,
       id: mode === "create" ? "" : current.id,
       name: mode === "create" ? "" : current.name,
-      type: current.type || "openai_compatible",
+      type: providerTypeValue(current, providerTypeOptions),
       base_url: mode === "create" ? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
       claude_code_attribution_policy: mode === "create"
@@ -1181,7 +1181,7 @@ export function ProviderUpsertModal({
                 ) : (
                   <span>{selectedEntry?.display_name || selectedEntry?.name || tx("请选择渠道商")}</span>
                 )}
-                <em>{providerTypeLabel(selectedEntry?.type || values.type || "openai_compatible")}</em>
+                <em>{providerTypeLabel(selectedEntry?.type || providerTypeValue(values, providerTypeOptions))}</em>
               </div>
             ) : null}
             {mode === "edit" ? (
@@ -1281,7 +1281,7 @@ export function ProviderUpsertModal({
                   <div className="wizard-review-grid provider-create-review">
                     <ReviewItem label={credentialMode === "account_integration" ? "模型协议" : "模型类型"} value={modelCategoryLabel(modelCategory)} />
                     <ReviewItem label={credentialMode === "account_integration" ? "默认通道" : "渠道商"} value={selectedEntry?.display_name || selectedEntry?.name || "-"} />
-                    <ReviewItem label={credentialMode === "account_integration" ? "兼容协议" : "渠道商类型"} value={providerTypeLabel(selectedEntry?.type || values.type || "openai_compatible")} />
+                    <ReviewItem label={credentialMode === "account_integration" ? "兼容协议" : "渠道商类型"} value={providerTypeLabel(selectedEntry?.type || providerTypeValue(values, providerTypeOptions))} />
                     <ReviewItem label="可引入模型" value={effectiveDetail ? `${models.length}/${effectiveDetail.models_count}` : accountProviderCatalogError || tx("加载中")} />
                   </div>
                 ) : null}

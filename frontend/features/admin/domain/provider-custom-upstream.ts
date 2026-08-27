@@ -3,8 +3,18 @@ type ProviderAuthModeOption = {
   authModes?: string[];
 };
 
+const legacyProviderTypeFallback = "openai_compatible";
+
+export function defaultProviderTypeValue(providerTypeOptions: ProviderAuthModeOption[] = []) {
+  return providerTypeOptions.find((option) => option.value === legacyProviderTypeFallback)?.value ?? providerTypeOptions[0]?.value ?? legacyProviderTypeFallback;
+}
+
+export function providerTypeValue(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
+  return values.type || defaultProviderTypeValue(providerTypeOptions);
+}
+
 export function providerAuthMode(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
-  const providerType = values.type || "";
+  const providerType = providerTypeValue(values, providerTypeOptions);
   const modes = providerAuthModes(providerTypeOptions, providerType);
   if (modes.length === 0) return "";
   const configured = values.anthropic_auth_type?.trim();
@@ -28,7 +38,7 @@ export function customUpstreamDiscoveryPayload(
   return {
     provider_id: providerID,
     name: values.name,
-    type: values.type || "openai_compatible",
+    type: providerTypeValue(values, providerTypeOptions),
     base_url: values.base_url,
     api_key: values.api_key,
     ...headers,
@@ -45,7 +55,7 @@ export function customUpstreamConnectionKey(values: Record<string, string>, prov
   return JSON.stringify([
     values.base_url,
     values.api_key,
-    values.type || "openai_compatible",
+    providerTypeValue(values, providerTypeOptions),
     providerAuthMode(values, providerTypeOptions),
     values.custom_headers,
   ]);
