@@ -10,6 +10,7 @@ import (
 type builtinProviderAdapter struct {
 	providerType                 string
 	adapter                      any
+	supportsCustomHeaders        *bool
 	credentialsScope             string
 	routeRequiresResource        bool
 	sessionAffinityKind          string
@@ -89,6 +90,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
 		providerType:          ProviderOpenAICodex,
 		adapter:               codexSubscription,
+		supportsCustomHeaders: boolPointer(false),
 		credentialsScope:      providerCredentialsScopeResource,
 		routeRequiresResource: true,
 		sessionAffinityKind:   AffinityKindCodexSession,
@@ -126,8 +128,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.azure-openai", "Azure OpenAI", builtinProviderAdapter{
-		providerType: ProviderAzureOpenAI,
-		adapter:      adapters[ProviderAzureOpenAI],
+		providerType:          ProviderAzureOpenAI,
+		adapter:               adapters[ProviderAzureOpenAI],
+		supportsCustomHeaders: boolPointer(false),
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"azure-openai",
 			"Azure OpenAI",
@@ -272,6 +275,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 		capabilities = append(capabilities, string(capability))
 	}
 	descriptor := pluginmeta.BuiltInProviderWithResourceTypeMetadata(pluginID, name, []string{adapter.providerType}, adapter.resourceTypes, capabilities)
+	if adapter.supportsCustomHeaders != nil {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "supports_custom_headers",
+			Subject: adapter.providerType,
+			Value:   boolString(*adapter.supportsCustomHeaders),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
 	if adapter.routeRequiresResource {
 		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
 			Kind:    "provider_policy",
@@ -379,4 +391,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 		}
 	}
 	return descriptor
+}
+
+func boolPointer(value bool) *bool {
+	return &value
+}
+
+func boolString(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }

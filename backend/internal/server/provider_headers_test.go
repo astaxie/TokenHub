@@ -15,11 +15,6 @@ import (
 
 type providerHeaderPolicyTestAdapter struct {
 	MockAdapter
-	supportsHeaders bool
-}
-
-func (adapter providerHeaderPolicyTestAdapter) SupportsProviderHeaders() bool {
-	return adapter.supportsHeaders
 }
 
 func TestNormalizeProviderHeadersAndMergeResourceOverrides(t *testing.T) {
@@ -57,14 +52,22 @@ func TestAdminProviderHeadersUseAdapterDeclaredPolicy(t *testing.T) {
 	store := NewMemoryStore()
 	server := New(store)
 	const providerType = "no_headers_plugin"
-	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(
+	descriptor := pluginmeta.BuiltInProvider(
 		"tokenhub.provider.no-headers",
 		"No Headers Provider",
 		[]string{providerType},
 		[]string{string(AdapterCapabilityChat)},
-	), AdapterRegistration{
+	)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "supports_custom_headers",
+		Subject: providerType,
+		Value:   "false",
+	})
+	descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
 		Type:         providerType,
-		Adapter:      providerHeaderPolicyTestAdapter{supportsHeaders: false},
+		Adapter:      providerHeaderPolicyTestAdapter{},
 		Capabilities: []AdapterCapability{AdapterCapabilityChat},
 	}); err != nil {
 		t.Fatalf("register provider plugin: %v", err)
@@ -131,13 +134,24 @@ func TestAdminProviderHeadersUseAdapterDeclaredPolicy(t *testing.T) {
 	}
 }
 
-func TestProviderHeaderValidationTrustsRegisteredAdapterPolicy(t *testing.T) {
+func TestProviderHeaderValidationUsesPluginPolicyInsteadOfAdapterType(t *testing.T) {
 	registry := NewAdapterRegistry()
-	registry.Register(ProviderOpenAICodex, providerHeaderPolicyTestAdapter{supportsHeaders: true}, AdapterCapabilityChat)
+	const providerType = "descriptor_no_headers"
+	descriptor := pluginmeta.BuiltInProvider("tokenhub.provider.descriptor-no-headers", "Descriptor No Headers", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "supports_custom_headers",
+		Subject: providerType,
+		Value:   "false",
+	})
+	descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{Type: providerType, Adapter: providerHeaderPolicyTestAdapter{}, Capabilities: []AdapterCapability{AdapterCapabilityChat}}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
 
-	err := validateProviderHeaderSupportWithRegistry(registry, ProviderOpenAICodex, map[string]string{"X-Tenant": "tenant-one"})
-	if err != nil {
-		t.Fatalf("registered adapter policy should allow headers: %v", err)
+	err := validateProviderHeaderSupportWithRegistry(registry, providerType, map[string]string{"X-Tenant": "tenant-one"})
+	if AsHTTPError(err).Code != "provider_headers_unsupported" {
+		t.Fatalf("header validation error = %v", err)
 	}
 }
 

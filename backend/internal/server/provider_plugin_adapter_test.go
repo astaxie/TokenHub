@@ -265,11 +265,11 @@ printf '{"response":{},"usage":{}}'
 	if len(protocols) != 1 || protocols[0] != "native/messages" {
 		t.Fatalf("route protocols = %v", protocols)
 	}
-	policyer, ok := resolveTypedAdapter[ProviderHeaderPolicyer](registry, "native_stdio")
+	descriptor, ok := registry.Describe("native_stdio")
 	if !ok {
-		t.Fatal("external provider adapter was not a ProviderHeaderPolicyer")
+		t.Fatal("external provider descriptor was not registered")
 	}
-	if policyer.SupportsProviderHeaders() {
+	if descriptor.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("provider header policy was not loaded from manifest")
 	}
 	if err := validateProviderHeaderSupportWithRegistry(registry, "native_stdio", map[string]string{"X-Tenant": "tenant"}); AsHTTPError(err).Code != "provider_headers_unsupported" {

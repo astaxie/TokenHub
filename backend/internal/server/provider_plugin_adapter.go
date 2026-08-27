@@ -20,7 +20,6 @@ type providerPluginAdapter struct {
 	command                 string
 	timeout                 time.Duration
 	routeProtocols          []string
-	supportsProviderHeaders bool
 	supportsChatStream      bool
 	supportsResponsesStream bool
 	supportsImageGenerate   bool
@@ -89,7 +88,6 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 		command:                 pkg.Manifest.Entry.Backend.Command,
 		timeout:                 providerPluginCommandTimeout,
 		routeProtocols:          providerPluginRouteProtocols(pkg.Manifest),
-		supportsProviderHeaders: providerPluginSupportsCustomHeaders(pkg.Manifest),
 		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
 		supportsResponsesStream: providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityResponseStream),
 		supportsImageGenerate:   providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityImageGenerate),
@@ -99,10 +97,6 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 
 func (a providerPluginAdapter) RouteProtocols() []string {
 	return append([]string(nil), a.routeProtocols...)
-}
-
-func (a providerPluginAdapter) SupportsProviderHeaders() bool {
-	return a.supportsProviderHeaders
 }
 
 func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -317,14 +311,24 @@ func registerExternalProviderPluginAdapters(registry *AdapterRegistry, packages 
 		if len(capabilities) == 0 {
 			continue
 		}
-		adapter := newProviderPluginAdapter(pkg)
 		descriptor := pkg.Manifest.Descriptor()
+		adapter := newProviderPluginAdapter(pkg)
+		registrations := []AdapterRegistration{}
 		for _, providerType := range pkg.Manifest.Capabilities.ProviderTypes {
 			providerType = strings.TrimSpace(providerType)
 			if providerType == "" {
 				continue
 			}
-			registry.register(providerType, adapter, descriptor.ID, capabilities...)
+			registrations = append(registrations, AdapterRegistration{
+				Type:         providerType,
+				Adapter:      adapter,
+				Capabilities: capabilities,
+			})
+		}
+		if len(registrations) > 0 {
+			if err := registry.RegisterPlugin(descriptor, registrations...); err != nil {
+				continue
+			}
 		}
 	}
 }
@@ -407,13 +411,6 @@ func normalizedProviderPluginProtocols(protocols []string) []string {
 	}
 	sort.Strings(normalized)
 	return normalized
-}
-
-func providerPluginSupportsCustomHeaders(manifest pluginmeta.Manifest) bool {
-	if manifest.Capabilities.Provider.SupportsCustomHeaders == nil {
-		return true
-	}
-	return *manifest.Capabilities.Provider.SupportsCustomHeaders
 }
 
 func providerPluginCredentialsFromRuntime(provider Provider, resource *ProviderResource) providerPluginCredentials {

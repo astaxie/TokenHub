@@ -83,10 +83,6 @@ type ProviderRouteProtocoler interface {
 	RouteProtocols() []string
 }
 
-type ProviderHeaderPolicyer interface {
-	SupportsProviderHeaders() bool
-}
-
 type ResponsesCompactAdapter interface {
 	CompactWithHeaders(ctx context.Context, provider Provider, providerModel string, body map[string]json.RawMessage, incoming http.Header) (any, Usage, error)
 }
@@ -438,10 +434,6 @@ type AzureOpenAIAdapter struct {
 	// Streaming calls fall back to Client when it is unset.
 	StreamClient      *http.Client
 	StreamIdleTimeout time.Duration
-}
-
-func (a AzureOpenAIAdapter) SupportsProviderHeaders() bool {
-	return false
 }
 
 func (a AzureOpenAIAdapter) core() openAICompatibleCore {

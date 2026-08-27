@@ -208,8 +208,8 @@ func adapterAuthModes(registry *AdapterRegistry, providerType string) []string {
 }
 
 func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType string) bool {
-	if policyer, ok := resolveTypedAdapter[ProviderHeaderPolicyer](registry, providerType); ok {
-		return policyer.SupportsProviderHeaders()
+	if value, ok := providerPolicyBoolCapability(registry, providerType, "supports_custom_headers"); ok {
+		return value
 	}
 	return defaultProviderTypeSupportsHeaders(providerType)
 }

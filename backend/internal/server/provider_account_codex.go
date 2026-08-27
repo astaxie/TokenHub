@@ -49,10 +49,6 @@ type CodexSubscriptionAdapter struct {
 	MaxRequestRetries  int
 }
 
-func (a CodexSubscriptionAdapter) SupportsProviderHeaders() bool {
-	return false
-}
-
 func (a *CodexSubscriptionAdapter) RouteProtocols() []string {
 	return []string{
 		providerRouteProtocolCodexResponses,
