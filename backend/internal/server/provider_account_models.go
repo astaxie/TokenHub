@@ -559,8 +559,6 @@ func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, r
 
 func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []RouteSelection) ([]RouteSelection, error) {
 	filtered := make([]RouteSelection, 0, len(routes))
-	filteredByAccountModels := false
-	codexOnly := true
 
 	for _, route := range routes {
 		if route.Resource == nil || !s.store.IsProviderAccountResourceType(route.Provider.Type, route.Resource.ResourceType) {
@@ -574,10 +572,6 @@ func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []R
 			filtered = append(filtered, route)
 			continue
 		}
-		filteredByAccountModels = true
-		if !isOpenAIAccountResource(route.Resource.ResourceType) {
-			codexOnly = false
-		}
 		upstreamModel := firstNonEmpty(route.ProviderModel, modelName)
 		if providerResourceModelInList(upstreamModel, cachedModels) {
 			filtered = append(filtered, route)
@@ -587,17 +581,10 @@ func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []R
 	if len(filtered) > 0 {
 		return filtered, nil
 	}
-	if filteredByAccountModels && !codexOnly {
-		return nil, NewHTTPError(
-			http.StatusServiceUnavailable,
-			"provider_resource_model_unavailable",
-			fmt.Sprintf("No connected provider account supports model %q", strings.TrimSpace(modelName)),
-		)
-	}
 	return nil, NewHTTPError(
 		http.StatusServiceUnavailable,
-		"codex_model_unavailable",
-		fmt.Sprintf("No connected Codex account supports model %q", strings.TrimSpace(modelName)),
+		"provider_resource_model_unavailable",
+		fmt.Sprintf("No connected provider account supports model %q", strings.TrimSpace(modelName)),
 	)
 }
 
