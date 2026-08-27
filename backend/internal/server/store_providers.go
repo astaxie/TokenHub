@@ -417,9 +417,7 @@ func (s *GormStore) setProviderImageCapabilityRouteProfiles(profiles []providerI
 }
 
 func (s *GormStore) providerImageCapabilityRouteProfiles() []providerImageCapabilityRouteProfile {
-	profiles := []providerImageCapabilityRouteProfile{codexImageCapabilityRouteProfile()}
-	profiles = append(profiles, s.imageCapabilityProfiles...)
-	return dedupeProviderImageCapabilityRouteProfiles(profiles)
+	return dedupeProviderImageCapabilityRouteProfiles(s.imageCapabilityProfiles)
 }
 
 func (s *GormStore) providerImageCapabilityRouteProfilesForResource(provider Provider, resource ProviderResource) []providerImageCapabilityRouteProfile {

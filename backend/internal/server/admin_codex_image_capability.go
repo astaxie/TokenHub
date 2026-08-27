@@ -330,7 +330,7 @@ func providerImageCapabilityRouteProfilesForBackfill(store Store) []providerImag
 	if reader, ok := store.(providerImageCapabilityRouteProfileReader); ok {
 		return reader.providerImageCapabilityRouteProfiles()
 	}
-	return []providerImageCapabilityRouteProfile{codexImageCapabilityRouteProfile()}
+	return nil
 }
 
 func backfillProviderImageCapabilityRoutesForProfile(store Store, profile providerImageCapabilityRouteProfile) {

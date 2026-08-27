@@ -697,6 +697,7 @@ func TestImageAdmissionAndJobCreationRollbackTogether(t *testing.T) {
 
 func TestCodexImageVirtualModelRequiresSupportedSubscriptionAccount(t *testing.T) {
 	store := NewMemoryStore()
+	syncBuiltInImageCapabilityProfilesForTest(store)
 	project := store.CreateProject(Project{Name: "Codex Image Model Project"})
 	key, _, err := store.CreateAPIKey(project.ID, APIKey{
 		Name:    "codex-image-model-key",

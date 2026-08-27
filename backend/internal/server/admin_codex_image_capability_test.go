@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestAdminCodexImageCapabilityTestsOnceAndManagesRoute(t *testing.T) {
@@ -273,6 +275,7 @@ func TestAdminCodexImageCapabilityInvalidatesReplacementCredentials(t *testing.T
 
 func TestAdminCodexImageCapabilityReplacementScopesRouteInvalidation(t *testing.T) {
 	store := NewMemoryStore()
+	syncBuiltInImageCapabilityProfilesForTest(store)
 	provider := store.AddProvider(Provider{ID: "prv_codex_route_scope", Name: "Codex Route Scope", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
 	newAccount := func(id, group string) ProviderResource {
 		resource, err := store.AddProviderResource(ProviderResource{
@@ -694,6 +697,25 @@ func TestProviderImageRouteBackfillUsesPluginProfiles(t *testing.T) {
 	if resource.Options[profile.RouteBackfillOption] != profile.RouteBackfillValue {
 		t.Fatalf("plugin backfill completion was not recorded: %+v", resource.Options)
 	}
+}
+
+func TestProviderImageRouteProfilesComeFromPluginSync(t *testing.T) {
+	store := NewMemoryStore()
+	if profiles := store.providerImageCapabilityRouteProfiles(); len(profiles) != 0 {
+		t.Fatalf("store image profiles = %+v, want none before plugin sync", profiles)
+	}
+
+	syncBuiltInImageCapabilityProfilesForTest(store)
+	profiles := store.providerImageCapabilityRouteProfiles()
+	if len(profiles) != 1 || profiles[0].ProviderType != ProviderOpenAICodex || profiles[0].PublicModel != codexImageModelName {
+		t.Fatalf("store image profiles = %+v, want Codex profile from plugin action metadata", profiles)
+	}
+}
+
+func syncBuiltInImageCapabilityProfilesForTest(store *GormStore) {
+	store.setProviderImageCapabilityRouteProfiles(providerImageCapabilityRouteProfilesFromActions([]pluginmeta.ActionDescriptor{
+		openAICodexImageCapabilityActionDescriptor(),
+	}))
 }
 
 func newCodexImageCapabilityTestServer(t *testing.T, baseURL string) (*GormStore, *Server, ProviderResource) {
