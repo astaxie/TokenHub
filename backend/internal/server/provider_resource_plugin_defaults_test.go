@@ -53,6 +53,67 @@ func TestProviderResourceUsesPluginResourceTypeDefaultBaseURL(t *testing.T) {
 	}
 }
 
+func TestProviderResourceTypeDefaultsAreScopedByProviderType(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	for _, tc := range []struct {
+		pluginID     string
+		providerType string
+		authType     string
+		baseURL      string
+	}{
+		{"tokenhub.provider.alpha", "alpha_subscription", "alpha_oauth", "https://alpha.example/v1"},
+		{"tokenhub.provider.beta", "beta_subscription", "beta_oauth", "https://beta.example/v1"},
+	} {
+		if err := registry.RegisterPlugin(pluginmeta.BuiltInProviderWithResourceTypeMetadata(
+			tc.pluginID,
+			tc.providerType,
+			[]string{tc.providerType},
+			[]pluginmeta.ManifestProviderResourceType{{
+				Type: "oauth_account",
+				Defaults: map[string]string{
+					"auth_type": tc.authType,
+					"base_url":  tc.baseURL,
+				},
+			}},
+			nil,
+		), AdapterRegistration{Type: tc.providerType, Adapter: MockAdapter{}}); err != nil {
+			t.Fatalf("register %s plugin: %v", tc.providerType, err)
+		}
+	}
+	store := NewMemoryStore()
+	configureProviderResourceTypeDefaults(store, registry)
+	alphaProvider := store.AddProvider(Provider{
+		ID: "prv_alpha", Name: "Alpha", Type: "alpha_subscription",
+		Status: StatusActive, Healthy: true,
+	})
+	betaProvider := store.AddProvider(Provider{
+		ID: "prv_beta", Name: "Beta", Type: "beta_subscription",
+		Status: StatusActive, Healthy: true,
+	})
+
+	alpha, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_alpha", ProviderID: alphaProvider.ID, Name: "Alpha Account",
+		ResourceType: "oauth_account", APIKey: "alpha-access",
+	})
+	if err != nil {
+		t.Fatalf("create alpha resource: %v", err)
+	}
+	beta, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_beta", ProviderID: betaProvider.ID, Name: "Beta Account",
+		ResourceType: "oauth_account", APIKey: "beta-access",
+	})
+	if err != nil {
+		t.Fatalf("create beta resource: %v", err)
+	}
+
+	if alpha.BaseURL != "https://alpha.example/v1" || alpha.CredentialSummary["auth_type"] != "alpha_oauth" {
+		t.Fatalf("alpha resource = %+v, want alpha-scoped defaults", alpha)
+	}
+	if beta.BaseURL != "https://beta.example/v1" || beta.CredentialSummary["auth_type"] != "beta_oauth" {
+		t.Fatalf("beta resource = %+v, want beta-scoped defaults", beta)
+	}
+}
+
 func TestProviderResourceAccountClassificationUsesPluginMetadata(t *testing.T) {
 	store := NewMemoryStore()
 	store.ConfigureProviderResourceTypePolicy(map[string][]string{
@@ -270,7 +331,7 @@ func TestProviderResourceCredentialIdentityProfilesFromRegistry(t *testing.T) {
 	}
 
 	profiles := providerResourceCredentialIdentityProfilesFromRegistry(registry)
-	if profiles["profiled_account"] != providerResourceIdentityProfileOpenAIIDToken {
+	if profiles[providerResourceScopedKey("profiled_provider", "profiled_account")] != providerResourceIdentityProfileOpenAIIDToken {
 		t.Fatalf("registry credential identity profiles = %+v", profiles)
 	}
 }
@@ -291,7 +352,7 @@ func TestProviderResourceCredentialInputOptionalFromRegistry(t *testing.T) {
 	}
 
 	resourceTypes := providerResourceCredentialInputOptionalFromRegistry(registry)
-	if !resourceTypes["optional_account"] {
+	if !resourceTypes[providerResourceScopedKey("optional_provider", "optional_account")] {
 		t.Fatalf("registry optional credential input resource types = %+v", resourceTypes)
 	}
 }

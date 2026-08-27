@@ -299,7 +299,7 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	if err := ensureProviderResourceAdapterCompatibility(s.db, &provider, resource.ResourceType); err != nil {
 		return ProviderResource{}, err
 	}
-	s.applyProviderResourceTypeDefaults(&resource)
+	s.applyProviderResourceTypeDefaults(provider.Type, &resource)
 	resource.Name = strings.TrimSpace(resource.Name)
 	// routeSelection lets a non-empty resource BaseURL override the provider's
 	// validated one, so resource-level URLs must pass the same SSRF guard at
@@ -504,11 +504,11 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
 	}
 	before := resource
-	beforeCredentials := s.providerResourceCredentialsForRuntime(before)
 	var beforeProvider Provider
 	if err := db.First(&beforeProvider, "id = ?", before.ProviderID).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 	}
+	beforeCredentials := s.providerResourceCredentialsForRuntimeForProvider(beforeProvider.Type, before)
 	beforeImageCapabilityProfiles := s.providerImageCapabilityRouteProfilesForResource(beforeProvider, before)
 	beforeImageCapabilities := make(map[string]string, len(beforeImageCapabilityProfiles))
 	for _, profile := range beforeImageCapabilityProfiles {
@@ -537,7 +537,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		resource.ResourceType = patch.ResourceType
 	}
 	resource.BaseURL = patch.BaseURL
-	s.applyProviderResourceTypeDefaults(&resource)
+	s.applyProviderResourceTypeDefaults(provider.Type, &resource)
 	// Same SSRF persistence guard as AddProviderResource: an empty value
 	// clears the override (the provider URL applies again), a non-empty one
 	// must be a routable upstream.
@@ -591,7 +591,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	}
 	resource.UpdatedAt = time.Now().UTC()
 	s.prepareProviderResourceForUpdate(provider.Type, &resource, patch)
-	afterCredentials := s.providerResourceCredentialsForRuntime(resource)
+	afterCredentials := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
 	imageCapabilityProfiles := mergeProviderImageCapabilityRouteProfiles(
 		beforeImageCapabilityProfiles,
 		s.providerImageCapabilityRouteProfilesForResource(provider, resource),
@@ -912,7 +912,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
 			continue
 		}
-		s.applyProviderResourceTypeDefaults(&resource)
+		s.applyProviderResourceTypeDefaults(provider.Type, &resource)
 		// Same SSRF persistence guard as AddProviderResource: a rejected row
 		// fails the row, not the whole import, matching the per-row contract.
 		if err := ValidateProviderUpstreamBaseURL(resource.BaseURL); err != nil {

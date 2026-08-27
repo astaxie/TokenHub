@@ -129,15 +129,17 @@ func providerResourceTypeDefaultsFromRegistry(registry *AdapterRegistry) map[str
 	}
 	defaults := map[string]map[string]string{}
 	for _, descriptor := range registry.List() {
+		providerType := strings.ToLower(strings.TrimSpace(descriptor.Type))
 		for _, resourceType := range descriptor.ResourceTypes {
 			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
 			if resourceTypeName == "" || len(resourceType.Defaults) == 0 {
 				continue
 			}
-			if _, exists := defaults[resourceTypeName]; exists && !resourceType.Default {
+			key := providerResourceScopedKey(providerType, resourceTypeName)
+			if _, exists := defaults[key]; exists && !resourceType.Default {
 				continue
 			}
-			defaults[resourceTypeName] = cloneStringMap(resourceType.Defaults)
+			defaults[key] = cloneStringMap(resourceType.Defaults)
 		}
 	}
 	return defaults
@@ -196,13 +198,14 @@ func providerResourceCredentialIdentityProfilesFromRegistry(registry *AdapterReg
 	}
 	profiles := map[string]string{}
 	for _, descriptor := range registry.List() {
+		providerType := strings.ToLower(strings.TrimSpace(descriptor.Type))
 		for _, resourceType := range descriptor.ResourceTypes {
 			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
 			profile := strings.ToLower(strings.TrimSpace(resourceType.CredentialIdentityProfile))
 			if resourceTypeName == "" || profile == "" {
 				continue
 			}
-			profiles[resourceTypeName] = profile
+			profiles[providerResourceScopedKey(providerType, resourceTypeName)] = profile
 		}
 	}
 	return profiles
@@ -214,10 +217,11 @@ func providerResourceCredentialInputOptionalFromRegistry(registry *AdapterRegist
 	}
 	resourceTypes := map[string]bool{}
 	for _, descriptor := range registry.List() {
+		providerType := strings.ToLower(strings.TrimSpace(descriptor.Type))
 		for _, resourceType := range descriptor.ResourceTypes {
 			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
 			if resourceTypeName != "" && resourceType.CredentialInputOptional {
-				resourceTypes[resourceTypeName] = true
+				resourceTypes[providerResourceScopedKey(providerType, resourceTypeName)] = true
 			}
 		}
 	}

@@ -59,28 +59,28 @@ func (s *GormStore) prepareProviderResourceForCreate(providerType string, resour
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
-	if !s.providerResourceCredentialInputOptional(resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
+	if !s.providerResourceCredentialInputOptional(providerType, resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
 		return
 	}
-	s.applyProviderResourceTypeDefaults(resource)
+	s.applyProviderResourceTypeDefaults(providerType, resource)
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
-	s.mergeProviderAccountCredentials(resource, nil)
+	s.mergeProviderAccountCredentials(providerType, resource, nil)
 }
 
 func (s *GormStore) prepareProviderResourceForUpdate(providerType string, resource *ProviderResource, patch ProviderResource) {
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
-	if !s.providerResourceCredentialInputOptional(resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
+	if !s.providerResourceCredentialInputOptional(providerType, resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
 		return
 	}
-	s.applyProviderResourceTypeDefaults(resource)
+	s.applyProviderResourceTypeDefaults(providerType, resource)
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
-	s.mergeProviderAccountCredentials(resource, &patch)
+	s.mergeProviderAccountCredentials(providerType, resource, &patch)
 }
 
 func (s *GormStore) ConfigureProviderResourceTypeDefaults(defaults map[string]map[string]string) {
@@ -218,26 +218,29 @@ func (s *GormStore) IsProviderAccountResourceType(providerType string, resourceT
 	return isProviderAccountResource(resourceType)
 }
 
-func (s *GormStore) providerResourceCredentialIdentityProfile(resourceType string) string {
+func (s *GormStore) providerResourceCredentialIdentityProfile(providerType string, resourceType string) string {
 	if s == nil {
 		return ""
 	}
-	return s.providerResourceIdentity[strings.ToLower(strings.TrimSpace(resourceType))]
+	return firstNonEmpty(
+		s.providerResourceIdentity[providerResourceScopedKey(providerType, resourceType)],
+		s.providerResourceIdentity[strings.ToLower(strings.TrimSpace(resourceType))],
+	)
 }
 
-func (s *GormStore) providerResourceCredentialInputOptional(resourceType string) bool {
+func (s *GormStore) providerResourceCredentialInputOptional(providerType string, resourceType string) bool {
 	if s == nil {
 		return false
 	}
-	return s.providerResourceOptional[strings.ToLower(strings.TrimSpace(resourceType))]
+	return s.providerResourceOptional[providerResourceScopedKey(providerType, resourceType)] ||
+		s.providerResourceOptional[strings.ToLower(strings.TrimSpace(resourceType))]
 }
 
-func (s *GormStore) applyProviderResourceTypeDefaults(resource *ProviderResource) {
+func (s *GormStore) applyProviderResourceTypeDefaults(providerType string, resource *ProviderResource) {
 	if s == nil || resource == nil {
 		return
 	}
-	resourceType := strings.ToLower(strings.TrimSpace(resource.ResourceType))
-	defaults := s.providerResourceDefaults[resourceType]
+	defaults := s.providerResourceTypeDefaults(providerType, resource.ResourceType)
 	if strings.TrimSpace(resource.BaseURL) == "" {
 		if baseURL := strings.TrimSpace(defaults["base_url"]); baseURL != "" {
 			resource.BaseURL = baseURL
@@ -291,14 +294,14 @@ func (s *GormStore) providerAccountProtectedOptionKeys(resourceType string) []st
 	return uniqueStrings(options)
 }
 
-func (s *GormStore) mergeProviderAccountCredentials(resource *ProviderResource, patch *ProviderResource) {
+func (s *GormStore) mergeProviderAccountCredentials(providerType string, resource *ProviderResource, patch *ProviderResource) {
 	if patch != nil && patch.Credentials == nil && strings.TrimSpace(patch.APIKey) == "" {
 		resource.Credentials = nil
 		return
 	}
 	creds := ProviderResourceCredentials{}
 	if patch != nil {
-		creds = s.providerResourceCredentialsForRuntime(*resource)
+		creds = s.providerResourceCredentialsForRuntimeForProvider(providerType, *resource)
 	} else if resource.Credentials != nil {
 		creds = *resource.Credentials
 	}
@@ -309,9 +312,9 @@ func (s *GormStore) mergeProviderAccountCredentials(resource *ProviderResource, 
 		creds.AccessToken = resource.APIKey
 	}
 	if strings.TrimSpace(creds.AuthType) == "" {
-		creds.AuthType = firstNonEmpty(resource.Options["auth_type"], s.providerResourceTypeDefault(resource.ResourceType, "auth_type"), "oauth")
+		creds.AuthType = firstNonEmpty(resource.Options["auth_type"], s.providerResourceTypeDefault(providerType, resource.ResourceType, "auth_type"), "oauth")
 	}
-	if s.providerResourceCredentialIdentityProfile(resource.ResourceType) == providerResourceIdentityProfileOpenAIIDToken {
+	if s.providerResourceCredentialIdentityProfile(providerType, resource.ResourceType) == providerResourceIdentityProfileOpenAIIDToken {
 		if claims := decodeOpenAIIDTokenClaims(creds.IDToken); claims != nil {
 			creds.Email = firstNonEmpty(creds.Email, claims.Email)
 			if claims.OpenAIAuth != nil {
@@ -564,7 +567,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			s.mu.Unlock()
 			return notFound(err, "provider_not_found", "Provider not found")
 		}
-		creds := s.providerResourceCredentialsForRuntime(resource)
+		creds := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
 		authentication := creds
 		if !supportsNativeProviderResourceCredentialRefresh(provider, resource, s) {
 			result = creds
@@ -603,7 +606,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 						return loadErr
 					}
 					if !supportsNativeProviderResourceCredentialRefresh(provider, current, s) ||
-						!openAIAccountAuthenticationEqual(s.providerResourceCredentialsForRuntime(current), authentication) {
+						!openAIAccountAuthenticationEqual(s.providerResourceCredentialsForRuntimeForProvider(provider.Type, current), authentication) {
 						return nil
 					}
 					if current.Options == nil {
@@ -631,7 +634,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 				result = refreshed
 				return nil
 			}
-			currentCredentials := s.providerResourceCredentialsForRuntime(current)
+			currentCredentials := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, current)
 			if !openAIAccountAuthenticationEqual(currentCredentials, authentication) {
 				result = currentCredentials
 				return nil
@@ -642,7 +645,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			}
 			delete(current.Options, providerResourceReauthorizationRequiredOption)
 			current.Credentials = &refreshed
-			s.mergeProviderAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
+			s.mergeProviderAccountCredentials(provider.Type, &current, &ProviderResource{Credentials: &refreshed})
 			if strings.TrimSpace(current.APIKey) != "" {
 				current.APIKey = s.encryptSecret(current.APIKey)
 			}
@@ -654,7 +657,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			); err != nil {
 				return err
 			}
-			result = s.providerResourceCredentialsForRuntime(current)
+			result = s.providerResourceCredentialsForRuntimeForProvider(provider.Type, current)
 			return nil
 		})
 	})
@@ -686,6 +689,17 @@ func (s *GormStore) SupportsNativeProviderResourceCredentialRefresh(resource Pro
 }
 
 func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResource) ProviderResourceCredentials {
+	providerType := ""
+	if s != nil && strings.TrimSpace(resource.ProviderID) != "" {
+		var provider Provider
+		if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err == nil {
+			providerType = provider.Type
+		}
+	}
+	return s.providerResourceCredentialsForRuntimeForProvider(providerType, resource)
+}
+
+func (s *GormStore) providerResourceCredentialsForRuntimeForProvider(providerType string, resource ProviderResource) ProviderResourceCredentials {
 	creds := ProviderResourceCredentials{}
 	if strings.TrimSpace(resource.APIKey) != "" {
 		creds.AccessToken = s.decryptSecret(resource.APIKey)
@@ -699,7 +713,7 @@ func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResou
 		}
 	}
 	if resource.Options != nil {
-		creds.AuthType = firstNonEmpty(creds.AuthType, resource.Options["auth_type"], s.providerResourceTypeDefault(resource.ResourceType, "auth_type"), "oauth")
+		creds.AuthType = firstNonEmpty(creds.AuthType, resource.Options["auth_type"], s.providerResourceTypeDefault(providerType, resource.ResourceType, "auth_type"), "oauth")
 		creds.ExpiresAt = firstNonEmpty(creds.ExpiresAt, resource.Options["token_expires_at"])
 		creds.AccountID = firstNonEmpty(creds.AccountID, resource.Options["account_id"])
 		creds.UserID = firstNonEmpty(creds.UserID, resource.Options["user_id"])
@@ -709,7 +723,7 @@ func (s *GormStore) providerResourceCredentialsForRuntime(resource ProviderResou
 		creds.Scopes = firstNonEmpty(creds.Scopes, resource.Options["scopes"])
 	}
 	if strings.TrimSpace(creds.AuthType) == "" {
-		creds.AuthType = firstNonEmpty(s.providerResourceTypeDefault(resource.ResourceType, "auth_type"), "oauth")
+		creds.AuthType = firstNonEmpty(s.providerResourceTypeDefault(providerType, resource.ResourceType, "auth_type"), "oauth")
 	}
 	return creds
 }
@@ -763,12 +777,31 @@ func setOptionIfValue(options map[string]string, key string, value string) {
 	}
 }
 
-func (s *GormStore) providerResourceTypeDefault(resourceType string, key string) string {
+func (s *GormStore) providerResourceTypeDefault(providerType string, resourceType string, key string) string {
 	if s == nil {
 		return ""
 	}
-	defaults := s.providerResourceDefaults[strings.ToLower(strings.TrimSpace(resourceType))]
-	return strings.TrimSpace(defaults[strings.ToLower(strings.TrimSpace(key))])
+	return strings.TrimSpace(s.providerResourceTypeDefaults(providerType, resourceType)[strings.ToLower(strings.TrimSpace(key))])
+}
+
+func (s *GormStore) providerResourceTypeDefaults(providerType string, resourceType string) map[string]string {
+	if s == nil {
+		return nil
+	}
+	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+	if defaults := s.providerResourceDefaults[providerResourceScopedKey(providerType, resourceType)]; len(defaults) > 0 {
+		return defaults
+	}
+	return s.providerResourceDefaults[resourceType]
+}
+
+func providerResourceScopedKey(providerType string, resourceType string) string {
+	providerType = strings.ToLower(strings.TrimSpace(providerType))
+	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+	if providerType == "" {
+		return resourceType
+	}
+	return providerType + "\x00" + resourceType
 }
 
 func (s *GormStore) providerTypeDefaultBaseURL(providerType string) string {
