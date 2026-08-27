@@ -120,9 +120,9 @@ func (a CodexSubscriptionAdapter) ModelsWithETag(ctx context.Context, resourceID
 	return a.modelsWithCredentials(ctx, credentials, etag)
 }
 
-func (a CodexSubscriptionAdapter) ResourceModels(ctx context.Context, _ Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error) {
-	if !isOpenAIAccountResource(resource.ResourceType) {
-		return ProviderCatalogEntry{}, 0, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Codex models are only available for OpenAI subscription resources")
+func (a CodexSubscriptionAdapter) ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error) {
+	if a.SupportsResourceModels == nil || !a.SupportsResourceModels(provider.Type, resource.ResourceType) {
+		return ProviderCatalogEntry{}, 0, NewHTTPError(http.StatusBadRequest, "provider_resource_models_unsupported", "Provider resource models are not available for this resource type")
 	}
 	return a.ModelsWithETag(ctx, resource.ID, etag)
 }

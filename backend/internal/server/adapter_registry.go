@@ -171,6 +171,19 @@ func adapterSupports(descriptor AdapterDescriptor, capability AdapterCapability)
 	return false
 }
 
+func adapterSupportsResourceType(descriptor AdapterDescriptor, resourceType string) bool {
+	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+	if resourceType == "" {
+		return false
+	}
+	for _, supported := range descriptor.ResourceTypes {
+		if strings.ToLower(strings.TrimSpace(supported.Type)) == resourceType {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *AdapterRegistry) List() []AdapterDescriptor {
 	if r == nil {
 		return nil

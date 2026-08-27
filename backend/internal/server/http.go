@@ -191,6 +191,10 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	pluginBackgroundRunner := pluginmeta.NewBackgroundJobRunner(pluginBackgroundJobs)
 	registry := NewAdapterRegistryWithPlugins(pluginRegistry)
 	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
+	codexSubscription.SupportsResourceModels = func(providerType string, resourceType string) bool {
+		descriptor, ok := registry.Describe(providerType)
+		return ok && adapterSupportsResourceType(descriptor, resourceType)
+	}
 	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
 	registerBuiltinAdminUIContributions(pluginRegistry, adminUI)
 	packages, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActionsAndBackground(pluginRegistry, gatewayChain, adminUI, pluginActions, pluginBackgroundJobs, gatewayHooks)
