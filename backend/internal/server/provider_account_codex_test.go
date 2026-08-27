@@ -265,6 +265,64 @@ func TestProviderAccountRouteFilteringUsesPluginAccountModels(t *testing.T) {
 	}
 }
 
+func TestProviderAccountRouteFilteringIgnoresUndeclaredPluginResourceTypes(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{
+		"kimi_subscription": {"kimi_subscription_account"},
+	})
+	provider := store.AddProvider(Provider{
+		ID:      "prv_kimi_policy_pool",
+		Name:    "Kimi Policy Pool",
+		Type:    "kimi_subscription",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_policy_luna",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Luna Account",
+		ResourceType: "kimi_subscription_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-luna"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opaqueResource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_policy_opaque",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Opaque Token",
+		ResourceType: "kimi_ephemeral_token",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-luna"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "kimi-sol", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID:            "route_kimi_policy_sol",
+		ModelName:     "kimi-sol",
+		ProviderID:    provider.ID,
+		ProviderModel: "kimi-sol",
+		Status:        StatusActive,
+	})
+
+	routes, err := store.SelectRouteCandidates("kimi-sol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	filtered, err := server.filterProviderAccountRoutesByModel("kimi-sol", routes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || routeResourceID(filtered[0]) != opaqueResource.ID {
+		t.Fatalf("expected undeclared plugin resource to bypass account model filtering, got %+v", filtered)
+	}
+}
+
 func TestCodexRouteFilteringUsesPersistedAccountCatalog(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{

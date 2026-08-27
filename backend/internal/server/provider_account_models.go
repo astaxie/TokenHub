@@ -573,7 +573,7 @@ func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []R
 	codexOnly := true
 
 	for _, route := range routes {
-		if route.Resource == nil || !isProviderAccountResource(route.Resource.ResourceType) {
+		if route.Resource == nil || !s.store.IsProviderAccountResourceType(route.Provider.Type, route.Resource.ResourceType) {
 			filtered = append(filtered, route)
 			continue
 		}
