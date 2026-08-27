@@ -21,6 +21,27 @@ func TestAnthropicEndpointURLNormalizesVersionPrefix(t *testing.T) {
 	}
 }
 
+func TestConfigureProviderAuthModeRequiresDeclaredModes(t *testing.T) {
+	provider := Provider{Type: ProviderAnthropic, Options: map[string]string{}}
+
+	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer); err != nil {
+		t.Fatal(err)
+	}
+	if got := providerConfiguredAuthMode(provider); got != "" {
+		t.Fatalf("auth mode without descriptor modes = %q, want empty", got)
+	}
+
+	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, anthropicAuthTypeAPIKey, anthropicAuthTypeBearer); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.Options[providerAuthModeOption]; got != anthropicAuthTypeBearer {
+		t.Fatalf("provider auth mode = %q, want bearer", got)
+	}
+	if got := provider.Options[anthropicAuthTypeOption]; got != anthropicAuthTypeBearer {
+		t.Fatalf("legacy Anthropic auth mode = %q, want bearer", got)
+	}
+}
+
 func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 	tests := []struct {
 		name string

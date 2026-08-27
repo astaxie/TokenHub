@@ -493,7 +493,6 @@ func configureProviderAuthMode(provider *Provider, requested string, supportedMo
 	if provider == nil {
 		return nil
 	}
-	supportedModes = supportedProviderAuthModes(provider.Type, supportedModes)
 	if len(supportedModes) == 0 {
 		return nil
 	}
@@ -513,16 +512,6 @@ func configureProviderAuthMode(provider *Provider, requested string, supportedMo
 	provider.Options[providerAuthModeOption] = authType
 	if provider.Type == ProviderAnthropic {
 		provider.Options[anthropicAuthTypeOption] = authType
-	}
-	return nil
-}
-
-func supportedProviderAuthModes(providerType string, supportedModes []string) []string {
-	if len(supportedModes) > 0 {
-		return supportedModes
-	}
-	if providerType == ProviderAnthropic {
-		return []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer}
 	}
 	return nil
 }
