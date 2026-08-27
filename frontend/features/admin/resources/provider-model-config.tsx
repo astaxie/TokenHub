@@ -6,7 +6,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResourceType, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -150,8 +150,9 @@ export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?
       resourceTypes.set(resourceType, label);
     }
   }
-  if (isOpenAISubscriptionResourceType(values?.resource_type) && !resourceTypes.has(providerResourceOpenAISubscriptionType)) {
-    resourceTypes.set(providerResourceOpenAISubscriptionType, undefined);
+  const currentResourceType = values?.resource_type?.trim() ?? "";
+  if (currentResourceType && currentResourceType !== providerResourceAPIKeyType && !resourceTypes.has(currentResourceType)) {
+    resourceTypes.set(currentResourceType, undefined);
   }
   return Array.from(resourceTypes.entries())
     .filter(([value]) => Boolean(value))

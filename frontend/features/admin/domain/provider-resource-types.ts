@@ -18,14 +18,6 @@ export type ProviderResourceTypeCapabilityMetadata = {
   default: boolean;
 };
 
-export function isOpenAISubscriptionResourceType(resourceType: string | undefined) {
-  return resourceType === providerResourceOpenAISubscriptionType;
-}
-
-export function isOpenAISubscriptionResource(resource: ProviderResourceTypeLike) {
-  return isOpenAISubscriptionResourceType(resource.resource_type);
-}
-
 export function isProviderAccountResourceType(resourceType: string | undefined) {
   return Boolean(resourceType?.trim()) && resourceType !== providerResourceAPIKeyType;
 }

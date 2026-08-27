@@ -528,6 +528,19 @@ describe("providerResourceConfig", () => {
     });
   });
 
+  it("preserves the current plugin resource type when metadata is unavailable", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+
+    expect(providerResourceTypeOptionsFromData(data, null, {
+      provider_id: "prv_kimi",
+      resource_type: "kimi_legacy_subscription",
+    })).toEqual([
+      { value: "api_key", label: "API Key" },
+      { value: "kimi_legacy_subscription", label: "kimi_legacy_subscription" },
+    ]);
+  });
+
   it("shows account credential fields only for resource types declared by plugin metadata", () => {
     const data = emptyData();
     data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
