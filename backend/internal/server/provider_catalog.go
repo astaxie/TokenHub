@@ -891,16 +891,6 @@ func inferProviderType(id string, baseURL string) string {
 func normalizeProviderBaseURL(id string, raw string) string {
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
 	switch strings.ToLower(id) {
-	case "openai":
-		return "https://api.openai.com/v1"
-	case "anthropic":
-		return firstNonEmpty(raw, "https://api.anthropic.com")
-	case "google":
-		return firstNonEmpty(raw, "https://generativelanguage.googleapis.com/v1beta")
-	case "ollama":
-		return firstNonEmpty(raw, "http://127.0.0.1:11434/v1")
-	case "lmstudio":
-		return firstNonEmpty(raw, "http://127.0.0.1:1234/v1")
 	case ProviderKronk:
 		return firstNonEmpty(raw, kronkDefaultBaseURL)
 	default:

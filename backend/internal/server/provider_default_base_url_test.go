@@ -35,6 +35,31 @@ func TestProviderCreateUsesPluginDefaultBaseURL(t *testing.T) {
 	}
 }
 
+func TestProviderCreateUsesBuiltInPluginDefaultBaseURL(t *testing.T) {
+	server := New(NewMemoryStore())
+
+	provider, _, _, err := server.providerForCreate(context.Background(), ProviderCreateRequest{
+		Name:    "OpenAI",
+		Type:    ProviderOpenAI,
+		Status:  StatusActive,
+		Healthy: ptrBool(true),
+	})
+	if err != nil {
+		t.Fatalf("create OpenAI provider: %v", err)
+	}
+	if provider.BaseURL != "https://api.openai.com/v1" {
+		t.Fatalf("provider base URL = %q, want built-in plugin default", provider.BaseURL)
+	}
+}
+
+func TestNormalizeProviderBaseURLDoesNotSupplyBuiltInDefaults(t *testing.T) {
+	for _, providerID := range []string{"openai", "anthropic", "google", "ollama", "lmstudio"} {
+		if got := normalizeProviderBaseURL(providerID, ""); got != "" {
+			t.Fatalf("normalizeProviderBaseURL(%q, empty) = %q, want empty", providerID, got)
+		}
+	}
+}
+
 func ptrBool(value bool) *bool {
 	return &value
 }
