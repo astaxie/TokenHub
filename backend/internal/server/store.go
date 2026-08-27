@@ -307,14 +307,15 @@ type GormStore struct {
 	// instanceHeartbeatID identifies the row this instance published while it
 	// still held the schema migration lock; StartInstanceHeartbeat refreshes
 	// that row instead of creating a second one.
-	instanceHeartbeatID     string
-	inFlightLeaseTTL        time.Duration
-	clusterLockTTL          time.Duration
-	imageCapabilityRetry    time.Duration
-	imageCapabilityProfiles []providerImageCapabilityRouteProfile
-	billingRedis            *redisBillingCoordinator
-	billingRepository       billing.Repository
-	billingPersistence      *billingpersistence.Store
+	instanceHeartbeatID      string
+	inFlightLeaseTTL         time.Duration
+	clusterLockTTL           time.Duration
+	imageCapabilityRetry     time.Duration
+	imageCapabilityProfiles  []providerImageCapabilityRouteProfile
+	providerResourceDefaults map[string]map[string]string
+	billingRedis             *redisBillingCoordinator
+	billingRepository        billing.Repository
+	billingPersistence       *billingpersistence.Store
 }
 
 // BillingRepositoryForComposition is deliberately outside Store. Only the

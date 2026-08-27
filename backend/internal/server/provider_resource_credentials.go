@@ -62,9 +62,7 @@ func (s *GormStore) prepareProviderResourceForCreate(resource *ProviderResource)
 	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
 		return
 	}
-	if isOpenAIAccountResource(resource.ResourceType) && strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = openAICodexBaseURL
-	}
+	s.applyProviderResourceTypeDefaults(resource)
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
@@ -78,13 +76,46 @@ func (s *GormStore) prepareProviderResourceForUpdate(resource *ProviderResource,
 	if !isOpenAIAccountResource(resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
 		return
 	}
-	if isOpenAIAccountResource(resource.ResourceType) && strings.TrimSpace(resource.BaseURL) == "" {
-		resource.BaseURL = openAICodexBaseURL
-	}
+	s.applyProviderResourceTypeDefaults(resource)
 	if resource.Options == nil {
 		resource.Options = map[string]string{}
 	}
 	s.mergeProviderAccountCredentials(resource, &patch)
+}
+
+func (s *GormStore) ConfigureProviderResourceTypeDefaults(defaults map[string]map[string]string) {
+	if s == nil {
+		return
+	}
+	normalized := make(map[string]map[string]string, len(defaults))
+	for resourceType, values := range defaults {
+		resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+		if resourceType == "" || len(values) == 0 {
+			continue
+		}
+		normalized[resourceType] = cloneStringMap(values)
+	}
+	if s.mu != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	s.providerResourceDefaults = normalized
+}
+
+func (s *GormStore) applyProviderResourceTypeDefaults(resource *ProviderResource) {
+	if s == nil || resource == nil || strings.TrimSpace(resource.BaseURL) != "" {
+		return
+	}
+	resourceType := strings.ToLower(strings.TrimSpace(resource.ResourceType))
+	if defaults := s.providerResourceDefaults[resourceType]; defaults != nil {
+		if baseURL := strings.TrimSpace(defaults["base_url"]); baseURL != "" {
+			resource.BaseURL = baseURL
+			return
+		}
+	}
+	if isOpenAIAccountResource(resource.ResourceType) {
+		resource.BaseURL = openAICodexBaseURL
+	}
 }
 
 func (s *GormStore) preserveProviderAccountProtectedOptions(current map[string]string, patch ProviderResource, resourceType string) map[string]string {

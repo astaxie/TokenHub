@@ -198,6 +198,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		panic(fmt.Errorf("load TokenHub plugins: %w", err))
 	}
 	registerExternalProviderPluginAdapters(registry, packages)
+	configureProviderResourceTypeDefaults(store, registry)
 	reconcileProviderPluginPolicies(store, registry)
 	s := &Server{
 		store:                   store,

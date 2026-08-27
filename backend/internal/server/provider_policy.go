@@ -63,6 +63,38 @@ type providerPluginPolicyReconciler interface {
 	ReconcileProviderPluginPolicies(registry *AdapterRegistry) (int, error)
 }
 
+type providerResourceTypeDefaultsConfigurator interface {
+	ConfigureProviderResourceTypeDefaults(defaults map[string]map[string]string)
+}
+
+func configureProviderResourceTypeDefaults(store Store, registry *AdapterRegistry) {
+	configurator, ok := store.(providerResourceTypeDefaultsConfigurator)
+	if !ok {
+		return
+	}
+	configurator.ConfigureProviderResourceTypeDefaults(providerResourceTypeDefaultsFromRegistry(registry))
+}
+
+func providerResourceTypeDefaultsFromRegistry(registry *AdapterRegistry) map[string]map[string]string {
+	if registry == nil {
+		return nil
+	}
+	defaults := map[string]map[string]string{}
+	for _, descriptor := range registry.List() {
+		for _, resourceType := range descriptor.ResourceTypes {
+			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
+			if resourceTypeName == "" || len(resourceType.Defaults) == 0 {
+				continue
+			}
+			if _, exists := defaults[resourceTypeName]; exists && !resourceType.Default {
+				continue
+			}
+			defaults[resourceTypeName] = cloneStringMap(resourceType.Defaults)
+		}
+	}
+	return defaults
+}
+
 func reconcileProviderPluginPolicies(store Store, registry *AdapterRegistry) {
 	reconciler, ok := store.(providerPluginPolicyReconciler)
 	if !ok {
