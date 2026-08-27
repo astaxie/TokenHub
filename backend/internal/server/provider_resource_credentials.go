@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const openAIAccountReauthorizationRequiredOption = "oauth_reauthorization_required"
+const (
+	providerResourceReauthorizationRequiredOption = "oauth_reauthorization_required"
+	openAIAccountReauthorizationRequiredOption    = providerResourceReauthorizationRequiredOption
+)
 
 var providerAccountProtectedOptions = []string{
 	"credential_source",
@@ -29,7 +32,7 @@ var providerAccountProtectedOptions = []string{
 	codexResourceModelsFetchedAtOption,
 	codexResourceModelsETagOption,
 	codexResourceModelCatalogOption,
-	openAIAccountReauthorizationRequiredOption,
+	providerResourceReauthorizationRequiredOption,
 }
 
 var openAIAccountProtectedOptions = []string{
@@ -149,7 +152,7 @@ func (s *GormStore) preserveProviderAccountProtectedOptions(current map[string]s
 		options[key] = value
 	}
 	for _, key := range protectedOptions {
-		if openAIAccountAuthenticationPatch(patch.Credentials) && (key == "has_refresh_token" || key == openAIAccountReauthorizationRequiredOption) {
+		if openAIAccountAuthenticationPatch(patch.Credentials) && (key == "has_refresh_token" || key == providerResourceReauthorizationRequiredOption) {
 			delete(options, key)
 			continue
 		}
@@ -219,7 +222,7 @@ func (s *GormStore) mergeProviderAccountCredentials(resource *ProviderResource, 
 	}
 	applyProviderAccountOptions(resource.Options, resource.ResourceType, creds)
 	if patch != nil && openAIAccountAuthenticationPatch(patch.Credentials) {
-		delete(resource.Options, openAIAccountReauthorizationRequiredOption)
+		delete(resource.Options, providerResourceReauthorizationRequiredOption)
 	}
 	resource.Credentials = nil
 }
@@ -386,7 +389,7 @@ func providerResourceCredentialSummary(resource ProviderResource) map[string]str
 		"plan_type",
 		"token_expires_at",
 		"has_refresh_token",
-		openAIAccountReauthorizationRequiredOption,
+		providerResourceReauthorizationRequiredOption,
 	} {
 		if value := strings.TrimSpace(resource.Options[key]); value != "" {
 			summary[key] = value
@@ -429,7 +432,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			s.mu.Unlock()
 			return nil
 		}
-		if resource.Options[openAIAccountReauthorizationRequiredOption] == "true" {
+		if resource.Options[providerResourceReauthorizationRequiredOption] == "true" {
 			result = creds
 			s.mu.Unlock()
 			return NewHTTPError(409, "provider_resource_reauthorization_required", "OpenAI/Codex account session has ended. Reauthorize the account.")
@@ -467,7 +470,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 					if current.Options == nil {
 						current.Options = map[string]string{}
 					}
-					current.Options[openAIAccountReauthorizationRequiredOption] = "true"
+					current.Options[providerResourceReauthorizationRequiredOption] = "true"
 					current.UpdatedAt = time.Now().UTC()
 					return updateExistingProviderResourceColumns(s.db.WithContext(mutationCtx), &current, "options", "updated_at")
 				})
@@ -498,7 +501,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			if current.Options == nil {
 				current.Options = map[string]string{}
 			}
-			delete(current.Options, openAIAccountReauthorizationRequiredOption)
+			delete(current.Options, providerResourceReauthorizationRequiredOption)
 			current.Credentials = &refreshed
 			s.mergeProviderAccountCredentials(&current, &ProviderResource{Credentials: &refreshed})
 			if strings.TrimSpace(current.APIKey) != "" {

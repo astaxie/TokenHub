@@ -148,6 +148,70 @@ func TestProviderCredentialRefreshServiceRunsPluginCredentialRefreshActions(t *t
 	}
 }
 
+func TestProviderCredentialRefreshServicePersistsPluginReauthorizationMarker(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_scheduler_reauth", Name: "Kimi", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_scheduler_reauth",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Scheduler Account",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType:     "oauth",
+			AccessToken:  "old-plugin-access",
+			RefreshToken: "old-plugin-refresh",
+			ExpiresAt:    time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "plugin-refresh-admin"})
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.kimi",
+		Name:    "Kimi",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+	}, AdapterRegistration{
+		Type:         "kimi_subscription",
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityOAuth},
+	}); err != nil {
+		t.Fatalf("register Kimi adapter plugin: %v", err)
+	}
+	var calls atomic.Int64
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi",
+		ActionID:   "kimi.credentials.refresh",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "credentials.refresh",
+		Subject:    "kimi_subscription",
+		Metadata:   map[string]string{"provider_resource_type": "kimi_oauth_account"},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		calls.Add(1)
+		return pluginmeta.ActionResult{Data: map[string]any{"reauthorization_required": true}}, nil
+	})); err != nil {
+		t.Fatalf("register Kimi refresh action: %v", err)
+	}
+
+	service := newProviderCredentialRefreshService(store, server.refreshProviderResourceCredentialsWithPluginAction)
+	service.RunDue(context.Background())
+	service.RunDue(context.Background())
+	if calls.Load() != 1 {
+		t.Fatalf("expected scheduler to stop retrying after reauthorization marker, got %d calls", calls.Load())
+	}
+	stored, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("expected provider resource to exist")
+	}
+	if stored.CredentialSummary[providerResourceReauthorizationRequiredOption] != "true" {
+		t.Fatalf("expected plugin refresh to mark reauthorization, got %+v", stored.CredentialSummary)
+	}
+}
+
 func TestProviderCredentialRefreshUpdatesDerivedIdentityClaims(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{Name: "Codex OAuth Identity", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})

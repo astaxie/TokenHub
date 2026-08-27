@@ -98,8 +98,9 @@ func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pl
 }
 
 func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
-	credentials, ok := pluginActionResultCredentials(result.Data)
-	if !ok {
+	credentials, hasCredentials := pluginActionResultCredentials(result.Data)
+	reauthorizationRequired := pluginActionResultReauthorizationRequired(result.Data)
+	if !hasCredentials && !reauthorizationRequired {
 		return result, nil
 	}
 	var request struct {
@@ -129,6 +130,14 @@ func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, d
 	if expectedResourceType != "" && resource.ResourceType != expectedResourceType {
 		return result, NewHTTPError(http.StatusForbidden, "plugin_action_resource_type_mismatch", "Plugin action resource type does not match the Provider resource")
 	}
+	if reauthorizationRequired && !hasCredentials {
+		updated, err := s.store.UpdateProviderResourceOptions(resourceID, map[string]string{providerResourceReauthorizationRequiredOption: "true"})
+		if err != nil {
+			return result, err
+		}
+		result.Data = pluginActionResultWithCredentialSummary(result.Data, updated.CredentialSummary)
+		return result, nil
+	}
 	updated, err := s.store.UpdateProviderResource(resourceID, providerResourceCredentialPatch(resource, credentials))
 	if err != nil {
 		return result, err
@@ -149,6 +158,23 @@ func pluginActionResultCredentials(data any) (*ProviderResourceCredentials, bool
 		return nil, false
 	}
 	return envelope.Credentials, true
+}
+
+func pluginActionResultReauthorizationRequired(data any) bool {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return false
+	}
+	var envelope struct {
+		ReauthorizationRequired bool `json:"reauthorization_required"`
+		CredentialSummary       struct {
+			ReauthorizationRequired string `json:"oauth_reauthorization_required"`
+		} `json:"credential_summary"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return false
+	}
+	return envelope.ReauthorizationRequired || strings.EqualFold(strings.TrimSpace(envelope.CredentialSummary.ReauthorizationRequired), "true")
 }
 
 func providerResourceCredentialPatch(resource ProviderResource, credentials *ProviderResourceCredentials) ProviderResource {
@@ -241,6 +267,9 @@ func redactPluginActionValue(value any) any {
 
 func sensitivePluginActionResultKey(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "reauthorization_required" || normalized == providerResourceReauthorizationRequiredOption {
+		return false
+	}
 	return normalized == "access_token" ||
 		normalized == "refresh_token" ||
 		normalized == "id_token" ||

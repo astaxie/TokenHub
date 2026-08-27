@@ -38,7 +38,7 @@ func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if !isProviderAccountResource(resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[openAIAccountReauthorizationRequiredOption] == "true" {
+		if !isProviderAccountResource(resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[providerResourceReauthorizationRequiredOption] == "true" {
 			continue
 		}
 		resources = append(resources, resource)
