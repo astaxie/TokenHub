@@ -141,7 +141,7 @@ export function providerResourceToForm(item: ProviderResource, providerOptions?:
     provider_id: item.provider_id,
     name: item.name,
     resource_type: item.resource_type,
-    auth_type: summary.auth_type || item.options?.auth_type || "oauth",
+    auth_type: summary.auth_type || item.options?.auth_type || "",
     access_token: "",
     refresh_token: "",
     id_token: "",

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerResourceAuthTypeOptionsFromData } from "../domain/provider-resource-types";
-import { providerResourcePayload } from "./payloads";
+import { providerResourcePayload, providerResourceToForm } from "./payloads";
 import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
@@ -640,6 +640,27 @@ describe("providerResourceConfig", () => {
       credential_source: "vendor_account",
     });
     expect(payload.options).not.toHaveProperty("auth_type");
+  });
+
+  it("keeps unknown plugin account auth type unset when editing", () => {
+    const values = providerResourceToForm({
+      id: "rsrc_vendor",
+      provider_id: "prv_vendor",
+      name: "Vendor Account",
+      resource_type: "vendor_account",
+      base_url: "",
+      status: "active",
+      healthy: true,
+      priority: 1,
+      weight: 100,
+      rate_limit_rpm: 0,
+      token_limit_tpm: 0,
+      max_concurrency: 0,
+      created_at: "",
+      updated_at: "",
+    });
+
+    expect(values.auth_type).toBe("");
   });
 
   it("tests subscription-backed Providers through resource probe plugin actions", async () => {
