@@ -14,14 +14,17 @@ const (
 
 func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[string]bool {
 	protocols := map[string]bool{}
-	if adapterSupports(descriptor, AdapterCapabilityChat) {
+	if adapterSupports(descriptor, AdapterCapabilityChat) || adapterSupports(descriptor, AdapterCapabilityChatStream) {
 		protocols[providerRouteProtocolChatCompletions] = true
 	}
-	if adapterSupports(descriptor, AdapterCapabilityResponses) {
+	if adapterSupports(descriptor, AdapterCapabilityResponses) || adapterSupports(descriptor, AdapterCapabilityResponseStream) || adapterSupports(descriptor, AdapterCapabilityCompact) {
 		protocols[providerRouteProtocolResponses] = true
 	}
 	if adapterSupports(descriptor, AdapterCapabilityEmbeddings) {
 		protocols["embeddings"] = true
+	}
+	if adapterSupports(descriptor, AdapterCapabilityImageGenerate) {
+		protocols["images/generations"] = true
 	}
 	return protocols
 }

@@ -11,6 +11,7 @@ type builtinProviderAdapter struct {
 	providerType                 string
 	adapter                      any
 	supportsCustomHeaders        *bool
+	routeProtocols               []string
 	credentialsScope             string
 	routeRequiresResource        bool
 	sessionAffinityKind          string
@@ -91,6 +92,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		providerType:          ProviderOpenAICodex,
 		adapter:               codexSubscription,
 		supportsCustomHeaders: boolPointer(false),
+		routeProtocols:        []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
 		credentialsScope:      providerCredentialsScopeResource,
 		routeRequiresResource: true,
 		sessionAffinityKind:   AffinityKindCodexSession,
@@ -149,6 +151,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.anthropic", "Anthropic", builtinProviderAdapter{
 		providerType:                 ProviderAnthropic,
 		adapter:                      adapters[ProviderAnthropic],
+		routeProtocols:               []string{providerRouteProtocolAnthropic},
 		authModes:                    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
 		claudeCodeAttributionDefault: claudeCodeAttributionPreserve,
 		modelDiscovery: AdapterModelDiscoveryPolicy{
@@ -173,8 +176,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.gemini", "Gemini", builtinProviderAdapter{
-		providerType: ProviderGemini,
-		adapter:      adapters[ProviderGemini],
+		providerType:   ProviderGemini,
+		adapter:        adapters[ProviderGemini],
+		routeProtocols: []string{"gemini"},
 		modelDiscovery: AdapterModelDiscoveryPolicy{
 			Auth:             "query_param",
 			APIKeyQueryParam: "key",
@@ -281,6 +285,19 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "supports_custom_headers",
 			Subject: adapter.providerType,
 			Value:   boolString(*adapter.supportsCustomHeaders),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	for _, protocol := range adapter.routeProtocols {
+		protocol = strings.TrimSpace(protocol)
+		if protocol == "" {
+			continue
+		}
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "route_protocol",
+			Subject: adapter.providerType,
+			Value:   protocol,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

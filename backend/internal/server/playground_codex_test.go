@@ -16,7 +16,20 @@ func TestPlaygroundResponsesRequestForRouteSkipsNonCodexProviders(t *testing.T) 
 func TestPlaygroundResponsesRequestForRouteUsesPluginProtocol(t *testing.T) {
 	registry := NewAdapterRegistry()
 	const providerType = "plugin_codex_responses"
-	registry.Register(providerType, routeProtocolTestAdapter{protocols: []string{providerRouteProtocolCodexResponses}}, AdapterCapabilityResponses)
+	descriptor := providerPluginDescriptorWithRouteProtocol(
+		"tokenhub.provider.playground-codex-responses",
+		"Playground Codex Responses",
+		providerType,
+		AdapterCapabilityResponses,
+		providerRouteProtocolCodexResponses,
+	)
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      routeProtocolTestAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses},
+	}); err != nil {
+		t.Fatalf("register plugin provider: %v", err)
+	}
 
 	request, useResponses, err := playgroundResponsesRequestForRoute(
 		registry,

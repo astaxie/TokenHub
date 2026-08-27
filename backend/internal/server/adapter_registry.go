@@ -197,8 +197,8 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 }
 
 func adapterRouteProtocols(registry *AdapterRegistry, descriptor AdapterDescriptor) []string {
-	if protocoler, ok := resolveTypedAdapter[ProviderRouteProtocoler](registry, descriptor.Type); ok {
-		return routeProtocolList(protocoler.RouteProtocols())
+	if protocols := providerPolicyStringValues(registry, descriptor.Type, "route_protocol"); len(protocols) > 0 {
+		return routeProtocolList(protocols)
 	}
 	return routeProtocolSetList(routeProviderProtocolsFromCapabilities(descriptor))
 }

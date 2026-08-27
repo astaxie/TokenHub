@@ -8,24 +8,32 @@ import (
 
 type routeProtocolTestAdapter struct {
 	MockAdapter
-	protocols []string
 }
 
-func (adapter routeProtocolTestAdapter) RouteProtocols() []string {
-	return adapter.protocols
+func providerPluginDescriptorWithRouteProtocol(pluginID string, name string, providerType string, capability AdapterCapability, protocol string) pluginmeta.Descriptor {
+	descriptor := pluginmeta.BuiltInProvider(pluginID, name, []string{providerType}, []string{string(capability)})
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "route_protocol",
+		Subject: providerType,
+		Value:   protocol,
+	})
+	return pluginmeta.NormalizeDescriptor(descriptor)
 }
 
-func TestRouteModelProtocolUsesAdapterDeclaredProtocols(t *testing.T) {
+func TestRouteModelProtocolUsesPluginDeclaredProtocols(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "admin"})
 	const providerType = "native_plugin_protocol"
-	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(
+	pluginDescriptor := providerPluginDescriptorWithRouteProtocol(
 		"tokenhub.provider.native-protocol",
 		"Native Protocol Provider",
-		[]string{providerType},
-		[]string{string(AdapterCapabilityChat)},
-	), AdapterRegistration{
+		providerType,
+		AdapterCapabilityChat,
+		"native/messages",
+	)
+	if err := server.adapterRegistry.RegisterPlugin(pluginDescriptor, AdapterRegistration{
 		Type:         providerType,
-		Adapter:      routeProtocolTestAdapter{protocols: []string{"native/messages"}},
+		Adapter:      routeProtocolTestAdapter{},
 		Capabilities: []AdapterCapability{AdapterCapabilityChat},
 	}); err != nil {
 		t.Fatalf("register native protocol provider: %v", err)
@@ -37,7 +45,7 @@ func TestRouteModelProtocolUsesAdapterDeclaredProtocols(t *testing.T) {
 		t.Fatal("provider descriptor was not registered")
 	}
 	if err := server.validateRouteModelProtocol(model.Name, model, descriptor); err != nil {
-		t.Fatalf("adapter-declared protocol was rejected: %v", err)
+		t.Fatalf("plugin-declared protocol was rejected: %v", err)
 	}
 
 	model.Metadata["endpoints"] = "responses"

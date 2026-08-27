@@ -65,13 +65,8 @@ esac
 	if !ok || descriptor.PluginID != "tokenhub.provider.custom-stdio" || !adapterSupports(descriptor, AdapterCapabilityChat) {
 		t.Fatalf("adapter descriptor = %+v", descriptor)
 	}
-	protocoler, ok := resolved.(ProviderRouteProtocoler)
-	if !ok {
-		t.Fatal("external provider adapter was not a ProviderRouteProtocoler")
-	}
-	protocols := protocoler.RouteProtocols()
-	if len(protocols) != 1 || protocols[0] != "chat/completions" {
-		t.Fatalf("default route protocols = %v", protocols)
+	if descriptor.ProviderPolicy.RouteProtocols == nil || len(descriptor.ProviderPolicy.RouteProtocols) != 1 || descriptor.ProviderPolicy.RouteProtocols[0] != "chat/completions" {
+		t.Fatalf("default route protocols = %v", descriptor.ProviderPolicy.RouteProtocols)
 	}
 }
 
@@ -257,17 +252,12 @@ printf '{"response":{},"usage":{}}'
 	registry := NewAdapterRegistry()
 	registerExternalProviderPluginAdapters(registry, packages)
 
-	protocoler, ok := resolveTypedAdapter[ProviderRouteProtocoler](registry, "native_stdio")
-	if !ok {
-		t.Fatal("external provider adapter was not a ProviderRouteProtocoler")
-	}
-	protocols := protocoler.RouteProtocols()
-	if len(protocols) != 1 || protocols[0] != "native/messages" {
-		t.Fatalf("route protocols = %v", protocols)
-	}
 	descriptor, ok := registry.Describe("native_stdio")
 	if !ok {
 		t.Fatal("external provider descriptor was not registered")
+	}
+	if len(descriptor.ProviderPolicy.RouteProtocols) != 1 || descriptor.ProviderPolicy.RouteProtocols[0] != "native/messages" {
+		t.Fatalf("route protocols = %v", descriptor.ProviderPolicy.RouteProtocols)
 	}
 	if descriptor.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("provider header policy was not loaded from manifest")

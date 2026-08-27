@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -19,7 +18,6 @@ type providerPluginAdapter struct {
 	dir                     string
 	command                 string
 	timeout                 time.Duration
-	routeProtocols          []string
 	supportsChatStream      bool
 	supportsResponsesStream bool
 	supportsImageGenerate   bool
@@ -87,16 +85,11 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 		dir:                     pkg.Dir,
 		command:                 pkg.Manifest.Entry.Backend.Command,
 		timeout:                 providerPluginCommandTimeout,
-		routeProtocols:          providerPluginRouteProtocols(pkg.Manifest),
 		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
 		supportsResponsesStream: providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityResponseStream),
 		supportsImageGenerate:   providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityImageGenerate),
 		supportsCompact:         providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityCompact),
 	}
-}
-
-func (a providerPluginAdapter) RouteProtocols() []string {
-	return append([]string(nil), a.routeProtocols...)
 }
 
 func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -364,31 +357,6 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	return supported
 }
 
-func providerPluginRouteProtocols(manifest pluginmeta.Manifest) []string {
-	protocols := manifest.Capabilities.Provider.RouteProtocols
-	if len(protocols) == 0 {
-		protocols = providerPluginDefaultRouteProtocols(manifest.Capabilities.Gateway)
-	}
-	return normalizedProviderPluginProtocols(protocols)
-}
-
-func providerPluginDefaultRouteProtocols(capabilities []string) []string {
-	protocols := []string{}
-	for _, capability := range capabilities {
-		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityChatStream:
-			protocols = append(protocols, "chat/completions")
-		case AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityCompact:
-			protocols = append(protocols, "responses")
-		case AdapterCapabilityEmbeddings:
-			protocols = append(protocols, "embeddings")
-		case AdapterCapabilityImageGenerate:
-			protocols = append(protocols, "images/generations")
-		}
-	}
-	return protocols
-}
-
 func providerPluginHasGatewayCapability(manifest pluginmeta.Manifest, capability AdapterCapability) bool {
 	for _, candidate := range manifest.Capabilities.Gateway {
 		if AdapterCapability(strings.TrimSpace(candidate)) == capability {
@@ -396,21 +364,6 @@ func providerPluginHasGatewayCapability(manifest pluginmeta.Manifest, capability
 		}
 	}
 	return false
-}
-
-func normalizedProviderPluginProtocols(protocols []string) []string {
-	seen := map[string]bool{}
-	normalized := make([]string, 0, len(protocols))
-	for _, protocol := range protocols {
-		protocol = strings.ToLower(strings.TrimSpace(protocol))
-		if protocol == "" || seen[protocol] {
-			continue
-		}
-		seen[protocol] = true
-		normalized = append(normalized, protocol)
-	}
-	sort.Strings(normalized)
-	return normalized
 }
 
 func providerPluginCredentialsFromRuntime(provider Provider, resource *ProviderResource) providerPluginCredentials {

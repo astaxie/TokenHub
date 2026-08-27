@@ -72,15 +72,16 @@ func TestGeminiNativeModelsUsePluginDeclaredCodexResponsesProtocol(t *testing.T)
 	store.AddModel(Model{Name: "gemini-plugin-model", Modality: "chat", ContextWindow: 128000, Status: StatusActive})
 	store.AddRoute(ModelRoute{ID: "route_gemini_plugin", ModelName: "gemini-plugin-model", ProviderID: provider.ID, ProviderModel: "gemini-plugin-model", Status: StatusActive})
 	server := New(store)
-	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
-		ID:      "tokenhub.provider.plugin-codex-responses",
-		Name:    "Plugin Codex Responses",
-		Version: "1.0.0",
-		Source:  pluginmeta.SourceLocalFile,
-		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
-	}, AdapterRegistration{
+	descriptor := providerPluginDescriptorWithRouteProtocol(
+		"tokenhub.provider.plugin-codex-responses",
+		"Plugin Codex Responses",
+		providerType,
+		AdapterCapabilityResponses,
+		providerRouteProtocolCodexResponses,
+	)
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
 		Type:         providerType,
-		Adapter:      routeProtocolTestAdapter{protocols: []string{providerRouteProtocolCodexResponses}},
+		Adapter:      routeProtocolTestAdapter{},
 		Capabilities: []AdapterCapability{AdapterCapabilityResponses},
 	}); err != nil {
 		t.Fatalf("register plugin provider: %v", err)

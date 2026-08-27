@@ -49,13 +49,6 @@ type CodexSubscriptionAdapter struct {
 	MaxRequestRetries  int
 }
 
-func (a *CodexSubscriptionAdapter) RouteProtocols() []string {
-	return []string{
-		providerRouteProtocolCodexResponses,
-		providerRouteProtocolResponses,
-	}
-}
-
 type ProviderProbeRequest struct {
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`
