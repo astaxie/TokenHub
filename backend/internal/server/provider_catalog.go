@@ -27,6 +27,7 @@ type providerCatalogService struct {
 	catalogFile    string
 	upstreamURL    string
 	upstreamClient providerCatalogHTTPClient
+	catalogTypes   map[string]string
 }
 
 func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
@@ -44,6 +45,10 @@ func newProviderCatalogService(store Store, catalogFile string, clients ...provi
 		upstreamURL:    providerCatalogUpstreamURL,
 		upstreamClient: upstreamClient,
 	}
+}
+
+func (s *providerCatalogService) UsePluginCatalogTypes(registry *AdapterRegistry) {
+	s.catalogTypes = providerCatalogTypesFromRegistry(registry)
 }
 
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
@@ -172,7 +177,7 @@ func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogE
 
 // reloadLocked refreshes the snapshot while provider-catalog-reload is held.
 func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
-	entries, err := loadLocalProviderCatalog(s.catalogFile)
+	entries, err := s.loadLocalProviderCatalog()
 	if err != nil {
 		return nil, err
 	}
@@ -237,11 +242,19 @@ func providerCatalogStats(entries []ProviderCatalogEntry) (int, int, map[string]
 }
 
 func loadLocalProviderCatalog(catalogFile string) ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithTypes(catalogFile, nil)
+}
+
+func (s *providerCatalogService) loadLocalProviderCatalog() ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithTypes(s.catalogFile, s.catalogTypes)
+}
+
+func loadLocalProviderCatalogWithTypes(catalogFile string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
 	content, err := os.ReadFile(catalogFile)
 	if err != nil {
 		return nil, fmt.Errorf("read provider catalog %s: %w", catalogFile, err)
 	}
-	entries, err := parseProviderCatalog(content, providerCatalogLocalSource)
+	entries, err := parseProviderCatalogWithTypes(content, providerCatalogLocalSource, catalogTypes)
 	if err != nil {
 		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
 	}
@@ -249,6 +262,10 @@ func loadLocalProviderCatalog(catalogFile string) ([]ProviderCatalogEntry, error
 }
 
 func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry, error) {
+	return parseProviderCatalogWithTypes(content, source, nil)
+}
+
+func parseProviderCatalogWithTypes(content []byte, source string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
 	var payload struct {
 		Providers map[string]map[string]any `json:"providers"`
 	}
@@ -260,7 +277,7 @@ func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry
 	}
 	entries := make([]ProviderCatalogEntry, 0, len(payload.Providers))
 	for id, raw := range payload.Providers {
-		entry := normalizeProviderCatalogEntry(id, raw)
+		entry := normalizeProviderCatalogEntryWithTypes(id, raw, catalogTypes)
 		if entry.ID == "" || entry.Name == "" {
 			continue
 		}
@@ -277,6 +294,10 @@ func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry
 }
 
 func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalogEntry {
+	return normalizeProviderCatalogEntryWithTypes(id, raw, nil)
+}
+
+func normalizeProviderCatalogEntryWithTypes(id string, raw map[string]any, catalogTypes map[string]string) ProviderCatalogEntry {
 	baseURL := firstNonEmpty(catalogStringField(raw, "base_url"), catalogStringField(raw, "api"))
 	entry := ProviderCatalogEntry{
 		ID:          firstNonEmpty(catalogStringField(raw, "id"), id),
@@ -286,7 +307,7 @@ func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalo
 		DocURL:      firstNonEmpty(catalogStringField(raw, "doc_url"), catalogStringField(raw, "doc")),
 		Source:      "local-provider-catalog",
 	}
-	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), inferProviderType(entry.ID, entry.BaseURL))
+	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), catalogTypes[strings.TrimSpace(entry.ID)], ProviderOpenAICompatible)
 	if rawModels, ok := raw["models"].([]any); ok {
 		entry.Models = make([]ProviderCatalogModel, 0, len(rawModels))
 		for _, rawModel := range rawModels {
@@ -861,31 +882,6 @@ func sortCatalogEntries(entries []ProviderCatalogEntry) {
 		}
 		return strings.ToLower(entries[i].DisplayName) < strings.ToLower(entries[j].DisplayName)
 	})
-}
-
-func inferProviderType(id string, baseURL string) string {
-	normalized := strings.ToLower(id)
-	normalizedBaseURL := strings.ToLower(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
-	switch {
-	case normalized == "openai":
-		return ProviderOpenAI
-	case strings.Contains(normalized, "azure"):
-		return ProviderAzureOpenAI
-	case strings.Contains(normalized, "anthropic") || strings.Contains(normalizedBaseURL, "/anthropic/") || strings.HasSuffix(normalizedBaseURL, "/anthropic"):
-		return ProviderAnthropic
-	case normalized == "google" || strings.Contains(normalized, "gemini"):
-		return ProviderGemini
-	case strings.Contains(normalized, "deepseek"):
-		return "deepseek"
-	case strings.Contains(normalized, "qwen") || strings.Contains(normalized, "alibaba"):
-		return "qwen"
-	case strings.Contains(normalized, "ollama") || strings.Contains(normalized, "lmstudio") || strings.Contains(normalized, "local"):
-		return "local"
-	case strings.Contains(normalized, "kronk"):
-		return ProviderKronk
-	default:
-		return ProviderOpenAICompatible
-	}
 }
 
 func normalizeProviderBaseURL(id string, raw string) string {

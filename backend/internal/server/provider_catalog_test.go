@@ -37,13 +37,23 @@ func TestNormalizeProviderCatalogModelUsesExplicitCanonicalName(t *testing.T) {
 	}
 }
 
-func TestNormalizeProviderCatalogEntryInfersAnthropicProtocolFromBaseURL(t *testing.T) {
+func TestNormalizeProviderCatalogEntryDoesNotInferProviderTypeFromBaseURL(t *testing.T) {
 	entry := normalizeProviderCatalogEntry("minimax-cn", map[string]any{
 		"name": "MiniMax China",
 		"api":  "https://api.minimaxi.com/anthropic/v1",
 	})
+	if entry.Type != ProviderOpenAICompatible {
+		t.Fatalf("expected generic provider type, got %q", entry.Type)
+	}
+}
+
+func TestNormalizeProviderCatalogEntryUsesPluginCatalogType(t *testing.T) {
+	entry := normalizeProviderCatalogEntryWithTypes("anthropic", map[string]any{
+		"name": "Anthropic",
+		"api":  "https://api.anthropic.com",
+	}, map[string]string{"anthropic": ProviderAnthropic})
 	if entry.Type != ProviderAnthropic {
-		t.Fatalf("expected Anthropic provider type, got %q", entry.Type)
+		t.Fatalf("expected plugin catalog provider type, got %q", entry.Type)
 	}
 }
 
@@ -173,6 +183,23 @@ func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	}
 	if source != "local-provider-catalog" || !providerCatalogContains(persisted, "fresh-provider") {
 		t.Fatalf("expected persisted local catalog, source=%q entries=%+v", source, persisted)
+	}
+}
+
+func TestProviderCatalogServiceUsesPluginCatalogTypes(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+
+	server := New(NewMemoryStore())
+	service := newProviderCatalogService(store, catalogFile)
+	service.UsePluginCatalogTypes(server.adapterRegistry)
+	entry, _, ok, err := service.Get(context.Background(), "anthropic", true)
+	if err != nil || !ok {
+		t.Fatalf("expected plugin-typed provider entry, ok=%v err=%v", ok, err)
+	}
+	if entry.Type != ProviderAnthropic {
+		t.Fatalf("expected plugin catalog provider type, got %q", entry.Type)
 	}
 }
 

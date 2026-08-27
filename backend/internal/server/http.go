@@ -200,6 +200,8 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	registerExternalProviderPluginAdapters(registry, packages)
 	configureProviderResourceTypeDefaults(store, registry)
 	reconcileProviderPluginPolicies(store, registry)
+	providerCatalog := newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient)
+	providerCatalog.UsePluginCatalogTypes(registry)
 	s := &Server{
 		store:                   store,
 		pluginRegistry:          pluginRegistry,
@@ -212,7 +214,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		adapterRegistry:         registry,
 		integrations:            NewIntegrationService(store, registry, client),
 		codexSubscription:       codexSubscription,
-		providerCatalog:         newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient),
+		providerCatalog:         providerCatalog,
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
 		billingAvailable:        billingAvailable,
 		reconciliation:          newReconciliationService(store, billingDependencies.ReconciliationReader),

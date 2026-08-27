@@ -112,6 +112,31 @@ func (s *Server) pluginProviderCatalogEntries() []ProviderCatalogEntry {
 	return entries
 }
 
+func providerCatalogTypesFromRegistry(registry *AdapterRegistry) map[string]string {
+	if registry == nil {
+		return nil
+	}
+	types := map[string]string{}
+	for _, adapter := range registry.List() {
+		if adapter.PluginID == "" {
+			continue
+		}
+		plugin, ok := adapterPluginDescriptor(registry, adapter.Type)
+		if !ok {
+			continue
+		}
+		entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter)
+		if !ok || entry.ID == "" || entry.Type == "" {
+			continue
+		}
+		types[entry.ID] = entry.Type
+	}
+	if len(types) == 0 {
+		return nil
+	}
+	return types
+}
+
 func providerCatalogEntryFromPlugin(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) ProviderCatalogEntry {
 	if entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter); ok {
 		return entry
