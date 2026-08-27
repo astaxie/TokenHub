@@ -15,7 +15,7 @@ import { configuredPriceEntered } from "../domain/configured-pricing";
 import { providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
 import { providerEgressTestPayload } from "../domain/provider-egress";
 import { providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
-import { isProviderAccountResourceType, providerResourceAPIKeyType } from "../domain/provider-resource-types";
+import { isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType } from "../domain/provider-resource-types";
 import { modelPricingPeriodsInvalidPeriodError, modelPricingPeriodsJSONError, modelPricingPeriodsObjectArrayError, parseModelPricingPeriods } from "../domain/model-pricing-periods";
 import { providerTypeOptionsFromData } from "../shared/ui";
 import { activeLanguage, tx } from "../i18n/runtime";
@@ -63,8 +63,8 @@ export function providerUpdatePayload(values: Record<string, string>, data?: Pic
   return payload;
 }
 
-export function providerResourcePayload(values: Record<string, string>) {
-  const isAccountResource = isProviderAccountResourceType(values.resource_type);
+export function providerResourcePayload(values: Record<string, string>, data?: AppData) {
+  const isAccountResource = providerResourceValuesAreAccount(values, data);
   const authType = values.auth_type?.trim();
   const credentials = isAccountResource
     ? {
@@ -99,13 +99,13 @@ export function providerResourcePayload(values: Record<string, string>) {
     max_concurrency: numberOr(values.max_concurrency, 0),
     ...providerHeadersPayload(values.custom_headers),
     credentials,
-    options: providerResourceOptions(values),
+    options: providerResourceOptions(values, data),
   };
 }
 
-export function providerResourceUpdatePayload(values: Record<string, string>) {
-  const payload = providerResourcePayload(values) as Record<string, unknown>;
-  const isAccountResource = isProviderAccountResourceType(values.resource_type);
+export function providerResourceUpdatePayload(values: Record<string, string>, data?: AppData) {
+  const payload = providerResourcePayload(values, data) as Record<string, unknown>;
+  const isAccountResource = providerResourceValuesAreAccount(values, data);
   if (isAccountResource && !values.access_token?.trim()) delete payload.api_key;
   if (!isAccountResource && !values.api_key?.trim()) delete payload.api_key;
   if (isAccountResource && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
@@ -114,9 +114,9 @@ export function providerResourceUpdatePayload(values: Record<string, string>) {
   return payload;
 }
 
-export function providerResourceOptions(values: Record<string, string>) {
+export function providerResourceOptions(values: Record<string, string>, data?: AppData) {
   const authType = values.auth_type?.trim();
-  const accountOptions: Record<string, string> = isProviderAccountResourceType(values.resource_type) ? {
+  const accountOptions: Record<string, string> = providerResourceValuesAreAccount(values, data) ? {
     credential_source: values.resource_type,
     ...(authType ? { auth_type: authType } : {}),
     account_email: values.account_email,
@@ -133,6 +133,12 @@ export function providerResourceOptions(values: Record<string, string>) {
     delete options.claude_code_attribution_policy;
   }
   return { ...options, ...providerPluginOptionValues(values) };
+}
+
+function providerResourceValuesAreAccount(values: Record<string, string>, data?: AppData) {
+  if (!data) return isProviderAccountResourceType(values.resource_type);
+  const providerType = data.providers.find((provider) => provider.id === values.provider_id)?.type ?? "";
+  return isProviderAccountResourceTypeForData(data, providerType, values.resource_type);
 }
 
 export function providerResourceToForm(item: ProviderResource, providerOptions?: Record<string, string>) {

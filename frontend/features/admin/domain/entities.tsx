@@ -5,7 +5,7 @@ import { codexImageModelName, codexProviderType } from "./codex-provider-profile
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabelFromData, roleLabel, splitList } from "./labels";
-import { isProviderAccountResource } from "./provider-resource-types";
+import { isProviderAccountResourceForData } from "./provider-resource-types";
 import { tx } from "../i18n/runtime";
 import { preferredModelCategories } from "./model-categories";
 
@@ -505,7 +505,7 @@ export function imageCapabilityCapableResources(data: AppData, providerID: strin
     resource.status === "active" &&
     resource.healthy !== false &&
     resource.options?.[profile.capabilityOption] === profile.capabilitySupportedValue &&
-    (profile.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResource(resource)),
+    (profile.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResourceForData(data, resource)),
   );
 }
 
@@ -593,7 +593,7 @@ export function providerRouteSummary(provider: Provider, data: AppData) {
 }
 
 export function providerAccountResourceSummary(provider: Provider, data: AppData) {
-  const resources = data.providerResources.filter((resource) => resource.provider_id === provider.id && isProviderAccountResource(resource));
+  const resources = data.providerResources.filter((resource) => resource.provider_id === provider.id && isProviderAccountResourceForData(data, resource));
   if (resources.length === 0) return <span className="muted-inline">-</span>;
   const active = resources.filter((resource) => resource.status === "active" && resource.healthy).length;
   const first = resources[0]?.credential_summary;

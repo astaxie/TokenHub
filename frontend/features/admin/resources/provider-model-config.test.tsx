@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerResourceAuthTypeOptionsFromData } from "../domain/provider-resource-types";
 import { providerResourcePayload, providerResourceToForm } from "./payloads";
-import { exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { accountResourceFieldVisible, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("keeps provider account runtime fields free of provider-specific plugin options", () => {
@@ -467,6 +467,49 @@ describe("providerResourceConfig", () => {
       { value: "oauth", label: "OAuth" },
       { value: "personal_access_token", label: "Personal Access Token" },
     ]);
+  });
+
+  it("shows account credential fields only for resource types declared by plugin metadata", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    data.providerAdapters = [{
+      type: "kimi_subscription",
+      capabilities: ["responses"],
+      plugin_id: "tokenhub.provider.kimi",
+      resource_types: [{ type: "kimi_oauth_account", display_name: "Kimi OAuth Account" }],
+      provider_policy: { supports_custom_headers: true, credentials_scope: "resource" },
+    }];
+
+    expect(accountResourceFieldVisible({ provider_id: "prv_kimi", resource_type: "kimi_oauth_account" }, data)).toBe(true);
+    expect(accountResourceFieldVisible({ provider_id: "prv_kimi", resource_type: "plugin_cache_bucket" }, data)).toBe(false);
+    expect(accountResourceFieldVisible({ provider_id: "prv_kimi", resource_type: "api_key" }, data)).toBe(false);
+  });
+
+  it("builds provider resource payloads with metadata-aware account detection", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
+    data.providerAdapters = [{
+      type: "kimi_subscription",
+      capabilities: ["responses"],
+      plugin_id: "tokenhub.provider.kimi",
+      resource_types: [{ type: "kimi_oauth_account", display_name: "Kimi OAuth Account" }],
+      provider_policy: { supports_custom_headers: true, credentials_scope: "resource" },
+    }];
+
+    expect(providerResourcePayload({
+      provider_id: "prv_kimi",
+      name: "Cache Bucket",
+      resource_type: "plugin_cache_bucket",
+      api_key: "bucket-key",
+      access_token: "account-token",
+      status: "active",
+      healthy: "true",
+    }, data)).toMatchObject({
+      resource_type: "plugin_cache_bucket",
+      api_key: "bucket-key",
+      credentials: undefined,
+      options: {},
+    });
   });
 
   it("applies provider resource metadata to account defaults and auth options", () => {

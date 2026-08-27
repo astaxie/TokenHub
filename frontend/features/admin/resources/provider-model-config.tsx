@@ -6,7 +6,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResource, isProviderAccountResourceType, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -79,7 +79,7 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "账号 OAuth access token 或 PAT；保存后不会再次显示。" },
     { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
     { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: accountResourceFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
-    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values) => !isProviderAccountResourceType(values.resource_type), help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
+    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values, data) => !accountResourceFieldVisible(values, data), help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
     { key: "account_email", label: "账号邮箱", autoComplete: "off", visible: accountResourceFieldVisible },
     { key: "account_id", label: "账号 ID", autoComplete: "off", visible: accountResourceFieldVisible },
     { key: "organization_id", label: "组织 ID", autoComplete: "off", visible: accountResourceFieldVisible },
@@ -118,8 +118,8 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
     ],
     fields: providerResourceFieldConfigs(provider),
     list: (ctx) => ctx.providerResources.filter((item) => !provider || item.provider_id === provider.id),
-    create: (ctx, values) => adminMutate(ctx, "/api/admin/provider-resources", "POST", providerResourcePayload(values)),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}`, "PATCH", providerResourceUpdatePayload(values)),
+    create: (ctx, values, data) => adminMutate(ctx, "/api/admin/provider-resources", "POST", providerResourcePayload(values, data)),
+    update: (ctx, item, values, data) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}`, "PATCH", providerResourceUpdatePayload(values, data)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/provider-resources/${item.id}`),
     actions: [
       {
@@ -138,8 +138,8 @@ export function openAIAccountFieldVisible(values: Record<string, string>) {
   return isOpenAISubscriptionResourceType(values.resource_type);
 }
 
-export function accountResourceFieldVisible(values: Record<string, string>) {
-  return isProviderAccountResourceType(values.resource_type);
+export function accountResourceFieldVisible(values: Record<string, string>, data?: AppData) {
+  return data ? isProviderAccountResourceTypeForData(data, providerTypeForResourceValues(data, values), values.resource_type) : isProviderAccountResourceType(values.resource_type);
 }
 
 export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
@@ -170,7 +170,7 @@ function providerTypeForResourceValues(data: AppData, values?: Record<string, st
 }
 
 export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Provider, data: AppData) {
-  const accountResource = data.providerResources.find((resource) => resource.provider_id === provider.id && isProviderAccountResource(resource) && resource.status === "active");
+  const accountResource = data.providerResources.find((resource) => resource.provider_id === provider.id && isProviderAccountResourceForData(data, resource) && resource.status === "active");
   if (accountResource) {
     const action = providerPluginActionForCapability(data.pluginActions, provider.type, "probe.run");
     if (action) {

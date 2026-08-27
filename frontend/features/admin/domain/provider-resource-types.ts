@@ -32,6 +32,19 @@ export function isProviderAccountResource(resource: ProviderResourceTypeLike) {
   return isProviderAccountResourceType(resource.resource_type);
 }
 
+export function isProviderAccountResourceTypeForData(data: Pick<AppData, "plugins" | "providerAdapters">, providerType: string, resourceType: string | undefined) {
+  const normalized = resourceType?.trim();
+  if (!normalized || normalized === providerResourceAPIKeyType) return false;
+  const metadata = providerResourceTypeMetadataFromData(data, providerType);
+  if (metadata.length === 0) return isProviderAccountResourceType(normalized);
+  return metadata.some((item) => item.type === normalized);
+}
+
+export function isProviderAccountResourceForData(data: Pick<AppData, "plugins" | "providerAdapters" | "providers">, resource: ProviderResourceTypeLike & { provider_id?: string }) {
+  const providerType = data.providers?.find((provider) => provider.id === resource.provider_id)?.type ?? "";
+  return isProviderAccountResourceTypeForData(data, providerType, resource.resource_type);
+}
+
 export function providerResourceTypeOptionOrder(value: string) {
   if (value === providerResourceOpenAISubscriptionType) return 0;
   if (value === providerResourceAPIKeyType) return 1;
