@@ -70,6 +70,11 @@ func (s *Server) executeProviderPanelAction(ctx context.Context, user AdminUser,
 }
 
 func providerPluginActionMatchesResourceType(action pluginmeta.ActionDescriptor, resourceType string) bool {
-	expected := firstNonEmpty(action.Metadata["provider_resource_type"], action.Metadata["resource_type"])
-	return strings.TrimSpace(expected) == "" || strings.TrimSpace(resourceType) == "" || strings.TrimSpace(expected) == strings.TrimSpace(resourceType)
+	expected := providerPluginActionResourceType(action)
+	resourceType = strings.TrimSpace(resourceType)
+	return expected == "" || (resourceType != "" && expected == resourceType)
+}
+
+func providerPluginActionResourceType(action pluginmeta.ActionDescriptor) string {
+	return strings.TrimSpace(firstNonEmpty(action.Metadata["provider_resource_type"], action.Metadata["resource_type"]))
 }

@@ -381,6 +381,52 @@ func TestProviderPluginCapabilityActionSkipsMismatchedResourceTypeMetadata(t *te
 		if _, _, ok := server.providerPluginCapabilityAction(providerType, action.capability, action.actionCap, ProviderResourceOpenAISubscription); !ok {
 			t.Fatalf("%s action did not match declared resource type", action.id)
 		}
+		if _, _, ok := server.providerPluginCapabilityAction(providerType, action.capability, action.actionCap, ""); ok {
+			t.Fatalf("%s action matched an empty resource type", action.id)
+		}
+	}
+}
+
+func TestProviderPluginCapabilityActionPrefersExactResourceTypeOverGeneric(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "exact_resource_action_provider"
+	pluginID := "tokenhub.provider.exact-resource-action"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Exact Resource Action Provider", []string{providerType}, []string{
+		string(AdapterCapabilityModels),
+	}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register exact resource provider: %v", err)
+	}
+	for _, action := range []pluginmeta.ActionDescriptor{
+		{
+			PluginID: pluginID, ActionID: "models.generic", Kind: pluginmeta.ActionKindRead,
+			Capability: "models.read", Subject: providerType,
+		},
+		{
+			PluginID: pluginID, ActionID: "models.kimi", Kind: pluginmeta.ActionKindRead,
+			Capability: "models.read", Subject: providerType,
+			Metadata: map[string]string{"provider_resource_type": "kimi_account"},
+		},
+	} {
+		if err := server.pluginActions.RegisterDescriptor(action); err != nil {
+			t.Fatalf("register %s action descriptor: %v", action.ActionID, err)
+		}
+	}
+
+	action, ok := server.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityModels, "models.read", "kimi_account")
+	if !ok || action.ActionID != "models.kimi" {
+		t.Fatalf("resource action = %+v, %v; want exact resource action", action, ok)
+	}
+	action, ok = server.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityModels, "models.read", "other_account")
+	if !ok || action.ActionID != "models.generic" {
+		t.Fatalf("fallback action = %+v, %v; want generic action", action, ok)
+	}
+	action, ok = server.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityModels, "models.read", "")
+	if !ok || action.ActionID != "models.generic" {
+		t.Fatalf("empty resource action = %+v, %v; want generic action only", action, ok)
 	}
 }
 

@@ -579,6 +579,7 @@ func (s *Server) providerPluginCapabilityActionDescriptor(providerType string, c
 	if !ok || descriptor.PluginID == "" || !adapterSupports(descriptor, capability) {
 		return pluginmeta.ActionDescriptor{}, false
 	}
+	var generic *pluginmeta.ActionDescriptor
 	for _, action := range s.pluginActions.List() {
 		if action.PluginID != descriptor.PluginID || action.Capability != actionCapability {
 			continue
@@ -589,7 +590,16 @@ func (s *Server) providerPluginCapabilityActionDescriptor(providerType string, c
 		if !providerPluginActionMatchesResourceType(action, resourceType) {
 			continue
 		}
-		return action, true
+		if providerPluginActionResourceType(action) != "" {
+			return action, true
+		}
+		if generic == nil {
+			copy := action
+			generic = &copy
+		}
+	}
+	if generic != nil {
+		return *generic, true
 	}
 	return pluginmeta.ActionDescriptor{}, false
 }
