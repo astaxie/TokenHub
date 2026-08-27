@@ -104,18 +104,8 @@ func (s *Server) handleAdminProviderImageCapability(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID string, enabled bool, profiles ...providerImageCapabilityRouteProfile) (providerImageCapabilityResult, error) {
-	profile := codexImageCapabilityRouteProfile()
-	if len(profiles) > 0 {
-		profile = profiles[0]
-		profile.withDefaults()
-		if profile.ProviderType == "" {
-			profile.ProviderType = ProviderOpenAICodex
-		}
-		if profile.ResourceType == "" {
-			profile.ResourceType = ProviderResourceOpenAISubscription
-		}
-	}
+func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID string, enabled bool, profile providerImageCapabilityRouteProfile) (providerImageCapabilityResult, error) {
+	profile.withDefaults()
 	resource, provider, err := s.codexImageResource(resourceID, enabled, profile)
 	if err != nil {
 		return providerImageCapabilityResult{}, err
