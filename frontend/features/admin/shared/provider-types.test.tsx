@@ -257,4 +257,32 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeLabelFromData(data, "kimi_subscription")).toBe("Kimi Subscription");
     expect(providerTypeLabelFromData(data, "unknown_subscription")).toBe("unknown_subscription");
   });
+
+  it("uses plugin provider catalog capabilities for labels and defaults", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.gm",
+      name: "GM Plugin",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [
+        { kind: "provider", name: "responses", subject: "gm_subscription" },
+        {
+          kind: "provider_catalog",
+          name: "entry",
+          subject: "gm_subscription",
+          value: "{\"id\":\"gm\",\"name\":\"GM Catalog\",\"display_name\":\"GM Subscription\",\"type\":\"gm_subscription\",\"base_url\":\"https://gm.example/v1/\",\"models_count\":3}",
+        },
+      ],
+    }];
+
+    const options = providerTypeOptionsFromData(data);
+    const option = options.find((item) => item.value === "gm_subscription");
+
+    expect(providerTypeLabelFromData(data, "gm_subscription")).toBe("GM Subscription");
+    expect(option?.label).toBe("GM Subscription");
+    expect(option?.defaultBaseURL).toBe("https://gm.example/v1");
+  });
 });

@@ -8,6 +8,7 @@ import { modelDisplayName } from "../domain/model-display-name";
 import { findProvider, modelRoutesFor } from "../domain/entities";
 import { compactNumber, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, providerTypeLabel, splitList } from "../domain/labels";
+import { providerCatalogEntriesFromPluginCapabilities } from "../domain/provider-plugin-catalog";
 import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
 import { PaginationControls, usePagination } from "./pagination";
 
@@ -533,12 +534,15 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
       }
     }
   }
-  for (const entry of data.providerCatalog ?? []) {
+  for (const entry of [...providerCatalogEntriesFromPluginCapabilities(data.plugins), ...(data.providerCatalog ?? [])]) {
     if (!entry.type) continue;
     hasPluginProviderSource = true;
     types.add(entry.type);
     const label = String(entry.display_name || entry.name || entry.type).trim();
     if (label) labelByType.set(entry.type, label);
+    if (entry.base_url?.trim() && !defaultBaseURLByType.has(entry.type)) {
+      defaultBaseURLByType.set(entry.type, entry.base_url.trim().replace(/\/+$/, ""));
+    }
   }
   for (const provider of data.providers ?? []) {
     if (provider.type) {

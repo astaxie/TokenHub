@@ -3,6 +3,7 @@ import { fieldSummary, projectName, stringifyValue, teamLabel } from "./entities
 import { routeStrategyLabel } from "./formatting";
 import { displayText, tx } from "../i18n/runtime";
 import { identityProviderTemplateLabel, normalizedIdentityProviderIconKey } from "../shared/auth";
+import { providerCatalogEntriesFromPluginCapabilities } from "./provider-plugin-catalog";
 
 export function compactList(value: unknown) {
   const values = Array.isArray(value) ? value.map(stringifyValue) : splitList(stringifyValue(value));
@@ -333,7 +334,7 @@ export function providerTypeLabel(type: string | undefined) {
 export function providerTypeLabelFromData(data: Pick<AppData, "plugins" | "providerCatalog">, type: string | undefined) {
   const normalized = String(type ?? "").trim();
   if (!normalized) return "-";
-  for (const entry of data.providerCatalog ?? []) {
+  for (const entry of [...(data.providerCatalog ?? []), ...providerCatalogEntriesFromPluginCapabilities(data.plugins)]) {
     if (entry.type !== normalized) continue;
     const label = String(entry.display_name || entry.name || "").trim();
     if (label) return label;
