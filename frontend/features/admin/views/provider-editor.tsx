@@ -9,7 +9,7 @@ import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/fo
 import { providerTypeLabelFromData } from "../domain/labels";
 import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
-import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerTypeValue } from "../domain/provider-custom-upstream";
+import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
@@ -109,7 +109,7 @@ export function ProviderUpsertModal({
   const initialEntry = editingAccountProvider
     ? editingAccountProviderCatalogEntry
     : mode === "edit"
-      ? selectableProviderCatalog.find((entry) => entry.id === (provider?.type === "kronk" ? "kronk" : "custom")) ?? selectableProviderCatalog[0]
+      ? selectableProviderCatalog.find((entry) => entry.type === provider?.type && providerCatalogSupportsModelPreview(entry, pluginActions)) ?? selectableProviderCatalog.find((entry) => entry.id === "custom") ?? selectableProviderCatalog[0]
       : selectableProviderCatalog.find((entry) => entry.id === providerCatalogID)
         ?? selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, initialCategory))
         ?? selectableProviderCatalog.find((entry) => entry.id === "custom")
@@ -197,17 +197,14 @@ export function ProviderUpsertModal({
     [mode, provider?.id, resources],
   );
   const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
-  const selectedAccountResources = useMemo(
-    () => selectedAccountID === "all"
-      ? accountResources
-      : accountResources.filter((resource) => resource.id === selectedAccountID),
-    [accountResources, selectedAccountID],
-  );
-  const categoryCatalog = useMemo(
-    () => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory)),
-    [modelCategory, selectableProviderCatalog],
-  );
+  const selectedAccountResources = useMemo(() => selectedAccountID === "all" ? accountResources : accountResources.filter((resource) => resource.id === selectedAccountID), [accountResources, selectedAccountID]);
+  const categoryCatalog = useMemo(() => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory)), [modelCategory, selectableProviderCatalog]);
   const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory, standardModels), [modelCategory, standardModels]);
+  const selectedCatalogTemplateEntry = catalogID === "custom" ? customCatalogEntry : selectableProviderCatalog.find((entry) => entry.id === catalogID);
+  const selectedCatalogSupportsModelPreview = providerCatalogSupportsModelPreview(selectedCatalogTemplateEntry, pluginActions);
+  const selectedCatalogUsesDiscoveryPreview = providerCatalogUsesDiscoveryPreview(catalogID, selectedCatalogTemplateEntry, pluginActions);
+  const selectedCatalogDiscoveryRouteID = providerCatalogDiscoveryRouteID(catalogID, selectedCatalogTemplateEntry, pluginActions);
+  const selectedCatalogRequiresAPIKey = providerCatalogAPIKeyRequired(catalogID, selectedCatalogTemplateEntry, pluginActions);
   useEffect(() => {
     if (quickAPIFlow || credentialMode === "account_integration" || selectedCatalogIsAccountProvider) return;
     if (catalogID === "custom") return;
@@ -242,7 +239,7 @@ export function ProviderUpsertModal({
         cancelled = true;
       };
     }
-    if (catalogID === "custom" || catalogID === "kronk") {
+    if (selectedCatalogUsesDiscoveryPreview) {
       if (!values.base_url?.trim()) {
         setDetail(catalogID === "custom" ? customCatalogEntry : entry ?? null);
         setModelLoading(false);
@@ -251,7 +248,7 @@ export function ProviderUpsertModal({
         };
       }
       setModelLoading(true);
-      adminFetch(api, `/api/admin/provider-catalog/${catalogID === "kronk" ? "kronk" : "custom"}`, {
+      adminFetch(api, `/api/admin/provider-catalog/${encodeURIComponent(selectedCatalogDiscoveryRouteID)}`, {
         method: "POST",
         body: JSON.stringify(customUpstreamDiscoveryPayload(
           values,
@@ -261,7 +258,7 @@ export function ProviderUpsertModal({
         )),
       })
         .then(async (resp) => {
-          if (!resp.ok) throw new Error(await readAdminError(resp, tx(catalogID === "kronk" ? "发现 Kronk 本地模型" : "加载自定义上游模型")));
+          if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载自定义上游模型")));
           return (await resp.json()) as { data: ProviderCatalogEntry };
         })
         .then((payload) => {
@@ -271,7 +268,7 @@ export function ProviderUpsertModal({
         })
         .catch((err) => {
           if (cancelled || isAuthExpiredError(err)) return;
-          const message = err instanceof Error ? err.message : tx(catalogID === "kronk" ? "Kronk 模型发现失败" : "自定义上游模型加载失败");
+          const message = err instanceof Error ? err.message : tx("自定义上游模型加载失败");
           setDetail(catalogID === "custom" ? customCatalogEntry : entry ?? null);
           setModelError(message);
         })
@@ -319,7 +316,7 @@ export function ProviderUpsertModal({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the explicit catalog and connection keys are the request identity; form setters must not refetch.
-  }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id, selectedCatalogIsAccountProvider]);
+  }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id, selectedCatalogDiscoveryRouteID, selectedCatalogIsAccountProvider, selectedCatalogUsesDiscoveryPreview]);
 
   useEffect(() => {
     if (!usesAccountCatalog || mode === "edit") return;
@@ -436,7 +433,7 @@ export function ProviderUpsertModal({
   }, [createStep, mode]);
 
   useEffect(() => {
-    if ((catalogID !== "custom" && catalogID !== "kronk") || !values.base_url?.trim()) return;
+    if (!selectedCatalogUsesDiscoveryPreview || !values.base_url?.trim()) return;
     // Load custom upstream models once model selection is on screen. This also
     // covers edit mode, where changing the Anthropic auth selector on the
     // Advanced tab must refresh discovery when the operator returns to Models.
@@ -444,7 +441,7 @@ export function ProviderUpsertModal({
     if (loadedCustomConnection.current === customConnectionKey) return;
     loadedCustomConnection.current = customConnectionKey;
     setCatalogReloadKey((current) => current + 1);
-  }, [catalogID, createStep, customConnectionKey, editTab, mode, quickAPIConnect, quickAPITab, values.base_url]);
+  }, [createStep, customConnectionKey, editTab, mode, quickAPIConnect, quickAPITab, selectedCatalogUsesDiscoveryPreview, values.base_url]);
 
   useEffect(() => {
     if (mode !== "edit" || editTab !== "advanced" || !accountQuotaAction) return;
@@ -472,6 +469,7 @@ export function ProviderUpsertModal({
       const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name);
       return providerCatalogModelIsSelectable({
         catalogID,
+        supportsModelPreview: selectedCatalogSupportsModelPreview,
         usesAccountCatalog,
         quickAPIFlow,
         selectedCategory: modelCategory,
@@ -479,7 +477,7 @@ export function ProviderUpsertModal({
         matchesStandardModel: standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name) === canonicalModelNameForUI(canonical, canonical)),
       });
     }),
-    [catalogID, effectiveDetail, modelCategory, quickAPIFlow, standardModels, usesAccountCatalog],
+    [catalogID, effectiveDetail, modelCategory, quickAPIFlow, selectedCatalogSupportsModelPreview, standardModels, usesAccountCatalog],
   );
   const listedCatalog = useMemo(
     () => quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
@@ -931,7 +929,7 @@ export function ProviderUpsertModal({
       setError(tx("请填写 Base URL。"));
       return false;
     }
-    if (targetStep === 1 && credentialMode === "provider_api_key" && catalogID !== "kronk" && !values.api_key?.trim()) {
+    if (targetStep === 1 && credentialMode === "provider_api_key" && selectedCatalogRequiresAPIKey && !values.api_key?.trim()) {
       if (quickAPIFlow) setQuickAPITab("connect");
       setError(tx("请填写 API Key。"));
       return false;
@@ -969,7 +967,7 @@ export function ProviderUpsertModal({
       return;
     }
     if (quickAPIConnect && !validateCreateStep(createStep)) return;
-    if (mode === "create" && (catalogID === "custom" || catalogID === "kronk")
+    if (mode === "create" && selectedCatalogUsesDiscoveryPreview
       && !customUpstreamModelsAreCurrent(models.length, loadedCustomConnection.current, customConnectionKey)) {
       if (quickAPIFlow) setQuickAPITab("models");
       setError(tx("请先加载自定义渠道的上游模型，再选择要引入的模型。"));
@@ -993,7 +991,7 @@ export function ProviderUpsertModal({
         catalog_id: catalogID,
         model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
-        custom_models: (catalogID === "custom" || catalogID === "kronk" || usesAccountCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
+        custom_models: (selectedCatalogUsesDiscoveryPreview || usesAccountCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
@@ -1263,7 +1261,7 @@ export function ProviderUpsertModal({
                   onModelToggle={(modelID, enabled) => setSelectedModels((current) => ({ ...current, [modelID]: enabled }))}
                   onReloadModels={reloadSelectedCatalog}
                   onTabChange={setQuickAPITab}
-                  onUpdate={update} providerTypeOptions={providerTypeOptions}
+                  onUpdate={update} providerTypeOptions={providerTypeOptions} pluginActions={pluginActions}
                 />{quickAPITab === "connect" ? <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} values={values} /> : null}</>
               ) : (
               <section className="provider-wizard-panel">

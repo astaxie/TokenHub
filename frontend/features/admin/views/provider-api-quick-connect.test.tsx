@@ -134,4 +134,62 @@ describe("ProviderAPIQuickConnect", () => {
       api_key: "provider-secret",
     });
   });
+
+  it("uses plugin preview action schema to make API keys optional", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 9 }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    function PluginHarness() {
+      const [values, setValues] = useState<Record<string, string>>({
+        name: "Plugin Local",
+        type: "plugin_local",
+        base_url: "",
+        api_key: "",
+        priority: "10",
+      });
+      return (
+        <ProviderAPIQuickConnect
+          api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+          catalogID="plugin-local"
+          entry={{ id: "plugin-local", name: "Plugin Local", display_name: "Plugin Local", type: "plugin_local", base_url: "http://127.0.0.1:19090/v1", models_count: 0, source: "plugin:local_file" }}
+          modelCount={0}
+          models={[]}
+          modelsLoading={false}
+          modelsError=""
+          modelQuery=""
+          selectedModelCount={0}
+          selectedModels={{}}
+          activeTab="connect"
+          values={values}
+          onModelQueryChange={vi.fn()}
+          onModelToggle={vi.fn()}
+          onReloadModels={vi.fn()}
+          onTabChange={vi.fn()}
+          onUpdate={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
+          pluginActions={[{ plugin_id: "tokenhub.provider.local", action_id: "plugin_local.models.preview", kind: "read", capability: "models.preview", subject: "plugin_local", input_schema: { type: "object", required: ["base_url"] } }]}
+        />
+      );
+    }
+
+    render(<PluginHarness />);
+
+    const testButton = screen.getByRole("button", { name: "测试连接" });
+    expect(testButton).toBeDisabled();
+    await user.type(screen.getByLabelText("Base URL"), "http://127.0.0.1:19090/v1");
+    expect(screen.getByLabelText("Application Token（可选）")).not.toBeRequired();
+    expect(testButton).toBeEnabled();
+    await user.click(testButton);
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("连接测试通过"));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+      catalog_id: "plugin-local",
+      type: "plugin_local",
+      base_url: "http://127.0.0.1:19090/v1",
+      api_key: "",
+    });
+  });
 });

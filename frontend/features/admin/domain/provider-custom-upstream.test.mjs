@@ -9,6 +9,10 @@ const {
   customUpstreamModelsVisible,
   defaultProviderTypeValue,
   providerAuthMode,
+  providerCatalogAPIKeyRequired,
+  providerCatalogDiscoveryRouteID,
+  providerCatalogSupportsModelPreview,
+  providerCatalogUsesDiscoveryPreview,
   providerConnectionTestRunAfterUpdate,
   providerTypeValue,
 } = await importTypeScript(new URL("./provider-custom-upstream.ts", import.meta.url));
@@ -120,6 +124,35 @@ test("provider type defaults prefer plugin metadata before the legacy fallback",
     anthropic_auth_type: "",
     model_category: "chat",
   });
+});
+
+test("provider catalog discovery preview follows plugin actions", () => {
+  const entry = { id: "kimi", type: "kimi_subscription" };
+  const actions = [{
+    action_id: "kimi.models.preview",
+    capability: "models.preview",
+    subject: "kimi_subscription",
+    input_schema: { type: "object", required: ["base_url"] },
+  }];
+
+  assert.equal(providerCatalogSupportsModelPreview(entry, actions), true);
+  assert.equal(providerCatalogUsesDiscoveryPreview("kimi", entry, actions), true);
+  assert.equal(providerCatalogDiscoveryRouteID("kimi", entry, actions), "kimi");
+  assert.equal(providerCatalogAPIKeyRequired("kimi", entry, actions), false);
+  assert.equal(providerCatalogAPIKeyRequired("custom", undefined, actions), true);
+  assert.equal(providerCatalogSupportsModelPreview({ id: "other", type: "other_provider" }, actions), false);
+});
+
+test("provider catalog preview can require API keys through action schema", () => {
+  const entry = { id: "strict", type: "strict_provider" };
+  const actions = [{
+    action_id: "strict.models.preview",
+    capability: "models.preview",
+    subject: "strict_provider",
+    input_schema: { type: "object", required: ["base_url", "api_key"] },
+  }];
+
+  assert.equal(providerCatalogAPIKeyRequired("strict", entry, actions), true);
 });
 
 test("changing the Anthropic auth selector invalidates the custom model cache key", () => {

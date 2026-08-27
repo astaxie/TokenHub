@@ -13,6 +13,7 @@ export type InitialModelRoute = {
 
 type ProviderCatalogModelFilter = {
   catalogID: string;
+  supportsModelPreview: boolean;
   usesAccountCatalog: boolean;
   quickAPIFlow: boolean;
   selectedCategory: string;
@@ -21,7 +22,7 @@ type ProviderCatalogModelFilter = {
 };
 
 export function providerCatalogModelIsSelectable(filter: ProviderCatalogModelFilter) {
-  if (filter.quickAPIFlow || filter.catalogID === "kronk") return true;
+  if (filter.quickAPIFlow || filter.supportsModelPreview) return true;
   if (filter.selectedCategory !== "all" && filter.discoveredCategory !== filter.selectedCategory) return false;
   if (filter.usesAccountCatalog || filter.catalogID === "custom") return true;
   return filter.matchesStandardModel;

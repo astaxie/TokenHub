@@ -1,9 +1,12 @@
+import { type PluginActionDescriptor, type ProviderCatalogEntry } from "../core/types";
+
 type ProviderAuthModeOption = {
   value: string;
   authModes?: string[];
 };
 
 const legacyProviderTypeFallback = "openai_compatible";
+const providerModelsPreviewCapability = "models.preview";
 
 export function defaultProviderTypeValue(providerTypeOptions: ProviderAuthModeOption[] = []) {
   return providerTypeOptions.find((option) => option.value === legacyProviderTypeFallback)?.value ?? providerTypeOptions[0]?.value ?? legacyProviderTypeFallback;
@@ -26,6 +29,31 @@ const providerConnectionTestFields = new Set(["base_url", "api_key", "type", "an
 
 export function providerConnectionTestRunAfterUpdate(currentRun: number, key: string) {
   return providerConnectionTestFields.has(key) ? currentRun + 1 : currentRun;
+}
+
+export function providerCatalogModelsPreviewAction(entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  if (!entry?.type) return undefined;
+  return actions.find((action) => action.capability === providerModelsPreviewCapability && action.subject === entry.type);
+}
+
+export function providerCatalogSupportsModelPreview(entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  return Boolean(providerCatalogModelsPreviewAction(entry, actions));
+}
+
+export function providerCatalogUsesDiscoveryPreview(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  return catalogID === "custom" || providerCatalogSupportsModelPreview(entry, actions);
+}
+
+export function providerCatalogDiscoveryRouteID(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  if (catalogID === "custom") return "custom";
+  return providerCatalogSupportsModelPreview(entry, actions) ? catalogID : "";
+}
+
+export function providerCatalogAPIKeyRequired(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  if (catalogID === "custom") return true;
+  const action = providerCatalogModelsPreviewAction(entry, actions);
+  if (!action) return true;
+  return pluginActionRequiredFields(action).has("api_key");
 }
 
 export function customUpstreamDiscoveryPayload(
@@ -63,6 +91,11 @@ export function customUpstreamConnectionKey(values: Record<string, string>, prov
 
 function providerAuthModes(providerTypeOptions: ProviderAuthModeOption[], providerType: string) {
   return providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
+}
+
+function pluginActionRequiredFields(action: PluginActionDescriptor) {
+  const required = action.input_schema?.required;
+  return new Set(Array.isArray(required) ? required.filter((item): item is string => typeof item === "string") : []);
 }
 
 function preferredProviderAuthMode(modes: string[]) {
