@@ -228,6 +228,12 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	}
 }
 
+func builtinProviderPluginCatalogSeedEntries() []ProviderCatalogEntry {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	registerBuiltinProviderAdapters(registry, map[string]ProviderAdapter{}, &CodexSubscriptionAdapter{})
+	return providerCatalogSeedEntriesFromRegistry(registry)
+}
+
 func builtinProviderPluginCatalogEntryForType(providerType string) *pluginProviderCatalogEntry {
 	switch providerType {
 	case "deepseek":
