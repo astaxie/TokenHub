@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { readAdminError } from "./payloads";
+import { emptyData } from "../domain/catalog";
+import { defaultFormValues, readAdminError } from "./payloads";
+import { providerConfig } from "./provider-model-config";
 
 describe("Provider model catalog error localization", () => {
   it.each([
@@ -20,5 +22,19 @@ describe("Provider model catalog error localization", () => {
 
     expect(message).toBe(expected);
     expect(message).not.toBe(backendMessage);
+  });
+});
+
+describe("Provider form defaults", () => {
+  it("prefers plugin provider types over the legacy OpenAI-compatible fallback", () => {
+    const data = emptyData();
+    data.providerAdapters = [{
+      type: "kimi_subscription",
+      capabilities: ["responses"],
+      plugin_id: "tokenhub.provider.kimi",
+      provider_policy: { route_protocols: ["responses"], supports_custom_headers: true },
+    }];
+
+    expect(defaultFormValues(providerConfig(), data).type).toBe("kimi_subscription");
   });
 });

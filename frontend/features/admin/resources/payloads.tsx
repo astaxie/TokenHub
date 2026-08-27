@@ -6,7 +6,7 @@ import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveT
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
-import { providerAuthMode } from "../domain/provider-custom-upstream";
+import { defaultProviderTypeValue, providerAuthMode } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
 import { providerPluginOptionValues } from "../domain/provider-plugin-options";
 import { modelMetadataPayload } from "../domain/model-display-name";
@@ -507,7 +507,11 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "monthly_cost_usd") values[field.key] = "2000";
     if (field.key === "max_concurrency") values[field.key] = "20";
     if (field.key === "modality") values[field.key] = "chat";
-    if (field.key === "type") values[field.key] = "openai_compatible";
+    if (field.key === "type") {
+      values[field.key] = config.view === "providers"
+        ? defaultProviderTypeValue(providerTypeOptionsFromData(data))
+        : "openai_compatible";
+    }
     if (field.key === "auth_type") values[field.key] = providerResourceAPIKeyType;
     if (field.key === "scope") values[field.key] = "project";
     if (field.key === "period") values[field.key] = "monthly";
