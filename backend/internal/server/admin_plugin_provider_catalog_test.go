@@ -131,6 +131,92 @@ func TestAdminPluginProviderCatalogGetUsesModelsReadAction(t *testing.T) {
 	}
 }
 
+func TestAdminPluginProviderCatalogGetUsesDeclaredAccountResource(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "auto_catalog_provider"
+	resourceType := "auto_catalog_account"
+	pluginID := "tokenhub.provider.auto-catalog"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Auto Catalog Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+			pluginmeta.PlacementManagementAction,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityModels), Subject: providerType},
+			{Kind: "provider_resource_type", Name: resourceType, Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
+				Type:        resourceType,
+				DisplayName: "Auto Catalog Account",
+				Default:     true,
+			}.CapabilityValue()},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register auto catalog provider: %v", err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_auto_catalog", Name: "Auto Catalog Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	_, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_auto_catalog_undeclared", ProviderID: provider.ID, Name: "Undeclared Account",
+		ResourceType: "undeclared_account", Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_auto_catalog_declared", ProviderID: provider.ID, Name: "Declared Account",
+		ResourceType: resourceType, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "auto_catalog.models.read",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "models.read",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var observed struct {
+			ResourceID string `json:"resource_id"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &observed); err != nil {
+			t.Fatalf("decode auto catalog payload: %v", err)
+		}
+		if observed.ResourceID != resource.ID {
+			t.Fatalf("auto catalog selected resource %q, want %q", observed.ResourceID, resource.ID)
+		}
+		return pluginmeta.ActionResult{Data: ProviderCatalogEntry{
+			ID: providerType, Name: "Auto Catalog Provider", DisplayName: "Auto Catalog Provider",
+			Type: providerType, ModelsCount: 1, Source: "plugin-auto-resource-live",
+			Models: []ProviderCatalogModel{{ID: "auto-resource-model", Name: "auto-resource-model"}},
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register auto catalog action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/"+providerType, nil, "plugin-catalog-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET auto plugin provider catalog: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if actionCalls != 1 || !strings.Contains(response.Body, `"source":"plugin-auto-resource-live"`) ||
+		!strings.Contains(response.Body, `"id":"auto-resource-model"`) {
+		t.Fatalf("auto plugin provider catalog response/calls: calls=%d body=%s", actionCalls, response.Body)
+	}
+}
+
 func TestAdminCustomProviderCatalogPostUsesModelsPreviewAction(t *testing.T) {
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})

@@ -105,12 +105,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		case http.MethodGet:
 			resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id"))
 			if resourceID == "" {
-				for _, resource := range s.store.ListProviderResources() {
-					if isOpenAIAccountResource(resource.ResourceType) && resource.Status == StatusActive {
-						resourceID = resource.ID
-						break
-					}
-				}
+				resourceID = s.providerCatalogActiveAccountResourceID(s.codexProviderCatalogMetadata().Type, false)
 			}
 			if resourceID == "" {
 				writeError(w, r, NewHTTPError(http.StatusConflict, "codex_account_required", "Connect an OpenAI Codex subscription account before loading its models"))
@@ -177,7 +172,11 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		if resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id")); resourceID != "" {
+		resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id"))
+		if resourceID == "" {
+			resourceID = s.providerCatalogActiveAccountResourceID(entry.Type, true)
+		}
+		if resourceID != "" {
 			pluginEntry, supported, actionErr := s.executeProviderResourceModelsActionForCatalog(r.Context(), user, entry.Type, resourceID)
 			if actionErr != nil {
 				writeError(w, r, actionErr)
