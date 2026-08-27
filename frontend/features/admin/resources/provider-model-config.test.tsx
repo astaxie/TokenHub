@@ -469,8 +469,8 @@ describe("providerResourceConfig", () => {
     }];
 
     expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_kimi" })).toEqual([
-      { value: "api_key", label: "API Key" },
       { value: "kimi_oauth_account", label: "Kimi OAuth Account" },
+      { value: "api_key", label: "API Key" },
     ]);
     expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_codex" }).map((option) => option.value)).toEqual([
       "openai_subscription",
@@ -509,8 +509,8 @@ describe("providerResourceConfig", () => {
     }];
 
     expect(providerResourceTypeOptionsFromData(data, null, { provider_id: "prv_kimi" })).toEqual([
-      { value: "api_key", label: "API Key" },
       { value: "kimi_oauth_account", label: "Kimi OAuth Account" },
+      { value: "api_key", label: "API Key" },
     ]);
     expect(providerResourceDraftDefaults(data.providers[0], data)).toMatchObject({
       resource_type: "kimi_oauth_account",

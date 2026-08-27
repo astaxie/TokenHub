@@ -141,10 +141,13 @@ export function accountResourceFieldVisible(values: Record<string, string>, data
 export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
   const providerType = providerTypeForResourceValues(data, values);
   const resourceTypes = new Map<string, string | undefined>([[providerResourceAPIKeyType, undefined]]);
-  for (const metadata of providerResourceTypeMetadataFromData(data, providerType)) {
+  const defaultResourceTypes = new Set<string>();
+  const metadataList = providerResourceTypeMetadataFromData(data, providerType);
+  for (const metadata of metadataList) {
     if (!providerType && values?.resource_type !== metadata.type) continue;
     const resourceType = metadata.type.trim();
     if (!resourceType) continue;
+    if (metadata.default) defaultResourceTypes.add(resourceType);
     const label = metadata.displayName;
     if (!resourceTypes.has(resourceType) || label) {
       resourceTypes.set(resourceType, label);
@@ -156,7 +159,7 @@ export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?
   }
   return Array.from(resourceTypes.entries())
     .filter(([value]) => Boolean(value))
-    .sort(([left], [right]) => providerResourceTypeOptionOrder(left) - providerResourceTypeOptionOrder(right) || left.localeCompare(right))
+    .sort(([left], [right]) => providerResourceTypeOptionOrder(left, defaultResourceTypes) - providerResourceTypeOptionOrder(right, defaultResourceTypes) || left.localeCompare(right))
     .map(([value, label]) => ({ value, label: label || resourceTypeLabel(value) }));
 }
 
