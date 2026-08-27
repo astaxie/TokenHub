@@ -6,7 +6,7 @@ import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formattin
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResource, isOpenAISubscriptionResourceType, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isOpenAISubscriptionResourceType, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceOpenAISubscriptionType, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -173,10 +173,6 @@ export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Pro
       await runProviderResourcePluginAction(ctx, accountResource, action, providerAccountProbePayload(action, accountResource), providerAccountProbeFallbackLabel(accountResource));
       return;
     }
-    if (isOpenAISubscriptionResource(accountResource)) {
-      await legacyProviderResourceProbe(ctx, accountResource);
-      return;
-    }
   }
   const action = providerPluginActionForCapability(data.pluginActions, provider.type, "provider.probe.run");
   if (action) {
@@ -314,14 +310,6 @@ function providerResourcePluginPayload(item: ProviderResource, payload: Record<s
 function providerPluginOAuthPayload(action: PluginActionDescriptor, payload: Record<string, unknown>) {
   const redirectURI = action.metadata?.oauth_redirect_uri?.trim();
   return redirectURI ? { ...payload, redirect_uri: redirectURI } : payload;
-}
-
-async function legacyProviderResourceProbe(ctx: ApiContext, resource: ProviderResource) {
-  const resp = await adminFetch(ctx, `/api/admin/provider-resources/${resource.id}/test`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
-  if (!resp.ok) throw new Error(await readAdminError(resp, tx("账号资源测试")));
 }
 
 export function providerCreateAccountResourceFields() {

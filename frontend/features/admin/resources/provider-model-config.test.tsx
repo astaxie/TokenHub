@@ -859,6 +859,39 @@ describe("providerResourceConfig", () => {
     expect(JSON.parse(String(init.body))).toEqual({ provider_id: "prv_plugin" });
   });
 
+  it("falls back from account resources to provider probe plugin actions", async () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_plugin_account", name: "Plugin Account Provider", type: "plugin_account_provider", status: "active", healthy: true, priority: 1 }];
+    data.providerResources = [{
+      id: "rsrc_plugin_account",
+      provider_id: "prv_plugin_account",
+      name: "Plugin Account",
+      resource_type: "plugin_account",
+      status: "active",
+      healthy: true,
+      priority: 1,
+      weight: 100,
+    }];
+    data.pluginActions = [{
+      plugin_id: "tokenhub.provider.plugin-account",
+      action_id: "plugin_account.provider.probe.run",
+      kind: "test",
+      capability: "provider.probe.run",
+      subject: "plugin_account_provider",
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { healthy: true } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runProviderAvailabilityTest({ baseURL: "http://localhost:8080", adminToken: "admin-token" }, data.providers[0], data);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.plugin-account/actions/plugin_account.provider.probe.run");
+    expect(JSON.parse(String(init.body))).toEqual({ provider_id: "prv_plugin_account" });
+  });
+
   it("falls back to legacy Provider tests while providers are migrated", async () => {
     const data = emptyData();
     data.providers = [{ id: "prv_legacy", name: "Legacy Provider", type: "openai_compatible", status: "active", healthy: true, priority: 1 }];
