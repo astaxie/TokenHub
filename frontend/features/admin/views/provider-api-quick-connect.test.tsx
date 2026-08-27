@@ -87,6 +87,9 @@ describe("ProviderAPIQuickConnect", () => {
             schema: { description: "Should not render." },
           },
         ]}
+        providerTypeOptions={[
+          { value: "openai_compatible", label: "OpenAI Compatible Adapter", supportsCustomHeaders: true },
+        ]}
         query=""
         selectedID="plugin-kimi"
         total={3}
@@ -97,7 +100,7 @@ describe("ProviderAPIQuickConnect", () => {
     expect(screen.getByText("Connect a Kimi account from the plugin marketplace.")).toBeInTheDocument();
     expect(screen.getByText(/Zhipu Plugin · 3/)).toBeInTheDocument();
     expect(screen.queryByText("Other Subscription")).not.toBeInTheDocument();
-    expect(screen.getByText(/OpenAI 兼容/)).toBeInTheDocument();
+    expect(screen.getByText(/OpenAI Compatible Adapter/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Kimi Subscription/ }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "plugin-kimi", type: "kimi_subscription" }));

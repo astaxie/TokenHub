@@ -1072,7 +1072,7 @@ export function ProviderUpsertModal({
                 onQueryChange={setCatalogQuery}
                 onSelect={selectCatalog}
                 onSelectCustom={selectCustomCatalog}
-                pluginCatalogCards={pluginUI}
+                pluginCatalogCards={pluginUI} providerTypeOptions={providerTypeOptions}
               />
             ) : (
             <section className="provider-catalog-pane">

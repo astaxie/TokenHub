@@ -7,7 +7,7 @@ import { formatModelPrice } from "../domain/formatting";
 import { providerAuthMode, providerCatalogAPIKeyRequired, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { legacyProviderTypeOptions, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 import { ProviderAuthModeField } from "./provider-editor-sections";
 
@@ -26,6 +26,7 @@ export function ProviderAPIQuickCatalog({
   onSelect,
   onSelectCustom,
   pluginCatalogCards = [],
+  providerTypeOptions = [],
 }: {
   entries: ProviderCatalogEntry[];
   total: number;
@@ -35,6 +36,7 @@ export function ProviderAPIQuickCatalog({
   onSelect: (entry: ProviderCatalogEntry) => void;
   onSelectCustom: () => void;
   pluginCatalogCards?: AdminUIContribution[];
+  providerTypeOptions?: ProviderTypeOption[];
 }) {
   return (
     <section className="provider-catalog-pane provider-quick-catalog-pane">
@@ -60,7 +62,7 @@ export function ProviderAPIQuickCatalog({
               <span className="provider-quick-catalog-avatar">{title.slice(0, 1).toUpperCase()}</span>
               <span className="provider-quick-catalog-copy">
                 <strong>{title}</strong>
-                <em>{description || `${providerCatalogTypeLabel(entry)} · ${countWithUnit(entry.models_count, "个模型", "model", "モデル")}`}</em>
+                <em>{description || `${providerCatalogTypeLabel(entry, providerTypeOptions)} · ${countWithUnit(entry.models_count, "个模型", "model", "モデル")}`}</em>
               </span>
               {active ? <Check size={15} /> : null}
             </button>
@@ -87,10 +89,12 @@ function schemaString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function providerCatalogTypeLabel(entry: ProviderCatalogEntry) {
+function providerCatalogTypeLabel(entry: ProviderCatalogEntry, providerTypeOptions: ProviderTypeOption[]) {
+  const optionLabel = providerTypeOptions.find((option) => option.value === entry.type)?.label?.trim();
+  if (optionLabel) return optionLabel;
   const metadataLabel = String(entry.display_name || entry.name || "").trim();
   const pluginCatalogEntry = String(entry.source || "").startsWith("plugin");
-  if ((pluginCatalogEntry || !legacyProviderTypeOptions.includes(entry.type)) && metadataLabel) return metadataLabel;
+  if (pluginCatalogEntry && metadataLabel) return metadataLabel;
   return providerTypeLabel(entry.type);
 }
 
@@ -112,7 +116,7 @@ export function ProviderAPIQuickConnect({
   onReloadModels,
   onTabChange,
   onUpdate,
-  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
+  providerTypeOptions = [],
   pluginActions = [],
 }: {
   api: ApiContext;
@@ -139,7 +143,8 @@ export function ProviderAPIQuickConnect({
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
   const connectionTestRun = useRef(0);
   const custom = catalogID === "custom";
-  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, providerTypeOptions);
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions);
   const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
   const connectionReady = Boolean(values.base_url?.trim() && (!apiKeyRequired || values.api_key?.trim()));
 
@@ -173,7 +178,7 @@ export function ProviderAPIQuickConnect({
           base_url: values.base_url,
           api_key: values.api_key,
           ...providerHeadersPayload(values.custom_headers),
-          anthropic_auth_type: providerAuthMode(values, providerTypeOptions),
+          anthropic_auth_type: providerAuthMode(values, effectiveProviderTypeOptions),
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));
@@ -346,10 +351,10 @@ export function ProviderAPIQuickConnect({
             <label className="field">
               <span>{tx("渠道商类型")}</span>
               <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
-                {providerTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={providerTypeOptions} />
+            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={effectiveProviderTypeOptions} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
@@ -364,7 +369,7 @@ export function ProviderAPIQuickConnect({
             </label>
           </div>
           <ProviderCustomHeaders
-            disabled={!providerTypeSupportsCustomHeaders(providerTypeOptions, values.type)}
+            disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
             onChange={(value) => onUpdate("custom_headers", value)}
             value={values.custom_headers ?? "[]"}
           />
@@ -372,4 +377,14 @@ export function ProviderAPIQuickConnect({
       ) : null}
     </section>
   );
+}
+
+function providerTypeOptionsForCurrentValue(providerType: string): ProviderTypeOption[] {
+  const value = providerType.trim();
+  if (!value) return [];
+  return [{
+    value,
+    label: providerTypeLabel(value),
+    supportsCustomHeaders: providerTypeSupportsCustomHeaders([], value),
+  }];
 }
