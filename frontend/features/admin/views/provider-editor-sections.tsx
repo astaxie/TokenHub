@@ -4,7 +4,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { providerReasoningFieldConfigs, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
-import { legacyProviderTypeOptions, providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -18,10 +18,11 @@ type ProviderEditSectionProps = {
 export function ProviderConnectionFields({
   values,
   onUpdate,
-  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
+  providerTypeOptions = [],
   validationErrors = [],
 }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[]; validationErrors?: string[] }) {
-  const apiKeyRequired = providerTypeRequiresAPIKey(providerTypeOptions, values.type);
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const apiKeyRequired = providerTypeRequiresAPIKey(effectiveProviderTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid provider-connect-form-grid">
@@ -56,13 +57,23 @@ export function ProviderConnectionFields({
         ) : null}
       </div>
       <ProviderCustomHeaders
-        disabled={!providerTypeSupportsCustomHeaders(providerTypeOptions, values.type)}
+        disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
         onChange={(value) => onUpdate("custom_headers", value)}
         validationErrors={validationErrors}
         value={values.custom_headers ?? "[]"}
       />
     </section>
   );
+}
+
+function providerTypeOptionsForCurrentValue(providerType: string): ProviderTypeOption[] {
+  const value = providerType.trim();
+  if (!value) return [];
+  return [{
+    value,
+    label: providerTypeLabel(value),
+    supportsCustomHeaders: providerTypeSupportsCustomHeaders([], value),
+  }];
 }
 
 export function ProviderAuthModeField({ values, onUpdate, providerTypeOptions = [] }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[] }) {
@@ -92,9 +103,10 @@ export function ProviderAdvancedFields({
   accountIntegration,
   creating = false,
   idPlaceholder,
-  providerTypeOptions = legacyProviderTypeOptions.map((option) => ({ value: option, label: providerTypeLabel(option), supportsCustomHeaders: providerTypeSupportsCustomHeaders([], option) })),
+  providerTypeOptions = [],
 }: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
-  const showReasoningCompatibility = providerTypeOptionsSupportAnthropicReasoning(providerTypeOptions, values.type);
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const showReasoningCompatibility = providerTypeOptionsSupportAnthropicReasoning(effectiveProviderTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid">
@@ -114,7 +126,7 @@ export function ProviderAdvancedFields({
         <label className="field">
           <span>{tx(accountIntegration ? "兼容协议" : "渠道商类型")}</span>
           <select value={values.type ?? ""} onChange={(event) => onUpdate("type", event.target.value)} required>
-            {providerTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         {creating ? (
@@ -123,7 +135,7 @@ export function ProviderAdvancedFields({
             <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
           </label>
         ) : null}
-        <ProviderAuthModeField values={values} onUpdate={onUpdate} providerTypeOptions={providerTypeOptions} />
+        <ProviderAuthModeField values={values} onUpdate={onUpdate} providerTypeOptions={effectiveProviderTypeOptions} />
         <label className="field">
           <span>{tx("优先级")}</span>
           <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
