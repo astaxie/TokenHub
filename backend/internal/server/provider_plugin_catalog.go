@@ -43,6 +43,22 @@ func (s *Server) pluginProviderCatalogEntry(id string) (ProviderCatalogEntry, bo
 	return ProviderCatalogEntry{}, false
 }
 
+func (s *Server) pluginProviderCatalogCapabilityEntryForType(providerType string) (ProviderCatalogEntry, bool) {
+	providerType = strings.TrimSpace(providerType)
+	if s == nil || s.pluginRegistry == nil || s.adapterRegistry == nil || providerType == "" {
+		return ProviderCatalogEntry{}, false
+	}
+	adapter, ok := s.adapterRegistry.Describe(providerType)
+	if !ok || adapter.PluginID == "" {
+		return ProviderCatalogEntry{}, false
+	}
+	plugin, ok := s.pluginRegistry.Describe(adapter.PluginID)
+	if !ok {
+		return ProviderCatalogEntry{}, false
+	}
+	return providerCatalogEntryFromPluginCapability(plugin, adapter)
+}
+
 func (s *Server) pluginProviderCatalogEntries() []ProviderCatalogEntry {
 	if s == nil || s.pluginRegistry == nil || s.adapterRegistry == nil {
 		return nil

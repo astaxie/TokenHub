@@ -334,7 +334,8 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 	}
 	catalog, status, err := modeler.ResourceModels(ctx, provider, resource, etag)
 	if err == nil && status == http.StatusNotModified {
-		if cached, ok := providerResourceCachedCatalog(provider, &resource); ok {
+		pluginCatalog, _ := s.pluginProviderCatalogCapabilityEntryForType(provider.Type)
+		if cached, ok := providerResourceCachedCatalog(provider, &resource, pluginCatalog); ok {
 			return cached, true, nil
 		}
 		catalog, _, err = modeler.ResourceModels(ctx, provider, resource, "")
@@ -347,7 +348,7 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 	return catalog, true, err
 }
 
-func providerResourceCachedCatalog(provider Provider, resource *ProviderResource) (ProviderCatalogEntry, bool) {
+func providerResourceCachedCatalog(provider Provider, resource *ProviderResource, catalogEntries ...ProviderCatalogEntry) (ProviderCatalogEntry, bool) {
 	if resource == nil || resource.Options == nil {
 		return ProviderCatalogEntry{}, false
 	}
@@ -356,7 +357,7 @@ func providerResourceCachedCatalog(provider Provider, resource *ProviderResource
 		return ProviderCatalogEntry{}, false
 	}
 	categories, counts := catalogCategorySummary(models)
-	metadata := providerResourceCachedCatalogIdentityFor(provider, resource)
+	metadata := providerResourceCachedCatalogIdentityFor(provider, resource, catalogEntries...)
 	return ProviderCatalogEntry{
 		ID:             metadata.id,
 		Name:           metadata.name,
@@ -381,7 +382,21 @@ type providerResourceCachedCatalogIdentity struct {
 	source       string
 }
 
-func providerResourceCachedCatalogIdentityFor(provider Provider, resource *ProviderResource) providerResourceCachedCatalogIdentity {
+func providerResourceCachedCatalogIdentityFor(provider Provider, resource *ProviderResource, catalogEntries ...ProviderCatalogEntry) providerResourceCachedCatalogIdentity {
+	for _, catalog := range catalogEntries {
+		if strings.TrimSpace(catalog.Type) == "" {
+			continue
+		}
+		name := firstNonEmpty(strings.TrimSpace(catalog.Name), strings.TrimSpace(catalog.DisplayName), strings.TrimSpace(provider.Name), strings.TrimSpace(provider.Type))
+		return providerResourceCachedCatalogIdentity{
+			id:           firstNonEmpty(strings.TrimSpace(catalog.ID), provider.Type),
+			name:         name,
+			displayName:  firstNonEmpty(strings.TrimSpace(catalog.DisplayName), name),
+			providerType: firstNonEmpty(strings.TrimSpace(catalog.Type), provider.Type),
+			baseURL:      firstNonEmpty(strings.TrimSpace(catalog.BaseURL), provider.BaseURL),
+			source:       firstNonEmpty(strings.TrimSpace(catalog.Source), "provider-resource-cache"),
+		}
+	}
 	if provider.Type == ProviderOpenAICodex && resource != nil && isOpenAIAccountResource(resource.ResourceType) {
 		return providerResourceCachedCatalogIdentity{
 			id:           codexProviderCatalogID,

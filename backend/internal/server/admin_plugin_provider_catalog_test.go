@@ -317,6 +317,72 @@ func TestAdminPluginProviderCatalogGetUsesGenericResourceModelCache(t *testing.T
 	}
 }
 
+func TestAdminPluginProviderCatalogGetUsesPluginCatalogIdentityForCachedResourceModels(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "adapter_identity_cached_catalog_provider"
+	catalogValue, ok := pluginmeta.ManifestProviderCatalog{
+		DisplayName: "Identity Cached Catalog",
+		BaseURL:     "https://identity-catalog.example/v1",
+		Categories:  []string{"identity"},
+	}.CapabilityValue(providerType)
+	if !ok {
+		t.Fatal("build provider catalog capability")
+	}
+	adapter := &providerResourceModelsCatalogAdapter{status: http.StatusNotModified}
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.adapter-identity-cached-catalog",
+		Name:    "Adapter Identity Cached Catalog Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+			pluginmeta.PlacementManagementAction,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityModels), Subject: providerType},
+			{Kind: "provider_catalog", Name: "entry", Subject: providerType, Value: catalogValue},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      adapter,
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register adapter identity cached catalog provider: %v", err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_adapter_identity_cached_catalog", Name: "Fallback Provider Name", Type: providerType,
+		BaseURL: "https://fallback.example/v1", Status: StatusActive, Healthy: true,
+	})
+	catalog, err := json.Marshal([]ProviderCatalogModel{{ID: "identity-cached-model", Name: "identity-cached-model"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_adapter_identity_cached_catalog", ProviderID: provider.ID, Name: "Adapter Identity Cached Catalog Account",
+		ResourceType: "adapter_identity_cached_catalog_account", Status: StatusActive, Healthy: true,
+		Options: map[string]string{
+			providerResourceModelsETagOption:   "etag-identity-cached",
+			providerResourceModelCatalogOption: string(catalog),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/"+providerType+"?resource_id="+resource.ID, nil, "plugin-catalog-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET identity cached plugin adapter catalog: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"display_name":"Identity Cached Catalog"`) ||
+		!strings.Contains(response.Body, `"base_url":"https://identity-catalog.example/v1"`) ||
+		!strings.Contains(response.Body, `"id":"identity-cached-model"`) ||
+		strings.Contains(response.Body, `"Fallback Provider Name"`) {
+		t.Fatalf("cached plugin adapter catalog response = %s", response.Body)
+	}
+}
+
 func TestAdminPluginProviderCatalogGetUsesLegacyCodexResourceModelCache(t *testing.T) {
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
