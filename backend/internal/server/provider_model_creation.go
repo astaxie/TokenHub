@@ -14,7 +14,7 @@ func (s *Server) providerForCreate(ctx context.Context, req ProviderCreateReques
 	if err == nil {
 		if _, configured := provider.Options[claudeCodeAttributionPolicyOption]; !configured {
 			descriptor, _ := s.adapterRegistry.Describe(provider.Type)
-			provider.Options[claudeCodeAttributionPolicyOption] = defaultClaudeCodeAttributionPolicyForDescriptor(descriptor, provider.Type, provider.Options["catalog_id"])
+			provider.Options[claudeCodeAttributionPolicyOption] = defaultClaudeCodeAttributionPolicyForDescriptor(descriptor)
 		}
 	}
 	if err == nil && provider.Name != "" && provider.Type != "" {

@@ -104,20 +104,17 @@ func TestAnthropicRequestForRouteNormalizesDynamicAttributionPrefixes(t *testing
 
 func TestDefaultClaudeCodeAttributionPolicyForNewProvider(t *testing.T) {
 	for _, test := range []struct {
-		name         string
-		providerType string
-		catalogID    string
-		want         string
+		name       string
+		descriptor AdapterDescriptor
+		want       string
 	}{
-		{name: "official Anthropic catalog", providerType: ProviderAnthropic, catalogID: "anthropic", want: claudeCodeAttributionPreserve},
-		{name: "unknown custom Anthropic", providerType: ProviderAnthropic, catalogID: "custom", want: claudeCodeAttributionPreserve},
-		{name: "unknown direct Anthropic", providerType: ProviderAnthropic, want: claudeCodeAttributionPreserve},
-		{name: "known third-party Anthropic", providerType: ProviderAnthropic, catalogID: "google-vertex-anthropic", want: claudeCodeAttributionStrip},
-		{name: "OpenAI compatible", providerType: ProviderOpenAICompatible, catalogID: "requesty", want: claudeCodeAttributionStrip},
-		{name: "OpenAI official", providerType: ProviderOpenAI, catalogID: "openai", want: claudeCodeAttributionStrip},
+		{name: "descriptor preserve", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionPreserve}}, want: claudeCodeAttributionPreserve},
+		{name: "descriptor strip", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionStrip}}, want: claudeCodeAttributionStrip},
+		{name: "missing descriptor policy", descriptor: AdapterDescriptor{Type: ProviderAnthropic}, want: claudeCodeAttributionStrip},
+		{name: "invalid descriptor policy", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: "normalize"}}, want: claudeCodeAttributionStrip},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := defaultClaudeCodeAttributionPolicy(test.providerType, test.catalogID); got != test.want {
+			if got := defaultClaudeCodeAttributionPolicyForDescriptor(test.descriptor); got != test.want {
 				t.Fatalf("default policy = %q, want %q", got, test.want)
 			}
 		})
@@ -128,7 +125,7 @@ func TestDefaultClaudeCodeAttributionPolicyFollowsAdapterDescriptor(t *testing.T
 	descriptor := AdapterDescriptor{
 		ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionPreserve},
 	}
-	if got := defaultClaudeCodeAttributionPolicyForDescriptor(descriptor, "anthropic_compatible_plugin", "custom"); got != claudeCodeAttributionPreserve {
+	if got := defaultClaudeCodeAttributionPolicyForDescriptor(descriptor); got != claudeCodeAttributionPreserve {
 		t.Fatalf("descriptor default policy = %q, want %q", got, claudeCodeAttributionPreserve)
 	}
 }

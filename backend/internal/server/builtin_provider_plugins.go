@@ -142,9 +142,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.anthropic", "Anthropic", builtinProviderAdapter{
-		providerType: ProviderAnthropic,
-		adapter:      adapters[ProviderAnthropic],
-		authModes:    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		providerType:                 ProviderAnthropic,
+		adapter:                      adapters[ProviderAnthropic],
+		authModes:                    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		claudeCodeAttributionDefault: claudeCodeAttributionPreserve,
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"anthropic",
 			"Anthropic",

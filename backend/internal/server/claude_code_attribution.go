@@ -40,20 +40,9 @@ func anthropicRequestForRoute(req anthropicMessagesRequest, route RouteSelection
 	return req
 }
 
-func defaultClaudeCodeAttributionPolicy(providerType string, catalogID string) string {
-	return defaultClaudeCodeAttributionPolicyForDescriptor(AdapterDescriptor{}, providerType, catalogID)
-}
-
-func defaultClaudeCodeAttributionPolicyForDescriptor(descriptor AdapterDescriptor, providerType string, catalogID string) string {
+func defaultClaudeCodeAttributionPolicyForDescriptor(descriptor AdapterDescriptor) string {
 	if policy := normalizeClaudeCodeAttributionPolicyOrEmpty(descriptor.ProviderPolicy.ClaudeCodeAttributionDefault); policy != "" {
 		return policy
-	}
-	if strings.TrimSpace(providerType) != ProviderAnthropic {
-		return claudeCodeAttributionStrip
-	}
-	catalogID = strings.ToLower(strings.TrimSpace(catalogID))
-	if catalogID == "" || catalogID == "custom" || catalogID == "anthropic" {
-		return claudeCodeAttributionPreserve
 	}
 	return claudeCodeAttributionStrip
 }
