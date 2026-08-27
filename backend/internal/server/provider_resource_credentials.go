@@ -12,6 +12,7 @@ import (
 const (
 	providerResourceReauthorizationRequiredOption = "oauth_reauthorization_required"
 	openAIAccountReauthorizationRequiredOption    = providerResourceReauthorizationRequiredOption
+	providerResourceIdentityProfileOpenAIIDToken  = "openai_account_id_token"
 )
 
 var providerAccountProtectedOptions = []string{
@@ -173,6 +174,25 @@ func (s *GormStore) ConfigureProviderResourceTypePolicy(resourceTypes map[string
 	s.providerResourceTypes = normalized
 }
 
+func (s *GormStore) ConfigureProviderResourceCredentialIdentityProfiles(profiles map[string]string) {
+	if s == nil {
+		return
+	}
+	normalized := make(map[string]string, len(profiles))
+	for resourceType, profile := range profiles {
+		resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+		profile = strings.ToLower(strings.TrimSpace(profile))
+		if resourceType != "" && profile != "" {
+			normalized[resourceType] = profile
+		}
+	}
+	if s.mu != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	s.providerResourceIdentity = normalized
+}
+
 func (s *GormStore) IsProviderAccountResourceType(providerType string, resourceType string) bool {
 	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
 	if resourceType == "" || resourceType == ProviderResourceAPIKey {
@@ -186,6 +206,13 @@ func (s *GormStore) IsProviderAccountResourceType(providerType string, resourceT
 		}
 	}
 	return isProviderAccountResource(resourceType)
+}
+
+func (s *GormStore) providerResourceCredentialIdentityProfile(resourceType string) string {
+	if s == nil {
+		return ""
+	}
+	return s.providerResourceIdentity[strings.ToLower(strings.TrimSpace(resourceType))]
 }
 
 func (s *GormStore) applyProviderResourceTypeDefaults(resource *ProviderResource) {
@@ -270,7 +297,7 @@ func (s *GormStore) mergeProviderAccountCredentials(resource *ProviderResource, 
 	if strings.TrimSpace(creds.AuthType) == "" {
 		creds.AuthType = firstNonEmpty(resource.Options["auth_type"], s.providerResourceTypeDefault(resource.ResourceType, "auth_type"), "oauth")
 	}
-	if isOpenAIAccountResource(resource.ResourceType) {
+	if s.providerResourceCredentialIdentityProfile(resource.ResourceType) == providerResourceIdentityProfileOpenAIIDToken {
 		if claims := decodeOpenAIIDTokenClaims(creds.IDToken); claims != nil {
 			creds.Email = firstNonEmpty(creds.Email, claims.Email)
 			if claims.OpenAIAuth != nil {

@@ -316,6 +316,7 @@ type GormStore struct {
 	providerDefaultBaseURLs  map[string]string
 	providerResourceDefaults map[string]map[string]string
 	providerResourceTypes    map[string]map[string]struct{}
+	providerResourceIdentity map[string]string
 	billingRedis             *redisBillingCoordinator
 	billingRepository        billing.Repository
 	billingPersistence       *billingpersistence.Store

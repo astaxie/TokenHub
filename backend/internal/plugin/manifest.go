@@ -88,11 +88,12 @@ type ManifestModelDiscovery struct {
 }
 
 type ManifestProviderResourceType struct {
-	Type        string            `json:"type" yaml:"type"`
-	DisplayName string            `json:"display_name,omitempty" yaml:"display_name"`
-	AuthModes   []string          `json:"auth_modes,omitempty" yaml:"auth_modes"`
-	Defaults    map[string]string `json:"defaults,omitempty" yaml:"defaults"`
-	Default     bool              `json:"default,omitempty" yaml:"default"`
+	Type                      string            `json:"type" yaml:"type"`
+	DisplayName               string            `json:"display_name,omitempty" yaml:"display_name"`
+	AuthModes                 []string          `json:"auth_modes,omitempty" yaml:"auth_modes"`
+	Defaults                  map[string]string `json:"defaults,omitempty" yaml:"defaults"`
+	CredentialIdentityProfile string            `json:"credential_identity_profile,omitempty" yaml:"credential_identity_profile"`
+	Default                   bool              `json:"default,omitempty" yaml:"default"`
 }
 
 func (resourceType *ManifestProviderResourceType) UnmarshalYAML(value *yaml.Node) error {
@@ -111,6 +112,7 @@ func (resourceType *ManifestProviderResourceType) UnmarshalYAML(value *yaml.Node
 		resourceType.DisplayName = strings.TrimSpace(resourceType.DisplayName)
 		resourceType.AuthModes = normalizeStrings(resourceType.AuthModes)
 		resourceType.Defaults = normalizeStringMap(resourceType.Defaults)
+		resourceType.CredentialIdentityProfile = strings.TrimSpace(resourceType.CredentialIdentityProfile)
 		return nil
 	default:
 		return fmt.Errorf("provider resource type must be a string or object")
@@ -697,13 +699,14 @@ func isHexSHA256(value string) bool {
 }
 
 func (resourceType ManifestProviderResourceType) CapabilityValue() string {
-	if strings.TrimSpace(resourceType.DisplayName) == "" && len(resourceType.AuthModes) == 0 && len(resourceType.Defaults) == 0 && !resourceType.Default {
+	if strings.TrimSpace(resourceType.DisplayName) == "" && len(resourceType.AuthModes) == 0 && len(resourceType.Defaults) == 0 && strings.TrimSpace(resourceType.CredentialIdentityProfile) == "" && !resourceType.Default {
 		return ""
 	}
 	resourceType.Type = strings.TrimSpace(resourceType.Type)
 	resourceType.DisplayName = strings.TrimSpace(resourceType.DisplayName)
 	resourceType.AuthModes = normalizeStrings(resourceType.AuthModes)
 	resourceType.Defaults = normalizeStringMap(resourceType.Defaults)
+	resourceType.CredentialIdentityProfile = strings.TrimSpace(resourceType.CredentialIdentityProfile)
 	data, err := json.Marshal(resourceType)
 	if err != nil {
 		return ""

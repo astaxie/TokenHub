@@ -17,6 +17,9 @@ import (
 )
 
 func addOpenAIAccountRefreshProvider(store *GormStore, name string) Provider {
+	store.ConfigureProviderResourceCredentialIdentityProfiles(map[string]string{
+		ProviderResourceOpenAISubscription: providerResourceIdentityProfileOpenAIIDToken,
+	})
 	return store.AddProvider(Provider{
 		Name:    name,
 		Type:    ProviderOpenAICodex,

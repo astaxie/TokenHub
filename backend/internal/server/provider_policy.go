@@ -92,6 +92,10 @@ type providerResourceTypePolicyConfigurator interface {
 	ConfigureProviderResourceTypePolicy(resourceTypes map[string][]string)
 }
 
+type providerResourceCredentialIdentityProfileConfigurator interface {
+	ConfigureProviderResourceCredentialIdentityProfiles(profiles map[string]string)
+}
+
 func configureProviderResourceTypeDefaults(store Store, registry *AdapterRegistry) {
 	providerConfigurator, ok := store.(providerTypeDefaultsConfigurator)
 	if ok {
@@ -104,6 +108,10 @@ func configureProviderResourceTypeDefaults(store Store, registry *AdapterRegistr
 	policyConfigurator, ok := store.(providerResourceTypePolicyConfigurator)
 	if ok {
 		policyConfigurator.ConfigureProviderResourceTypePolicy(providerResourceTypePolicyFromRegistry(registry))
+	}
+	identityConfigurator, ok := store.(providerResourceCredentialIdentityProfileConfigurator)
+	if ok {
+		identityConfigurator.ConfigureProviderResourceCredentialIdentityProfiles(providerResourceCredentialIdentityProfilesFromRegistry(registry))
 	}
 }
 
@@ -172,6 +180,24 @@ func providerResourceTypePolicyFromRegistry(registry *AdapterRegistry) map[strin
 		policy[providerType] = sortedUniqueStrings(resourceTypes)
 	}
 	return policy
+}
+
+func providerResourceCredentialIdentityProfilesFromRegistry(registry *AdapterRegistry) map[string]string {
+	if registry == nil {
+		return nil
+	}
+	profiles := map[string]string{}
+	for _, descriptor := range registry.List() {
+		for _, resourceType := range descriptor.ResourceTypes {
+			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
+			profile := strings.ToLower(strings.TrimSpace(resourceType.CredentialIdentityProfile))
+			if resourceTypeName == "" || profile == "" {
+				continue
+			}
+			profiles[resourceTypeName] = profile
+		}
+	}
+	return profiles
 }
 
 func reconcileProviderPluginPolicies(store Store, registry *AdapterRegistry) {

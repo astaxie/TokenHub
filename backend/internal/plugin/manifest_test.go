@@ -279,6 +279,7 @@ capabilities:
       auth_modes:
         - oauth
         - personal_access_token
+      credential_identity_profile: openai_account_id_token
       default: true
       defaults:
         auth_type: oauth
@@ -311,6 +312,9 @@ capabilities:
 	}
 	if resourceType.Defaults["auth_type"] != "oauth" || resourceType.Defaults["base_url"] != "https://api.moonshot.cn/v1" || resourceType.Defaults["max_concurrency"] != "3" {
 		t.Fatalf("provider resource type defaults = %+v", resourceType.Defaults)
+	}
+	if resourceType.CredentialIdentityProfile != "openai_account_id_token" {
+		t.Fatalf("provider resource type credential identity profile = %q", resourceType.CredentialIdentityProfile)
 	}
 }
 

@@ -460,6 +460,9 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	if resourceType.Type != ProviderResourceOpenAISubscription || !resourceType.Default || resourceType.Defaults["base_url"] != openAICodexBaseURL || resourceType.Defaults["max_concurrency"] != "3" {
 		t.Fatalf("Codex resource type metadata = %+v", resourceType)
 	}
+	if resourceType.CredentialIdentityProfile != providerResourceIdentityProfileOpenAIIDToken {
+		t.Fatalf("Codex resource type credential identity profile = %q", resourceType.CredentialIdentityProfile)
+	}
 	if !reflect.DeepEqual(resourceType.AuthModes, []string{"oauth", "personal_access_token"}) {
 		t.Fatalf("Codex resource type auth modes = %+v", resourceType.AuthModes)
 	}

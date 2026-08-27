@@ -387,11 +387,12 @@ func adapterResourceTypeFromCapability(capability pluginmeta.CapabilityDescripto
 	resourceType.DisplayName = strings.TrimSpace(resourceType.DisplayName)
 	resourceType.AuthModes = sortedUniqueStrings(resourceType.AuthModes)
 	resourceType.Defaults = normalizedStringMap(resourceType.Defaults)
+	resourceType.CredentialIdentityProfile = strings.TrimSpace(resourceType.CredentialIdentityProfile)
 	return resourceType
 }
 
 func adapterResourceTypeHasMetadata(resourceType pluginmeta.ManifestProviderResourceType) bool {
-	return resourceType.DisplayName != "" || len(resourceType.AuthModes) > 0 || len(resourceType.Defaults) > 0 || resourceType.Default
+	return resourceType.DisplayName != "" || len(resourceType.AuthModes) > 0 || len(resourceType.Defaults) > 0 || resourceType.CredentialIdentityProfile != "" || resourceType.Default
 }
 
 func sortedUniqueStrings(items []string) []string {

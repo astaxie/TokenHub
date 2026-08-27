@@ -113,10 +113,11 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			Source:      "openai-codex-live",
 		},
 		resourceTypes: []pluginmeta.ManifestProviderResourceType{{
-			Type:        ProviderResourceOpenAISubscription,
-			DisplayName: "OpenAI Codex Subscription",
-			AuthModes:   []string{"oauth", "personal_access_token"},
-			Default:     true,
+			Type:                      ProviderResourceOpenAISubscription,
+			DisplayName:               "OpenAI Codex Subscription",
+			AuthModes:                 []string{"oauth", "personal_access_token"},
+			CredentialIdentityProfile: providerResourceIdentityProfileOpenAIIDToken,
+			Default:                   true,
 			Defaults: map[string]string{
 				"auth_type":       "oauth",
 				"base_url":        openAICodexBaseURL,

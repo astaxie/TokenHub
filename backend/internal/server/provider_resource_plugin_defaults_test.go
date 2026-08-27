@@ -112,6 +112,60 @@ func TestProviderResourceAccountClassificationKeepsLegacyFallbackWithoutMetadata
 	}
 }
 
+func TestProviderResourceCredentialIdentityProfileControlsIDTokenClaims(t *testing.T) {
+	store := NewMemoryStore()
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{
+		"profiled_provider": {"profiled_account"},
+	})
+	store.ConfigureProviderResourceCredentialIdentityProfiles(map[string]string{
+		"profiled_account": providerResourceIdentityProfileOpenAIIDToken,
+	})
+	provider := store.AddProvider(Provider{
+		ID: "prv_profiled_identity", Name: "Profiled Identity", Type: "profiled_provider",
+		Status: StatusActive, Healthy: true,
+	})
+
+	created, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_profiled_identity", ProviderID: provider.ID, Name: "Profiled Account",
+		ResourceType: "profiled_account",
+		Credentials: &ProviderResourceCredentials{IDToken: testJWT(map[string]any{
+			"email": "profiled@example.com",
+			"https://api.openai.com/auth": map[string]any{
+				"chatgpt_account_id": "account-profiled",
+				"user_id":            "user-profiled",
+				"chatgpt_plan_type":  "team",
+				"organizations":      []map[string]any{{"id": "org-profiled", "is_default": true}},
+			},
+		})},
+	})
+	if err != nil {
+		t.Fatalf("create profiled resource: %v", err)
+	}
+	if created.CredentialSummary["account_email"] != "profiled@example.com" ||
+		created.CredentialSummary["account_id"] != "account-profiled" ||
+		created.CredentialSummary["user_id"] != "user-profiled" ||
+		created.CredentialSummary["organization_id"] != "org-profiled" ||
+		created.CredentialSummary["plan_type"] != "team" {
+		t.Fatalf("profiled credential summary = %+v", created.CredentialSummary)
+	}
+
+	legacyProvider := store.AddProvider(Provider{
+		ID: "prv_legacy_identity", Name: "Legacy Identity", Type: ProviderOpenAICodex,
+		Status: StatusActive, Healthy: true,
+	})
+	legacy, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_legacy_identity", ProviderID: legacyProvider.ID, Name: "Legacy Account",
+		ResourceType: ProviderResourceOpenAISubscription,
+		Credentials:  &ProviderResourceCredentials{IDToken: testJWT(map[string]any{"email": "legacy@example.com"})},
+	})
+	if err != nil {
+		t.Fatalf("create legacy resource: %v", err)
+	}
+	if legacy.CredentialSummary["account_email"] != "" {
+		t.Fatalf("legacy resource without identity profile decoded claims: %+v", legacy.CredentialSummary)
+	}
+}
+
 func TestProviderResourceTypePolicyFromRegistry(t *testing.T) {
 	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
 	if err := registry.RegisterPlugin(pluginmeta.BuiltInProviderWithResourceTypeMetadata(
@@ -141,5 +195,26 @@ func TestProviderResourceTypePolicyFromRegistry(t *testing.T) {
 	}
 	if _, ok := policy["legacy_provider"]; ok {
 		t.Fatalf("registry resource policy = %+v, want no entry for providers without resource metadata", policy)
+	}
+}
+
+func TestProviderResourceCredentialIdentityProfilesFromRegistry(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.BuiltInProviderWithResourceTypeMetadata(
+		"tokenhub.provider.profiled",
+		"Profiled Provider",
+		[]string{"profiled_provider"},
+		[]pluginmeta.ManifestProviderResourceType{{
+			Type:                      "profiled_account",
+			CredentialIdentityProfile: providerResourceIdentityProfileOpenAIIDToken,
+		}},
+		nil,
+	), AdapterRegistration{Type: "profiled_provider", Adapter: MockAdapter{}}); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	profiles := providerResourceCredentialIdentityProfilesFromRegistry(registry)
+	if profiles["profiled_account"] != providerResourceIdentityProfileOpenAIIDToken {
+		t.Fatalf("registry credential identity profiles = %+v", profiles)
 	}
 }
