@@ -50,6 +50,13 @@ export function providerImageCapabilityProfile(contributions: AdminUIContributio
   return providerImageCapabilityProfiles(contributions, actions, providerType)[0] ?? null;
 }
 
+export function providerImageCapabilityProfilesFromActions(actions: PluginActionDescriptor[], providerType: string) {
+  return actions
+    .filter((item) => item.capability === "image.capability.configure" && (!item.subject || item.subject === providerType))
+    .map((action) => imageCapabilityProfileFromAction(action))
+    .filter((profile): profile is ImageCapabilityProfile => Boolean(profile));
+}
+
 export function providerImageCapabilityProfiles(contributions: AdminUIContribution[], actions: PluginActionDescriptor[], providerType: string) {
   return actions
     .filter((item) => item.capability === "image.capability.configure" && (!item.subject || item.subject === providerType))

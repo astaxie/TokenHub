@@ -37,6 +37,13 @@ describe("providerImageCapabilityProfileForModel", () => {
         upstream_model: "gpt-image-2",
       },
     }];
+
+    expect(providerImageCapabilityProfileForModel(data, "openai_codex", data.models[0])?.upstreamModel).toBe("gpt-image-2");
+    expect(modelRouteDefaults(data.models[0], data)).toMatchObject({
+      provider_id: "prv_codex",
+      provider_model: "gpt-image-2",
+    });
+
     data.pluginUI = [{
       plugin_id: "tokenhub.provider.openai-codex",
       id: "image",
