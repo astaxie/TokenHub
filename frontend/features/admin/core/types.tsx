@@ -277,7 +277,15 @@ export type AdapterDescriptor = {
     credentials_scope?: string;
     session_affinity_kind?: string;
     claude_code_attribution_default?: string;
+    model_discovery?: AdapterModelDiscoveryPolicy;
   };
+};
+
+export type AdapterModelDiscoveryPolicy = {
+  path?: string;
+  auth?: string;
+  api_key_query_param?: string;
+  headers?: Record<string, string>;
 };
 
 export type AdapterProviderResourceType = {

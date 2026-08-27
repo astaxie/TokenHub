@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerTypeAuthModes, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
+import { providerTypeAuthModes, providerTypeModelDiscovery, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
 import { providerTypeLabelFromData } from "../domain/labels";
 
@@ -105,6 +105,12 @@ describe("providerTypeOptionsFromData", () => {
       provider_policy: {
         auth_modes: ["x-api-key", "bearer"],
         claude_code_attribution_default: "preserve",
+        model_discovery: {
+          path: "/native/models",
+          auth: "query_param",
+          api_key_query_param: "access_token",
+          headers: { "x-native-version": "2026-01-01" },
+        },
         route_protocols: ["native/responses"],
         supports_custom_headers: false,
       },
@@ -117,6 +123,12 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypePreferredAuthMode(options, "native_subscription")).toBe("x-api-key");
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(options.find((option) => option.value === "native_subscription")?.claudeCodeAttributionDefault).toBe("preserve");
+    expect(providerTypeModelDiscovery(options, "native_subscription")).toEqual({
+      path: "/native/models",
+      auth: "query_param",
+      apiKeyQueryParam: "access_token",
+      headers: { "x-native-version": "2026-01-01" },
+    });
     expect(providerTypeSupportsCustomHeaders(options, "openai_compatible")).toBe(true);
     expect(providerTypeSupportsCustomHeaders(options, "azure_openai")).toBe(true);
     expect(providerTypeSupportsCustomHeaders(options, "openai_codex")).toBe(true);

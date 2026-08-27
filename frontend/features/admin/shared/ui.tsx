@@ -430,6 +430,12 @@ export type ProviderTypeOption = {
   authModes?: string[];
   routeProtocols?: string[];
   claudeCodeAttributionDefault?: string;
+  modelDiscovery?: {
+    path?: string;
+    auth?: string;
+    apiKeyQueryParam?: string;
+    headers?: Record<string, string>;
+  };
 };
 
 export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">, values?: Record<string, string>) {
@@ -439,6 +445,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
   const claudeCodeAttributionDefaultByType = new Map<string, string>();
+  const modelDiscoveryByType = new Map<string, ProviderTypeOption["modelDiscovery"]>();
   let hasPluginProviderSource = false;
   for (const adapter of data.providerAdapters ?? []) {
     if (!adapter.type) continue;
@@ -448,6 +455,8 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     if (adapter.provider_policy?.claude_code_attribution_default) {
       claudeCodeAttributionDefaultByType.set(adapter.type, adapter.provider_policy.claude_code_attribution_default);
     }
+    const modelDiscovery = providerTypeModelDiscoveryFromAdapter(adapter.provider_policy?.model_discovery);
+    if (modelDiscovery) modelDiscoveryByType.set(adapter.type, modelDiscovery);
     for (const authMode of adapter.provider_policy?.auth_modes ?? []) {
       addProviderAuthMode(authModesByType, adapter.type, authMode);
     }
@@ -516,6 +525,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
     claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
+    modelDiscovery: modelDiscoveryByType.get(value),
   }));
 }
 
@@ -540,8 +550,42 @@ export function providerTypePreferredAuthMode(providerTypeOptions: ProviderTypeO
   return modes.includes("x-api-key") ? "x-api-key" : modes[0] ?? "";
 }
 
+export function providerTypeModelDiscovery(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.modelDiscovery;
+}
+
 function defaultProviderTypeSupportsCustomHeaders() {
   return true;
+}
+
+function providerTypeModelDiscoveryFromAdapter(policy?: {
+  path?: string;
+  auth?: string;
+  api_key_query_param?: string;
+  headers?: Record<string, string>;
+}): ProviderTypeOption["modelDiscovery"] {
+  if (!policy) return undefined;
+  const result = {
+    path: stringOrUndefined(policy.path),
+    auth: stringOrUndefined(policy.auth),
+    apiKeyQueryParam: stringOrUndefined(policy.api_key_query_param),
+    headers: providerModelDiscoveryHeaders(policy.headers),
+  };
+  if (!result.path && !result.auth && !result.apiKeyQueryParam && !result.headers) return undefined;
+  return result;
+}
+
+function providerModelDiscoveryHeaders(headers?: Record<string, string>) {
+  if (!headers) return undefined;
+  const normalized = Object.fromEntries(Object.entries(headers)
+    .map(([key, value]) => [key.trim(), value.trim()])
+    .filter(([key, value]) => key && value));
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function stringOrUndefined(value?: string) {
+  const text = value?.trim();
+  return text || undefined;
 }
 
 function addProviderAuthMode(authModesByType: Map<string, Set<string>>, providerType: string, authMode?: string) {
