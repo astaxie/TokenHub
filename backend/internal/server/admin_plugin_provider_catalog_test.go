@@ -488,3 +488,50 @@ func TestAdminPluginProviderCatalogGetKeepsStaticEntryWhenResourceModelsUnsuppor
 		t.Fatalf("static plugin catalog response = %s", response.Body)
 	}
 }
+
+func TestProviderCatalogIncludesBuiltInPluginCatalogEntries(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	providerType := "builtin_catalog_plugin"
+	pluginID := "tokenhub.provider.builtin-catalog-plugin"
+	entry := pluginProviderCatalogEntry{
+		ID:          "builtin-catalog-plugin",
+		Name:        "Built-in Catalog Plugin",
+		DisplayName: "Built-in Catalog Plugin",
+		Type:        providerType,
+		BaseURL:     "https://builtin-plugin.example/v1",
+		Source:      "plugin:built_in",
+	}
+	encoded, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Built-in Catalog Plugin",
+		Version: "built-in",
+		Source:  pluginmeta.SourceBuiltIn,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityChat), Subject: providerType},
+			{Kind: "provider_catalog", Name: "entry", Subject: providerType, Value: string(encoded)},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register built-in catalog plugin: %v", err)
+	}
+
+	merged, changed := server.providerCatalogEntriesWithPlugins(nil)
+	if !changed || len(merged) != 1 {
+		t.Fatalf("built-in plugin catalog merge changed=%t entries=%+v", changed, merged)
+	}
+	if merged[0].ID != entry.ID || merged[0].Type != providerType || merged[0].Source != "plugin:built_in" {
+		t.Fatalf("built-in plugin catalog entry = %+v", merged[0])
+	}
+}

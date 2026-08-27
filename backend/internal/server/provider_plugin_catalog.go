@@ -69,7 +69,13 @@ func (s *Server) pluginProviderCatalogEntries() []ProviderCatalogEntry {
 			continue
 		}
 		plugin, ok := s.pluginRegistry.Describe(adapter.PluginID)
-		if !ok || plugin.Source == pluginmeta.SourceBuiltIn {
+		if !ok {
+			continue
+		}
+		if plugin.Source == pluginmeta.SourceBuiltIn {
+			if entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter); ok {
+				entries = append(entries, entry)
+			}
 			continue
 		}
 		entries = append(entries, providerCatalogEntryFromPlugin(plugin, adapter))
