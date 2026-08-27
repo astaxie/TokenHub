@@ -886,12 +886,7 @@ func sortCatalogEntries(entries []ProviderCatalogEntry) {
 
 func normalizeProviderBaseURL(id string, raw string) string {
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
-	switch strings.ToLower(id) {
-	case ProviderKronk:
-		return firstNonEmpty(raw, kronkDefaultBaseURL)
-	default:
-		return normalizeOpenAICompatibleBaseURL(id, raw)
-	}
+	return normalizeOpenAICompatibleBaseURL(id, raw)
 }
 
 func normalizeOpenAICompatibleBaseURL(id string, raw string) string {

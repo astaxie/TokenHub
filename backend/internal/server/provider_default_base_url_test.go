@@ -53,7 +53,7 @@ func TestProviderCreateUsesBuiltInPluginDefaultBaseURL(t *testing.T) {
 }
 
 func TestNormalizeProviderBaseURLDoesNotSupplyBuiltInDefaults(t *testing.T) {
-	for _, providerID := range []string{"openai", "anthropic", "google", "ollama", "lmstudio"} {
+	for _, providerID := range []string{"openai", "anthropic", "google", "ollama", "lmstudio", ProviderKronk} {
 		if got := normalizeProviderBaseURL(providerID, ""); got != "" {
 			t.Fatalf("normalizeProviderBaseURL(%q, empty) = %q, want empty", providerID, got)
 		}
