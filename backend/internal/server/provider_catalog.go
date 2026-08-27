@@ -277,12 +277,13 @@ func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry
 }
 
 func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalogEntry {
+	baseURL := firstNonEmpty(catalogStringField(raw, "base_url"), catalogStringField(raw, "api"))
 	entry := ProviderCatalogEntry{
 		ID:          firstNonEmpty(catalogStringField(raw, "id"), id),
 		Name:        firstNonEmpty(catalogStringField(raw, "name"), catalogStringField(raw, "display_name"), id),
 		DisplayName: firstNonEmpty(catalogStringField(raw, "display_name"), catalogStringField(raw, "name"), id),
-		BaseURL:     normalizeProviderBaseURL(id, catalogStringField(raw, "api")),
-		DocURL:      catalogStringField(raw, "doc"),
+		BaseURL:     normalizeProviderBaseURL(id, baseURL),
+		DocURL:      firstNonEmpty(catalogStringField(raw, "doc_url"), catalogStringField(raw, "doc")),
 		Source:      "local-provider-catalog",
 	}
 	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), inferProviderType(entry.ID, entry.BaseURL))

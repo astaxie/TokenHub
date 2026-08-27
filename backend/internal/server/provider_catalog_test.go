@@ -58,6 +58,17 @@ func TestNormalizeProviderCatalogEntryUsesExplicitProviderType(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderCatalogEntryAcceptsManifestURLFields(t *testing.T) {
+	entry := normalizeProviderCatalogEntry("vendor-plugin", map[string]any{
+		"name":     "Vendor Plugin",
+		"base_url": "https://api.vendor.example/v1",
+		"doc_url":  "https://vendor.example/docs",
+	})
+	if entry.BaseURL != "https://api.vendor.example/v1" || entry.DocURL != "https://vendor.example/docs" {
+		t.Fatalf("expected manifest-style URLs, got base=%q doc=%q", entry.BaseURL, entry.DocURL)
+	}
+}
+
 func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 	var deepSeek ProviderCatalogEntry
 	for _, entry := range builtinProviderCatalog(true) {
