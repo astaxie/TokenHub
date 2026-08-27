@@ -286,6 +286,12 @@ func TestProviderErrorProfileComesFromProviderPolicyOptions(t *testing.T) {
 	}
 }
 
+func TestProviderErrorProfileDoesNotInferKronkFromProviderType(t *testing.T) {
+	if profile := providerErrorProfile(Provider{Type: ProviderKronk}); profile != "" {
+		t.Fatalf("provider error profile = %q, want no type-inferred profile", profile)
+	}
+}
+
 // A candidate bound by session affinity must not be abandoned for a transient
 // fault, which is the one case where the disposition alone is not the answer.
 func TestBoundRouteDoesNotFailOverOnTransientFault(t *testing.T) {

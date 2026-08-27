@@ -23,33 +23,43 @@ type KronkAdapter struct {
 }
 
 func (a KronkAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, usage, err := a.OpenAICompatibleAdapter.Chat(ctx, provider, providerModel, req)
 	return response, usage, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, writer io.Writer) (Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	usage, err := a.OpenAICompatibleAdapter.ChatStream(ctx, provider, providerModel, req, writer)
 	return usage, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, usage, err := a.OpenAICompatibleAdapter.Responses(ctx, provider, providerModel, req)
 	return response, usage, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, incoming http.Header) (*http.Response, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, err := a.OpenAICompatibleAdapter.OpenResponses(ctx, provider, providerModel, req, incoming)
 	return response, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, usage, err := a.OpenAICompatibleAdapter.Embeddings(ctx, provider, providerModel, req)
 	return response, usage, normalizeKronkTransportError(err)
+}
+
+func kronkProvider(provider Provider) Provider {
+	provider.Type = ProviderKronk
+	provider.Options = cloneStringMap(provider.Options)
+	if provider.Options == nil {
+		provider.Options = map[string]string{}
+	}
+	provider.Options[providerErrorProfileOption] = providerErrorProfileKronk
+	return provider
 }
 
 func normalizeKronkTransportError(err error) error {
