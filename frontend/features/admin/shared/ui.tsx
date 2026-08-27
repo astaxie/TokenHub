@@ -444,6 +444,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const types = new Set<string>();
   const labelByType = new Map<string, string>();
   const policyByType = new Map<string, boolean>();
+  const apiKeyRequiredByType = new Map<string, boolean>();
   const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
   const claudeCodeAttributionDefaultByType = new Map<string, string>();
@@ -455,6 +456,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     hasPluginProviderSource = true;
     types.add(adapter.type);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
+    apiKeyRequiredByType.set(adapter.type, adapter.provider_policy?.api_key_required ?? true);
     if (adapter.provider_policy?.claude_code_attribution_default) {
       claudeCodeAttributionDefaultByType.set(adapter.type, adapter.provider_policy.claude_code_attribution_default);
     }
@@ -485,6 +487,13 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         types.add(providerType);
         policyByType.set(providerType, capability.value !== "false");
       }
+      if (capability.kind === "provider_policy" && capability.name === "api_key_required") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        hasPluginProviderSource = true;
+        types.add(providerType);
+        apiKeyRequiredByType.set(providerType, capability.value !== "false");
+      }
       if (capability.kind === "provider_policy" && capability.name === "route_protocol") {
         const providerType = String(capability.subject || "").trim();
         if (!providerType) continue;
@@ -498,6 +507,21 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         hasPluginProviderSource = true;
         types.add(providerType);
         addProviderAuthMode(authModesByType, providerType, capability.value);
+      }
+      if (capability.kind === "provider_policy" && capability.name === "default_base_url") {
+        const providerType = String(capability.subject || "").trim();
+        const baseURL = String(capability.value || "").trim().replace(/\/+$/, "");
+        if (!providerType || !baseURL) continue;
+        hasPluginProviderSource = true;
+        types.add(providerType);
+        defaultBaseURLByType.set(providerType, baseURL);
+      }
+      if (capability.kind === "provider_policy" && capability.name.startsWith("model_discovery_")) {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        hasPluginProviderSource = true;
+        types.add(providerType);
+        applyProviderModelDiscoveryCapability(modelDiscoveryByType, providerType, capability.name, capability.value);
       }
       if (capability.kind === "provider_policy" && capability.name === "claude_code_attribution_default") {
         const providerType = String(capability.subject || "").trim();
@@ -528,7 +552,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     value,
     label: providerTypeOptionLabel(value, labelByType),
     supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
-    apiKeyRequired: adapterProviderType(data.providerAdapters, value)?.provider_policy?.api_key_required ?? true,
+    apiKeyRequired: apiKeyRequiredByType.get(value) ?? true,
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
     claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
@@ -541,8 +565,29 @@ function providerTypeOptionLabel(providerType: string, labels: Map<string, strin
   return labels.get(providerType) ?? providerTypeLabel(providerType);
 }
 
-function adapterProviderType(adapters: AppData["providerAdapters"], providerType: string) {
-  return adapters?.find((adapter) => adapter.type === providerType);
+function applyProviderModelDiscoveryCapability(
+  policies: Map<string, ProviderTypeOption["modelDiscovery"]>,
+  providerType: string,
+  name: string,
+  rawValue: string | undefined,
+) {
+  const value = String(rawValue || "").trim();
+  if (!value) return;
+  const policy = { ...(policies.get(providerType) ?? {}) };
+  if (name === "model_discovery_path") policy.path = value;
+  if (name === "model_discovery_auth") policy.auth = value;
+  if (name === "model_discovery_api_key_query_param") policy.apiKeyQueryParam = value;
+  if (name === "model_discovery_headers") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        policy.headers = Object.fromEntries(Object.entries(parsed).map(([key, item]) => [key, String(item)]));
+      }
+    } catch {
+      return;
+    }
+  }
+  policies.set(providerType, policy);
 }
 
 export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {

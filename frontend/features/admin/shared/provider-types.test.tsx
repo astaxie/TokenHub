@@ -202,21 +202,36 @@ describe("providerTypeOptionsFromData", () => {
       capabilities: [
         { kind: "provider", name: "responses", subject: "oauth_subscription" },
         { kind: "provider_policy", name: "supports_custom_headers", subject: "oauth_subscription", value: "false" },
+        { kind: "provider_policy", name: "api_key_required", subject: "oauth_subscription", value: "false" },
         { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "oauth" },
         { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "personal_access_token" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "responses" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "images/generations" },
         { kind: "provider_policy", name: "claude_code_attribution_default", subject: "oauth_subscription", value: "strip" },
+        { kind: "provider_policy", name: "default_base_url", subject: "oauth_subscription", value: "https://oauth.example/v1/" },
+        { kind: "provider_policy", name: "model_discovery_path", subject: "oauth_subscription", value: "/oauth/models" },
+        { kind: "provider_policy", name: "model_discovery_auth", subject: "oauth_subscription", value: "query_param" },
+        { kind: "provider_policy", name: "model_discovery_api_key_query_param", subject: "oauth_subscription", value: "access_token" },
+        { kind: "provider_policy", name: "model_discovery_headers", subject: "oauth_subscription", value: "{\"x-oauth-version\":\"2026-01-01\"}" },
       ],
     }];
 
     const options = providerTypeOptionsFromData(data);
 
     expect(providerTypeSupportsCustomHeaders(options, "oauth_subscription")).toBe(false);
+    expect(providerTypeRequiresAPIKey(options, "oauth_subscription")).toBe(false);
     expect(providerTypeAuthModes(options, "oauth_subscription")).toEqual(["oauth", "personal_access_token"]);
     expect(providerTypePreferredAuthMode(options, "oauth_subscription")).toBe("oauth");
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
-    expect(options.find((option) => option.value === "oauth_subscription")?.claudeCodeAttributionDefault).toBe("strip");
+    const option = options.find((option) => option.value === "oauth_subscription");
+    expect(option?.claudeCodeAttributionDefault).toBe("strip");
+    expect(option?.defaultBaseURL).toBe("https://oauth.example/v1");
+    expect(providerTypeModelDiscovery(options, "oauth_subscription")).toEqual({
+      path: "/oauth/models",
+      auth: "query_param",
+      apiKeyQueryParam: "access_token",
+      headers: { "x-oauth-version": "2026-01-01" },
+    });
   });
 
   it("resolves provider type labels from catalog entries before plugin names", () => {
