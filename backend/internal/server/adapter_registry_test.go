@@ -392,6 +392,10 @@ func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
 	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "session_affinity_kind", Subject: ProviderOpenAICodex, Value: AffinityKindCodexSession}) {
 		t.Fatalf("Codex provider plugin session affinity policy is missing: %+v", descriptor.Capabilities)
 	}
+	if catalog, ok := providerCatalogEntryFromPluginCapability(descriptor, AdapterDescriptor{Type: ProviderOpenAICodex}); !ok ||
+		catalog.ID != codexProviderCatalogID || catalog.Type != ProviderOpenAICodex || catalog.BaseURL != openAICodexBaseURL {
+		t.Fatalf("Codex provider plugin catalog entry = %+v found=%t", catalog, ok)
+	}
 	var resourceType pluginmeta.ManifestProviderResourceType
 	if err := json.Unmarshal([]byte(value), &resourceType); err != nil {
 		t.Fatalf("decode Codex resource type metadata: %v", err)

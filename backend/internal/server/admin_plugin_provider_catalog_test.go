@@ -528,10 +528,20 @@ func TestProviderCatalogIncludesBuiltInPluginCatalogEntries(t *testing.T) {
 	}
 
 	merged, changed := server.providerCatalogEntriesWithPlugins(nil)
-	if !changed || len(merged) != 1 {
+	if !changed {
 		t.Fatalf("built-in plugin catalog merge changed=%t entries=%+v", changed, merged)
 	}
-	if merged[0].ID != entry.ID || merged[0].Type != providerType || merged[0].Source != "plugin:built_in" {
-		t.Fatalf("built-in plugin catalog entry = %+v", merged[0])
+	var found bool
+	for _, candidate := range merged {
+		if candidate.ID != entry.ID {
+			continue
+		}
+		found = true
+		if candidate.Type != providerType || candidate.Source != "plugin:built_in" {
+			t.Fatalf("built-in plugin catalog entry = %+v", candidate)
+		}
+	}
+	if !found {
+		t.Fatalf("built-in plugin catalog entry missing from %+v", merged)
 	}
 }

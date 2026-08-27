@@ -1,6 +1,10 @@
 package server
 
-import pluginmeta "tokenhub/backend/internal/plugin"
+import (
+	"encoding/json"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
+)
 
 type builtinProviderAdapter struct {
 	providerType                 string
@@ -11,6 +15,7 @@ type builtinProviderAdapter struct {
 	claudeCodeAttributionDefault string
 	authModes                    []string
 	resourceTypes                []pluginmeta.ManifestProviderResourceType
+	catalogEntry                 *pluginProviderCatalogEntry
 	capabilities                 []AdapterCapability
 }
 
@@ -69,6 +74,16 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		credentialsScope:      providerCredentialsScopeResource,
 		routeRequiresResource: true,
 		sessionAffinityKind:   AffinityKindCodexSession,
+		catalogEntry: &pluginProviderCatalogEntry{
+			ID:          codexProviderCatalogID,
+			Name:        "OpenAI Codex",
+			DisplayName: "OpenAI Codex",
+			Type:        ProviderOpenAICodex,
+			BaseURL:     openAICodexBaseURL,
+			DocURL:      "https://developers.openai.com/codex",
+			Categories:  []string{"codex"},
+			Source:      "openai-codex-live",
+		},
 		resourceTypes: []pluginmeta.ManifestProviderResourceType{{
 			Type:        ProviderResourceOpenAISubscription,
 			DisplayName: "OpenAI Codex Subscription",
@@ -202,6 +217,17 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Value:   authMode,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.catalogEntry != nil {
+		if data, err := json.Marshal(adapter.catalogEntry); err == nil {
+			descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+				Kind:    "provider_catalog",
+				Name:    "entry",
+				Subject: adapter.providerType,
+				Value:   string(data),
+			})
+			descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+		}
 	}
 	return descriptor
 }
