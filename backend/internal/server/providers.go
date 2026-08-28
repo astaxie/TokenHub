@@ -484,7 +484,7 @@ func configureProviderAuthMode(provider *Provider, requested string, policy Adap
 	}
 	authType := strings.ToLower(strings.TrimSpace(requested))
 	if authType == "" {
-		authType = providerConfiguredAuthMode(*provider)
+		authType = providerConfiguredAuthMode(*provider, policy)
 	}
 	if authType == "" {
 		return nil
@@ -496,8 +496,8 @@ func configureProviderAuthMode(provider *Provider, requested string, policy Adap
 		provider.Options = map[string]string{}
 	}
 	provider.Options[providerAuthModeOption] = authType
-	if provider.Type == ProviderAnthropic {
-		provider.Options[anthropicAuthTypeOption] = authType
+	if legacyOption := strings.TrimSpace(policy.AuthModeLegacyOption); legacyOption != "" {
+		provider.Options[legacyOption] = authType
 	}
 	return nil
 }
@@ -523,21 +523,25 @@ func providerAuthModeInvalidError(policy AdapterProviderPolicy) error {
 	return NewHTTPError(http.StatusBadRequest, code, message)
 }
 
-func providerConfiguredAuthMode(provider Provider) string {
+func providerConfiguredAuthMode(provider Provider, policy AdapterProviderPolicy) string {
 	if provider.Options == nil {
 		return ""
 	}
 	if authType := strings.ToLower(strings.TrimSpace(provider.Options[providerAuthModeOption])); authType != "" {
 		return authType
 	}
-	return strings.ToLower(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]))
+	legacyOption := strings.TrimSpace(policy.AuthModeLegacyOption)
+	if legacyOption == "" {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(provider.Options[legacyOption]))
 }
 
 func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
 	if req == nil {
 		return
 	}
-	if providerConfiguredAuthMode(provider) == anthropicAuthTypeBearer {
+	if providerConfiguredAuthMode(provider, AdapterProviderPolicy{AuthModeLegacyOption: anthropicAuthTypeOption}) == anthropicAuthTypeBearer {
 		req.Header.Del("x-api-key")
 		req.Header.Set("authorization", "Bearer "+provider.APIKey)
 		return

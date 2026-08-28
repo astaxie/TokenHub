@@ -38,6 +38,7 @@ type AdapterDescriptor struct {
 type AdapterProviderPolicy struct {
 	RouteProtocols               []string                    `json:"route_protocols,omitempty"`
 	AuthModes                    []string                    `json:"auth_modes,omitempty"`
+	AuthModeLegacyOption         string                      `json:"auth_mode_legacy_option,omitempty"`
 	AuthModeInvalidErrorCode     string                      `json:"auth_mode_invalid_error_code,omitempty"`
 	AuthModeInvalidErrorMessage  string                      `json:"auth_mode_invalid_error_message,omitempty"`
 	SupportsCustomHeaders        bool                        `json:"supports_custom_headers"`
@@ -206,6 +207,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 	descriptor.ProviderPolicy = AdapterProviderPolicy{
 		RouteProtocols:               adapterRouteProtocols(r, descriptor),
 		AuthModes:                    adapterAuthModes(r, descriptor.Type),
+		AuthModeLegacyOption:         adapterAuthModeLegacyOption(r, descriptor.Type),
 		AuthModeInvalidErrorCode:     adapterAuthModeInvalidErrorCode(r, descriptor.Type),
 		AuthModeInvalidErrorMessage:  adapterAuthModeInvalidErrorMessage(r, descriptor.Type),
 		SupportsCustomHeaders:        adapterSupportsProviderHeaders(r, descriptor.Type),
@@ -234,6 +236,13 @@ func adapterRouteProtocols(registry *AdapterRegistry, descriptor AdapterDescript
 
 func adapterAuthModes(registry *AdapterRegistry, providerType string) []string {
 	return providerPolicyStringValues(registry, providerType, providerAuthModeOption)
+}
+
+func adapterAuthModeLegacyOption(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, providerAuthModeLegacyOptionPolicy); ok {
+		return value
+	}
+	return ""
 }
 
 func adapterAuthModeInvalidErrorCode(registry *AdapterRegistry, providerType string) string {

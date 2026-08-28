@@ -7,6 +7,7 @@ import (
 
 const (
 	providerAuthModeOption                             = "auth_mode"
+	providerAuthModeLegacyOptionPolicy                 = "auth_mode_legacy_option"
 	providerAuthModeInvalidErrorCodePolicy             = "auth_mode_invalid_error_code"
 	providerAuthModeInvalidErrorMessagePolicy          = "auth_mode_invalid_error_message"
 	providerAPIKeyRequiredOption                       = "api_key_required"

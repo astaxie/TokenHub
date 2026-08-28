@@ -68,6 +68,7 @@ type ManifestCapabilities struct {
 type ManifestProvider struct {
 	RouteProtocols               []string                `yaml:"route_protocols"`
 	AuthModes                    []string                `yaml:"auth_modes"`
+	AuthModeLegacyOption         string                  `yaml:"auth_mode_legacy_option"`
 	AuthModeInvalidErrorCode     string                  `yaml:"auth_mode_invalid_error_code"`
 	AuthModeInvalidErrorMessage  string                  `yaml:"auth_mode_invalid_error_message"`
 	SupportsCustomHeaders        *bool                   `yaml:"supports_custom_headers"`
@@ -592,6 +593,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "auth_mode",
 				Subject: providerType,
 				Value:   authMode,
+			})
+		}
+		if option := strings.TrimSpace(m.Capabilities.Provider.AuthModeLegacyOption); option != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "auth_mode_legacy_option",
+				Subject: providerType,
+				Value:   option,
 			})
 		}
 		if code := strings.TrimSpace(m.Capabilities.Provider.AuthModeInvalidErrorCode); code != "" {

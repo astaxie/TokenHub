@@ -23,6 +23,7 @@ type builtinProviderAdapter struct {
 	errorProfile                 string
 	defaultCatalogProviderType   bool
 	authModes                    []string
+	authModeLegacyOption         string
 	authModeInvalidErrorCode     string
 	authModeInvalidErrorMessage  string
 	modelDiscovery               AdapterModelDiscoveryPolicy
@@ -170,6 +171,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		adapter:                      adapters[ProviderAnthropic],
 		routeProtocols:               []string{providerRouteProtocolAnthropic},
 		authModes:                    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		authModeLegacyOption:         anthropicAuthTypeOption,
 		authModeInvalidErrorCode:     "provider_anthropic_auth_type_invalid",
 		authModeInvalidErrorMessage:  "Anthropic authentication type must be x-api-key or bearer",
 		claudeCodeAttributionDefault: claudeCodeAttributionPreserve,
@@ -541,6 +543,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    providerAuthModeOption,
 			Subject: adapter.providerType,
 			Value:   authMode,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if option := strings.TrimSpace(adapter.authModeLegacyOption); option != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    providerAuthModeLegacyOptionPolicy,
+			Subject: adapter.providerType,
+			Value:   option,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

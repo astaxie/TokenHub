@@ -138,6 +138,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !reflect.DeepEqual(anthropic.ProviderPolicy.AuthModes, []string{anthropicAuthTypeBearer, anthropicAuthTypeAPIKey}) {
 		t.Fatalf("Anthropic auth modes = %v", anthropic.ProviderPolicy.AuthModes)
 	}
+	if anthropic.ProviderPolicy.AuthModeLegacyOption != anthropicAuthTypeOption {
+		t.Fatalf("Anthropic auth mode legacy option = %q, want %q", anthropic.ProviderPolicy.AuthModeLegacyOption, anthropicAuthTypeOption)
+	}
 	if anthropic.ProviderPolicy.AuthModeInvalidErrorCode != "provider_anthropic_auth_type_invalid" ||
 		anthropic.ProviderPolicy.AuthModeInvalidErrorMessage != "Anthropic authentication type must be x-api-key or bearer" {
 		t.Fatalf("Anthropic auth mode invalid error policy = %+v", anthropic.ProviderPolicy)
@@ -296,6 +299,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: providerAPIKeyRequiredOption, Subject: providerType, Value: "false"},
 			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "oauth"},
 			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "personal_access_token"},
+			{Kind: "provider_policy", Name: providerAuthModeLegacyOptionPolicy, Subject: providerType, Value: "legacy_subscription_auth_type"},
 			{Kind: "provider_policy", Name: providerAuthModeInvalidErrorCodePolicy, Subject: providerType, Value: "provider_subscription_auth_mode_invalid"},
 			{Kind: "provider_policy", Name: providerAuthModeInvalidErrorMessagePolicy, Subject: providerType, Value: "Subscription authentication mode is not supported"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
@@ -341,6 +345,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if !reflect.DeepEqual(descriptor.ProviderPolicy.AuthModes, []string{"oauth", "personal_access_token"}) {
 		t.Fatalf("plugin provider auth modes = %+v", descriptor.ProviderPolicy.AuthModes)
+	}
+	if descriptor.ProviderPolicy.AuthModeLegacyOption != "legacy_subscription_auth_type" {
+		t.Fatalf("plugin provider auth mode legacy option = %+v, want legacy_subscription_auth_type", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.AuthModeInvalidErrorCode != "provider_subscription_auth_mode_invalid" ||
 		descriptor.ProviderPolicy.AuthModeInvalidErrorMessage != "Subscription authentication mode is not supported" {

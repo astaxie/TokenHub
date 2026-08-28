@@ -27,12 +27,13 @@ func TestConfigureProviderAuthModeRequiresDeclaredModes(t *testing.T) {
 	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, AdapterProviderPolicy{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := providerConfiguredAuthMode(provider); got != "" {
+	if got := providerConfiguredAuthMode(provider, AdapterProviderPolicy{}); got != "" {
 		t.Fatalf("auth mode without descriptor modes = %q, want empty", got)
 	}
 
 	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, AdapterProviderPolicy{
-		AuthModes: []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		AuthModes:            []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		AuthModeLegacyOption: anthropicAuthTypeOption,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +42,10 @@ func TestConfigureProviderAuthModeRequiresDeclaredModes(t *testing.T) {
 	}
 	if got := provider.Options[anthropicAuthTypeOption]; got != anthropicAuthTypeBearer {
 		t.Fatalf("legacy Anthropic auth mode = %q, want bearer", got)
+	}
+	custom := Provider{Type: "custom_provider", Options: map[string]string{"legacy_auth_mode": "oauth"}}
+	if got := providerConfiguredAuthMode(custom, AdapterProviderPolicy{AuthModeLegacyOption: "legacy_auth_mode"}); got != "oauth" {
+		t.Fatalf("custom legacy auth mode = %q, want oauth", got)
 	}
 }
 

@@ -813,7 +813,7 @@ func providerModelDiscoveryAuthMode(req ProviderCreateRequest, descriptor Adapte
 	if err := configureProviderAuthMode(&provider, req.AnthropicAuthType, descriptor.ProviderPolicy); err != nil {
 		return "", err
 	}
-	if mode := providerConfiguredAuthMode(provider); mode != "" {
+	if mode := providerConfiguredAuthMode(provider, descriptor.ProviderPolicy); mode != "" {
 		return mode, nil
 	}
 	return preferredProviderAuthMode(descriptor.ProviderPolicy.AuthModes), nil

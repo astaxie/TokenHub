@@ -41,6 +41,7 @@ capabilities:
     auth_modes:
       - x-api-key
       - bearer
+    auth_mode_legacy_option: codex_auth_type
     auth_mode_invalid_error_code: provider_codex_auth_mode_invalid
     auth_mode_invalid_error_message: Codex authentication mode is not supported
     supports_custom_headers: false
@@ -119,8 +120,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 26 {
-		t.Fatalf("descriptor capabilities = %v, want 26 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 27 {
+		t.Fatalf("descriptor capabilities = %v, want 27 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -171,6 +172,9 @@ permissions:
 		!descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "auth_mode", Subject: "openai_codex", Value: "bearer"}) {
 		t.Fatalf("descriptor is missing provider auth mode policy capabilities: %+v", descriptor.Capabilities)
 	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "auth_mode_legacy_option", Subject: "openai_codex", Value: "codex_auth_type"}) {
+		t.Fatalf("descriptor is missing provider auth mode legacy option policy: %+v", descriptor.Capabilities)
+	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "auth_mode_invalid_error_code", Subject: "openai_codex", Value: "provider_codex_auth_mode_invalid"}) {
 		t.Fatalf("descriptor is missing provider auth mode invalid error code policy: %+v", descriptor.Capabilities)
 	}
@@ -182,6 +186,9 @@ permissions:
 	}
 	if len(manifest.Capabilities.Provider.AuthModes) != 2 || manifest.Capabilities.Provider.AuthModes[0] != "x-api-key" || manifest.Capabilities.Provider.AuthModes[1] != "bearer" {
 		t.Fatalf("provider auth modes = %+v", manifest.Capabilities.Provider.AuthModes)
+	}
+	if manifest.Capabilities.Provider.AuthModeLegacyOption != "codex_auth_type" {
+		t.Fatalf("provider auth mode legacy option = %q", manifest.Capabilities.Provider.AuthModeLegacyOption)
 	}
 	if manifest.Capabilities.Provider.AuthModeInvalidErrorCode != "provider_codex_auth_mode_invalid" ||
 		manifest.Capabilities.Provider.AuthModeInvalidErrorMessage != "Codex authentication mode is not supported" {
