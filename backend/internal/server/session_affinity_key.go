@@ -157,6 +157,47 @@ func chatCompletionSessionIdentifier(headers http.Header, request ChatCompletion
 	return "", sessionScopeNone
 }
 
+// providerResponsesSessionIdentifier extracts generic Responses API affinity
+// signals for durable provider-session binding.
+//
+// Codex-compatible fields such as client_metadata.session_id, thread-id, and
+// x-client-request-id are intentionally excluded here. Providers that need those
+// fields must opt into the Codex session affinity kind through descriptor policy.
+func providerResponsesSessionIdentifier(headers http.Header, request ResponsesRequest) (string, sessionIdentifierScope) {
+	for _, value := range []string{
+		headers.Get("x-tokenhub-session-id"),
+		headers.Get("session-id"),
+		responsesRawStringField(request, "prompt_cache_key"),
+	} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value, sessionScopeSession
+		}
+	}
+	if value := responsesRawStringField(request, "user"); value != "" {
+		return value, sessionScopeUser
+	}
+	return "", sessionScopeNone
+}
+
+func codexRawStringField(request ResponsesRequest, key string) string {
+	return responsesRawStringField(request, key)
+}
+
+func responsesRawStringField(request ResponsesRequest, key string) string {
+	if request.raw == nil {
+		return ""
+	}
+	raw, ok := request.raw[key]
+	if !ok {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
 // stringFieldValue accepts string values only. Other types are still forwarded
 // upstream verbatim, they just do not take part in affinity derivation.
 func stringFieldValue(value any) string {

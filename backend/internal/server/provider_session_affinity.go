@@ -47,7 +47,7 @@ func validProviderSessionAffinityKind(kind string) bool {
 }
 
 func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType string, affinityKind string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
-	canonical, ok := codexSessionIdentifier(headers, request)
+	canonical, ok := responsesAffinityIdentifier(headers, request, affinityKind)
 	if !ok {
 		return nil, nil
 	}
@@ -72,12 +72,23 @@ func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType 
 	}, nil
 }
 
+func responsesAffinityIdentifier(headers http.Header, request ResponsesRequest, affinityKind string) (string, bool) {
+	if affinityKind == AffinityKindCodexSession {
+		return codexSessionIdentifier(headers, request)
+	}
+	identifier, scope := providerResponsesSessionIdentifier(headers, request)
+	if scope != sessionScopeSession {
+		return "", false
+	}
+	return identifier, true
+}
+
 func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
 	for _, value := range []string{
 		headers.Get("session-id"),
 		headers.Get("session_id"),
 		codexClientMetadataSessionID(request),
-		codexRawStringField(request, "prompt_cache_key"),
+		responsesRawStringField(request, "prompt_cache_key"),
 		headers.Get("thread-id"),
 		headers.Get("x-client-request-id"),
 	} {
@@ -106,21 +117,6 @@ func codexClientMetadataSessionID(request ResponsesRequest) string {
 		_ = json.Unmarshal(value, &sessionID)
 	}
 	return strings.TrimSpace(sessionID)
-}
-
-func codexRawStringField(request ResponsesRequest, key string) string {
-	if request.raw == nil {
-		return ""
-	}
-	raw, ok := request.raw[key]
-	if !ok {
-		return ""
-	}
-	var value string
-	if json.Unmarshal(raw, &value) != nil {
-		return ""
-	}
-	return strings.TrimSpace(value)
 }
 
 func (s *GormStore) GetAdapterSessionBinding(ctx context.Context, adapterType string, providerID string, affinityKeyHash string) (AdapterSessionBinding, bool, error) {

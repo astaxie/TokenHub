@@ -96,6 +96,106 @@ func TestChatCompletionSessionIdentifierPrecedence(t *testing.T) {
 	}
 }
 
+func TestResponsesSessionIdentifierPrecedence(t *testing.T) {
+	var request ResponsesRequest
+	if err := json.Unmarshal([]byte(`{"model":"gpt-test","input":[],"prompt_cache_key":"cache-key","user":"user-field"}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	headers := make(http.Header)
+	headers.Set("x-tokenhub-session-id", "tokenhub-session")
+	headers.Set("session-id", "plain-session")
+
+	identifier, scope := providerResponsesSessionIdentifier(headers, request)
+	if identifier != "tokenhub-session" || scope != sessionScopeSession {
+		t.Fatalf("expected x-tokenhub-session-id priority, got %q scope=%d", identifier, scope)
+	}
+
+	headers.Del("x-tokenhub-session-id")
+	identifier, scope = providerResponsesSessionIdentifier(headers, request)
+	if identifier != "plain-session" || scope != sessionScopeSession {
+		t.Fatalf("expected session-id priority, got %q scope=%d", identifier, scope)
+	}
+
+	headers.Del("session-id")
+	identifier, scope = providerResponsesSessionIdentifier(headers, request)
+	if identifier != "cache-key" || scope != sessionScopeSession {
+		t.Fatalf("expected prompt_cache_key priority over user, got %q scope=%d", identifier, scope)
+	}
+
+	if err := json.Unmarshal([]byte(`{"model":"gpt-test","input":[],"user":"user-field"}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	identifier, scope = providerResponsesSessionIdentifier(headers, request)
+	if identifier != "user-field" || scope != sessionScopeUser {
+		t.Fatalf("expected user fallback at user scope, got %q scope=%d", identifier, scope)
+	}
+
+	if err := json.Unmarshal([]byte(`{"model":"gpt-test","input":[]}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	if _, scope := providerResponsesSessionIdentifier(headers, request); scope != sessionScopeNone {
+		t.Fatalf("expected no identifier when every source is absent, got scope=%d", scope)
+	}
+}
+
+func TestProviderSessionAffinityUsesGenericResponsesIdentifierSources(t *testing.T) {
+	var request ResponsesRequest
+	if err := json.Unmarshal([]byte(`{"model":"gpt-test","input":[],"prompt_cache_key":"cache-key","user":"user-field"}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	headers := make(http.Header)
+	headers.Set("x-tokenhub-session-id", "generic-session")
+
+	affinity, err := resolveProviderSessionAffinity("secret", "key_alpha", "generic_provider", AffinityKindProviderSession, headers, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil {
+		t.Fatal("expected generic provider session affinity")
+	}
+	if affinity.Kind != AffinityKindProviderSession || affinity.AdapterType != "generic_provider" {
+		t.Fatalf("generic provider affinity metadata = %+v", affinity)
+	}
+	expected := deriveSessionAffinityKey("secret", "key_alpha", "generic-session")
+	if affinity.KeyHash != expected {
+		t.Fatalf("generic provider affinity key = %q, want %q", affinity.KeyHash, expected)
+	}
+}
+
+func TestProviderSessionAffinityIgnoresCodexOnlyIdentifierSources(t *testing.T) {
+	var request ResponsesRequest
+	if err := json.Unmarshal([]byte(`{
+		"model":"gpt-test",
+		"input":[],
+		"client_metadata":{"session_id":"codex-metadata-session"}
+	}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	headers := make(http.Header)
+	headers.Set("session_id", "codex-underscore-session")
+	headers.Set("thread-id", "codex-thread")
+	headers.Set("x-client-request-id", "codex-request")
+
+	affinity, err := resolveProviderSessionAffinity("secret", "key_alpha", "generic_provider", AffinityKindProviderSession, headers, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity != nil {
+		t.Fatalf("generic provider session affinity consumed Codex-only fields: %+v", affinity)
+	}
+
+	affinity, err = resolveProviderSessionAffinity("secret", "key_alpha", "codex_like_provider", AffinityKindCodexSession, headers, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil {
+		t.Fatal("expected Codex policy to consume Codex-compatible fields")
+	}
+	if affinity.Kind != AffinityKindCodexSession || affinity.AdapterType != "codex_like_provider" {
+		t.Fatalf("Codex policy affinity metadata = %+v", affinity)
+	}
+}
+
 // The Codex affinity key is a durable contract: if derivation drifts, every live
 // session is redistributed and the upstream cache is invalidated wholesale.
 // These golden vectors pin the values down.

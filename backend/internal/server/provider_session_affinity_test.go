@@ -223,3 +223,54 @@ func TestChatGatewayAffinityUsesPluginPolicyKind(t *testing.T) {
 		t.Fatalf("provider affinity metadata = %+v", affinity)
 	}
 }
+
+func TestResponsesGatewayAffinityUsesDescriptorSelectedCodexPolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	providerType := "plugin_codex_responses"
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.plugin-codex-responses",
+		Name:    "Plugin Codex Responses",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses, AdapterCapabilityAffinity},
+	}); err != nil {
+		t.Fatalf("register plugin adapter: %v", err)
+	}
+	descriptor, ok := registry.Describe(providerType)
+	if !ok {
+		t.Fatal("plugin adapter descriptor is missing")
+	}
+
+	var request ResponsesRequest
+	if err := request.UnmarshalJSON([]byte(`{
+		"model":"gpt-test",
+		"input":[],
+		"client_metadata":{"session_id":"codex-metadata-session"}
+	}`)); err != nil {
+		t.Fatal(err)
+	}
+	affinity, err := resolveProviderSessionAffinity(
+		"secret",
+		"key_alpha",
+		providerType,
+		descriptor.ProviderPolicy.SessionAffinityKind,
+		make(http.Header),
+		request,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil {
+		t.Fatal("expected descriptor-selected Codex policy to consume client_metadata.session_id")
+	}
+	if affinity.AdapterType != providerType || affinity.Kind != AffinityKindCodexSession {
+		t.Fatalf("descriptor-selected affinity metadata = %+v", affinity)
+	}
+}
