@@ -428,6 +428,7 @@ export type ProviderTypeOption = {
   authModes?: string[];
   routeProtocols?: string[];
   claudeCodeAttributionDefault?: string;
+  reasoningConfigurable?: boolean;
   defaultBaseURL?: string;
   defaultCatalogProviderType?: boolean;
   modelDiscovery?: {
@@ -446,6 +447,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
   const claudeCodeAttributionDefaultByType = new Map<string, string>();
+  const reasoningConfigurableByType = new Map<string, boolean>();
   const defaultBaseURLByType = new Map<string, string>();
   const defaultCatalogProviderTypeByType = new Map<string, boolean>();
   const modelDiscoveryByType = new Map<string, ProviderTypeOption["modelDiscovery"]>();
@@ -458,6 +460,9 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     apiKeyRequiredByType.set(adapter.type, adapter.provider_policy?.api_key_required ?? true);
     if (adapter.provider_policy?.claude_code_attribution_default) {
       claudeCodeAttributionDefaultByType.set(adapter.type, adapter.provider_policy.claude_code_attribution_default);
+    }
+    if (typeof adapter.provider_policy?.reasoning_configurable === "boolean") {
+      reasoningConfigurableByType.set(adapter.type, adapter.provider_policy.reasoning_configurable);
     }
     if (adapter.provider_policy?.default_base_url?.trim()) {
       defaultBaseURLByType.set(adapter.type, adapter.provider_policy.default_base_url.trim().replace(/\/+$/, ""));
@@ -531,6 +536,12 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         types.add(providerType);
         claudeCodeAttributionDefaultByType.set(providerType, policy);
       }
+      if (capability.kind === "provider_policy" && capability.name === "reasoning_configurable") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        reasoningConfigurableByType.set(providerType, capability.value !== "false");
+      }
     }
   }
   for (const entry of [...providerCatalogEntriesFromPluginCapabilities(data.plugins), ...(data.providerCatalog ?? [])]) {
@@ -556,6 +567,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
     claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
+    reasoningConfigurable: reasoningConfigurableByType.get(value),
     defaultBaseURL: defaultBaseURLByType.get(value),
     defaultCatalogProviderType: defaultCatalogProviderTypeByType.get(value),
     modelDiscovery: modelDiscoveryByType.get(value),

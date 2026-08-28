@@ -77,6 +77,7 @@ type ManifestProvider struct {
 	CredentialsScope             string                  `yaml:"credentials_scope"`
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
 	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
+	ReasoningConfigurable        *bool                   `yaml:"reasoning_configurable"`
 	PreserveReasoningContent     *bool                   `yaml:"preserve_reasoning_content"`
 	ResponsesModelAllowlist      []string                `yaml:"responses_model_allowlist"`
 	DefaultBaseURL               string                  `yaml:"default_base_url"`
@@ -530,6 +531,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "claude_code_attribution_default",
 				Subject: providerType,
 				Value:   policy,
+			})
+		}
+		if m.Capabilities.Provider.ReasoningConfigurable != nil {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "reasoning_configurable",
+				Subject: providerType,
+				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.ReasoningConfigurable),
 			})
 		}
 		if m.Capabilities.Provider.PreserveReasoningContent != nil {

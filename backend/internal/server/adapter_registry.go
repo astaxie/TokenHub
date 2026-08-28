@@ -47,6 +47,7 @@ type AdapterProviderPolicy struct {
 	CredentialsScope             string                      `json:"credentials_scope,omitempty"`
 	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
 	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
+	ReasoningConfigurable        *bool                       `json:"reasoning_configurable,omitempty"`
 	PreserveReasoningContent     *bool                       `json:"preserve_reasoning_content,omitempty"`
 	ResponsesModelAllowlist      []string                    `json:"responses_model_allowlist,omitempty"`
 	DefaultBaseURL               string                      `json:"default_base_url,omitempty"`
@@ -226,6 +227,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		CredentialsScope:             adapterCredentialsScope(r, descriptor.Type),
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
 		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
+		ReasoningConfigurable:        adapterReasoningConfigurable(r, descriptor.Type),
 		PreserveReasoningContent:     adapterPreserveReasoningContent(r, descriptor.Type),
 		ResponsesModelAllowlist:      adapterResponsesModelAllowlist(r, descriptor.Type),
 		DefaultBaseURL:               adapterDefaultBaseURL(r, descriptor.Type),
@@ -310,6 +312,13 @@ func adapterClaudeCodeAttributionDefault(registry *AdapterRegistry, providerType
 		return normalizeClaudeCodeAttributionPolicyOrEmpty(value)
 	}
 	return ""
+}
+
+func adapterReasoningConfigurable(registry *AdapterRegistry, providerType string) *bool {
+	if value, ok := providerPolicyBoolCapability(registry, providerType, providerReasoningConfigurablePolicy); ok {
+		return boolPointer(value)
+	}
+	return nil
 }
 
 func adapterPreserveReasoningContent(registry *AdapterRegistry, providerType string) *bool {

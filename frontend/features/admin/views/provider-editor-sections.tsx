@@ -2,7 +2,7 @@ import { useState } from "react";
 import { type ApiContext, type ProviderResource } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
 import { providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
-import { providerReasoningFieldConfigs, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
+import { providerReasoningFieldConfigs, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
 import { providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
@@ -107,7 +107,7 @@ export function ProviderAdvancedFields({
   providerTypeOptions = [],
 }: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
-  const showReasoningCompatibility = providerTypeOptionsSupportAnthropicReasoning(effectiveProviderTypeOptions, values.type);
+  const showReasoningCompatibility = providerTypeSupportsReasoningConfig(effectiveProviderTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid">
@@ -152,8 +152,8 @@ export function ProviderAdvancedFields({
       </div>
       {showReasoningCompatibility ? <details className="provider-account-runtime">
         <summary>
-          <strong>{tx("Anthropic 推理参数兼容")}</strong>
-          <span>{tx("Provider 默认规则，适用于 Claude Code 等 Anthropic Messages 客户端。")}</span>
+          <strong>{tx("Provider 推理参数兼容")}</strong>
+          <span>{tx("Provider 默认规则，适用于支持推理参数的客户端和上游。")}</span>
         </summary>
         <div className="provider-account-fields">
           {providerReasoningFieldConfigs().map((field) => (

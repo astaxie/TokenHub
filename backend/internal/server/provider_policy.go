@@ -17,6 +17,7 @@ const (
 	providerCredentialRefreshProfileOption             = "credential_refresh_profile"
 	providerCredentialRefreshProfileOpenAIAccountOAuth = "openai_account_oauth"
 	providerErrorProfileOption                         = "error_profile"
+	providerReasoningConfigurablePolicy                = "reasoning_configurable"
 	providerRouteRequiresResourceOption                = "route_requires_resource"
 )
 

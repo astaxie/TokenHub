@@ -33,7 +33,7 @@ Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic
 
 **Plugin Extensions** では、組み込みおよびインストール済みプラグイン、ゲートウェイチェーン Hook、Admin UI 貢献、管理アクション、バックグラウンドジョブを確認できます。Marketplace またはローカルパッケージからのインストールは checksum で検証され、`TOKENHUB_PLUGIN_DIR` に書き込まれ、バックエンド再起動後に有効になります。組み込み以外のプラグインは同じ画面で有効化、無効化、更新、アンインストールできます。
 
-Provider プラグインは manifest でルーティングと認証情報のポリシーを宣言できます。上流シークレットを Provider 自体ではなく Provider Resource に置くサブスクリプション/アカウント型 Provider では、`capabilities.provider.credentials_scope: resource` を設定します。各ルート試行で利用可能な Provider Resource の選択を必須にする場合は `capabilities.provider.route_requires_resource: true` を設定します。Core は Provider 作成時にこれらのポリシーを永続化し、組み込みサブスクリプション Provider と同じ、欠落、無効化、不健康、クールダウン、リソースグループの各チェックを適用します。
+Provider プラグインは manifest でルーティングと認証情報のポリシーを宣言できます。上流シークレットを Provider 自体ではなく Provider Resource に置くサブスクリプション/アカウント型 Provider では、`capabilities.provider.credentials_scope: resource` を設定します。各ルート試行で利用可能な Provider Resource の選択を必須にする場合は `capabilities.provider.route_requires_resource: true` を設定します。Core は Provider 作成時にこれらのポリシーを永続化し、組み込みサブスクリプション Provider と同じ、欠落、無効化、不健康、クールダウン、リソースグループの各チェックを適用します。`capabilities.provider.reasoning_configurable` を設定すると、Admin の推論パラメーターコントロールを明示的に表示または非表示にできます。このフィールドがない古いプラグインは、引き続きルートプロトコルから推定します。
 
 互換ブリッジの背後で Responses 形式のリクエストを受け取る Provider プラグインは、`capabilities.provider.route_protocols` に `codex/responses` を列挙できます。その場合、Chat Completions と Anthropic Messages ルートは、組み込み Provider type に依存せず、その Provider に対して共有の Chat/Anthropic から Responses へのブリッジを使用します。
 

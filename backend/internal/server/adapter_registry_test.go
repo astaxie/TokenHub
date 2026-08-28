@@ -305,6 +305,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
+			{Kind: "provider_policy", Name: providerReasoningConfigurablePolicy, Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: reasoningContentOption, Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-a"},
 			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-b"},
@@ -358,6 +359,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.ClaudeCodeAttributionDefault != claudeCodeAttributionStrip {
 		t.Fatalf("plugin provider Claude Code attribution default = %+v, want strip", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.ReasoningConfigurable == nil || !*descriptor.ProviderPolicy.ReasoningConfigurable {
+		t.Fatalf("plugin provider reasoning configuration policy = %+v, want true", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.PreserveReasoningContent == nil || !*descriptor.ProviderPolicy.PreserveReasoningContent {
 		t.Fatalf("plugin provider preserve reasoning content default = %+v, want true", descriptor.ProviderPolicy)

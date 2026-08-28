@@ -18,6 +18,7 @@ type builtinProviderAdapter struct {
 	routeRequiresResource        bool
 	sessionAffinityKind          string
 	claudeCodeAttributionDefault string
+	reasoningConfigurable        *bool
 	preserveReasoningContent     *bool
 	responsesModelAllowlist      []string
 	errorProfile                 string
@@ -45,8 +46,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai", "OpenAI", builtinProviderAdapter{
-		providerType: ProviderOpenAI,
-		adapter:      adapters[ProviderOpenAI],
+		providerType:          ProviderOpenAI,
+		adapter:               adapters[ProviderOpenAI],
+		reasoningConfigurable: boolPointer(true),
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"openai",
 			"OpenAI",
@@ -70,6 +72,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		providerType:               ProviderOpenAICompatible,
 		adapter:                    adapters[ProviderOpenAICompatible],
 		defaultCatalogProviderType: true,
+		reasoningConfigurable:      boolPointer(true),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -151,6 +154,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		providerType:          ProviderAzureOpenAI,
 		adapter:               adapters[ProviderAzureOpenAI],
 		supportsCustomHeaders: boolPointer(false),
+		reasoningConfigurable: boolPointer(true),
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"azure-openai",
 			"Azure OpenAI",
@@ -224,9 +228,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	})
 	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
 		adapter := builtinProviderAdapter{
-			providerType: adapterType,
-			adapter:      adapters[adapterType],
-			catalogEntry: builtinProviderPluginCatalogEntryForType(adapterType),
+			providerType:          adapterType,
+			adapter:               adapters[adapterType],
+			reasoningConfigurable: boolPointer(true),
+			catalogEntry:          builtinProviderPluginCatalogEntryForType(adapterType),
 			capabilities: []AdapterCapability{
 				AdapterCapabilityChat,
 				AdapterCapabilityChatStream,
@@ -483,6 +488,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    claudeCodeAttributionDefaultPolicy,
 			Subject: adapter.providerType,
 			Value:   adapter.claudeCodeAttributionDefault,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.reasoningConfigurable != nil {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    providerReasoningConfigurablePolicy,
+			Subject: adapter.providerType,
+			Value:   boolString(*adapter.reasoningConfigurable),
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

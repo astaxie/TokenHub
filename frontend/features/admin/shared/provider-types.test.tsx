@@ -164,6 +164,7 @@ describe("providerTypeOptionsFromData", () => {
         auth_modes: ["x-api-key", "bearer"],
         api_key_required: false,
         claude_code_attribution_default: "preserve",
+        reasoning_configurable: false,
         default_base_url: "https://native.example/v1/",
         default_catalog_provider_type: true,
         model_discovery: {
@@ -187,6 +188,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(options.find((option) => option.value === "native_subscription")?.apiKeyRequired).toBe(false);
     expect(options.find((option) => option.value === "native_subscription")?.claudeCodeAttributionDefault).toBe("preserve");
+    expect(options.find((option) => option.value === "native_subscription")?.reasoningConfigurable).toBe(false);
     expect(options.find((option) => option.value === "native_subscription")?.defaultBaseURL).toBe("https://native.example/v1");
     expect(options.find((option) => option.value === "native_subscription")?.defaultCatalogProviderType).toBe(true);
     expect(providerTypeModelDiscovery(options, "native_subscription")).toEqual({
@@ -248,6 +250,7 @@ describe("providerTypeOptionsFromData", () => {
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "responses" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "images/generations" },
         { kind: "provider_policy", name: "claude_code_attribution_default", subject: "oauth_subscription", value: "strip" },
+        { kind: "provider_policy", name: "reasoning_configurable", subject: "oauth_subscription", value: "true" },
         { kind: "provider_policy", name: "default_base_url", subject: "oauth_subscription", value: "https://oauth.example/v1/" },
         { kind: "provider_policy", name: "default_catalog_provider_type", subject: "oauth_subscription", value: "true" },
         { kind: "provider_policy", name: "model_discovery_path", subject: "oauth_subscription", value: "/oauth/models" },
@@ -266,6 +269,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
     const option = options.find((option) => option.value === "oauth_subscription");
     expect(option?.claudeCodeAttributionDefault).toBe("strip");
+    expect(option?.reasoningConfigurable).toBe(true);
     expect(option?.defaultBaseURL).toBe("https://oauth.example/v1");
     expect(option?.defaultCatalogProviderType).toBe(true);
     expect(providerTypeModelDiscovery(options, "oauth_subscription")).toEqual({

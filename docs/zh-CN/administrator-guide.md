@@ -33,7 +33,7 @@ Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上�
 
 打开「插件扩展」可以查看内置与已安装插件、链路 Hook、Admin UI 贡献、管理动作和后台任务。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并在后端重启后生效。非内置插件可以在同一页面启用、禁用、更新或卸载。
 
-Provider 插件可以在 manifest 中声明路由和凭据策略。对上游密钥必须放在 Provider Resource、而不是 Provider 自身上的订阅/账号型 Provider，设置 `capabilities.provider.credentials_scope: resource`。如果每次路由尝试都必须选中可用的 Provider Resource，则设置 `capabilities.provider.route_requires_resource: true`；Core 会在创建 Provider 时持久化这些策略，并应用与内置订阅 Provider 一致的缺失、禁用、不健康、冷却和资源组检查。
+Provider 插件可以在 manifest 中声明路由和凭据策略。对上游密钥必须放在 Provider Resource、而不是 Provider 自身上的订阅/账号型 Provider，设置 `capabilities.provider.credentials_scope: resource`。如果每次路由尝试都必须选中可用的 Provider Resource，则设置 `capabilities.provider.route_requires_resource: true`；Core 会在创建 Provider 时持久化这些策略，并应用与内置订阅 Provider 一致的缺失、禁用、不健康、冷却和资源组检查。设置 `capabilities.provider.reasoning_configurable` 可以显式显示或隐藏 Admin 推理参数控制；没有该字段的旧插件仍会回退到路由协议推断。
 
 如果 Provider 插件在兼容桥接后接收 Responses 形态的请求，可以在 `capabilities.provider.route_protocols` 中列出 `codex/responses`。随后 Chat Completions 和 Anthropic Messages 路由会对该 Provider 使用共享的 Chat/Anthropic 到 Responses 桥接，而不是依赖某个内置 Provider 类型。
 

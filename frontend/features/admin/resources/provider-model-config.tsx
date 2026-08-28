@@ -4,7 +4,7 @@ import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
-import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
+import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
@@ -38,7 +38,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["preserve", "strip"], help: "Provider 插件可声明默认策略；未声明时默认移除归因块。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
       { key: "healthy", label: "健康", type: "boolean" },
-      ...providerReasoningFieldConfigs((values, data) => data ? providerTypeOptionsSupportAnthropicReasoning(providerTypeOptionsFromData(data, values), values.type) : false),
+      ...providerReasoningFieldConfigs((values, data) => data ? providerTypeSupportsReasoningConfig(providerTypeOptionsFromData(data, values), values.type) : false),
     ],
     list: (ctx) => ctx.providers,
     create: (ctx, values, data) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values, data)),

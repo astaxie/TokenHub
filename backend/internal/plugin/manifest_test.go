@@ -50,6 +50,7 @@ capabilities:
     credentials_scope: resource
     session_affinity_kind: codex_session
     claude_code_attribution_default: strip
+    reasoning_configurable: true
     preserve_reasoning_content: true
     default_base_url: https://chatgpt.example/backend-api/codex
     error_profile: kronk
@@ -120,8 +121,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 27 {
-		t.Fatalf("descriptor capabilities = %v, want 27 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 28 {
+		t.Fatalf("descriptor capabilities = %v, want 28 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -181,6 +182,9 @@ permissions:
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "auth_mode_invalid_error_message", Subject: "openai_codex", Value: "Codex authentication mode is not supported"}) {
 		t.Fatalf("descriptor is missing provider auth mode invalid error message policy: %+v", descriptor.Capabilities)
 	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "reasoning_configurable", Subject: "openai_codex", Value: "true"}) {
+		t.Fatalf("descriptor is missing provider reasoning configuration policy: %+v", descriptor.Capabilities)
+	}
 	if len(manifest.Capabilities.Provider.RouteProtocols) != 1 || manifest.Capabilities.Provider.RouteProtocols[0] != "codex/responses" {
 		t.Fatalf("provider route protocols = %+v", manifest.Capabilities.Provider.RouteProtocols)
 	}
@@ -202,6 +206,9 @@ permissions:
 	}
 	if manifest.Capabilities.Provider.RouteRequiresResource == nil || !*manifest.Capabilities.Provider.RouteRequiresResource {
 		t.Fatalf("provider route resource policy = %+v", manifest.Capabilities.Provider.RouteRequiresResource)
+	}
+	if manifest.Capabilities.Provider.ReasoningConfigurable == nil || !*manifest.Capabilities.Provider.ReasoningConfigurable {
+		t.Fatalf("provider reasoning configuration policy = %+v", manifest.Capabilities.Provider.ReasoningConfigurable)
 	}
 	if manifest.Capabilities.Provider.CredentialsScope != "resource" {
 		t.Fatalf("provider credentials scope = %q", manifest.Capabilities.Provider.CredentialsScope)
