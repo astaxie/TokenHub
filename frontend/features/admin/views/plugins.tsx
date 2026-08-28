@@ -1,9 +1,11 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, Play, PlugZap, Power, PowerOff, ShieldCheck, Trash2 } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Power, PowerOff, ShieldCheck, Trash2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
+import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
+import { PluginActionRunner, PluginBackgroundJobRunner } from "./plugin-action-runner";
 
 type ActionDraft = {
   values: Record<string, string | boolean>;
@@ -84,7 +86,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
       [key]: {
         ...emptyActionDraft(action),
         ...drafts[key],
-        values: { ...(drafts[key]?.values ?? emptyInputValues(action)), [field]: value },
+        values: { ...(drafts[key]?.values ?? pluginActionInputDefaults(action)), [field]: value },
         error: "",
       },
     }));
@@ -98,7 +100,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
     try {
       const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
         method: "POST",
-        body: JSON.stringify(inputPayload(action, draft.values)),
+        body: JSON.stringify(pluginActionPayload(action, draft.values)),
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("执行插件动作")));
       const payload = await response.json();
@@ -119,7 +121,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
       [key]: {
         ...emptyBackgroundJobDraft(job),
         ...drafts[key],
-        values: { ...(drafts[key]?.values ?? emptyInputValues(job)), [field]: value },
+        values: { ...(drafts[key]?.values ?? pluginActionInputDefaults(job)), [field]: value },
         error: "",
       },
     }));
@@ -133,7 +135,7 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
     try {
       const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(job.plugin_id)}/background-jobs/${encodeURIComponent(job.job_id)}/run`, {
         method: "POST",
-        body: JSON.stringify(inputPayload(job, draft.values)),
+        body: JSON.stringify(pluginBackgroundJobPayload(job, draft.values)),
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("运行后台任务")));
       const payload = await response.json();
@@ -682,6 +684,11 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                         <PluginActionRunner
                           action={action}
                           draft={actionDraft(action)}
+                          labels={{
+                            submit: tx("执行"),
+                            submitting: tx("执行中"),
+                            unsupportedSchema: tx("暂不支持复杂输入 Schema"),
+                          }}
                           onChange={updateActionValue}
                           onSubmit={executeAction}
                         />
@@ -738,6 +745,11 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                           <PluginBackgroundJobRunner
                             draft={backgroundJobDraft(job)}
                             job={job}
+                            labels={{
+                              submit: tx("运行任务"),
+                              submitting: tx("运行中"),
+                              unsupportedSchema: tx("暂不支持复杂输入 Schema"),
+                            }}
                             onChange={updateBackgroundJobValue}
                             onSubmit={runBackgroundJob}
                           />
@@ -755,96 +767,6 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   );
 }
 
-function PluginActionRunner({
-  action,
-  draft,
-  onChange,
-  onSubmit,
-}: {
-  action: PluginActionDescriptor;
-  draft: ActionDraft;
-  onChange: (action: PluginActionDescriptor, field: string, value: string | boolean) => void;
-  onSubmit: (action: PluginActionDescriptor, event: FormEvent<HTMLFormElement>) => void;
-}) {
-  const fields = inputFields(action);
-  const unsupported = action.input_schema && !inputSchemaSupported(action.input_schema);
-  return (
-    <form className="plugin-action-runner" onSubmit={(event) => onSubmit(action, event)}>
-      {unsupported ? <p className="empty-state">{tx("暂不支持复杂输入 Schema")}</p> : null}
-      {fields.map((field) => (
-        <label className="plugin-action-field" key={field.name}>
-          <span>{field.name}{field.required ? " *" : ""}</span>
-          {field.type === "boolean" ? (
-            <input
-              checked={Boolean(draft.values[field.name])}
-              onChange={(event) => onChange(action, field.name, event.currentTarget.checked)}
-              type="checkbox"
-            />
-          ) : (
-            <input
-              onChange={(event) => onChange(action, field.name, event.currentTarget.value)}
-              required={field.required}
-              type={field.type === "number" || field.type === "integer" ? "number" : "text"}
-              value={String(draft.values[field.name] ?? "")}
-            />
-          )}
-        </label>
-      ))}
-      <button className="secondary-button plugin-action-button" disabled={draft.busy || Boolean(unsupported)} type="submit">
-        <Play size={14} />
-        <span>{tx(draft.busy ? "执行中" : "执行")}</span>
-      </button>
-      {draft.error ? <p className="provider-quota-error">{draft.error}</p> : null}
-      {draft.result ? <pre className="plugin-action-result">{draft.result}</pre> : null}
-    </form>
-  );
-}
-
-function PluginBackgroundJobRunner({
-  job,
-  draft,
-  onChange,
-  onSubmit,
-}: {
-  job: PluginBackgroundJobDescriptor;
-  draft: PluginBackgroundJobDraft;
-  onChange: (job: PluginBackgroundJobDescriptor, field: string, value: string | boolean) => void;
-  onSubmit: (job: PluginBackgroundJobDescriptor, event: FormEvent<HTMLFormElement>) => void;
-}) {
-  const fields = inputFields(job);
-  const unsupported = job.input_schema && !inputSchemaSupported(job.input_schema);
-  return (
-    <form className="plugin-action-runner" onSubmit={(event) => onSubmit(job, event)}>
-      {unsupported ? <p className="empty-state">{tx("暂不支持复杂输入 Schema")}</p> : null}
-      {fields.map((field) => (
-        <label className="plugin-action-field" key={field.name}>
-          <span>{field.name}{field.required ? " *" : ""}</span>
-          {field.type === "boolean" ? (
-            <input
-              checked={Boolean(draft.values[field.name])}
-              onChange={(event) => onChange(job, field.name, event.currentTarget.checked)}
-              type="checkbox"
-            />
-          ) : (
-            <input
-              onChange={(event) => onChange(job, field.name, event.currentTarget.value)}
-              required={field.required}
-              type={field.type === "number" || field.type === "integer" ? "number" : "text"}
-              value={String(draft.values[field.name] ?? "")}
-            />
-          )}
-        </label>
-      ))}
-      <button className="secondary-button plugin-action-button" disabled={draft.busy || Boolean(unsupported)} type="submit">
-        <Play size={14} />
-        <span>{tx(draft.busy ? "运行中" : "运行任务")}</span>
-      </button>
-      {draft.error ? <p className="provider-quota-error">{draft.error}</p> : null}
-      {draft.result ? <pre className="plugin-action-result">{draft.result}</pre> : null}
-    </form>
-  );
-}
-
 function ContributionAction({ action, registered }: { action?: string; registered: boolean }) {
   if (!action) return <>-</>;
   return (
@@ -853,10 +775,6 @@ function ContributionAction({ action, registered }: { action?: string; registere
       <span>{registered ? tx("动作已注册") : tx("动作未注册")}</span>
     </div>
   );
-}
-
-function pluginActionKey(pluginID: string, actionID?: string) {
-  return `${pluginID}:${actionID ?? ""}`;
 }
 
 function PluginMetric({ icon, label, value }: { icon: ReactNode; label: ReactNode; value: number }) {
@@ -1131,97 +1049,16 @@ function backgroundJobStatusLabel(status: string) {
   return status;
 }
 
-function pluginBackgroundJobKey(pluginID: string, jobID: string) {
-  return `${pluginID}:${jobID}`;
-}
-
-type ActionInputField = {
-  name: string;
-  type: "string" | "boolean" | "number" | "integer";
-  required: boolean;
-};
-
-type InputSchemaHost = {
-  input_schema?: Record<string, unknown>;
-};
-
 function emptyActionDraft(action: PluginActionDescriptor): ActionDraft {
-  return { values: emptyInputValues(action), busy: false, error: "", result: "" };
+  return { values: pluginActionInputDefaults(action), busy: false, error: "", result: "" };
 }
 
 function emptyBackgroundJobDraft(job: PluginBackgroundJobDescriptor): PluginBackgroundJobDraft {
-  return { values: emptyInputValues(job), busy: false, error: "", result: "" };
+  return { values: pluginActionInputDefaults(job), busy: false, error: "", result: "" };
 }
 
 function emptyInstallDraft(): PluginInstallDraft {
   return { downloadURL: "", checksumSHA256: "", replace: false, enable: false, busy: false, error: "", result: "" };
-}
-
-function emptyInputValues(target: InputSchemaHost) {
-  const values: Record<string, string | boolean> = {};
-  for (const field of inputFields(target)) {
-    values[field.name] = field.type === "boolean" ? false : "";
-  }
-  return values;
-}
-
-function inputFields(target: InputSchemaHost): ActionInputField[] {
-  const schema = target.input_schema;
-  if (!schema || schema.type !== "object") return [];
-  const required = new Set(Array.isArray(schema.required) ? schema.required.filter((item): item is string => typeof item === "string") : []);
-  const properties = schema.properties;
-  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return [];
-  return Object.entries(properties).flatMap(([name, value]) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-    const type = (value as { type?: unknown }).type;
-    if (type !== "string" && type !== "boolean" && type !== "number" && type !== "integer") return [];
-    return [{ name, type, required: required.has(name) }];
-  });
-}
-
-function inputSchemaSupported(schema: Record<string, unknown>) {
-  if (schema.type !== "object") return false;
-  const properties = schema.properties;
-  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return true;
-  return Object.values(properties).every((value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const type = (value as { type?: unknown }).type;
-    return type === "string" || type === "boolean" || type === "number" || type === "integer";
-  });
-}
-
-function inputPayload(target: InputSchemaHost, values: Record<string, string | boolean>) {
-  const payload: Record<string, string | number | boolean> = {};
-  for (const field of inputFields(target)) {
-    const value = values[field.name];
-    if (field.type === "boolean") {
-      payload[field.name] = Boolean(value);
-      continue;
-    }
-    if (field.type === "number" || field.type === "integer") {
-      if (value === "") continue;
-      payload[field.name] = Number(value);
-      continue;
-    }
-    if (typeof value === "string" && value !== "") {
-      payload[field.name] = value;
-    }
-  }
-  return payload;
-}
-
-function redactPluginActionResult(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactPluginActionResult);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => {
-    if (sensitivePluginResultKey(key)) return [key, "[redacted]"];
-    return [key, redactPluginActionResult(child)];
-  }));
-}
-
-function sensitivePluginResultKey(key: string) {
-  const normalized = key.toLowerCase();
-  return normalized === "access_token" || normalized === "refresh_token" || normalized === "id_token" || normalized.includes("secret") || normalized === "credentials" || normalized === "credential" || normalized === "credential_blob" || normalized === "api_key" || normalized.endsWith("_api_key");
 }
 
 function pluginSourceLabel(source: string) {
