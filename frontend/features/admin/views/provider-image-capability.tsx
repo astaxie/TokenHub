@@ -47,7 +47,7 @@ export function ProviderImageCapability({
   const [busy, setBusy] = useState<"enable" | "disable" | "">("");
   const [error, setError] = useState("");
   const selectedResource = providerResources.find((resource) => resource.id === resourceID);
-  const displayName = imageProfile?.displayName || tx("订阅生图");
+  const displayName = imageProfile?.displayName || tx("生图能力");
   const publicModel = imageProfile?.publicModel || "";
   const upstreamModel = imageProfile?.upstreamModel || "";
   const stateLabel = {

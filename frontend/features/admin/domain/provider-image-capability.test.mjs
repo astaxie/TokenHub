@@ -13,7 +13,7 @@ const {
 } = await importTypeScript(new URL("./provider-image-capability.ts", import.meta.url));
 
 const profile = {
-  displayName: "订阅生图",
+  displayName: "生图能力",
   publicModel: "codex-gpt-image-2",
   upstreamModel: "gpt-image-2",
   capabilityOption: "image_generation_capability",

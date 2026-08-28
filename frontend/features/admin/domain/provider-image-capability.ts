@@ -14,7 +14,7 @@ export type ImageCapabilityProfile = {
   routeBackfillValue: string;
 };
 
-const defaultImageCapabilityDisplayName = "订阅生图";
+const defaultImageCapabilityDisplayName = "生图能力";
 
 export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescriptor, "metadata" | "title"> | null): ImageCapabilityProfile | null {
   if (!action) return null;
