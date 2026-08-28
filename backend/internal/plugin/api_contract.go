@@ -49,6 +49,7 @@ const (
 	ProviderPolicySupportsCustomHeaders          = "supports_custom_headers"
 	ProviderPolicyAPIKeyRequired                 = "api_key_required"
 	ProviderPolicyRouteRequiresResource          = "route_requires_resource"
+	ProviderPolicyStoreProbeFallback             = "store_probe_fallback"
 	ProviderPolicyCredentialsScope               = "credentials_scope"
 	ProviderPolicySessionAffinityKind            = "session_affinity_kind"
 	ProviderPolicySystemPromptTransformDefault   = "system_prompt_transform_default"
@@ -323,6 +324,7 @@ func validProviderPolicyCapabilityName(name string) bool {
 	case ProviderPolicySupportsCustomHeaders,
 		ProviderPolicyAPIKeyRequired,
 		ProviderPolicyRouteRequiresResource,
+		ProviderPolicyStoreProbeFallback,
 		ProviderPolicyCredentialsScope,
 		ProviderPolicySessionAffinityKind,
 		ProviderPolicySystemPromptTransformDefault,

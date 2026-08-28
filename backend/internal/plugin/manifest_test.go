@@ -488,6 +488,39 @@ capabilities:
 	}
 }
 
+func TestParseManifestBuildsStoreProbeFallbackPolicy(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.store-probe
+name: Store Probe
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - store_probe_provider
+  provider:
+    store_probe_fallback: true
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+
+	descriptor := manifest.Descriptor()
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "store_probe_fallback",
+		Subject: "store_probe_provider",
+		Value:   "true",
+	}) {
+		t.Fatalf("descriptor is missing provider store probe fallback policy: %+v", descriptor.Capabilities)
+	}
+}
+
 func TestParseManifestBuildsResponsesModelAllowlistCapabilities(t *testing.T) {
 	manifest, err := ParseManifest([]byte(`
 schema_version: 1

@@ -44,6 +44,7 @@ type AdapterProviderPolicy struct {
 	SupportsCustomHeaders        bool                        `json:"supports_custom_headers"`
 	APIKeyRequired               bool                        `json:"api_key_required"`
 	RouteRequiresResource        bool                        `json:"route_requires_resource"`
+	StoreProbeFallback           bool                        `json:"store_probe_fallback"`
 	CredentialsScope             string                      `json:"credentials_scope,omitempty"`
 	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
 	SystemPromptTransformDefault string                      `json:"system_prompt_transform_default,omitempty"`
@@ -129,6 +130,11 @@ func (r *AdapterRegistry) register(adapterType string, adapter any, pluginID str
 		return
 	}
 	r.adapters[adapterType] = adapter
+	if pluginID == "" {
+		if existing, ok := r.descriptors[adapterType]; ok {
+			pluginID = existing.PluginID
+		}
+	}
 	unique := make(map[AdapterCapability]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		if capability != "" {
@@ -225,6 +231,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		SupportsCustomHeaders:        adapterSupportsProviderHeaders(r, descriptor.Type),
 		APIKeyRequired:               adapterAPIKeyRequired(r, descriptor.Type),
 		RouteRequiresResource:        adapterRequiresRouteResource(r, descriptor.Type),
+		StoreProbeFallback:           adapterStoreProbeFallback(r, descriptor.Type),
 		CredentialsScope:             adapterCredentialsScope(r, descriptor.Type),
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
 		SystemPromptTransformDefault: adapterSystemPromptTransformDefault(r, descriptor.Type),
@@ -290,6 +297,13 @@ func adapterAPIKeyRequired(registry *AdapterRegistry, providerType string) bool 
 
 func adapterRequiresRouteResource(registry *AdapterRegistry, providerType string) bool {
 	if value, ok := providerPolicyBoolCapability(registry, providerType, "route_requires_resource"); ok {
+		return value
+	}
+	return false
+}
+
+func adapterStoreProbeFallback(registry *AdapterRegistry, providerType string) bool {
+	if value, ok := providerPolicyBoolCapability(registry, providerType, pluginmeta.ProviderPolicyStoreProbeFallback); ok {
 		return value
 	}
 	return false

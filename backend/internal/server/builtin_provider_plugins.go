@@ -22,6 +22,7 @@ type builtinProviderAdapter struct {
 	preserveReasoningContent     *bool
 	responsesModelAllowlist      []string
 	errorProfile                 string
+	storeProbeFallback           bool
 	defaultCatalogProviderType   bool
 	authModes                    []string
 	authModeLegacyOption         string
@@ -44,8 +45,9 @@ type builtinProviderPluginCapability struct {
 
 func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]ProviderAdapter, codexSubscription *CodexSubscriptionAdapter) {
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.mock", "Mock Provider", builtinProviderAdapter{
-		providerType: ProviderMock,
-		adapter:      adapters[ProviderMock],
+		providerType:       ProviderMock,
+		adapter:            adapters[ProviderMock],
+		storeProbeFallback: true,
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -470,6 +472,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
 			Kind:    "provider_policy",
 			Name:    "route_requires_resource",
+			Subject: adapter.providerType,
+			Value:   "true",
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.storeProbeFallback {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    pluginmeta.ProviderPolicyStoreProbeFallback,
 			Subject: adapter.providerType,
 			Value:   "true",
 		})

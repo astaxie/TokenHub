@@ -122,6 +122,14 @@ func TestBuiltinAdaptersResolveWithUnchangedCapabilities(t *testing.T) {
 func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	server := New(NewMemoryStore())
 
+	mock, ok := server.adapterRegistry.Describe(ProviderMock)
+	if !ok {
+		t.Fatal("Mock adapter descriptor is missing")
+	}
+	if !mock.ProviderPolicy.StoreProbeFallback {
+		t.Fatal("Mock adapter should declare store-backed probe fallback through provider policy")
+	}
+
 	anthropic, ok := server.adapterRegistry.Describe(ProviderAnthropic)
 	if !ok {
 		t.Fatal("Anthropic adapter descriptor is missing")
@@ -256,6 +264,81 @@ func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T
 	}
 	if descriptor.ProviderPolicy.ErrorProfile != "" {
 		t.Fatalf("bare adapter error profile = %q, want generic", descriptor.ProviderPolicy.ErrorProfile)
+	}
+	if descriptor.ProviderPolicy.StoreProbeFallback {
+		t.Fatal("bare adapter registration should not imply store-backed probe fallback")
+	}
+}
+
+func TestAdapterProviderPolicyReadsStoreProbeFallbackFromPluginDescriptor(t *testing.T) {
+	registry := NewAdapterRegistry()
+	providerType := "store_probe_plugin"
+	descriptor := pluginmeta.BuiltInProvider(
+		"tokenhub.provider.store-probe",
+		"Store Probe",
+		[]string{providerType},
+		[]string{string(AdapterCapabilityChat)},
+	)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    pluginmeta.CapabilityKindProviderPolicy,
+		Name:    pluginmeta.ProviderPolicyStoreProbeFallback,
+		Subject: providerType,
+		Value:   "true",
+	})
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	adapter, ok := registry.Describe(providerType)
+	if !ok {
+		t.Fatal("adapter descriptor is missing")
+	}
+	if !adapter.ProviderPolicy.StoreProbeFallback {
+		t.Fatalf("store probe fallback policy = false, want true: %+v", adapter.ProviderPolicy)
+	}
+}
+
+func TestAdapterRegisterPreservesPluginPolicyWhenReplacingAdapter(t *testing.T) {
+	registry := NewAdapterRegistry()
+	providerType := "replace_store_probe"
+	descriptor := pluginmeta.BuiltInProvider(
+		"tokenhub.provider.replace-store-probe",
+		"Replace Store Probe",
+		[]string{providerType},
+		[]string{string(AdapterCapabilityChat)},
+	)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    pluginmeta.CapabilityKindProviderPolicy,
+		Name:    pluginmeta.ProviderPolicyStoreProbeFallback,
+		Subject: providerType,
+		Value:   "true",
+	})
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	registry.Register(providerType, recoveryProbeAdapter{})
+
+	adapter, ok := registry.Describe(providerType)
+	if !ok {
+		t.Fatal("adapter descriptor is missing")
+	}
+	if adapter.PluginID != "tokenhub.provider.replace-store-probe" {
+		t.Fatalf("plugin id = %q, want preserved plugin descriptor", adapter.PluginID)
+	}
+	if !adapter.ProviderPolicy.StoreProbeFallback {
+		t.Fatalf("store probe fallback policy was not preserved: %+v", adapter.ProviderPolicy)
+	}
+	if len(adapter.Capabilities) != 0 {
+		t.Fatalf("replacement capabilities = %v, want explicit replacement set", adapter.Capabilities)
 	}
 }
 

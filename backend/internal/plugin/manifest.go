@@ -78,6 +78,7 @@ type ManifestProvider struct {
 	SupportsCustomHeaders        *bool                   `yaml:"supports_custom_headers"`
 	APIKeyRequired               *bool                   `yaml:"api_key_required"`
 	RouteRequiresResource        *bool                   `yaml:"route_requires_resource"`
+	StoreProbeFallback           *bool                   `yaml:"store_probe_fallback"`
 	CredentialsScope             string                  `yaml:"credentials_scope"`
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
 	SystemPromptTransformDefault string                  `yaml:"system_prompt_transform_default"`
@@ -589,6 +590,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    ProviderPolicyRouteRequiresResource,
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.RouteRequiresResource),
+			})
+		}
+		if m.Capabilities.Provider.StoreProbeFallback != nil {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyStoreProbeFallback,
+				Subject: providerType,
+				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.StoreProbeFallback),
 			})
 		}
 		if scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope); scope != "" {

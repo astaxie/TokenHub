@@ -176,6 +176,26 @@ func TestRegistryRejectsUnsupportedCapabilityNamesWithStableErrorCode(t *testing
 	}
 }
 
+func TestRegistryAcceptsStoreProbeFallbackProviderPolicy(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(Descriptor{
+		ID:         "tokenhub.store-probe-provider",
+		Name:       "Store Probe Provider",
+		Version:    "1.0.0",
+		Kinds:      []Kind{KindProvider},
+		Placements: []Placement{PlacementGatewayChain},
+		Capabilities: []CapabilityDescriptor{{
+			Kind:    CapabilityKindProviderPolicy,
+			Name:    ProviderPolicyStoreProbeFallback,
+			Subject: "store_probe_provider",
+			Value:   "true",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("descriptor with store probe fallback policy should register: %v", err)
+	}
+}
+
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

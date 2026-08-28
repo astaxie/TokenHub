@@ -47,7 +47,7 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	prober, supported := adapter.(ProviderResourceProber)
 	supported = supported && described && adapterSupports(descriptor, AdapterCapabilityProbe)
 	if !supported {
-		if provider.Type == ProviderMock {
+		if described && descriptor.ProviderPolicy.StoreProbeFallback {
 			return s.store.TestProviderResource(resourceID)
 		}
 		effective := effectiveProviderResourceConfig(provider, &resource)
@@ -104,7 +104,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		return result, nil
 	}
 	if _, supported := adapter.(ProviderResourceProber); !supported || !described || !adapterSupports(descriptor, AdapterCapabilityProbe) {
-		if provider.Type == ProviderMock {
+		if described && descriptor.ProviderPolicy.StoreProbeFallback {
 			return s.store.TestProvider(providerID)
 		}
 		effectiveProvider := effectiveProviderResourceConfig(provider, nil)
