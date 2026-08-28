@@ -24,32 +24,10 @@ type providerPluginAdapter struct {
 	supportsCompact         bool
 }
 
-type providerPluginRequest struct {
-	Operation     string                    `json:"operation"`
-	Provider      Provider                  `json:"provider"`
-	Resource      *ProviderResource         `json:"resource,omitempty"`
-	ProviderModel string                    `json:"provider_model"`
-	ETag          string                    `json:"etag,omitempty"`
-	Request       any                       `json:"request"`
-	Credentials   providerPluginCredentials `json:"credentials,omitempty"`
-}
-
-type providerPluginCredentials struct {
-	AuthType       string `json:"auth_type,omitempty"`
-	APIKey         string `json:"api_key,omitempty"`
-	AccessToken    string `json:"access_token,omitempty"`
-	RefreshToken   string `json:"refresh_token,omitempty"`
-	IDToken        string `json:"id_token,omitempty"`
-	ClientID       string `json:"client_id,omitempty"`
-	Scopes         string `json:"scopes,omitempty"`
-	TokenType      string `json:"token_type,omitempty"`
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	AccountID      string `json:"account_id,omitempty"`
-	UserID         string `json:"user_id,omitempty"`
-	Email          string `json:"email,omitempty"`
-	OrganizationID string `json:"organization_id,omitempty"`
-	PlanType       string `json:"plan_type,omitempty"`
-}
+type providerPluginRequest = pluginmeta.ProviderCommandRequest
+type providerPluginProvider = pluginmeta.ProviderCommandProvider
+type providerPluginResource = pluginmeta.ProviderCommandResource
+type providerPluginCredentials = pluginmeta.ProviderCommandCredentials
 
 type providerPluginResponse struct {
 	Response any   `json:"response"`
@@ -92,12 +70,69 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 	}
 }
 
+func (a providerPluginAdapter) commandRunner() pluginmeta.ProviderCommandRunner {
+	return pluginmeta.ProviderCommandRunner{
+		Dir:     a.dir,
+		Command: a.command,
+		Timeout: a.timeout,
+	}
+}
+
+func providerPluginProviderFromRuntime(provider Provider) providerPluginProvider {
+	return providerPluginProvider{
+		ID:               provider.ID,
+		Name:             provider.Name,
+		Type:             provider.Type,
+		BaseURL:          provider.BaseURL,
+		Status:           provider.Status,
+		Healthy:          provider.Healthy,
+		Priority:         provider.Priority,
+		Headers:          provider.Headers,
+		SensitiveHeaders: provider.SensitiveHeaders,
+		Options:          provider.Options,
+		CreatedAt:        provider.CreatedAt,
+	}
+}
+
+func providerPluginResourceFromRuntime(resource *ProviderResource) *providerPluginResource {
+	if resource == nil {
+		return nil
+	}
+	converted := providerPluginResource{
+		ID:               resource.ID,
+		ProviderID:       resource.ProviderID,
+		Name:             resource.Name,
+		Group:            resource.Group,
+		ResourceType:     resource.ResourceType,
+		BaseURL:          resource.BaseURL,
+		APIKey:           resource.APIKey,
+		Region:           resource.Region,
+		Environment:      resource.Environment,
+		Status:           resource.Status,
+		Healthy:          resource.Healthy,
+		Priority:         resource.Priority,
+		Weight:           resource.Weight,
+		RateLimitRPM:     resource.RateLimitRPM,
+		TokenLimitTPM:    resource.TokenLimitTPM,
+		MaxConcurrency:   resource.MaxConcurrency,
+		Headers:          resource.Headers,
+		SensitiveHeaders: resource.SensitiveHeaders,
+		Options:          resource.Options,
+		CreatedAt:        resource.CreatedAt,
+	}
+	if resource.Credentials != nil {
+		credentials := providerPluginCredentialsFromRuntimeCredentials(*resource.Credentials)
+		converted.Credentials = &credentials
+	}
+	return &converted
+}
+
 func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
 	req.Stream = false
 	var result providerPluginResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:     "chat",
-		Provider:      provider,
+		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
 		Request:       req,
 		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
@@ -113,9 +148,9 @@ func (a providerPluginAdapter) ChatStream(ctx context.Context, provider Provider
 	}
 	req.Stream = true
 	var result providerPluginStreamResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:     "chat_stream",
-		Provider:      provider,
+		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
 		Request:       req,
 		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
@@ -140,9 +175,9 @@ func (a providerPluginAdapter) ChatStream(ctx context.Context, provider Provider
 func (a providerPluginAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	req.Stream = false
 	var result providerPluginResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:     "responses",
-		Provider:      provider,
+		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
 		Request:       req,
 		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
@@ -158,9 +193,9 @@ func (a providerPluginAdapter) OpenResponses(ctx context.Context, provider Provi
 	}
 	req.Stream = true
 	var result providerPluginStreamResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:     "responses_stream",
-		Provider:      provider,
+		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
 		Request:       req,
 		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
@@ -191,9 +226,9 @@ func (a providerPluginAdapter) CompactWithHeaders(ctx context.Context, provider 
 		return nil, Usage{}, providerPluginCapabilityUnsupported("Responses compact")
 	}
 	var result providerPluginResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:     "responses_compact",
-		Provider:      provider,
+		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
 		Request:       body,
 		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
@@ -205,9 +240,9 @@ func (a providerPluginAdapter) CompactWithHeaders(ctx context.Context, provider 
 
 func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
 	var result providerPluginResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:     "embeddings",
-		Provider:      provider,
+		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
 		Request:       req,
 		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
@@ -222,9 +257,9 @@ func (a providerPluginAdapter) GenerateImage(ctx context.Context, provider Provi
 		return nil, "", Usage{}, providerPluginCapabilityUnsupported("image generation")
 	}
 	var result providerPluginImageResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:     "image_generation",
-		Provider:      provider,
+		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
 		Request:       req,
 		Credentials:   providerPluginCredentialsFromRuntime(provider, nil),
@@ -249,10 +284,10 @@ func (a providerPluginAdapter) GenerateImage(ctx context.Context, provider Provi
 func (a providerPluginAdapter) ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error) {
 	effective := effectiveProviderResourceConfig(provider, &resource)
 	var result providerPluginModelsResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:   "models",
-		Provider:    effective,
-		Resource:    &resource,
+		Provider:    providerPluginProviderFromRuntime(effective),
+		Resource:    providerPluginResourceFromRuntime(&resource),
 		ETag:        etag,
 		Credentials: providerPluginCredentialsFromRuntime(effective, &resource),
 	}, &result); err != nil {
@@ -274,10 +309,10 @@ func (a providerPluginAdapter) DefaultProbeRequest() ProviderProbeRequest {
 func (a providerPluginAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, req ProviderProbeRequest) (ProviderProbeResult, error) {
 	effective := effectiveProviderResourceConfig(provider, &resource)
 	var result providerPluginProbeResponse
-	if err := pluginmeta.RunCommandJSON(ctx, a.dir, a.command, a.timeout, providerPluginRequest{
+	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
 		Operation:   "probe",
-		Provider:    effective,
-		Resource:    &resource,
+		Provider:    providerPluginProviderFromRuntime(effective),
+		Resource:    providerPluginResourceFromRuntime(&resource),
 		Request:     req,
 		Credentials: providerPluginCredentialsFromRuntime(effective, &resource),
 	}, &result); err != nil {
@@ -397,6 +432,29 @@ func providerPluginCredentialsFromRuntime(provider Provider, resource *ProviderR
 		credentials.Email = firstNonEmpty(source.Email, credentials.Email)
 		credentials.OrganizationID = firstNonEmpty(source.OrganizationID, credentials.OrganizationID)
 		credentials.PlanType = firstNonEmpty(source.PlanType, credentials.PlanType)
+	}
+	if credentials.AuthType == "" && credentials.APIKey != "" {
+		credentials.AuthType = "api_key"
+	}
+	return credentials
+}
+
+func providerPluginCredentialsFromRuntimeCredentials(source ProviderResourceCredentials) providerPluginCredentials {
+	credentials := providerPluginCredentials{
+		AuthType:       strings.TrimSpace(source.AuthType),
+		APIKey:         strings.TrimSpace(source.AccessToken),
+		AccessToken:    strings.TrimSpace(source.AccessToken),
+		RefreshToken:   strings.TrimSpace(source.RefreshToken),
+		IDToken:        strings.TrimSpace(source.IDToken),
+		ClientID:       strings.TrimSpace(source.ClientID),
+		Scopes:         strings.TrimSpace(source.Scopes),
+		TokenType:      strings.TrimSpace(source.TokenType),
+		ExpiresAt:      strings.TrimSpace(source.ExpiresAt),
+		AccountID:      strings.TrimSpace(source.AccountID),
+		UserID:         strings.TrimSpace(source.UserID),
+		Email:          strings.TrimSpace(source.Email),
+		OrganizationID: strings.TrimSpace(source.OrganizationID),
+		PlanType:       strings.TrimSpace(source.PlanType),
 	}
 	if credentials.AuthType == "" && credentials.APIKey != "" {
 		credentials.AuthType = "api_key"
