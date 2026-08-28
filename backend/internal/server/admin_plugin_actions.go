@@ -49,6 +49,52 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) handleAdminProviderActionPost(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAdmin(w, r, "providers", r.Method)
+	if !ok {
+		return
+	}
+	providerType := strings.TrimSpace(r.PathValue("provider_type"))
+	actionCapability := strings.TrimSpace(r.PathValue("capability"))
+	if providerType == "" || actionCapability == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_action_not_found", "Provider plugin action not found"))
+		return
+	}
+	capability, ok := providerAdapterCapabilityForActionCapability(actionCapability)
+	if !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_action_not_found", "Provider plugin action not found"))
+		return
+	}
+	var payload json.RawMessage
+	if err := s.decodeJSONOptional(w, r, &payload); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	resourceType := providerActionPayloadResourceType(payload)
+	descriptor, ok := s.providerPluginCapabilityActionDescriptor(providerType, capability, actionCapability, resourceType)
+	if !ok {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_action_not_found", "Provider plugin action not found"))
+		return
+	}
+	result, err := s.executeRawPluginAction(r.Context(), user, descriptor.PluginID, descriptor.ActionID, payload)
+	if err != nil {
+		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", err.Error())
+		writeError(w, r, pluginActionHTTPError(err))
+		return
+	}
+	result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
+	if err != nil {
+		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", err.Error())
+		writeError(w, r, err)
+		return
+	}
+	if !providerActionAllowsSensitiveResult(descriptor) {
+		result = sanitizePluginActionResult(result)
+	}
+	s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "success", "")
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleAdminPluginBackgroundJobRunPost(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "providers", r.Method)
 	if !ok {
@@ -84,6 +130,40 @@ func (s *Server) handleAdminPluginBackgroundJobRunPost(w http.ResponseWriter, r 
 	}
 	s.recordPluginBackgroundJobAudit(r, user, pluginID, jobID, "success", "")
 	writeJSON(w, http.StatusOK, map[string]any{"data": record})
+}
+
+func providerAdapterCapabilityForActionCapability(actionCapability string) (AdapterCapability, bool) {
+	switch strings.TrimSpace(actionCapability) {
+	case "oauth.start", "oauth.exchange", "credentials.refresh":
+		return AdapterCapabilityOAuth, true
+	case "models.read", "models.preview":
+		return AdapterCapabilityModels, true
+	case "provider.probe.run", "probe.run":
+		return AdapterCapabilityProbe, true
+	case "quota.read", "quota.reset_credits.read", "quota.reset":
+		return AdapterCapabilityQuota, true
+	case "image.capability.configure":
+		return AdapterCapabilityImageGenerate, true
+	default:
+		return "", false
+	}
+}
+
+func providerActionPayloadResourceType(payload json.RawMessage) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	var request struct {
+		ResourceType string `json:"resource_type"`
+	}
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(request.ResourceType)
+}
+
+func providerActionAllowsSensitiveResult(descriptor pluginmeta.ActionDescriptor) bool {
+	return descriptor.Capability == "oauth.exchange" && descriptor.Metadata["result_secret_policy"] == "provider_account_credentials"
 }
 
 func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {

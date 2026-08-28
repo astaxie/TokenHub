@@ -244,9 +244,8 @@ export async function runProviderPluginActionEnvelope<T>(ctx: ApiContext, action
 export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, returnURL: string) {
   const oauthAction = providerPluginActionForCapability(actions, providerType, "oauth.start");
   if (oauthAction) {
-    return runProviderPluginAction<ProviderAccountOAuthGenerateResponse>(ctx, oauthAction, providerPluginOAuthPayload(oauthAction, {
-      return_url: returnURL,
-    }), tx("生成账号授权地址"));
+    const payload = providerPluginOAuthPayload(oauthAction, { return_url: returnURL });
+    return runProviderCapabilityAction<ProviderAccountOAuthGenerateResponse>(ctx, providerType, "oauth.start", oauthAction, payload, tx("生成账号授权地址"));
   }
   const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/generate-auth-url", {
     method: "POST",
@@ -259,9 +258,8 @@ export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: 
 export async function exchangeProviderAccountOAuthCode(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, payload: { session_id: string; state: string; code: string }) {
   const exchangeAction = providerPluginActionForCapability(actions, providerType, "oauth.exchange");
   if (exchangeAction) {
-    return runProviderPluginAction<ProviderAccountOAuthResult>(ctx, exchangeAction, providerPluginOAuthPayload(exchangeAction, {
-      ...payload,
-    }), tx("账号授权换取 Token"));
+    const actionPayload = providerPluginOAuthPayload(exchangeAction, { ...payload });
+    return runProviderCapabilityAction<ProviderAccountOAuthResult>(ctx, providerType, "oauth.exchange", exchangeAction, actionPayload, tx("账号授权换取 Token"));
   }
   const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/exchange-code", {
     method: "POST",
@@ -335,6 +333,26 @@ export function unwrapPluginActionData<T>(payload: unknown): T {
 
 export function providerPluginActionPath(action: PluginActionDescriptor) {
   return `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`;
+}
+
+export function providerCapabilityActionPath(providerType: string, capability: string) {
+  return `/api/admin/provider-actions/${encodeURIComponent(providerType)}/${encodeURIComponent(capability)}`;
+}
+
+export async function runProviderCapabilityAction<T>(
+  ctx: ApiContext,
+  providerType: string,
+  capability: string,
+  action: Pick<PluginActionDescriptor, "metadata"> | undefined,
+  payload: Record<string, unknown>,
+  fallbackLabel: string,
+): Promise<T> {
+  const resp = await adminFetch(ctx, providerCapabilityActionPath(providerType, capability), {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(await readPluginActionError(resp, action, fallbackLabel));
+  return unwrapPluginActionData<T>(await resp.json());
 }
 
 export async function readPluginActionError(resp: Response, action: Pick<PluginActionDescriptor, "metadata"> | undefined, fallback: string) {

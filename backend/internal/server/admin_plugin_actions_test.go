@@ -409,6 +409,122 @@ func TestAdminPluginActionStartsOpenAICodexOAuth(t *testing.T) {
 	}
 }
 
+func TestAdminProviderActionExecutesOAuthCapabilityByProviderType(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})
+	providerType := "kimi_subscription"
+	pluginID := "tokenhub.provider.kimi"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Kimi", []string{providerType}, []string{
+		string(AdapterCapabilityOAuth),
+	}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityOAuth},
+	}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "kimi.oauth.start",
+		Kind:       pluginmeta.ActionKindExternalRedirect,
+		Capability: "oauth.start",
+		Subject:    providerType,
+		OutputSchema: actionObjectSchema([]string{"auth_url", "session_id", "state"}, map[string]string{
+			"auth_url":   "string",
+			"session_id": "string",
+			"state":      "string",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload map[string]string
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode action payload: %v", err)
+		}
+		return pluginmeta.ActionResult{
+			Data: map[string]string{
+				"auth_url":   "https://kimi.example/oauth?return_url=" + url.QueryEscape(payload["return_url"]),
+				"session_id": "kimi-session",
+				"state":      "kimi-state",
+			},
+			RedirectURL: "https://kimi.example/oauth",
+		}, nil
+	})); err != nil {
+		t.Fatalf("register oauth action: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-actions/kimi_subscription/oauth.start", map[string]any{
+		"return_url": "http://localhost:3001/providers",
+	}, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST provider action: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"session_id":"kimi-session"`) || !strings.Contains(response.Body, `"redirect_url":"https://kimi.example/oauth"`) {
+		t.Fatalf("provider action response = %s", response.Body)
+	}
+	if events := store.ListAuditEvents(); len(events) == 0 || events[0].Action != "plugin.action.kimi.oauth.start" || events[0].ResourceID != pluginID {
+		t.Fatalf("plugin action audit events = %+v", events)
+	}
+}
+
+func TestAdminProviderActionAllowsDeclaredOAuthExchangeCredentialResult(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
+	providerType := "kimi_subscription"
+	pluginID := "tokenhub.provider.kimi"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Kimi", []string{providerType}, []string{
+		string(AdapterCapabilityOAuth),
+	}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityOAuth},
+	}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+	descriptor := pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "kimi.oauth.exchange",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "oauth.exchange",
+		Subject:    providerType,
+		Metadata:   map[string]string{"result_secret_policy": "provider_account_credentials"},
+		OutputSchema: actionObjectSchema([]string{"access_token"}, map[string]string{
+			"access_token":  "string",
+			"refresh_token": "string",
+			"account_email": "string",
+		}),
+	}
+	if err := server.pluginActions.Register(descriptor, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{Data: map[string]string{
+			"access_token":  "access-secret",
+			"refresh_token": "refresh-secret",
+			"account_email": "owner@example.com",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register oauth exchange action: %v", err)
+	}
+
+	providerResponse := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-actions/kimi_subscription/oauth.exchange", map[string]any{
+		"session_id": "session", "state": "state", "code": "code",
+	}, "plugin-action-admin")
+	if providerResponse.Code != http.StatusOK {
+		t.Fatalf("POST provider OAuth exchange action: expected 200, got %d: %s", providerResponse.Code, providerResponse.Body)
+	}
+	if !strings.Contains(providerResponse.Body, `"access_token":"access-secret"`) || !strings.Contains(providerResponse.Body, `"refresh_token":"refresh-secret"`) {
+		t.Fatalf("provider OAuth exchange did not return declared credential result: %s", providerResponse.Body)
+	}
+
+	rawResponse := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.kimi/actions/kimi.oauth.exchange", map[string]any{
+		"session_id": "session", "state": "state", "code": "code",
+	}, "plugin-action-admin")
+	if rawResponse.Code != http.StatusOK {
+		t.Fatalf("POST raw plugin OAuth exchange action: expected 200, got %d: %s", rawResponse.Code, rawResponse.Body)
+	}
+	if strings.Contains(rawResponse.Body, "access-secret") || strings.Contains(rawResponse.Body, "refresh-secret") {
+		t.Fatalf("raw plugin action leaked credential result: %s", rawResponse.Body)
+	}
+	if !strings.Contains(rawResponse.Body, `"access_token":"[redacted]"`) || !strings.Contains(rawResponse.Body, `"refresh_token":"[redacted]"`) {
+		t.Fatalf("raw plugin action did not redact credential result: %s", rawResponse.Body)
+	}
+}
+
 func TestAdminPluginActionRefreshesOpenAICodexCredentials(t *testing.T) {
 	tokenCalls := 0
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -315,7 +315,7 @@ describe("providerResourceConfig", () => {
 
     expect(result.auth_url).toBe("https://provider.example/oauth");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.oauth.start");
+    expect(url).toBe("http://localhost:8080/api/admin/provider-actions/openai_codex/oauth.start");
     expect(JSON.parse(String(init.body))).toEqual({
       redirect_uri: "http://localhost:1455/auth/callback",
       return_url: "http://localhost:3000/providers/callback",
@@ -407,7 +407,7 @@ describe("providerResourceConfig", () => {
 
     expect(result.account_email).toBe("owner@example.com");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.oauth.exchange");
+    expect(url).toBe("http://localhost:8080/api/admin/provider-actions/openai_codex/oauth.exchange");
     expect(JSON.parse(String(init.body))).toEqual({
       session_id: "session-1",
       state: "state-1",

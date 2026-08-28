@@ -58,7 +58,8 @@ func registerBuiltinPluginActions(server *Server) {
 		Capability: "oauth.exchange",
 		Subject:    ProviderOpenAICodex,
 		Metadata: map[string]string{
-			"oauth_redirect_uri": openAIAccountOAuthRedirectURI,
+			"oauth_redirect_uri":   openAIAccountOAuthRedirectURI,
+			"result_secret_policy": "provider_account_credentials",
 		},
 		InputSchema: map[string]any{
 			"type":     "object",

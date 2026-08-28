@@ -124,6 +124,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-background-jobs", s.handleAdminPluginBackgroundJobs, s.adminMethodNotAllowed("providers", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodPatch, "/api/admin/plugins/{plugin_id}/state", s.handleAdminPluginStatePatch, s.adminMethodNotAllowed("providers", http.MethodPatch))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/actions/{action_id}", s.handleAdminPluginActionPost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-actions/{provider_type}/{capability}", s.handleAdminProviderActionPost, s.adminMethodNotAllowed("providers", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/background-jobs/{job_id}/run", s.handleAdminPluginBackgroundJobRunPost, s.adminMethodNotAllowed("providers", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/openai/generate-auth-url", s.handleAdminOpenAIAccountOAuthGenerateAuthURL, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/openai/exchange-code", s.handleAdminOpenAIAccountOAuthExchangeCode, s.adminMethodNotAllowed("provider", http.MethodPost))

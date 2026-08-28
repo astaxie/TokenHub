@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	pluginmeta "tokenhub/backend/internal/plugin"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -196,7 +198,7 @@ func (s *Server) handleAdminOpenAIAccountOAuthGenerateAuthURL(w http.ResponseWri
 		writeError(w, r, err)
 		return
 	}
-	response, err := s.generateOpenAIAccountOAuth(req, r)
+	response, err := s.generateProviderAccountOAuthWithAction(r.Context(), user, ProviderOpenAICodex, req)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -296,13 +298,56 @@ func (s *Server) handleAdminOpenAIAccountOAuthExchangeCode(w http.ResponseWriter
 		writeError(w, r, err)
 		return
 	}
-	info, err := s.exchangeOpenAIAccountOAuth(r.Context(), req)
+	info, err := s.exchangeProviderAccountOAuthWithAction(r.Context(), user, ProviderOpenAICodex, req)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	s.recordAdminAudit(r, user, "exchange_oauth_code", "provider_account", "openai", "", providerAccountCredentialSummary(info.ToCredentials()))
 	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) generateProviderAccountOAuthWithAction(ctx context.Context, user AdminUser, providerType string, req providerAccountOAuthGenerateRequest) (providerAccountOAuthGenerateResponse, error) {
+	result, handled, err := s.executeProviderAccountOAuthAction(ctx, user, providerType, "oauth.start", req)
+	if err != nil {
+		return providerAccountOAuthGenerateResponse{}, err
+	}
+	if !handled {
+		return providerAccountOAuthGenerateResponse{}, NewHTTPError(http.StatusNotFound, "provider_oauth_action_not_found", "Provider OAuth start action is not available")
+	}
+	response, ok := providerAccountOAuthGenerateResponseFromActionData(result.Data)
+	if !ok {
+		return providerAccountOAuthGenerateResponse{}, NewHTTPError(http.StatusBadGateway, "provider_oauth_start_invalid_result", "Provider OAuth start action returned an invalid result")
+	}
+	return response, nil
+}
+
+func (s *Server) exchangeProviderAccountOAuthWithAction(ctx context.Context, user AdminUser, providerType string, req providerAccountOAuthExchangeRequest) (providerAccountOAuthTokenInfo, error) {
+	result, handled, err := s.executeProviderAccountOAuthAction(ctx, user, providerType, "oauth.exchange", req)
+	if err != nil {
+		return providerAccountOAuthTokenInfo{}, err
+	}
+	if !handled {
+		return providerAccountOAuthTokenInfo{}, NewHTTPError(http.StatusNotFound, "provider_oauth_action_not_found", "Provider OAuth exchange action is not available")
+	}
+	info, ok := providerAccountOAuthTokenInfoFromActionData(result.Data)
+	if !ok {
+		return providerAccountOAuthTokenInfo{}, NewHTTPError(http.StatusBadGateway, "provider_oauth_exchange_invalid_result", "Provider OAuth exchange action returned an invalid result")
+	}
+	return info, nil
+}
+
+func (s *Server) executeProviderAccountOAuthAction(ctx context.Context, user AdminUser, providerType string, actionCapability string, payload any) (pluginmeta.ActionResult, bool, error) {
+	action, ok := s.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityOAuth, actionCapability, "")
+	if !ok {
+		return pluginmeta.ActionResult{}, false, nil
+	}
+	rawPayload, err := json.Marshal(payload)
+	if err != nil {
+		return pluginmeta.ActionResult{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
+	}
+	result, err := s.executeRawPluginAction(ctx, user, action.PluginID, action.ActionID, rawPayload)
+	return result, true, err
 }
 
 func (s *Server) exchangeOpenAIAccountOAuth(ctx context.Context, req providerAccountOAuthExchangeRequest) (providerAccountOAuthTokenInfo, error) {
@@ -523,6 +568,48 @@ func openAIAccountOAuthTokenInfoFromResponse(token oauthTokenResponse, clientID 
 		}
 	}
 	return info
+}
+
+func providerAccountOAuthGenerateResponseFromActionData(data any) (providerAccountOAuthGenerateResponse, bool) {
+	if result, ok := data.(providerAccountOAuthGenerateResponse); ok {
+		return result, result.Valid()
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return providerAccountOAuthGenerateResponse{}, false
+	}
+	var result providerAccountOAuthGenerateResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return providerAccountOAuthGenerateResponse{}, false
+	}
+	return result, result.Valid()
+}
+
+func (response providerAccountOAuthGenerateResponse) Valid() bool {
+	return strings.TrimSpace(response.AuthURL) != "" &&
+		strings.TrimSpace(response.SessionID) != "" &&
+		strings.TrimSpace(response.State) != ""
+}
+
+func providerAccountOAuthTokenInfoFromActionData(data any) (providerAccountOAuthTokenInfo, bool) {
+	if result, ok := data.(providerAccountOAuthTokenInfo); ok {
+		return result, result.Valid()
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return providerAccountOAuthTokenInfo{}, false
+	}
+	var result providerAccountOAuthTokenInfo
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return providerAccountOAuthTokenInfo{}, false
+	}
+	return result, result.Valid()
+}
+
+func (info providerAccountOAuthTokenInfo) Valid() bool {
+	return strings.TrimSpace(info.AccessToken) != "" ||
+		strings.TrimSpace(info.RefreshToken) != "" ||
+		strings.TrimSpace(info.IDToken) != ""
 }
 
 func (info providerAccountOAuthTokenInfo) ToCredentials() ProviderResourceCredentials {
