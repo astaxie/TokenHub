@@ -43,6 +43,7 @@ type providerImageCapabilityRouteProfile struct {
 	RequestAliasHeader          string
 	RequestAliasOriginator      string
 	RequestAliasResponseFormat  string
+	RequestDefaultModel         bool
 	ProbeErrorMessages          map[string]string
 }
 
@@ -220,6 +221,10 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 			descriptor.Metadata["request_alias.response_format"],
 			descriptor.Metadata["image_request_alias_response_format"],
 		))),
+		RequestDefaultModel: truthyString(firstNonEmpty(
+			descriptor.Metadata["request.default_model"],
+			descriptor.Metadata["image_request_default_model"],
+		)),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
 	profile.withDefaults()
@@ -490,6 +495,7 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.RequestAliasHeader,
 		p.RequestAliasOriginator,
 		p.RequestAliasResponseFormat,
+		boolString(p.RequestDefaultModel),
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry
@@ -511,6 +517,15 @@ func sortedStringMapEntries(values map[string]string) []string {
 	}
 	sort.Strings(entries)
 	return entries
+}
+
+func truthyString(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "yes", "y", "on", "enabled":
+		return true
+	default:
+		return false
+	}
 }
 
 func dedupeProviderImageCapabilityRouteProfiles(profiles []providerImageCapabilityRouteProfile) []providerImageCapabilityRouteProfile {

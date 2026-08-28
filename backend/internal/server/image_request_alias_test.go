@@ -56,3 +56,31 @@ func TestImageGenerationRequestAliasUsesPluginMetadata(t *testing.T) {
 		t.Fatalf("originator alias did not apply: %+v", byOriginator)
 	}
 }
+
+func TestImageGenerationDefaultModelUsesPluginMetadata(t *testing.T) {
+	server := &Server{pluginActions: pluginmeta.NewActionBroker()}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi-image-default",
+		ActionID:   "kimi.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "kimi_subscription",
+		Metadata: map[string]string{
+			"public_model":          "kimi-image",
+			"upstream_model":        "moonshot-image",
+			"request.default_model": "true",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	request := imageGenerationRequest{Prompt: "Draw one square.", N: 1, Quality: "low", Size: "1024x1024"}
+	if err := server.normalizeImageGenerationRequest(&request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Model != "kimi-image" {
+		t.Fatalf("default image model = %q, want kimi-image", request.Model)
+	}
+}

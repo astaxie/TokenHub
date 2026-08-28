@@ -1111,64 +1111,19 @@ func normalizedImageOption(value string, fallback string) string {
 	return value
 }
 
-func (s *Server) applyImageGenerationRequestAliases(r *http.Request, request *imageGenerationRequest) {
-	if s == nil || request == nil {
-		return
-	}
-	model := strings.TrimSpace(request.Model)
-	for _, profile := range s.providerImageCapabilityRouteProfiles() {
-		profile.withDefaults()
-		if profile.RequestAliasModel == "" || profile.PublicModel == "" || model != profile.RequestAliasModel {
-			continue
-		}
-		if !imageGenerationRequestAliasMatches(r, profile) {
-			continue
-		}
-		request.Model = profile.PublicModel
-		if profile.RequestAliasResponseFormat != "" {
-			request.ResponseFormat = profile.RequestAliasResponseFormat
-		}
-		return
-	}
-}
-
-func imageGenerationRequestAliasMatches(r *http.Request, profile providerImageCapabilityRouteProfile) bool {
-	if r == nil {
-		return false
-	}
-	if profile.RequestAliasHeader != "" && strings.TrimSpace(r.Header.Get(profile.RequestAliasHeader)) != "" {
-		return true
-	}
-	originator := strings.ToLower(strings.TrimSpace(r.Header.Get("originator")))
-	return profile.RequestAliasOriginator != "" && strings.HasPrefix(originator, profile.RequestAliasOriginator)
-}
-
 func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
-	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName})
+	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName)
 }
 
 func (s *Server) normalizeImageGenerationRequest(request *imageGenerationRequest) error {
-	models := []string{codexImageModelName, openAIImageModelName}
-	if s == nil || s.pluginActions == nil {
-		return normalizeImageGenerationRequestForModels(request, models)
-	}
-	for _, action := range s.pluginActions.List() {
-		if action.Capability != "image.capability.configure" {
-			continue
-		}
-		profile, ok := providerImageCapabilityRouteProfileFromAction(action)
-		if !ok {
-			continue
-		}
-		models = append(models, profile.PublicModel)
-	}
-	return normalizeImageGenerationRequestForModels(request, uniqueStrings(models))
+	models, defaultModel := s.imageGenerationModelsAndDefault()
+	return normalizeImageGenerationRequestForModels(request, models, defaultModel)
 }
 
-func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string) error {
+func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string) error {
 	request.Model = strings.TrimSpace(request.Model)
 	if request.Model == "" {
-		request.Model = codexImageModelName
+		request.Model = strings.TrimSpace(defaultModel)
 	}
 	if !imageModelIsSupported(request.Model, supportedModels) {
 		supported := uniqueStrings(supportedModels)

@@ -340,6 +340,7 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 		RequestAliasHeader:          "x-codex-image-turn-id",
 		RequestAliasOriginator:      "codex",
 		RequestAliasResponseFormat:  "b64_json",
+		RequestDefaultModel:         true,
 	}
 }
 
