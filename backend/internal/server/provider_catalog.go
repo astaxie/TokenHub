@@ -434,7 +434,7 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 		Name:                      name,
 		DisplayName:               displayName,
 		CanonicalName:             canonicalName,
-		Category:                  inferModelCategory(id, displayName),
+		Category:                  catalogModelCategory(raw, id, displayName),
 		Family:                    firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
 		Type:                      modelType,
 		ContextWindow:             int64(catalogNumberField(limit, "context")),
@@ -458,6 +458,13 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	model.Capabilities = catalogModelCapabilities(raw, model)
 	model.SupportedParameters = catalogModelParameters(raw, model)
 	return model
+}
+
+func catalogModelCategory(raw map[string]any, id string, displayName string) string {
+	if category := strings.TrimSpace(catalogStringField(raw, "category")); category != "" {
+		return standardModelCategory(category)
+	}
+	return inferModelCategory(id, displayName)
 }
 
 func catalogModelCapabilities(raw map[string]any, model ProviderCatalogModel) []string {

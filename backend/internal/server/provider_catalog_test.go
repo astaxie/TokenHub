@@ -39,6 +39,17 @@ func TestNormalizeProviderCatalogModelUsesExplicitCanonicalName(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderCatalogModelUsesExplicitCategory(t *testing.T) {
+	model := normalizeProviderCatalogModel(map[string]any{
+		"id":           "opaque-vendor-model",
+		"display_name": "Opaque Vendor Model",
+		"category":     "kimi",
+	})
+	if model.Category != "kimi" {
+		t.Fatalf("expected explicit category kimi, got %q", model.Category)
+	}
+}
+
 func TestNormalizeProviderCatalogEntryDoesNotInferProviderTypeFromBaseURL(t *testing.T) {
 	entry := normalizeProviderCatalogEntry("minimax-cn", map[string]any{
 		"name": "MiniMax China",
