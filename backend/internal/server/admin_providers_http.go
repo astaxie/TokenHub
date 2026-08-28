@@ -1421,24 +1421,16 @@ func (s *Server) providerImageCapabilityRouteProfileForModel(modelName string) (
 }
 
 func providerImageCapabilityRouteError(profile providerImageCapabilityRouteProfile, kind string) error {
+	profile.withDefaults()
 	switch kind {
 	case "provider":
-		if profile.PublicModel == codexImageModelName {
-			return NewHTTPError(http.StatusBadRequest, "codex_image_provider_required", "The Codex subscription image model must use an OpenAI Codex Provider")
-		}
-		return NewHTTPError(http.StatusBadRequest, "provider_image_capability_provider_required", "The image capability route must use the Provider declared by its plugin")
+		return NewHTTPError(http.StatusBadRequest, profile.ProviderErrorCode, profile.ProviderErrorMessage)
 	case "upstream_model":
-		if profile.PublicModel == codexImageModelName {
-			return NewHTTPError(http.StatusBadRequest, "codex_image_upstream_model_invalid", "The Codex subscription image route must use gpt-image-2 as its upstream model")
-		}
-		return NewHTTPError(http.StatusBadRequest, "provider_image_capability_upstream_model_invalid", "The image capability route must use the upstream model declared by its plugin")
+		return NewHTTPError(http.StatusBadRequest, profile.UpstreamModelErrorCode, profile.UpstreamModelErrorMessage)
 	case "capability":
-		if profile.PublicModel == codexImageModelName {
-			return NewHTTPError(http.StatusConflict, "codex_image_capability_required", "Test image generation with an eligible Codex subscription account before activating this route")
-		}
-		return NewHTTPError(http.StatusConflict, "provider_image_capability_required", "Test image generation with an eligible provider resource before activating this route")
+		return NewHTTPError(http.StatusConflict, profile.CapabilityErrorCode, profile.CapabilityErrorMessage)
 	default:
-		return NewHTTPError(http.StatusConflict, "provider_image_capability_required", "Test image generation with an eligible provider resource before activating this route")
+		return NewHTTPError(http.StatusConflict, profile.CapabilityErrorCode, profile.CapabilityErrorMessage)
 	}
 }
 

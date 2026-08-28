@@ -21,6 +21,12 @@ type providerImageCapabilityRouteProfile struct {
 	CapabilityUnsupportedValue string
 	RouteBackfillOption        string
 	RouteBackfillValue         string
+	ProviderErrorCode          string
+	ProviderErrorMessage       string
+	UpstreamModelErrorCode     string
+	UpstreamModelErrorMessage  string
+	CapabilityErrorCode        string
+	CapabilityErrorMessage     string
 }
 
 func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
@@ -107,6 +113,30 @@ func providerImageCapabilityRouteProfileFromAction(descriptor pluginmeta.ActionD
 		RouteBackfillValue: strings.TrimSpace(firstNonEmpty(
 			descriptor.Metadata["route_backfill_value"],
 			descriptor.Metadata["provider_route_backfill_value"],
+		)),
+		ProviderErrorCode: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_error.provider.code"],
+			descriptor.Metadata["provider_error_code"],
+		)),
+		ProviderErrorMessage: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_error.provider.message"],
+			descriptor.Metadata["provider_error_message"],
+		)),
+		UpstreamModelErrorCode: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_error.upstream_model.code"],
+			descriptor.Metadata["upstream_model_error_code"],
+		)),
+		UpstreamModelErrorMessage: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_error.upstream_model.message"],
+			descriptor.Metadata["upstream_model_error_message"],
+		)),
+		CapabilityErrorCode: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_error.capability.code"],
+			descriptor.Metadata["capability_error_code"],
+		)),
+		CapabilityErrorMessage: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["route_error.capability.message"],
+			descriptor.Metadata["capability_error_message"],
 		)),
 	}
 	profile.withDefaults()
@@ -259,6 +289,24 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if p.RouteBackfillValue == "" {
 		p.RouteBackfillValue = "completed"
 	}
+	if p.ProviderErrorCode == "" {
+		p.ProviderErrorCode = "provider_image_capability_provider_required"
+	}
+	if p.ProviderErrorMessage == "" {
+		p.ProviderErrorMessage = "The image capability route must use the Provider declared by its plugin"
+	}
+	if p.UpstreamModelErrorCode == "" {
+		p.UpstreamModelErrorCode = "provider_image_capability_upstream_model_invalid"
+	}
+	if p.UpstreamModelErrorMessage == "" {
+		p.UpstreamModelErrorMessage = "The image capability route must use the upstream model declared by its plugin"
+	}
+	if p.CapabilityErrorCode == "" {
+		p.CapabilityErrorCode = "provider_image_capability_required"
+	}
+	if p.CapabilityErrorMessage == "" {
+		p.CapabilityErrorMessage = "Test image generation with an eligible provider resource before activating this route"
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -284,6 +332,12 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.CapabilityUnsupportedValue,
 		p.RouteBackfillOption,
 		p.RouteBackfillValue,
+		p.ProviderErrorCode,
+		p.ProviderErrorMessage,
+		p.UpstreamModelErrorCode,
+		p.UpstreamModelErrorMessage,
+		p.CapabilityErrorCode,
+		p.CapabilityErrorMessage,
 	}, "\x00")
 }
 
