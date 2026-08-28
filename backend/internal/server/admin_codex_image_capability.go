@@ -347,6 +347,7 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 		RequestSizePolicy:           imageRequestSizePolicyGPTImage2,
 		RequestAllowedQualities:     defaultImageRequestQualities(),
 		RequestAllowedFormats:       defaultImageResponseFormats(),
+		RequestMaxOutputImages:      1,
 	}
 }
 

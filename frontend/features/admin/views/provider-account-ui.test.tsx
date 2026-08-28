@@ -65,6 +65,7 @@ describe("Provider account OAuth UI", () => {
           requestAllowedSizes: [],
           requestAllowedQualities: ["auto", "low", "medium", "high"],
           requestAllowedResponseFormats: ["url", "b64_json"],
+          requestMaxOutputImages: 1,
         }}
         resource={{
           id: "rsrc_kimi",

@@ -18,6 +18,7 @@ export type ImageCapabilityProfile = {
   requestAllowedSizes: string[];
   requestAllowedQualities: string[];
   requestAllowedResponseFormats: string[];
+  requestMaxOutputImages: number;
 };
 
 const defaultImageCapabilityDisplayName = "生图能力";
@@ -44,6 +45,7 @@ export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescr
     requestAllowedSizes: splitMetadataList(action.metadata?.request_allowed_sizes ?? action.metadata?.["request.allowed_sizes"] ?? action.metadata?.image_request_allowed_sizes),
     requestAllowedQualities: splitMetadataList((action.metadata?.request_allowed_qualities ?? action.metadata?.["request.allowed_qualities"] ?? action.metadata?.image_request_allowed_qualities) || "auto,low,medium,high"),
     requestAllowedResponseFormats: splitMetadataList((action.metadata?.request_allowed_response_formats ?? action.metadata?.["request.allowed_response_formats"] ?? action.metadata?.image_request_allowed_response_formats) || "url,b64_json"),
+    requestMaxOutputImages: intMetadata(action.metadata?.request_max_output_images ?? action.metadata?.["request.max_output_images"] ?? action.metadata?.image_request_max_output_images) || 1,
   };
 }
 
@@ -63,6 +65,11 @@ function splitMetadataList(value: string | undefined) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function intMetadata(value: string | undefined) {
+  const parsed = Number.parseInt((value ?? "").trim(), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function providerImageCapabilityContribution(contributions: AdminUIContribution[], providerType: string, action?: PluginActionDescriptor) {

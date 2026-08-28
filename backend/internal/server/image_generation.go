@@ -95,6 +95,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		Status:    imageJobStatusQueued,
 		Model:     request.Model,
 		Action:    "generate",
+		Count:     request.N,
 		Quality:   request.Quality,
 		Size:      request.Size,
 	}, request.Prompt)
@@ -261,6 +262,7 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		Status:    imageJobStatusQueued,
 		Model:     request.Model,
 		Action:    "edit",
+		Count:     request.N,
 		Quality:   request.Quality,
 		Size:      request.Size,
 	}, request.Prompt)
@@ -820,6 +822,7 @@ func imageAuditRequest(job ImageJob) map[string]any {
 		"image_job_id": job.ID,
 		"model":        job.Model,
 		"action":       job.Action,
+		"n":            imageJobCount(job),
 		"quality":      job.Quality,
 		"size":         job.Size,
 	}
@@ -963,6 +966,7 @@ func (s *Server) imageJobResponse(r *http.Request, job ImageJob) map[string]any 
 		"status":     job.Status,
 		"model":      job.Model,
 		"action":     firstNonEmpty(job.Action, "generate"),
+		"n":          imageJobCount(job),
 		"prompt":     job.Prompt,
 		"created_at": job.CreatedAt.Unix(),
 	}
@@ -1111,15 +1115,15 @@ func normalizedImageOption(value string, fallback string) string {
 }
 
 func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
-	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName, nil, nil, nil)
+	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName, nil, nil, nil, nil)
 }
 
 func (s *Server) normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 	models, defaultModel := s.imageGenerationModelsAndDefault()
-	return normalizeImageGenerationRequestForModels(request, models, defaultModel, s.imageModelSupportsSize, s.imageModelSupportsQuality, s.imageModelSupportsResponseFormat)
+	return normalizeImageGenerationRequestForModels(request, models, defaultModel, s.imageModelSupportsCount, s.imageModelSupportsSize, s.imageModelSupportsQuality, s.imageModelSupportsResponseFormat)
 }
 
-func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string, supportsSize func(string, string) bool, supportsQuality func(string, string) bool, supportsResponseFormat func(string, string) bool) error {
+func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string, supportsCount func(string, int) bool, supportsSize func(string, string) bool, supportsQuality func(string, string) bool, supportsResponseFormat func(string, string) bool) error {
 	request.Model = strings.TrimSpace(request.Model)
 	if request.Model == "" {
 		request.Model = strings.TrimSpace(defaultModel)
@@ -1135,8 +1139,13 @@ func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, s
 	if request.N == 0 {
 		request.N = 1
 	}
-	if request.N != 1 {
-		return NewHTTPError(http.StatusBadRequest, "unsupported_image_count", "Image generation currently supports n=1")
+	if supportsCount == nil {
+		supportsCount = func(_ string, count int) bool {
+			return count == currentImageOutputLimit
+		}
+	}
+	if !supportsCount(request.Model, request.N) {
+		return NewHTTPError(http.StatusBadRequest, "unsupported_image_count", "n is not supported by the selected image model")
 	}
 	request.Quality = normalizedImageOption(request.Quality, "auto")
 	if supportsQuality == nil {
@@ -1275,6 +1284,7 @@ func (s *Server) providerImageGenerationRequest(route RouteSelection, job ImageJ
 		Action:         job.Action,
 		Model:          firstNonEmpty(strings.TrimSpace(route.ProviderModel), job.Model),
 		Prompt:         job.Prompt,
+		Count:          imageJobCount(job),
 		Quality:        normalizedImageOption(job.Quality, "auto"),
 		Size:           normalizedImageOption(job.Size, "auto"),
 		ResponseFormat: "b64_json",

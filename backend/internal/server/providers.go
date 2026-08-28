@@ -41,6 +41,7 @@ type ProviderImageGenerationRequest struct {
 	Action         string               `json:"action"`
 	Model          string               `json:"model"`
 	Prompt         string               `json:"prompt"`
+	Count          int                  `json:"count,omitempty"`
 	Quality        string               `json:"quality,omitempty"`
 	Size           string               `json:"size,omitempty"`
 	ResponseFormat string               `json:"response_format,omitempty"`

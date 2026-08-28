@@ -6,6 +6,7 @@ import (
 )
 
 const imageRequestSizePolicyGPTImage2 = "gpt-image-2"
+const currentImageOutputLimit = 1
 
 func defaultImageRequestQualities() []string {
 	return []string{"auto", "low", "medium", "high"}
@@ -76,6 +77,22 @@ func (s *Server) imageModelSupportsMask(model string) bool {
 	}
 	profile.withDefaults()
 	return profile.RequestSupportsMask
+}
+
+func (s *Server) imageModelSupportsCount(model string, count int) bool {
+	profile, ok := s.providerImageCapabilityRouteProfileForModel(model)
+	if !ok {
+		return count == currentImageOutputLimit
+	}
+	profile.withDefaults()
+	return count > 0 && count <= profile.RequestMaxOutputImages && count <= currentImageOutputLimit
+}
+
+func imageJobCount(job ImageJob) int {
+	if job.Count > 0 {
+		return job.Count
+	}
+	return currentImageOutputLimit
 }
 
 func (s *Server) imageModelSupportsSize(model string, size string) bool {

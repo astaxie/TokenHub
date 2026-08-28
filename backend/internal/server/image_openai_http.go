@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -88,7 +89,7 @@ func executeOpenAIImageGeneration(
 	payload := openAIImageGenerationRequest{
 		Model:        firstNonEmpty(strings.TrimSpace(providerModel), strings.TrimSpace(req.Model), openAIImageModelName),
 		Prompt:       req.Prompt,
-		N:            1,
+		N:            imageProviderRequestCount(req),
 		Quality:      normalizedImageOption(req.Quality, "auto"),
 		Size:         normalizedImageOption(req.Size, "auto"),
 		OutputFormat: "png",
@@ -114,7 +115,7 @@ func executeOpenAIImageEdit(
 	for key, value := range map[string]string{
 		"model":         firstNonEmpty(strings.TrimSpace(providerModel), strings.TrimSpace(req.Model), openAIImageModelName),
 		"prompt":        req.Prompt,
-		"n":             "1",
+		"n":             strconv.Itoa(imageProviderRequestCount(req)),
 		"quality":       normalizedImageOption(req.Quality, "auto"),
 		"size":          normalizedImageOption(req.Size, "auto"),
 		"output_format": "png",
@@ -162,6 +163,13 @@ func executeOpenAIImageEdit(
 	defer resp.Body.Close()
 	response, err := decodeOpenAIImageResponse(resp.Body)
 	return response, resp.Header.Clone(), err
+}
+
+func imageProviderRequestCount(request ProviderImageGenerationRequest) int {
+	if request.Count > 0 {
+		return request.Count
+	}
+	return currentImageOutputLimit
 }
 
 func decodeOpenAIImageResponse(reader io.Reader) (openAIImageResponse, error) {

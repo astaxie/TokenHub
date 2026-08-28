@@ -835,7 +835,7 @@ func TestExternalProviderPluginAdapterExecutesImageGenerationCommand(t *testing.
 	script := strings.ReplaceAll(`#!/bin/sh
 payload="$(cat)"
 case "$payload" in
-  *'"operation":"image_generation"'*'"provider_model":"plugin-image-model"'*'"action":"generate"'*'"prompt":"draw plugin image"'*'"api_key":"provider-secret"'*)
+  *'"operation":"image_generation"'*'"provider_model":"plugin-image-model"'*'"action":"generate"'*'"prompt":"draw plugin image"'*'"count":1'*'"api_key":"provider-secret"'*)
     cat <<'JSON'
 {"response":{"data":[{"b64_json":"__IMAGE_B64__","revised_prompt":"revised by plugin"}]},"usage":{"prompt_tokens":6,"completion_tokens":7,"total_tokens":13}}
 JSON
@@ -868,6 +868,7 @@ esac
 		Action: "generate",
 		Model:  "plugin-image-model",
 		Prompt: "draw plugin image",
+		Count:  1,
 	})
 	if err != nil {
 		t.Fatalf("image generation through provider plugin: %v", err)

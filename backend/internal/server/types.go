@@ -559,6 +559,7 @@ type ImageJob struct {
 	Status                                                      string     `json:"status" gorm:"index"`
 	Model                                                       string     `json:"model"`
 	Action                                                      string     `json:"action"`
+	Count                                                       int        `json:"n,omitempty" gorm:"-"`
 	PromptCiphertext                                            string     `json:"-" gorm:"type:text"`
 	Prompt                                                      string     `json:"prompt,omitempty" gorm:"-"`
 	RevisedPromptCiphertext                                     string     `json:"-" gorm:"type:text"`

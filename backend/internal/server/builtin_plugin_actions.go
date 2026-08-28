@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -571,6 +572,7 @@ func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
 			"request.size_policy":                                            imageRequestSizePolicyGPTImage2,
 			"request.allowed_qualities":                                      strings.Join(defaultImageRequestQualities(), ","),
 			"request.allowed_response_formats":                               strings.Join(defaultImageResponseFormats(), ","),
+			"request.max_output_images":                                      strconv.Itoa(currentImageOutputLimit),
 			"probe_error_message.codex_image_forbidden":                      "This Codex subscription account is not allowed to use image generation",
 			"probe_error_message.codex_quota_exhausted":                      "Codex image capability test is temporarily unavailable",
 			"probe_error_message.codex_rate_limited":                         "Codex image capability test is temporarily unavailable",

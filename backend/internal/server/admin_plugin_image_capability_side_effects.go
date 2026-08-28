@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ type providerImageCapabilityRouteProfile struct {
 	RequestAllowedSizes         []string
 	RequestAllowedQualities     []string
 	RequestAllowedFormats       []string
+	RequestMaxOutputImages      int
 	ProbeErrorMessages          map[string]string
 }
 
@@ -246,6 +248,10 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 		RequestAllowedFormats: stringListMetadata(firstNonEmpty(
 			descriptor.Metadata["request.allowed_response_formats"],
 			descriptor.Metadata["image_request_allowed_response_formats"],
+		)),
+		RequestMaxOutputImages: intMetadata(firstNonEmpty(
+			descriptor.Metadata["request.max_output_images"],
+			descriptor.Metadata["image_request_max_output_images"],
 		)),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
@@ -487,6 +493,9 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if len(p.RequestAllowedFormats) == 0 {
 		p.RequestAllowedFormats = defaultImageResponseFormats()
 	}
+	if p.RequestMaxOutputImages <= 0 {
+		p.RequestMaxOutputImages = currentImageOutputLimit
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -539,6 +548,7 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		strings.Join(p.RequestAllowedSizes, ","),
 		strings.Join(p.RequestAllowedQualities, ","),
 		strings.Join(p.RequestAllowedFormats, ","),
+		strconv.Itoa(p.RequestMaxOutputImages),
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry
@@ -591,6 +601,14 @@ func stringListMetadata(value string) []string {
 		}
 	}
 	return items
+}
+
+func intMetadata(value string) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func dedupeProviderImageCapabilityRouteProfiles(profiles []providerImageCapabilityRouteProfile) []providerImageCapabilityRouteProfile {
