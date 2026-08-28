@@ -52,6 +52,40 @@ func TestProviderCreateUsesBuiltInPluginDefaultBaseURL(t *testing.T) {
 	}
 }
 
+func TestProviderCreateUsesPluginDefaultCatalogProviderType(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "default_catalog_plugin"
+	descriptor := pluginmeta.BuiltInProvider("tokenhub.provider.default-catalog", "Default Catalog", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "default_catalog_provider_type",
+		Subject: providerType,
+		Value:   "true",
+	})
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{Type: providerType, Adapter: MockAdapter{}, Capabilities: []AdapterCapability{AdapterCapabilityChat}}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+	server.providerCatalog.UsePluginCatalogTypes(server.adapterRegistry)
+
+	provider, catalog, _, err := server.providerForCreate(context.Background(), ProviderCreateRequest{
+		Name:           "Plugin Default Catalog",
+		CatalogID:      "custom",
+		BaseURL:        "https://default-catalog.example/v1",
+		Status:         StatusActive,
+		Healthy:        ptrBool(true),
+		SelectedModels: []string{"custom-model"},
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+	if provider.Type != providerType {
+		t.Fatalf("provider type = %q, want plugin default catalog type", provider.Type)
+	}
+	if catalog.Type != providerType {
+		t.Fatalf("catalog type = %q, want plugin default catalog type", catalog.Type)
+	}
+}
+
 func TestProviderStoreCreateUsesConfiguredPluginDefaultBaseURL(t *testing.T) {
 	store := NewMemoryStore()
 	store.ConfigureProviderTypeDefaults(map[string]string{

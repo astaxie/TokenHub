@@ -324,7 +324,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	}
 	if catalog.ID == "custom" {
 		if len(req.CustomModels) > 0 {
-			catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
+			catalog = customProviderCatalogFromModelsWithType(req.CustomModels, req.ModelCategory, s.providerCatalog.defaultProviderType())
 		} else {
 			catalog = s.customProviderCatalogFromStandardModels(req.ModelCategory)
 		}
@@ -337,7 +337,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	provider := Provider{
 		ID:               id,
 		Name:             firstNonEmpty(req.Name, catalog.DisplayName, catalog.Name),
-		Type:             firstNonEmpty(req.Type, catalog.Type, ProviderOpenAICompatible),
+		Type:             firstNonEmpty(req.Type, catalog.Type, s.providerCatalog.defaultProviderType()),
 		BaseURL:          firstNonEmpty(req.BaseURL, catalog.BaseURL),
 		APIKey:           req.APIKey,
 		ClearAPIKey:      req.ClearAPIKey,
@@ -445,14 +445,14 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 	}
 	categories, categoryCounts := catalogCategorySummary(models)
 	if len(models) == 0 {
-		entry := customProviderCatalogEntry()
+		entry := s.providerCatalog.customProviderCatalogEntry()
 		entry.Categories = []string{firstNonEmpty(normalizedCategory, "custom")}
 		entry.CategoryCounts = map[string]int{firstNonEmpty(normalizedCategory, "custom"): 0}
 		entry.Models = nil
 		entry.ModelsCount = 0
 		return entry
 	}
-	entry := customProviderCatalogEntry()
+	entry := s.providerCatalog.customProviderCatalogEntry()
 	entry.Categories = categories
 	entry.CategoryCounts = categoryCounts
 	entry.Models = models
@@ -461,6 +461,10 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 }
 
 func customProviderCatalogFromModels(input []ProviderCatalogModel, category string) ProviderCatalogEntry {
+	return customProviderCatalogFromModelsWithType(input, category, ProviderOpenAICompatible)
+}
+
+func customProviderCatalogFromModelsWithType(input []ProviderCatalogModel, category string, providerType string) ProviderCatalogEntry {
 	normalizedCategory := strings.TrimSpace(category)
 	if normalizedCategory != "" {
 		normalizedCategory = standardModelCategory(normalizedCategory)
@@ -493,7 +497,7 @@ func customProviderCatalogFromModels(input []ProviderCatalogModel, category stri
 	sort.SliceStable(models, func(i, j int) bool {
 		return strings.ToLower(models[i].ID) < strings.ToLower(models[j].ID)
 	})
-	entry := customProviderCatalogEntry()
+	entry := customProviderCatalogEntryWithType(providerType)
 	entry.Source = "custom-upstream"
 	entry.Models = models
 	entry.ModelsCount = len(models)

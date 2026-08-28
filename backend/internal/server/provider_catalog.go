@@ -58,6 +58,13 @@ func (s *providerCatalogService) UsePluginCatalogTypes(registry *AdapterRegistry
 	}
 }
 
+func (s *providerCatalogService) defaultProviderType() string {
+	if s == nil {
+		return ProviderOpenAICompatible
+	}
+	return firstNonEmpty(strings.TrimSpace(s.defaultType), ProviderOpenAICompatible)
+}
+
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
 // local catalog before the backend starts accepting requests.
 func (s *Server) InitializeProviderCatalog(ctx context.Context) (bool, error) {
@@ -618,7 +625,7 @@ func customProviderCatalogEntry() ProviderCatalogEntry {
 }
 
 func (s *providerCatalogService) customProviderCatalogEntry() ProviderCatalogEntry {
-	return customProviderCatalogEntryWithType(s.defaultType)
+	return customProviderCatalogEntryWithType(s.defaultProviderType())
 }
 
 func customProviderCatalogEntryWithType(providerType string) ProviderCatalogEntry {
