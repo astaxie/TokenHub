@@ -76,10 +76,11 @@ func TestParseAdminUIManifestValidatesContributionSchema(t *testing.T) {
 				"slot": "provider.form.section",
 				"schema": {
 					"fields": [
-						{"name": "base_url", "type": "url"},
+						{"name": "base_url", "type": "url", "target": "provider"},
 						{"name": "credential", "type": "secret"},
 						{"name": "connect", "type": "oauth_button", "action": "oauth.start"}
-					]
+					],
+					"placement": "advanced"
 				}
 			}
 		]
@@ -119,6 +120,7 @@ func TestParseAdminUIManifestRejectsUnsafeContributionSchema(t *testing.T) {
 		`{"remote_script_url":"https://plugins.example/plugin.js"}`,
 		`{"fields":[{"type":"text"}]}`,
 		`{"fields":[{"name":"connect","type":"oauth_button"}]}`,
+		`{"fields":[{"name":"base_url","type":"url","target":"admin_token"}]}`,
 		`{"tokens":{"accent":"#2563eb"}}`,
 		`{"preset":{"density":"compact"}}`,
 	} {

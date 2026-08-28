@@ -141,14 +141,6 @@ export function ProviderAdvancedFields({
           <span>{tx("优先级")}</span>
           <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
         </label>
-        <label className="field">
-          <span>{tx("系统提示词转换")}</span>
-          <select value={values.system_prompt_transform_policy ?? "preserve"} onChange={(event) => onUpdate("system_prompt_transform_policy", event.target.value)}>
-            <option value="preserve">{tx("保留系统提示词块")}</option>
-            <option value="strip">{tx("移除客户端归因块")}</option>
-          </select>
-          <small>{tx("Provider 插件可声明默认策略；未声明时默认移除客户端归因块。")}</small>
-        </label>
       </div>
       {showReasoningCompatibility ? <details className="provider-account-runtime">
         <summary>

@@ -1440,6 +1440,7 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
+                <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" provider={provider} values={values} />
                 <ProviderResourceSystemPromptTransformFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}
@@ -1560,13 +1561,7 @@ export function ProviderUpsertModal({
               <ProviderResourceProbePanel api={api} accountCatalogErrors={accountCatalogErrors} accountCatalogLoading={accountCatalogLoading} accountResources={accountResources} pluginActions={pluginActions} providerType={values.type} selectedAccountCatalog={selectedAccountCatalog} selectedAccountID={selectedAccountID} selectedAccountResources={selectedAccountResources} />
             ) : null}
             {mode === "create" && createStep === 1 && !quickAPIConnect ? (
-              <ProviderAdvancedFields
-                accountIntegration={credentialMode === "account_integration"}
-                creating
-                idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")}
-                values={values}
-                onUpdate={update} providerTypeOptions={providerTypeOptions}
-              />
+              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} creating idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" values={values} /></>
             ) : null}
 
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (

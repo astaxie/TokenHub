@@ -78,6 +78,37 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 	}
 
 	mustRegisterPlugin(registry, pluginmeta.Descriptor{
+		ID:         "tokenhub.admin.core-provider",
+		Name:       "TokenHub Core Provider Settings",
+		Version:    "built-in",
+		Source:     pluginmeta.SourceBuiltIn,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindAdminUI},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "admin_ui", Name: "provider_form", Subject: "core_provider_settings"},
+		},
+	})
+	mustRegisterAdminUIContribution(adminUI, pluginmeta.AdminUIContribution{
+		PluginID: "tokenhub.admin.core-provider",
+		ID:       "provider-advanced-settings",
+		Slot:     pluginmeta.SlotProviderFormSection,
+		Title:    "Provider advanced settings",
+		Schema: map[string]any{
+			"placement": "advanced",
+			"fields": []any{
+				map[string]any{
+					"name":    "system_prompt_transform_policy",
+					"type":    "select",
+					"label":   "System prompt transform",
+					"target":  "provider",
+					"options": []string{"preserve", "strip"},
+					"help":    "Provider plugins may declare a default policy; providers without one strip client attribution blocks by default.",
+				},
+			},
+		},
+	})
+
+	mustRegisterPlugin(registry, pluginmeta.Descriptor{
 		ID:         "tokenhub.provider.openai-codex",
 		Name:       "OpenAI Codex Subscription",
 		Version:    "built-in",

@@ -208,7 +208,7 @@ func validateAdminUIContributionSchema(contribution AdminUIContribution) error {
 
 func allowedAdminUISchemaKey(slot AdminUISlot, key string) bool {
 	switch key {
-	case "fields", "layout", "description", "empty_state", "refreshable":
+	case "fields", "layout", "description", "empty_state", "refreshable", "placement":
 		return true
 	case "tokens", "mode":
 		return slot == SlotThemeTokens
@@ -331,8 +331,21 @@ func validateAdminUIFields(raw any, contributionAction string) error {
 		if adminUIControlRequiresAction(controlType) && strings.TrimSpace(schemaString(field["action"])) == "" && strings.TrimSpace(contributionAction) == "" {
 			return fmt.Errorf("schema field %s action is required for %s controls", name, controlType)
 		}
+		if err := validateAdminUIFieldTarget(field["target"]); err != nil {
+			return fmt.Errorf("schema field %s has invalid target: %w", name, err)
+		}
 	}
 	return nil
+}
+
+func validateAdminUIFieldTarget(raw any) error {
+	target := strings.TrimSpace(schemaString(raw))
+	switch target {
+	case "", "plugin_options", "provider", "resource":
+		return nil
+	default:
+		return fmt.Errorf("%q is unsupported", target)
+	}
 }
 
 func adminUIControlRequiresAction(controlType string) bool {

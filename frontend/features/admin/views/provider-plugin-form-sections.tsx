@@ -18,8 +18,10 @@ type PluginFormBaseField = {
   help?: string;
   defaultValue?: string;
   action?: string;
+  target?: PluginFormFieldTarget;
 };
 
+type PluginFormFieldTarget = "plugin_options" | "provider" | "resource";
 type PluginFormInputField = PluginFormBaseField & { type: PluginFormInputType };
 type PluginFormActionField = PluginFormBaseField & { type: PluginFormActionType };
 type PluginFormField = PluginFormInputField | PluginFormActionField;
@@ -35,6 +37,7 @@ export function ProviderPluginFormSections({
   provider,
   resource,
   slot = "provider.form.section",
+  placement = "connect",
   providerType,
   resourceType,
   values,
@@ -46,6 +49,7 @@ export function ProviderPluginFormSections({
   provider?: Provider;
   resource?: ProviderResource;
   slot?: "provider.form.section" | "provider.resource.form.section";
+  placement?: "connect" | "advanced" | string;
   providerType?: string;
   resourceType?: string;
   values: Record<string, string>;
@@ -58,24 +62,24 @@ export function ProviderPluginFormSections({
     () => contributions
       .filter((contribution) =>
         contribution.slot === slot &&
-        pluginFormContributionMatches(contribution, providerType || values.type, resourceType || values.resource_type),
+        pluginFormContributionMatches(contribution, providerType || values.type, resourceType || values.resource_type, placement),
       )
       .map((contribution) => ({ contribution, fields: pluginFormFields(contribution) }))
       .filter((section) => section.fields.length > 0),
-    [contributions, providerType, resourceType, slot, values.resource_type, values.type],
+    [contributions, placement, providerType, resourceType, slot, values.resource_type, values.type],
   );
   const actionDescriptors = useMemo(() => new Map(actions.map((action) => [pluginFormActionKey(action.plugin_id, action.action_id), action])), [actions]);
   useEffect(() => {
     for (const { contribution, fields } of sections) {
       for (const field of fields) {
         if (pluginFormFieldIsAction(field)) continue;
-        const key = providerPluginOptionFieldKey(contribution.plugin_id, field.name);
-        const existingValue = resource?.options?.[field.name] ?? provider?.options?.[field.name];
+        const key = pluginFormFieldValueKey(contribution, field);
+        const existingValue = pluginFormFieldExistingValue(field, provider, resource);
         const value = existingValue ?? field.defaultValue;
         if (values[key] === undefined && value !== undefined) onUpdate(key, value);
       }
     }
-  }, [onUpdate, provider?.options, resource?.options, sections, values]);
+  }, [onUpdate, provider, resource, sections, values]);
 
   if (sections.length === 0) return null;
 
@@ -128,13 +132,13 @@ export function ProviderPluginFormSections({
                   />
                 );
               }
-              const key = providerPluginOptionFieldKey(contribution.plugin_id, field.name);
+              const key = pluginFormFieldValueKey(contribution, field);
               return (
                 <ProviderInlineField
                   field={{ ...field, key }}
                   key={key}
                   onChange={(value) => onUpdate(key, value)}
-                  value={values[key] ?? resource?.options?.[field.name] ?? provider?.options?.[field.name] ?? field.defaultValue ?? defaultPluginFieldValue(field)}
+                  value={values[key] ?? pluginFormFieldExistingValue(field, provider, resource) ?? field.defaultValue ?? defaultPluginFieldValue(field)}
                   values={values}
                 />
               );
@@ -197,13 +201,21 @@ function pluginFormFields(contribution: AdminUIContribution): PluginFormField[] 
       help: schemaString(field.help),
       defaultValue: schemaDefaultValue(field.default ?? field.default_value),
       action: schemaString(field.action),
+      target: pluginFormFieldTarget(schemaString(field.target)),
     }];
   });
 }
 
-function pluginFormContributionMatches(contribution: AdminUIContribution, providerType: string, resourceType: string) {
+function pluginFormContributionMatches(contribution: AdminUIContribution, providerType: string, resourceType: string, placement: string) {
   return (!contribution.provider_types?.length || contribution.provider_types.includes(providerType)) &&
-    (!contribution.resource_types?.length || contribution.resource_types.includes(resourceType));
+    (!contribution.resource_types?.length || contribution.resource_types.includes(resourceType)) &&
+    pluginFormContributionPlacementMatches(contribution, placement);
+}
+
+function pluginFormContributionPlacementMatches(contribution: AdminUIContribution, placement: string) {
+  const contributionPlacement = schemaString(contribution.schema?.placement);
+  if (placement === "advanced") return contributionPlacement === "advanced";
+  return contributionPlacement !== "advanced";
 }
 
 function pluginFormFieldType(type: string): PluginFormField["type"] | "" {
@@ -229,6 +241,27 @@ function pluginFormFieldType(type: string): PluginFormField["type"] | "" {
 
 function defaultPluginFieldValue(field: PluginFormField) {
   return field.type === "boolean" ? "false" : "";
+}
+
+function pluginFormFieldTarget(target: string): PluginFormFieldTarget | undefined {
+  return target === "provider" || target === "resource" || target === "plugin_options" ? target : undefined;
+}
+
+function pluginFormFieldValueKey(contribution: AdminUIContribution, field: PluginFormField) {
+  if (field.target === "provider" || field.target === "resource") return field.name;
+  return providerPluginOptionFieldKey(contribution.plugin_id, field.name);
+}
+
+function pluginFormFieldExistingValue(field: PluginFormField, provider?: Provider, resource?: ProviderResource) {
+  if (field.target === "provider") {
+    const directValue = (provider as unknown as Record<string, unknown> | undefined)?.[field.name];
+    if (directValue !== undefined && directValue !== null) return String(directValue);
+  }
+  if (field.target === "resource") {
+    const directValue = (resource as unknown as Record<string, unknown> | undefined)?.[field.name];
+    if (directValue !== undefined && directValue !== null) return String(directValue);
+  }
+  return resource?.options?.[field.name] ?? provider?.options?.[field.name];
 }
 
 function pluginFormFieldIsAction(field: PluginFormField): field is PluginFormActionField {

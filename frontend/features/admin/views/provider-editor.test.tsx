@@ -154,6 +154,88 @@ describe("ProviderUpsertModal", () => {
     expect(await screen.findByText("2/3 个可引入模型")).toBeInTheDocument();
   });
 
+  it("submits provider advanced fields from declarative plugin form sections", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    setActiveLanguage("zh-CN");
+    const provider: Provider = {
+      id: "prv_quality",
+      name: "Quality Provider",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      status: "active",
+      healthy: true,
+      priority: 10,
+      options: { system_prompt_transform_policy: "preserve" },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/admin/provider-catalog/quality-provider")) {
+        return new Response(JSON.stringify({ data: catalogEntry }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/admin/providers/prv_quality") && init?.method === "PATCH") {
+        return new Response(JSON.stringify({ provider }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[catalogEntry]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={onSaved}
+        pluginUI={[{
+          plugin_id: "tokenhub.admin.core-provider",
+          id: "provider-advanced-settings",
+          slot: "provider.form.section",
+          title: "Provider advanced settings",
+          schema: {
+            placement: "advanced",
+            fields: [{
+              name: "system_prompt_transform_policy",
+              type: "select",
+              label: "System prompt transform",
+              target: "provider",
+              options: ["preserve", "strip"],
+            }],
+          },
+        }]}
+        provider={provider}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+        standardModels={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+    await user.selectOptions(screen.getByLabelText("System prompt transform"), "strip");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const updateCall = fetchMock.mock.calls.find(([input, init]) =>
+      String(input).endsWith("/api/admin/providers/prv_quality") && init?.method === "PATCH",
+    );
+    expect(updateCall).toBeDefined();
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({
+      id: "prv_quality",
+      system_prompt_transform_policy: "strip",
+      claude_code_attribution_policy: "strip",
+      options: {},
+    });
+  });
+
   it("defaults Anthropic auth selection from adapter metadata", async () => {
     const user = userEvent.setup();
     setActiveLanguage("zh-CN");

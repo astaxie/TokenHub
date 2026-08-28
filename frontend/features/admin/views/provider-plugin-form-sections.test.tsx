@@ -180,6 +180,66 @@ describe("ProviderPluginFormSections", () => {
     });
   });
 
+  it("writes provider-targeted plugin form fields into provider payload fields", async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.fn();
+
+    function Harness() {
+      const [values, setValues] = useState<Record<string, string>>({
+        type: "plugin_provider",
+        system_prompt_transform_policy: "preserve",
+      });
+      function onUpdate(key: string, value: string) {
+        updateSpy(key, value);
+        setValues((current) => ({ ...current, [key]: value }));
+      }
+      return (
+        <ProviderPluginFormSections
+          contributions={[{
+            plugin_id: "tokenhub.admin.core-provider",
+            id: "provider-advanced-settings",
+            slot: "provider.form.section",
+            title: "Provider advanced settings",
+            schema: {
+              placement: "advanced",
+              fields: [{
+                name: "system_prompt_transform_policy",
+                type: "select",
+                label: "System prompt transform",
+                target: "provider",
+                options: ["preserve", "strip"],
+              }],
+            },
+          }]}
+          onUpdate={onUpdate}
+          placement="advanced"
+          values={values}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    const select = screen.getByLabelText("System prompt transform");
+    expect(select).toHaveValue("preserve");
+    await user.selectOptions(select, "strip");
+    expect(updateSpy).toHaveBeenLastCalledWith("system_prompt_transform_policy", "strip");
+
+    const payload = providerPayload({
+      id: "prv_plugin",
+      name: "Plugin Provider",
+      type: "plugin_provider",
+      status: "active",
+      healthy: "true",
+      priority: "10",
+      base_url: "https://provider.example/v1",
+      api_key: "secret",
+      system_prompt_transform_policy: "strip",
+    });
+    expect(payload.system_prompt_transform_policy).toBe("strip");
+    expect(payload.options).not.toHaveProperty("system_prompt_transform_policy");
+  });
+
   it("renders provider resource form sections and writes plugin options into resource payloads", async () => {
     const updateSpy = vi.fn();
     const tenantKey = providerPluginOptionFieldKey("tokenhub.provider.plugin", "resource_tenant");
