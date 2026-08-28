@@ -59,6 +59,17 @@ func TestNormalizeProviderCatalogEntryUsesPluginCatalogType(t *testing.T) {
 	}
 }
 
+func TestDefaultProviderCatalogTypeComesFromBuiltinPluginPolicy(t *testing.T) {
+	registry := builtinProviderPluginCatalogRegistry()
+	want := providerCatalogDefaultTypeFromRegistry(registry)
+	if want == "" {
+		t.Fatal("built-in provider plugins did not declare a default catalog provider type")
+	}
+	if got := defaultProviderCatalogProviderType(); got != want {
+		t.Fatalf("default catalog provider type = %q, want built-in plugin policy %q", got, want)
+	}
+}
+
 func TestProviderCatalogServiceUsesPluginDefaultCatalogProviderType(t *testing.T) {
 	store := NewMemoryStore()
 	catalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")

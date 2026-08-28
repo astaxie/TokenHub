@@ -46,7 +46,7 @@ func newProviderCatalogService(store Store, catalogFile string, clients ...provi
 		catalogFile:    catalogFile,
 		upstreamURL:    providerCatalogUpstreamURL,
 		upstreamClient: upstreamClient,
-		defaultType:    ProviderOpenAICompatible,
+		defaultType:    defaultProviderCatalogProviderType(),
 	}
 }
 
@@ -60,9 +60,16 @@ func (s *providerCatalogService) UsePluginCatalogTypes(registry *AdapterRegistry
 
 func (s *providerCatalogService) defaultProviderType() string {
 	if s == nil {
-		return ProviderOpenAICompatible
+		return defaultProviderCatalogProviderType()
 	}
-	return firstNonEmpty(strings.TrimSpace(s.defaultType), ProviderOpenAICompatible)
+	if providerType := strings.TrimSpace(s.defaultType); providerType != "" {
+		return providerType
+	}
+	return defaultProviderCatalogProviderType()
+}
+
+func defaultProviderCatalogProviderType() string {
+	return firstNonEmpty(strings.TrimSpace(builtinProviderPluginCatalogDefaultType()), ProviderOpenAICompatible)
 }
 
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
@@ -170,7 +177,7 @@ func seedBuiltinProviderCatalog(store Store) error {
 		entries = builtinProviderCatalog(true)
 	}
 	if !providerCatalogHasEntry(entries, "custom") {
-		entries = append(entries, customProviderCatalogEntryWithType(builtinProviderPluginCatalogDefaultType()))
+		entries = append(entries, customProviderCatalogEntryWithType(defaultProviderCatalogProviderType()))
 	}
 	sortCatalogEntries(entries)
 	return store.SaveProviderCatalogSnapshot(entries, "builtin", time.Now().UTC())
@@ -233,7 +240,7 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 }
 
 func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
-	return prepareProviderCatalogRefreshWithDefault(entries, previous, ProviderOpenAICompatible)
+	return prepareProviderCatalogRefreshWithDefault(entries, previous, defaultProviderCatalogProviderType())
 }
 
 func prepareProviderCatalogRefreshWithDefault(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry, defaultType string) ([]ProviderCatalogEntry, error) {
@@ -295,7 +302,7 @@ func (s *providerCatalogService) loadLocalProviderCatalog() ([]ProviderCatalogEn
 }
 
 func loadLocalProviderCatalogWithTypes(catalogFile string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
-	return loadLocalProviderCatalogWithDefault(catalogFile, catalogTypes, ProviderOpenAICompatible)
+	return loadLocalProviderCatalogWithDefault(catalogFile, catalogTypes, defaultProviderCatalogProviderType())
 }
 
 func loadLocalProviderCatalogWithDefault(catalogFile string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
@@ -315,7 +322,7 @@ func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry
 }
 
 func parseProviderCatalogWithTypes(content []byte, source string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
-	return parseProviderCatalogWithDefault(content, source, catalogTypes, ProviderOpenAICompatible)
+	return parseProviderCatalogWithDefault(content, source, catalogTypes, defaultProviderCatalogProviderType())
 }
 
 func parseProviderCatalogWithDefault(content []byte, source string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
@@ -351,11 +358,15 @@ func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalo
 }
 
 func normalizeProviderCatalogEntryWithTypes(id string, raw map[string]any, catalogTypes map[string]string) ProviderCatalogEntry {
-	return normalizeProviderCatalogEntryWithDefault(id, raw, catalogTypes, ProviderOpenAICompatible)
+	return normalizeProviderCatalogEntryWithDefault(id, raw, catalogTypes, defaultProviderCatalogProviderType())
 }
 
 func normalizeProviderCatalogEntryWithDefault(id string, raw map[string]any, catalogTypes map[string]string, defaultType string) ProviderCatalogEntry {
 	baseURL := firstNonEmpty(catalogStringField(raw, "base_url"), catalogStringField(raw, "api"))
+	fallbackType := strings.TrimSpace(defaultType)
+	if fallbackType == "" {
+		fallbackType = defaultProviderCatalogProviderType()
+	}
 	entry := ProviderCatalogEntry{
 		ID:          firstNonEmpty(catalogStringField(raw, "id"), id),
 		Name:        firstNonEmpty(catalogStringField(raw, "name"), catalogStringField(raw, "display_name"), id),
@@ -364,7 +375,7 @@ func normalizeProviderCatalogEntryWithDefault(id string, raw map[string]any, cat
 		DocURL:      firstNonEmpty(catalogStringField(raw, "doc_url"), catalogStringField(raw, "doc")),
 		Source:      "local-provider-catalog",
 	}
-	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), catalogTypes[strings.TrimSpace(entry.ID)], strings.TrimSpace(defaultType), ProviderOpenAICompatible)
+	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), catalogTypes[strings.TrimSpace(entry.ID)], fallbackType)
 	if rawModels, ok := raw["models"].([]any); ok {
 		entry.Models = make([]ProviderCatalogModel, 0, len(rawModels))
 		for _, rawModel := range rawModels {
@@ -621,7 +632,7 @@ func builtinCatalogEntry(id string, name string, providerType string, baseURL st
 }
 
 func customProviderCatalogEntry() ProviderCatalogEntry {
-	return customProviderCatalogEntryWithType(ProviderOpenAICompatible)
+	return customProviderCatalogEntryWithType(defaultProviderCatalogProviderType())
 }
 
 func (s *providerCatalogService) customProviderCatalogEntry() ProviderCatalogEntry {
@@ -633,7 +644,7 @@ func customProviderCatalogEntryWithType(providerType string) ProviderCatalogEntr
 		ID:             "custom",
 		Name:           "自定义 Provider",
 		DisplayName:    "自定义 Provider",
-		Type:           firstNonEmpty(strings.TrimSpace(providerType), ProviderOpenAICompatible),
+		Type:           firstNonEmpty(strings.TrimSpace(providerType), defaultProviderCatalogProviderType()),
 		Categories:     []string{"custom"},
 		CategoryCounts: map[string]int{"custom": 1},
 		Source:         "builtin",
@@ -729,7 +740,7 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 		ID:             "custom",
 		Name:           name,
 		DisplayName:    name,
-		Type:           firstNonEmpty(strings.TrimSpace(req.Type), strings.TrimSpace(descriptor.Type), ProviderOpenAICompatible),
+		Type:           firstNonEmpty(strings.TrimSpace(req.Type), strings.TrimSpace(descriptor.Type), defaultProviderCatalogProviderType()),
 		BaseURL:        baseURL,
 		Categories:     categories,
 		CategoryCounts: categoryCounts,
