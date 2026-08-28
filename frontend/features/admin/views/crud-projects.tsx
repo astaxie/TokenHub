@@ -415,7 +415,7 @@ export function ProviderChannelTable({
                     <small className="provider-monitor-subtle">{tx(providerPerformanceExplanation)}</small>
                   </div>
                 </td>
-                <td><ProviderCodexQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
+                <td><ProviderAccountQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
                 <td>
                   <div className="row-actions provider-channel-actions">
                     {(config.actions ?? [])
@@ -462,7 +462,7 @@ export function providerQuotaReadAction(data: AppData, resource: ProviderResourc
   return providerPluginActionForResourceCapability(data.pluginActions, providerType, resource.resource_type, "quota.read");
 }
 
-export function ProviderCodexQuota({
+export function ProviderAccountQuota({
   quota,
   refreshing,
   resources,
@@ -494,19 +494,19 @@ export function ProviderCodexQuota({
     if (closeTimer.current) clearTimeout(closeTimer.current);
   }, []);
 
-  if (!quota.supported) return <span className="provider-codex-quota na">-</span>;
+  if (!quota.supported) return <span className="provider-account-quota na">-</span>;
   const accounts = quota.accounts ?? [];
   if (accounts.length === 0 || quota.successful_accounts === 0) {
     const error = accounts.find((account) => account.error_code)?.error_code;
-    return <span className="provider-codex-quota error" title={error}>{tx("查询失败")}</span>;
+    return <span className="provider-account-quota error" title={error}>{tx("查询失败")}</span>;
   }
   const remaining = quota.remaining_percent ?? 100;
   const plan = quota.plan_type || "-";
   const limited = quota.limit_reached;
   return (
-    <div className="provider-codex-quota-wrap" onMouseLeave={schedulePopoverClose}>
+    <div className="provider-account-quota-wrap" onMouseLeave={schedulePopoverClose}>
       <button
-        className={`provider-codex-quota ${limited ? "limited" : "available"}`}
+        className={`provider-account-quota ${limited ? "limited" : "available"}`}
         onBlur={schedulePopoverClose}
         onFocus={(event) => showPopover(event.currentTarget)}
         onMouseEnter={(event) => showPopover(event.currentTarget)}
@@ -518,7 +518,7 @@ export function ProviderCodexQuota({
       </button>
       {popoverPosition && typeof document !== "undefined" ? createPortal(
         <div
-          className="provider-codex-accounts-popover"
+          className="provider-account-quota-popover"
           onFocus={keepPopover}
           onMouseEnter={keepPopover}
           onMouseLeave={schedulePopoverClose}
@@ -532,7 +532,7 @@ export function ProviderCodexQuota({
             const accountPlan = accountQuota?.plan_type || resource?.credential_summary?.plan_type || "-";
             const accountLimited = accountQuota?.rate_limit?.limit_reached || accountQuota?.rate_limit?.allowed === false;
             return (
-              <div className="provider-codex-account" key={account.resource_id}>
+              <div className="provider-account-quota-row" key={account.resource_id}>
                 <div>
                   <strong title={accountLabel}>{accountLabel}</strong>
                   {accountQuota ? (

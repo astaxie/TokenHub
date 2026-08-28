@@ -104,13 +104,13 @@ export function ProviderResourceProbePanel({
   if (!action) return null;
 
   return (
-    <section className="provider-quota-panel provider-codex-test-panel">
+    <section className="provider-quota-panel provider-resource-probe-panel">
       <div className="wizard-panel-head">
         <h3>{tx("真实请求测试")}</h3>
         <p>{tx("使用顶部选中的账号发送真实账号资源测试；选择全部账号时，每个账号都会分别发起一次请求并展示独立结果。")}</p>
       </div>
       {selectedAccountID === "all" ? <p className="provider-account-intersection-note">{tx("当前模型列表是所有账号可用模型的交集，确保所选模型能够被每个账号真实调用。")}</p> : null}
-      <div className="provider-codex-test-controls">
+      <div className="provider-resource-probe-controls">
         {fields.has("model") ? (
           <label className="field">
             <span>{tx("模型")}</span>
@@ -138,14 +138,14 @@ export function ProviderResourceProbePanel({
           </label>
         ) : null}
         {fields.has("prompt") ? (
-          <label className="field provider-codex-test-prompt">
+          <label className="field provider-resource-probe-prompt">
             <span>{tx("真实提示词")}</span>
             <textarea rows={3} value={values.prompt} onChange={(event) => setValues((current) => ({ ...current, prompt: event.target.value }))} placeholder={tx("输入要真实发送给上游的内容")} />
           </label>
         ) : null}
       </div>
       {Object.entries(accountCatalogErrors).map(([resourceID, message]) => <p className="provider-quota-error" key={resourceID}>{accountResources.find((resource) => resource.id === resourceID)?.name || resourceID}：{message}</p>)}
-      <div className="provider-codex-test-actions">
+      <div className="provider-resource-probe-actions">
         <button className="primary-button" disabled={probeDisabled(busyID, accountCatalogLoading, probeModels.length, values, fields)} onClick={() => void runProbe()} type="button">
           <Send size={14} />
           {tx(busyID ? "正在真实调用" : selectedAccountID === "all" ? "测试全部账号" : "发送真实测试")}
@@ -179,7 +179,7 @@ function ProbeResourceResultCard({ error, resource, result }: { error?: string; 
         <span className={error ? "provider-test-status error" : result ? "provider-test-status success" : "provider-test-status"}>{tx(error ? "失败" : result ? "完成" : "等待测试")}</span>
       </div>
       {result ? (
-        <div className="provider-codex-test-result">
+        <div className="provider-resource-probe-result">
           <div className="provider-quota-grid">
             {result.model ? <QuotaMetric label="模型" value={result.model} /> : null}
             {result.reasoning_effort ? <QuotaMetric label="推理强度" value={result.reasoning_effort} /> : null}

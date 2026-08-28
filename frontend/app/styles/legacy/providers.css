@@ -778,27 +778,27 @@
   font-size: 11px;
 }
 
-.provider-codex-test-controls {
+.provider-resource-probe-controls {
   margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
-.provider-codex-test-account {
+.provider-resource-probe-account {
   grid-column: 1 / -1;
 }
 
-.provider-codex-test-prompt {
+.provider-resource-probe-prompt {
   grid-column: 1 / -1;
 }
 
-.provider-codex-test-prompt textarea {
+.provider-resource-probe-prompt textarea {
   min-height: 76px;
   resize: vertical;
 }
 
-.provider-codex-test-result {
+.provider-resource-probe-result {
   margin-top: 10px;
 }
 
@@ -813,7 +813,7 @@
   line-height: 1.5;
 }
 
-.provider-codex-test-actions {
+.provider-resource-probe-actions {
   margin-top: 10px;
   display: flex;
   justify-content: flex-end;
@@ -860,7 +860,7 @@
   line-height: 1.5;
 }
 
-.provider-codex-test-result pre {
+.provider-resource-probe-result pre {
   margin: 10px 0 0;
   max-height: 260px;
   overflow: auto;

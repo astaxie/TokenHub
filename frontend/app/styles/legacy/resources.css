@@ -453,7 +453,7 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.provider-codex-quota {
+.provider-account-quota {
   width: 100%;
   min-width: 0;
   display: grid;
@@ -467,36 +467,36 @@
   cursor: pointer;
 }
 
-.provider-codex-quota strong {
+.provider-account-quota strong {
   color: #059669;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 15px;
   line-height: 1;
 }
 
-.provider-codex-quota span,
-.provider-codex-quota small {
+.provider-account-quota span,
+.provider-account-quota small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.provider-codex-quota.limited strong,
-.provider-codex-quota.error {
+.provider-account-quota.limited strong,
+.provider-account-quota.error {
   color: #e11d48;
 }
 
-.provider-codex-quota.loading,
-.provider-codex-quota.na {
+.provider-account-quota.loading,
+.provider-account-quota.na {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.provider-codex-quota-wrap {
+.provider-account-quota-wrap {
   position: relative;
 }
 
-.provider-codex-accounts-popover {
+.provider-account-quota-popover {
   position: fixed;
   z-index: 1000;
   width: 320px;
@@ -508,7 +508,7 @@
   box-shadow: 0 14px 35px rgb(15 23 42 / 16%);
 }
 
-.provider-codex-account {
+.provider-account-quota-row {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -518,39 +518,39 @@
   border-radius: 7px;
 }
 
-.provider-codex-account + .provider-codex-account {
+.provider-account-quota-row + .provider-account-quota-row {
   border-top: 1px solid var(--border);
   border-radius: 0;
 }
 
-.provider-codex-account > div {
+.provider-account-quota-row > div {
   min-width: 0;
   display: grid;
   gap: 3px;
 }
 
-.provider-codex-account strong,
-.provider-codex-account span {
+.provider-account-quota-row strong,
+.provider-account-quota-row span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.provider-codex-account strong {
+.provider-account-quota-row strong {
   color: var(--text);
   font-size: 12px;
 }
 
-.provider-codex-account span {
+.provider-account-quota-row span {
   color: var(--muted);
   font-size: 11px;
 }
 
-.provider-codex-account span.limited {
+.provider-account-quota-row span.limited {
   color: #e11d48;
 }
 
-.provider-codex-account button {
+.provider-account-quota-row button {
   width: 28px;
   height: 28px;
   display: grid;
@@ -562,21 +562,21 @@
   cursor: pointer;
 }
 
-.provider-codex-account button:hover {
+.provider-account-quota-row button:hover {
   color: var(--primary);
   border-color: var(--primary);
 }
 
-.provider-codex-account button:disabled {
+.provider-account-quota-row button:disabled {
   opacity: 0.5;
   cursor: wait;
 }
 
-.provider-codex-account button:disabled svg {
-  animation: provider-codex-quota-spin 0.8s linear infinite;
+.provider-account-quota-row button:disabled svg {
+  animation: provider-account-quota-spin 0.8s linear infinite;
 }
 
-@keyframes provider-codex-quota-spin {
+@keyframes provider-account-quota-spin {
   to {
     transform: rotate(360deg);
   }
