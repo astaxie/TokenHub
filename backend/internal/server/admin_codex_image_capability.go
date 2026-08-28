@@ -186,7 +186,7 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 				}
 				result.Capability = profile.CapabilityUnsupportedValue
 			}
-			return publicCodexImageCapabilityProbeError(imageErr)
+			return publicProviderImageCapabilityProbeError(imageErr, profile)
 		}
 		if len(response.Data) == 0 || strings.TrimSpace(response.Data[0].B64JSON) == "" {
 			return NewHTTPError(http.StatusBadGateway, "image_result_missing", "Codex image capability test completed without an image result")
@@ -209,19 +209,9 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 	return result, err
 }
 
-func publicCodexImageCapabilityProbeError(err error) error {
+func publicProviderImageCapabilityProbeError(err error, profile providerImageCapabilityRouteProfile) error {
 	httpErr := AsHTTPError(err)
-	message := "Codex image capability test failed"
-	switch httpErr.Code {
-	case "codex_image_forbidden":
-		message = "This Codex subscription account is not allowed to use image generation"
-	case "provider_resource_reauthorization_required":
-		message = "OpenAI/Codex account session has ended. Reauthorize the account."
-	case "codex_rate_limited", "codex_quota_exhausted", "codex_upstream_unavailable":
-		message = "Codex image capability test is temporarily unavailable"
-	case "codex_upstream_timeout":
-		message = "Codex image capability test timed out"
-	}
+	message := providerImageCapabilityProbeErrorMessage(profile, httpErr.Code)
 	publicErr := NewHTTPError(httpErr.Status, httpErr.Code, message)
 	var invocationErr *ProviderInvocationError
 	if errors.As(err, &invocationErr) {
@@ -232,6 +222,15 @@ func publicCodexImageCapabilityProbeError(err error) error {
 		}
 	}
 	return publicErr
+}
+
+func providerImageCapabilityProbeErrorMessage(profile providerImageCapabilityRouteProfile, code string) string {
+	profile.withDefaults()
+	code = strings.TrimSpace(code)
+	if message := strings.TrimSpace(profile.ProbeErrorMessages[code]); message != "" {
+		return message
+	}
+	return "Provider image capability test failed"
 }
 
 func (s *Server) codexImageResource(resourceID string, requireActive bool, profiles ...providerImageCapabilityRouteProfile) (ProviderResource, Provider, error) {

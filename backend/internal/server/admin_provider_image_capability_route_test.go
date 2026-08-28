@@ -97,3 +97,17 @@ func TestProviderImageCapabilityClusterKeyUsesPluginProfilePrefix(t *testing.T) 
 		t.Fatalf("codex image capability key = %q", key)
 	}
 }
+
+func TestProviderImageCapabilityProbeErrorMessageUsesPluginMetadata(t *testing.T) {
+	profile := providerImageCapabilityProfileFromAction(pluginmeta.ActionDescriptor{
+		Metadata: map[string]string{
+			"probe_error_message.plugin_rate_limited": "Plugin image capability test is rate limited",
+		},
+	})
+	if message := providerImageCapabilityProbeErrorMessage(profile, "plugin_rate_limited"); message != "Plugin image capability test is rate limited" {
+		t.Fatalf("plugin probe error message = %q", message)
+	}
+	if message := providerImageCapabilityProbeErrorMessage(providerImageCapabilityRouteProfile{}, "plugin_unknown"); message != "Provider image capability test failed" {
+		t.Fatalf("default probe error message = %q", message)
+	}
+}

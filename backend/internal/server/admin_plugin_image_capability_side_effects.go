@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type providerImageCapabilityRouteProfile struct {
 	EnabledRequiredMessage     string
 	AuditAction                string
 	OperationKeyPrefix         string
+	ProbeErrorMessages         map[string]string
 }
 
 func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
@@ -163,9 +165,34 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 			descriptor.Metadata["operation_key_prefix"],
 			descriptor.Metadata["lock_key_prefix"],
 		)),
+		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
 	profile.withDefaults()
 	return profile
+}
+
+func providerImageCapabilityProbeErrorMessages(metadata map[string]string) map[string]string {
+	messages := map[string]string{}
+	for key, value := range metadata {
+		code := ""
+		switch {
+		case strings.HasPrefix(key, "probe_error_message."):
+			code = strings.TrimPrefix(key, "probe_error_message.")
+		case strings.HasPrefix(key, "public_error_message."):
+			code = strings.TrimPrefix(key, "public_error_message.")
+		default:
+			continue
+		}
+		code = strings.TrimSpace(code)
+		value = strings.TrimSpace(value)
+		if code != "" && value != "" {
+			messages[code] = value
+		}
+	}
+	if len(messages) == 0 {
+		return nil
+	}
+	return messages
 }
 
 func providerImageCapabilityRouteProfilesFromActions(actions []pluginmeta.ActionDescriptor) []providerImageCapabilityRouteProfile {
@@ -358,7 +385,7 @@ func (p providerImageCapabilityRouteProfile) capabilityIsUnsupported(capability 
 
 func (p providerImageCapabilityRouteProfile) key() string {
 	p.withDefaults()
-	return strings.Join([]string{
+	key := strings.Join([]string{
 		p.ProviderType,
 		p.ResourceType,
 		p.PublicModel,
@@ -380,6 +407,26 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.AuditAction,
 		p.OperationKeyPrefix,
 	}, "\x00")
+	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
+		key += "\x00" + entry
+	}
+	return key
+}
+
+func sortedStringMapEntries(values map[string]string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	entries := make([]string, 0, len(values))
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			entries = append(entries, key+"="+value)
+		}
+	}
+	sort.Strings(entries)
+	return entries
 }
 
 func dedupeProviderImageCapabilityRouteProfiles(profiles []providerImageCapabilityRouteProfile) []providerImageCapabilityRouteProfile {

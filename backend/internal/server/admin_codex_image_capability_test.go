@@ -730,6 +730,18 @@ func TestOpenAICodexImageCapabilityActionExposesErrorMetadata(t *testing.T) {
 			t.Fatalf("descriptor missing error message metadata for %s", code)
 		}
 	}
+	for _, code := range []string{
+		"codex_image_forbidden",
+		"codex_rate_limited",
+		"codex_upstream_unavailable",
+		"codex_upstream_timeout",
+		"codex_quota_exhausted",
+		"provider_resource_reauthorization_required",
+	} {
+		if descriptor.Metadata["probe_error_message."+code] == "" {
+			t.Fatalf("descriptor missing probe error message metadata for %s", code)
+		}
+	}
 }
 
 func syncBuiltInImageCapabilityProfilesForTest(store *GormStore) {
