@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"sort"
 	"strings"
@@ -283,17 +284,19 @@ func mergeProviderCatalogEntryWithPluginMetadata(base ProviderCatalogEntry, plug
 }
 
 type pluginProviderCatalogEntry struct {
-	ID          string                       `json:"id"`
-	Name        string                       `json:"name"`
-	DisplayName string                       `json:"display_name"`
-	Type        string                       `json:"type"`
-	BaseURL     string                       `json:"base_url"`
-	DocURL      string                       `json:"doc_url"`
-	Categories  []string                     `json:"categories"`
-	ModelsCount int                          `json:"models_count"`
-	Source      string                       `json:"source"`
-	ETag        string                       `json:"etag"`
-	Models      []pluginProviderCatalogModel `json:"models"`
+	ID                                string                       `json:"id"`
+	Name                              string                       `json:"name"`
+	DisplayName                       string                       `json:"display_name"`
+	Type                              string                       `json:"type"`
+	BaseURL                           string                       `json:"base_url"`
+	DocURL                            string                       `json:"doc_url"`
+	Categories                        []string                     `json:"categories"`
+	ModelsCount                       int                          `json:"models_count"`
+	Source                            string                       `json:"source"`
+	ETag                              string                       `json:"etag"`
+	Models                            []pluginProviderCatalogModel `json:"models"`
+	ModelsAccountRequiredErrorCode    string                       `json:"models_account_required_error_code"`
+	ModelsAccountRequiredErrorMessage string                       `json:"models_account_required_error_message"`
 }
 
 type pluginProviderCatalogModel struct {
@@ -337,6 +340,51 @@ func providerCatalogEntryFromPluginCapability(plugin pluginmeta.Descriptor, adap
 		}
 	}
 	return ProviderCatalogEntry{}, false
+}
+
+func (s *Server) providerCatalogModelsAccountRequiredError(catalogID string, providerType string) *HTTPError {
+	manifestEntry, ok := s.pluginProviderCatalogManifestEntry(catalogID, providerType)
+	if !ok {
+		return nil
+	}
+	code := strings.TrimSpace(manifestEntry.ModelsAccountRequiredErrorCode)
+	if code == "" {
+		return nil
+	}
+	message := firstNonEmpty(
+		strings.TrimSpace(manifestEntry.ModelsAccountRequiredErrorMessage),
+		"Connect a provider account before loading its models",
+	)
+	return NewHTTPError(http.StatusConflict, code, message)
+}
+
+func (s *Server) pluginProviderCatalogManifestEntry(catalogID string, providerType string) (pluginProviderCatalogEntry, bool) {
+	catalogID = strings.TrimSpace(catalogID)
+	providerType = strings.TrimSpace(providerType)
+	if s == nil || s.pluginRegistry == nil || (catalogID == "" && providerType == "") {
+		return pluginProviderCatalogEntry{}, false
+	}
+	for _, plugin := range s.pluginRegistry.List() {
+		for _, capability := range plugin.Capabilities {
+			if capability.Kind != "provider_catalog" || capability.Name != "entry" || strings.TrimSpace(capability.Value) == "" {
+				continue
+			}
+			var manifestEntry pluginProviderCatalogEntry
+			if err := json.Unmarshal([]byte(capability.Value), &manifestEntry); err != nil {
+				continue
+			}
+			adapter := AdapterDescriptor{Type: firstNonEmpty(providerType, strings.TrimSpace(capability.Subject))}
+			entry := manifestEntry.providerCatalogEntry(plugin, adapter)
+			if catalogID != "" && entry.ID != catalogID {
+				continue
+			}
+			if providerType != "" && entry.Type != providerType {
+				continue
+			}
+			return manifestEntry, true
+		}
+	}
+	return pluginProviderCatalogEntry{}, false
 }
 
 func providerCatalogEntriesFromPluginCapabilities(plugin pluginmeta.Descriptor) []ProviderCatalogEntry {

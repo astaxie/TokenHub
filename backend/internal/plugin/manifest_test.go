@@ -577,6 +577,8 @@ capabilities:
       doc_url: https://stdio.example/docs
       categories:
         - custom
+      models_account_required_error_code: custom_account_required
+      models_account_required_error_message: Connect a Custom Stdio account before loading models
       models:
         - id: plugin-model
           display_name: Plugin Model
@@ -602,7 +604,10 @@ capabilities:
 	if err := json.Unmarshal([]byte(catalogValue), &catalog); err != nil {
 		t.Fatalf("decode provider catalog capability: %v", err)
 	}
-	if catalog.ID != "custom_stdio" || catalog.Type != "custom_stdio" || catalog.DisplayName != "Custom Stdio" || len(catalog.Models) != 1 {
+	if catalog.ID != "custom_stdio" || catalog.Type != "custom_stdio" || catalog.DisplayName != "Custom Stdio" ||
+		catalog.ModelsAccountRequiredErrorCode != "custom_account_required" ||
+		catalog.ModelsAccountRequiredErrorMessage != "Connect a Custom Stdio account before loading models" ||
+		len(catalog.Models) != 1 {
 		t.Fatalf("provider catalog capability = %+v", catalog)
 	}
 }

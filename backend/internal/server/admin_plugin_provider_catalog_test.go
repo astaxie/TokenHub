@@ -225,6 +225,47 @@ func TestAdminPluginProviderCatalogGetUsesDeclaredAccountResource(t *testing.T) 
 	}
 }
 
+func TestAdminPluginProviderCatalogGetUsesDeclaredAccountRequiredError(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "account_required_catalog_provider"
+	pluginID := "tokenhub.provider.account-required-catalog"
+	entry := pluginProviderCatalogEntry{
+		ID:                                "account-required-catalog",
+		Name:                              "Account Required Catalog Provider",
+		DisplayName:                       "Account Required Catalog Provider",
+		Type:                              providerType,
+		Source:                            "plugin-account-required",
+		ModelsAccountRequiredErrorCode:    "plugin_account_required",
+		ModelsAccountRequiredErrorMessage: "Connect a plugin account before loading models",
+	}
+	encoded, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("encode provider catalog entry: %v", err)
+	}
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Account Required Catalog Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityModels), Subject: providerType},
+			{Kind: "provider_catalog", Name: "entry", Subject: providerType, Value: string(encoded)},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register account-required catalog provider: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/account-required-catalog", nil, "plugin-catalog-admin")
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body, `"code":"plugin_account_required"`) {
+		t.Fatalf("GET account-required plugin provider catalog: expected declared conflict, got %d: %s", response.Code, response.Body)
+	}
+}
+
 func TestAdminCustomProviderCatalogPostUsesModelsPreviewAction(t *testing.T) {
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})

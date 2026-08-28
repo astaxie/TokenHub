@@ -139,16 +139,18 @@ func (resourceType *ManifestProviderResourceType) UnmarshalYAML(value *yaml.Node
 }
 
 type ManifestProviderCatalog struct {
-	ID          string                         `json:"id,omitempty" yaml:"id"`
-	Name        string                         `json:"name,omitempty" yaml:"name"`
-	DisplayName string                         `json:"display_name,omitempty" yaml:"display_name"`
-	Type        string                         `json:"type,omitempty" yaml:"type"`
-	BaseURL     string                         `json:"base_url,omitempty" yaml:"base_url"`
-	DocURL      string                         `json:"doc_url,omitempty" yaml:"doc_url"`
-	Categories  []string                       `json:"categories,omitempty" yaml:"categories"`
-	ModelsCount int                            `json:"models_count,omitempty" yaml:"models_count"`
-	Models      []ManifestProviderCatalogModel `json:"models,omitempty" yaml:"models"`
-	ETag        string                         `json:"etag,omitempty" yaml:"etag"`
+	ID                                string                         `json:"id,omitempty" yaml:"id"`
+	Name                              string                         `json:"name,omitempty" yaml:"name"`
+	DisplayName                       string                         `json:"display_name,omitempty" yaml:"display_name"`
+	Type                              string                         `json:"type,omitempty" yaml:"type"`
+	BaseURL                           string                         `json:"base_url,omitempty" yaml:"base_url"`
+	DocURL                            string                         `json:"doc_url,omitempty" yaml:"doc_url"`
+	Categories                        []string                       `json:"categories,omitempty" yaml:"categories"`
+	ModelsCount                       int                            `json:"models_count,omitempty" yaml:"models_count"`
+	Models                            []ManifestProviderCatalogModel `json:"models,omitempty" yaml:"models"`
+	ETag                              string                         `json:"etag,omitempty" yaml:"etag"`
+	ModelsAccountRequiredErrorCode    string                         `json:"models_account_required_error_code,omitempty" yaml:"models_account_required_error_code"`
+	ModelsAccountRequiredErrorMessage string                         `json:"models_account_required_error_message,omitempty" yaml:"models_account_required_error_message"`
 }
 
 type ManifestProviderCatalogModel struct {
@@ -893,6 +895,8 @@ func (catalog ManifestProviderCatalog) Configured() bool {
 		strings.TrimSpace(catalog.BaseURL) != "" ||
 		strings.TrimSpace(catalog.DocURL) != "" ||
 		strings.TrimSpace(catalog.ETag) != "" ||
+		strings.TrimSpace(catalog.ModelsAccountRequiredErrorCode) != "" ||
+		strings.TrimSpace(catalog.ModelsAccountRequiredErrorMessage) != "" ||
 		len(catalog.Categories) > 0 ||
 		catalog.ModelsCount > 0 ||
 		len(catalog.Models) > 0

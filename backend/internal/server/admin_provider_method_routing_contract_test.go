@@ -264,7 +264,25 @@ func TestAdminProviderCatalogRouteUsesProviderModelsAction(t *testing.T) {
 	}
 	server := New(store)
 	pluginID := "tokenhub.provider.provider-models-plugin"
-	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Provider Models Plugin", []string{providerType}, []string{string(AdapterCapabilityModels)}), AdapterRegistration{
+	catalogEntry := pluginProviderCatalogEntry{
+		ID:          "provider-models-plugin",
+		Name:        "Provider Models Plugin",
+		DisplayName: "Provider Models Plugin",
+		Type:        providerType,
+		Source:      "plugin-catalog",
+	}
+	encodedCatalogEntry, err := json.Marshal(catalogEntry)
+	if err != nil {
+		t.Fatalf("encode provider models catalog: %v", err)
+	}
+	descriptor := pluginmeta.BuiltInProvider(pluginID, "Provider Models Plugin", []string{providerType}, []string{string(AdapterCapabilityModels)})
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_catalog",
+		Name:    "entry",
+		Subject: providerType,
+		Value:   string(encodedCatalogEntry),
+	})
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
 		Type:         providerType,
 		Adapter:      MockAdapter{},
 		Capabilities: []AdapterCapability{AdapterCapabilityModels},
@@ -304,7 +322,7 @@ func TestAdminProviderCatalogRouteUsesProviderModelsAction(t *testing.T) {
 		t.Fatalf("register provider models action: %v", err)
 	}
 
-	response := methodRoutingRequest(server.Handler(), http.MethodGet, "/api/admin/provider-catalog/"+codexProviderCatalogID+"?resource_id="+resource.ID, "dev_admin_token")
+	response := methodRoutingRequest(server.Handler(), http.MethodGet, "/api/admin/provider-catalog/provider-models-plugin?resource_id="+resource.ID, "dev_admin_token")
 	if response.Code != http.StatusOK {
 		t.Fatalf("GET provider catalog through models action: expected 200, got %d: %s", response.Code, response.Body.String())
 	}

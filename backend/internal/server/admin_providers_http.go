@@ -96,49 +96,6 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 		return
 	}
-	if id == codexProviderCatalogID {
-		var (
-			entry ProviderCatalogEntry
-			err   error
-		)
-		switch r.Method {
-		case http.MethodGet:
-			resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id"))
-			if resourceID == "" {
-				resourceID = s.providerCatalogActiveAccountResourceID(s.codexProviderCatalogMetadata().Type, false)
-			}
-			if resourceID == "" {
-				writeError(w, r, NewHTTPError(http.StatusConflict, "codex_account_required", "Connect an OpenAI Codex subscription account before loading its models"))
-				return
-			}
-			var supported bool
-			entry, supported, err = s.executeProviderResourceModelsAction(r.Context(), user, resourceID)
-			if !supported {
-				entry, err = s.queryProviderResourceModels(r.Context(), resourceID)
-			}
-		case http.MethodPost:
-			var credentials ProviderResourceCredentials
-			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {
-				writeError(w, r, decodeErr)
-				return
-			}
-			var supported bool
-			catalogProviderType := s.codexProviderCatalogMetadata().Type
-			entry, supported, err = s.executeProviderCredentialModelsAction(r.Context(), user, catalogProviderType, credentials)
-			if !supported {
-				entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
-			}
-		default:
-			jsonMethodNotAllowed(http.MethodGet+", "+http.MethodPost)(w, r)
-			return
-		}
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
-		return
-	}
 	if entry, ok := s.pluginProviderCatalogEntry(id); ok && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
 		if r.Method == http.MethodPost {
 			var payload map[string]any
@@ -195,6 +152,10 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				writeJSON(w, http.StatusOK, map[string]any{"data": pluginEntry, "source": pluginEntry.Source})
 				return
 			}
+		}
+		if accountErr := s.providerCatalogModelsAccountRequiredError(id, entry.Type); accountErr != nil {
+			writeError(w, r, accountErr)
+			return
 		}
 		merged, source, _, mergeErr := s.providerCatalogEntryWithPlugins(r.Context(), id, r.URL.Query().Get("refresh") == "true")
 		if mergeErr != nil {
