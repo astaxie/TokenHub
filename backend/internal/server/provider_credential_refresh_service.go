@@ -16,6 +16,7 @@ const providerCredentialRefreshConcurrency = 4
 type ProviderCredentialRefreshService struct {
 	store         Store
 	pluginRefresh providerCredentialRefreshFunc
+	pluginJob     providerCredentialRefreshBackgroundJobFunc
 
 	schedulerOnce sync.Once
 	schedulerStop context.CancelFunc
@@ -23,6 +24,7 @@ type ProviderCredentialRefreshService struct {
 }
 
 type providerCredentialRefreshFunc func(context.Context, ProviderResource) (bool, error)
+type providerCredentialRefreshBackgroundJobFunc func(providerType string) bool
 
 type providerNativeCredentialRefreshSupportChecker interface {
 	SupportsNativeProviderResourceCredentialRefresh(resource ProviderResource) bool
@@ -46,11 +48,11 @@ func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		providerType := ""
-		if provider, ok := providersByID[resource.ProviderID]; ok {
-			providerType = provider.Type
+		providerType, due := providerResourceCredentialRefreshProviderType(s.store, providersByID, resource)
+		if !due {
+			continue
 		}
-		if !s.store.IsProviderAccountResourceType(providerType, resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[providerResourceReauthorizationRequiredOption] == "true" {
+		if s.pluginJob != nil && s.pluginJob(providerType) {
 			continue
 		}
 		resources = append(resources, resource)
@@ -81,6 +83,20 @@ func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 	}
 	close(jobs)
 	workers.Wait()
+}
+
+func providerResourceCredentialRefreshProviderType(store Store, providersByID map[string]Provider, resource ProviderResource) (string, bool) {
+	provider, ok := providersByID[resource.ProviderID]
+	if !ok {
+		return "", false
+	}
+	if !store.IsProviderAccountResourceType(provider.Type, resource.ResourceType) ||
+		resource.Status != StatusActive ||
+		resource.CredentialSummary["has_refresh_token"] != "true" ||
+		resource.CredentialSummary[providerResourceReauthorizationRequiredOption] == "true" {
+		return provider.Type, false
+	}
+	return provider.Type, true
 }
 
 func (s *ProviderCredentialRefreshService) renewResource(ctx context.Context, resource ProviderResource) {

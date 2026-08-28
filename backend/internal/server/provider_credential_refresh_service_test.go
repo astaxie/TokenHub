@@ -76,6 +76,118 @@ func TestProviderCredentialRefreshServiceRenewsExpiringOpenAIAccounts(t *testing
 	}
 }
 
+func TestServerCredentialRefreshSchedulerSkipsProviderBackgroundRefreshJobs(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{Name: "Codex Background OAuth", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID: provider.ID, Name: "Codex Background OAuth Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType: "oauth", AccessToken: "access-before-background", RefreshToken: "refresh-before-background", ClientID: openAIAccountOAuthClientID,
+			ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int64
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("refresh_token") != "refresh-before-background" {
+			t.Fatalf("unexpected refresh request: %v", r.Form)
+		}
+		w.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access-after-background", "refresh_token": "refresh-after-background", "expires_in": 3600})
+	}))
+	defer tokenServer.Close()
+	previousEndpoint := openAIAccountOAuthTokenEndpoint
+	openAIAccountOAuthTokenEndpoint = tokenServer.URL
+	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
+
+	server.credentialRefresh.RunDue(context.Background())
+	if requests.Load() != 0 {
+		t.Fatalf("core credential scheduler sent %d token requests, want background job ownership", requests.Load())
+	}
+
+	record, err := server.pluginBackgroundRunner.Run(context.Background(), pluginmeta.BackgroundJobInvocation{
+		PluginID: "tokenhub.provider.openai-codex",
+		JobID:    "openai_codex.credentials.refresh_due",
+		Trigger:  "manual",
+	})
+	if err != nil {
+		t.Fatalf("run credential refresh background job: %v", err)
+	}
+	data := record.Result.Data.(map[string]int)
+	if data["refreshed"] != 1 || data["failed"] != 0 {
+		t.Fatalf("credential refresh job result = %+v", data)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("background credential job sent %d token requests, want 1", requests.Load())
+	}
+	credentials, err := store.RefreshProviderResourceCredentials(context.Background(), resource.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credentials.AccessToken != "access-after-background" || credentials.RefreshToken != "refresh-after-background" {
+		t.Fatalf("expected background-refreshed credentials to be stored, got %+v", credentials)
+	}
+}
+
+func TestProviderQuotaRefreshBackgroundJobPersistsQuotaSnapshots(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{Name: "Codex Background Quota", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID: provider.ID, Name: "Codex Background Quota Account", ResourceType: ProviderResourceOpenAISubscription, Status: StatusActive, Healthy: true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType: "oauth", AccessToken: "quota-access", AccountID: "acc_quota_background", ClientID: openAIAccountOAuthClientID,
+			ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int64
+	quotaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Header.Get("authorization") != "Bearer quota-access" || r.Header.Get("chatgpt-account-id") != "acc_quota_background" {
+			t.Fatalf("unexpected quota headers: authorization=%q account=%q", r.Header.Get("authorization"), r.Header.Get("chatgpt-account-id"))
+		}
+		w.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(w).Encode(OpenAIAccountQuota{
+			UserID:    "usr_quota_background",
+			AccountID: "acc_quota_background",
+			Email:     "quota.owner@example.com",
+			PlanType:  "plus",
+		})
+	}))
+	defer quotaServer.Close()
+	server.codexSubscription.QuotaURL = quotaServer.URL
+
+	record, err := server.pluginBackgroundRunner.Run(context.Background(), pluginmeta.BackgroundJobInvocation{
+		PluginID: "tokenhub.provider.openai-codex",
+		JobID:    "openai_codex.quota.refresh_due",
+		Trigger:  "manual",
+	})
+	if err != nil {
+		t.Fatalf("run quota refresh background job: %v", err)
+	}
+	data := record.Result.Data.(map[string]int)
+	if data["refreshed"] != 1 || data["failed"] != 0 {
+		t.Fatalf("quota refresh job result = %+v", data)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("quota job sent %d upstream requests, want 1", requests.Load())
+	}
+	observation, ok := store.GetProviderResourceObservation(resource.ID)
+	if !ok || observation.QuotaFetchedAt == nil || !strings.Contains(observation.QuotaSnapshot, "quota.owner@example.com") {
+		t.Fatalf("quota observation = %+v, %v", observation, ok)
+	}
+}
+
 func TestProviderCredentialRefreshServiceUsesNativeRefreshProfilePolicy(t *testing.T) {
 	store := NewMemoryStore()
 	providerType := "profile_oauth_subscription"

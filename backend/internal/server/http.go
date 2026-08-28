@@ -258,6 +258,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		providerProxyPolicy: providerProxyPolicy,
 	}
 	registerBuiltinPluginActions(s)
+	registerBuiltinPluginBackgroundJobs(s)
 	codexSubscription.ImageCapabilityProfiles = func(providerType string) []providerImageCapabilityRouteProfile {
 		profiles := []providerImageCapabilityRouteProfile{}
 		for _, profile := range providerImageCapabilityRouteProfilesFromActions(pluginActions.List()) {
@@ -269,6 +270,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	}
 	s.syncProviderImageCapabilityRouteProfiles()
 	s.credentialRefresh.pluginRefresh = s.refreshProviderResourceCredentialsWithPluginAction
+	s.credentialRefresh.pluginJob = s.providerCredentialRefreshBackgroundJobRegistered
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,
 		DecodeJSONOptional: s.decodeJSONOptional,
