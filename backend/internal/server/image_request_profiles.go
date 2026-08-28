@@ -7,6 +7,10 @@ import (
 
 const imageRequestSizePolicyGPTImage2 = "gpt-image-2"
 
+func defaultImageRequestQualities() []string {
+	return []string{"auto", "low", "medium", "high"}
+}
+
 func (s *Server) applyImageGenerationRequestAliases(r *http.Request, request *imageGenerationRequest) {
 	if s == nil || request == nil {
 		return
@@ -85,4 +89,13 @@ func (s *Server) imageModelSupportsSize(model string, size string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *Server) imageModelSupportsQuality(model string, quality string) bool {
+	profile, ok := s.providerImageCapabilityRouteProfileForModel(model)
+	if !ok {
+		return stringInList(quality, defaultImageRequestQualities())
+	}
+	profile.withDefaults()
+	return stringInList(quality, profile.RequestAllowedQualities)
 }

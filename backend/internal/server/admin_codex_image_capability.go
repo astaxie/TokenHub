@@ -344,6 +344,7 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 		RequestSupportsMask:         false,
 		RequestSupportsMaskSet:      true,
 		RequestSizePolicy:           imageRequestSizePolicyGPTImage2,
+		RequestAllowedQualities:     defaultImageRequestQualities(),
 	}
 }
 

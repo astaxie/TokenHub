@@ -768,6 +768,7 @@ func TestOpenAICodexImageCapabilityActionExposesErrorMetadata(t *testing.T) {
 		"request.default_model",
 		"request.supports_mask",
 		"request.size_policy",
+		"request.allowed_qualities",
 	} {
 		if descriptor.Metadata[key] == "" {
 			t.Fatalf("descriptor missing probe request metadata for %s", key)

@@ -142,3 +142,34 @@ func TestImageRequestAllowedSizesUsePluginMetadata(t *testing.T) {
 		t.Fatalf("plugin disallowed size was not rejected: %v", err)
 	}
 }
+
+func TestImageRequestAllowedQualitiesUsePluginMetadata(t *testing.T) {
+	server := &Server{pluginActions: pluginmeta.NewActionBroker()}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi-image-quality",
+		ActionID:   "kimi.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "kimi_subscription",
+		Metadata: map[string]string{
+			"public_model":              "kimi-image",
+			"upstream_model":            "moonshot-image",
+			"request.allowed_qualities": "standard",
+			"request.allowed_sizes":     "1024x1024",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	accepted := imageGenerationRequest{Model: "kimi-image", Prompt: "Draw one square.", N: 1, Quality: "standard", Size: "1024x1024"}
+	if err := server.normalizeImageGenerationRequest(&accepted); err != nil {
+		t.Fatalf("plugin allowed quality was rejected: %v", err)
+	}
+
+	rejected := imageGenerationRequest{Model: "kimi-image", Prompt: "Draw one square.", N: 1, Quality: "low", Size: "1024x1024"}
+	if err := server.normalizeImageGenerationRequest(&rejected); err == nil || AsHTTPError(err).Code != "invalid_quality" {
+		t.Fatalf("plugin disallowed quality was not rejected: %v", err)
+	}
+}

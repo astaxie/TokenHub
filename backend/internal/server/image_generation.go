@@ -1112,15 +1112,15 @@ func normalizedImageOption(value string, fallback string) string {
 }
 
 func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
-	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName, nil)
+	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName, nil, nil)
 }
 
 func (s *Server) normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 	models, defaultModel := s.imageGenerationModelsAndDefault()
-	return normalizeImageGenerationRequestForModels(request, models, defaultModel, s.imageModelSupportsSize)
+	return normalizeImageGenerationRequestForModels(request, models, defaultModel, s.imageModelSupportsSize, s.imageModelSupportsQuality)
 }
 
-func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string, supportsSize func(string, string) bool) error {
+func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string, supportsSize func(string, string) bool, supportsQuality func(string, string) bool) error {
 	request.Model = strings.TrimSpace(request.Model)
 	if request.Model == "" {
 		request.Model = strings.TrimSpace(defaultModel)
@@ -1140,8 +1140,13 @@ func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, s
 		return NewHTTPError(http.StatusBadRequest, "unsupported_image_count", "Image generation currently supports n=1")
 	}
 	request.Quality = normalizedImageOption(request.Quality, "auto")
-	if request.Quality != "auto" && request.Quality != "low" && request.Quality != "medium" && request.Quality != "high" {
-		return NewHTTPError(http.StatusBadRequest, "invalid_quality", "quality must be auto, low, medium, or high")
+	if supportsQuality == nil {
+		supportsQuality = func(_ string, quality string) bool {
+			return stringInList(quality, defaultImageRequestQualities())
+		}
+	}
+	if !supportsQuality(request.Model, request.Quality) {
+		return NewHTTPError(http.StatusBadRequest, "invalid_quality", "quality is not supported by the selected image model")
 	}
 	request.Size = normalizedImageOption(request.Size, "auto")
 	if supportsSize == nil {
