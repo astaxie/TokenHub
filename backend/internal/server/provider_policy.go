@@ -7,6 +7,8 @@ import (
 
 const (
 	providerAuthModeOption                             = "auth_mode"
+	providerAuthModeInvalidErrorCodePolicy             = "auth_mode_invalid_error_code"
+	providerAuthModeInvalidErrorMessagePolicy          = "auth_mode_invalid_error_message"
 	providerAPIKeyRequiredOption                       = "api_key_required"
 	providerCredentialsScopeOption                     = "credentials_scope"
 	providerCredentialsScopeProvider                   = "provider"

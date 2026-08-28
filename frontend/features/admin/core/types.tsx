@@ -272,6 +272,8 @@ export type AdapterDescriptor = {
   provider_policy?: {
     route_protocols?: string[];
     auth_modes?: string[];
+    auth_mode_invalid_error_code?: string;
+    auth_mode_invalid_error_message?: string;
     supports_custom_headers: boolean;
     api_key_required?: boolean;
     route_requires_resource?: boolean;

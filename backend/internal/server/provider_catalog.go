@@ -800,7 +800,7 @@ func applyProviderModelDiscoveryAuth(httpReq *http.Request, endpoint *url.URL, r
 			httpReq.Header.Set("x-api-key", apiKey)
 		case "":
 		default:
-			return providerAuthModeInvalidError(req.Type)
+			return providerAuthModeInvalidError(descriptor.ProviderPolicy)
 		}
 	default:
 		return NewHTTPError(http.StatusBadRequest, "provider_model_discovery_auth_invalid", "Provider model discovery authentication mode is not supported")
@@ -810,7 +810,7 @@ func applyProviderModelDiscoveryAuth(httpReq *http.Request, endpoint *url.URL, r
 
 func providerModelDiscoveryAuthMode(req ProviderCreateRequest, descriptor AdapterDescriptor) (string, error) {
 	provider := Provider{Type: strings.TrimSpace(req.Type), APIKey: strings.TrimSpace(req.APIKey), Options: req.Options}
-	if err := configureProviderAuthMode(&provider, req.AnthropicAuthType, descriptor.ProviderPolicy.AuthModes...); err != nil {
+	if err := configureProviderAuthMode(&provider, req.AnthropicAuthType, descriptor.ProviderPolicy); err != nil {
 		return "", err
 	}
 	if mode := providerConfiguredAuthMode(provider); mode != "" {

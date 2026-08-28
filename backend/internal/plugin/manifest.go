@@ -68,6 +68,8 @@ type ManifestCapabilities struct {
 type ManifestProvider struct {
 	RouteProtocols               []string                `yaml:"route_protocols"`
 	AuthModes                    []string                `yaml:"auth_modes"`
+	AuthModeInvalidErrorCode     string                  `yaml:"auth_mode_invalid_error_code"`
+	AuthModeInvalidErrorMessage  string                  `yaml:"auth_mode_invalid_error_message"`
 	SupportsCustomHeaders        *bool                   `yaml:"supports_custom_headers"`
 	APIKeyRequired               *bool                   `yaml:"api_key_required"`
 	RouteRequiresResource        *bool                   `yaml:"route_requires_resource"`
@@ -590,6 +592,22 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "auth_mode",
 				Subject: providerType,
 				Value:   authMode,
+			})
+		}
+		if code := strings.TrimSpace(m.Capabilities.Provider.AuthModeInvalidErrorCode); code != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "auth_mode_invalid_error_code",
+				Subject: providerType,
+				Value:   code,
+			})
+		}
+		if message := strings.TrimSpace(m.Capabilities.Provider.AuthModeInvalidErrorMessage); message != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "auth_mode_invalid_error_message",
+				Subject: providerType,
+				Value:   message,
 			})
 		}
 		for _, resourceType := range m.Capabilities.ResourceTypes {

@@ -24,14 +24,16 @@ func TestAnthropicEndpointURLNormalizesVersionPrefix(t *testing.T) {
 func TestConfigureProviderAuthModeRequiresDeclaredModes(t *testing.T) {
 	provider := Provider{Type: ProviderAnthropic, Options: map[string]string{}}
 
-	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer); err != nil {
+	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, AdapterProviderPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := providerConfiguredAuthMode(provider); got != "" {
 		t.Fatalf("auth mode without descriptor modes = %q, want empty", got)
 	}
 
-	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, anthropicAuthTypeAPIKey, anthropicAuthTypeBearer); err != nil {
+	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, AdapterProviderPolicy{
+		AuthModes: []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if got := provider.Options[providerAuthModeOption]; got != anthropicAuthTypeBearer {

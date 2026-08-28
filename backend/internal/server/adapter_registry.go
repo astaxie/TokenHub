@@ -38,6 +38,8 @@ type AdapterDescriptor struct {
 type AdapterProviderPolicy struct {
 	RouteProtocols               []string                    `json:"route_protocols,omitempty"`
 	AuthModes                    []string                    `json:"auth_modes,omitempty"`
+	AuthModeInvalidErrorCode     string                      `json:"auth_mode_invalid_error_code,omitempty"`
+	AuthModeInvalidErrorMessage  string                      `json:"auth_mode_invalid_error_message,omitempty"`
 	SupportsCustomHeaders        bool                        `json:"supports_custom_headers"`
 	APIKeyRequired               bool                        `json:"api_key_required"`
 	RouteRequiresResource        bool                        `json:"route_requires_resource"`
@@ -204,6 +206,8 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 	descriptor.ProviderPolicy = AdapterProviderPolicy{
 		RouteProtocols:               adapterRouteProtocols(r, descriptor),
 		AuthModes:                    adapterAuthModes(r, descriptor.Type),
+		AuthModeInvalidErrorCode:     adapterAuthModeInvalidErrorCode(r, descriptor.Type),
+		AuthModeInvalidErrorMessage:  adapterAuthModeInvalidErrorMessage(r, descriptor.Type),
 		SupportsCustomHeaders:        adapterSupportsProviderHeaders(r, descriptor.Type),
 		APIKeyRequired:               adapterAPIKeyRequired(r, descriptor.Type),
 		RouteRequiresResource:        adapterRequiresRouteResource(r, descriptor.Type),
@@ -230,6 +234,20 @@ func adapterRouteProtocols(registry *AdapterRegistry, descriptor AdapterDescript
 
 func adapterAuthModes(registry *AdapterRegistry, providerType string) []string {
 	return providerPolicyStringValues(registry, providerType, providerAuthModeOption)
+}
+
+func adapterAuthModeInvalidErrorCode(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, providerAuthModeInvalidErrorCodePolicy); ok {
+		return value
+	}
+	return ""
+}
+
+func adapterAuthModeInvalidErrorMessage(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, providerAuthModeInvalidErrorMessagePolicy); ok {
+		return value
+	}
+	return ""
 }
 
 func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType string) bool {

@@ -474,10 +474,11 @@ const (
 	anthropicAuthTypeBearer = "bearer"
 )
 
-func configureProviderAuthMode(provider *Provider, requested string, supportedModes ...string) error {
+func configureProviderAuthMode(provider *Provider, requested string, policy AdapterProviderPolicy) error {
 	if provider == nil {
 		return nil
 	}
+	supportedModes := policy.AuthModes
 	if len(supportedModes) == 0 {
 		return nil
 	}
@@ -489,7 +490,7 @@ func configureProviderAuthMode(provider *Provider, requested string, supportedMo
 		return nil
 	}
 	if !providerAuthModeAllowed(authType, supportedModes) {
-		return providerAuthModeInvalidError(provider.Type)
+		return providerAuthModeInvalidError(policy)
 	}
 	if provider.Options == nil {
 		provider.Options = map[string]string{}
@@ -510,15 +511,16 @@ func providerAuthModeAllowed(authType string, supportedModes []string) bool {
 	return false
 }
 
-func providerAuthModeInvalidError(providerType string) error {
-	if providerType == ProviderAnthropic {
-		return NewHTTPError(
-			http.StatusBadRequest,
-			"provider_anthropic_auth_type_invalid",
-			"Anthropic authentication type must be x-api-key or bearer",
-		)
+func providerAuthModeInvalidError(policy AdapterProviderPolicy) error {
+	code := strings.TrimSpace(policy.AuthModeInvalidErrorCode)
+	if code == "" {
+		code = "provider_auth_mode_invalid"
 	}
-	return NewHTTPError(http.StatusBadRequest, "provider_auth_mode_invalid", "Provider authentication mode is not supported")
+	message := strings.TrimSpace(policy.AuthModeInvalidErrorMessage)
+	if message == "" {
+		message = "Provider authentication mode is not supported"
+	}
+	return NewHTTPError(http.StatusBadRequest, code, message)
 }
 
 func providerConfiguredAuthMode(provider Provider) string {

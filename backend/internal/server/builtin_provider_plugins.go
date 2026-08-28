@@ -23,6 +23,8 @@ type builtinProviderAdapter struct {
 	errorProfile                 string
 	defaultCatalogProviderType   bool
 	authModes                    []string
+	authModeInvalidErrorCode     string
+	authModeInvalidErrorMessage  string
 	modelDiscovery               AdapterModelDiscoveryPolicy
 	resourceTypes                []pluginmeta.ManifestProviderResourceType
 	catalogEntry                 *pluginProviderCatalogEntry
@@ -168,6 +170,8 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		adapter:                      adapters[ProviderAnthropic],
 		routeProtocols:               []string{providerRouteProtocolAnthropic},
 		authModes:                    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		authModeInvalidErrorCode:     "provider_anthropic_auth_type_invalid",
+		authModeInvalidErrorMessage:  "Anthropic authentication type must be x-api-key or bearer",
 		claudeCodeAttributionDefault: claudeCodeAttributionPreserve,
 		modelDiscovery: AdapterModelDiscoveryPolicy{
 			Path: "/v1/models",
@@ -537,6 +541,24 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    providerAuthModeOption,
 			Subject: adapter.providerType,
 			Value:   authMode,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if code := strings.TrimSpace(adapter.authModeInvalidErrorCode); code != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    providerAuthModeInvalidErrorCodePolicy,
+			Subject: adapter.providerType,
+			Value:   code,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if message := strings.TrimSpace(adapter.authModeInvalidErrorMessage); message != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    providerAuthModeInvalidErrorMessagePolicy,
+			Subject: adapter.providerType,
+			Value:   message,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}
