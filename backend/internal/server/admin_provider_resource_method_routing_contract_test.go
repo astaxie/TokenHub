@@ -683,6 +683,10 @@ func TestAdminProviderResourceImageCapabilityRouteUsesPluginAction(t *testing.T)
 		Kind:       pluginmeta.ActionKindMutate,
 		Capability: "image.capability.configure",
 		Subject:    providerType,
+		Metadata: map[string]string{
+			"audit_action":                "configure_plugin_image",
+			"enabled_required_error_code": "plugin_image_enabled_required",
+		},
 	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		actionCalls++
 		var payload struct {
@@ -708,7 +712,7 @@ func TestAdminProviderResourceImageCapabilityRouteUsesPluginAction(t *testing.T)
 	app := server.Handler()
 
 	missingEnabled := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]any{}, "dev_admin_token")
-	assertJSONError(t, missingEnabled, http.StatusBadRequest, "codex_image_enabled_required")
+	assertJSONError(t, missingEnabled, http.StatusBadRequest, "plugin_image_enabled_required")
 	if actionCalls != 0 {
 		t.Fatalf("missing enabled request reached image capability action: %d", actionCalls)
 	}
@@ -723,7 +727,7 @@ func TestAdminProviderResourceImageCapabilityRouteUsesPluginAction(t *testing.T)
 		!strings.Contains(response.Body.String(), `"route_id":"route_plugin_image"`) {
 		t.Fatalf("image capability route did not use action: calls=%d body=%s", actionCalls, response.Body.String())
 	}
-	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "configure_codex_image", "provider_resource", resource.ID)
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "configure_plugin_image", "provider_resource", resource.ID)
 }
 
 func TestAdminProviderResourceRoutesKeepStaticPathsAheadOfResourceIDs(t *testing.T) {

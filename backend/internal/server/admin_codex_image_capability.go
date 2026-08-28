@@ -77,8 +77,9 @@ func (s *Server) handleAdminProviderImageCapability(w http.ResponseWriter, r *ht
 		writeError(w, r, err)
 		return
 	}
+	profile := s.providerImageCapabilityProfileForResource(resourceID)
 	if req.Enabled == nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "codex_image_enabled_required", "The enabled field is required"))
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, profile.EnabledRequiredErrorCode, profile.EnabledRequiredMessage))
 		return
 	}
 	enabled := *req.Enabled
@@ -88,20 +89,40 @@ func (s *Server) handleAdminProviderImageCapability(w http.ResponseWriter, r *ht
 	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
-		s.recordAdminAuditWithStatus(r, user, "configure_codex_image", "provider_resource", resourceID, "failed", httpErr.Code, "", map[string]any{
+		s.recordAdminAuditWithStatus(r, user, profile.AuditAction, "provider_resource", resourceID, "failed", httpErr.Code, "", map[string]any{
 			"enabled":    enabled,
 			"error_code": httpErr.Code,
 		})
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "configure_codex_image", "provider_resource", resourceID, "", map[string]any{
+	s.recordAdminAudit(r, user, profile.AuditAction, "provider_resource", resourceID, "", map[string]any{
 		"enabled":    result.Enabled,
 		"tested":     result.Tested,
 		"capability": result.Capability,
 		"route_id":   result.RouteID,
 	})
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) providerImageCapabilityProfileForResource(resourceID string) providerImageCapabilityRouteProfile {
+	profile := providerImageCapabilityRouteProfile{}
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		profile.withDefaults()
+		return profile
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		profile.withDefaults()
+		return profile
+	}
+	action, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityImageGenerate, "image.capability.configure", resource.ResourceType)
+	if !ok {
+		profile.withDefaults()
+		return profile
+	}
+	return providerImageCapabilityProfileFromAction(action)
 }
 
 func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID string, enabled bool, profile providerImageCapabilityRouteProfile) (providerImageCapabilityResult, error) {

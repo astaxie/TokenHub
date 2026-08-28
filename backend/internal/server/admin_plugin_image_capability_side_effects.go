@@ -27,6 +27,9 @@ type providerImageCapabilityRouteProfile struct {
 	UpstreamModelErrorMessage  string
 	CapabilityErrorCode        string
 	CapabilityErrorMessage     string
+	EnabledRequiredErrorCode   string
+	EnabledRequiredMessage     string
+	AuditAction                string
 }
 
 func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
@@ -85,6 +88,11 @@ func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, desc
 }
 
 func providerImageCapabilityRouteProfileFromAction(descriptor pluginmeta.ActionDescriptor) (providerImageCapabilityRouteProfile, bool) {
+	profile := providerImageCapabilityProfileFromAction(descriptor)
+	return profile, profile.PublicModel != "" && profile.UpstreamModel != ""
+}
+
+func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescriptor) providerImageCapabilityRouteProfile {
 	profile := providerImageCapabilityRouteProfile{
 		ProviderType:  strings.TrimSpace(descriptor.Subject),
 		ResourceType:  strings.TrimSpace(firstNonEmpty(descriptor.Metadata["provider_resource_type"], descriptor.Metadata["resource_type"])),
@@ -138,9 +146,21 @@ func providerImageCapabilityRouteProfileFromAction(descriptor pluginmeta.ActionD
 			descriptor.Metadata["route_error.capability.message"],
 			descriptor.Metadata["capability_error_message"],
 		)),
+		EnabledRequiredErrorCode: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["enabled_required_error_code"],
+			descriptor.Metadata["request_error.enabled_required.code"],
+		)),
+		EnabledRequiredMessage: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["enabled_required_error_message"],
+			descriptor.Metadata["request_error.enabled_required.message"],
+		)),
+		AuditAction: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["audit_action"],
+			descriptor.Metadata["admin_audit_action"],
+		)),
 	}
 	profile.withDefaults()
-	return profile, profile.PublicModel != "" && profile.UpstreamModel != ""
+	return profile
 }
 
 func providerImageCapabilityRouteProfilesFromActions(actions []pluginmeta.ActionDescriptor) []providerImageCapabilityRouteProfile {
@@ -307,6 +327,15 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if p.CapabilityErrorMessage == "" {
 		p.CapabilityErrorMessage = "Test image generation with an eligible provider resource before activating this route"
 	}
+	if p.EnabledRequiredErrorCode == "" {
+		p.EnabledRequiredErrorCode = "provider_image_capability_enabled_required"
+	}
+	if p.EnabledRequiredMessage == "" {
+		p.EnabledRequiredMessage = "The enabled field is required"
+	}
+	if p.AuditAction == "" {
+		p.AuditAction = "configure_provider_image_capability"
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -338,6 +367,9 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.UpstreamModelErrorMessage,
 		p.CapabilityErrorCode,
 		p.CapabilityErrorMessage,
+		p.EnabledRequiredErrorCode,
+		p.EnabledRequiredMessage,
+		p.AuditAction,
 	}, "\x00")
 }
 
