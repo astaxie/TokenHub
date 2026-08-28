@@ -364,9 +364,10 @@ func providerCatalogEntryFromPluginCatalogCapability(plugin pluginmeta.Descripto
 }
 
 func (entry pluginProviderCatalogEntry) providerCatalogEntry(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) ProviderCatalogEntry {
+	modelCategories := providerModelCategoryDefinitionsFromPlugin(plugin)
 	models := make([]ProviderCatalogModel, 0, len(entry.Models))
 	for _, model := range entry.Models {
-		if converted, ok := model.providerCatalogModel(); ok {
+		if converted, ok := model.providerCatalogModelWithCategories(modelCategories); ok {
 			models = append(models, converted)
 		}
 	}
@@ -406,14 +407,18 @@ func (entry pluginProviderCatalogEntry) providerCatalogEntry(plugin pluginmeta.D
 }
 
 func (model pluginProviderCatalogModel) providerCatalogModel() (ProviderCatalogModel, bool) {
+	return model.providerCatalogModelWithCategories(nil)
+}
+
+func (model pluginProviderCatalogModel) providerCatalogModelWithCategories(modelCategories []providerModelCategoryDefinition) (ProviderCatalogModel, bool) {
 	id := strings.TrimSpace(model.ID)
 	if id == "" {
 		return ProviderCatalogModel{}, false
 	}
 	name := firstNonEmpty(strings.TrimSpace(model.Name), id)
 	displayName := firstNonEmpty(strings.TrimSpace(model.DisplayName), name)
-	category := standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(id, displayName)))
-	family := firstNonEmpty(strings.TrimSpace(model.Family), inferModelFamily(id))
+	category := standardModelCategoryWithDefinitions(firstNonEmpty(model.Category, inferModelCategoryWithDefinitions(id, displayName, modelCategories)), modelCategories)
+	family := firstNonEmpty(strings.TrimSpace(model.Family), inferModelFamilyWithDefinitions(id, modelCategories))
 	metadata := model.Metadata
 	if metadata == nil {
 		metadata = map[string]string{"source": "plugin"}
@@ -422,7 +427,7 @@ func (model pluginProviderCatalogModel) providerCatalogModel() (ProviderCatalogM
 		ID:                        id,
 		Name:                      name,
 		DisplayName:               displayName,
-		CanonicalName:             firstNonEmpty(strings.TrimSpace(model.CanonicalName), canonicalModelName(id, displayName)),
+		CanonicalName:             firstNonEmpty(strings.TrimSpace(model.CanonicalName), canonicalModelNameWithDefinitions(id, displayName, modelCategories)),
 		Category:                  category,
 		Family:                    family,
 		Type:                      firstNonEmpty(strings.TrimSpace(model.Type), "chat"),

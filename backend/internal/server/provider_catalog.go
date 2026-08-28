@@ -23,13 +23,14 @@ const (
 )
 
 type providerCatalogService struct {
-	store          Store
-	catalogFile    string
-	upstreamURL    string
-	upstreamClient providerCatalogHTTPClient
-	catalogTypes   map[string]string
-	builtinEntries []ProviderCatalogEntry
-	defaultType    string
+	store           Store
+	catalogFile     string
+	upstreamURL     string
+	upstreamClient  providerCatalogHTTPClient
+	catalogTypes    map[string]string
+	modelCategories []providerModelCategoryDefinition
+	builtinEntries  []ProviderCatalogEntry
+	defaultType     string
 }
 
 func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
@@ -52,6 +53,7 @@ func newProviderCatalogService(store Store, catalogFile string, clients ...provi
 
 func (s *providerCatalogService) UsePluginCatalogTypes(registry *AdapterRegistry) {
 	s.catalogTypes = providerCatalogTypesFromRegistry(registry)
+	s.modelCategories = providerModelCategoryDefinitionsFromRegistry(registry)
 	s.builtinEntries = providerCatalogSeedEntriesFromRegistry(registry)
 	if defaultType := providerCatalogDefaultTypeFromRegistry(registry); defaultType != "" {
 		s.defaultType = defaultType
@@ -76,29 +78,6 @@ func defaultProviderCatalogProviderType() string {
 // local catalog before the backend starts accepting requests.
 func (s *Server) InitializeProviderCatalog(ctx context.Context) (bool, error) {
 	return s.providerCatalog.Initialize(ctx)
-}
-
-var standardModelCategories = map[string]bool{
-	"codex":        true,
-	"openai":       true,
-	"claude":       true,
-	"deepseek":     true,
-	"gemini":       true,
-	"qwen":         true,
-	"glm":          true,
-	"kimi":         true,
-	"doubao":       true,
-	"ernie":        true,
-	"baichuan":     true,
-	"minimax":      true,
-	"stepfun":      true,
-	"wanx":         true,
-	"paddlepaddle": true,
-	"microsoft":    true,
-	"llama":        true,
-	"mistral":      true,
-	"grok":         true,
-	"custom":       true,
 }
 
 func (s *providerCatalogService) List(ctx context.Context, refresh bool) ([]ProviderCatalogEntry, string, error) {
@@ -298,7 +277,7 @@ func loadLocalProviderCatalog(catalogFile string) ([]ProviderCatalogEntry, error
 }
 
 func (s *providerCatalogService) loadLocalProviderCatalog() ([]ProviderCatalogEntry, error) {
-	return loadLocalProviderCatalogWithDefault(s.catalogFile, s.catalogTypes, s.defaultType)
+	return loadLocalProviderCatalogWithPolicy(s.catalogFile, s.catalogTypes, s.defaultType, s.modelCategories)
 }
 
 func loadLocalProviderCatalogWithTypes(catalogFile string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
@@ -306,11 +285,15 @@ func loadLocalProviderCatalogWithTypes(catalogFile string, catalogTypes map[stri
 }
 
 func loadLocalProviderCatalogWithDefault(catalogFile string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithPolicy(catalogFile, catalogTypes, defaultType, nil)
+}
+
+func loadLocalProviderCatalogWithPolicy(catalogFile string, catalogTypes map[string]string, defaultType string, modelCategories []providerModelCategoryDefinition) ([]ProviderCatalogEntry, error) {
 	content, err := os.ReadFile(catalogFile)
 	if err != nil {
 		return nil, fmt.Errorf("read provider catalog %s: %w", catalogFile, err)
 	}
-	entries, err := parseProviderCatalogWithDefault(content, providerCatalogLocalSource, catalogTypes, defaultType)
+	entries, err := parseProviderCatalogWithPolicy(content, providerCatalogLocalSource, catalogTypes, defaultType, modelCategories)
 	if err != nil {
 		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
 	}
@@ -326,6 +309,10 @@ func parseProviderCatalogWithTypes(content []byte, source string, catalogTypes m
 }
 
 func parseProviderCatalogWithDefault(content []byte, source string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
+	return parseProviderCatalogWithPolicy(content, source, catalogTypes, defaultType, nil)
+}
+
+func parseProviderCatalogWithPolicy(content []byte, source string, catalogTypes map[string]string, defaultType string, modelCategories []providerModelCategoryDefinition) ([]ProviderCatalogEntry, error) {
 	var payload struct {
 		Providers map[string]map[string]any `json:"providers"`
 	}
@@ -337,7 +324,7 @@ func parseProviderCatalogWithDefault(content []byte, source string, catalogTypes
 	}
 	entries := make([]ProviderCatalogEntry, 0, len(payload.Providers))
 	for id, raw := range payload.Providers {
-		entry := normalizeProviderCatalogEntryWithDefault(id, raw, catalogTypes, defaultType)
+		entry := normalizeProviderCatalogEntryWithPolicy(id, raw, catalogTypes, defaultType, modelCategories)
 		if entry.ID == "" || entry.Name == "" {
 			continue
 		}
@@ -362,6 +349,10 @@ func normalizeProviderCatalogEntryWithTypes(id string, raw map[string]any, catal
 }
 
 func normalizeProviderCatalogEntryWithDefault(id string, raw map[string]any, catalogTypes map[string]string, defaultType string) ProviderCatalogEntry {
+	return normalizeProviderCatalogEntryWithPolicy(id, raw, catalogTypes, defaultType, nil)
+}
+
+func normalizeProviderCatalogEntryWithPolicy(id string, raw map[string]any, catalogTypes map[string]string, defaultType string, modelCategories []providerModelCategoryDefinition) ProviderCatalogEntry {
 	baseURL := firstNonEmpty(catalogStringField(raw, "base_url"), catalogStringField(raw, "api"))
 	fallbackType := strings.TrimSpace(defaultType)
 	if fallbackType == "" {
@@ -383,7 +374,7 @@ func normalizeProviderCatalogEntryWithDefault(id string, raw map[string]any, cat
 			if !ok {
 				continue
 			}
-			model := normalizeProviderCatalogModel(modelMap)
+			model := normalizeProviderCatalogModelWithCategories(modelMap, modelCategories)
 			if model.ID == "" {
 				continue
 			}
@@ -391,11 +382,15 @@ func normalizeProviderCatalogEntryWithDefault(id string, raw map[string]any, cat
 		}
 	}
 	entry.ModelsCount = len(entry.Models)
-	entry.Categories, entry.CategoryCounts = catalogCategorySummary(entry.Models)
+	entry.Categories, entry.CategoryCounts = catalogCategorySummaryWithDefinitions(entry.Models, modelCategories)
 	return entry
 }
 
 func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
+	return normalizeProviderCatalogModelWithCategories(raw, nil)
+}
+
+func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCategories []providerModelCategoryDefinition) ProviderCatalogModel {
 	id := firstNonEmpty(catalogStringField(raw, "id"), catalogStringField(raw, "name"))
 	name := firstNonEmpty(catalogStringField(raw, "name"), id)
 	displayName := firstNonEmpty(catalogStringField(raw, "display_name"), name)
@@ -405,9 +400,9 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	modalities := catalogObjectField(raw, "modalities")
 	canonicalName := strings.TrimSpace(catalogStringField(raw, "canonical_name"))
 	if canonicalName == "" {
-		canonicalName = canonicalModelName(id, displayName)
+		canonicalName = canonicalModelNameWithDefinitions(id, displayName, modelCategories)
 	} else {
-		canonicalName = canonicalModelName(canonicalName, canonicalName)
+		canonicalName = canonicalModelNameWithDefinitions(canonicalName, canonicalName, modelCategories)
 	}
 	metadata := map[string]string{
 		"source": "local-provider-catalog",
@@ -434,8 +429,8 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 		Name:                      name,
 		DisplayName:               displayName,
 		CanonicalName:             canonicalName,
-		Category:                  catalogModelCategory(raw, id, displayName),
-		Family:                    firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
+		Category:                  catalogModelCategoryWithDefinitions(raw, id, displayName, modelCategories),
+		Family:                    firstNonEmpty(catalogStringField(raw, "family"), inferModelFamilyWithDefinitions(id, modelCategories)),
 		Type:                      modelType,
 		ContextWindow:             int64(catalogNumberField(limit, "context")),
 		MaxOutputTokens:           int64(catalogNumberField(limit, "output")),
@@ -461,10 +456,14 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 }
 
 func catalogModelCategory(raw map[string]any, id string, displayName string) string {
+	return catalogModelCategoryWithDefinitions(raw, id, displayName, nil)
+}
+
+func catalogModelCategoryWithDefinitions(raw map[string]any, id string, displayName string, modelCategories []providerModelCategoryDefinition) string {
 	if category := strings.TrimSpace(catalogStringField(raw, "category")); category != "" {
-		return standardModelCategory(category)
+		return standardModelCategoryWithDefinitions(category, modelCategories)
 	}
-	return inferModelCategory(id, displayName)
+	return inferModelCategoryWithDefinitions(id, displayName, modelCategories)
 }
 
 func catalogModelCapabilities(raw map[string]any, model ProviderCatalogModel) []string {
@@ -737,7 +736,7 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 5<<20)).Decode(&payload); err != nil {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_invalid_response", "Upstream models response is invalid")
 	}
-	models := customProviderModelsFromPayload(payload)
+	models := customProviderModelsFromPayloadWithDefinitions(payload, providerModelCategoryDefinitionsFromAdapter(descriptor.ProviderPolicy.ModelCategories))
 	if len(models) == 0 {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_empty", "Upstream did not return any models")
 	}
@@ -869,6 +868,10 @@ func providerModelsUpstreamError(status int) *HTTPError {
 }
 
 func customProviderModelsFromPayload(payload map[string]any) []ProviderCatalogModel {
+	return customProviderModelsFromPayloadWithDefinitions(payload, nil)
+}
+
+func customProviderModelsFromPayloadWithDefinitions(payload map[string]any, modelCategories []providerModelCategoryDefinition) []ProviderCatalogModel {
 	rawModels, _ := payload["data"].([]any)
 	if len(rawModels) == 0 {
 		rawModels, _ = payload["models"].([]any)
@@ -895,9 +898,9 @@ func customProviderModelsFromPayload(payload map[string]any) []ProviderCatalogMo
 			ID:                  id,
 			Name:                id,
 			DisplayName:         displayName,
-			CanonicalName:       canonicalModelName(id, displayName),
-			Category:            inferModelCategory(id, displayName),
-			Family:              inferModelFamily(id),
+			CanonicalName:       canonicalModelNameWithDefinitions(id, displayName, modelCategories),
+			Category:            inferModelCategoryWithDefinitions(id, displayName, modelCategories),
+			Family:              inferModelFamilyWithDefinitions(id, modelCategories),
 			Type:                modelType,
 			InputModalities:     []string{"text"},
 			OutputModalities:    []string{"text"},
@@ -997,126 +1000,14 @@ func normalizeModelModality(value string) string {
 	}
 }
 
-func inferModelFamily(id string) string {
-	normalized := strings.ToLower(id)
-	for _, family := range []string{"gpt", "claude", "gemini", "deepseek", "qwen", "llama", "mistral", "kimi", "doubao", "glm"} {
-		if strings.Contains(normalized, family) {
-			return family
-		}
-	}
-	parts := strings.FieldsFunc(normalized, func(r rune) bool {
-		return r == '-' || r == '/' || r == '_' || r == '.'
-	})
-	if len(parts) > 0 && parts[0] != "" {
-		return parts[0]
-	}
-	return "custom"
-}
-
-func inferModelCategory(id string, displayName string) string {
-	normalized := strings.ToLower(strings.Join([]string{id, displayName}, " "))
-	switch {
-	case strings.Contains(normalized, "codex"):
-		return "codex"
-	case strings.Contains(normalized, "gpt") || strings.Contains(normalized, "openai") || strings.Contains(normalized, "o1") || strings.Contains(normalized, "o3") || strings.Contains(normalized, "o4"):
-		return "openai"
-	case strings.Contains(normalized, "claude") || strings.Contains(normalized, "anthropic"):
-		return "claude"
-	case strings.Contains(normalized, "deepseek"):
-		return "deepseek"
-	case strings.Contains(normalized, "gemini") || strings.Contains(normalized, "google/"):
-		return "gemini"
-	case strings.Contains(normalized, "qwen") || strings.Contains(normalized, "dashscope") || strings.Contains(normalized, "alibaba"):
-		return "qwen"
-	case strings.Contains(normalized, "glm") || strings.Contains(normalized, "zhipu"):
-		return "glm"
-	case strings.Contains(normalized, "kimi") || strings.Contains(normalized, "moonshot"):
-		return "kimi"
-	case strings.Contains(normalized, "doubao") || strings.Contains(normalized, "volcengine"):
-		return "doubao"
-	case strings.Contains(normalized, "ernie"):
-		return "ernie"
-	case strings.Contains(normalized, "baichuan"):
-		return "baichuan"
-	case strings.Contains(normalized, "minimax") || strings.Contains(normalized, "hailuo"):
-		return "minimax"
-	case strings.Contains(normalized, "step-") || strings.Contains(normalized, "stepaudio"):
-		return "stepfun"
-	case strings.Contains(normalized, "wanx"):
-		return "wanx"
-	case strings.Contains(normalized, "paddleocr"):
-		return "paddlepaddle"
-	case strings.Contains(normalized, "phi-"):
-		return "microsoft"
-	case strings.Contains(normalized, "llama") || strings.Contains(normalized, "meta/"):
-		return "llama"
-	case strings.Contains(normalized, "mistral"):
-		return "mistral"
-	case strings.Contains(normalized, "grok") || strings.Contains(normalized, "xai/"):
-		return "grok"
-	default:
-		return "custom"
-	}
-}
-
-func standardModelCategory(category string) string {
-	category = strings.ToLower(strings.TrimSpace(category))
-	if category == "" {
-		return "custom"
-	}
-	if standardModelCategories[category] {
-		return category
-	}
-	return inferModelCategory(category, "")
-}
-
-func canonicalModelName(id string, displayName string) string {
-	value := strings.TrimSpace(id)
-	if idx := strings.LastIndex(value, "/"); idx >= 0 && idx < len(value)-1 {
-		value = value[idx+1:]
-	}
-	value = strings.TrimSpace(value)
-	if value == "" {
-		value = strings.TrimSpace(displayName)
-	}
-	value = strings.ToLower(value)
-	value = strings.ReplaceAll(value, " ", "-")
-	value = strings.ReplaceAll(value, "_", "-")
-	value = strings.ReplaceAll(value, "--", "-")
-	value = strings.Trim(value, "-")
-	value = normalizeCompactModelVersion(value, "deepseek")
-	value = normalizeCompactModelVersion(value, "claude")
-	value = normalizeCompactModelVersion(value, "gemini")
-	value = normalizeCompactModelVersion(value, "qwen")
-	value = normalizeCompactModelVersion(value, "gpt")
-	value = normalizeCompactModelVersion(value, "glm")
-	if value == "" {
-		return "custom-model"
-	}
-	return value
-}
-
-func normalizeCompactModelVersion(value string, prefix string) string {
-	compact := prefix + "v"
-	if strings.HasPrefix(value, compact) && len(value) > len(compact) {
-		next := value[len(compact)]
-		if next >= '0' && next <= '9' {
-			return prefix + "-v" + value[len(compact):]
-		}
-	}
-	if strings.HasPrefix(value, prefix) && len(value) > len(prefix) {
-		next := value[len(prefix)]
-		if next >= '0' && next <= '9' {
-			return prefix + "-" + value[len(prefix):]
-		}
-	}
-	return value
-}
-
 func catalogCategorySummary(models []ProviderCatalogModel) ([]string, map[string]int) {
+	return catalogCategorySummaryWithDefinitions(models, nil)
+}
+
+func catalogCategorySummaryWithDefinitions(models []ProviderCatalogModel, modelCategories []providerModelCategoryDefinition) ([]string, map[string]int) {
 	counts := map[string]int{}
 	for _, model := range models {
-		category := standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName)))
+		category := standardModelCategoryWithDefinitions(firstNonEmpty(model.Category, inferModelCategoryWithDefinitions(model.ID, model.DisplayName, modelCategories)), modelCategories)
 		if category == "" {
 			category = "custom"
 		}

@@ -83,7 +83,17 @@ type ManifestProvider struct {
 	DefaultCatalogProviderType   bool                    `yaml:"default_catalog_provider_type"`
 	ErrorProfile                 string                  `yaml:"error_profile"`
 	ModelDiscovery               ManifestModelDiscovery  `yaml:"model_discovery"`
+	ModelCategories              []ManifestModelCategory `yaml:"model_categories"`
 	Catalog                      ManifestProviderCatalog `yaml:"catalog"`
+}
+
+type ManifestModelCategory struct {
+	Key               string   `json:"key" yaml:"key"`
+	Label             string   `json:"label,omitempty" yaml:"label"`
+	Order             int      `json:"order,omitempty" yaml:"order"`
+	Aliases           []string `json:"aliases,omitempty" yaml:"aliases"`
+	FamilyPrefixes    []string `json:"family_prefixes,omitempty" yaml:"family_prefixes"`
+	CanonicalPrefixes []string `json:"canonical_prefixes,omitempty" yaml:"canonical_prefixes"`
 }
 
 type ManifestModelDiscovery struct {
@@ -262,6 +272,9 @@ func (m Manifest) Validate() error {
 	if err := m.validateProviderCatalog(); err != nil {
 		return err
 	}
+	if err := m.validateProviderModelCategories(); err != nil {
+		return err
+	}
 	if err := m.validateProviderPolicy(); err != nil {
 		return err
 	}
@@ -395,6 +408,33 @@ func (m Manifest) validateProviderPolicy() error {
 	}
 	if affinityKind != "provider_session" && affinityKind != "codex_session" {
 		return fmt.Errorf("provider session_affinity_kind must be provider_session or codex_session")
+	}
+	return nil
+}
+
+func (m Manifest) validateProviderModelCategories() error {
+	if len(m.Capabilities.Provider.ModelCategories) == 0 {
+		return nil
+	}
+	if len(m.Capabilities.ProviderTypes) == 0 {
+		return fmt.Errorf("provider model categories require at least one provider type")
+	}
+	if !manifestHasKind(m.Kinds, KindProvider) {
+		return fmt.Errorf("provider model categories require provider kind")
+	}
+	seen := map[string]struct{}{}
+	for index, category := range m.Capabilities.Provider.ModelCategories {
+		key := strings.ToLower(strings.TrimSpace(category.Key))
+		if key == "" {
+			return fmt.Errorf("provider model category %d key is required", index)
+		}
+		if strings.Contains(key, "/") {
+			return fmt.Errorf("provider model category %q key must not contain /", key)
+		}
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("provider model category %q is duplicated", key)
+		}
+		seen[key] = struct{}{}
 	}
 	return nil
 }
@@ -642,6 +682,16 @@ func (m Manifest) Descriptor() Descriptor {
 				Value:   catalogCapability,
 			})
 		}
+		for _, category := range m.Capabilities.Provider.ModelCategories {
+			if categoryCapability, ok := category.CapabilityValue(); ok {
+				descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+					Kind:    "provider_catalog",
+					Name:    "model_category",
+					Subject: providerType,
+					Value:   categoryCapability,
+				})
+			}
+		}
 	}
 	for _, capability := range m.Capabilities.AdminUI {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
@@ -773,6 +823,22 @@ func (resourceType ManifestProviderResourceType) CapabilityValue() string {
 		return ""
 	}
 	return string(data)
+}
+
+func (category ManifestModelCategory) CapabilityValue() (string, bool) {
+	category.Key = strings.ToLower(strings.TrimSpace(category.Key))
+	if category.Key == "" {
+		return "", false
+	}
+	category.Label = strings.TrimSpace(category.Label)
+	category.Aliases = normalizeStrings(category.Aliases)
+	category.FamilyPrefixes = normalizeStrings(category.FamilyPrefixes)
+	category.CanonicalPrefixes = normalizeStrings(category.CanonicalPrefixes)
+	data, err := json.Marshal(category)
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
 }
 
 func normalizeStringMap(items map[string]string) map[string]string {

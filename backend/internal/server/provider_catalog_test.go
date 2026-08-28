@@ -122,6 +122,70 @@ func TestProviderCatalogServiceUsesPluginDefaultCatalogProviderType(t *testing.T
 	}
 }
 
+func TestProviderCatalogServiceUsesPluginModelCategoryDefinitions(t *testing.T) {
+	categoryCapability, err := json.Marshal(AdapterModelCategory{
+		Key:               "acme",
+		Label:             "Acme",
+		Order:             25,
+		Aliases:           []string{"opaque"},
+		FamilyPrefixes:    []string{"opaque"},
+		CanonicalPrefixes: []string{"opaque"},
+	})
+	if err != nil {
+		t.Fatalf("encode category capability: %v", err)
+	}
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:         "tokenhub.provider.acme",
+		Name:       "Acme Provider",
+		Version:    "1.0.0",
+		Source:     pluginmeta.SourceLocalFile,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementGatewayChain},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: "acme_provider"},
+			{Kind: "provider_catalog", Name: "model_category", Subject: "acme_provider", Value: string(categoryCapability)},
+		},
+	}, AdapterRegistration{Type: "acme_provider"}); err != nil {
+		t.Fatalf("register category plugin: %v", err)
+	}
+	descriptor, ok := registry.Describe("acme_provider")
+	if !ok || len(descriptor.ProviderPolicy.ModelCategories) != 1 || descriptor.ProviderPolicy.ModelCategories[0].Key != "acme" {
+		t.Fatalf("adapter model categories = %+v ok=%v", descriptor.ProviderPolicy.ModelCategories, ok)
+	}
+
+	catalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")
+	if err := os.WriteFile(catalogFile, []byte(`{
+  "providers": {
+    "acme": {
+      "name": "Acme",
+      "type": "acme_provider",
+      "models": [
+        { "id": "opaquev2", "display_name": "Opaque Vendor Reasoner" }
+      ]
+    }
+  }
+}`), 0o600); err != nil {
+		t.Fatalf("write provider catalog: %v", err)
+	}
+	service := newProviderCatalogService(NewMemoryStore(), catalogFile)
+	service.UsePluginCatalogTypes(registry)
+	entries, err := service.loadLocalProviderCatalog()
+	if err != nil {
+		t.Fatalf("load provider catalog: %v", err)
+	}
+	if len(entries) != 1 || len(entries[0].Models) != 1 {
+		t.Fatalf("provider catalog entries = %+v", entries)
+	}
+	model := entries[0].Models[0]
+	if model.Category != "acme" || model.Family != "opaque" || model.CanonicalName != "opaque-v2" {
+		t.Fatalf("plugin category metadata was not applied: %+v", model)
+	}
+	if entries[0].CategoryCounts["acme"] != 1 {
+		t.Fatalf("provider category counts = %+v", entries[0].CategoryCounts)
+	}
+}
+
 func TestNormalizeProviderCatalogEntryUsesExplicitProviderType(t *testing.T) {
 	entry := normalizeProviderCatalogEntry("vendor-plugin", map[string]any{
 		"name": "Vendor Plugin",

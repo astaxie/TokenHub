@@ -123,7 +123,7 @@ func (s *providerCatalogService) loadUpstreamProviderCatalog(ctx context.Context
 	if len(content) > providerCatalogMaxBytes {
 		return nil, fmt.Errorf("read provider catalog upstream: response exceeds %d bytes", providerCatalogMaxBytes)
 	}
-	entries, err := parseProviderCatalogWithDefault(content, providerCatalogUpstreamSource, s.catalogTypes, s.defaultType)
+	entries, err := parseProviderCatalogWithPolicy(content, providerCatalogUpstreamSource, s.catalogTypes, s.defaultType, s.modelCategories)
 	if err != nil {
 		return nil, fmt.Errorf("parse provider catalog upstream: %w", err)
 	}

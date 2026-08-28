@@ -54,6 +54,7 @@ type AdapterProviderPolicy struct {
 	ErrorProfile                 string                      `json:"error_profile,omitempty"`
 	CredentialRefreshProfile     string                      `json:"credential_refresh_profile,omitempty"`
 	ModelDiscovery               AdapterModelDiscoveryPolicy `json:"model_discovery,omitempty"`
+	ModelCategories              []AdapterModelCategory      `json:"model_categories,omitempty"`
 }
 
 type AdapterModelDiscoveryPolicy struct {
@@ -61,6 +62,15 @@ type AdapterModelDiscoveryPolicy struct {
 	Auth             string            `json:"auth,omitempty"`
 	APIKeyQueryParam string            `json:"api_key_query_param,omitempty"`
 	Headers          map[string]string `json:"headers,omitempty"`
+}
+
+type AdapterModelCategory struct {
+	Key               string   `json:"key"`
+	Label             string   `json:"label,omitempty"`
+	Order             int      `json:"order,omitempty"`
+	Aliases           []string `json:"aliases,omitempty"`
+	FamilyPrefixes    []string `json:"family_prefixes,omitempty"`
+	CanonicalPrefixes []string `json:"canonical_prefixes,omitempty"`
 }
 
 // AdapterRegistry is the single source of truth for which adapter serves a
@@ -223,6 +233,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		ErrorProfile:                 adapterErrorProfile(r, descriptor.Type),
 		CredentialRefreshProfile:     adapterCredentialRefreshProfile(r, descriptor.Type),
 		ModelDiscovery:               adapterModelDiscovery(r, descriptor.Type),
+		ModelCategories:              adapterModelCategories(r, descriptor.Type),
 	}
 	return descriptor
 }
@@ -358,6 +369,80 @@ func adapterModelDiscovery(registry *AdapterRegistry, providerType string) Adapt
 		}
 	}
 	return policy
+}
+
+func adapterModelCategories(registry *AdapterRegistry, providerType string) []AdapterModelCategory {
+	plugin, ok := adapterPluginDescriptor(registry, providerType)
+	if !ok {
+		return nil
+	}
+	categories := []AdapterModelCategory{}
+	for _, capability := range plugin.Capabilities {
+		if capability.Kind != "provider_catalog" || capability.Name != "model_category" {
+			continue
+		}
+		if capability.Subject != "" && capability.Subject != providerType {
+			continue
+		}
+		category, ok := adapterModelCategoryFromCapability(capability)
+		if ok {
+			categories = append(categories, category)
+		}
+	}
+	return sortedAdapterModelCategories(categories)
+}
+
+func adapterModelCategoryFromCapability(capability pluginmeta.CapabilityDescriptor) (AdapterModelCategory, bool) {
+	var category AdapterModelCategory
+	if err := json.Unmarshal([]byte(strings.TrimSpace(capability.Value)), &category); err != nil {
+		return AdapterModelCategory{}, false
+	}
+	category.Key = strings.ToLower(strings.TrimSpace(category.Key))
+	if category.Key == "" {
+		return AdapterModelCategory{}, false
+	}
+	category.Label = strings.TrimSpace(category.Label)
+	category.Aliases = sortedUniqueStrings(category.Aliases)
+	category.FamilyPrefixes = sortedUniqueStrings(category.FamilyPrefixes)
+	category.CanonicalPrefixes = sortedUniqueStrings(category.CanonicalPrefixes)
+	return category, true
+}
+
+func sortedAdapterModelCategories(categories []AdapterModelCategory) []AdapterModelCategory {
+	byKey := map[string]AdapterModelCategory{}
+	for _, category := range categories {
+		if category.Key == "" {
+			continue
+		}
+		if existing, ok := byKey[category.Key]; !ok || categoryHasMoreMetadata(category, existing) {
+			byKey[category.Key] = category
+		}
+	}
+	result := make([]AdapterModelCategory, 0, len(byKey))
+	for _, category := range byKey {
+		result = append(result, category)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Order != result[j].Order {
+			return result[i].Order < result[j].Order
+		}
+		return result[i].Key < result[j].Key
+	})
+	return result
+}
+
+func categoryHasMoreMetadata(candidate AdapterModelCategory, existing AdapterModelCategory) bool {
+	score := 0
+	if candidate.Label != "" {
+		score++
+	}
+	score += len(candidate.Aliases) + len(candidate.FamilyPrefixes) + len(candidate.CanonicalPrefixes)
+	existingScore := 0
+	if existing.Label != "" {
+		existingScore++
+	}
+	existingScore += len(existing.Aliases) + len(existing.FamilyPrefixes) + len(existing.CanonicalPrefixes)
+	return score >= existingScore
 }
 
 func providerPolicyBoolCapability(registry *AdapterRegistry, providerType string, name string) (bool, bool) {

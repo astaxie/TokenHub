@@ -287,7 +287,17 @@ export type AdapterDescriptor = {
     default_catalog_provider_type?: boolean;
     error_profile?: string;
     model_discovery?: AdapterModelDiscoveryPolicy;
+    model_categories?: AdapterModelCategory[];
   };
+};
+
+export type AdapterModelCategory = {
+  key: string;
+  label?: string;
+  order?: number;
+  aliases?: string[];
+  family_prefixes?: string[];
+  canonical_prefixes?: string[];
 };
 
 export type AdapterModelDiscoveryPolicy = {

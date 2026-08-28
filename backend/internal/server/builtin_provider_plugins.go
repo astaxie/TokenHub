@@ -27,6 +27,7 @@ type builtinProviderAdapter struct {
 	authModeInvalidErrorCode     string
 	authModeInvalidErrorMessage  string
 	modelDiscovery               AdapterModelDiscoveryPolicy
+	modelCategories              []providerModelCategoryDefinition
 	resourceTypes                []pluginmeta.ManifestProviderResourceType
 	catalogEntry                 *pluginProviderCatalogEntry
 	capabilities                 []AdapterCapability
@@ -612,6 +613,19 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 		}
 	}
 	if adapter.catalogEntry != nil {
+		categoryDefinitions := append([]providerModelCategoryDefinition(nil), adapter.modelCategories...)
+		categoryDefinitions = append(categoryDefinitions, providerModelCategoryDefinitionsForKeys(adapter.catalogEntry.Categories)...)
+		for _, category := range categoryDefinitions {
+			if data, err := json.Marshal(category); err == nil {
+				descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+					Kind:    "provider_catalog",
+					Name:    "model_category",
+					Subject: adapter.providerType,
+					Value:   string(data),
+				})
+				descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+			}
+		}
 		if data, err := json.Marshal(adapter.catalogEntry); err == nil {
 			descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
 				Kind:    "provider_catalog",

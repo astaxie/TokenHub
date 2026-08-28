@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyData, providerCategories } from "./catalog";
+import { canonicalModelNameForUI, catalogModelCategoryOptions, emptyData, modelCategory, modelCategoryLabel, modelCategoryTabs, providerCategories, providerEntrySupportsCategory } from "./catalog";
 import type { Provider } from "../core/types";
 
 describe("providerCategories", () => {
@@ -65,5 +65,58 @@ describe("providerCategories", () => {
     }];
 
     expect(providerCategories(provider, data)).toEqual(["kimi"]);
+  });
+
+  it("uses adapter model category metadata declared by provider plugins", () => {
+    const provider: Provider = {
+      id: "prv_acme",
+      name: "Acme",
+      type: "opaque_subscription_provider",
+      status: "active",
+      healthy: true,
+      priority: 1,
+    };
+    const data = emptyData();
+    data.providers = [provider];
+    data.models = [{
+      id: "mdl_acme",
+      name: "opaquev2",
+      family: "",
+      modality: "chat",
+      status: "active",
+    }];
+    data.providerCatalog = [{
+      id: "acme",
+      name: "Acme",
+      display_name: "Acme",
+      type: "opaque_subscription_provider",
+      categories: ["acme"],
+      category_counts: { acme: 1 },
+      models_count: 1,
+      source: "plugin",
+      models: [{ id: "opaquev2", name: "opaquev2", display_name: "Opaque Vendor Reasoner" }],
+    }];
+    data.providerAdapters = [{
+      type: "opaque_subscription_provider",
+      capabilities: [],
+      provider_policy: {
+        supports_custom_headers: true,
+        model_categories: [{
+          key: "acme",
+          label: "Acme",
+          order: 25,
+          aliases: ["opaque"],
+          canonical_prefixes: ["opaque"],
+        }],
+      },
+    }];
+
+    expect(providerCategories(provider, data)).toEqual(["acme"]);
+    expect(modelCategory(data.models[0], data)).toBe("acme");
+    expect(modelCategoryLabel("acme", data)).toBe("Acme");
+    expect(canonicalModelNameForUI("opaquev2", undefined, data)).toBe("opaque-v2");
+    expect(catalogModelCategoryOptions(data.providerCatalog, data)[0]).toMatchObject({ key: "acme", label: "Acme", count: 1 });
+    expect(providerEntrySupportsCategory(data.providerCatalog[0], "acme", data)).toBe(true);
+    expect(modelCategoryTabs(data, "models")[1]).toMatchObject({ key: "acme", label: "Acme", count: 1 });
   });
 });

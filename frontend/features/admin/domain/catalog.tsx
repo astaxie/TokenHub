@@ -3,7 +3,7 @@ import { providerRoutesFor, stringifyValue } from "./entities";
 import { formatMoney } from "./formatting";
 import { compactList } from "./labels";
 import { tx } from "../i18n/runtime";
-import { modelCategoryLabels, preferredModelCategories } from "./model-categories";
+import { canonicalModelNameWithDefinitions, inferModelCategoryTextWithDefinitions, modelCategoryDefinitionsFromData, modelCategoryKeys, modelCategoryLabelFromDefinitions, preferredModelCategories, standardModelCategoryWithDefinitions } from "./model-categories";
 import { accountProviderCatalogCategory, accountProviderCatalogOptionsFromPlugins } from "./provider-account-catalog";
 import { isProviderAccountResourceForData } from "./provider-resource-types";
 
@@ -79,53 +79,61 @@ export function filterRows<T>(items: T[], query: string) {
   return items.filter((item) => JSON.stringify(item).toLowerCase().includes(normalized));
 }
 
-export function catalogModelCategoryOptions(catalog: ProviderCatalogEntry[]) {
+export function catalogModelCategoryOptions(catalog: ProviderCatalogEntry[], data?: Pick<AppData, "plugins" | "providerAdapters">) {
+  const definitions = modelCategoryDefinitionsFromData(data);
   const counts = new Map<string, number>();
   for (const entry of catalog) {
     if (entry.category_counts) {
       for (const [category, count] of Object.entries(entry.category_counts)) {
-        const normalized = standardModelCategory(category);
+        const normalized = standardModelCategory(category, definitions);
         counts.set(normalized, (counts.get(normalized) ?? 0) + count);
       }
       continue;
     }
     for (const category of entry.categories ?? []) {
-      const normalized = standardModelCategory(category);
+      const normalized = standardModelCategory(category, definitions);
       counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
     }
     for (const model of entry.models ?? []) {
-      const category = modelCategoryForCatalog(model);
+      const category = modelCategoryForCatalog(model, definitions);
       counts.set(category, (counts.get(category) ?? 0) + 1);
     }
   }
   if (counts.size === 0) counts.set("custom", 1);
-  const ordered = preferredModelCategories.filter((category) => counts.has(category));
+  const ordered = modelCategoryKeys(definitions).filter((category) => counts.has(category));
+  for (const category of Array.from(counts.keys()).sort()) {
+    if (!ordered.includes(category)) ordered.push(category);
+  }
   return ordered.map((category) => ({
     key: category,
-    label: modelCategoryLabel(category),
+    label: modelCategoryLabel(category, definitions),
     count: counts.get(category) ?? 0,
   }));
 }
 
-export function providerEntrySupportsCategory(entry: ProviderCatalogEntry, category: string) {
+export function providerEntrySupportsCategory(entry: ProviderCatalogEntry, category: string, data?: Pick<AppData, "plugins" | "providerAdapters">) {
+  const definitions = modelCategoryDefinitionsFromData(data);
+  const normalizedCategory = standardModelCategory(category, definitions);
   if (category === "all") return true;
   for (const [rawCategory, count] of Object.entries(entry.category_counts ?? {})) {
-    if (count > 0 && standardModelCategory(rawCategory) === category) return true;
+    if (count > 0 && standardModelCategory(rawCategory, definitions) === normalizedCategory) return true;
   }
-  if ((entry.categories ?? []).some((rawCategory) => standardModelCategory(rawCategory) === category)) return true;
-  return (entry.models ?? []).some((model) => modelCategoryForCatalog(model) === category);
+  if ((entry.categories ?? []).some((rawCategory) => standardModelCategory(rawCategory, definitions) === normalizedCategory)) return true;
+  return (entry.models ?? []).some((model) => modelCategoryForCatalog(model, definitions) === normalizedCategory);
 }
 
-export function providerEntryCategoryCount(entry: ProviderCatalogEntry, category: string) {
+export function providerEntryCategoryCount(entry: ProviderCatalogEntry, category: string, data?: Pick<AppData, "plugins" | "providerAdapters">) {
   if (category === "all") return entry.models_count;
+  const definitions = modelCategoryDefinitionsFromData(data);
+  const normalizedCategory = standardModelCategory(category, definitions);
   let count = 0;
   for (const [rawCategory, rawCount] of Object.entries(entry.category_counts ?? {})) {
-    if (standardModelCategory(rawCategory) === category) count += rawCount;
+    if (standardModelCategory(rawCategory, definitions) === normalizedCategory) count += rawCount;
   }
   if (count > 0) return count;
-  const modelCount = (entry.models ?? []).filter((model) => modelCategoryForCatalog(model) === category).length;
+  const modelCount = (entry.models ?? []).filter((model) => modelCategoryForCatalog(model, definitions) === normalizedCategory).length;
   if (modelCount > 0) return modelCount;
-  return (entry.categories ?? []).some((rawCategory) => standardModelCategory(rawCategory) === category) ? entry.models_count : 0;
+  return (entry.categories ?? []).some((rawCategory) => standardModelCategory(rawCategory, definitions) === normalizedCategory) ? entry.models_count : 0;
 }
 
 export function buildCustomProviderCatalogEntry(category: string, standardModels: Model[]): ProviderCatalogEntry {
@@ -144,33 +152,13 @@ export function buildCustomProviderCatalogEntry(category: string, standardModels
   };
 }
 
-export function modelCategoryForCatalog(model: ProviderCatalogModel) {
-  return standardModelCategory(modelCategory(model));
+export function modelCategoryForCatalog(model: ProviderCatalogModel, dataOrDefinitions?: Pick<AppData, "plugins" | "providerAdapters"> | ReturnType<typeof modelCategoryDefinitionsFromData>) {
+  const definitions = Array.isArray(dataOrDefinitions) ? dataOrDefinitions : modelCategoryDefinitionsFromData(dataOrDefinitions);
+  return standardModelCategory(modelCategory(model, definitions), definitions);
 }
 
-export function canonicalModelNameForUI(id: string, displayName?: string) {
-  let value = (id || "").trim();
-  const slash = value.lastIndexOf("/");
-  if (slash >= 0 && slash < value.length - 1) value = value.slice(slash + 1);
-  if (!value) value = (displayName || "").trim();
-  value = value.toLowerCase().replaceAll(" ", "-").replaceAll("_", "-");
-  while (value.includes("--")) value = value.replaceAll("--", "-");
-  value = value.replace(/^-+|-+$/g, "");
-  for (const prefix of ["deepseek", "claude", "gemini", "qwen", "gpt", "glm"]) {
-    value = normalizeCompactModelVersionForUI(value, prefix);
-  }
-  return value || "custom-model";
-}
-
-export function normalizeCompactModelVersionForUI(value: string, prefix: string) {
-  const compact = `${prefix}v`;
-  if (value.startsWith(compact) && value.length > compact.length && /\d/.test(value[compact.length])) {
-    return `${prefix}-v${value.slice(compact.length)}`;
-  }
-  if (value.startsWith(prefix) && value.length > prefix.length && /\d/.test(value[prefix.length])) {
-    return `${prefix}-${value.slice(prefix.length)}`;
-  }
-  return value;
+export function canonicalModelNameForUI(id: string, displayName?: string, data?: Pick<AppData, "plugins" | "providerAdapters">) {
+  return canonicalModelNameWithDefinitions(id, displayName, modelCategoryDefinitionsFromData(data));
 }
 
 export function filterByModelCategory<T>(view: ViewKey | undefined, items: T[], category: string, data: AppData) {
@@ -188,6 +176,7 @@ export function filterByModelCategory<T>(view: ViewKey | undefined, items: T[], 
 }
 
 export function modelCategoryTabs(data: AppData, view: ViewKey) {
+  const definitions = modelCategoryDefinitionsFromData(data);
   const counts = new Map<string, number>();
   if (view === "providers") {
     for (const provider of data.providers) {
@@ -197,11 +186,11 @@ export function modelCategoryTabs(data: AppData, view: ViewKey) {
     }
   } else {
     for (const model of data.models) {
-      const category = modelCategory(model);
+      const category = modelCategory(model, definitions);
       counts.set(category, (counts.get(category) ?? 0) + 1);
     }
   }
-  const ordered = preferredModelCategories.filter((category) => counts.has(category));
+  const ordered = modelCategoryKeys(definitions).filter((category) => counts.has(category));
   for (const category of Array.from(counts.keys()).sort()) {
     if (!ordered.includes(category)) ordered.push(category);
   }
@@ -209,7 +198,7 @@ export function modelCategoryTabs(data: AppData, view: ViewKey) {
     { key: "all", label: "全部", count: view === "providers" ? data.providers.length : data.models.length },
     ...ordered.map((category) => ({
       key: category,
-      label: modelCategoryLabel(category),
+      label: modelCategoryLabel(category, definitions),
       count: counts.get(category) ?? 0,
     })),
   ];
@@ -369,14 +358,16 @@ export function priceMetric(value: number | undefined) {
   return `$${formatMoney(value)}/Mt`;
 }
 
-export function modelCategory(model: Model | ProviderCatalogModel | undefined) {
+export function modelCategory(model: Model | ProviderCatalogModel | undefined, dataOrDefinitions?: Pick<AppData, "plugins" | "providerAdapters"> | ReturnType<typeof modelCategoryDefinitionsFromData>) {
+  const definitions = Array.isArray(dataOrDefinitions) ? dataOrDefinitions : modelCategoryDefinitionsFromData(dataOrDefinitions);
   const explicit = model?.category?.trim().toLowerCase();
-  if (explicit) return standardModelCategory(explicit);
+  if (explicit) return standardModelCategory(explicit, definitions);
   const displayName = model && "display_name" in model ? model.display_name : "";
-  return inferModelCategoryText([model?.name, model?.id, displayName, model?.family].filter(Boolean).join(" "));
+  return inferModelCategoryText([model?.name, model?.id, displayName, model?.family].filter(Boolean).join(" "), definitions);
 }
 
 export function providerCategories(provider: Provider, data: AppData) {
+  const definitions = modelCategoryDefinitionsFromData(data);
   if (data.providerResources.some((resource) => resource.provider_id === provider.id && isProviderAccountResourceForData(data, resource))) {
     const accountCatalog = accountProviderCatalogOptionsFromPlugins(data.providerCatalog, data.plugins, data.providerAdapters).find((entry) => entry.type === provider.type);
     if (accountCatalog) return [accountProviderCatalogCategory(accountCatalog)];
@@ -384,26 +375,33 @@ export function providerCategories(provider: Provider, data: AppData) {
   const routeModels = providerRoutesFor(provider, data)
     .map((route) => data.models.find((model) => model.name === route.model_name))
     .filter(Boolean) as Model[];
-  const categories = routeModels.map(modelCategory);
+  const categories = routeModels.map((model) => modelCategory(model, definitions));
   const optionCategory = provider.options?.model_category;
-  if (optionCategory) categories.push(standardModelCategory(optionCategory));
+  if (optionCategory) categories.push(standardModelCategory(optionCategory, definitions));
   if (categories.length === 0) {
-    const catalogCategory = providerCatalogCategoryForType(provider.type, data.providerCatalog);
-    categories.push(catalogCategory || providerTypeToModelCategory(provider.type));
+    const catalogCategory = providerCatalogCategoryForType(provider.type, data.providerCatalog, definitions);
+    categories.push(catalogCategory || providerAdapterCategoryForType(provider.type, data, definitions) || providerTypeToModelCategory(provider.type));
   }
   return Array.from(new Set(categories.filter(Boolean))).sort();
 }
 
-export function providerCatalogCategoryForType(type: string, catalog: ProviderCatalogEntry[]) {
+export function providerCatalogCategoryForType(type: string, catalog: ProviderCatalogEntry[], definitions = modelCategoryDefinitionsFromData()) {
   const normalizedType = type.trim().toLowerCase();
   if (!normalizedType) return "";
   const entry = catalog.find((item) => item.type.trim().toLowerCase() === normalizedType);
   if (!entry) return "";
   const category = entry.categories?.find((item) => item.trim());
-  if (category) return standardModelCategory(category);
+  if (category) return standardModelCategory(category, definitions);
   const countedCategory = Object.entries(entry.category_counts ?? {}).find(([, count]) => count > 0)?.[0];
-  if (countedCategory) return standardModelCategory(countedCategory);
+  if (countedCategory) return standardModelCategory(countedCategory, definitions);
   return "";
+}
+
+export function providerAdapterCategoryForType(type: string, data: Pick<AppData, "providerAdapters">, definitions = modelCategoryDefinitionsFromData(data)) {
+  const normalizedType = type.trim().toLowerCase();
+  const adapter = data.providerAdapters.find((item) => item.type.trim().toLowerCase() === normalizedType);
+  const category = adapter?.provider_policy?.model_categories?.find((item) => item.key?.trim())?.key;
+  return category ? standardModelCategory(category, definitions) : "";
 }
 
 export function providerTypeToModelCategory(type: string) {
@@ -422,37 +420,15 @@ export function modelCategoryFormOptions() {
   return preferredModelCategories.filter((category) => category !== "custom").concat("custom");
 }
 
-export function standardModelCategory(category: string) {
-  const normalized = category.trim().toLowerCase();
-  if (!normalized) return "custom";
-  if (modelCategoryLabels[normalized] && normalized !== "all") return normalized;
-  return inferModelCategoryText(normalized);
+export function standardModelCategory(category: string, definitions = modelCategoryDefinitionsFromData()) {
+  return standardModelCategoryWithDefinitions(category, definitions);
 }
 
-export function modelCategoryLabel(category: string) {
-  return tx(modelCategoryLabels[category] ?? category);
+export function modelCategoryLabel(category: string, dataOrDefinitions?: Pick<AppData, "plugins" | "providerAdapters"> | ReturnType<typeof modelCategoryDefinitionsFromData>) {
+  const definitions = Array.isArray(dataOrDefinitions) ? dataOrDefinitions : modelCategoryDefinitionsFromData(dataOrDefinitions);
+  return tx(modelCategoryLabelFromDefinitions(category, definitions));
 }
 
-export function inferModelCategoryText(value: string) {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("codex")) return "codex";
-  if (normalized.includes("gpt") || normalized.includes("openai") || /\bo[134]\b/.test(normalized)) return "openai";
-  if (normalized.includes("claude") || normalized.includes("anthropic")) return "claude";
-  if (normalized.includes("deepseek")) return "deepseek";
-  if (normalized.includes("gemini") || normalized.includes("google")) return "gemini";
-  if (normalized.includes("qwen") || normalized.includes("dashscope") || normalized.includes("alibaba")) return "qwen";
-  if (normalized.includes("glm") || normalized.includes("zhipu")) return "glm";
-  if (normalized.includes("kimi") || normalized.includes("moonshot")) return "kimi";
-  if (normalized.includes("doubao") || normalized.includes("volcengine")) return "doubao";
-  if (normalized.includes("ernie")) return "ernie";
-  if (normalized.includes("baichuan")) return "baichuan";
-  if (normalized.includes("minimax") || normalized.includes("hailuo")) return "minimax";
-  if (normalized.includes("step-") || normalized.includes("stepaudio")) return "stepfun";
-  if (normalized.includes("wanx")) return "wanx";
-  if (normalized.includes("paddleocr")) return "paddlepaddle";
-  if (normalized.includes("phi-")) return "microsoft";
-  if (normalized.includes("llama")) return "llama";
-  if (normalized.includes("mistral")) return "mistral";
-  if (normalized.includes("grok") || normalized.includes("xai")) return "grok";
-  return "custom";
+export function inferModelCategoryText(value: string, definitions = modelCategoryDefinitionsFromData()) {
+  return inferModelCategoryTextWithDefinitions(value, definitions);
 }

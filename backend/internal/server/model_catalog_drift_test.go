@@ -144,7 +144,7 @@ func findModelCatalogDrift(standardModels []Model, providerEntries []ProviderCat
 		providerEntries,
 		providerOnlyModelCategoryExceptions,
 		fullyMirroredProviderCatalogs,
-		standardModelCategories,
+		standardModelCategorySet(),
 	)
 }
 

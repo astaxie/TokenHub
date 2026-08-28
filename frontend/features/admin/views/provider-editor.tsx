@@ -90,6 +90,7 @@ export function ProviderUpsertModal({
   setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean; authModes?: string[]; routeProtocols?: string[] }>; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
   const providerTypeLabel = (type: string | undefined) => providerTypeLabelFromData({ plugins, providerCatalog: catalog, providerAdapters }, type);
+  const modelCategoryData = useMemo(() => ({ plugins, providerAdapters }), [plugins, providerAdapters]);
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins, providerAdapters), [catalog, plugins, providerAdapters]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0];
   const editingAccountProvider = mode === "edit" && Boolean(provider) && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResourceForData({ plugins, providerAdapters, providers: provider ? [provider] : [] }, resource));
@@ -97,8 +98,8 @@ export function ProviderUpsertModal({
   const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
   const availableCategories = useMemo(
-    () => catalogModelCategoryOptions(selectableProviderCatalog).filter((item) => mode !== "create" || item.key !== "codex"),
-    [mode, selectableProviderCatalog],
+    () => catalogModelCategoryOptions(selectableProviderCatalog, modelCategoryData).filter((item) => mode !== "create" || item.key !== "codex"),
+    [mode, modelCategoryData, selectableProviderCatalog],
   );
   const providerCatalogID = provider?.options?.catalog_id;
   const providerModelCategory = provider?.options?.model_category;
@@ -112,7 +113,7 @@ export function ProviderUpsertModal({
     : mode === "edit"
       ? selectableProviderCatalog.find((entry) => entry.type === provider?.type && providerCatalogSupportsModelPreview(entry, pluginActions)) ?? selectableProviderCatalog.find((entry) => entry.id === "custom") ?? selectableProviderCatalog[0]
       : selectableProviderCatalog.find((entry) => entry.id === providerCatalogID)
-        ?? selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, initialCategory))
+        ?? selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, initialCategory, modelCategoryData))
         ?? selectableProviderCatalog.find((entry) => entry.id === "custom")
         ?? selectableProviderCatalog[0];
   const initialProviderType = mode === "edit" ? provider?.type ?? defaultProviderTypeValue(providerTypeOptions) : initialEntry?.type ?? defaultProviderTypeValue(providerTypeOptions);
@@ -199,7 +200,7 @@ export function ProviderUpsertModal({
   const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
   const selectedAccountResources = useMemo(() => selectedAccountID === "all" ? accountResources : accountResources.filter((resource) => resource.id === selectedAccountID), [accountResources, selectedAccountID]);
   const { actionsByResourceID: accountQuotaActionsByResourceID, firstAction: accountQuotaAction, selectedResources: selectedQuotaAccountResources } = useMemo(() => providerResourceActionSelection(pluginActions, values.type, accountResources, selectedAccountResources, "quota.read"), [accountResources, pluginActions, selectedAccountResources, values.type]);
-  const categoryCatalog = useMemo(() => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory)), [modelCategory, selectableProviderCatalog]);
+  const categoryCatalog = useMemo(() => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory, modelCategoryData)), [modelCategory, modelCategoryData, selectableProviderCatalog]);
   const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory, standardModels), [modelCategory, standardModels]);
   const selectedCatalogTemplateEntry = catalogID === "custom" ? customCatalogEntry : selectableProviderCatalog.find((entry) => entry.id === catalogID);
   const selectedCatalogSupportsModelPreview = providerCatalogSupportsModelPreview(selectedCatalogTemplateEntry, pluginActions);
@@ -215,7 +216,6 @@ export function ProviderUpsertModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectCatalog also rewrites form state; catalog identity changes alone control this correction.
   }, [modelCategory, categoryCatalog.length, credentialMode, catalogID, quickAPIFlow, selectedCatalogIsAccountProvider]);
-
   useEffect(() => {
     const entry = catalogID === "custom" ? customCatalogEntry : catalog.find((item) => item.id === catalogID);
     const preserveCatalogValues = preserveCatalogValuesOnReload.current;
@@ -467,18 +467,18 @@ export function ProviderUpsertModal({
   const effectiveCatalogError = editingAccountProvider ? Object.values(accountCatalogErrors)[0] || "" : usesAccountCatalog ? accountProviderCatalogError : modelError;
   const models = useMemo(
     () => (effectiveDetail?.models ?? []).filter((model) => {
-      const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name);
+      const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name, modelCategoryData);
       return providerCatalogModelIsSelectable({
         catalogID,
         supportsModelPreview: selectedCatalogSupportsModelPreview,
         usesAccountCatalog,
         quickAPIFlow,
         selectedCategory: modelCategory,
-        discoveredCategory: modelCategoryForCatalog(model),
-        matchesStandardModel: standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name) === canonicalModelNameForUI(canonical, canonical)),
+        discoveredCategory: modelCategoryForCatalog(model, modelCategoryData),
+        matchesStandardModel: standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name, modelCategoryData) === canonicalModelNameForUI(canonical, canonical, modelCategoryData)),
       });
     }),
-    [catalogID, effectiveDetail, modelCategory, quickAPIFlow, selectedCatalogSupportsModelPreview, standardModels, usesAccountCatalog],
+    [catalogID, effectiveDetail, modelCategory, modelCategoryData, quickAPIFlow, selectedCatalogSupportsModelPreview, standardModels, usesAccountCatalog],
   );
   const listedCatalog = useMemo(
     () => quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
@@ -844,7 +844,7 @@ export function ProviderUpsertModal({
     setCatalogQuery("");
     setModelQuery("");
     setSelectedModels({});
-    const nextEntry = selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, category));
+    const nextEntry = selectableProviderCatalog.find((entry) => providerEntrySupportsCategory(entry, category, modelCategoryData));
     if (nextEntry) {
       selectCatalog(nextEntry);
     } else {
@@ -1128,7 +1128,7 @@ export function ProviderUpsertModal({
                   type="button"
                 >
                   <strong>{entry.display_name || entry.name}</strong>
-                  <span>{providerTypeLabel(entry.type)} · {countWithUnit(providerEntryCategoryCount(entry, modelCategory), "个模型", "model", "モデル")}</span>
+                  <span>{providerTypeLabel(entry.type)} · {countWithUnit(providerEntryCategoryCount(entry, modelCategory, modelCategoryData), "个模型", "model", "モデル")}</span>
                 </button>
               ))}
             </div>
@@ -1618,9 +1618,9 @@ export function ProviderUpsertModal({
                     <strong>{model.display_name || model.name}</strong>
                     <span>{model.canonical_name || model.id} ← {model.id}</span>
                     <small>
-                      {modelCategoryLabel(modelCategoryForCatalog(model))} · {model.family || "model"} · {model.type || "chat"} · {formatModelPrice(model)} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}
+                      {modelCategoryLabel(modelCategoryForCatalog(model, modelCategoryData), modelCategoryData)} · {model.family || "model"} · {model.type || "chat"} · {formatModelPrice(model)} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}
                       {alreadyImported ? ` · ${tx("已引入")}` : ""}
-                      {existingRouteModels.has(model.canonical_name || canonicalModelNameForUI(model.id, model.display_name)) ? ` · ${tx("已有路由")}` : ""}
+                      {existingRouteModels.has(model.canonical_name || canonicalModelNameForUI(model.id, model.display_name, modelCategoryData)) ? ` · ${tx("已有路由")}` : ""}
                     </small>
                     <div className="capability-row">
                       {modelCapabilities(model).map((capability) => <em key={capability}>{capability}</em>)}

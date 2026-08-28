@@ -498,6 +498,56 @@ capabilities:
 	}
 }
 
+func TestParseManifestBuildsProviderModelCategoryCapability(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.acme
+name: Acme Provider
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - acme
+  provider:
+    model_categories:
+      - key: acme
+        label: Acme
+        order: 25
+        aliases:
+          - acme-model
+        family_prefixes:
+          - acme
+        canonical_prefixes:
+          - acme
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	descriptor := manifest.Descriptor()
+	var categoryValue string
+	for _, capability := range descriptor.Capabilities {
+		if capability.Kind == "provider_catalog" && capability.Name == "model_category" && capability.Subject == "acme" {
+			categoryValue = capability.Value
+			break
+		}
+	}
+	if categoryValue == "" {
+		t.Fatalf("descriptor is missing provider model category capability: %+v", descriptor.Capabilities)
+	}
+	var category ManifestModelCategory
+	if err := json.Unmarshal([]byte(categoryValue), &category); err != nil {
+		t.Fatalf("decode provider model category capability: %v", err)
+	}
+	if category.Key != "acme" || category.Label != "Acme" || category.Order != 25 || len(category.Aliases) != 1 {
+		t.Fatalf("provider model category capability = %+v", category)
+	}
+}
+
 func TestParseManifestBuildsProviderCatalogCapability(t *testing.T) {
 	manifest, err := ParseManifest([]byte(`
 schema_version: 1

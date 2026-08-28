@@ -6,7 +6,7 @@ import { formatMoney, modelCategoryRank } from "./formatting";
 import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabelFromData, roleLabel, splitList } from "./labels";
 import { isProviderAccountResourceForData } from "./provider-resource-types";
 import { tx } from "../i18n/runtime";
-import { preferredModelCategories } from "./model-categories";
+import { modelCategoryDefinitionsFromData, modelCategorySortIndex } from "./model-categories";
 
 export function rowID(item: unknown) {
   return String(readPath(item, "id") || readPath(item, "name") || JSON.stringify(item));
@@ -509,14 +509,15 @@ function providerIDsForImageCapabilityModel(data: AppData, modelName: string) {
 }
 
 export function routeModelCategories(data: AppData) {
+  const definitions = modelCategoryDefinitionsFromData(data);
   const counts = new Map<string, number>();
   for (const model of data.models.filter((item) => modelIsInDirectory(item, data))) {
-    const category = modelCategory(model);
+    const category = modelCategory(model, definitions);
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }
   const items = Array.from(counts.entries())
-    .map(([key, count]) => ({ key, label: modelCategoryLabel(key), count }))
-    .sort((left, right) => preferredModelCategories.indexOf(left.key) - preferredModelCategories.indexOf(right.key) || left.label.localeCompare(right.label));
+    .map(([key, count]) => ({ key, label: modelCategoryLabel(key, definitions), count }))
+    .sort((left, right) => modelCategorySortIndex(left.key, definitions) - modelCategorySortIndex(right.key, definitions) || left.label.localeCompare(right.label));
   const total = items.reduce((sum, item) => sum + item.count, 0);
   return [{ key: "all", label: modelCategoryLabel("all"), count: total }, ...items];
 }
