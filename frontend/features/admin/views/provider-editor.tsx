@@ -89,7 +89,7 @@ export function ProviderUpsertModal({
   setError: (value: string) => void;
   setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean; authModes?: string[]; routeProtocols?: string[] }>; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
-  const providerTypeLabel = (type: string | undefined) => providerTypeLabelFromData({ plugins, providerCatalog: catalog }, type);
+  const providerTypeLabel = (type: string | undefined) => providerTypeLabelFromData({ plugins, providerCatalog: catalog, providerAdapters }, type);
   const accountProviderCatalogOptions = useMemo(() => accountProviderCatalogOptionsFromPlugins(catalog, plugins, providerAdapters), [catalog, plugins, providerAdapters]);
   const defaultAccountProviderCatalogEntry = accountProviderCatalogOptions[0];
   const editingAccountProvider = mode === "edit" && Boolean(provider) && resources.some((resource) => resource.provider_id === provider?.id && isProviderAccountResourceForData({ plugins, providerAdapters, providers: provider ? [provider] : [] }, resource));

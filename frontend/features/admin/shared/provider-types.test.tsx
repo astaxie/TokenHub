@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { providerTypeAuthModes, providerTypeModelDiscovery, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
-import { providerTypeLabelFromData } from "../domain/labels";
+import { providerTypeLabel, providerTypeLabelFromData } from "../domain/labels";
 
 describe("providerTypeOptionsFromData", () => {
   it("includes provider types declared by plugins, catalog entries, providers, and the current form value", () => {
@@ -77,7 +77,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(options.find((option) => option.value === "kimi_subscription")?.label).toBe("Kimi Subscription");
     expect(options.find((option) => option.value === "glm_subscription")?.label).toBe("GLM Subscription");
     expect(options.find((option) => option.value === "openai_codex")?.label).toBe("OpenAI Codex Subscription");
-    expect(options.find((option) => option.value === "openai")?.label).toBe("OpenAI 官方");
+    expect(options.find((option) => option.value === "openai")?.label).toBe("openai");
   });
 
   it("does not synthesize legacy provider types without plugin provider sources", () => {
@@ -106,6 +106,32 @@ describe("providerTypeOptionsFromData", () => {
 
     const descriptorFirst = providerTypeOptionsFromData(data).map((option) => option.value);
     expect(descriptorFirst).toEqual(["openai_compatible"]);
+  });
+
+  it("resolves provider type labels from adapter plugin descriptors without legacy fallbacks", () => {
+    expect(providerTypeLabel("openai_codex")).toBe("openai_codex");
+    expect(providerTypeLabelFromData(emptyData(), "azure_openai")).toBe("azure_openai");
+
+    const data = emptyData();
+    data.providerAdapters = [{
+      type: "custom_stdio",
+      capabilities: ["chat"],
+      plugin_id: "tokenhub.provider.custom-stdio",
+    }];
+    data.plugins = [{
+      id: "tokenhub.provider.custom-stdio",
+      name: "Custom stdio Provider",
+      version: "1.0.0",
+      source: "local_file",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [{ kind: "provider", name: "chat", subject: "custom_stdio" }],
+    }];
+
+    const options = providerTypeOptionsFromData(data);
+
+    expect(providerTypeLabelFromData(data, "custom_stdio")).toBe("Custom stdio Provider");
+    expect(options.find((option) => option.value === "custom_stdio")?.label).toBe("Custom stdio Provider");
   });
 
   it("keeps plugin provider discovery order instead of legacy provider precedence", () => {

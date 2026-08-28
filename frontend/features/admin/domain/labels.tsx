@@ -313,30 +313,22 @@ export function roleLabel(role: string) {
 }
 
 export function providerTypeLabel(type: string | undefined) {
-  const normalized = String(type ?? "").trim().toLowerCase();
-  if (!normalized) return "-";
-  const labels: Record<string, string> = {
-    mock: "模拟渠道",
-    openai: "OpenAI 官方",
-    openai_codex: "Codex Subscription",
-    openai_compatible: "OpenAI 兼容",
-    azure_openai: "Azure OpenAI",
-    anthropic: "Claude / Anthropic",
-    gemini: "Gemini / Google",
-    deepseek: "DeepSeek",
-    qwen: "Qwen / 通义千问",
-    local: "本地模型",
-    kronk: "Kronk 本地推理",
-  };
-  return tx(labels[normalized] ?? type ?? "-");
+  const normalized = String(type ?? "").trim();
+  return normalized || "-";
 }
 
-export function providerTypeLabelFromData(data: Pick<AppData, "plugins" | "providerCatalog">, type: string | undefined) {
+export function providerTypeLabelFromData(data: Pick<AppData, "plugins" | "providerCatalog"> & Partial<Pick<AppData, "providerAdapters">>, type: string | undefined) {
   const normalized = String(type ?? "").trim();
   if (!normalized) return "-";
   for (const entry of [...(data.providerCatalog ?? []), ...providerCatalogEntriesFromPluginCapabilities(data.plugins)]) {
     if (entry.type !== normalized) continue;
     const label = String(entry.display_name || entry.name || "").trim();
+    if (label) return label;
+  }
+  for (const adapter of data.providerAdapters ?? []) {
+    if (adapter.type !== normalized || !adapter.plugin_id) continue;
+    const plugin = (data.plugins ?? []).find((item) => item.id === adapter.plugin_id);
+    const label = String(plugin?.name || "").trim();
     if (label) return label;
   }
   for (const plugin of data.plugins ?? []) {

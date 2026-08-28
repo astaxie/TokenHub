@@ -452,6 +452,8 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   for (const adapter of data.providerAdapters ?? []) {
     if (!adapter.type) continue;
     types.add(adapter.type);
+    const pluginLabel = providerAdapterPluginLabel(data.plugins, adapter.plugin_id);
+    if (pluginLabel) labelByType.set(adapter.type, pluginLabel);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
     apiKeyRequiredByType.set(adapter.type, adapter.provider_policy?.api_key_required ?? true);
     if (adapter.provider_policy?.claude_code_attribution_default) {
@@ -562,6 +564,12 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
 
 function providerTypeOptionLabel(providerType: string, labels: Map<string, string>) {
   return labels.get(providerType) ?? providerTypeLabel(providerType);
+}
+
+function providerAdapterPluginLabel(plugins: Pick<AppData, "plugins">["plugins"] | undefined, pluginID: string | undefined) {
+  if (!pluginID) return "";
+  const plugin = (plugins ?? []).find((item) => item.id === pluginID);
+  return String(plugin?.name || "").trim();
 }
 
 function applyProviderModelDiscoveryCapability(
