@@ -67,6 +67,20 @@ func TestParseAdminUIManifestRejectsUnsupportedSlot(t *testing.T) {
 	}
 }
 
+func TestParseAdminUIManifestRejectsArbitraryActionEndpointKeys(t *testing.T) {
+	for _, key := range []string{"url", "method", "headers", "endpoint", "admin_api", "remote_script_url"} {
+		_, err := ParseAdminUIManifest("tokenhub.bad-action", []byte(`{
+			"schema_version": 1,
+			"contributions": [
+				{"id": "bad", "slot": "provider.form.section", "`+key+`": "https://example.test/run"}
+			]
+		}`))
+		if err == nil {
+			t.Fatalf("admin UI manifest with arbitrary %s key parsed successfully", key)
+		}
+	}
+}
+
 func TestParseAdminUIManifestValidatesContributionSchema(t *testing.T) {
 	manifest, err := ParseAdminUIManifest("tokenhub.forms", []byte(`{
 		"schema_version": 1,
@@ -226,5 +240,104 @@ func TestAdminUIRegistryListsContributionsDeterministically(t *testing.T) {
 	}
 	if got := contributions[3].ID; got != "settings" {
 		t.Fatalf("last contribution = %q, want settings", got)
+	}
+}
+
+func TestAdminUIRegistryRejectsUnboundContributionAction(t *testing.T) {
+	registry := NewAdminUIRegistry()
+	actions := NewActionBroker()
+
+	err := registry.RegisterWithActionResolver(AdminUIContribution{
+		PluginID: "tokenhub.kimi",
+		ID:       "quota",
+		Slot:     SlotProviderResourcePanel,
+		Action:   "quota.read",
+	}, actions)
+	if err == nil {
+		t.Fatal("unbound contribution action was registered")
+	}
+	if got := err.Error(); got != "admin UI contribution quota action quota.read is not registered for plugin tokenhub.kimi" {
+		t.Fatalf("error = %q", got)
+	}
+	if contributions := registry.List(); len(contributions) != 0 {
+		t.Fatalf("unbound contribution was published: %+v", contributions)
+	}
+}
+
+func TestAdminUIRegistryRejectsUnboundFieldAction(t *testing.T) {
+	registry := NewAdminUIRegistry()
+	actions := NewActionBroker()
+
+	err := registry.RegisterWithActionResolver(AdminUIContribution{
+		PluginID: "tokenhub.kimi",
+		ID:       "setup",
+		Slot:     SlotProviderFormSection,
+		Schema: map[string]any{
+			"fields": []any{
+				map[string]any{"name": "connect", "type": "oauth_button", "action": "oauth.start"},
+			},
+		},
+	}, actions)
+	if err == nil {
+		t.Fatal("unbound field action was registered")
+	}
+	if got := err.Error(); got != "admin UI contribution setup action oauth.start is not registered for plugin tokenhub.kimi" {
+		t.Fatalf("error = %q", got)
+	}
+}
+
+func TestAdminUIRegistryRejectsCrossPluginAction(t *testing.T) {
+	registry := NewAdminUIRegistry()
+	actions := NewActionBroker()
+	if err := actions.RegisterDescriptor(ActionDescriptor{
+		PluginID: "tokenhub.other",
+		ActionID: "oauth.start",
+		Kind:     ActionKindExternalRedirect,
+	}); err != nil {
+		t.Fatalf("register other plugin action: %v", err)
+	}
+
+	err := registry.RegisterWithActionResolver(AdminUIContribution{
+		PluginID: "tokenhub.kimi",
+		ID:       "connect",
+		Slot:     SlotProviderFormSection,
+		Action:   "oauth.start",
+	}, actions)
+	if err == nil {
+		t.Fatal("cross-plugin action was registered")
+	}
+	if got := err.Error(); got != "admin UI contribution connect action oauth.start is not registered for plugin tokenhub.kimi" {
+		t.Fatalf("error = %q", got)
+	}
+}
+
+func TestAdminUIRegistryAcceptsBoundActions(t *testing.T) {
+	registry := NewAdminUIRegistry()
+	actions := NewActionBroker()
+	for _, descriptor := range []ActionDescriptor{
+		{PluginID: "tokenhub.kimi", ActionID: "oauth.start", Kind: ActionKindExternalRedirect},
+		{PluginID: "tokenhub.kimi", ActionID: "quota.read", Kind: ActionKindRead},
+	} {
+		if err := actions.RegisterDescriptor(descriptor); err != nil {
+			t.Fatalf("register action descriptor: %v", err)
+		}
+	}
+
+	err := registry.RegisterWithActionResolver(AdminUIContribution{
+		PluginID: "tokenhub.kimi",
+		ID:       "setup",
+		Slot:     SlotProviderFormSection,
+		Action:   "quota.read",
+		Schema: map[string]any{
+			"fields": []any{
+				map[string]any{"name": "connect", "type": "oauth_button", "action": "oauth.start"},
+			},
+		},
+	}, actions)
+	if err != nil {
+		t.Fatalf("register bound contribution: %v", err)
+	}
+	if contributions := registry.List(); len(contributions) != 1 {
+		t.Fatalf("bound contributions = %+v, want one", contributions)
 	}
 }

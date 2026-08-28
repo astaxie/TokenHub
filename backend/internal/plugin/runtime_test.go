@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -404,6 +405,113 @@ capabilities:
 	_, err := actions.Execute(t.Context(), ActionInvocation{PluginID: "tokenhub.action", ActionID: "sync.run"})
 	if !errors.Is(err, ErrPluginActionUnavailable) {
 		t.Fatalf("execute descriptor-only action error = %v, want ErrPluginActionUnavailable", err)
+	}
+}
+
+func TestRuntimeLoadIntoWithActionsRejectsUnboundAdminUIAction(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "ui-action")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.ui-action
+name: UI Action Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - admin_ui
+placement:
+  - presentation
+entry:
+  frontend:
+    schema: admin-ui.schema.json
+capabilities:
+  admin_ui:
+    - provider_form
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "admin-ui.schema.json"), []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "setup",
+				"slot": "provider.form.section",
+				"action": "oauth.start"
+			}
+		]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	adminUI := NewAdminUIRegistry()
+	actions := NewActionBroker()
+
+	_, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), NewGatewayChainRegistry(), adminUI, actions)
+	if err == nil {
+		t.Fatal("runtime loaded an Admin UI contribution with an unbound action")
+	}
+	if !strings.Contains(err.Error(), "action oauth.start is not registered for plugin tokenhub.ui-action") {
+		t.Fatalf("runtime error = %v", err)
+	}
+	if contributions := adminUI.List(); len(contributions) != 0 {
+		t.Fatalf("unbound Admin UI contribution was published: %+v", contributions)
+	}
+}
+
+func TestRuntimeLoadIntoWithActionsAllowsDescriptorOnlyUIAction(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "ui-action")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.ui-action
+name: UI Action Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - admin_ui
+  - extension
+placement:
+  - presentation
+  - management_action
+entry:
+  frontend:
+    schema: admin-ui.schema.json
+capabilities:
+  admin_ui:
+    - provider_form
+  actions:
+    - id: oauth.start
+      kind: external_redirect
+      title: Start OAuth
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "admin-ui.schema.json"), []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "setup",
+				"slot": "provider.form.section",
+				"schema": {
+					"fields": [
+						{"name": "connect", "type": "oauth_button", "action": "oauth.start"}
+					]
+				}
+			}
+		]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	adminUI := NewAdminUIRegistry()
+	actions := NewActionBroker()
+
+	if _, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), NewGatewayChainRegistry(), adminUI, actions); err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	contributions := adminUI.List()
+	if len(contributions) != 1 || contributions[0].ID != "setup" {
+		t.Fatalf("Admin UI contributions = %+v, want setup", contributions)
+	}
+	_, err := actions.Execute(t.Context(), ActionInvocation{PluginID: "tokenhub.ui-action", ActionID: "oauth.start"})
+	if !errors.Is(err, ErrPluginActionUnavailable) {
+		t.Fatalf("execute descriptor-only UI action error = %v, want ErrPluginActionUnavailable", err)
 	}
 }
 

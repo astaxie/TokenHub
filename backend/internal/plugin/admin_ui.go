@@ -42,6 +42,38 @@ type AdminUIContribution struct {
 	Schema        map[string]any `json:"schema,omitempty"`
 }
 
+func (c *AdminUIContribution) UnmarshalJSON(data []byte) error {
+	type alias AdminUIContribution
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for key := range raw {
+		if !allowedAdminUIContributionKey(key) {
+			return fmt.Errorf("unsupported admin UI contribution key %q", key)
+		}
+	}
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*c = AdminUIContribution(decoded)
+	return nil
+}
+
+func allowedAdminUIContributionKey(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "plugin_id", "id", "slot", "title", "provider_types", "resource_types", "action", "schema":
+		return true
+	default:
+		return false
+	}
+}
+
+type AdminUIActionResolver interface {
+	Describe(pluginID string, actionID string) (ActionDescriptor, bool)
+}
+
 type AdminUIRegistry struct {
 	contributions map[string]AdminUIContribution
 }
@@ -81,6 +113,14 @@ func (m AdminUIManifest) Validate(pluginID string) error {
 }
 
 func (r *AdminUIRegistry) Register(contribution AdminUIContribution) error {
+	return r.register(contribution, nil)
+}
+
+func (r *AdminUIRegistry) RegisterWithActionResolver(contribution AdminUIContribution, resolver AdminUIActionResolver) error {
+	return r.register(contribution, resolver)
+}
+
+func (r *AdminUIRegistry) register(contribution AdminUIContribution, resolver AdminUIActionResolver) error {
 	if r == nil {
 		return fmt.Errorf("admin UI registry is not configured")
 	}
@@ -97,6 +137,9 @@ func (r *AdminUIRegistry) Register(contribution AdminUIContribution) error {
 	if err := validateAdminUIContributionSchema(contribution); err != nil {
 		return fmt.Errorf("admin UI contribution %s schema is invalid: %w", contribution.ID, err)
 	}
+	if err := validateAdminUIContributionActions(contribution, resolver); err != nil {
+		return err
+	}
 	r.contributions[adminUIContributionKey(contribution)] = contribution
 	return nil
 }
@@ -107,6 +150,18 @@ func (r *AdminUIRegistry) RegisterManifest(manifest AdminUIManifest) error {
 	}
 	for _, contribution := range manifest.Contributions {
 		if err := r.Register(contribution); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *AdminUIRegistry) RegisterManifestWithActionResolver(manifest AdminUIManifest, resolver AdminUIActionResolver) error {
+	if r == nil {
+		return fmt.Errorf("admin UI registry is not configured")
+	}
+	for _, contribution := range manifest.Contributions {
+		if err := r.RegisterWithActionResolver(contribution, resolver); err != nil {
 			return err
 		}
 	}
@@ -216,6 +271,39 @@ func validateAdminUIContributionSchema(contribution AdminUIContribution) error {
 		}
 	}
 	return nil
+}
+
+func validateAdminUIContributionActions(contribution AdminUIContribution, resolver AdminUIActionResolver) error {
+	if resolver == nil {
+		return nil
+	}
+	for _, actionID := range adminUIContributionActionIDs(contribution) {
+		if _, ok := resolver.Describe(contribution.PluginID, actionID); !ok {
+			return fmt.Errorf("admin UI contribution %s action %s is not registered for plugin %s", contribution.ID, actionID, contribution.PluginID)
+		}
+	}
+	return nil
+}
+
+func adminUIContributionActionIDs(contribution AdminUIContribution) []string {
+	actions := []string{}
+	if action := strings.TrimSpace(contribution.Action); action != "" {
+		actions = append(actions, action)
+	}
+	fields, ok := contribution.Schema["fields"].([]any)
+	if !ok {
+		return normalizeStrings(actions)
+	}
+	for _, rawField := range fields {
+		field, ok := rawField.(map[string]any)
+		if !ok {
+			continue
+		}
+		if action := schemaString(field["action"]); action != "" {
+			actions = append(actions, action)
+		}
+	}
+	return normalizeStrings(actions)
 }
 
 func allowedAdminUISchemaKey(slot AdminUISlot, key string) bool {

@@ -77,11 +77,6 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 				}
 			}
 		}
-		if adminUI != nil {
-			if err := adminUI.RegisterManifest(pkg.AdminUI); err != nil {
-				return nil, fmt.Errorf("register admin UI contributions from plugin %s: %w", pkg.Manifest.ID, err)
-			}
-		}
 		if actions != nil {
 			for _, action := range pkg.Manifest.Actions() {
 				handler := actionHandlerForPackage(pkg)
@@ -94,6 +89,15 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 				if err != nil {
 					return nil, fmt.Errorf("register action %s from plugin %s: %w", action.ActionID, pkg.Manifest.ID, err)
 				}
+			}
+		}
+		if adminUI != nil {
+			if actions != nil {
+				if err := adminUI.RegisterManifestWithActionResolver(pkg.AdminUI, actions); err != nil {
+					return nil, fmt.Errorf("register admin UI contributions from plugin %s: %w", pkg.Manifest.ID, err)
+				}
+			} else if err := adminUI.RegisterManifest(pkg.AdminUI); err != nil {
+				return nil, fmt.Errorf("register admin UI contributions from plugin %s: %w", pkg.Manifest.ID, err)
 			}
 		}
 		if backgroundJobs != nil {
