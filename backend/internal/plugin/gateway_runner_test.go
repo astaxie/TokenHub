@@ -179,6 +179,150 @@ func TestGatewayHookRunnerEnforcesTimeout(t *testing.T) {
 	}
 }
 
+func TestGatewayHookRunnerAppliesFailurePolicyForTimeouts(t *testing.T) {
+	tests := []struct {
+		name       string
+		hook       GatewayHookDescriptor
+		wantErr    func(error) bool
+		wantStatus GatewayHookRunStatus
+	}{
+		{
+			name:       "fail open timeout skips hook",
+			hook:       GatewayHookDescriptor{PluginID: "tokenhub.slow", HookID: "open", Stage: StageContextOptimize, TimeoutMillis: 1, FailurePolicy: FailurePolicyFailOpen},
+			wantStatus: HookRunSkipped,
+		},
+		{
+			name:       "fail closed timeout blocks stage",
+			hook:       GatewayHookDescriptor{PluginID: "tokenhub.slow", HookID: "closed", Stage: StageContextOptimize, TimeoutMillis: 1, FailurePolicy: FailurePolicyFailClosed},
+			wantErr:    IsGatewayHookTimeout,
+			wantStatus: HookRunFailed,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			chain := NewGatewayChainRegistry()
+			if err := chain.RegisterHook(test.hook); err != nil {
+				t.Fatalf("register hook: %v", err)
+			}
+			runner := NewGatewayHookRunner(chain)
+			if err := runner.RegisterHandler(test.hook, GatewayHookHandlerFunc(func(ctx context.Context, _ GatewayHookInput) (GatewayHookResult, error) {
+				<-ctx.Done()
+				return GatewayHookResult{}, ctx.Err()
+			})); err != nil {
+				t.Fatalf("register handler: %v", err)
+			}
+
+			report, err := runner.RunStage(context.Background(), test.hook.Stage, GatewayHookInput{})
+			if test.wantErr == nil && err != nil {
+				t.Fatalf("run stage: %v", err)
+			}
+			if test.wantErr != nil && !test.wantErr(err) {
+				t.Fatalf("error = %v, want timeout", err)
+			}
+			if len(report.Results) != 1 || report.Results[0].Status != test.wantStatus {
+				t.Fatalf("report = %+v, want status %s", report, test.wantStatus)
+			}
+		})
+	}
+}
+
+func TestGatewayHookRunnerObserveOnlyCannotBlockOrMutate(t *testing.T) {
+	chain := NewGatewayChainRegistry()
+	observe := GatewayHookDescriptor{
+		PluginID:      "tokenhub.observe",
+		HookID:        "rank",
+		Stage:         StageRouteRank,
+		Priority:      100,
+		Reads:         []GatewayDataClass{DataRouteCandidates},
+		Writes:        []GatewayDataClass{DataRouteCandidates},
+		FailurePolicy: FailurePolicyObserveOnly,
+	}
+	next := GatewayHookDescriptor{
+		PluginID: "tokenhub.next",
+		HookID:   "rank",
+		Stage:    StageRouteRank,
+		Priority: 200,
+		Reads:    []GatewayDataClass{DataRouteCandidates},
+	}
+	for _, hook := range []GatewayHookDescriptor{observe, next} {
+		if err := chain.RegisterHook(hook); err != nil {
+			t.Fatalf("register hook: %v", err)
+		}
+	}
+	runner := NewGatewayHookRunner(chain)
+	if err := runner.RegisterHandler(observe, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+		return GatewayHookResult{
+			Decision: HookDecisionDeny,
+			Writes: map[GatewayDataClass]RawPatch{
+				DataRouteCandidates: {Value: json.RawMessage(`[{"route_id":"mutated"}]`)},
+			},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register observe handler: %v", err)
+	}
+	nextCalled := false
+	if err := runner.RegisterHandler(next, GatewayHookHandlerFunc(func(_ context.Context, input GatewayHookInput) (GatewayHookResult, error) {
+		nextCalled = true
+		if string(input.Data[DataRouteCandidates]) != `[{"route_id":"original"}]` {
+			t.Fatalf("route candidates = %s, want original", input.Data[DataRouteCandidates])
+		}
+		return GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register next handler: %v", err)
+	}
+
+	report, err := runner.RunStage(context.Background(), StageRouteRank, GatewayHookInput{
+		Data: GatewayHookData{
+			DataRouteCandidates: json.RawMessage(`[{"route_id":"original"}]`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("run stage: %v", err)
+	}
+	if !nextCalled {
+		t.Fatal("observe-only hook blocked later hooks")
+	}
+	if len(report.Results) != 2 || report.Results[0].Decision != HookDecisionContinue || len(report.Results[0].Writes) != 0 || report.TerminalDecision != "" {
+		t.Fatalf("observe-only report = %+v", report)
+	}
+}
+
+func TestGatewayHookRunnerSkipsHooksOutsideDeclaredScope(t *testing.T) {
+	chain := NewGatewayChainRegistry()
+	hook := GatewayHookDescriptor{
+		PluginID: "tokenhub.project",
+		HookID:   "admit",
+		Stage:    StageAdmission,
+		Scope:    GatewayHookScope{ProjectIDs: []string{"prj_allowed"}},
+	}
+	if err := chain.RegisterHook(hook); err != nil {
+		t.Fatalf("register hook: %v", err)
+	}
+	runner := NewGatewayHookRunner(chain)
+	called := false
+	if err := runner.RegisterHandler(hook, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+		called = true
+		return GatewayHookResult{Decision: HookDecisionDeny}, nil
+	})); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	report, err := runner.RunStage(context.Background(), StageAdmission, GatewayHookInput{
+		Data: GatewayHookData{
+			DataProjectMetadata: json.RawMessage(`{"id":"prj_other"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("run stage: %v", err)
+	}
+	if called {
+		t.Fatal("scoped hook ran for the wrong project")
+	}
+	if len(report.Results) != 1 || report.Results[0].Status != HookRunSkipped {
+		t.Fatalf("report = %+v, want one skipped scoped hook", report)
+	}
+}
+
 func TestGatewayHookRunnerClipsInputToDeclaredReads(t *testing.T) {
 	chain := NewGatewayChainRegistry()
 	hook := GatewayHookDescriptor{

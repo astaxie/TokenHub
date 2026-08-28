@@ -186,6 +186,7 @@ type GatewayHookManifest struct {
 	Priority      int                      `yaml:"priority"`
 	Subject       string                   `yaml:"subject"`
 	Metadata      map[string]string        `yaml:"metadata"`
+	Scope         GatewayHookScope         `yaml:"scope"`
 	Reads         []GatewayDataClass       `yaml:"reads"`
 	Writes        []GatewayDataClass       `yaml:"writes"`
 	FailurePolicy GatewayHookFailurePolicy `yaml:"failure_policy"`
@@ -308,6 +309,12 @@ func (m Manifest) Validate() error {
 		}
 		if hook.FailurePolicy != "" && !validGatewayFailurePolicy(hook.FailurePolicy) {
 			return fmt.Errorf("unsupported gateway hook failure policy %q", hook.FailurePolicy)
+		}
+		if hook.TimeoutMillis < 0 {
+			return fmt.Errorf("gateway hook %s timeout_millis cannot be negative", hook.ID)
+		}
+		if hook.TimeoutMillis > MaxGatewayHookTimeoutMillis {
+			return fmt.Errorf("gateway hook %s timeout_millis cannot exceed %d", hook.ID, MaxGatewayHookTimeoutMillis)
 		}
 		if err := validateGatewayDataClasses(hook.Reads); err != nil {
 			return fmt.Errorf("gateway hook %s reads: %w", hook.ID, err)
@@ -957,6 +964,7 @@ func (m Manifest) GatewayHooks() []GatewayHookDescriptor {
 			Priority:      hook.Priority,
 			Subject:       hook.Subject,
 			Metadata:      hook.Metadata,
+			Scope:         hook.Scope,
 			Reads:         hook.Reads,
 			Writes:        hook.Writes,
 			FailurePolicy: hook.FailurePolicy,

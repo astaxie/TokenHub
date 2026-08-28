@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -87,6 +88,13 @@ capabilities:
       subject: openai_codex
       metadata:
         protocol: codex/responses
+      scope:
+        project_ids:
+          - prj_codex
+        provider_ids:
+          - prv_codex
+        route_protocols:
+          - codex/responses
       failure_policy: fail_open
       reads:
         - route_candidates
@@ -231,6 +239,11 @@ permissions:
 	}
 	if hooks[0].Subject != "openai_codex" || hooks[0].Metadata["protocol"] != "codex/responses" {
 		t.Fatalf("gateway hook metadata = %+v", hooks[0])
+	}
+	if len(hooks[0].Scope.ProjectIDs) != 1 || hooks[0].Scope.ProjectIDs[0] != "prj_codex" ||
+		len(hooks[0].Scope.ProviderIDs) != 1 || hooks[0].Scope.ProviderIDs[0] != "prv_codex" ||
+		len(hooks[0].Scope.RouteProtocols) != 1 || hooks[0].Scope.RouteProtocols[0] != "codex/responses" {
+		t.Fatalf("gateway hook scope = %+v", hooks[0].Scope)
 	}
 	actions := manifest.Actions()
 	if len(actions) != 1 || actions[0].ActionID != "codex.quota.read" || actions[0].Kind != ActionKindRead {
@@ -822,6 +835,37 @@ permissions:
 `))
 	if err == nil {
 		t.Fatal("manifest with gateway hook but no gateway_chain placement parsed successfully")
+	}
+}
+
+func TestParseManifestRejectsInvalidGatewayHookTimeout(t *testing.T) {
+	for _, timeout := range []int{-1, MaxGatewayHookTimeoutMillis + 1} {
+		_, err := ParseManifest([]byte(fmt.Sprintf(`
+schema_version: 1
+id: tokenhub.router
+name: Router
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: rank
+      stage: route_rank
+      timeout_millis: %d
+      reads:
+        - route_candidates
+permissions:
+  data:
+    read:
+      - route_candidates
+`, timeout)))
+		if err == nil {
+			t.Fatalf("manifest accepted invalid gateway hook timeout %d", timeout)
+		}
 	}
 }
 

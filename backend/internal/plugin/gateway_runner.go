@@ -112,6 +112,7 @@ func (r *GatewayHookRunner) RegisterHandler(descriptor GatewayHookDescriptor, ha
 	if handler == nil {
 		return fmt.Errorf("gateway hook handler is required")
 	}
+	descriptor = NormalizeGatewayHookDescriptor(descriptor)
 	if descriptor.PluginID == "" || descriptor.HookID == "" {
 		return fmt.Errorf("gateway hook descriptor identity is required")
 	}
@@ -133,7 +134,12 @@ func (r *GatewayHookRunner) RunStageHooks(ctx context.Context, stage GatewayHook
 	}
 	input = preserveGatewayHookOriginals(input)
 	for _, hook := range hooks {
+		hook = NormalizeGatewayHookDescriptor(hook)
 		if hook.Stage != stage {
+			continue
+		}
+		if !GatewayHookScopeMatches(hook, gatewayHookScopeTargetFromInput(input)) {
+			report.Results = append(report.Results, skippedGatewayHookRunResult(hook, HookRunSkipped, "gateway hook scope did not match"))
 			continue
 		}
 		result, err := r.runHook(ctx, hook, input)
@@ -154,6 +160,7 @@ func (r *GatewayHookRunner) RunStageHooks(ctx context.Context, stage GatewayHook
 }
 
 func (r *GatewayHookRunner) runHook(ctx context.Context, hook GatewayHookDescriptor, input GatewayHookInput) (GatewayHookRunResult, error) {
+	hook = NormalizeGatewayHookDescriptor(hook)
 	startedAt := time.Now()
 	run := GatewayHookRunResult{
 		PluginID:      hook.PluginID,
@@ -186,6 +193,10 @@ func (r *GatewayHookRunner) runHook(ctx context.Context, hook GatewayHookDescrip
 	}
 	if result.Decision == "" {
 		result.Decision = HookDecisionContinue
+	}
+	if hook.FailurePolicy == FailurePolicyObserveOnly {
+		result.Decision = HookDecisionContinue
+		result.Writes = nil
 	}
 	if err := validateGatewayHookResult(hook, result); err != nil {
 		run.DurationMS = elapsedMillis(startedAt)
@@ -331,6 +342,97 @@ func NoopGatewayHookHandler() GatewayHookHandler {
 	return GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
 		return GatewayHookResult{Decision: HookDecisionContinue}, nil
 	})
+}
+
+func skippedGatewayHookRunResult(hook GatewayHookDescriptor, status GatewayHookRunStatus, reason string) GatewayHookRunResult {
+	return GatewayHookRunResult{
+		PluginID:      hook.PluginID,
+		HookID:        hook.HookID,
+		Decision:      HookDecisionContinue,
+		FailurePolicy: hook.FailurePolicy,
+		Status:        status,
+		Error:         reason,
+	}
+}
+
+func gatewayHookScopeTargetFromInput(input GatewayHookInput) GatewayHookScopeTarget {
+	target := GatewayHookScopeTarget{
+		Operation: input.Envelope.Operation,
+	}
+	if input.Envelope.Protocol != "gateway" {
+		target.RouteProtocol = input.Envelope.Protocol
+	}
+	mergeGatewayProjectScopeFromRaw(input.Data[DataProjectMetadata], &target)
+	mergeGatewayAPIKeyScopeFromRaw(input.Data[DataAPIKeyMetadata], &target)
+	mergeGatewayRouteScopeFromRaw(input.Data[DataRouteCandidates], &target)
+	if len(input.Envelope.Metadata) > 0 {
+		mergeGatewayRouteScopeFromRaw(input.Envelope.Metadata["route"], &target)
+		mergeGatewayRouteScopeFromRaw(input.Envelope.Metadata["scope"], &target)
+	}
+	return target
+}
+
+func mergeGatewayProjectScopeFromRaw(raw json.RawMessage, target *GatewayHookScopeTarget) {
+	if target == nil || len(raw) == 0 {
+		return
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) == nil {
+		setIfPresent(object, "id", &target.ProjectID)
+		setIfPresent(object, "project_id", &target.ProjectID)
+	}
+}
+
+func mergeGatewayAPIKeyScopeFromRaw(raw json.RawMessage, target *GatewayHookScopeTarget) {
+	if target == nil || len(raw) == 0 {
+		return
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) == nil {
+		setIfPresent(object, "id", &target.APIKeyID)
+		setIfPresent(object, "api_key_id", &target.APIKeyID)
+		setIfPresent(object, "project_id", &target.ProjectID)
+	}
+}
+
+func mergeGatewayRouteScopeFromRaw(raw json.RawMessage, target *GatewayHookScopeTarget) {
+	if target == nil || len(raw) == 0 {
+		return
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) == nil {
+		mergeGatewayRouteScopeFromObject(object, target)
+		return
+	}
+	var objects []map[string]json.RawMessage
+	if json.Unmarshal(raw, &objects) == nil && len(objects) > 0 {
+		mergeGatewayRouteScopeFromObject(objects[0], target)
+	}
+}
+
+func mergeGatewayRouteScopeFromObject(object map[string]json.RawMessage, target *GatewayHookScopeTarget) {
+	setIfPresent(object, "api_key_id", &target.APIKeyID)
+	setIfPresent(object, "provider_type", &target.ProviderType)
+	setIfPresent(object, "provider_id", &target.ProviderID)
+	setIfPresent(object, "resource_id", &target.ResourceID)
+	setIfPresent(object, "resource_type", &target.ResourceType)
+	setIfPresent(object, "route_protocol", &target.RouteProtocol)
+	setIfPresent(object, "protocol", &target.RouteProtocol)
+	setIfPresent(object, "operation", &target.Operation)
+}
+
+func setIfPresent(object map[string]json.RawMessage, key string, target *string) {
+	if target == nil || *target != "" {
+		return
+	}
+	raw, ok := object[key]
+	if !ok {
+		return
+	}
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		*target = value
+	}
 }
 
 func IsGatewayHookTimeout(err error) bool {

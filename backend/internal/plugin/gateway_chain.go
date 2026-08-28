@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+const (
+	DefaultGatewayHookTimeoutMillis = 5000
+	MaxGatewayHookTimeoutMillis     = 60000
+)
+
 type GatewayHookStage string
 
 const (
@@ -71,11 +76,34 @@ type GatewayHookDescriptor struct {
 	Priority      int                      `json:"priority"`
 	Subject       string                   `json:"subject,omitempty"`
 	Metadata      map[string]string        `json:"metadata,omitempty"`
+	Scope         GatewayHookScope         `json:"scope,omitempty"`
 	Reads         []GatewayDataClass       `json:"reads,omitempty"`
 	Writes        []GatewayDataClass       `json:"writes,omitempty"`
 	FailurePolicy GatewayHookFailurePolicy `json:"failure_policy"`
 	TimeoutMillis int                      `json:"timeout_millis"`
 	Mandatory     bool                     `json:"mandatory"`
+}
+
+type GatewayHookScope struct {
+	ProjectIDs     []string `json:"project_ids,omitempty" yaml:"project_ids"`
+	APIKeyIDs      []string `json:"api_key_ids,omitempty" yaml:"api_key_ids"`
+	ProviderTypes  []string `json:"provider_types,omitempty" yaml:"provider_types"`
+	ProviderIDs    []string `json:"provider_ids,omitempty" yaml:"provider_ids"`
+	ResourceIDs    []string `json:"resource_ids,omitempty" yaml:"resource_ids"`
+	ResourceTypes  []string `json:"resource_types,omitempty" yaml:"resource_types"`
+	RouteProtocols []string `json:"route_protocols,omitempty" yaml:"route_protocols"`
+	Operations     []string `json:"operations,omitempty" yaml:"operations"`
+}
+
+type GatewayHookScopeTarget struct {
+	ProjectID     string
+	APIKeyID      string
+	ProviderType  string
+	ProviderID    string
+	ResourceID    string
+	ResourceType  string
+	RouteProtocol string
+	Operation     string
 }
 
 type GatewayChainPlan struct {
@@ -106,6 +134,8 @@ type GatewayStageEnvelopeContract struct {
 	AllowsShortCircuit bool                       `json:"allows_short_circuit"`
 	DefaultFailure     GatewayHookFailurePolicy   `json:"default_failure_policy"`
 	AllowedFailures    []GatewayHookFailurePolicy `json:"allowed_failure_policies"`
+	DefaultTimeoutMS   int                        `json:"default_timeout_ms"`
+	MaxTimeoutMS       int                        `json:"max_timeout_ms"`
 }
 
 func NewGatewayChainRegistry() *GatewayChainRegistry {
@@ -116,10 +146,7 @@ func (r *GatewayChainRegistry) RegisterHook(descriptor GatewayHookDescriptor) er
 	if r == nil {
 		return fmt.Errorf("gateway chain registry is not configured")
 	}
-	descriptor.PluginID = strings.TrimSpace(descriptor.PluginID)
-	descriptor.HookID = strings.TrimSpace(descriptor.HookID)
-	descriptor.Subject = strings.TrimSpace(descriptor.Subject)
-	descriptor.Metadata = normalizeStringMap(descriptor.Metadata)
+	descriptor = NormalizeGatewayHookDescriptor(descriptor)
 	if descriptor.PluginID == "" {
 		return fmt.Errorf("gateway hook plugin id is required")
 	}
@@ -133,14 +160,9 @@ func (r *GatewayChainRegistry) RegisterHook(descriptor GatewayHookDescriptor) er
 	if !ok {
 		return fmt.Errorf("unsupported gateway hook stage %q", descriptor.Stage)
 	}
-	if descriptor.FailurePolicy == "" {
-		descriptor.FailurePolicy = policy.DefaultFailurePolicy
-	}
 	if !gatewayFailurePolicyAllowed(descriptor.FailurePolicy, policy.AllowedFailurePolicy) {
 		return fmt.Errorf("gateway hook stage %q does not allow failure policy %q", descriptor.Stage, descriptor.FailurePolicy)
 	}
-	descriptor.Reads = normalizeDataClasses(descriptor.Reads)
-	descriptor.Writes = normalizeDataClasses(descriptor.Writes)
 	if err := validateGatewayDataClasses(descriptor.Reads); err != nil {
 		return err
 	}
@@ -152,6 +174,12 @@ func (r *GatewayChainRegistry) RegisterHook(descriptor GatewayHookDescriptor) er
 	}
 	if err := validateGatewayStageDataClasses(descriptor.Stage, "write", descriptor.Writes, policy.Writes); err != nil {
 		return err
+	}
+	if descriptor.TimeoutMillis < 0 {
+		return fmt.Errorf("gateway hook %s/%s timeout_millis cannot be negative", descriptor.PluginID, descriptor.HookID)
+	}
+	if descriptor.TimeoutMillis > MaxGatewayHookTimeoutMillis {
+		return fmt.Errorf("gateway hook %s/%s timeout_millis cannot exceed %d", descriptor.PluginID, descriptor.HookID, MaxGatewayHookTimeoutMillis)
 	}
 	r.hooks[descriptor.Stage] = append(r.hooks[descriptor.Stage], descriptor)
 	sortGatewayHooks(r.hooks[descriptor.Stage])
@@ -203,6 +231,8 @@ func GatewayStageEnvelopeContractFor(stage GatewayHookStage) (GatewayStageEnvelo
 		AllowsShortCircuit: policy.AllowsShortCircuit,
 		DefaultFailure:     policy.DefaultFailurePolicy,
 		AllowedFailures:    append([]GatewayHookFailurePolicy(nil), policy.AllowedFailurePolicy...),
+		DefaultTimeoutMS:   DefaultGatewayHookTimeoutMillis,
+		MaxTimeoutMS:       MaxGatewayHookTimeoutMillis,
 	}, true
 }
 
@@ -220,6 +250,54 @@ func GatewayStageEnvelopeContracts() []GatewayStageEnvelopeContract {
 
 func orderedGatewayStages() []GatewayHookStage {
 	return OrderedGatewayStages()
+}
+
+func NormalizeGatewayHookDescriptor(descriptor GatewayHookDescriptor) GatewayHookDescriptor {
+	descriptor.PluginID = strings.TrimSpace(descriptor.PluginID)
+	descriptor.HookID = strings.TrimSpace(descriptor.HookID)
+	descriptor.Subject = strings.TrimSpace(descriptor.Subject)
+	descriptor.Metadata = normalizeStringMap(descriptor.Metadata)
+	if descriptor.FailurePolicy == "" {
+		if policy, ok := GatewayStagePolicy(descriptor.Stage); ok {
+			descriptor.FailurePolicy = policy.DefaultFailurePolicy
+		}
+	}
+	if descriptor.TimeoutMillis == 0 {
+		descriptor.TimeoutMillis = DefaultGatewayHookTimeoutMillis
+	}
+	descriptor.Reads = normalizeDataClasses(descriptor.Reads)
+	descriptor.Writes = normalizeDataClasses(descriptor.Writes)
+	descriptor.Scope = normalizeGatewayHookScope(mergeLegacyGatewayHookScope(descriptor.Scope, descriptor.Subject, descriptor.Metadata))
+	if descriptor.FailurePolicy == FailurePolicyObserveOnly {
+		descriptor.Writes = nil
+	}
+	return descriptor
+}
+
+func GatewayHookScopeMatches(hook GatewayHookDescriptor, target GatewayHookScopeTarget) bool {
+	scope := NormalizeGatewayHookDescriptor(hook).Scope
+	if !gatewayScopeListMatches(scope.ProjectIDs, target.ProjectID, false) {
+		return false
+	}
+	if !gatewayScopeListMatches(scope.APIKeyIDs, target.APIKeyID, false) {
+		return false
+	}
+	if !gatewayScopeListMatches(scope.ProviderTypes, target.ProviderType, true) {
+		return false
+	}
+	if !gatewayScopeListMatches(scope.ProviderIDs, target.ProviderID, false) {
+		return false
+	}
+	if !gatewayScopeListMatches(scope.ResourceIDs, target.ResourceID, false) {
+		return false
+	}
+	if !gatewayScopeListMatches(scope.ResourceTypes, target.ResourceType, true) {
+		return false
+	}
+	if !gatewayScopeListMatches(scope.RouteProtocols, target.RouteProtocol, true) {
+		return false
+	}
+	return gatewayScopeListMatches(scope.Operations, target.Operation, true)
 }
 
 var canonicalGatewayStages = []GatewayHookStage{
@@ -395,7 +473,10 @@ func sortGatewayHooks(hooks []GatewayHookDescriptor) {
 		if hooks[i].PluginID != hooks[j].PluginID {
 			return hooks[i].PluginID < hooks[j].PluginID
 		}
-		return hooks[i].HookID < hooks[j].HookID
+		if hooks[i].HookID != hooks[j].HookID {
+			return hooks[i].HookID < hooks[j].HookID
+		}
+		return gatewayHookScopeSortKey(hooks[i]) < gatewayHookScopeSortKey(hooks[j])
 	})
 }
 
@@ -479,4 +560,124 @@ func preservedGatewayDataClasses(reads []GatewayDataClass, writes []GatewayDataC
 		preserved = append(preserved, dataClass)
 	}
 	return preserved
+}
+
+func normalizeGatewayHookScope(scope GatewayHookScope) GatewayHookScope {
+	return GatewayHookScope{
+		ProjectIDs:     normalizeStrings(scope.ProjectIDs),
+		APIKeyIDs:      normalizeStrings(scope.APIKeyIDs),
+		ProviderTypes:  normalizeLowerStrings(scope.ProviderTypes),
+		ProviderIDs:    normalizeStrings(scope.ProviderIDs),
+		ResourceIDs:    normalizeStrings(scope.ResourceIDs),
+		ResourceTypes:  normalizeLowerStrings(scope.ResourceTypes),
+		RouteProtocols: normalizeLowerStrings(scope.RouteProtocols),
+		Operations:     normalizeLowerStrings(scope.Operations),
+	}
+}
+
+func mergeLegacyGatewayHookScope(scope GatewayHookScope, subject string, metadata map[string]string) GatewayHookScope {
+	if strings.TrimSpace(subject) != "" && len(scope.ProviderTypes) == 0 {
+		scope.ProviderTypes = []string{subject}
+	}
+	if len(metadata) == 0 {
+		return scope
+	}
+	if len(scope.RouteProtocols) == 0 {
+		scope.RouteProtocols = append(scope.RouteProtocols, splitGatewayScopeMetadata(metadata["protocol"])...)
+		scope.RouteProtocols = append(scope.RouteProtocols, splitGatewayScopeMetadata(metadata["route_protocol"])...)
+	}
+	if len(scope.ProjectIDs) == 0 {
+		scope.ProjectIDs = append(scope.ProjectIDs, splitGatewayScopeMetadata(metadata["project_id"])...)
+		scope.ProjectIDs = append(scope.ProjectIDs, splitGatewayScopeMetadata(metadata["project_ids"])...)
+	}
+	if len(scope.APIKeyIDs) == 0 {
+		scope.APIKeyIDs = append(scope.APIKeyIDs, splitGatewayScopeMetadata(metadata["api_key_id"])...)
+		scope.APIKeyIDs = append(scope.APIKeyIDs, splitGatewayScopeMetadata(metadata["api_key_ids"])...)
+	}
+	if len(scope.ProviderTypes) == 0 {
+		scope.ProviderTypes = append(scope.ProviderTypes, splitGatewayScopeMetadata(metadata["provider_type"])...)
+		scope.ProviderTypes = append(scope.ProviderTypes, splitGatewayScopeMetadata(metadata["provider_types"])...)
+	}
+	if len(scope.ProviderIDs) == 0 {
+		scope.ProviderIDs = append(scope.ProviderIDs, splitGatewayScopeMetadata(metadata["provider_id"])...)
+		scope.ProviderIDs = append(scope.ProviderIDs, splitGatewayScopeMetadata(metadata["provider_ids"])...)
+	}
+	if len(scope.ResourceIDs) == 0 {
+		scope.ResourceIDs = append(scope.ResourceIDs, splitGatewayScopeMetadata(metadata["resource_id"])...)
+		scope.ResourceIDs = append(scope.ResourceIDs, splitGatewayScopeMetadata(metadata["resource_ids"])...)
+	}
+	if len(scope.ResourceTypes) == 0 {
+		scope.ResourceTypes = append(scope.ResourceTypes, splitGatewayScopeMetadata(metadata["resource_type"])...)
+		scope.ResourceTypes = append(scope.ResourceTypes, splitGatewayScopeMetadata(metadata["resource_types"])...)
+	}
+	if len(scope.Operations) == 0 {
+		scope.Operations = append(scope.Operations, splitGatewayScopeMetadata(metadata["operation"])...)
+		scope.Operations = append(scope.Operations, splitGatewayScopeMetadata(metadata["operations"])...)
+	}
+	return scope
+}
+
+func gatewayScopeListMatches(allowed []string, value string, caseInsensitive bool) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	value = strings.TrimSpace(value)
+	if caseInsensitive {
+		value = strings.ToLower(value)
+	}
+	if value == "" {
+		return true
+	}
+	for _, candidate := range allowed {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+func gatewayHookScopeSortKey(hook GatewayHookDescriptor) string {
+	scope := normalizeGatewayHookScope(hook.Scope)
+	parts := []string{
+		strings.Join(scope.ProjectIDs, ","),
+		strings.Join(scope.APIKeyIDs, ","),
+		strings.Join(scope.ProviderTypes, ","),
+		strings.Join(scope.ProviderIDs, ","),
+		strings.Join(scope.ResourceIDs, ","),
+		strings.Join(scope.ResourceTypes, ","),
+		strings.Join(scope.RouteProtocols, ","),
+		strings.Join(scope.Operations, ","),
+	}
+	return strings.Join(parts, "|")
+}
+
+func normalizeLowerStrings(items []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.ToLower(strings.TrimSpace(item))
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		normalized = append(normalized, item)
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
+func splitGatewayScopeMetadata(value string) []string {
+	var items []string
+	for _, item := range strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == ';'
+	}) {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }

@@ -55,6 +55,51 @@ func TestGatewayRouteHooksForRouteFiltersRouteScopedStages(t *testing.T) {
 	}
 }
 
+func TestGatewayRouteHooksForRouteFiltersExplicitProviderScope(t *testing.T) {
+	server := New(NewMemoryStore())
+	matching := pluginmeta.GatewayHookDescriptor{
+		PluginID: "tokenhub.test-scope",
+		HookID:   "matching",
+		Stage:    pluginmeta.StageRequestTransform,
+		Priority: 1000,
+		Scope: pluginmeta.GatewayHookScope{
+			ProviderTypes:  []string{"transform_capture"},
+			ProviderIDs:    []string{"prv_transform"},
+			ResourceIDs:    []string{"res_transform"},
+			ResourceTypes:  []string{"subscription"},
+			RouteProtocols: []string{providerRouteProtocolChatCompletions},
+		},
+	}
+	wrongProvider := matching
+	wrongProvider.HookID = "wrong-provider"
+	wrongProvider.Scope.ProviderIDs = []string{"prv_other"}
+	wrongResource := matching
+	wrongResource.HookID = "wrong-resource"
+	wrongResource.Scope.ResourceTypes = []string{"account"}
+	wrongProtocol := matching
+	wrongProtocol.HookID = "wrong-protocol"
+	wrongProtocol.Scope.RouteProtocols = []string{providerRouteProtocolImageGeneration}
+	for _, hook := range []pluginmeta.GatewayHookDescriptor{wrongProtocol, matching, wrongResource, wrongProvider} {
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register request transform hook %s: %v", hook.HookID, err)
+		}
+	}
+
+	hooks := server.gatewayRouteHooksForRoute(pluginmeta.StageRequestTransform, RouteSelection{
+		Provider: Provider{ID: "prv_transform", Type: "transform_capture"},
+		Resource: &ProviderResource{ID: "res_transform", ResourceType: "subscription"},
+	}, providerRouteProtocolChatCompletions, true)
+	pluginHooks := make([]pluginmeta.GatewayHookDescriptor, 0, len(hooks))
+	for _, hook := range hooks {
+		if hook.PluginID != tokenHubCoreGatewayChainPluginID {
+			pluginHooks = append(pluginHooks, hook)
+		}
+	}
+	if len(pluginHooks) != 1 || pluginHooks[0].HookID != matching.HookID {
+		t.Fatalf("explicit provider scope hooks = %#v, want only %q", pluginHooks, matching.HookID)
+	}
+}
+
 func TestRouteScopedResponsePostHookExecutorSkipsWrongProtocol(t *testing.T) {
 	server := New(NewMemoryStore())
 	hook := pluginmeta.GatewayHookDescriptor{

@@ -49,28 +49,36 @@ func (s *Server) gatewayRouteHooksForRoute(stage pluginmeta.GatewayHookStage, ro
 }
 
 func gatewayHookMatchesProviderRoute(hook pluginmeta.GatewayHookDescriptor, route RouteSelection, protocol string) bool {
-	providerType := strings.TrimSpace(route.Provider.Type)
-	if hook.Subject != "" && hook.Subject != providerType {
+	hook = pluginmeta.NormalizeGatewayHookDescriptor(hook)
+	scope := hook.Scope
+	if !gatewayHookRouteScopeListMatches(scope.ProviderTypes, route.Provider.Type, true) {
 		return false
 	}
-	protocol = strings.ToLower(strings.TrimSpace(protocol))
-	for _, key := range []string{"protocol", "route_protocol"} {
-		expected := strings.TrimSpace(hook.Metadata[key])
-		if expected == "" {
-			continue
-		}
-		if protocol == "" || !gatewayHookMetadataListContains(expected, protocol) {
-			return false
-		}
+	if !gatewayHookRouteScopeListMatches(scope.ProviderIDs, route.Provider.ID, false) {
+		return false
 	}
-	return true
+	if !gatewayHookRouteScopeListMatches(scope.ResourceIDs, routeResourceID(route), false) {
+		return false
+	}
+	if !gatewayHookRouteScopeListMatches(scope.ResourceTypes, routeResourceType(route), true) {
+		return false
+	}
+	return gatewayHookRouteScopeListMatches(scope.RouteProtocols, protocol, true)
 }
 
-func gatewayHookMetadataListContains(raw string, value string) bool {
-	for _, item := range strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == ';'
-	}) {
-		if strings.EqualFold(strings.TrimSpace(item), value) {
+func gatewayHookRouteScopeListMatches(allowed []string, value string, caseInsensitive bool) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	value = strings.TrimSpace(value)
+	if caseInsensitive {
+		value = strings.ToLower(value)
+	}
+	if value == "" {
+		return false
+	}
+	for _, item := range allowed {
+		if item == value {
 			return true
 		}
 	}
