@@ -125,6 +125,7 @@ func adminPluginDescriptorForPackage(descriptor pluginmeta.Descriptor, pkg plugi
 	}
 	trust := adminPluginTrustSummaryForDescriptor(descriptor)
 	descriptor.Distribution = sanitizeAdminPluginDistribution(descriptor.Distribution)
+	descriptor.Marketplace = sanitizeAdminPluginMarketplaceMetadata(descriptor.Marketplace)
 	lifecycle := adminPluginLifecycleForState(state)
 	return adminPluginDescriptorResponse{
 		Descriptor:        descriptor,
@@ -207,11 +208,11 @@ func sanitizeAdminPluginDistribution(distribution *pluginmeta.Distribution) *plu
 		return nil
 	}
 	safe := &pluginmeta.Distribution{
-		MarketplaceURL:     strings.TrimSpace(distribution.MarketplaceURL),
-		RepositoryURL:      strings.TrimSpace(distribution.RepositoryURL),
+		MarketplaceURL:     sanitizeAdminPluginPublicHTTPSURL(distribution.MarketplaceURL),
+		RepositoryURL:      sanitizeAdminPluginPublicHTTPSURL(distribution.RepositoryURL),
 		SignatureAlgorithm: strings.TrimSpace(distribution.SignatureAlgorithm),
 		SignatureKeyID:     strings.TrimSpace(distribution.SignatureKeyID),
-		HomepageURL:        strings.TrimSpace(distribution.HomepageURL),
+		HomepageURL:        sanitizeAdminPluginPublicHTTPSURL(distribution.HomepageURL),
 		License:            strings.TrimSpace(distribution.License),
 	}
 	if safe.MarketplaceURL == "" && safe.RepositoryURL == "" && safe.SignatureAlgorithm == "" &&
@@ -219,6 +220,84 @@ func sanitizeAdminPluginDistribution(distribution *pluginmeta.Distribution) *plu
 		return nil
 	}
 	return safe
+}
+
+func sanitizeAdminPluginMarketplaceMetadata(metadata *pluginmeta.MarketplaceMetadata) *pluginmeta.MarketplaceMetadata {
+	metadata = metadata.Normalized()
+	if metadata == nil {
+		return nil
+	}
+	safe := &pluginmeta.MarketplaceMetadata{
+		Summary:       metadata.Summary,
+		Categories:    append([]string(nil), metadata.Categories...),
+		Localizations: copyAdminPluginMarketplaceLocalizations(metadata.Localizations),
+	}
+	for _, screenshot := range metadata.Screenshots {
+		screenshot.URL = sanitizeAdminPluginPublicHTTPSURL(screenshot.URL)
+		screenshot.ThumbnailURL = sanitizeAdminPluginPublicHTTPSURL(screenshot.ThumbnailURL)
+		if normalized, ok := screenshot.Normalized(); ok {
+			safe.Screenshots = append(safe.Screenshots, normalized)
+		}
+	}
+	if metadata.Compatibility != nil {
+		compatibility := &pluginmeta.MarketplaceCompatibility{
+			Verdict: metadata.Compatibility.Verdict,
+		}
+		for _, badge := range metadata.Compatibility.Badges {
+			badge.URL = sanitizeAdminPluginPublicHTTPSURL(badge.URL)
+			if normalized, ok := badge.Normalized(); ok {
+				compatibility.Badges = append(compatibility.Badges, normalized)
+			}
+		}
+		safe.Compatibility = compatibility.Normalized()
+	}
+	if metadata.Publisher != nil {
+		publisher := *metadata.Publisher
+		publisher.URL = sanitizeAdminPluginPublicHTTPSURL(publisher.URL)
+		publisher.SupportURL = sanitizeAdminPluginPublicHTTPSURL(publisher.SupportURL)
+		publisher.ContactURL = sanitizeAdminPluginPublicHTTPSURL(publisher.ContactURL)
+		safe.Publisher = publisher.Normalized()
+	}
+	for _, advisory := range metadata.Advisories {
+		advisory.URL = sanitizeAdminPluginPublicHTTPSURL(advisory.URL)
+		if normalized, ok := advisory.Normalized(); ok {
+			safe.Advisories = append(safe.Advisories, normalized)
+		}
+	}
+	for _, note := range metadata.ReleaseNotes {
+		note.URL = sanitizeAdminPluginPublicHTTPSURL(note.URL)
+		if normalized, ok := note.Normalized(); ok {
+			safe.ReleaseNotes = append(safe.ReleaseNotes, normalized)
+		}
+	}
+	return safe.Normalized()
+}
+
+func copyAdminPluginMarketplaceLocalizations(items map[string]pluginmeta.MarketplaceLocalization) map[string]pluginmeta.MarketplaceLocalization {
+	if len(items) == 0 {
+		return nil
+	}
+	copied := make(map[string]pluginmeta.MarketplaceLocalization, len(items))
+	for locale, localization := range items {
+		copied[locale] = localization
+	}
+	return copied
+}
+
+func sanitizeAdminPluginPublicHTTPSURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil {
+		return ""
+	}
+	parsed.Scheme = "https"
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Request) {
