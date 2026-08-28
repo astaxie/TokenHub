@@ -46,6 +46,8 @@ type providerImageCapabilityRouteProfile struct {
 	RequestDefaultModel         bool
 	RequestSupportsMask         bool
 	RequestSupportsMaskSet      bool
+	RequestSizePolicy           string
+	RequestAllowedSizes         []string
 	ProbeErrorMessages          map[string]string
 }
 
@@ -226,6 +228,14 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 		RequestDefaultModel: truthyString(firstNonEmpty(
 			descriptor.Metadata["request.default_model"],
 			descriptor.Metadata["image_request_default_model"],
+		)),
+		RequestSizePolicy: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["request.size_policy"],
+			descriptor.Metadata["image_request_size_policy"],
+		)),
+		RequestAllowedSizes: stringListMetadata(firstNonEmpty(
+			descriptor.Metadata["request.allowed_sizes"],
+			descriptor.Metadata["image_request_allowed_sizes"],
 		)),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
@@ -458,6 +468,9 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if !p.RequestSupportsMaskSet {
 		p.RequestSupportsMask = true
 	}
+	if p.RequestSizePolicy == "" {
+		p.RequestSizePolicy = imageRequestSizePolicyGPTImage2
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -506,6 +519,8 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.RequestAliasResponseFormat,
 		boolString(p.RequestDefaultModel),
 		boolString(p.RequestSupportsMask),
+		p.RequestSizePolicy,
+		strings.Join(p.RequestAllowedSizes, ","),
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry
@@ -547,6 +562,17 @@ func boolMetadata(value string) (bool, bool) {
 	default:
 		return false, false
 	}
+}
+
+func stringListMetadata(value string) []string {
+	items := []string{}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 func dedupeProviderImageCapabilityRouteProfiles(profiles []providerImageCapabilityRouteProfile) []providerImageCapabilityRouteProfile {

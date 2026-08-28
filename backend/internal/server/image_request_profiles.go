@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const imageRequestSizePolicyGPTImage2 = "gpt-image-2"
+
 func (s *Server) applyImageGenerationRequestAliases(r *http.Request, request *imageGenerationRequest) {
 	if s == nil || request == nil {
 		return
@@ -66,4 +68,21 @@ func (s *Server) imageModelSupportsMask(model string) bool {
 	}
 	profile.withDefaults()
 	return profile.RequestSupportsMask
+}
+
+func (s *Server) imageModelSupportsSize(model string, size string) bool {
+	profile, ok := s.providerImageCapabilityRouteProfileForModel(model)
+	if !ok {
+		return validGPTImage2Size(size)
+	}
+	profile.withDefaults()
+	if len(profile.RequestAllowedSizes) > 0 {
+		return stringInList(size, profile.RequestAllowedSizes)
+	}
+	switch strings.TrimSpace(profile.RequestSizePolicy) {
+	case imageRequestSizePolicyGPTImage2:
+		return validGPTImage2Size(size)
+	default:
+		return false
+	}
 }

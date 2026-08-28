@@ -1112,15 +1112,15 @@ func normalizedImageOption(value string, fallback string) string {
 }
 
 func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
-	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName)
+	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName, nil)
 }
 
 func (s *Server) normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 	models, defaultModel := s.imageGenerationModelsAndDefault()
-	return normalizeImageGenerationRequestForModels(request, models, defaultModel)
+	return normalizeImageGenerationRequestForModels(request, models, defaultModel, s.imageModelSupportsSize)
 }
 
-func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string) error {
+func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string, supportsSize func(string, string) bool) error {
 	request.Model = strings.TrimSpace(request.Model)
 	if request.Model == "" {
 		request.Model = strings.TrimSpace(defaultModel)
@@ -1144,8 +1144,13 @@ func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, s
 		return NewHTTPError(http.StatusBadRequest, "invalid_quality", "quality must be auto, low, medium, or high")
 	}
 	request.Size = normalizedImageOption(request.Size, "auto")
-	if !validGPTImage2Size(request.Size) {
-		return NewHTTPError(http.StatusBadRequest, "invalid_size", "size must be auto or a valid gpt-image-2 WIDTHxHEIGHT value")
+	if supportsSize == nil {
+		supportsSize = func(_ string, size string) bool {
+			return validGPTImage2Size(size)
+		}
+	}
+	if !supportsSize(request.Model, request.Size) {
+		return NewHTTPError(http.StatusBadRequest, "invalid_size", "size is not supported by the selected image model")
 	}
 	request.ResponseFormat = normalizedImageOption(request.ResponseFormat, "url")
 	if request.ResponseFormat != "url" && request.ResponseFormat != "b64_json" {

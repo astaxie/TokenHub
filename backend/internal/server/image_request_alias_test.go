@@ -112,3 +112,33 @@ func TestImageModelMaskSupportUsesPluginMetadata(t *testing.T) {
 		t.Fatal("non-profile image model should support masks by default")
 	}
 }
+
+func TestImageRequestAllowedSizesUsePluginMetadata(t *testing.T) {
+	server := &Server{pluginActions: pluginmeta.NewActionBroker()}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi-image-size",
+		ActionID:   "kimi.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "kimi_subscription",
+		Metadata: map[string]string{
+			"public_model":          "kimi-image",
+			"upstream_model":        "moonshot-image",
+			"request.allowed_sizes": "auto,2048x2048",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	accepted := imageGenerationRequest{Model: "kimi-image", Prompt: "Draw one square.", N: 1, Quality: "low", Size: "2048x2048"}
+	if err := server.normalizeImageGenerationRequest(&accepted); err != nil {
+		t.Fatalf("plugin allowed size was rejected: %v", err)
+	}
+
+	rejected := imageGenerationRequest{Model: "kimi-image", Prompt: "Draw one square.", N: 1, Quality: "low", Size: "1024x1024"}
+	if err := server.normalizeImageGenerationRequest(&rejected); err == nil || AsHTTPError(err).Code != "invalid_size" {
+		t.Fatalf("plugin disallowed size was not rejected: %v", err)
+	}
+}
