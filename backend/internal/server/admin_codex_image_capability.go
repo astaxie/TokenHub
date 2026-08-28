@@ -12,6 +12,7 @@ import (
 const codexImageCapabilityTestTimeout = 120 * time.Second
 
 const (
+	codexImageModelName              = "codex-gpt-image-2"
 	codexImageRouteBackfillOption    = "image_generation_route_backfill_v1"
 	codexImageRouteBackfillCompleted = "completed"
 )

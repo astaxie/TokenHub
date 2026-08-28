@@ -34,7 +34,6 @@ const (
 	maxImageEditRequestBytes = 128 << 20
 	maxInputImageBytes       = 50 << 20
 	maxImageTextFieldBytes   = 1 << 20
-	codexImageModelName      = "codex-gpt-image-2"
 	openAIImageModelName     = "gpt-image-2"
 )
 
