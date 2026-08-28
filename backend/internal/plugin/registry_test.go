@@ -55,10 +55,14 @@ func TestRegisterRejectsBlankID(t *testing.T) {
 func TestRegistryMergesDescriptorsForSamePlugin(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(Descriptor{
-		ID:         "tokenhub.codex",
-		Name:       "Codex",
-		Version:    "built-in",
-		Source:     SourceBuiltIn,
+		ID:      "tokenhub.codex",
+		Name:    "Codex",
+		Version: "built-in",
+		Source:  SourceBuiltIn,
+		Marketplace: &MarketplaceMetadata{
+			Summary:    "Official Codex subscription provider.",
+			Categories: []string{"provider"},
+		},
 		Kinds:      []Kind{KindProvider},
 		Placements: []Placement{PlacementGatewayChain},
 		Capabilities: []CapabilityDescriptor{
@@ -90,5 +94,8 @@ func TestRegistryMergesDescriptorsForSamePlugin(t *testing.T) {
 	}
 	if len(descriptor.Capabilities) != 2 {
 		t.Fatalf("capabilities = %v, want 2 entries", descriptor.Capabilities)
+	}
+	if descriptor.Marketplace == nil || descriptor.Marketplace.Summary != "Official Codex subscription provider." {
+		t.Fatalf("marketplace metadata was not preserved: %+v", descriptor.Marketplace)
 	}
 }

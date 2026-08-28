@@ -17,6 +17,7 @@ type Manifest struct {
 	Description   string                `yaml:"description"`
 	TokenHub      ManifestCompatibility `yaml:"tokenhub"`
 	Distribution  ManifestDistribution  `yaml:"distribution"`
+	Marketplace   *MarketplaceMetadata  `yaml:"marketplace"`
 	Kinds         []Kind                `yaml:"kinds"`
 	Placement     []Placement           `yaml:"placement"`
 	Entry         ManifestEntry         `yaml:"entry"`
@@ -258,6 +259,9 @@ func (m Manifest) Validate() error {
 	if err := m.Distribution.Validate(); err != nil {
 		return err
 	}
+	if err := m.validateMarketplaceMetadata(); err != nil {
+		return err
+	}
 	if m.Entry.Backend != nil {
 		protocol := strings.TrimSpace(m.Entry.Backend.Protocol)
 		if protocol != "" && protocol != BackendProtocolStdioJSONV1 {
@@ -492,6 +496,56 @@ func (m Manifest) validateProviderCatalog() error {
 	return nil
 }
 
+func (m Manifest) validateMarketplaceMetadata() error {
+	metadata := m.Marketplace.Normalized()
+	if metadata == nil {
+		return nil
+	}
+	for index, screenshot := range metadata.Screenshots {
+		if screenshot.Width < 0 || screenshot.Height < 0 {
+			return fmt.Errorf("marketplace.screenshots[%d] dimensions cannot be negative", index)
+		}
+		if err := validatePluginMarketplaceURL(fmt.Sprintf("screenshots[%d].url", index), screenshot.URL); err != nil {
+			return err
+		}
+		if err := validatePluginMarketplaceURL(fmt.Sprintf("screenshots[%d].thumbnail_url", index), screenshot.ThumbnailURL); err != nil {
+			return err
+		}
+	}
+	if metadata.Compatibility != nil {
+		if !validMarketplaceCompatibilityVerdict(metadata.Compatibility.Verdict) {
+			return fmt.Errorf("marketplace.compatibility.verdict is unsupported")
+		}
+		for index, badge := range metadata.Compatibility.Badges {
+			if err := validatePluginMarketplaceURL(fmt.Sprintf("compatibility.badges[%d].url", index), badge.URL); err != nil {
+				return err
+			}
+		}
+	}
+	if metadata.Publisher != nil {
+		if err := validatePluginMarketplaceURL("publisher.url", metadata.Publisher.URL); err != nil {
+			return err
+		}
+		if err := validatePluginMarketplaceURL("publisher.support_url", metadata.Publisher.SupportURL); err != nil {
+			return err
+		}
+		if err := validatePluginMarketplaceURL("publisher.contact_url", metadata.Publisher.ContactURL); err != nil {
+			return err
+		}
+	}
+	for index, advisory := range metadata.Advisories {
+		if err := validatePluginMarketplaceURL(fmt.Sprintf("advisories[%d].url", index), advisory.URL); err != nil {
+			return err
+		}
+	}
+	for index, note := range metadata.ReleaseNotes {
+		if err := validatePluginMarketplaceURL(fmt.Sprintf("release_notes[%d].url", index), note.URL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m Manifest) hasFrontendSchema() bool {
 	return m.Entry.Frontend != nil && strings.TrimSpace(m.Entry.Frontend.Schema) != ""
 }
@@ -504,6 +558,7 @@ func (m Manifest) Descriptor() Descriptor {
 		Source:       SourceLocalFile,
 		Status:       StatusEnabled,
 		Distribution: m.Distribution.Descriptor(),
+		Marketplace:  m.Marketplace.Normalized(),
 		Kinds:        m.Kinds,
 		Placements:   m.Placement,
 	}
@@ -854,6 +909,29 @@ func validatePluginDistributionURL(label string, value string) error {
 		return fmt.Errorf("distribution.%s must use HTTPS", label)
 	}
 	return nil
+}
+
+func validatePluginMarketplaceURL(label string, value string) error {
+	if value == "" {
+		return nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("marketplace.%s must be an absolute URL", label)
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("marketplace.%s must use HTTPS", label)
+	}
+	return nil
+}
+
+func validMarketplaceCompatibilityVerdict(verdict MarketplaceCompatibilityVerdict) bool {
+	switch verdict {
+	case "", MarketplaceCompatibilityCompatible, MarketplaceCompatibilityNeedsReview, MarketplaceCompatibilityIncompatible, MarketplaceCompatibilityUnknown:
+		return true
+	default:
+		return false
+	}
 }
 
 func isHexSHA256(value string) bool {

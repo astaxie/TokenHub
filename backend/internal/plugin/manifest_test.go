@@ -280,6 +280,160 @@ func descriptorHasCapability(descriptor Descriptor, capability CapabilityDescrip
 	return false
 }
 
+func TestParseManifestBuildsMarketplaceMetadataDescriptor(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.marketplace.rich
+name: Rich Marketplace Plugin
+version: 1.2.3
+tokenhub:
+  plugin_api: v1
+marketplace:
+  summary: Adds enterprise marketplace metadata.
+  categories:
+    - provider
+    - productivity
+  screenshots:
+    - url: https://cdn.example/tokenhub/rich/full.png
+      thumbnail_url: https://cdn.example/tokenhub/rich/thumb.png
+      alt: Rich marketplace dashboard
+      caption: Dashboard extension view
+      locale: en
+      width: 1440
+      height: 900
+  localizations:
+    en-GB:
+      name: Rich Marketplace Plugin UK
+      summary: Adds enterprise marketplace metadata for UK teams.
+      description: Localised marketplace description for plugin listings.
+      release_notes: Improved compatibility badges.
+  compatibility:
+    verdict: needs_review
+    badges:
+      - id: tokenhub-0.7
+        label: TokenHub 0.7
+        tone: success
+        url: https://plugins.example/tokenhub.marketplace.rich/compatibility
+  publisher:
+    id: acme
+    name: Acme Plugins
+    url: https://plugins.example/publishers/acme
+    support_url: https://plugins.example/publishers/acme/support
+    contact_url: https://plugins.example/publishers/acme/contact
+    verified: true
+  advisories:
+    - id: THA-2026-001
+      severity: low
+      title: Advisory note
+      url: https://plugins.example/advisories/THA-2026-001
+      published_at: "2026-08-01"
+      updated_at: "2026-08-02"
+  release_notes:
+    - version: 1.2.3
+      date: "2026-08-20"
+      title: Marketplace metadata
+      notes: Adds marketplace presentation metadata.
+      url: https://plugins.example/tokenhub.marketplace.rich/releases/1.2.3
+      items:
+        - Added compatibility badges
+kinds:
+  - provider
+capabilities:
+  provider_types:
+    - rich_provider
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+
+	descriptor := manifest.Descriptor()
+	if descriptor.Marketplace == nil {
+		t.Fatal("descriptor marketplace metadata is nil")
+	}
+	metadata := descriptor.Marketplace
+	if metadata.Summary != "Adds enterprise marketplace metadata." ||
+		len(metadata.Categories) != 2 ||
+		metadata.Categories[0] != "productivity" ||
+		metadata.Categories[1] != "provider" {
+		t.Fatalf("marketplace categories summary = %+v", metadata)
+	}
+	if len(metadata.Screenshots) != 1 ||
+		metadata.Screenshots[0].URL != "https://cdn.example/tokenhub/rich/full.png" ||
+		metadata.Screenshots[0].ThumbnailURL != "https://cdn.example/tokenhub/rich/thumb.png" ||
+		metadata.Screenshots[0].Width != 1440 ||
+		metadata.Screenshots[0].Height != 900 {
+		t.Fatalf("marketplace screenshots = %+v", metadata.Screenshots)
+	}
+	if localization := metadata.Localizations["en-GB"]; localization.Name != "Rich Marketplace Plugin UK" ||
+		localization.Summary != "Adds enterprise marketplace metadata for UK teams." ||
+		localization.ReleaseNotes != "Improved compatibility badges." {
+		t.Fatalf("marketplace localization = %+v", localization)
+	}
+	if metadata.Compatibility == nil ||
+		metadata.Compatibility.Verdict != MarketplaceCompatibilityNeedsReview ||
+		len(metadata.Compatibility.Badges) != 1 ||
+		metadata.Compatibility.Badges[0].ID != "tokenhub-0.7" {
+		t.Fatalf("marketplace compatibility = %+v", metadata.Compatibility)
+	}
+	if metadata.Publisher == nil ||
+		metadata.Publisher.ID != "acme" ||
+		metadata.Publisher.Name != "Acme Plugins" ||
+		!metadata.Publisher.Verified {
+		t.Fatalf("marketplace publisher = %+v", metadata.Publisher)
+	}
+	if len(metadata.Advisories) != 1 ||
+		metadata.Advisories[0].ID != "THA-2026-001" ||
+		metadata.Advisories[0].URL != "https://plugins.example/advisories/THA-2026-001" {
+		t.Fatalf("marketplace advisories = %+v", metadata.Advisories)
+	}
+	if len(metadata.ReleaseNotes) != 1 ||
+		metadata.ReleaseNotes[0].Version != "1.2.3" ||
+		len(metadata.ReleaseNotes[0].Items) != 1 {
+		t.Fatalf("marketplace release notes = %+v", metadata.ReleaseNotes)
+	}
+}
+
+func TestParseManifestPreservesLegacyManifestWithoutMarketplaceMetadata(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.legacy
+name: Legacy Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	if manifest.Marketplace != nil {
+		t.Fatalf("legacy manifest marketplace metadata = %+v", manifest.Marketplace)
+	}
+	if descriptor := manifest.Descriptor(); descriptor.Marketplace != nil {
+		t.Fatalf("legacy descriptor marketplace metadata = %+v", descriptor.Marketplace)
+	}
+}
+
+func TestParseManifestRejectsUnsafeMarketplaceMetadataURL(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.marketplace.unsafe
+name: Unsafe Marketplace Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+marketplace:
+  screenshots:
+    - url: http://cdn.example/unsafe.png
+kinds:
+  - extension
+`))
+	if err == nil {
+		t.Fatal("manifest with unsafe marketplace metadata URL parsed successfully")
+	}
+}
+
 func TestParseManifestBuildsLegacyProviderResourceTypeCapability(t *testing.T) {
 	manifest, err := ParseManifest([]byte(`
 schema_version: 1

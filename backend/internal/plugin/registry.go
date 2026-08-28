@@ -79,6 +79,9 @@ func mergeDescriptors(existing Descriptor, next Descriptor) Descriptor {
 	if next.Distribution == nil {
 		next.Distribution = existing.Distribution
 	}
+	if next.Marketplace == nil {
+		next.Marketplace = existing.Marketplace
+	}
 	next.Kinds = append(existing.Kinds, next.Kinds...)
 	next.Placements = append(existing.Placements, next.Placements...)
 	next.Capabilities = append(existing.Capabilities, next.Capabilities...)
