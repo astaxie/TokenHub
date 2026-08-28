@@ -153,36 +153,15 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		gormStore.providerUpstreamClient = client
 		gormStore.providerProxyPolicy = providerProxyPolicy
 	}
-	allowedProviderUpstreams := allowedProviderUpstreamCIDRs()
-	openai := OpenAICompatibleAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout}
-	kronk := KronkAdapter{OpenAICompatibleAdapter: openai}
-	codexSubscription := &CodexSubscriptionAdapter{
-		Client: &http.Client{
-			// The same SSRF guard the other provider adapters get: a custom
-			// Codex endpoint is validated at save time, but DNS answers can
-			// change afterwards and redirects must not bounce
-			// credential-bearing responses/compact/probe/image calls into
-			// the internal network. No Client.Timeout: streaming stays
-			// bounded by StreamIdleTimeout, exactly as before.
-			Transport:     rotatingProviderUpstreamTransport(allowedProviderUpstreams, syntheticDNSPolicy, providerProxyPolicy, nil),
-			CheckRedirect: strictProviderUpstreamRedirect,
-		},
-		StreamIdleTimeout:  streamIdleTimeout,
-		RefreshCredentials: store.RefreshProviderResourceCredentials,
-	}
-	adapters := map[string]ProviderAdapter{
-		ProviderMock:             MockAdapter{},
-		ProviderOpenAI:           openai,
-		ProviderOpenAICompatible: openai,
-		"deepseek":               openai,
-		"qwen":                   openai,
-		"local":                  openai,
-		ProviderKronk:            kronk,
-		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-	}
-	pluginBootstrap, err := bootstrapServerPlugins(store, config, adapters, codexSubscription)
+	providerRuntime := newBuiltinProviderRuntime(builtinProviderRuntimeDependencies{
+		Store:               store,
+		Client:              client,
+		StreamClient:        streamClient,
+		StreamIdleTimeout:   streamIdleTimeout,
+		SyntheticDNSPolicy:  syntheticDNSPolicy,
+		ProviderProxyPolicy: providerProxyPolicy,
+	})
+	pluginBootstrap, err := bootstrapServerPlugins(store, config, providerRuntime.adapters, providerRuntime.codexSubscription)
 	if err != nil {
 		panic(err)
 	}
@@ -199,7 +178,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
 		adapterRegistry:         pluginBootstrap.adapterRegistry,
 		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
-		codexSubscription:       codexSubscription,
+		codexSubscription:       providerRuntime.codexSubscription,
 		providerCatalog:         providerCatalog,
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
 		billingAvailable:        billingAvailable,
