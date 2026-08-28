@@ -111,8 +111,13 @@ test("plugin provider discovery follows descriptor auth modes", () => {
 
 test("provider type defaults prefer plugin metadata before the legacy fallback", () => {
   const pluginOnlyProviderTypes = [{ value: "native_subscription", label: "Native Subscription", supportsCustomHeaders: false }];
+  const pluginDefaultProviderTypes = [
+    { value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true },
+    { value: "native_subscription", label: "Native Subscription", supportsCustomHeaders: false, defaultCatalogProviderType: true },
+  ];
 
   assert.equal(defaultProviderTypeValue(pluginOnlyProviderTypes), "native_subscription");
+  assert.equal(defaultProviderTypeValue(pluginDefaultProviderTypes), "native_subscription");
   assert.equal(providerTypeValue({}, pluginOnlyProviderTypes), "native_subscription");
   assert.equal(providerTypeValue({ type: "explicit_provider" }, pluginOnlyProviderTypes), "explicit_provider");
   assert.deepEqual(customUpstreamDiscoveryPayload({}, "", "chat", {}, pluginOnlyProviderTypes), {

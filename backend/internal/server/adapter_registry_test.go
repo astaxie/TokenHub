@@ -141,6 +141,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if anthropic.ProviderPolicy.DefaultBaseURL != "https://api.anthropic.com" {
 		t.Fatalf("Anthropic default base URL = %q", anthropic.ProviderPolicy.DefaultBaseURL)
 	}
+	if anthropic.ProviderPolicy.DefaultCatalogProviderType {
+		t.Fatal("Anthropic should not be the default catalog provider type")
+	}
 	if anthropic.ProviderPolicy.ModelDiscovery.Path != "/v1/models" ||
 		anthropic.ProviderPolicy.ModelDiscovery.Auth != "provider_auth_mode" ||
 		anthropic.ProviderPolicy.ModelDiscovery.Headers["anthropic-version"] != "2023-06-01" {
@@ -204,6 +207,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	}
 	if !compatible.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("OpenAI-compatible should support custom headers")
+	}
+	if !compatible.ProviderPolicy.DefaultCatalogProviderType {
+		t.Fatal("OpenAI-compatible should declare itself as the default catalog provider type")
 	}
 	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"chat/completions", "embeddings", "responses"}) {
 		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
@@ -279,6 +285,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
 			{Kind: "provider_policy", Name: "default_base_url", Subject: providerType, Value: "https://subscription.example/v1"},
+			{Kind: "provider_policy", Name: "default_catalog_provider_type", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "error_profile", Subject: providerType, Value: providerErrorProfileKronk},
 			{Kind: "provider_policy", Name: "model_discovery_path", Subject: providerType, Value: "/subscription/models"},
 			{Kind: "provider_policy", Name: "model_discovery_auth", Subject: providerType, Value: "query_param"},
@@ -323,6 +330,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.DefaultBaseURL != "https://subscription.example/v1" {
 		t.Fatalf("plugin provider default base URL = %+v, want subscription URL", descriptor.ProviderPolicy)
+	}
+	if !descriptor.ProviderPolicy.DefaultCatalogProviderType {
+		t.Fatalf("plugin provider default catalog type = %+v, want true", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.ErrorProfile != providerErrorProfileKronk {
 		t.Fatalf("plugin provider error profile = %+v, want Kronk profile", descriptor.ProviderPolicy)

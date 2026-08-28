@@ -431,6 +431,7 @@ export type ProviderTypeOption = {
   routeProtocols?: string[];
   claudeCodeAttributionDefault?: string;
   defaultBaseURL?: string;
+  defaultCatalogProviderType?: boolean;
   modelDiscovery?: {
     path?: string;
     auth?: string;
@@ -448,6 +449,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const routeProtocolsByType = new Map<string, Set<string>>();
   const claudeCodeAttributionDefaultByType = new Map<string, string>();
   const defaultBaseURLByType = new Map<string, string>();
+  const defaultCatalogProviderTypeByType = new Map<string, boolean>();
   const modelDiscoveryByType = new Map<string, ProviderTypeOption["modelDiscovery"]>();
   let hasPluginProviderSource = false;
   for (const adapter of data.providerAdapters ?? []) {
@@ -461,6 +463,9 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     }
     if (adapter.provider_policy?.default_base_url?.trim()) {
       defaultBaseURLByType.set(adapter.type, adapter.provider_policy.default_base_url.trim().replace(/\/+$/, ""));
+    }
+    if (adapter.provider_policy?.default_catalog_provider_type) {
+      defaultCatalogProviderTypeByType.set(adapter.type, true);
     }
     const modelDiscovery = providerTypeModelDiscoveryFromAdapter(adapter.provider_policy?.model_discovery);
     if (modelDiscovery) modelDiscoveryByType.set(adapter.type, modelDiscovery);
@@ -515,6 +520,13 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         types.add(providerType);
         defaultBaseURLByType.set(providerType, baseURL);
       }
+      if (capability.kind === "provider_policy" && capability.name === "default_catalog_provider_type") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        hasPluginProviderSource = true;
+        types.add(providerType);
+        defaultCatalogProviderTypeByType.set(providerType, capability.value !== "false");
+      }
       if (capability.kind === "provider_policy" && capability.name.startsWith("model_discovery_")) {
         const providerType = String(capability.subject || "").trim();
         if (!providerType) continue;
@@ -559,6 +571,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
     claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
     defaultBaseURL: defaultBaseURLByType.get(value),
+    defaultCatalogProviderType: defaultCatalogProviderTypeByType.get(value),
     modelDiscovery: modelDiscoveryByType.get(value),
   }));
 }

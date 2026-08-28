@@ -45,6 +45,7 @@ type AdapterProviderPolicy struct {
 	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
 	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
 	DefaultBaseURL               string                      `json:"default_base_url,omitempty"`
+	DefaultCatalogProviderType   bool                        `json:"default_catalog_provider_type,omitempty"`
 	ErrorProfile                 string                      `json:"error_profile,omitempty"`
 	CredentialRefreshProfile     string                      `json:"credential_refresh_profile,omitempty"`
 	ModelDiscovery               AdapterModelDiscoveryPolicy `json:"model_discovery,omitempty"`
@@ -208,6 +209,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
 		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
 		DefaultBaseURL:               adapterDefaultBaseURL(r, descriptor.Type),
+		DefaultCatalogProviderType:   adapterDefaultCatalogProviderType(r, descriptor.Type),
 		ErrorProfile:                 adapterErrorProfile(r, descriptor.Type),
 		CredentialRefreshProfile:     adapterCredentialRefreshProfile(r, descriptor.Type),
 		ModelDiscovery:               adapterModelDiscovery(r, descriptor.Type),
@@ -273,6 +275,13 @@ func adapterDefaultBaseURL(registry *AdapterRegistry, providerType string) strin
 		return strings.TrimRight(strings.TrimSpace(value), "/")
 	}
 	return ""
+}
+
+func adapterDefaultCatalogProviderType(registry *AdapterRegistry, providerType string) bool {
+	if value, ok := providerPolicyBoolCapability(registry, providerType, "default_catalog_provider_type"); ok {
+		return value
+	}
+	return false
 }
 
 func adapterErrorProfile(registry *AdapterRegistry, providerType string) string {
