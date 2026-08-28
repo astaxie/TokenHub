@@ -330,7 +330,12 @@ func (s *Server) handleAdminPlugins(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.pluginRegistry.List()})
+	plugins, err := s.adminPluginDescriptors()
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_discovery_failed", "Plugin packages could not be inspected"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": plugins})
 }
 
 func (s *Server) handleAdminPluginChain(w http.ResponseWriter, r *http.Request) {

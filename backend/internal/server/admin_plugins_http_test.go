@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -240,6 +241,97 @@ kinds:
 	}
 }
 
+func TestAdminPluginsGetExposesLifecycleTrustAndCompatibilitySummaries(t *testing.T) {
+	pluginDir := t.TempDir()
+	for _, fixture := range []struct {
+		dir   string
+		id    string
+		state string
+	}{
+		{
+			dir:   "pending",
+			id:    "tokenhub.local-pending",
+			state: `{"status":"pending_restart","reason":"installed update","audit_event":"pending_restart"}`,
+		},
+		{
+			dir:   "failed",
+			id:    "tokenhub.local-failed",
+			state: `{"status":"failed_validation","health":"unhealthy","last_error_code":"plugin_api_unsupported","audit_event":"validation_failed"}`,
+		},
+		{
+			dir:   "rollback",
+			id:    "tokenhub.local-rollback",
+			state: `{"status":"rollback_available","rollback_version":"1.0.0","audit_event":"rollback_available"}`,
+		},
+		{
+			dir:   "mandatory",
+			id:    "tokenhub.local-mandatory",
+			state: `{"status":"mandatory","health":"healthy"}`,
+		},
+	} {
+		pluginPath := filepath.Join(pluginDir, fixture.dir)
+		writeServerPluginManifest(t, pluginPath, adminPluginManifestWithDistribution(fixture.id, "Lifecycle Plugin", "1.0.0"))
+		if err := os.WriteFile(filepath.Join(pluginPath, "plugin.state.json"), []byte(fixture.state), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	for _, secret := range []string{
+		"download-secret",
+		"signature-secret",
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		"download_url",
+		"signature_url",
+		"checksum_sha256",
+	} {
+		if strings.Contains(response.Body, secret) {
+			t.Fatalf("GET /api/admin/plugins leaked %q in response: %s", secret, response.Body)
+		}
+	}
+	var body struct {
+		Data []adminPluginDescriptorResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	plugins := map[string]adminPluginDescriptorResponse{}
+	for _, plugin := range body.Data {
+		plugins[plugin.ID] = plugin
+	}
+	pending := plugins["tokenhub.local-pending"]
+	if pending.Status != pluginmeta.StatusPendingRestart || !pending.RestartRequired || pending.Loadable {
+		t.Fatalf("pending plugin = %+v, want pending restart and non-loadable", pending)
+	}
+	failed := plugins["tokenhub.local-failed"]
+	if failed.Health != pluginmeta.PackageHealthUnhealthy || failed.LastErrorCode != string(pluginmeta.PluginErrorAPIUnsupported) || failed.Loadable {
+		t.Fatalf("failed plugin = %+v, want unhealthy failed validation", failed)
+	}
+	rollback := plugins["tokenhub.local-rollback"]
+	if !rollback.RollbackAvailable || rollback.RollbackVersion != "1.0.0" || !rollback.Loadable {
+		t.Fatalf("rollback plugin = %+v, want rollback available and loadable", rollback)
+	}
+	mandatory := plugins["tokenhub.local-mandatory"]
+	if !mandatory.Mandatory || mandatory.Health != pluginmeta.PackageHealthHealthy || !mandatory.Loadable {
+		t.Fatalf("mandatory plugin = %+v, want mandatory healthy loadable", mandatory)
+	}
+	for _, plugin := range []adminPluginDescriptorResponse{pending, failed, rollback, mandatory} {
+		if plugin.Compatibility.Verdict != "compatible" || plugin.Compatibility.PluginAPI != pluginmeta.CurrentPluginAPI {
+			t.Fatalf("plugin compatibility = %+v, want compatible current API", plugin.Compatibility)
+		}
+		if plugin.Trust.Verdict != pluginmeta.TrustVerdictUnverified || !plugin.Trust.ChecksumPresent || !plugin.Trust.SignaturePresent {
+			t.Fatalf("plugin trust = %+v, want unverified package with checksum/signature summary", plugin.Trust)
+		}
+		if plugin.Distribution == nil || plugin.Distribution.DownloadURL != "" || plugin.Distribution.SignatureURL != "" || plugin.Distribution.ChecksumSHA256 != "" {
+			t.Fatalf("plugin distribution = %+v, want sanitized admin distribution", plugin.Distribution)
+		}
+	}
+}
+
 func TestAdminPluginDeleteUninstallsLocalPackage(t *testing.T) {
 	pluginDir := t.TempDir()
 	localPluginDir := filepath.Join(pluginDir, "privacy")
@@ -307,6 +399,29 @@ schema_version: 1
 id: ` + id + `
 name: ` + name + `
 version: ` + version + `
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`
+}
+
+func adminPluginManifestWithDistribution(id string, name string, version string) string {
+	return `
+schema_version: 1
+id: ` + id + `
+name: ` + name + `
+version: ` + version + `
+distribution:
+  marketplace_url: https://plugins.example/marketplace/` + id + `
+  repository_url: https://github.com/tokenhub/` + id + `
+  download_url: https://plugins.example/download/` + id + `.zip?token=download-secret
+  checksum_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  signature_url: https://plugins.example/signatures/` + id + `.sig?token=signature-secret
+  signature_algorithm: ed25519
+  signature_key_id: tokenhub-test-key
+  homepage_url: https://plugins.example/` + id + `
+  license: Apache-2.0
 tokenhub:
   plugin_api: v1
 kinds:
