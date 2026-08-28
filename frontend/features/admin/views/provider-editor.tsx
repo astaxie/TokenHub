@@ -20,7 +20,7 @@ import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderImageCapability } from "./provider-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
-import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceSystemPromptTransformFields } from "./provider-editor-sections";
+import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderPluginPanels } from "./provider-plugin-panels";
@@ -1440,11 +1440,10 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
-                <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" provider={provider} values={values} />
-                <ProviderResourceSystemPromptTransformFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
+                <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" provider={provider} values={values} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}
-            {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} /> : null}
+            {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} onSaved={onAccountsChanged ?? onSaved} /> : null}
             {mode === "edit" && editTab === "advanced" && accountQuotaAction && selectedQuotaAccountResources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">

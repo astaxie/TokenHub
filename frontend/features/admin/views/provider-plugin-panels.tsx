@@ -4,6 +4,7 @@ import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor,
 import { compactNumber, formatMoney, formatNumber } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
+import { ProviderResourceSystemPromptTransformFields } from "./provider-editor-sections";
 
 type PanelField = {
   name: string;
@@ -14,6 +15,8 @@ type PanelField = {
   format?: "compact" | "money_usd" | "number" | "percent" | string;
   help?: string;
 };
+
+type PanelLayout = "resource_system_prompt_transform";
 
 type PanelState = {
   resourceID: string;
@@ -28,12 +31,14 @@ export function ProviderPluginPanels({
   resources,
   contributions,
   actions,
+  onSaved = noopSaved,
 }: {
   api: ApiContext;
   provider: Provider;
   resources: ProviderResource[];
   contributions: AdminUIContribution[];
   actions: PluginActionDescriptor[];
+  onSaved?: () => Promise<void>;
 }) {
   const panels = useMemo(
     () => contributions
@@ -41,10 +46,12 @@ export function ProviderPluginPanels({
         contribution.slot === "provider.resource.panel" &&
         (contribution.provider_types?.length ? contribution.provider_types.includes(provider.type) : true),
       )
-      .map((contribution) => ({ contribution, fields: providerPanelFields(contribution), resources: providerPanelResources(contribution, resources, provider.id) }))
-      .filter((panel) => panel.fields.length > 0 || Boolean(panel.contribution.action)),
+      .map((contribution) => ({ contribution, fields: providerPanelFields(contribution), layout: providerPanelLayout(contribution), resources: providerPanelResources(contribution, resources, provider.id) }))
+      .filter((panel) => panel.layout || panel.fields.length > 0 || Boolean(panel.contribution.action)),
     [contributions, provider.id, provider.type, resources],
   );
+  const layoutPanels = panels.filter((panel) => panel.layout);
+  const genericPanels = panels.filter((panel) => !panel.layout);
   const actionKeys = useMemo(() => new Set(actions.map((action) => actionKey(action.plugin_id, action.action_id))), [actions]);
   const [states, setStates] = useState<Record<string, PanelState>>({});
   if (panels.length === 0) return null;
@@ -78,55 +85,64 @@ export function ProviderPluginPanels({
   }
 
   return (
-    <section className="provider-quota-panel provider-plugin-panels">
-      <div className="wizard-panel-head">
-        <h3>{tx("插件面板")}</h3>
-      </div>
-      <div className="provider-quota-list">
-        {panels.map(({ contribution, fields, resources: panelResources }) => {
-          const state = stateFor(contribution, panelResources);
-          const selectedResource = panelResources.find((resource) => resource.id === state.resourceID);
-          const registered = !contribution.action || actionKeys.has(actionKey(contribution.plugin_id, contribution.action));
-          return (
-            <article className="provider-quota-card" key={contributionKey(contribution)}>
-              <div className="provider-quota-card-head">
-                <div className="provider-quota-account">
-                  <span>{contribution.title || contribution.id}</span>
-                  <strong>{contribution.plugin_id}</strong>
-                </div>
-                <div className="provider-quota-card-actions">
-                  {panelResources.length > 0 ? (
-                    <select disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, panelResources, { resourceID: event.target.value, error: "", result: "" })}>
-                      {panelResources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name || resource.id}</option>)}
-                    </select>
+    <>
+      {layoutPanels.map(({ contribution, layout, resources: panelResources }) => (
+        layout === "resource_system_prompt_transform"
+          ? <ProviderResourceSystemPromptTransformFields api={api} key={contributionKey(contribution)} providerID={provider.id} resources={panelResources} onSaved={onSaved} />
+          : null
+      ))}
+      {genericPanels.length > 0 ? (
+        <section className="provider-quota-panel provider-plugin-panels">
+          <div className="wizard-panel-head">
+            <h3>{tx("插件面板")}</h3>
+          </div>
+          <div className="provider-quota-list">
+            {genericPanels.map(({ contribution, fields, resources: panelResources }) => {
+              const state = stateFor(contribution, panelResources);
+              const selectedResource = panelResources.find((resource) => resource.id === state.resourceID);
+              const registered = !contribution.action || actionKeys.has(actionKey(contribution.plugin_id, contribution.action));
+              return (
+                <article className="provider-quota-card" key={contributionKey(contribution)}>
+                  <div className="provider-quota-card-head">
+                    <div className="provider-quota-account">
+                      <span>{contribution.title || contribution.id}</span>
+                      <strong>{contribution.plugin_id}</strong>
+                    </div>
+                    <div className="provider-quota-card-actions">
+                      {panelResources.length > 0 ? (
+                        <select disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, panelResources, { resourceID: event.target.value, error: "", result: "" })}>
+                          {panelResources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name || resource.id}</option>)}
+                        </select>
+                      ) : null}
+                      {contribution.action ? (
+                        <button className="secondary-button" disabled={state.busy || !registered || !state.resourceID} onClick={() => void runPanel(contribution, panelResources)} type="button">
+                          <Play size={14} />
+                          {tx(state.busy ? "执行中" : "执行插件面板")}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {fields.length > 0 ? (
+                    <div className="system-settings-plugin-fields">
+                      {fields.map((field) => (
+                        <ProviderPanelFieldView
+                          context={{ provider, resource: selectedResource, resources: panelResources }}
+                          field={field}
+                          key={field.name}
+                        />
+                      ))}
+                    </div>
                   ) : null}
-                  {contribution.action ? (
-                    <button className="secondary-button" disabled={state.busy || !registered || !state.resourceID} onClick={() => void runPanel(contribution, panelResources)} type="button">
-                      <Play size={14} />
-                      {tx(state.busy ? "执行中" : "执行插件面板")}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {fields.length > 0 ? (
-                <div className="system-settings-plugin-fields">
-                  {fields.map((field) => (
-                    <ProviderPanelFieldView
-                      context={{ provider, resource: selectedResource, resources: panelResources }}
-                      field={field}
-                      key={field.name}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {!registered ? <p className="provider-quota-error">{tx("该插件动作尚未注册。")}</p> : null}
-              {state.error ? <p className="provider-quota-error">{state.error}</p> : null}
-              {state.result ? <pre className="plugin-action-result">{state.result}</pre> : null}
-            </article>
-          );
-        })}
-      </div>
-    </section>
+                  {!registered ? <p className="provider-quota-error">{tx("该插件动作尚未注册。")}</p> : null}
+                  {state.error ? <p className="provider-quota-error">{state.error}</p> : null}
+                  {state.result ? <pre className="plugin-action-result">{state.result}</pre> : null}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+    </>
   );
 }
 
@@ -174,6 +190,11 @@ export function providerPanelFields(contribution: AdminUIContribution): PanelFie
       help: schemaString(field.help),
     }];
   });
+}
+
+function providerPanelLayout(contribution: AdminUIContribution): PanelLayout | undefined {
+  const layout = schemaString(contribution.schema?.layout);
+  return layout === "resource_system_prompt_transform" ? layout : undefined;
 }
 
 type ProviderPanelContext = {
@@ -258,6 +279,8 @@ function sensitivePanelResultKey(key: string) {
 }
 
 const arrayIndexPattern = /^\d+$/;
+
+async function noopSaved() {}
 
 function schemaString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";

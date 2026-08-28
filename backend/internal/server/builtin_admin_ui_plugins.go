@@ -86,27 +86,41 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "admin_ui", Name: "provider_form", Subject: "core_provider_settings"},
+			{Kind: "admin_ui", Name: "provider_resource_panel", Subject: "core_provider_settings"},
 		},
 	})
-	mustRegisterAdminUIContribution(adminUI, pluginmeta.AdminUIContribution{
-		PluginID: "tokenhub.admin.core-provider",
-		ID:       "provider-advanced-settings",
-		Slot:     pluginmeta.SlotProviderFormSection,
-		Title:    "Provider advanced settings",
-		Schema: map[string]any{
-			"placement": "advanced",
-			"fields": []any{
-				map[string]any{
-					"name":    "system_prompt_transform_policy",
-					"type":    "select",
-					"label":   "System prompt transform",
-					"target":  "provider",
-					"options": []string{"preserve", "strip"},
-					"help":    "Provider plugins may declare a default policy; providers without one strip client attribution blocks by default.",
+	for _, contribution := range []pluginmeta.AdminUIContribution{
+		{
+			PluginID: "tokenhub.admin.core-provider",
+			ID:       "provider-advanced-settings",
+			Slot:     pluginmeta.SlotProviderFormSection,
+			Title:    "Provider advanced settings",
+			Schema: map[string]any{
+				"placement": "advanced",
+				"fields": []any{
+					map[string]any{
+						"name":    "system_prompt_transform_policy",
+						"type":    "select",
+						"label":   "System prompt transform",
+						"target":  "provider",
+						"options": []string{"preserve", "strip"},
+						"help":    "Provider plugins may declare a default policy; providers without one strip client attribution blocks by default.",
+					},
 				},
 			},
 		},
-	})
+		{
+			PluginID: "tokenhub.admin.core-provider",
+			ID:       "resource-system-prompt-transform",
+			Slot:     pluginmeta.SlotProviderResourcePanel,
+			Title:    "Provider resource system prompt transform",
+			Schema: map[string]any{
+				"layout": "resource_system_prompt_transform",
+			},
+		},
+	} {
+		mustRegisterAdminUIContribution(adminUI, contribution)
+	}
 
 	mustRegisterPlugin(registry, pluginmeta.Descriptor{
 		ID:         "tokenhub.provider.openai-codex",

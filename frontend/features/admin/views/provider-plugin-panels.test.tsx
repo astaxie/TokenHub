@@ -100,6 +100,48 @@ describe("ProviderPluginPanels", () => {
     }, fields[2])).toContain("rsrc_plugin");
   });
 
+  it("renders resource system prompt transform panels from declarative layouts", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ resource: { id: "rsrc_plugin" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderPluginPanels
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        provider={{ id: "prv_plugin", name: "Plugin Provider", type: "plugin_provider", status: "active", healthy: true, priority: 10 }}
+        resources={[
+          { id: "rsrc_plugin", provider_id: "prv_plugin", name: "Plugin Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1, options: { system_prompt_transform_policy: "preserve" } },
+          { id: "rsrc_other_provider", provider_id: "prv_other", name: "Other Provider Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1 },
+        ]}
+        contributions={[{
+          plugin_id: "tokenhub.admin.core-provider",
+          id: "resource-system-prompt-transform",
+          slot: "provider.resource.panel",
+          title: "Provider resource system prompt transform",
+          schema: { layout: "resource_system_prompt_transform" },
+        }]}
+        actions={[]}
+        onSaved={onSaved}
+      />,
+    );
+
+    expect(screen.getByLabelText("Plugin Account")).toHaveValue("preserve");
+    expect(screen.queryByLabelText("Other Provider Account")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Plugin Account"), "strip");
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/provider-resources/rsrc_plugin");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      provider_id: "prv_plugin",
+      options: { system_prompt_transform_policy: "strip" },
+    });
+  });
+
   it("scopes provider resource panel resources by Provider and declared resource types", () => {
     expect(providerPanelResources({
       plugin_id: "tokenhub.provider.plugin",
