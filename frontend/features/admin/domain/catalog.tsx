@@ -387,8 +387,23 @@ export function providerCategories(provider: Provider, data: AppData) {
   const categories = routeModels.map(modelCategory);
   const optionCategory = provider.options?.model_category;
   if (optionCategory) categories.push(standardModelCategory(optionCategory));
-  if (categories.length === 0) categories.push(providerTypeToModelCategory(provider.type));
+  if (categories.length === 0) {
+    const catalogCategory = providerCatalogCategoryForType(provider.type, data.providerCatalog);
+    categories.push(catalogCategory || providerTypeToModelCategory(provider.type));
+  }
   return Array.from(new Set(categories.filter(Boolean))).sort();
+}
+
+export function providerCatalogCategoryForType(type: string, catalog: ProviderCatalogEntry[]) {
+  const normalizedType = type.trim().toLowerCase();
+  if (!normalizedType) return "";
+  const entry = catalog.find((item) => item.type.trim().toLowerCase() === normalizedType);
+  if (!entry) return "";
+  const category = entry.categories?.find((item) => item.trim());
+  if (category) return standardModelCategory(category);
+  const countedCategory = Object.entries(entry.category_counts ?? {}).find(([, count]) => count > 0)?.[0];
+  if (countedCategory) return standardModelCategory(countedCategory);
+  return "";
 }
 
 export function providerTypeToModelCategory(type: string) {

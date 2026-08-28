@@ -42,4 +42,28 @@ describe("providerCategories", () => {
 
     expect(providerCategories(provider, data)).toEqual(["kimi"]);
   });
+
+  it("uses provider catalog categories before type-name inference", () => {
+    const provider: Provider = {
+      id: "prv_vendor",
+      name: "Vendor",
+      type: "opaque_subscription_provider",
+      status: "active",
+      healthy: true,
+      priority: 1,
+    };
+    const data = emptyData();
+    data.providers = [provider];
+    data.providerCatalog = [{
+      id: "vendor-subscription",
+      name: "Vendor Subscription",
+      display_name: "Vendor Subscription",
+      type: "opaque_subscription_provider",
+      categories: ["kimi"],
+      models_count: 0,
+      source: "plugin",
+    }];
+
+    expect(providerCategories(provider, data)).toEqual(["kimi"]);
+  });
 });
