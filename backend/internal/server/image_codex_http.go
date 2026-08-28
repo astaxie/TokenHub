@@ -3,13 +3,11 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -43,34 +41,6 @@ type codexSubscriptionImageResponse struct {
 
 type codexSubscriptionImageData struct {
 	B64JSON string `json:"b64_json"`
-}
-
-func (s *Server) executeCodexSubscriptionImage(ctx context.Context, route RouteSelection, job ImageJob) ([]byte, string, Usage, error) {
-	resourceID := routeResourceID(route)
-	request, err := s.codexSubscriptionImageRequest(job)
-	if err != nil {
-		return nil, "", Usage{}, err
-	}
-	response, headers, err := s.codexSubscription.Image(ctx, route.Provider, resourceID, request)
-	if err != nil {
-		if AsHTTPError(err).Code == "codex_image_forbidden" {
-			s.recordProviderImageGenerationCapabilityError(route, err)
-		}
-		return nil, "", Usage{}, err
-	}
-	if len(response.Data) == 0 || strings.TrimSpace(response.Data[0].B64JSON) == "" {
-		return nil, "", Usage{}, NewHTTPError(http.StatusBadGateway, "image_result_missing", "Codex image generation completed without an image result")
-	}
-	imageBytes, err := decodeGeneratedImage(response.Data[0].B64JSON)
-	if err != nil {
-		return nil, "", Usage{}, NewHTTPError(http.StatusBadGateway, "image_result_invalid", err.Error())
-	}
-	usage := usageFromMap(map[string]any{"usage": response.Usage})
-	applyCodexResponseMetadata(&usage, headers)
-	usage.Transport = "http_json"
-	usage.ServedModel = firstNonEmpty(usage.ServedModel, codexImageUpstreamModel)
-	s.recordProviderImageGenerationCapability(route, codexImageCapabilitySupported)
-	return imageBytes, "", usage, nil
 }
 
 func (a CodexSubscriptionAdapter) GenerateImage(ctx context.Context, provider Provider, providerModel string, request ProviderImageGenerationRequest) ([]byte, string, Usage, error) {
@@ -127,39 +97,6 @@ func codexSubscriptionImageRequestFromProviderRequest(providerModel string, requ
 		return codexSubscriptionImageRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_input_image", "Image edit job has no input images")
 	}
 	return codexRequest, nil
-}
-
-func (s *Server) codexSubscriptionImageRequest(job ImageJob) (codexSubscriptionImageRequest, error) {
-	request := codexSubscriptionImageRequest{
-		Model:      codexImageUpstreamModel,
-		Prompt:     job.Prompt,
-		Background: "auto",
-		Quality:    normalizedImageOption(job.Quality, "auto"),
-		Size:       normalizedImageOption(job.Size, "auto"),
-	}
-	if job.Action != "edit" {
-		return request, nil
-	}
-	for _, asset := range s.store.ListImageAssets(job.ID) {
-		if asset.Role != "input" {
-			continue
-		}
-		path, err := s.imageAssetPath(asset.RelativePath)
-		if err != nil {
-			return codexSubscriptionImageRequest{}, err
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return codexSubscriptionImageRequest{}, err
-		}
-		request.Images = append(request.Images, codexSubscriptionImage{
-			ImageURL: "data:" + asset.ContentType + ";base64," + base64.StdEncoding.EncodeToString(raw),
-		})
-	}
-	if len(request.Images) == 0 {
-		return codexSubscriptionImageRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_input_image", "Image edit job has no input images")
-	}
-	return request, nil
 }
 
 func mergedStringMap(base map[string]string, override map[string]string) map[string]string {

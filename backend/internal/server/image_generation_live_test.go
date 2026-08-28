@@ -45,7 +45,8 @@ func TestLiveCodexImageGeneration(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	imageBytes, revisedPrompt, usage, err := server.executeCodexSubscriptionImage(ctx, selected, ImageJob{
+	imageBytes, revisedPrompt, usage, err := server.executeProviderImage(ctx, selected, ImageJob{
+		Model:   codexImageModelName,
 		Action:  "generate",
 		Prompt:  "A simple red circle centered on a clean white background, flat geometric design, no text, no watermark.",
 		Quality: "low",
