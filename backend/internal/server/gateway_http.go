@@ -926,14 +926,13 @@ func (s *Server) routeSupportsAdapterCapability(route RouteSelection, capability
 	if !ok || !adapterSupports(descriptor, capability) {
 		return false
 	}
-	if route.Provider.Type != "deepseek" ||
-		(capability != AdapterCapabilityResponses && capability != AdapterCapabilityResponseStream) {
+	if capability != AdapterCapabilityResponses && capability != AdapterCapabilityResponseStream {
 		return true
 	}
-	// DeepSeek's Responses API is model-scoped rather than provider-scoped. Keep
-	// this allowlist aligned with the models advertised by the upstream endpoint.
-	model := strings.ToLower(strings.TrimSpace(route.ProviderModel))
-	return model == "deepseek-v4-flash" || model == "deepseek-v4-pro"
+	if len(descriptor.ProviderPolicy.ResponsesModelAllowlist) == 0 {
+		return true
+	}
+	return providerModelInAllowlist(route.ProviderModel, descriptor.ProviderPolicy.ResponsesModelAllowlist)
 }
 
 func (s *Server) planRouteOrder(call CallContext, routes []RouteSelection) []RouteSelection {

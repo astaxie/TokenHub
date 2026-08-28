@@ -279,6 +279,7 @@ export type AdapterDescriptor = {
     session_affinity_kind?: string;
     claude_code_attribution_default?: string;
     preserve_reasoning_content?: boolean;
+    responses_model_allowlist?: string[];
     default_base_url?: string;
     default_catalog_provider_type?: boolean;
     error_profile?: string;

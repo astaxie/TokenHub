@@ -45,6 +45,7 @@ type AdapterProviderPolicy struct {
 	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
 	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
 	PreserveReasoningContent     *bool                       `json:"preserve_reasoning_content,omitempty"`
+	ResponsesModelAllowlist      []string                    `json:"responses_model_allowlist,omitempty"`
 	DefaultBaseURL               string                      `json:"default_base_url,omitempty"`
 	DefaultCatalogProviderType   bool                        `json:"default_catalog_provider_type,omitempty"`
 	ErrorProfile                 string                      `json:"error_profile,omitempty"`
@@ -210,6 +211,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
 		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
 		PreserveReasoningContent:     adapterPreserveReasoningContent(r, descriptor.Type),
+		ResponsesModelAllowlist:      adapterResponsesModelAllowlist(r, descriptor.Type),
 		DefaultBaseURL:               adapterDefaultBaseURL(r, descriptor.Type),
 		DefaultCatalogProviderType:   adapterDefaultCatalogProviderType(r, descriptor.Type),
 		ErrorProfile:                 adapterErrorProfile(r, descriptor.Type),
@@ -277,6 +279,10 @@ func adapterPreserveReasoningContent(registry *AdapterRegistry, providerType str
 		return boolPointer(value)
 	}
 	return nil
+}
+
+func adapterResponsesModelAllowlist(registry *AdapterRegistry, providerType string) []string {
+	return providerPolicyStringValues(registry, providerType, "responses_model_allowlist")
 }
 
 func adapterDefaultBaseURL(registry *AdapterRegistry, providerType string) string {

@@ -181,7 +181,7 @@ func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 	}
 }
 
-func TestDeepSeekResponsesCapabilityIsModelScoped(t *testing.T) {
+func TestResponsesCapabilityUsesProviderPolicyAllowlist(t *testing.T) {
 	server := New(NewMemoryStore())
 	flash := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-v4-flash"}
 	pro := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-v4-pro"}
@@ -200,6 +200,70 @@ func TestDeepSeekResponsesCapabilityIsModelScoped(t *testing.T) {
 	}
 	if !server.routeSupportsAdapterCapability(pro, AdapterCapabilityChat) {
 		t.Fatal("V4 Pro must retain Chat Completions support")
+	}
+}
+
+func TestResponsesCapabilityWithoutAllowlistRemainsProviderScoped(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "open_responses_plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.open-responses-plugin",
+		Name:    "Open Responses Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: providerType},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses, AdapterCapabilityResponseStream},
+	}); err != nil {
+		t.Fatalf("register open Responses plugin: %v", err)
+	}
+
+	route := RouteSelection{Provider: Provider{Type: providerType}, ProviderModel: "any-provider-model"}
+	if !server.routeSupportsAdapterCapability(route, AdapterCapabilityResponses) ||
+		!server.routeSupportsAdapterCapability(route, AdapterCapabilityResponseStream) {
+		t.Fatal("Responses-capable plugins without an allowlist should remain provider-scoped")
+	}
+}
+
+func TestResponsesCapabilityAllowlistDoesNotDependOnProviderTypeName(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "model_scoped_responses_plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.model-scoped-responses-plugin",
+		Name:    "Model Scoped Responses Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: providerType},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-a"},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-b"},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register model-scoped Responses plugin: %v", err)
+	}
+
+	allowed := RouteSelection{Provider: Provider{Type: providerType}, ProviderModel: " MODEL-A "}
+	blocked := RouteSelection{Provider: Provider{Type: providerType}, ProviderModel: "model-c"}
+	if !server.routeSupportsAdapterCapability(allowed, AdapterCapabilityResponses) ||
+		!server.routeSupportsAdapterCapability(allowed, AdapterCapabilityResponseStream) {
+		t.Fatal("plugin allowlist models should support Responses regardless of provider type name")
+	}
+	if server.routeSupportsAdapterCapability(blocked, AdapterCapabilityResponses) ||
+		server.routeSupportsAdapterCapability(blocked, AdapterCapabilityResponseStream) {
+		t.Fatal("plugin allowlist should block unlisted models regardless of provider type name")
+	}
+	if !server.routeSupportsAdapterCapability(blocked, AdapterCapabilityChat) {
+		t.Fatal("Responses model allowlist must not restrict unrelated capabilities")
 	}
 }
 

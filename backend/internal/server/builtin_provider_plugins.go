@@ -19,6 +19,7 @@ type builtinProviderAdapter struct {
 	sessionAffinityKind          string
 	claudeCodeAttributionDefault string
 	preserveReasoningContent     *bool
+	responsesModelAllowlist      []string
 	errorProfile                 string
 	defaultCatalogProviderType   bool
 	authModes                    []string
@@ -230,6 +231,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		}
 		if adapterType == "deepseek" {
 			adapter.preserveReasoningContent = boolPointer(true)
+			adapter.responsesModelAllowlist = []string{"deepseek-v4-flash", "deepseek-v4-pro"}
 		}
 		registerBuiltinProviderPlugin(registry, "tokenhub.provider."+adapterType, adapterType, adapter)
 	}
@@ -483,6 +485,19 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    reasoningContentOption,
 			Subject: adapter.providerType,
 			Value:   boolString(*adapter.preserveReasoningContent),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	for _, model := range adapter.responsesModelAllowlist {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "responses_model_allowlist",
+			Subject: adapter.providerType,
+			Value:   model,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

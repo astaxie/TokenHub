@@ -295,6 +295,34 @@ capabilities:
 	}
 }
 
+func TestParseManifestBuildsResponsesModelAllowlistCapabilities(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.responses-model-scoped
+name: Responses Model Scoped
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+capabilities:
+  provider_types:
+    - model_scoped_provider
+  provider:
+    responses_model_allowlist:
+      - model-a
+      - model-b
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	descriptor := manifest.Descriptor()
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: "model_scoped_provider", Value: "model-a"}) ||
+		!descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: "model_scoped_provider", Value: "model-b"}) {
+		t.Fatalf("descriptor is missing Responses model allowlist capabilities: %+v", descriptor.Capabilities)
+	}
+}
+
 func TestParseManifestBuildsProviderResourceTypeMetadataCapability(t *testing.T) {
 	manifest, err := ParseManifest([]byte(`
 schema_version: 1

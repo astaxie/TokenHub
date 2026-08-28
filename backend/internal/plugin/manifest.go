@@ -75,6 +75,7 @@ type ManifestProvider struct {
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
 	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
 	PreserveReasoningContent     *bool                   `yaml:"preserve_reasoning_content"`
+	ResponsesModelAllowlist      []string                `yaml:"responses_model_allowlist"`
 	DefaultBaseURL               string                  `yaml:"default_base_url"`
 	DefaultCatalogProviderType   bool                    `yaml:"default_catalog_provider_type"`
 	ErrorProfile                 string                  `yaml:"error_profile"`
@@ -494,6 +495,18 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "preserve_reasoning_content",
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.PreserveReasoningContent),
+			})
+		}
+		for _, model := range m.Capabilities.Provider.ResponsesModelAllowlist {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "responses_model_allowlist",
+				Subject: providerType,
+				Value:   model,
 			})
 		}
 		if baseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL); baseURL != "" {

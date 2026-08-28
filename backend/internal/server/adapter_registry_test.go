@@ -222,6 +222,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if deepSeek.ProviderPolicy.PreserveReasoningContent == nil || !*deepSeek.ProviderPolicy.PreserveReasoningContent {
 		t.Fatalf("DeepSeek preserve reasoning content policy = %v, want true", deepSeek.ProviderPolicy.PreserveReasoningContent)
 	}
+	if !reflect.DeepEqual(deepSeek.ProviderPolicy.ResponsesModelAllowlist, []string{"deepseek-v4-flash", "deepseek-v4-pro"}) {
+		t.Fatalf("DeepSeek Responses model allowlist = %v", deepSeek.ProviderPolicy.ResponsesModelAllowlist)
+	}
 }
 
 func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T) {
@@ -293,6 +296,8 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
 			{Kind: "provider_policy", Name: reasoningContentOption, Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-a"},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-b"},
 			{Kind: "provider_policy", Name: "default_base_url", Subject: providerType, Value: "https://subscription.example/v1"},
 			{Kind: "provider_policy", Name: "default_catalog_provider_type", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "error_profile", Subject: providerType, Value: providerErrorProfileKronk},
@@ -339,6 +344,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.PreserveReasoningContent == nil || !*descriptor.ProviderPolicy.PreserveReasoningContent {
 		t.Fatalf("plugin provider preserve reasoning content default = %+v, want true", descriptor.ProviderPolicy)
+	}
+	if !reflect.DeepEqual(descriptor.ProviderPolicy.ResponsesModelAllowlist, []string{"model-a", "model-b"}) {
+		t.Fatalf("plugin provider Responses model allowlist = %+v, want model-a/model-b", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.DefaultBaseURL != "https://subscription.example/v1" {
 		t.Fatalf("plugin provider default base URL = %+v, want subscription URL", descriptor.ProviderPolicy)
