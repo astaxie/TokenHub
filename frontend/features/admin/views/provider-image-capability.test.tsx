@@ -197,6 +197,49 @@ describe("ProviderImageCapability", () => {
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("uses plugin metadata for image capability error fallback", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 502 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderImageCapability
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={[{
+          ...action,
+          plugin_id: "tokenhub.provider.gm",
+          action_id: "gm.image_capability.configure",
+          subject: "gm_subscription",
+          metadata: {
+            display_name: "GM ImageGen",
+            provider_resource_type: "gm_subscription_account",
+            public_model: "gm-image",
+            upstream_model: "gm-image-upstream",
+            error_fallback: "Configure GM image capability",
+          },
+        }]}
+        provider={{ ...provider, id: "prv_gm", name: "GM", type: "gm_subscription" }}
+        routes={[]}
+        resources={[{
+          ...resource,
+          id: "rsrc_gm",
+          provider_id: "prv_gm",
+          name: "GM Account",
+          resource_type: "gm_subscription_account",
+        }]}
+        selectedAccountID="rsrc_gm"
+        onChanged={onChanged}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "开始测试并启用" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Configure GM image capability (502)");
+  });
+
   it("unwraps plugin action result envelopes", () => {
     expect(unwrapProviderImageCapabilityResult({
       data: { enabled: true, tested: true, resource_id: "rsrc_codex" },

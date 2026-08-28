@@ -80,7 +80,7 @@ export function ProviderImageCapability({
         method: "POST",
         body: JSON.stringify({ provider_id: provider.id, resource_id: targetResourceID, enabled: enabledValue }),
       });
-      if (!response.ok) throw new Error(await readPluginActionError(response, action, tx("配置订阅生图")));
+      if (!response.ok) throw new Error(await readPluginActionError(response, action, imageCapabilityActionErrorFallback(action)));
       const result = unwrapProviderImageCapabilityResult(await response.json());
       setNotice(tx(result.enabled ? "订阅生图测试通过并已启用。" : "订阅生图已停用；能力测试结果已保留。"));
       await onChanged().catch(() => undefined);
@@ -193,6 +193,10 @@ function providerImageCapabilityAction(actions: PluginActionDescriptor[], provid
       resource.healthy !== false,
     );
   }) ?? candidates.find((action) => !imageCapabilityProfileFromAction(action)?.resourceType);
+}
+
+function imageCapabilityActionErrorFallback(action: PluginActionDescriptor) {
+  return action.metadata?.error_fallback?.trim() || action.metadata?.action_error_fallback?.trim() || tx("配置生图能力");
 }
 
 export function unwrapProviderImageCapabilityResult(payload: unknown): ProviderImageCapabilityResult {
