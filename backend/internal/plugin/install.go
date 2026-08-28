@@ -25,9 +25,13 @@ var (
 )
 
 type InstallOptions struct {
-	ChecksumSHA256 string
-	Replace        bool
-	InitialState   PackageState
+	ChecksumSHA256    string
+	TrustPolicy       PluginTrustPolicy
+	SignatureURL      string
+	SignatureKeyID    string
+	SignatureVerified bool
+	Replace           bool
+	InitialState      PackageState
 }
 
 func (r Runtime) InstallZipArchive(archive []byte, options InstallOptions) (Package, error) {
@@ -37,7 +41,7 @@ func (r Runtime) InstallZipArchive(archive []byte, options InstallOptions) (Pack
 	if len(archive) > maxInstallArchiveBytes {
 		return Package{}, fmt.Errorf("plugin package archive exceeds %d bytes", maxInstallArchiveBytes)
 	}
-	if err := verifyArchiveChecksum(archive, options.ChecksumSHA256); err != nil {
+	if _, err := ValidateInstallTrust(archive, options); err != nil {
 		return Package{}, err
 	}
 	root, err := r.prepareInstallRoot()

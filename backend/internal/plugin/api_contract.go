@@ -26,6 +26,10 @@ const (
 	PluginErrorPlacementUnsupported      PluginErrorCode = "plugin_placement_unsupported"
 	PluginErrorCapabilityUnsupported     PluginErrorCode = "plugin_capability_unsupported"
 	PluginErrorCapabilityRequired        PluginErrorCode = "plugin_capability_required"
+	PluginErrorTrustChecksumRequired     PluginErrorCode = "plugin_trust_checksum_required"
+	PluginErrorTrustSignatureRequired    PluginErrorCode = "plugin_trust_signature_required"
+	PluginErrorTrustSignatureUnverified  PluginErrorCode = "plugin_trust_signature_unverified"
+	PluginErrorTrustPolicyUnsupported    PluginErrorCode = "plugin_trust_policy_unsupported"
 )
 
 const (

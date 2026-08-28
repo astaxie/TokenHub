@@ -31,13 +31,15 @@ type ManifestCompatibility struct {
 }
 
 type ManifestDistribution struct {
-	MarketplaceURL string `json:"marketplace_url,omitempty" yaml:"marketplace_url"`
-	RepositoryURL  string `json:"repository_url,omitempty" yaml:"repository_url"`
-	DownloadURL    string `json:"download_url,omitempty" yaml:"download_url"`
-	ChecksumSHA256 string `json:"checksum_sha256,omitempty" yaml:"checksum_sha256"`
-	SignatureURL   string `json:"signature_url,omitempty" yaml:"signature_url"`
-	HomepageURL    string `json:"homepage_url,omitempty" yaml:"homepage_url"`
-	License        string `json:"license,omitempty" yaml:"license"`
+	MarketplaceURL     string `json:"marketplace_url,omitempty" yaml:"marketplace_url"`
+	RepositoryURL      string `json:"repository_url,omitempty" yaml:"repository_url"`
+	DownloadURL        string `json:"download_url,omitempty" yaml:"download_url"`
+	ChecksumSHA256     string `json:"checksum_sha256,omitempty" yaml:"checksum_sha256"`
+	SignatureURL       string `json:"signature_url,omitempty" yaml:"signature_url"`
+	SignatureAlgorithm string `json:"signature_algorithm,omitempty" yaml:"signature_algorithm"`
+	SignatureKeyID     string `json:"signature_key_id,omitempty" yaml:"signature_key_id"`
+	HomepageURL        string `json:"homepage_url,omitempty" yaml:"homepage_url"`
+	License            string `json:"license,omitempty" yaml:"license"`
 }
 
 type ManifestEntry struct {
@@ -774,29 +776,34 @@ func (discovery ManifestModelDiscovery) Configured() bool {
 func (distribution ManifestDistribution) Descriptor() *Distribution {
 	distribution = distribution.Normalized()
 	if distribution.MarketplaceURL == "" && distribution.RepositoryURL == "" && distribution.DownloadURL == "" &&
-		distribution.ChecksumSHA256 == "" && distribution.SignatureURL == "" && distribution.HomepageURL == "" && distribution.License == "" {
+		distribution.ChecksumSHA256 == "" && distribution.SignatureURL == "" && distribution.SignatureAlgorithm == "" && distribution.SignatureKeyID == "" &&
+		distribution.HomepageURL == "" && distribution.License == "" {
 		return nil
 	}
 	return &Distribution{
-		MarketplaceURL: distribution.MarketplaceURL,
-		RepositoryURL:  distribution.RepositoryURL,
-		DownloadURL:    distribution.DownloadURL,
-		ChecksumSHA256: distribution.ChecksumSHA256,
-		SignatureURL:   distribution.SignatureURL,
-		HomepageURL:    distribution.HomepageURL,
-		License:        distribution.License,
+		MarketplaceURL:     distribution.MarketplaceURL,
+		RepositoryURL:      distribution.RepositoryURL,
+		DownloadURL:        distribution.DownloadURL,
+		ChecksumSHA256:     distribution.ChecksumSHA256,
+		SignatureURL:       distribution.SignatureURL,
+		SignatureAlgorithm: distribution.SignatureAlgorithm,
+		SignatureKeyID:     distribution.SignatureKeyID,
+		HomepageURL:        distribution.HomepageURL,
+		License:            distribution.License,
 	}
 }
 
 func (distribution ManifestDistribution) Normalized() ManifestDistribution {
 	return ManifestDistribution{
-		MarketplaceURL: strings.TrimSpace(distribution.MarketplaceURL),
-		RepositoryURL:  strings.TrimSpace(distribution.RepositoryURL),
-		DownloadURL:    strings.TrimSpace(distribution.DownloadURL),
-		ChecksumSHA256: strings.ToLower(strings.TrimSpace(distribution.ChecksumSHA256)),
-		SignatureURL:   strings.TrimSpace(distribution.SignatureURL),
-		HomepageURL:    strings.TrimSpace(distribution.HomepageURL),
-		License:        strings.TrimSpace(distribution.License),
+		MarketplaceURL:     strings.TrimSpace(distribution.MarketplaceURL),
+		RepositoryURL:      strings.TrimSpace(distribution.RepositoryURL),
+		DownloadURL:        strings.TrimSpace(distribution.DownloadURL),
+		ChecksumSHA256:     strings.ToLower(strings.TrimSpace(distribution.ChecksumSHA256)),
+		SignatureURL:       strings.TrimSpace(distribution.SignatureURL),
+		SignatureAlgorithm: strings.ToLower(strings.TrimSpace(distribution.SignatureAlgorithm)),
+		SignatureKeyID:     strings.TrimSpace(distribution.SignatureKeyID),
+		HomepageURL:        strings.TrimSpace(distribution.HomepageURL),
+		License:            strings.TrimSpace(distribution.License),
 	}
 }
 
@@ -818,6 +825,15 @@ func (distribution *ManifestDistribution) Validate() error {
 	}
 	if distribution.ChecksumSHA256 != "" && !isHexSHA256(distribution.ChecksumSHA256) {
 		return fmt.Errorf("distribution.checksum_sha256 must be a lowercase SHA-256 hex digest")
+	}
+	if distribution.SignatureAlgorithm != "" && distribution.SignatureAlgorithm != PluginSignatureAlgorithmEd25519 {
+		return fmt.Errorf("distribution.signature_algorithm must be ed25519")
+	}
+	if distribution.SignatureKeyID != "" && !safePluginContractToken(distribution.SignatureKeyID) {
+		return fmt.Errorf("distribution.signature_key_id is invalid")
+	}
+	if distribution.SignatureKeyID != "" && distribution.SignatureURL == "" {
+		return fmt.Errorf("distribution.signature_key_id requires signature_url")
 	}
 	return nil
 }
