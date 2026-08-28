@@ -14,16 +14,43 @@ const packageStateFileName = "plugin.state.json"
 
 var ErrPackageNotFound = errors.New("plugin package not found")
 
+type PackageHealthStatus string
+
+const (
+	PackageHealthUnknown   PackageHealthStatus = "unknown"
+	PackageHealthHealthy   PackageHealthStatus = "healthy"
+	PackageHealthUnhealthy PackageHealthStatus = "unhealthy"
+)
+
+type PackageLifecycleEvent string
+
+const (
+	PackageLifecycleInstalled         PackageLifecycleEvent = "installed"
+	PackageLifecycleEnabled           PackageLifecycleEvent = "enabled"
+	PackageLifecycleDisabled          PackageLifecycleEvent = "disabled"
+	PackageLifecyclePendingRestart    PackageLifecycleEvent = "pending_restart"
+	PackageLifecycleValidationFailed  PackageLifecycleEvent = "validation_failed"
+	PackageLifecycleRollbackAvailable PackageLifecycleEvent = "rollback_available"
+	PackageLifecycleRollbackStarted   PackageLifecycleEvent = "rollback_started"
+	PackageLifecycleStartupFailed     PackageLifecycleEvent = "startup_failed"
+)
+
 type PackageState struct {
-	Status Status `json:"status,omitempty"`
-	Reason string `json:"reason,omitempty"`
+	Status          Status                `json:"status,omitempty"`
+	Reason          string                `json:"reason,omitempty"`
+	RestartRequired bool                  `json:"restart_required,omitempty"`
+	Health          PackageHealthStatus   `json:"health,omitempty"`
+	Mandatory       bool                  `json:"mandatory,omitempty"`
+	RollbackVersion string                `json:"rollback_version,omitempty"`
+	LastErrorCode   string                `json:"last_error_code,omitempty"`
+	AuditEvent      PackageLifecycleEvent `json:"audit_event,omitempty"`
 }
 
 func readPackageState(dir string) (PackageState, error) {
 	data, err := os.ReadFile(filepath.Join(dir, packageStateFileName))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return PackageState{Status: StatusEnabled}, nil
+			return NormalizePackageState(PackageState{Status: StatusEnabled})
 		}
 		return PackageState{}, err
 	}
@@ -37,17 +64,97 @@ func readPackageState(dir string) (PackageState, error) {
 func NormalizePackageState(state PackageState) (PackageState, error) {
 	state.Status = Status(strings.TrimSpace(string(state.Status)))
 	state.Reason = strings.TrimSpace(state.Reason)
+	state.Health = PackageHealthStatus(strings.TrimSpace(string(state.Health)))
+	state.RollbackVersion = strings.TrimSpace(state.RollbackVersion)
+	state.LastErrorCode = strings.TrimSpace(state.LastErrorCode)
+	state.AuditEvent = PackageLifecycleEvent(strings.TrimSpace(string(state.AuditEvent)))
 	if state.Status == "" {
 		state.Status = StatusEnabled
 	}
-	if state.Status != StatusEnabled && state.Status != StatusDisabled {
+	if state.Health == "" {
+		state.Health = PackageHealthUnknown
+	}
+	if !validPackageStatus(state.Status) {
 		return PackageState{}, fmt.Errorf("unsupported plugin package status %q", state.Status)
+	}
+	if !validPackageHealthStatus(state.Health) {
+		return PackageState{}, fmt.Errorf("unsupported plugin package health %q", state.Health)
+	}
+	if state.AuditEvent != "" && !validPackageLifecycleEvent(state.AuditEvent) {
+		return PackageState{}, fmt.Errorf("unsupported plugin package audit event %q", state.AuditEvent)
+	}
+	if state.Status == StatusPendingRestart {
+		state.RestartRequired = true
+	}
+	if state.Status == StatusMandatory {
+		state.Mandatory = true
+	}
+	if state.Mandatory && state.Status == StatusDisabled {
+		return PackageState{}, fmt.Errorf("mandatory plugin package cannot be disabled")
+	}
+	if state.Status == StatusRollbackAvailable && state.RollbackVersion == "" {
+		return PackageState{}, fmt.Errorf("plugin package rollback_version is required when rollback is available")
 	}
 	return state, nil
 }
 
 func (s PackageState) Enabled() bool {
-	return s.Status != StatusDisabled
+	return s.Loadable()
+}
+
+func (s PackageState) Loadable() bool {
+	switch s.Status {
+	case StatusEnabled, StatusRollbackAvailable, StatusMandatory:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s PackageState) PendingRestart() bool {
+	return s.Status == StatusPendingRestart || s.RestartRequired
+}
+
+func (s PackageState) RollbackAvailable() bool {
+	return s.Status == StatusRollbackAvailable && strings.TrimSpace(s.RollbackVersion) != ""
+}
+
+func (s PackageState) FailedValidation() bool {
+	return s.Status == StatusFailedValidation
+}
+
+func validPackageStatus(status Status) bool {
+	switch status {
+	case StatusEnabled, StatusDisabled, StatusPendingRestart, StatusFailedValidation, StatusRollbackAvailable, StatusMandatory:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPackageHealthStatus(status PackageHealthStatus) bool {
+	switch status {
+	case PackageHealthUnknown, PackageHealthHealthy, PackageHealthUnhealthy:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPackageLifecycleEvent(event PackageLifecycleEvent) bool {
+	switch event {
+	case PackageLifecycleInstalled,
+		PackageLifecycleEnabled,
+		PackageLifecycleDisabled,
+		PackageLifecyclePendingRestart,
+		PackageLifecycleValidationFailed,
+		PackageLifecycleRollbackAvailable,
+		PackageLifecycleRollbackStarted,
+		PackageLifecycleStartupFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r Runtime) UpdatePackageState(pluginID string, state PackageState) (Package, error) {

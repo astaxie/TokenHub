@@ -170,6 +170,97 @@ permissions:
 	}
 }
 
+func TestRuntimeLoadIntoSkipsNonLoadableLifecycleStates(t *testing.T) {
+	root := t.TempDir()
+	for _, fixture := range []struct {
+		dir   string
+		id    string
+		state string
+	}{
+		{
+			dir:   "pending",
+			id:    "tokenhub.pending",
+			state: `{"status":"pending_restart","reason":"installed update","audit_event":"pending_restart"}`,
+		},
+		{
+			dir:   "failed",
+			id:    "tokenhub.failed",
+			state: `{"status":"failed_validation","health":"unhealthy","last_error_code":"plugin_api_unsupported","audit_event":"validation_failed"}`,
+		},
+	} {
+		pluginDir := filepath.Join(root, fixture.dir)
+		writeManifest(t, pluginDir, lifecycleHookManifest(fixture.id))
+		writePackageStateFile(t, pluginDir, fixture.state)
+	}
+	plugins := NewRegistry()
+	chain := NewGatewayChainRegistry()
+
+	packages, err := NewRuntime(root).LoadInto(plugins, chain)
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if len(packages) != 2 {
+		t.Fatalf("packages = %d, want 2", len(packages))
+	}
+	for _, pkg := range packages {
+		descriptor, ok := plugins.Describe(pkg.Manifest.ID)
+		if !ok {
+			t.Fatalf("descriptor for %s was not registered", pkg.Manifest.ID)
+		}
+		if descriptor.Status != pkg.State.Status {
+			t.Fatalf("descriptor status for %s = %q, want %q", pkg.Manifest.ID, descriptor.Status, pkg.State.Status)
+		}
+		if pkg.State.Loadable() {
+			t.Fatalf("package %s is unexpectedly loadable: %+v", pkg.Manifest.ID, pkg.State)
+		}
+	}
+	if hooks := chain.Hooks(StagePrivacyPre); len(hooks) != 0 {
+		t.Fatalf("non-loadable lifecycle states activated hooks: %+v", hooks)
+	}
+}
+
+func TestRuntimeLoadIntoActivatesRollbackAndMandatoryLifecycleStates(t *testing.T) {
+	root := t.TempDir()
+	for _, fixture := range []struct {
+		dir   string
+		id    string
+		state string
+	}{
+		{
+			dir:   "rollback",
+			id:    "tokenhub.rollback",
+			state: `{"status":"rollback_available","rollback_version":"1.0.0","audit_event":"rollback_available"}`,
+		},
+		{
+			dir:   "mandatory",
+			id:    "tokenhub.mandatory",
+			state: `{"status":"mandatory","health":"healthy"}`,
+		},
+	} {
+		pluginDir := filepath.Join(root, fixture.dir)
+		writeManifest(t, pluginDir, lifecycleHookManifest(fixture.id))
+		writePackageStateFile(t, pluginDir, fixture.state)
+	}
+	plugins := NewRegistry()
+	chain := NewGatewayChainRegistry()
+
+	packages, err := NewRuntime(root).LoadInto(plugins, chain)
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if len(packages) != 2 {
+		t.Fatalf("packages = %d, want 2", len(packages))
+	}
+	if hooks := chain.Hooks(StagePrivacyPre); len(hooks) != 2 {
+		t.Fatalf("loadable lifecycle states activated %d hooks, want 2: %+v", len(hooks), hooks)
+	}
+	for _, pkg := range packages {
+		if !pkg.State.Loadable() {
+			t.Fatalf("package %s is not loadable: %+v", pkg.Manifest.ID, pkg.State)
+		}
+	}
+}
+
 func TestRuntimeLoadIntoRegistersAdminUIContributions(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "codex")
@@ -628,6 +719,36 @@ func writeManifest(t *testing.T, dir string, body string) {
 	if err := os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func lifecycleHookManifest(id string) string {
+	return `
+schema_version: 1
+id: ` + id + `
+name: Lifecycle
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: mask
+      stage: privacy_pre
+      failure_policy: fail_closed
+      reads:
+        - request_body
+      writes:
+        - request_body
+permissions:
+  data:
+    read:
+      - request_body
+    write:
+      - request_body
+`
 }
 
 func writePackageStateFile(t *testing.T, dir string, body string) {

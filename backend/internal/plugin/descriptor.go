@@ -31,8 +31,12 @@ const (
 type Status string
 
 const (
-	StatusEnabled  Status = "enabled"
-	StatusDisabled Status = "disabled"
+	StatusEnabled           Status = "enabled"
+	StatusDisabled          Status = "disabled"
+	StatusPendingRestart    Status = "pending_restart"
+	StatusFailedValidation  Status = "failed_validation"
+	StatusRollbackAvailable Status = "rollback_available"
+	StatusMandatory         Status = "mandatory"
 )
 
 type CapabilityDescriptor struct {
