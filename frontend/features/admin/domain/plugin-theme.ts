@@ -1,13 +1,25 @@
 import { type CSSProperties } from "react";
 import { type AdminUIContribution } from "../core/types";
+import { type SIMRegistry, type SIMShellLayout, type SIMThemeTokens } from "./sim-registry";
 
 export type PluginLayoutDensity = "compact" | "comfortable" | "spacious";
+
+export type PluginShellPresentationOptions = {
+  simRegistry?: Pick<SIMRegistry, "themeTokens" | "shellLayouts">;
+  activeSIMPluginID?: string;
+  activeThemeID?: string;
+  activeThemeKey?: string;
+  activeLayoutID?: string;
+  activeLayoutKey?: string;
+};
 
 export type PluginShellPresentation = {
   style?: CSSProperties;
   density: PluginLayoutDensity;
   themeContribution?: AdminUIContribution;
   layoutContribution?: AdminUIContribution;
+  themeCapability?: SIMThemeTokens;
+  layoutCapability?: SIMShellLayout;
 };
 
 const tokenNames = new Set([
@@ -48,19 +60,27 @@ const tokenNames = new Set([
   "shadow",
 ]);
 
-export function pluginShellPresentation(contributions: AdminUIContribution[], theme: "light" | "dark"): PluginShellPresentation {
-  const themeContribution = activeThemeContribution(contributions, theme);
-  const layoutContribution = activeLayoutContribution(contributions);
+export function pluginShellPresentation(
+  contributions: AdminUIContribution[],
+  theme: "light" | "dark",
+  options: PluginShellPresentationOptions = {},
+): PluginShellPresentation {
+  const themeCapability = activeThemeCapability(options.simRegistry?.themeTokens, theme, options);
+  const layoutCapability = activeLayoutCapability(options.simRegistry?.shellLayouts, options);
+  const themeContribution = themeCapability ? undefined : activeThemeContribution(contributions, theme, options);
+  const layoutContribution = layoutCapability ? undefined : activeLayoutContribution(contributions, options);
   return {
-    style: themeContribution ? pluginThemeStyle(themeContribution) : undefined,
-    density: pluginLayoutDensity(layoutContribution),
+    style: themeCapability ? pluginThemeStyle(themeCapability) : themeContribution ? pluginThemeStyle(themeContribution) : undefined,
+    density: pluginLayoutDensity(layoutCapability ?? layoutContribution),
     themeContribution,
     layoutContribution,
+    themeCapability,
+    layoutCapability,
   };
 }
 
-export function pluginThemeStyle(contribution: AdminUIContribution): CSSProperties | undefined {
-  const tokens = contribution.schema?.tokens;
+export function pluginThemeStyle(contribution: AdminUIContribution | SIMThemeTokens): CSSProperties | undefined {
+  const tokens = themeTokenPayload(contribution);
   if (!tokens || typeof tokens !== "object" || Array.isArray(tokens)) return undefined;
   const style: Record<string, string> = {};
   for (const [rawName, rawValue] of Object.entries(tokens)) {
@@ -73,27 +93,133 @@ export function pluginThemeStyle(contribution: AdminUIContribution): CSSProperti
   return Object.keys(style).length > 0 ? style as CSSProperties : undefined;
 }
 
-export function pluginLayoutDensity(contribution?: AdminUIContribution): PluginLayoutDensity {
-  const preset = contribution?.schema?.preset;
-  if (!preset || typeof preset !== "object" || Array.isArray(preset)) return "comfortable";
-  const density = (preset as { density?: unknown }).density;
+export function pluginLayoutDensity(contribution?: AdminUIContribution | SIMShellLayout): PluginLayoutDensity {
+  const density = layoutDensityPayload(contribution);
   if (density === "compact" || density === "spacious") return density;
   return "comfortable";
 }
 
-function activeThemeContribution(contributions: AdminUIContribution[], theme: "light" | "dark") {
-  const candidates = contributions.filter((contribution) => contribution.slot === "theme.tokens" && themeContributionMatches(contribution, theme));
-  return candidates.find((contribution) => contribution.schema?.default === true) ?? candidates[0];
+function activeThemeCapability(
+  capabilities: readonly SIMThemeTokens[] | undefined,
+  theme: "light" | "dark",
+  options: PluginShellPresentationOptions,
+) {
+  const candidates = sortedSIMCapabilities(capabilities ?? [])
+    .filter((capability) => themeCapabilityMatches(capability, theme));
+  return selectSIMCapability(candidates, "theme", options);
 }
 
-function activeLayoutContribution(contributions: AdminUIContribution[]) {
-  const candidates = contributions.filter((contribution) => contribution.slot === "layout.preset");
-  return candidates.find((contribution) => contribution.schema?.default === true) ?? candidates[0];
+function activeLayoutCapability(capabilities: readonly SIMShellLayout[] | undefined, options: PluginShellPresentationOptions) {
+  return selectSIMCapability(sortedSIMCapabilities(capabilities ?? []), "layout", options);
+}
+
+function activeThemeContribution(contributions: AdminUIContribution[], theme: "light" | "dark", options: PluginShellPresentationOptions) {
+  const candidates = sortedAdminUIContributions(contributions)
+    .filter((contribution) => contribution.slot === "theme.tokens" && themeContributionMatches(contribution, theme));
+  return selectAdminUIContribution(candidates, "theme", options);
+}
+
+function activeLayoutContribution(contributions: AdminUIContribution[], options: PluginShellPresentationOptions) {
+  const candidates = sortedAdminUIContributions(contributions).filter((contribution) => contribution.slot === "layout.preset");
+  return selectAdminUIContribution(candidates, "layout", options);
+}
+
+function selectSIMCapability<TCapability extends SIMThemeTokens | SIMShellLayout>(
+  candidates: TCapability[],
+  target: "theme" | "layout",
+  options: PluginShellPresentationOptions,
+): TCapability | undefined {
+  const activeKey = target === "theme" ? options.activeThemeKey : options.activeLayoutKey;
+  const activeID = target === "theme" ? options.activeThemeID : options.activeLayoutID;
+  return candidates.find((capability) => activeKey && capability.key === activeKey) ??
+    candidates.find((capability) => activeID && capability.id === activeID) ??
+    candidates.find((capability) => options.activeSIMPluginID && capability.pluginID === options.activeSIMPluginID) ??
+    candidates.find((capability) => capability.payload.default === true) ??
+    candidates[0];
+}
+
+function selectAdminUIContribution(
+  candidates: AdminUIContribution[],
+  target: "theme" | "layout",
+  options: PluginShellPresentationOptions,
+): AdminUIContribution | undefined {
+  const activeKey = target === "theme" ? options.activeThemeKey : options.activeLayoutKey;
+  const activeID = target === "theme" ? options.activeThemeID : options.activeLayoutID;
+  return candidates.find((contribution) => activeKey && adminUIContributionKey(contribution) === activeKey) ??
+    candidates.find((contribution) => activeID && contribution.id === activeID) ??
+    candidates.find((contribution) => options.activeSIMPluginID && contribution.plugin_id === options.activeSIMPluginID) ??
+    candidates.find((contribution) => contribution.schema?.default === true) ??
+    candidates[0];
 }
 
 function themeContributionMatches(contribution: AdminUIContribution, theme: "light" | "dark") {
   const mode = contribution.schema?.mode;
   return mode === undefined || mode === "all" || mode === theme;
+}
+
+function themeCapabilityMatches(capability: SIMThemeTokens, theme: "light" | "dark") {
+  const mode = capability.payload.mode;
+  return mode === "all" || mode === theme;
+}
+
+function themeTokenPayload(contribution: AdminUIContribution | SIMThemeTokens) {
+  return "payload" in contribution ? contribution.payload.tokens : contribution.schema?.tokens;
+}
+
+function layoutDensityPayload(contribution?: AdminUIContribution | SIMShellLayout) {
+  if (!contribution) return undefined;
+  if ("payload" in contribution) {
+    const layout = objectValue(contribution.payload.layout);
+    const preset = objectValue(contribution.payload.preset);
+    return stringValue(layout?.density) || stringValue(preset?.density) || stringValue(contribution.payload.density);
+  }
+  const preset = objectValue(contribution.schema?.preset);
+  return stringValue(preset?.density);
+}
+
+function sortedSIMCapabilities<TCapability extends SIMThemeTokens | SIMShellLayout>(capabilities: readonly TCapability[]) {
+  return [...capabilities].sort(compareSIMPresentationCapabilities);
+}
+
+function compareSIMPresentationCapabilities(left: SIMThemeTokens | SIMShellLayout, right: SIMThemeTokens | SIMShellLayout) {
+  return compareNumber(left.order, right.order) ||
+    compareNumber(right.priority, left.priority) ||
+    left.pluginID.localeCompare(right.pluginID) ||
+    left.name.localeCompare(right.name) ||
+    left.id.localeCompare(right.id) ||
+    left.key.localeCompare(right.key);
+}
+
+function sortedAdminUIContributions(contributions: AdminUIContribution[]) {
+  return [...contributions].sort(compareAdminUIContributions);
+}
+
+function compareAdminUIContributions(left: AdminUIContribution, right: AdminUIContribution) {
+  return compareNumber(numberValue(left.schema?.order, 1000), numberValue(right.schema?.order, 1000)) ||
+    compareNumber(numberValue(right.schema?.priority, 0), numberValue(left.schema?.priority, 0)) ||
+    left.plugin_id.localeCompare(right.plugin_id) ||
+    left.slot.localeCompare(right.slot) ||
+    left.id.localeCompare(right.id);
+}
+
+function adminUIContributionKey(contribution: AdminUIContribution) {
+  return [contribution.plugin_id, contribution.slot, contribution.id].filter(Boolean).join(":");
+}
+
+function objectValue(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function numberValue(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function compareNumber(left: number, right: number) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function safeCSSValue(value: string) {
