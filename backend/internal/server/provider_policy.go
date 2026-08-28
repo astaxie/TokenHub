@@ -45,6 +45,11 @@ func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor)
 	} else {
 		delete(provider.Options, providerCredentialRefreshProfileOption)
 	}
+	if descriptor.ProviderPolicy.PreserveReasoningContent != nil {
+		if _, configured := provider.Options[reasoningContentOption]; !configured {
+			provider.Options[reasoningContentOption] = boolString(*descriptor.ProviderPolicy.PreserveReasoningContent)
+		}
+	}
 }
 
 func applyProviderDescriptorDefaults(provider *Provider, descriptor AdapterDescriptor) {
@@ -280,7 +285,7 @@ func patchedProviderPolicy(current Provider, patch Provider) Provider {
 }
 
 func providerPolicyOptionsChanged(before map[string]string, after map[string]string) bool {
-	for _, key := range []string{providerRouteRequiresResourceOption, providerCredentialsScopeOption, providerErrorProfileOption, providerCredentialRefreshProfileOption} {
+	for _, key := range []string{providerRouteRequiresResourceOption, providerCredentialsScopeOption, providerErrorProfileOption, providerCredentialRefreshProfileOption, reasoningContentOption} {
 		if strings.TrimSpace(before[key]) != strings.TrimSpace(after[key]) {
 			return true
 		}

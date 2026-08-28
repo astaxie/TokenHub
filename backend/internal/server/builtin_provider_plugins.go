@@ -18,6 +18,7 @@ type builtinProviderAdapter struct {
 	routeRequiresResource        bool
 	sessionAffinityKind          string
 	claudeCodeAttributionDefault string
+	preserveReasoningContent     *bool
 	errorProfile                 string
 	defaultCatalogProviderType   bool
 	authModes                    []string
@@ -214,7 +215,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
-		registerBuiltinProviderPlugin(registry, "tokenhub.provider."+adapterType, adapterType, builtinProviderAdapter{
+		adapter := builtinProviderAdapter{
 			providerType: adapterType,
 			adapter:      adapters[adapterType],
 			catalogEntry: builtinProviderPluginCatalogEntryForType(adapterType),
@@ -226,7 +227,11 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 				AdapterCapabilityEmbeddings,
 				AdapterCapabilityProbe,
 			},
-		})
+		}
+		if adapterType == "deepseek" {
+			adapter.preserveReasoningContent = boolPointer(true)
+		}
+		registerBuiltinProviderPlugin(registry, "tokenhub.provider."+adapterType, adapterType, adapter)
 	}
 }
 
@@ -469,6 +474,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    claudeCodeAttributionDefaultPolicy,
 			Subject: adapter.providerType,
 			Value:   adapter.claudeCodeAttributionDefault,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.preserveReasoningContent != nil {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    reasoningContentOption,
+			Subject: adapter.providerType,
+			Value:   boolString(*adapter.preserveReasoningContent),
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

@@ -78,7 +78,7 @@ func TestWithoutGatewayExtensionsStripsExplicitEmptyRawFields(t *testing.T) {
 	}
 }
 
-func TestDeepSeekAdapterForwardsReasoningContentOnly(t *testing.T) {
+func TestOpenAICompatibleAdapterForwardsReasoningContentFromProviderPolicy(t *testing.T) {
 	var received map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		decodeFixtureRequest(t, r.Body, &received)
@@ -88,7 +88,12 @@ func TestDeepSeekAdapterForwardsReasoningContentOnly(t *testing.T) {
 	defer upstream.Close()
 
 	adapter := OpenAICompatibleAdapter{Client: upstream.Client()}
-	provider := Provider{Type: "deepseek", BaseURL: upstream.URL, APIKey: "test-key"}
+	provider := Provider{
+		Type:    "policy_reasoning_provider",
+		BaseURL: upstream.URL,
+		APIKey:  "test-key",
+		Options: map[string]string{reasoningContentOption: "true"},
+	}
 	_, _, err := adapter.Chat(context.Background(), provider, "model-x", ChatCompletionRequest{
 		Model: "model-x",
 		Messages: []ChatMessage{{
@@ -109,7 +114,7 @@ func TestDeepSeekAdapterForwardsReasoningContentOnly(t *testing.T) {
 	messages, _ := received["messages"].([]any)
 	message, _ := messages[0].(map[string]any)
 	if message["reasoning_content"] != "deepseek continuation" {
-		t.Fatalf("DeepSeek reasoning_content was not forwarded: %v", message)
+		t.Fatalf("provider reasoning_content was not forwarded: %v", message)
 	}
 	for _, field := range []string{"reasoning_signature", "redacted_reasoning_content"} {
 		if _, present := message[field]; present {
@@ -126,7 +131,37 @@ func TestDeepSeekAdapterForwardsReasoningContentOnly(t *testing.T) {
 	}
 }
 
-func TestDeepSeekAdapterCanDisableReasoningContent(t *testing.T) {
+func TestOpenAICompatibleAdapterDoesNotInferReasoningContentFromProviderType(t *testing.T) {
+	var received map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		decodeFixtureRequest(t, r.Body, &received)
+		w.Header().Set("content-type", "application/json")
+		writeFixture(t, w, `{"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	adapter := OpenAICompatibleAdapter{Client: upstream.Client()}
+	provider := Provider{Type: "deepseek", BaseURL: upstream.URL, APIKey: "test-key"}
+	_, _, err := adapter.Chat(context.Background(), provider, "model-x", ChatCompletionRequest{
+		Model: "model-x",
+		Messages: []ChatMessage{{
+			Role:             "assistant",
+			Content:          "answer",
+			ReasoningContent: "do not infer from type",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+
+	messages, _ := received["messages"].([]any)
+	message, _ := messages[0].(map[string]any)
+	if _, present := message["reasoning_content"]; present {
+		t.Fatalf("provider type name inferred reasoning_content support: %v", message)
+	}
+}
+
+func TestOpenAICompatibleAdapterCanDisableReasoningContent(t *testing.T) {
 	var received map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		decodeFixtureRequest(t, r.Body, &received)
@@ -157,7 +192,7 @@ func TestDeepSeekAdapterCanDisableReasoningContent(t *testing.T) {
 	messages, _ := received["messages"].([]any)
 	message, _ := messages[0].(map[string]any)
 	if _, present := message["reasoning_content"]; present {
-		t.Fatalf("DeepSeek explicit false still forwarded reasoning_content: %v", message)
+		t.Fatalf("provider explicit false still forwarded reasoning_content: %v", message)
 	}
 }
 

@@ -214,6 +214,14 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"chat/completions", "embeddings", "responses"}) {
 		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
 	}
+
+	deepSeek, ok := server.adapterRegistry.Describe("deepseek")
+	if !ok {
+		t.Fatal("DeepSeek adapter descriptor is missing")
+	}
+	if deepSeek.ProviderPolicy.PreserveReasoningContent == nil || !*deepSeek.ProviderPolicy.PreserveReasoningContent {
+		t.Fatalf("DeepSeek preserve reasoning content policy = %v, want true", deepSeek.ProviderPolicy.PreserveReasoningContent)
+	}
 }
 
 func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T) {
@@ -284,6 +292,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
 			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
+			{Kind: "provider_policy", Name: reasoningContentOption, Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "default_base_url", Subject: providerType, Value: "https://subscription.example/v1"},
 			{Kind: "provider_policy", Name: "default_catalog_provider_type", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "error_profile", Subject: providerType, Value: providerErrorProfileKronk},
@@ -327,6 +336,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.ClaudeCodeAttributionDefault != claudeCodeAttributionStrip {
 		t.Fatalf("plugin provider Claude Code attribution default = %+v, want strip", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.PreserveReasoningContent == nil || !*descriptor.ProviderPolicy.PreserveReasoningContent {
+		t.Fatalf("plugin provider preserve reasoning content default = %+v, want true", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.DefaultBaseURL != "https://subscription.example/v1" {
 		t.Fatalf("plugin provider default base URL = %+v, want subscription URL", descriptor.ProviderPolicy)

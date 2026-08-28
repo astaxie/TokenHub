@@ -47,6 +47,7 @@ capabilities:
     credentials_scope: resource
     session_affinity_kind: codex_session
     claude_code_attribution_default: strip
+    preserve_reasoning_content: true
     default_base_url: https://chatgpt.example/backend-api/codex
     error_profile: kronk
     model_discovery:
@@ -116,8 +117,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 23 {
-		t.Fatalf("descriptor capabilities = %v, want 23 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 24 {
+		t.Fatalf("descriptor capabilities = %v, want 24 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -139,6 +140,9 @@ permissions:
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "claude_code_attribution_default", Subject: "openai_codex", Value: "strip"}) {
 		t.Fatalf("descriptor is missing provider Claude Code attribution default capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "preserve_reasoning_content", Subject: "openai_codex", Value: "true"}) {
+		t.Fatalf("descriptor is missing provider reasoning content default capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "default_base_url", Subject: "openai_codex", Value: "https://chatgpt.example/backend-api/codex"}) {
 		t.Fatalf("descriptor is missing provider default base URL capability: %+v", descriptor.Capabilities)

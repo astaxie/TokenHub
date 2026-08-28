@@ -203,8 +203,8 @@ func (a MockAdapter) Embeddings(ctx context.Context, provider Provider, provider
 
 // preservesReasoningContent reports whether an OpenAI-compatible upstream
 // understands the reasoning_content it produced being handed back on the next
-// turn. DeepSeek does and needs it for multi-turn reasoning; for everyone else
-// the field is a TokenHub-local extension and is stripped.
+// turn. The default comes from provider plugin policy; otherwise the field is a
+// TokenHub-local extension and is stripped.
 func preservesReasoningContent(provider Provider) bool {
 	return providerPreservesReasoningContent(provider)
 }
