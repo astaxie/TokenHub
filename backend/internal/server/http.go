@@ -182,42 +182,23 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 	}
-	pluginRegistry := pluginmeta.NewRegistry()
-	gatewayChain := pluginmeta.NewGatewayChainRegistry()
-	gatewayHooks := pluginmeta.NewGatewayHookRunner(gatewayChain)
-	adminUI := pluginmeta.NewAdminUIRegistry()
-	pluginActions := pluginmeta.NewActionBroker()
-	pluginBackgroundJobs := pluginmeta.NewBackgroundJobBroker()
-	pluginBackgroundRunner := pluginmeta.NewBackgroundJobRunner(pluginBackgroundJobs)
-	registry := NewAdapterRegistryWithPlugins(pluginRegistry)
-	registerBuiltinProviderAdapters(registry, adapters, codexSubscription)
-	registerBuiltinProviderCatalogPlugins(pluginRegistry)
-	codexSubscription.SupportsResourceModels = func(providerType string, resourceType string) bool {
-		descriptor, ok := registry.Describe(providerType)
-		return ok && adapterSupportsResourceType(descriptor, resourceType)
-	}
-	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
-	registerBuiltinAdminUIContributions(pluginRegistry, adminUI)
-	packages, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActionsAndBackground(pluginRegistry, gatewayChain, adminUI, pluginActions, pluginBackgroundJobs, gatewayHooks)
+	pluginBootstrap, err := bootstrapServerPlugins(store, config, adapters, codexSubscription)
 	if err != nil {
-		panic(fmt.Errorf("load TokenHub plugins: %w", err))
+		panic(err)
 	}
-	registerExternalProviderPluginAdapters(registry, packages)
-	configureProviderResourceTypeDefaults(store, registry)
-	reconcileProviderPluginPolicies(store, registry)
 	providerCatalog := newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient)
-	providerCatalog.UsePluginCatalogTypes(registry)
+	providerCatalog.UsePluginCatalogTypes(pluginBootstrap.adapterRegistry)
 	s := &Server{
 		store:                   store,
-		pluginRegistry:          pluginRegistry,
-		gatewayChain:            gatewayChain,
-		gatewayHooks:            gatewayHooks,
-		adminUI:                 adminUI,
-		pluginActions:           pluginActions,
-		pluginBackgroundJobs:    pluginBackgroundJobs,
-		pluginBackgroundRunner:  pluginBackgroundRunner,
-		adapterRegistry:         registry,
-		integrations:            NewIntegrationService(store, registry, client),
+		pluginRegistry:          pluginBootstrap.pluginRegistry,
+		gatewayChain:            pluginBootstrap.gatewayChain,
+		gatewayHooks:            pluginBootstrap.gatewayHooks,
+		adminUI:                 pluginBootstrap.adminUI,
+		pluginActions:           pluginBootstrap.pluginActions,
+		pluginBackgroundJobs:    pluginBootstrap.pluginBackgroundJobs,
+		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
+		adapterRegistry:         pluginBootstrap.adapterRegistry,
+		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
 		codexSubscription:       codexSubscription,
 		providerCatalog:         providerCatalog,
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
@@ -257,20 +238,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
 	}
-	registerBuiltinPluginActions(s)
-	registerBuiltinPluginBackgroundJobs(s)
-	codexSubscription.ImageCapabilityProfiles = func(providerType string) []providerImageCapabilityRouteProfile {
-		profiles := []providerImageCapabilityRouteProfile{}
-		for _, profile := range providerImageCapabilityRouteProfilesFromActions(pluginActions.List()) {
-			if profile.ProviderType == strings.TrimSpace(providerType) {
-				profiles = append(profiles, profile)
-			}
-		}
-		return profiles
-	}
-	s.syncProviderImageCapabilityRouteProfiles()
-	s.credentialRefresh.pluginRefresh = s.refreshProviderResourceCredentialsWithPluginAction
-	s.credentialRefresh.pluginJob = s.providerCredentialRefreshBackgroundJobRegistered
+	s.installServerPluginHandlers()
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,
 		DecodeJSONOptional: s.decodeJSONOptional,
