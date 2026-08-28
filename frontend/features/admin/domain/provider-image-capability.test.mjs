@@ -27,6 +27,7 @@ const profile = {
   requestSizePolicy: "gpt-image-2",
   requestAllowedSizes: [],
   requestAllowedQualities: ["auto", "low", "medium", "high"],
+  requestAllowedResponseFormats: ["url", "b64_json"],
 };
 const route = { model_name: "codex-gpt-image-2", provider_id: "provider-1", provider_model: "gpt-image-2", status: "active" };
 const resource = (id, capability, status = "active", resourceType = "openai_subscription") => ({
@@ -84,6 +85,7 @@ test("image capability profile follows plugin metadata for resources and routes"
       "request.size_policy": "kimi-image-v1",
       "request.allowed_sizes": "auto,2048x2048",
       "request.allowed_qualities": "standard,hd",
+      "request.allowed_response_formats": "b64_json",
     },
   });
   assert.deepEqual(profile, {
@@ -102,6 +104,7 @@ test("image capability profile follows plugin metadata for resources and routes"
     requestSizePolicy: "kimi-image-v1",
     requestAllowedSizes: ["auto", "2048x2048"],
     requestAllowedQualities: ["standard", "hd"],
+    requestAllowedResponseFormats: ["b64_json"],
   });
   assert.equal(providerImageRouteEnabled([{ ...route, model_name: "kimi-image", provider_model: "moonshot-image" }], "provider-1", profile), true);
   assert.deepEqual(

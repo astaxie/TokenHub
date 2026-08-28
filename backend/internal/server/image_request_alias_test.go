@@ -173,3 +173,36 @@ func TestImageRequestAllowedQualitiesUsePluginMetadata(t *testing.T) {
 		t.Fatalf("plugin disallowed quality was not rejected: %v", err)
 	}
 }
+
+func TestImageRequestResponseFormatsUsePluginMetadata(t *testing.T) {
+	server := &Server{pluginActions: pluginmeta.NewActionBroker()}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi-image-format",
+		ActionID:   "kimi.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "kimi_subscription",
+		Metadata: map[string]string{
+			"public_model":                     "kimi-image",
+			"upstream_model":                   "moonshot-image",
+			"request.allowed_response_formats": "b64_json",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	accepted := imageGenerationRequest{Model: "kimi-image", Prompt: "Draw one square.", N: 1, Quality: "low", Size: "1024x1024", ResponseFormat: "b64_json"}
+	if err := server.normalizeImageGenerationRequest(&accepted); err != nil {
+		t.Fatalf("plugin allowed response_format was rejected: %v", err)
+	}
+
+	rejected := imageGenerationRequest{Model: "kimi-image", Prompt: "Draw one square.", N: 1, Quality: "low", Size: "1024x1024", ResponseFormat: "url"}
+	if err := server.normalizeImageGenerationRequest(&rejected); err == nil || AsHTTPError(err).Code != "invalid_response_format" {
+		t.Fatalf("plugin disallowed response_format was not rejected: %v", err)
+	}
+	if !server.imageModelSupportsResponseFormat(openAIImageModelName, "url") {
+		t.Fatal("non-profile image model should support url responses by default")
+	}
+}

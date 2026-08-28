@@ -11,6 +11,10 @@ func defaultImageRequestQualities() []string {
 	return []string{"auto", "low", "medium", "high"}
 }
 
+func defaultImageResponseFormats() []string {
+	return []string{"url", "b64_json"}
+}
+
 func (s *Server) applyImageGenerationRequestAliases(r *http.Request, request *imageGenerationRequest) {
 	if s == nil || request == nil {
 		return
@@ -98,4 +102,13 @@ func (s *Server) imageModelSupportsQuality(model string, quality string) bool {
 	}
 	profile.withDefaults()
 	return stringInList(quality, profile.RequestAllowedQualities)
+}
+
+func (s *Server) imageModelSupportsResponseFormat(model string, responseFormat string) bool {
+	profile, ok := s.providerImageCapabilityRouteProfileForModel(model)
+	if !ok {
+		return stringInList(responseFormat, defaultImageResponseFormats())
+	}
+	profile.withDefaults()
+	return stringInList(responseFormat, profile.RequestAllowedFormats)
 }

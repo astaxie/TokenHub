@@ -570,6 +570,7 @@ func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
 			"request.supports_mask":                                          "false",
 			"request.size_policy":                                            imageRequestSizePolicyGPTImage2,
 			"request.allowed_qualities":                                      strings.Join(defaultImageRequestQualities(), ","),
+			"request.allowed_response_formats":                               strings.Join(defaultImageResponseFormats(), ","),
 			"probe_error_message.codex_image_forbidden":                      "This Codex subscription account is not allowed to use image generation",
 			"probe_error_message.codex_quota_exhausted":                      "Codex image capability test is temporarily unavailable",
 			"probe_error_message.codex_rate_limited":                         "Codex image capability test is temporarily unavailable",

@@ -64,6 +64,7 @@ describe("Provider account OAuth UI", () => {
           requestSizePolicy: "gpt-image-2",
           requestAllowedSizes: [],
           requestAllowedQualities: ["auto", "low", "medium", "high"],
+          requestAllowedResponseFormats: ["url", "b64_json"],
         }}
         resource={{
           id: "rsrc_kimi",

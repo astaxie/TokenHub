@@ -17,6 +17,7 @@ export type ImageCapabilityProfile = {
   requestSizePolicy: string;
   requestAllowedSizes: string[];
   requestAllowedQualities: string[];
+  requestAllowedResponseFormats: string[];
 };
 
 const defaultImageCapabilityDisplayName = "生图能力";
@@ -42,6 +43,7 @@ export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescr
     requestSizePolicy: action.metadata?.request_size_policy?.trim() || action.metadata?.["request.size_policy"]?.trim() || action.metadata?.image_request_size_policy?.trim() || "gpt-image-2",
     requestAllowedSizes: splitMetadataList(action.metadata?.request_allowed_sizes ?? action.metadata?.["request.allowed_sizes"] ?? action.metadata?.image_request_allowed_sizes),
     requestAllowedQualities: splitMetadataList((action.metadata?.request_allowed_qualities ?? action.metadata?.["request.allowed_qualities"] ?? action.metadata?.image_request_allowed_qualities) || "auto,low,medium,high"),
+    requestAllowedResponseFormats: splitMetadataList((action.metadata?.request_allowed_response_formats ?? action.metadata?.["request.allowed_response_formats"] ?? action.metadata?.image_request_allowed_response_formats) || "url,b64_json"),
   };
 }
 

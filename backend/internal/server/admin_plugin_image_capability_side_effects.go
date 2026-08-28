@@ -49,6 +49,7 @@ type providerImageCapabilityRouteProfile struct {
 	RequestSizePolicy           string
 	RequestAllowedSizes         []string
 	RequestAllowedQualities     []string
+	RequestAllowedFormats       []string
 	ProbeErrorMessages          map[string]string
 }
 
@@ -241,6 +242,10 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 		RequestAllowedQualities: stringListMetadata(firstNonEmpty(
 			descriptor.Metadata["request.allowed_qualities"],
 			descriptor.Metadata["image_request_allowed_qualities"],
+		)),
+		RequestAllowedFormats: stringListMetadata(firstNonEmpty(
+			descriptor.Metadata["request.allowed_response_formats"],
+			descriptor.Metadata["image_request_allowed_response_formats"],
 		)),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
@@ -479,6 +484,9 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if len(p.RequestAllowedQualities) == 0 {
 		p.RequestAllowedQualities = defaultImageRequestQualities()
 	}
+	if len(p.RequestAllowedFormats) == 0 {
+		p.RequestAllowedFormats = defaultImageResponseFormats()
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -530,6 +538,7 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.RequestSizePolicy,
 		strings.Join(p.RequestAllowedSizes, ","),
 		strings.Join(p.RequestAllowedQualities, ","),
+		strings.Join(p.RequestAllowedFormats, ","),
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry

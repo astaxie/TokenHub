@@ -1111,15 +1111,15 @@ func normalizedImageOption(value string, fallback string) string {
 }
 
 func normalizeImageGenerationRequest(request *imageGenerationRequest) error {
-	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName, nil, nil)
+	return normalizeImageGenerationRequestForModels(request, []string{codexImageModelName, openAIImageModelName}, codexImageModelName, nil, nil, nil)
 }
 
 func (s *Server) normalizeImageGenerationRequest(request *imageGenerationRequest) error {
 	models, defaultModel := s.imageGenerationModelsAndDefault()
-	return normalizeImageGenerationRequestForModels(request, models, defaultModel, s.imageModelSupportsSize, s.imageModelSupportsQuality)
+	return normalizeImageGenerationRequestForModels(request, models, defaultModel, s.imageModelSupportsSize, s.imageModelSupportsQuality, s.imageModelSupportsResponseFormat)
 }
 
-func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string, supportsSize func(string, string) bool, supportsQuality func(string, string) bool) error {
+func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, supportedModels []string, defaultModel string, supportsSize func(string, string) bool, supportsQuality func(string, string) bool, supportsResponseFormat func(string, string) bool) error {
 	request.Model = strings.TrimSpace(request.Model)
 	if request.Model == "" {
 		request.Model = strings.TrimSpace(defaultModel)
@@ -1157,8 +1157,13 @@ func normalizeImageGenerationRequestForModels(request *imageGenerationRequest, s
 		return NewHTTPError(http.StatusBadRequest, "invalid_size", "size is not supported by the selected image model")
 	}
 	request.ResponseFormat = normalizedImageOption(request.ResponseFormat, "url")
-	if request.ResponseFormat != "url" && request.ResponseFormat != "b64_json" {
-		return NewHTTPError(http.StatusBadRequest, "invalid_response_format", "response_format must be url or b64_json")
+	if supportsResponseFormat == nil {
+		supportsResponseFormat = func(_ string, responseFormat string) bool {
+			return stringInList(responseFormat, defaultImageResponseFormats())
+		}
+	}
+	if !supportsResponseFormat(request.Model, request.ResponseFormat) {
+		return NewHTTPError(http.StatusBadRequest, "invalid_response_format", "response_format is not supported by the selected image model")
 	}
 	return nil
 }
