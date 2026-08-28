@@ -39,7 +39,7 @@ func (s *Server) runGatewayRequestTransformHooks(ctx context.Context, call CallC
 			input.Data[dataClass] = encoded
 		}
 	}
-	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageRequestTransform, input, hooks)
+	report, err := s.runAuditedGatewayHookStageHooks(ctx, call, pluginmeta.StageRequestTransform, input, hooks)
 	if err != nil {
 		if pluginmeta.IsGatewayHookRouteSkipped(err) {
 			return &ProviderInvocationError{
@@ -126,4 +126,13 @@ func (s *Server) runGatewayCompactRequestTransformHooks(ctx context.Context, cal
 		return nil
 	})
 	return body, err
+}
+
+func (s *Server) runGatewayAnthropicRequestTransformHooks(ctx context.Context, call CallContext, route RouteSelection, req *anthropicMessagesRequest, protocol string) error {
+	if req == nil {
+		return nil
+	}
+	return s.runGatewayRequestTransformHooks(ctx, call, route, req.Raw, protocol, func(data json.RawMessage) error {
+		return applyAnthropicGatewayRequestPatch(req, data)
+	})
 }

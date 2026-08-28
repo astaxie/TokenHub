@@ -172,12 +172,12 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 		writeError(w, r, err)
 		return
 	}
-	if err := s.runGatewayGeminiContextOptimizeHooks(r.Context(), call, &payload, model, stream); err != nil {
+	if err := s.runGatewayGeminiGuardrailPreHooks(r.Context(), call, &payload, model, stream); err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
 		writeError(w, r, err)
 		return
 	}
-	if err := s.runGatewayGeminiGuardrailPreHooks(r.Context(), call, &payload, model, stream); err != nil {
+	if err := s.runGatewayGeminiContextOptimizeHooks(r.Context(), call, &payload, model, stream); err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
 		writeError(w, r, err)
 		return
@@ -197,13 +197,13 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 			return
 		}
 		if hit {
-			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage, providerRouteProtocolGemini)
+			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp, providerRouteProtocolGemini)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 				writeError(w, r, err)
 				return
 			}
-			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp, providerRouteProtocolGemini)
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage, providerRouteProtocolGemini)
 			if err != nil {
 				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 				writeError(w, r, err)
@@ -279,7 +279,7 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	postResp, err := s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, converted, usage, providerRouteProtocolGemini)
+	postResp, err := s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, converted, providerRouteProtocolGemini)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
@@ -292,7 +292,7 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 		writeError(w, r, err)
 		return
 	}
-	postResp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, converted, providerRouteProtocolGemini)
+	postResp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, converted, usage, providerRouteProtocolGemini)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)

@@ -517,10 +517,10 @@ func (s *Server) runImageGatewayPreflightHooks(ctx context.Context, call *CallCo
 	if err := s.runGatewayImagePrivacyPreHooks(ctx, *call, headers, request); err != nil {
 		return err
 	}
-	if err := s.runGatewayImageContextOptimizeHooks(ctx, *call, request); err != nil {
+	if err := s.runGatewayImageGuardrailPreHooks(ctx, *call, request); err != nil {
 		return err
 	}
-	if err := s.runGatewayImageGuardrailPreHooks(ctx, *call, request); err != nil {
+	if err := s.runGatewayImageContextOptimizeHooks(ctx, *call, request); err != nil {
 		return err
 	}
 	return nil

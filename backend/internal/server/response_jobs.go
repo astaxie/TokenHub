@@ -455,7 +455,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
 		return
 	}
-	if err := s.runGatewayResponsesContextOptimizeHooks(ctx, call, &request); err != nil {
+	if err := s.runGatewayResponsesGuardrailPreHooks(ctx, call, &request); err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
 		}
@@ -463,7 +463,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
 		return
 	}
-	if err := s.runGatewayResponsesGuardrailPreHooks(ctx, call, &request); err != nil {
+	if err := s.runGatewayResponsesContextOptimizeHooks(ctx, call, &request); err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
 		}
@@ -491,7 +491,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 	if hit {
-		response, err = s.runGatewayGuardrailPostHooks(ctx, call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
+		response, err = s.runGatewayResponsePostHooks(ctx, call, RouteSelection{}, response, providerRouteProtocolResponses)
 		if err != nil {
 			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 				return
@@ -500,7 +500,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
-		response, err = s.runGatewayResponsePostHooks(ctx, call, RouteSelection{}, response, providerRouteProtocolResponses)
+		response, err = s.runGatewayGuardrailPostHooks(ctx, call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
 		if err != nil {
 			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 				return
@@ -564,13 +564,13 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 	}
 	response, route, usage, attempts, invokeErr := s.executeRoutedResponsesContext(ctx, envelope.Headers, routed, request)
 	if invokeErr == nil {
-		response, invokeErr = s.runGatewayGuardrailPostHooks(ctx, routed.Call, route, response, usage, providerRouteProtocolResponses)
+		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response, providerRouteProtocolResponses)
 		if invokeErr != nil {
 			httpErr := AsHTTPError(invokeErr)
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 			return
 		}
-		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response, providerRouteProtocolResponses)
+		response, invokeErr = s.runGatewayGuardrailPostHooks(ctx, routed.Call, route, response, usage, providerRouteProtocolResponses)
 		if invokeErr != nil {
 			httpErr := AsHTTPError(invokeErr)
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)

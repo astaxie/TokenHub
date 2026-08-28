@@ -48,6 +48,23 @@ func (s *Server) runGatewayImagePrivacyPreHooks(ctx context.Context, call CallCo
 	})
 }
 
+func (s *Server) runGatewayCompactPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, request map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	body := cloneRawJSON(request, 0)
+	err := s.runGatewayPrivacyPreHooks(ctx, call, headers, body, func(data json.RawMessage) error {
+		originalModel := compactRequestModel(body)
+		var patched map[string]json.RawMessage
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if patchedModel := compactRequestModel(patched); patchedModel != originalModel {
+			return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+		}
+		body = cloneRawJSON(patched, 0)
+		return nil
+	})
+	return body, err
+}
+
 func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext, headers http.Header, payload any, apply func(json.RawMessage) error) error {
 	if !s.hasGatewayHookStage(pluginmeta.StagePrivacyPre) {
 		return nil

@@ -68,11 +68,11 @@ func (s *Server) finishImageGatewayHooks(ctx context.Context, call CallContext, 
 	previousRequest := result.providerRequest
 	previousCacheHit := result.cacheHit
 	response := gatewayImageProviderResponseFromRunResult(result)
-	post, err := s.runGatewayGuardrailPostHooks(ctx, call, route, response, usage, providerRouteProtocolImageGeneration)
+	post, err := s.runGatewayResponsePostHooks(ctx, call, route, response, providerRouteProtocolImageGeneration)
 	if err != nil {
 		return imageRunResult{}, usage, err
 	}
-	post, err = s.runGatewayResponsePostHooks(ctx, call, route, post, providerRouteProtocolImageGeneration)
+	post, err = s.runGatewayGuardrailPostHooks(ctx, call, route, post, usage, providerRouteProtocolImageGeneration)
 	if err != nil {
 		return imageRunResult{}, usage, err
 	}

@@ -98,3 +98,20 @@ func (s *Server) runGatewayImageContextOptimizeHooks(ctx context.Context, call C
 		return applyImageGatewayRequestPatch(req, data)
 	})
 }
+
+func (s *Server) runGatewayCompactContextOptimizeHooks(ctx context.Context, call CallContext, request map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	body := cloneRawJSON(request, 0)
+	err := s.runGatewayContextOptimizeHooks(ctx, call, body, func(data json.RawMessage) error {
+		originalModel := compactRequestModel(body)
+		var patched map[string]json.RawMessage
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if patchedModel := compactRequestModel(patched); patchedModel != originalModel {
+			return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+		}
+		body = cloneRawJSON(patched, 0)
+		return nil
+	})
+	return body, err
+}
