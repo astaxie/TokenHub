@@ -49,6 +49,37 @@ func TestGatewayStagePolicySupportsEveryCanonicalStage(t *testing.T) {
 	}
 }
 
+func TestGatewayStageEnvelopeContractsExposeMutationLimits(t *testing.T) {
+	contracts := GatewayStageEnvelopeContracts()
+	if len(contracts) != len(OrderedGatewayStages()) {
+		t.Fatalf("contracts = %d, want %d", len(contracts), len(OrderedGatewayStages()))
+	}
+	byStage := map[GatewayHookStage]GatewayStageEnvelopeContract{}
+	for index, contract := range contracts {
+		if contract.Stage != OrderedGatewayStages()[index] {
+			t.Fatalf("contract %d stage = %q, want %q", index, contract.Stage, OrderedGatewayStages()[index])
+		}
+		byStage[contract.Stage] = contract
+	}
+	privacy := byStage[StagePrivacyPre]
+	if !gatewayDataClassIn(privacy.Reads, DataRequestBody) || !gatewayDataClassIn(privacy.Writes, DataRequestBody) {
+		t.Fatalf("privacy_pre contract = %+v, want request body read/write", privacy)
+	}
+	routeRank := byStage[StageRouteRank]
+	if !gatewayDataClassIn(routeRank.Reads, DataRouteCandidates) || !gatewayDataClassIn(routeRank.Writes, DataRouteCandidates) {
+		t.Fatalf("route_rank contract = %+v, want route candidate read/write", routeRank)
+	}
+	settlement := byStage[StageSettlement]
+	if len(settlement.Writes) != 0 || !gatewayDataClassIn(settlement.Preserves, DataUsage) || !gatewayDataClassIn(settlement.Preserves, DataAudit) {
+		t.Fatalf("settlement contract = %+v, want non-mutating preserved usage/audit", settlement)
+	}
+	contracts[0].Reads[0] = DataProviderCredentials
+	next, _ := GatewayStageEnvelopeContractFor(StageAuthContext)
+	if gatewayDataClassIn(next.Reads, DataProviderCredentials) {
+		t.Fatalf("stage envelope contract leaked mutable slices: %+v", next)
+	}
+}
+
 func TestGatewayChainRegistryPlansHooksByStageAndPriority(t *testing.T) {
 	registry := NewGatewayChainRegistry()
 
@@ -124,6 +155,15 @@ func gatewayStageSlicesEqual(left []GatewayHookStage, right []GatewayHookStage) 
 		}
 	}
 	return true
+}
+
+func gatewayDataClassIn(items []GatewayDataClass, want GatewayDataClass) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGatewayChainRegistryRejectsStageDataClassViolations(t *testing.T) {

@@ -38,10 +38,12 @@ type TextSegment struct {
 }
 
 type GatewayHookInput struct {
-	RequestID string           `json:"request_id"`
-	Stage     GatewayHookStage `json:"stage"`
-	Envelope  GatewayEnvelope  `json:"envelope"`
-	Data      GatewayHookData  `json:"data,omitempty"`
+	RequestID        string           `json:"request_id"`
+	Stage            GatewayHookStage `json:"stage"`
+	Envelope         GatewayEnvelope  `json:"envelope"`
+	Data             GatewayHookData  `json:"data,omitempty"`
+	OriginalEnvelope GatewayEnvelope  `json:"-"`
+	OriginalData     GatewayHookData  `json:"-"`
 }
 
 type GatewayHookData map[GatewayDataClass]json.RawMessage
@@ -129,6 +131,7 @@ func (r *GatewayHookRunner) RunStageHooks(ctx context.Context, stage GatewayHook
 	if r == nil {
 		return report, nil
 	}
+	input = preserveGatewayHookOriginals(input)
 	for _, hook := range hooks {
 		if hook.Stage != stage {
 			continue
@@ -214,13 +217,20 @@ func validateGatewayHookResult(hook GatewayHookDescriptor, result GatewayHookRes
 	if len(result.Writes) == 0 {
 		return nil
 	}
-	allowed := map[GatewayDataClass]struct{}{}
+	declared := map[GatewayDataClass]struct{}{}
 	for _, dataClass := range hook.Writes {
-		allowed[dataClass] = struct{}{}
+		declared[dataClass] = struct{}{}
+	}
+	stageAllowed := map[GatewayDataClass]struct{}{}
+	for _, dataClass := range stagePolicy.Writes {
+		stageAllowed[dataClass] = struct{}{}
 	}
 	for dataClass := range result.Writes {
-		if _, ok := allowed[dataClass]; !ok {
+		if _, ok := declared[dataClass]; !ok {
 			return fmt.Errorf("gateway hook %s/%s wrote undeclared data class %q", hook.PluginID, hook.HookID, dataClass)
+		}
+		if _, ok := stageAllowed[dataClass]; !ok {
+			return fmt.Errorf("gateway hook stage %q cannot write data class %q", hook.Stage, dataClass)
 		}
 	}
 	return nil
@@ -266,6 +276,8 @@ func clipGatewayHookInput(input GatewayHookInput, reads []GatewayDataClass) Gate
 			Operation: input.Envelope.Operation,
 			Model:     input.Envelope.Model,
 		},
+		OriginalEnvelope: cloneGatewayEnvelope(input.OriginalEnvelope),
+		OriginalData:     clipGatewayHookData(input.OriginalData, reads),
 	}
 	if _, ok := allowed[DataRequestBody]; ok {
 		clipped.Envelope.RequestBody = cloneRawMessage(input.Envelope.RequestBody)
@@ -289,6 +301,16 @@ func clipGatewayHookInput(input GatewayHookInput, reads []GatewayDataClass) Gate
 		}
 	}
 	return clipped
+}
+
+func preserveGatewayHookOriginals(input GatewayHookInput) GatewayHookInput {
+	if gatewayEnvelopeEmpty(input.OriginalEnvelope) {
+		input.OriginalEnvelope = cloneGatewayEnvelope(input.Envelope)
+	}
+	if input.OriginalData == nil {
+		input.OriginalData = cloneGatewayHookData(input.Data)
+	}
+	return input
 }
 
 func applyGatewayHookFailure(run GatewayHookRunResult, hook GatewayHookDescriptor, err error) (GatewayHookRunResult, error) {
@@ -347,4 +369,63 @@ func cloneRawMessage(value json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), value...)
+}
+
+func cloneGatewayEnvelope(envelope GatewayEnvelope) GatewayEnvelope {
+	clone := GatewayEnvelope{
+		Version:        envelope.Version,
+		Protocol:       envelope.Protocol,
+		Operation:      envelope.Operation,
+		Model:          envelope.Model,
+		RequestBody:    cloneRawMessage(envelope.RequestBody),
+		NormalizedText: append([]TextSegment(nil), envelope.NormalizedText...),
+	}
+	if len(envelope.Metadata) > 0 {
+		clone.Metadata = map[string]json.RawMessage{}
+		for key, value := range envelope.Metadata {
+			clone.Metadata[key] = cloneRawMessage(value)
+		}
+	}
+	return clone
+}
+
+func cloneGatewayHookData(data GatewayHookData) GatewayHookData {
+	if len(data) == 0 {
+		return nil
+	}
+	clone := GatewayHookData{}
+	for dataClass, value := range data {
+		clone[dataClass] = cloneRawMessage(value)
+	}
+	return clone
+}
+
+func clipGatewayHookData(data GatewayHookData, reads []GatewayDataClass) GatewayHookData {
+	if len(data) == 0 {
+		return nil
+	}
+	allowed := map[GatewayDataClass]struct{}{}
+	for _, dataClass := range reads {
+		allowed[dataClass] = struct{}{}
+	}
+	clipped := GatewayHookData{}
+	for dataClass := range allowed {
+		if value, ok := data[dataClass]; ok {
+			clipped[dataClass] = cloneRawMessage(value)
+		}
+	}
+	if len(clipped) == 0 {
+		return nil
+	}
+	return clipped
+}
+
+func gatewayEnvelopeEmpty(envelope GatewayEnvelope) bool {
+	return envelope.Version == "" &&
+		envelope.Protocol == "" &&
+		envelope.Operation == "" &&
+		envelope.Model == "" &&
+		len(envelope.RequestBody) == 0 &&
+		len(envelope.NormalizedText) == 0 &&
+		len(envelope.Metadata) == 0
 }

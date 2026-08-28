@@ -79,6 +79,37 @@ func TestGatewayHookRunnerRejectsUndeclaredWrites(t *testing.T) {
 	}
 }
 
+func TestGatewayHookRunnerRejectsStageMutationLimitViolations(t *testing.T) {
+	hook := GatewayHookDescriptor{
+		PluginID:      "tokenhub.trace",
+		HookID:        "leak",
+		Stage:         StageTraceExport,
+		Writes:        []GatewayDataClass{DataAudit},
+		FailurePolicy: FailurePolicyFailClosed,
+	}
+	runner := NewGatewayHookRunner(NewGatewayChainRegistry())
+	if err := runner.RegisterHandler(hook, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+		return GatewayHookResult{
+			Writes: map[GatewayDataClass]RawPatch{
+				DataAudit: {Value: json.RawMessage(`{"mutated":true}`)},
+			},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	report, err := runner.RunStageHooks(context.Background(), StageTraceExport, GatewayHookInput{}, []GatewayHookDescriptor{hook})
+	if err == nil {
+		t.Fatal("runner accepted a trace_export write that violates the stage mutation limit")
+	}
+	if len(report.Results) != 1 || report.Results[0].Status != HookRunFailed {
+		t.Fatalf("report = %+v", report)
+	}
+	if !strings.Contains(err.Error(), `stage "trace_export" cannot write data class "audit"`) {
+		t.Fatalf("error = %v, want stage mutation limit violation", err)
+	}
+}
+
 func TestGatewayHookRunnerAppliesFailurePolicyForMissingHandlers(t *testing.T) {
 	chain := NewGatewayChainRegistry()
 	openHook := GatewayHookDescriptor{PluginID: "tokenhub.cache", HookID: "lookup", Stage: StageCacheLookup, FailurePolicy: FailurePolicyFailOpen}
@@ -203,6 +234,88 @@ func TestGatewayHookRunnerClipsInputToDeclaredReads(t *testing.T) {
 	}
 	if string(seen.Data[DataNormalizedText]) != `["visible"]` {
 		t.Fatalf("normalized data = %s, want visible data", seen.Data[DataNormalizedText])
+	}
+}
+
+func TestGatewayHookRunnerPreservesOriginalEnvelopeAcrossStageWrites(t *testing.T) {
+	chain := NewGatewayChainRegistry()
+	first := GatewayHookDescriptor{
+		PluginID: "tokenhub.privacy",
+		HookID:   "mask",
+		Stage:    StagePrivacyPre,
+		Priority: 100,
+		Reads:    []GatewayDataClass{DataRequestBody},
+		Writes:   []GatewayDataClass{DataRequestBody},
+	}
+	second := GatewayHookDescriptor{
+		PluginID: "tokenhub.audit",
+		HookID:   "compare",
+		Stage:    StagePrivacyPre,
+		Priority: 200,
+		Reads:    []GatewayDataClass{DataRequestBody},
+	}
+	for _, hook := range []GatewayHookDescriptor{first, second} {
+		if err := chain.RegisterHook(hook); err != nil {
+			t.Fatalf("register hook: %v", err)
+		}
+	}
+	runner := NewGatewayHookRunner(chain)
+	if err := runner.RegisterHandler(first, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+		return GatewayHookResult{
+			Writes: map[GatewayDataClass]RawPatch{
+				DataRequestBody: {Value: json.RawMessage(`{"masked":true}`)},
+			},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register first handler: %v", err)
+	}
+	if err := runner.RegisterHandler(second, GatewayHookHandlerFunc(func(_ context.Context, input GatewayHookInput) (GatewayHookResult, error) {
+		if string(input.Envelope.RequestBody) != `{"masked":true}` {
+			t.Fatalf("current request body = %s, want masked body", input.Envelope.RequestBody)
+		}
+		if string(input.OriginalEnvelope.RequestBody) != `{"secret":"visible-to-stage"}` {
+			t.Fatalf("original request body = %s, want immutable original", input.OriginalEnvelope.RequestBody)
+		}
+		if string(input.OriginalData[DataRequestBody]) != `{"secret":"visible-to-stage"}` {
+			t.Fatalf("original data = %s, want immutable original data", input.OriginalData[DataRequestBody])
+		}
+		return GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register second handler: %v", err)
+	}
+
+	_, err := runner.RunStage(context.Background(), StagePrivacyPre, GatewayHookInput{
+		RequestID: "req_original",
+		Envelope: GatewayEnvelope{
+			Version:     "v1",
+			RequestBody: json.RawMessage(`{"secret":"visible-to-stage"}`),
+		},
+		Data: GatewayHookData{
+			DataRequestBody: json.RawMessage(`{"secret":"visible-to-stage"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("run stage: %v", err)
+	}
+}
+
+func TestGatewayHookInputOriginalsAreInternalOnly(t *testing.T) {
+	input := GatewayHookInput{
+		RequestID: "req_secret",
+		Envelope:  GatewayEnvelope{Version: "v1"},
+		OriginalEnvelope: GatewayEnvelope{
+			RequestBody: json.RawMessage(`{"secret":"original-envelope"}`),
+		},
+		OriginalData: GatewayHookData{
+			DataRequestBody: json.RawMessage(`{"secret":"original-data"}`),
+		},
+	}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("marshal input: %v", err)
+	}
+	if strings.Contains(string(encoded), "original-envelope") || strings.Contains(string(encoded), "original-data") || strings.Contains(string(encoded), "Original") {
+		t.Fatalf("internal originals leaked to hook JSON: %s", encoded)
 	}
 }
 

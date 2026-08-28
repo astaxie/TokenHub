@@ -79,8 +79,9 @@ type GatewayHookDescriptor struct {
 }
 
 type GatewayChainPlan struct {
-	Stages []GatewayHookStage      `json:"stages"`
-	Hooks  []GatewayHookDescriptor `json:"hooks"`
+	Stages    []GatewayHookStage             `json:"stages"`
+	Envelopes []GatewayStageEnvelopeContract `json:"envelopes"`
+	Hooks     []GatewayHookDescriptor        `json:"hooks"`
 }
 
 type GatewayChainRegistry struct {
@@ -94,6 +95,17 @@ type GatewayHookStagePolicy struct {
 	Writes               []GatewayDataClass
 	AllowsDeny           bool
 	AllowsShortCircuit   bool
+}
+
+type GatewayStageEnvelopeContract struct {
+	Stage              GatewayHookStage           `json:"stage"`
+	Reads              []GatewayDataClass         `json:"reads"`
+	Writes             []GatewayDataClass         `json:"writes"`
+	Preserves          []GatewayDataClass         `json:"preserves"`
+	AllowsDeny         bool                       `json:"allows_deny"`
+	AllowsShortCircuit bool                       `json:"allows_short_circuit"`
+	DefaultFailure     GatewayHookFailurePolicy   `json:"default_failure_policy"`
+	AllowedFailures    []GatewayHookFailurePolicy `json:"allowed_failure_policies"`
 }
 
 func NewGatewayChainRegistry() *GatewayChainRegistry {
@@ -157,17 +169,53 @@ func (r *GatewayChainRegistry) Hooks(stage GatewayHookStage) []GatewayHookDescri
 
 func (r *GatewayChainRegistry) Plan() GatewayChainPlan {
 	if r == nil {
-		return GatewayChainPlan{Stages: OrderedGatewayStages()}
+		return GatewayChainPlan{
+			Stages:    OrderedGatewayStages(),
+			Envelopes: GatewayStageEnvelopeContracts(),
+		}
 	}
 	var hooks []GatewayHookDescriptor
 	for _, stage := range OrderedGatewayStages() {
 		hooks = append(hooks, r.Hooks(stage)...)
 	}
-	return GatewayChainPlan{Stages: OrderedGatewayStages(), Hooks: hooks}
+	return GatewayChainPlan{
+		Stages:    OrderedGatewayStages(),
+		Envelopes: GatewayStageEnvelopeContracts(),
+		Hooks:     hooks,
+	}
 }
 
 func OrderedGatewayStages() []GatewayHookStage {
 	return append([]GatewayHookStage(nil), canonicalGatewayStages...)
+}
+
+func GatewayStageEnvelopeContractFor(stage GatewayHookStage) (GatewayStageEnvelopeContract, bool) {
+	policy, ok := GatewayStagePolicy(stage)
+	if !ok {
+		return GatewayStageEnvelopeContract{}, false
+	}
+	return GatewayStageEnvelopeContract{
+		Stage:              stage,
+		Reads:              append([]GatewayDataClass(nil), policy.Reads...),
+		Writes:             append([]GatewayDataClass(nil), policy.Writes...),
+		Preserves:          preservedGatewayDataClasses(policy.Reads, policy.Writes),
+		AllowsDeny:         policy.AllowsDeny,
+		AllowsShortCircuit: policy.AllowsShortCircuit,
+		DefaultFailure:     policy.DefaultFailurePolicy,
+		AllowedFailures:    append([]GatewayHookFailurePolicy(nil), policy.AllowedFailurePolicy...),
+	}, true
+}
+
+func GatewayStageEnvelopeContracts() []GatewayStageEnvelopeContract {
+	stages := OrderedGatewayStages()
+	contracts := make([]GatewayStageEnvelopeContract, 0, len(stages))
+	for _, stage := range stages {
+		contract, ok := GatewayStageEnvelopeContractFor(stage)
+		if ok {
+			contracts = append(contracts, contract)
+		}
+	}
+	return contracts
 }
 
 func orderedGatewayStages() []GatewayHookStage {
@@ -416,4 +464,19 @@ func validateGatewayStageDataClasses(stage GatewayHookStage, direction string, r
 		}
 	}
 	return nil
+}
+
+func preservedGatewayDataClasses(reads []GatewayDataClass, writes []GatewayDataClass) []GatewayDataClass {
+	writable := map[GatewayDataClass]struct{}{}
+	for _, dataClass := range writes {
+		writable[dataClass] = struct{}{}
+	}
+	preserved := make([]GatewayDataClass, 0, len(reads))
+	for _, dataClass := range reads {
+		if _, ok := writable[dataClass]; ok {
+			continue
+		}
+		preserved = append(preserved, dataClass)
+	}
+	return preserved
 }
