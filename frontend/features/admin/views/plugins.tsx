@@ -1,8 +1,9 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Power, PowerOff, ShieldCheck, Trash2 } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, Fragment, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
-import { tx } from "../i18n/runtime";
+import { pluginMarketplaceDisplay, type PluginMarketplaceDisplayState } from "../domain/plugin-marketplace";
+import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 import { PluginActionRunner, PluginBackgroundJobRunner } from "./plugin-action-runner";
@@ -72,6 +73,10 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const layoutContributions = uiContributions.filter((contribution) => contribution.slot === "layout.preset");
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
+  const marketplaceEntries = data.pluginMarketplace.map((item) => ({
+    item,
+    display: pluginMarketplaceDisplay(item, { locale: languageLocale() }),
+  }));
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
@@ -488,31 +493,34 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.pluginMarketplace.map((item) => (
-                    <tr key={item.plugin.id}>
-                      <td>
-                        <PluginTitle plugin={item.plugin} />
-                      </td>
-                      <td>
-                        <div className="stacked-cell">
-                          <StatusPill status={item.installed ? "enabled" : "disabled"} label={item.installed ? tx("已安装") : tx("未安装")} />
-                          {item.installed_version ? <span>{tx("已安装版本")} {item.installed_version}</span> : null}
-                          {item.update_available ? <span>{tx("更新可用")}</span> : null}
-                        </div>
-                      </td>
-                      <td>
-                        <DistributionMetadata plugin={item.plugin} draft={marketplaceInstallDraft(item.plugin)} onUpdate={updatePlugin} showUpdate={false} />
-                      </td>
-                      <td>
-                        <MarketplaceInstallControl
-                          item={item}
-                          draft={marketplaceInstallDraft(item.plugin)}
-                          updateDraft={pluginUpdateDraft(item.plugin)}
-                          onInstall={installMarketplacePlugin}
-                          onUpdate={updatePlugin}
-                        />
-                      </td>
-                    </tr>
+                  {marketplaceEntries.map(({ item, display }) => (
+                    <Fragment key={item.plugin.id}>
+                      <tr>
+                        <td>
+                          <PluginTitle plugin={item.plugin} />
+                        </td>
+                        <td>
+                          <MarketplaceStatusCell item={item} display={display} />
+                        </td>
+                        <td>
+                          <DistributionMetadata plugin={item.plugin} draft={marketplaceInstallDraft(item.plugin)} onUpdate={updatePlugin} showUpdate={false} />
+                        </td>
+                        <td>
+                          <MarketplaceInstallControl
+                            item={item}
+                            draft={marketplaceInstallDraft(item.plugin)}
+                            updateDraft={pluginUpdateDraft(item.plugin)}
+                            onInstall={installMarketplacePlugin}
+                            onUpdate={updatePlugin}
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan={4}>
+                          <MarketplaceDetails display={display} />
+                        </td>
+                      </tr>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -893,6 +901,80 @@ function DistributionMetadata({
   );
 }
 
+function MarketplaceStatusCell({
+  item,
+  display,
+}: {
+  item: PluginMarketplacePlugin;
+  display: PluginMarketplaceDisplayState;
+}) {
+  return (
+    <div className="stacked-cell">
+      <StatusPill status={item.installed ? "enabled" : "disabled"} label={item.installed ? tx("已安装") : tx("未安装")} />
+      {item.installed_version ? <span>{tx("已安装版本")} {item.installed_version}</span> : null}
+      {item.update_available ? <span>{tx("更新可用")}</span> : null}
+      <StatusPill status={statusPillStatus(display.compatibility.tone)} label={tx(display.compatibility.labelKey)} />
+      {display.compatibility.reasonCode ? <span>{display.compatibility.reasonCode}</span> : null}
+      {display.compatibility.badges.length > 0 ? (
+        <div className="tag-list">
+          {display.compatibility.badges.map((badge) => (
+            <a className="tag" href={badge.url || undefined} key={`${display.id}:${badge.id}`} rel="noreferrer" target="_blank">
+              <StatusPill status={statusPillStatus(badge.tone)} label={badge.label} />
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MarketplaceDetails({ display }: { display: PluginMarketplaceDisplayState }) {
+  return (
+    <div className="stacked-cell">
+      {display.summary ? <span>{display.summary}</span> : null}
+      {display.categories.length > 0 ? (
+        <div className="tag-list">
+          {display.categories.map((category) => (
+            <span className="tag" key={`${display.id}:${category}`}>{category}</span>
+          ))}
+        </div>
+      ) : null}
+      <div className="tag-list">
+        <StatusPill status={display.publisher.verified ? "ok" : "pending"} label={tx(display.publisher.verificationLabelKey)} />
+        <span className="tag">{display.publisher.name}</span>
+        <StatusPill status={statusPillStatus(display.trust.tone)} label={tx(display.trust.labelKey)} />
+        {display.latestReleaseNote ? <span className="tag">{display.latestReleaseNote.version || display.latestReleaseNote.title}</span> : null}
+      </div>
+      {display.latestReleaseNote?.notes ? <span>{display.latestReleaseNote.notes}</span> : null}
+      {display.screenshots.length > 0 ? (
+        <div className="tag-list">
+          {display.screenshots.slice(0, 3).map((screenshot) => (
+            <a href={screenshot.url} key={`${display.id}:${screenshot.url}`} rel="noreferrer" target="_blank" title={screenshot.caption || screenshot.alt}>
+              <img
+                alt={screenshot.alt}
+                height={54}
+                src={screenshot.thumbnailURL}
+                style={{ borderRadius: 4, display: "block", height: 54, objectFit: "cover", width: 96 }}
+                width={96}
+              />
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {display.advisories.length > 0 ? (
+        <div className="tag-list">
+          {display.advisories.map((advisory) => (
+            <a className="tag" href={advisory.url || undefined} key={`${display.id}:${advisory.id}`} rel="noreferrer" target="_blank">
+              <StatusPill status={advisory.tone} label={tx(advisory.labelKey)} />
+              <span>{advisory.title}</span>
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MarketplaceInstallControl({
   item,
   draft,
@@ -978,6 +1060,11 @@ function PluginDeleteControl({
 
 function shortChecksum(value: string) {
   return value.length > 16 ? `${value.slice(0, 12)}...${value.slice(-4)}` : value;
+}
+
+function statusPillStatus(tone: string) {
+  if (tone === "warn") return "pending";
+  return tone;
 }
 
 function pluginKindLabel(kind: string) {
