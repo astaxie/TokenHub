@@ -332,8 +332,110 @@ export type PluginDistribution = {
   download_url?: string;
   checksum_sha256?: string;
   signature_url?: string;
+  signature_algorithm?: string;
+  signature_key_id?: string;
   homepage_url?: string;
   license?: string;
+};
+
+export type PluginMarketplaceScreenshot = {
+  url?: string;
+  thumbnail_url?: string;
+  alt?: string;
+  caption?: string;
+  locale?: string;
+  width?: number;
+  height?: number;
+};
+
+export type PluginMarketplaceLocalization = {
+  name?: string;
+  summary?: string;
+  description?: string;
+  release_notes?: string;
+};
+
+export type PluginMarketplaceCompatibilityBadge = {
+  id?: string;
+  label?: string;
+  tone?: string;
+  url?: string;
+};
+
+export type PluginMarketplaceCompatibility = {
+  verdict?: "compatible" | "needs_review" | "incompatible" | "unknown" | string;
+  badges?: PluginMarketplaceCompatibilityBadge[];
+};
+
+export type PluginMarketplacePublisher = {
+  id?: string;
+  name?: string;
+  url?: string;
+  support_url?: string;
+  contact_url?: string;
+  verified?: boolean;
+};
+
+export type PluginMarketplaceAdvisory = {
+  id?: string;
+  severity?: string;
+  title?: string;
+  url?: string;
+  published_at?: string;
+  updated_at?: string;
+};
+
+export type PluginMarketplaceReleaseNote = {
+  version?: string;
+  date?: string;
+  title?: string;
+  notes?: string;
+  url?: string;
+  items?: string[];
+};
+
+export type PluginMarketplaceMetadata = {
+  summary?: string;
+  categories?: string[];
+  screenshots?: PluginMarketplaceScreenshot[];
+  localizations?: Record<string, PluginMarketplaceLocalization>;
+  compatibility?: PluginMarketplaceCompatibility | null;
+  publisher?: PluginMarketplacePublisher | null;
+  advisories?: PluginMarketplaceAdvisory[];
+  release_notes?: PluginMarketplaceReleaseNote[];
+};
+
+export type PluginLifecycle = {
+  status: "enabled" | "disabled" | "pending_restart" | "failed_validation" | "rollback_available" | "mandatory" | string;
+  reason?: string;
+  restart_required: boolean;
+  health: "healthy" | "unhealthy" | "unknown" | string;
+  mandatory: boolean;
+  rollback_available: boolean;
+  rollback_version?: string;
+  last_error_code?: string;
+  audit_event?: string;
+  loadable: boolean;
+};
+
+export type PluginCompatibility = {
+  plugin_api: string;
+  manifest_schema_version: number;
+  core_version: string;
+  min_core?: string;
+  max_core?: string;
+  verdict: "compatible" | "incompatible" | string;
+  reason_code?: string;
+};
+
+export type PluginTrustSummary = {
+  source: "built_in" | "marketplace" | "local_file" | string;
+  verdict: "trusted" | "unverified" | "rejected" | string;
+  checksum_present: boolean;
+  signature_present: boolean;
+  signature_algorithm?: string;
+  signature_key_id?: string;
+  reason_code?: string;
 };
 
 export type PluginDescriptor = {
@@ -343,9 +445,22 @@ export type PluginDescriptor = {
   source: "built_in" | "marketplace" | "local_file" | string;
   status?: "enabled" | "disabled" | string;
   distribution?: PluginDistribution;
+  marketplace?: PluginMarketplaceMetadata | null;
   kinds: string[];
   placements: string[];
   capabilities: PluginCapabilityDescriptor[];
+  reason?: string;
+  restart_required?: boolean;
+  health?: "healthy" | "unhealthy" | "unknown" | string;
+  mandatory?: boolean;
+  rollback_available?: boolean;
+  rollback_version?: string;
+  last_error_code?: string;
+  audit_event?: string;
+  loadable?: boolean;
+  lifecycle?: PluginLifecycle;
+  compatibility?: PluginCompatibility;
+  trust?: PluginTrustSummary;
 };
 
 export type PluginMarketplacePlugin = {
