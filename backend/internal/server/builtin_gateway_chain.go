@@ -131,6 +131,16 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 		},
 		{
 			PluginID:      tokenHubCoreGatewayChainPluginID,
+			HookID:        "settlement",
+			Stage:         pluginmeta.StageSettlement,
+			Priority:      100,
+			Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAuthContext, pluginmeta.DataProjectMetadata, pluginmeta.DataAPIKeyMetadata, pluginmeta.DataProviderResponse, pluginmeta.DataUsage, pluginmeta.DataAudit},
+			FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+			TimeoutMillis: 0,
+			Mandatory:     true,
+		},
+		{
+			PluginID:      tokenHubCoreGatewayChainPluginID,
 			HookID:        "usage_attribution",
 			Stage:         pluginmeta.StageUsageAttribution,
 			Priority:      100,
@@ -159,25 +169,7 @@ func registerBuiltinGatewayChainPlugins(registry *pluginmeta.Registry, chain *pl
 }
 
 func builtinGatewayChainCapabilities() []pluginmeta.CapabilityDescriptor {
-	stages := []pluginmeta.GatewayHookStage{
-		pluginmeta.StageAuthContext,
-		pluginmeta.StageDecodeNormalize,
-		pluginmeta.StageAdmission,
-		pluginmeta.StagePrivacyPre,
-		pluginmeta.StageGuardrailPre,
-		pluginmeta.StageContextOptimize,
-		pluginmeta.StageCacheLookup,
-		pluginmeta.StageRouteCandidates,
-		pluginmeta.StageRouteRank,
-		pluginmeta.StageRequestTransform,
-		pluginmeta.StageProviderCall,
-		pluginmeta.StageStreamTransform,
-		pluginmeta.StageResponsePost,
-		pluginmeta.StageGuardrailPost,
-		pluginmeta.StageCacheWrite,
-		pluginmeta.StageUsageAttribution,
-		pluginmeta.StageTraceExport,
-	}
+	stages := pluginmeta.OrderedGatewayStages()
 	capabilities := make([]pluginmeta.CapabilityDescriptor, 0, len(stages))
 	for _, stage := range stages {
 		capabilities = append(capabilities, pluginmeta.CapabilityDescriptor{Kind: "gateway_chain", Name: string(stage)})

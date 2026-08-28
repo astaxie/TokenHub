@@ -23,8 +23,9 @@ const (
 	StageStreamTransform  GatewayHookStage = "stream_transform"
 	StageResponsePost     GatewayHookStage = "response_post"
 	StageGuardrailPost    GatewayHookStage = "guardrail_post"
-	StageCacheWrite       GatewayHookStage = "cache_write"
 	StageUsageAttribution GatewayHookStage = "usage_attribution"
+	StageCacheWrite       GatewayHookStage = "cache_write"
+	StageSettlement       GatewayHookStage = "settlement"
 	StageTraceExport      GatewayHookStage = "trace_export"
 )
 
@@ -78,7 +79,8 @@ type GatewayHookDescriptor struct {
 }
 
 type GatewayChainPlan struct {
-	Hooks []GatewayHookDescriptor `json:"hooks"`
+	Stages []GatewayHookStage      `json:"stages"`
+	Hooks  []GatewayHookDescriptor `json:"hooks"`
 }
 
 type GatewayChainRegistry struct {
@@ -155,35 +157,42 @@ func (r *GatewayChainRegistry) Hooks(stage GatewayHookStage) []GatewayHookDescri
 
 func (r *GatewayChainRegistry) Plan() GatewayChainPlan {
 	if r == nil {
-		return GatewayChainPlan{}
+		return GatewayChainPlan{Stages: OrderedGatewayStages()}
 	}
 	var hooks []GatewayHookDescriptor
-	for _, stage := range orderedGatewayStages() {
+	for _, stage := range OrderedGatewayStages() {
 		hooks = append(hooks, r.Hooks(stage)...)
 	}
-	return GatewayChainPlan{Hooks: hooks}
+	return GatewayChainPlan{Stages: OrderedGatewayStages(), Hooks: hooks}
+}
+
+func OrderedGatewayStages() []GatewayHookStage {
+	return append([]GatewayHookStage(nil), canonicalGatewayStages...)
 }
 
 func orderedGatewayStages() []GatewayHookStage {
-	return []GatewayHookStage{
-		StageAuthContext,
-		StageDecodeNormalize,
-		StageAdmission,
-		StagePrivacyPre,
-		StageGuardrailPre,
-		StageContextOptimize,
-		StageCacheLookup,
-		StageRouteCandidates,
-		StageRouteRank,
-		StageRequestTransform,
-		StageProviderCall,
-		StageStreamTransform,
-		StageResponsePost,
-		StageGuardrailPost,
-		StageCacheWrite,
-		StageUsageAttribution,
-		StageTraceExport,
-	}
+	return OrderedGatewayStages()
+}
+
+var canonicalGatewayStages = []GatewayHookStage{
+	StageAuthContext,
+	StageDecodeNormalize,
+	StageAdmission,
+	StagePrivacyPre,
+	StageGuardrailPre,
+	StageContextOptimize,
+	StageCacheLookup,
+	StageRouteCandidates,
+	StageRouteRank,
+	StageRequestTransform,
+	StageProviderCall,
+	StageStreamTransform,
+	StageResponsePost,
+	StageGuardrailPost,
+	StageUsageAttribution,
+	StageCacheWrite,
+	StageSettlement,
+	StageTraceExport,
 }
 
 func GatewayStagePolicy(stage GatewayHookStage) (GatewayHookStagePolicy, bool) {
@@ -312,6 +321,12 @@ func GatewayStagePolicy(stage GatewayHookStage) (GatewayHookStagePolicy, bool) {
 			AllowedFailurePolicy: []GatewayHookFailurePolicy{FailurePolicyFailOpen, FailurePolicyFailClosed},
 			Reads:                []GatewayDataClass{DataAuthContext, DataProjectMetadata, DataAPIKeyMetadata, DataProviderResponse, DataUsage},
 			Writes:               []GatewayDataClass{DataUsage, DataAudit},
+		}, true
+	case StageSettlement:
+		return GatewayHookStagePolicy{
+			DefaultFailurePolicy: FailurePolicyObserveOnly,
+			AllowedFailurePolicy: []GatewayHookFailurePolicy{FailurePolicyObserveOnly, FailurePolicyFailOpen},
+			Reads:                []GatewayDataClass{DataAuthContext, DataProjectMetadata, DataAPIKeyMetadata, DataProviderResponse, DataUsage, DataAudit},
 		}, true
 	case StageTraceExport:
 		return GatewayHookStagePolicy{

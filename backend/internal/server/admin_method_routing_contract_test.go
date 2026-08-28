@@ -1,12 +1,16 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type adminMethodRouteContract struct {
@@ -180,6 +184,26 @@ func TestAdminMethodRoutePluginChainReachesHandler(t *testing.T) {
 	body := response.Body.String()
 	if !strings.Contains(body, `"data"`) || !strings.Contains(body, `"decode_normalize"`) {
 		t.Fatalf("GET /api/admin/plugin-chain: response does not include core chain hooks: %s", body)
+	}
+	var payload struct {
+		Data pluginmeta.GatewayChainPlan `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("decode plugin chain response: %v", err)
+	}
+	if !slices.Equal(payload.Data.Stages, pluginmeta.OrderedGatewayStages()) {
+		t.Fatalf("plugin chain stages = %v, want canonical stages", payload.Data.Stages)
+	}
+	positions := map[pluginmeta.GatewayHookStage]int{}
+	for index, hook := range payload.Data.Hooks {
+		if hook.PluginID == tokenHubCoreGatewayChainPluginID {
+			positions[hook.Stage] = index
+		}
+	}
+	if !(positions[pluginmeta.StageUsageAttribution] < positions[pluginmeta.StageCacheWrite] &&
+		positions[pluginmeta.StageCacheWrite] < positions[pluginmeta.StageSettlement] &&
+		positions[pluginmeta.StageSettlement] < positions[pluginmeta.StageTraceExport]) {
+		t.Fatalf("plugin chain hook positions = %v, want usage -> cache_write -> settlement -> trace_export", positions)
 	}
 }
 

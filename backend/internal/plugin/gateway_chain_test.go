@@ -2,10 +2,60 @@ package plugin
 
 import "testing"
 
+func TestOrderedGatewayStagesDefinesCanonicalRequestLifecycle(t *testing.T) {
+	got := OrderedGatewayStages()
+	want := []GatewayHookStage{
+		StageAuthContext,
+		StageDecodeNormalize,
+		StageAdmission,
+		StagePrivacyPre,
+		StageGuardrailPre,
+		StageContextOptimize,
+		StageCacheLookup,
+		StageRouteCandidates,
+		StageRouteRank,
+		StageRequestTransform,
+		StageProviderCall,
+		StageStreamTransform,
+		StageResponsePost,
+		StageGuardrailPost,
+		StageUsageAttribution,
+		StageCacheWrite,
+		StageSettlement,
+		StageTraceExport,
+	}
+	if !gatewayStageSlicesEqual(got, want) {
+		t.Fatalf("ordered gateway stages = %v, want %v", got, want)
+	}
+
+	got[0] = StageTraceExport
+	if next := OrderedGatewayStages(); !gatewayStageSlicesEqual(next, want) {
+		t.Fatalf("ordered gateway stages were mutated through returned slice: %v", next)
+	}
+}
+
+func TestGatewayStagePolicySupportsEveryCanonicalStage(t *testing.T) {
+	for _, stage := range OrderedGatewayStages() {
+		if _, ok := GatewayStagePolicy(stage); !ok {
+			t.Fatalf("stage %q has no policy", stage)
+		}
+	}
+	settlement, ok := GatewayStagePolicy(StageSettlement)
+	if !ok {
+		t.Fatal("settlement stage has no policy")
+	}
+	if settlement.DefaultFailurePolicy != FailurePolicyObserveOnly || settlement.AllowsDeny || settlement.AllowsShortCircuit || len(settlement.Writes) != 0 {
+		t.Fatalf("settlement policy = %+v, want observe-only non-mutating policy", settlement)
+	}
+}
+
 func TestGatewayChainRegistryPlansHooksByStageAndPriority(t *testing.T) {
 	registry := NewGatewayChainRegistry()
 
 	for _, hook := range []GatewayHookDescriptor{
+		{PluginID: "tokenhub.core", HookID: "settlement", Stage: StageSettlement, Priority: 100},
+		{PluginID: "tokenhub.core", HookID: "usage", Stage: StageUsageAttribution, Priority: 100},
+		{PluginID: "tokenhub.core", HookID: "cache-write", Stage: StageCacheWrite, Priority: 100},
 		{PluginID: "tokenhub.third", HookID: "rank", Stage: StageRouteRank, Priority: 2500},
 		{PluginID: "tokenhub.core", HookID: "admission", Stage: StageAdmission, Priority: 100},
 		{PluginID: "tokenhub.official", HookID: "privacy", Stage: StagePrivacyPre, Priority: 1200},
@@ -21,7 +71,7 @@ func TestGatewayChainRegistryPlansHooksByStageAndPriority(t *testing.T) {
 	for _, hook := range plan.Hooks {
 		got = append(got, hook.HookID)
 	}
-	want := []string{"admission", "privacy", "rank", "trace"}
+	want := []string{"admission", "privacy", "rank", "usage", "cache-write", "settlement", "trace"}
 	if len(got) != len(want) {
 		t.Fatalf("planned hooks = %v, want %v", got, want)
 	}
@@ -29,6 +79,9 @@ func TestGatewayChainRegistryPlansHooksByStageAndPriority(t *testing.T) {
 		if got[index] != want[index] {
 			t.Fatalf("planned hooks = %v, want %v", got, want)
 		}
+	}
+	if !gatewayStageSlicesEqual(plan.Stages, OrderedGatewayStages()) {
+		t.Fatalf("planned stages = %v, want canonical stages", plan.Stages)
 	}
 }
 
@@ -59,6 +112,18 @@ func TestGatewayChainRegistryNormalizesHookPermissions(t *testing.T) {
 	if got, want := hooks[0].Writes, []GatewayDataClass{DataAudit, DataRequestBody}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("writes = %v, want %v", got, want)
 	}
+}
+
+func gatewayStageSlicesEqual(left []GatewayHookStage, right []GatewayHookStage) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestGatewayChainRegistryRejectsStageDataClassViolations(t *testing.T) {
