@@ -274,10 +274,18 @@ func registerBuiltinProviderCatalogPlugin(registry *pluginmeta.Registry, pluginI
 }
 
 func builtinProviderPluginCatalogSeedEntries() []ProviderCatalogEntry {
+	return providerCatalogSeedEntriesFromRegistry(builtinProviderPluginCatalogRegistry())
+}
+
+func builtinProviderPluginCatalogDefaultType() string {
+	return providerCatalogDefaultTypeFromRegistry(builtinProviderPluginCatalogRegistry())
+}
+
+func builtinProviderPluginCatalogRegistry() *AdapterRegistry {
 	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
 	registerBuiltinProviderAdapters(registry, map[string]ProviderAdapter{}, &CodexSubscriptionAdapter{})
 	registerBuiltinProviderCatalogPlugins(registry.plugins)
-	return providerCatalogSeedEntriesFromRegistry(registry)
+	return registry
 }
 
 func builtinProviderPluginCatalogEntryForType(providerType string) *pluginProviderCatalogEntry {

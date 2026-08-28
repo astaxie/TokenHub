@@ -660,15 +660,21 @@ func TestBootstrapSeedsProviderCatalogSnapshot(t *testing.T) {
 	if !found || source != "builtin" || len(entries) < 5 {
 		t.Fatalf("expected builtin provider catalog, found=%v source=%q entries=%d", found, source, len(entries))
 	}
+	var custom ProviderCatalogEntry
 	var openAI ProviderCatalogEntry
 	for _, entry := range entries {
 		if entry.ID == "openai" {
 			openAI = entry
-			break
+		}
+		if entry.ID == "custom" {
+			custom = entry
 		}
 	}
 	if openAI.Source != "plugin:built_in" || openAI.Type != ProviderOpenAI {
 		t.Fatalf("expected bootstrap provider catalog to seed from built-in plugin descriptor, got %+v", openAI)
+	}
+	if custom.Type != ProviderOpenAICompatible {
+		t.Fatalf("expected bootstrap custom catalog type to follow built-in plugin default, got %+v", custom)
 	}
 }
 

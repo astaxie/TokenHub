@@ -163,7 +163,7 @@ func seedBuiltinProviderCatalog(store Store) error {
 		entries = builtinProviderCatalog(true)
 	}
 	if !providerCatalogHasEntry(entries, "custom") {
-		entries = append(entries, customProviderCatalogEntry())
+		entries = append(entries, customProviderCatalogEntryWithType(builtinProviderPluginCatalogDefaultType()))
 	}
 	sortCatalogEntries(entries)
 	return store.SaveProviderCatalogSnapshot(entries, "builtin", time.Now().UTC())
