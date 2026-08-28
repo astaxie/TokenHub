@@ -129,7 +129,7 @@ func TestCodexAffinityKeyGoldenVector(t *testing.T) {
 			}
 			headers := make(http.Header)
 			headers.Set("session-id", testCase.session)
-			affinity, err := resolveCodexSessionAffinity(testCase.secret, testCase.apiKeyID, headers, request)
+			affinity, err := resolveProviderSessionAffinity(testCase.secret, testCase.apiKeyID, ProviderOpenAICodex, AffinityKindCodexSession, headers, request)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -159,7 +159,7 @@ func TestCodexSessionIdentifierErrorCodeUnchanged(t *testing.T) {
 	for _, invalid := range []string{strings.Repeat("a", 513), "bad\x01id"} {
 		headers := make(http.Header)
 		headers.Set("session-id", invalid)
-		_, err := resolveCodexSessionAffinity("secret", "key_alpha", headers, request)
+		_, err := resolveProviderSessionAffinity("secret", "key_alpha", ProviderOpenAICodex, AffinityKindCodexSession, headers, request)
 		if err == nil {
 			t.Fatalf("expected rejection for %q", invalid)
 		}

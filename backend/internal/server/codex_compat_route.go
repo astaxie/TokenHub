@@ -194,15 +194,6 @@ func (s *Server) chatGatewayAffinity(
 	return s.chatCacheLocalityAffinity(apiKeyID, headers, request)
 }
 
-func resolveCodexBridgeAffinity(
-	secret string,
-	apiKeyID string,
-	protocol string,
-	identifier string,
-) (*RequestAffinity, error) {
-	return resolveProviderBridgeAffinity(secret, apiKeyID, ProviderOpenAICodex, AffinityKindCodexSession, protocol, identifier)
-}
-
 func resolveProviderBridgeAffinity(
 	secret string,
 	apiKeyID string,

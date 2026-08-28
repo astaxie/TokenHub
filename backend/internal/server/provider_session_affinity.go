@@ -41,10 +41,6 @@ func (a *RequestAffinity) persistsBinding() bool {
 	return a != nil && (a.Kind == AffinityKindCodexSession || a.Kind == AffinityKindProviderSession)
 }
 
-func resolveCodexSessionAffinity(secret string, apiKeyID string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
-	return resolveProviderSessionAffinity(secret, apiKeyID, ProviderOpenAICodex, AffinityKindCodexSession, headers, request)
-}
-
 func validProviderSessionAffinityKind(kind string) bool {
 	kind = strings.TrimSpace(kind)
 	return kind == AffinityKindCodexSession || kind == AffinityKindProviderSession
