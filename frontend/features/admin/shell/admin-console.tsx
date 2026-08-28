@@ -15,6 +15,7 @@ import { reportDatasetLabel } from "../domain/labels";
 import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
 import { pluginShellPresentation } from "../domain/plugin-theme";
 import { resourceCreateTarget } from "../domain/resource-create-target";
+import { simRegistryFromPlugins } from "../domain/sim-registry";
 import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
 import { createKeyWithCapture } from "../resources/generic-config";
 import { downloadReport } from "../resources/governance-config";
@@ -92,7 +93,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const providerTypeOptions = useMemo(() => providerTypeOptionsFromData(data), [data]);
   const activeConfig = resourceConfigFor(activeView);
   const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
-  const shellPresentation = useMemo(() => pluginShellPresentation(data.pluginUI, theme), [data.pluginUI, theme]);
+  const simRegistry = useMemo(() => simRegistryFromPlugins(data.plugins), [data.plugins]);
+  const shellPresentation = useMemo(() => pluginShellPresentation(data.pluginUI, theme, { simRegistry }), [data.pluginUI, simRegistry, theme]);
   setActiveLanguage(language);
 
   function changeLanguage(nextLanguage: AppLanguage) {
