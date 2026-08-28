@@ -567,6 +567,7 @@ func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
 			"request_alias.originator_prefix":                                "codex",
 			"request_alias.response_format":                                  "b64_json",
 			"request.default_model":                                          "true",
+			"request.supports_mask":                                          "false",
 			"probe_error_message.codex_image_forbidden":                      "This Codex subscription account is not allowed to use image generation",
 			"probe_error_message.codex_quota_exhausted":                      "Codex image capability test is temporarily unavailable",
 			"probe_error_message.codex_rate_limited":                         "Codex image capability test is temporarily unavailable",

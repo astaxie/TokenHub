@@ -58,3 +58,12 @@ func (s *Server) imageGenerationModelsAndDefault() ([]string, string) {
 	}
 	return models, defaultModel
 }
+
+func (s *Server) imageModelSupportsMask(model string) bool {
+	profile, ok := s.providerImageCapabilityRouteProfileForModel(model)
+	if !ok {
+		return true
+	}
+	profile.withDefaults()
+	return profile.RequestSupportsMask
+}

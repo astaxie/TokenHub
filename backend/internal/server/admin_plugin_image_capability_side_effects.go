@@ -44,6 +44,8 @@ type providerImageCapabilityRouteProfile struct {
 	RequestAliasOriginator      string
 	RequestAliasResponseFormat  string
 	RequestDefaultModel         bool
+	RequestSupportsMask         bool
+	RequestSupportsMaskSet      bool
 	ProbeErrorMessages          map[string]string
 }
 
@@ -227,6 +229,10 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 		)),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
+	profile.RequestSupportsMask, profile.RequestSupportsMaskSet = boolMetadata(firstNonEmpty(
+		descriptor.Metadata["request.supports_mask"],
+		descriptor.Metadata["image_request_supports_mask"],
+	))
 	profile.withDefaults()
 	return profile
 }
@@ -449,6 +455,9 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if p.ProbeTimeoutErrorMessage == "" {
 		p.ProbeTimeoutErrorMessage = "Provider image capability test timed out"
 	}
+	if !p.RequestSupportsMaskSet {
+		p.RequestSupportsMask = true
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -496,6 +505,7 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.RequestAliasOriginator,
 		p.RequestAliasResponseFormat,
 		boolString(p.RequestDefaultModel),
+		boolString(p.RequestSupportsMask),
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry
@@ -525,6 +535,17 @@ func truthyString(value string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func boolMetadata(value string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "yes", "y", "on", "enabled":
+		return true, true
+	case "false", "0", "no", "n", "off", "disabled":
+		return false, true
+	default:
+		return false, false
 	}
 }
 

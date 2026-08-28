@@ -84,3 +84,31 @@ func TestImageGenerationDefaultModelUsesPluginMetadata(t *testing.T) {
 		t.Fatalf("default image model = %q, want kimi-image", request.Model)
 	}
 }
+
+func TestImageModelMaskSupportUsesPluginMetadata(t *testing.T) {
+	server := &Server{pluginActions: pluginmeta.NewActionBroker()}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.kimi-image-mask",
+		ActionID:   "kimi.image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    "kimi_subscription",
+		Metadata: map[string]string{
+			"public_model":              "kimi-image",
+			"upstream_model":            "moonshot-image",
+			"request.supports_mask":     "false",
+			"image_request_alias_model": openAIImageModelName,
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	if server.imageModelSupportsMask("kimi-image") {
+		t.Fatal("plugin image model should use mask support from metadata")
+	}
+	if !server.imageModelSupportsMask(openAIImageModelName) {
+		t.Fatal("non-profile image model should support masks by default")
+	}
+}

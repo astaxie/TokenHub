@@ -341,6 +341,8 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 		RequestAliasOriginator:      "codex",
 		RequestAliasResponseFormat:  "b64_json",
 		RequestDefaultModel:         true,
+		RequestSupportsMask:         false,
+		RequestSupportsMaskSet:      true,
 	}
 }
 

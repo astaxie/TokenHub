@@ -249,8 +249,8 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "missing_image", "At least one image is required"))
 		return
 	}
-	if mask != nil && request.Model == codexImageModelName {
-		writeError(w, r, NewHTTPError(http.StatusNotImplemented, "image_mask_not_supported", "Masks are not supported through Codex subscription accounts; use reference-image editing without a mask"))
+	if mask != nil && !s.imageModelSupportsMask(request.Model) {
+		writeError(w, r, NewHTTPError(http.StatusNotImplemented, "image_mask_not_supported", "Masks are not supported by the selected image model; use reference-image editing without a mask"))
 		return
 	}
 	if mask != nil {
