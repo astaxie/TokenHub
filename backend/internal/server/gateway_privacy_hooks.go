@@ -82,7 +82,7 @@ func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext
 			Model:       call.Model.Name,
 			RequestBody: body,
 		},
-		Data: pluginmeta.GatewayHookData{},
+		Data: gatewayHookCallData(call, body),
 	}
 	if requestHeaders, ok := marshalGatewayHookData(sanitizedGatewayHookHeaders(headers)); ok {
 		input.Data[pluginmeta.DataRequestHeaders] = requestHeaders
