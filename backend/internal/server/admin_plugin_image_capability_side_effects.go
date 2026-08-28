@@ -39,6 +39,10 @@ type providerImageCapabilityRouteProfile struct {
 	ProbeTimeoutErrorCode       string
 	ProbeTimeoutErrorMessage    string
 	RuntimeUnsupportedErrorCode string
+	RequestAliasModel           string
+	RequestAliasHeader          string
+	RequestAliasOriginator      string
+	RequestAliasResponseFormat  string
 	ProbeErrorMessages          map[string]string
 }
 
@@ -200,6 +204,22 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 			descriptor.Metadata["runtime_error.unsupported.code"],
 			descriptor.Metadata["image_generation_unsupported_error_code"],
 		)),
+		RequestAliasModel: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["request_alias.model"],
+			descriptor.Metadata["image_request_alias_model"],
+		)),
+		RequestAliasHeader: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["request_alias.header"],
+			descriptor.Metadata["image_request_alias_header"],
+		)),
+		RequestAliasOriginator: strings.ToLower(strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["request_alias.originator_prefix"],
+			descriptor.Metadata["image_request_alias_originator_prefix"],
+		))),
+		RequestAliasResponseFormat: strings.ToLower(strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["request_alias.response_format"],
+			descriptor.Metadata["image_request_alias_response_format"],
+		))),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
 	profile.withDefaults()
@@ -466,6 +486,10 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.ProbeTimeoutErrorCode,
 		p.ProbeTimeoutErrorMessage,
 		p.RuntimeUnsupportedErrorCode,
+		p.RequestAliasModel,
+		p.RequestAliasHeader,
+		p.RequestAliasOriginator,
+		p.RequestAliasResponseFormat,
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry

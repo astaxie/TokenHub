@@ -85,12 +85,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, err)
 		return
 	}
-	originator := strings.ToLower(strings.TrimSpace(r.Header.Get("originator")))
-	if strings.TrimSpace(request.Model) == openAIImageModelName &&
-		(strings.TrimSpace(r.Header.Get("x-codex-image-turn-id")) != "" || strings.HasPrefix(originator, "codex")) {
-		request.Model = codexImageModelName
-		request.ResponseFormat = "b64_json"
-	}
+	s.applyImageGenerationRequestAliases(r, &request)
 	if err := s.normalizeImageGenerationRequest(&request); err != nil {
 		writeError(w, r, err)
 		return
@@ -1114,6 +1109,38 @@ func normalizedImageOption(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func (s *Server) applyImageGenerationRequestAliases(r *http.Request, request *imageGenerationRequest) {
+	if s == nil || request == nil {
+		return
+	}
+	model := strings.TrimSpace(request.Model)
+	for _, profile := range s.providerImageCapabilityRouteProfiles() {
+		profile.withDefaults()
+		if profile.RequestAliasModel == "" || profile.PublicModel == "" || model != profile.RequestAliasModel {
+			continue
+		}
+		if !imageGenerationRequestAliasMatches(r, profile) {
+			continue
+		}
+		request.Model = profile.PublicModel
+		if profile.RequestAliasResponseFormat != "" {
+			request.ResponseFormat = profile.RequestAliasResponseFormat
+		}
+		return
+	}
+}
+
+func imageGenerationRequestAliasMatches(r *http.Request, profile providerImageCapabilityRouteProfile) bool {
+	if r == nil {
+		return false
+	}
+	if profile.RequestAliasHeader != "" && strings.TrimSpace(r.Header.Get(profile.RequestAliasHeader)) != "" {
+		return true
+	}
+	originator := strings.ToLower(strings.TrimSpace(r.Header.Get("originator")))
+	return profile.RequestAliasOriginator != "" && strings.HasPrefix(originator, profile.RequestAliasOriginator)
 }
 
 func normalizeImageGenerationRequest(request *imageGenerationRequest) error {

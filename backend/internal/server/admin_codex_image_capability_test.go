@@ -761,6 +761,10 @@ func TestOpenAICodexImageCapabilityActionExposesErrorMetadata(t *testing.T) {
 		"probe_error.timeout.code",
 		"probe_error.timeout.message",
 		"runtime_error.unsupported.code",
+		"request_alias.model",
+		"request_alias.header",
+		"request_alias.originator_prefix",
+		"request_alias.response_format",
 	} {
 		if descriptor.Metadata[key] == "" {
 			t.Fatalf("descriptor missing probe request metadata for %s", key)

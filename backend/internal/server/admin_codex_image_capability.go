@@ -336,6 +336,10 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 		ProbeTimeoutErrorCode:       "codex_upstream_timeout",
 		ProbeTimeoutErrorMessage:    "Codex image capability test timed out",
 		RuntimeUnsupportedErrorCode: "codex_image_forbidden",
+		RequestAliasModel:           openAIImageModelName,
+		RequestAliasHeader:          "x-codex-image-turn-id",
+		RequestAliasOriginator:      "codex",
+		RequestAliasResponseFormat:  "b64_json",
 	}
 }
 
