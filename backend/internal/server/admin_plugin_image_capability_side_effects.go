@@ -32,6 +32,12 @@ type providerImageCapabilityRouteProfile struct {
 	EnabledRequiredMessage     string
 	AuditAction                string
 	OperationKeyPrefix         string
+	ProbePrompt                string
+	ProbeBackground            string
+	ProbeQuality               string
+	ProbeSize                  string
+	ProbeTimeoutErrorCode      string
+	ProbeTimeoutErrorMessage   string
 	ProbeErrorMessages         map[string]string
 }
 
@@ -164,6 +170,30 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 		OperationKeyPrefix: strings.TrimSpace(firstNonEmpty(
 			descriptor.Metadata["operation_key_prefix"],
 			descriptor.Metadata["lock_key_prefix"],
+		)),
+		ProbePrompt: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["probe_request.prompt"],
+			descriptor.Metadata["probe_prompt"],
+		)),
+		ProbeBackground: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["probe_request.background"],
+			descriptor.Metadata["probe_background"],
+		)),
+		ProbeQuality: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["probe_request.quality"],
+			descriptor.Metadata["probe_quality"],
+		)),
+		ProbeSize: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["probe_request.size"],
+			descriptor.Metadata["probe_size"],
+		)),
+		ProbeTimeoutErrorCode: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["probe_error.timeout.code"],
+			descriptor.Metadata["probe_timeout_error_code"],
+		)),
+		ProbeTimeoutErrorMessage: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["probe_error.timeout.message"],
+			descriptor.Metadata["probe_timeout_error_message"],
 		)),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
@@ -371,6 +401,24 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if p.OperationKeyPrefix == "" {
 		p.OperationKeyPrefix = "provider-image-capability"
 	}
+	if p.ProbePrompt == "" {
+		p.ProbePrompt = "A simple solid color test image centered on a plain background."
+	}
+	if p.ProbeBackground == "" {
+		p.ProbeBackground = "auto"
+	}
+	if p.ProbeQuality == "" {
+		p.ProbeQuality = "low"
+	}
+	if p.ProbeSize == "" {
+		p.ProbeSize = "1024x1024"
+	}
+	if p.ProbeTimeoutErrorCode == "" {
+		p.ProbeTimeoutErrorCode = "provider_image_capability_upstream_timeout"
+	}
+	if p.ProbeTimeoutErrorMessage == "" {
+		p.ProbeTimeoutErrorMessage = "Provider image capability test timed out"
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -406,6 +454,12 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.EnabledRequiredMessage,
 		p.AuditAction,
 		p.OperationKeyPrefix,
+		p.ProbePrompt,
+		p.ProbeBackground,
+		p.ProbeQuality,
+		p.ProbeSize,
+		p.ProbeTimeoutErrorCode,
+		p.ProbeTimeoutErrorMessage,
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry

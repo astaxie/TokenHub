@@ -166,15 +166,15 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		effectiveProvider := effectiveProviderResourceConfig(currentProvider, &current)
 		response, _, imageErr := s.codexSubscription.Image(testCtx, effectiveProvider, current.ID, codexSubscriptionImageRequest{
 			Model:      profile.UpstreamModel,
-			Prompt:     "A small solid blue square centered on a white background.",
-			Background: "auto",
-			Quality:    "low",
-			Size:       "1024x1024",
+			Prompt:     profile.ProbePrompt,
+			Background: profile.ProbeBackground,
+			Quality:    profile.ProbeQuality,
+			Size:       profile.ProbeSize,
 		})
 		result.Tested = true
 		if imageErr != nil && errors.Is(testCtx.Err(), context.DeadlineExceeded) {
 			imageErr = &ProviderInvocationError{
-				Err:         NewHTTPError(http.StatusGatewayTimeout, "codex_upstream_timeout", "Codex image capability test timed out"),
+				Err:         NewHTTPError(http.StatusGatewayTimeout, profile.ProbeTimeoutErrorCode, profile.ProbeTimeoutErrorMessage),
 				Disposition: ProviderErrorTransientSame,
 			}
 		}
@@ -329,6 +329,12 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 		RouteBackfillOption:        codexImageRouteBackfillOption,
 		RouteBackfillValue:         codexImageRouteBackfillCompleted,
 		OperationKeyPrefix:         "codex-image-capability",
+		ProbePrompt:                "A small solid blue square centered on a white background.",
+		ProbeBackground:            "auto",
+		ProbeQuality:               "low",
+		ProbeSize:                  "1024x1024",
+		ProbeTimeoutErrorCode:      "codex_upstream_timeout",
+		ProbeTimeoutErrorMessage:   "Codex image capability test timed out",
 	}
 }
 

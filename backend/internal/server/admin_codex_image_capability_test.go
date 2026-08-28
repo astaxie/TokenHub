@@ -104,6 +104,10 @@ func TestAdminCodexImageCapabilityUsesPluginActionMetadataProfile(t *testing.T) 
 	profile.CapabilityOption = "plugin_codex_image_capability"
 	profile.CapabilityCheckedAtOption = "plugin_codex_image_capability_checked_at"
 	profile.RouteBackfillOption = "plugin_codex_image_route_backfill_v1"
+	profile.ProbePrompt = "Render a small red triangle on a plain white canvas."
+	profile.ProbeBackground = "transparent"
+	profile.ProbeQuality = "medium"
+	profile.ProbeSize = "512x512"
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request codexSubscriptionImageRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -112,6 +116,10 @@ func TestAdminCodexImageCapabilityUsesPluginActionMetadataProfile(t *testing.T) 
 		}
 		if request.Model != profile.UpstreamModel {
 			t.Errorf("capability request model = %q, want %q", request.Model, profile.UpstreamModel)
+		}
+		if request.Prompt != profile.ProbePrompt || request.Background != profile.ProbeBackground ||
+			request.Quality != profile.ProbeQuality || request.Size != profile.ProbeSize {
+			t.Errorf("capability probe request = %+v, want profile prompt/background/quality/size", request)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"data": []map[string]any{{"b64_json": encodeBase64(imageBytes)}},
@@ -710,6 +718,9 @@ func TestProviderImageRouteProfilesComeFromPluginSync(t *testing.T) {
 	if len(profiles) != 1 || profiles[0].ProviderType != ProviderOpenAICodex || profiles[0].PublicModel != codexImageModelName {
 		t.Fatalf("store image profiles = %+v, want Codex profile from plugin action metadata", profiles)
 	}
+	if profiles[0].ProbePrompt == "" || profiles[0].ProbeQuality != "low" || profiles[0].ProbeTimeoutErrorCode != "codex_upstream_timeout" {
+		t.Fatalf("store image profile missing Codex probe metadata: %+v", profiles[0])
+	}
 }
 
 func TestOpenAICodexImageCapabilityActionExposesErrorMetadata(t *testing.T) {
@@ -740,6 +751,18 @@ func TestOpenAICodexImageCapabilityActionExposesErrorMetadata(t *testing.T) {
 	} {
 		if descriptor.Metadata["probe_error_message."+code] == "" {
 			t.Fatalf("descriptor missing probe error message metadata for %s", code)
+		}
+	}
+	for _, key := range []string{
+		"probe_request.prompt",
+		"probe_request.background",
+		"probe_request.quality",
+		"probe_request.size",
+		"probe_error.timeout.code",
+		"probe_error.timeout.message",
+	} {
+		if descriptor.Metadata[key] == "" {
+			t.Fatalf("descriptor missing probe request metadata for %s", key)
 		}
 	}
 }
