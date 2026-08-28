@@ -2,12 +2,12 @@ import { AlertCircle, Check, ChevronDown, ChevronRight, LogOut, Moon, PanelLeftC
 import { Fragment, useEffect, useRef, useState } from "react";
 import { appRole, canAccessView, filterNavItemByAccess, isNavItemActive, isNavParentItem, navGroupsForUser, normalizeSearchText, readRecentViews, roleScopeDescription, standaloneViewMeta, topQuickActionsForUser, topSearchItemsForUser, topSearchResults } from "../core/navigation";
 import { type AdminUser, type AppData, type NavItem, type ViewKey } from "../core/types";
+import { adminUIPluginPages } from "../domain/admin-ui-registry";
 import { formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
 import { roleLabel, userInitial } from "../domain/labels";
 import { LanguageSelect } from "../i18n/language-switcher";
 import { type AppLanguage, displayText, tx } from "../i18n/runtime";
 import { resourceConfigFor } from "../resources/settings-config";
-import { pluginNavPages } from "../views/admin-ui-plugin-pages";
 
 export function Sidebar({
   activeView,
@@ -37,7 +37,7 @@ export function Sidebar({
   const visibleGroups = navGroupsForUser(user)
     .map((group) => ({ ...group, items: group.items.map((item) => filterNavItemByAccess(item, user)).filter((item): item is NavItem => Boolean(item)) }))
     .filter((group) => group.items.length > 0);
-  const pluginPages = canAccessView(user, "plugin-pages") ? pluginNavPages(data.pluginUI) : [];
+  const pluginPages = canAccessView(user, "plugin-pages") ? adminUIPluginPages(data.pluginUI) : [];
   const selectedPluginPageKey = activePluginPageKey || pluginPages[0]?.key || "";
   const pluginGroupOpen = collapsed || openGroups["插件扩展"] !== false;
   return (
