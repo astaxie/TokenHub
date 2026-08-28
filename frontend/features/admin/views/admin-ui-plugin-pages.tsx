@@ -1,15 +1,18 @@
 import { Play, Puzzle } from "lucide-react";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { type AdminUIContribution, type ApiContext, type AppData, type PluginDescriptor } from "../core/types";
 import { adminUIPageRegistry, type AdminUIPluginPageEntry } from "../domain/admin-ui-pages";
 import { adminUIActionKey, adminUIFieldValue, adminUIFields, adminUIPluginPageKey, adminUIPluginPages, redactAdminUIResult, type AdminUIField } from "../domain/admin-ui-registry";
+import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
+import { PluginActionRunner } from "./plugin-action-runner";
 
 export type PluginNavPage = AdminUIPluginPageEntry;
 type PluginPageField = AdminUIField;
 
 type PageState = {
+  values: Record<string, string | boolean>;
   busy: boolean;
   error: string;
   result: string;
@@ -31,6 +34,7 @@ export function PluginPageView({
   const fields = selected ? pluginPageFields(selected.contribution) : [];
   const actionKeys = new Set(data.pluginActions.map((action) => adminUIActionKey(action.plugin_id, action.action_id)));
   const [states, setStates] = useState<Record<string, PageState>>({});
+  const selectedAction = selected?.contribution.action ? data.pluginActions.find((action) => pluginActionKey(action.plugin_id, action.action_id) === adminUIActionKey(selected.pluginID, selected.contribution.action)) : undefined;
 
   if (!selected) {
     return (
@@ -42,27 +46,45 @@ export function PluginPageView({
     );
   }
 
-  const state = states[selected.key] ?? emptyPageState();
-  const registered = !selected.contribution.action || actionKeys.has(adminUIActionKey(selected.pluginID, selected.contribution.action));
+  const state = states[selected.key] ?? emptyPageState(selectedAction);
+  const registered = !selected.contribution.action || Boolean(selectedAction) || actionKeys.has(adminUIActionKey(selected.pluginID, selected.contribution.action));
 
-  function updateState(key: string, patch: Partial<PageState>) {
-    setStates((current) => ({ ...current, [key]: { ...(current[key] ?? emptyPageState()), ...patch } }));
+  function updateState(key: string, patch: Partial<PageState>, action?: typeof selectedAction) {
+    setStates((current) => {
+      const base = current[key] ?? emptyPageState(action);
+      return {
+        ...current,
+        [key]: {
+          ...base,
+          ...patch,
+          values: patch.values ? { ...base.values, ...patch.values } : base.values,
+        },
+      };
+    });
   }
 
-  async function runPageAction(page: PluginNavPage) {
-    if (!page.contribution.action) return;
-    updateState(page.key, { busy: true, error: "", result: "" });
+  function updateActionValue(page: PluginNavPage, action: NonNullable<typeof selectedAction>, field: string, value: string | boolean) {
+    updateState(page.key, { values: { [field]: value }, error: "" }, action);
+  }
+
+  async function runPageAction(page: PluginNavPage, action: NonNullable<typeof selectedAction>, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    updateState(page.key, { busy: true, error: "", result: "" }, action);
     try {
-      const resp = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(page.pluginID)}/actions/${encodeURIComponent(page.contribution.action)}`, {
+      const resp = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(page.pluginID)}/actions/${encodeURIComponent(action.action_id)}`, {
         method: "POST",
-        body: JSON.stringify({ source: "nav.section", contribution_id: page.id }),
+        body: JSON.stringify({
+          source: "nav.section",
+          contribution_id: page.id,
+          ...pluginActionPayload(action, state.values),
+        }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("插件面板执行失败")));
       const payload = await resp.json();
-      updateState(page.key, { busy: false, result: JSON.stringify(redactAdminUIResult(payload), null, 2) });
+      updateState(page.key, { busy: false, result: JSON.stringify(redactAdminUIResult(redactPluginActionResult(payload)), null, 2) }, action);
     } catch (reason) {
       if (isAuthExpiredError(reason)) return;
-      updateState(page.key, { busy: false, error: reason instanceof Error ? reason.message : tx("插件面板执行失败") });
+      updateState(page.key, { busy: false, error: reason instanceof Error ? reason.message : tx("插件面板执行失败") }, action);
     }
   }
 
@@ -94,10 +116,22 @@ export function PluginPageView({
               <p className="eyebrow">{selected.pluginID}</p>
               <span>{selected.description || selected.id}</span>
             </div>
-            {selected.contribution.action ? (
-              <button className="secondary-button" disabled={state.busy || !registered} onClick={() => void runPageAction(selected)} type="button">
+            {selected.contribution.action && selectedAction ? (
+              <PluginActionRunner
+                action={selectedAction}
+                draft={state}
+                labels={{
+                  submit: tx("执行插件面板"),
+                  submitting: tx("执行中"),
+                  unsupportedSchema: tx("该插件动作尚未注册。"),
+                }}
+                onChange={(action, field, value) => updateActionValue(selected, action, field, value)}
+                onSubmit={(action, event) => void runPageAction(selected, action, event)}
+              />
+            ) : selected.contribution.action ? (
+              <button className="secondary-button" disabled={true} type="button">
                 <Play size={14} />
-                {tx(state.busy ? "执行中" : "执行插件面板")}
+                {tx("执行插件面板")}
               </button>
             ) : null}
           </div>
@@ -107,8 +141,6 @@ export function PluginPageView({
               {fields.map((field) => <PluginPageFieldView data={data} field={field} key={field.name} />)}
             </div>
           ) : null}
-          {state.error ? <p className="provider-quota-error">{state.error}</p> : null}
-          {state.result ? <pre className="plugin-action-result">{state.result}</pre> : null}
         </div>
       </section>
     </div>
@@ -151,6 +183,6 @@ export function pluginNavPageKey(contribution: AdminUIContribution) {
   return adminUIPluginPageKey(contribution);
 }
 
-function emptyPageState(): PageState {
-  return { busy: false, error: "", result: "" };
+function emptyPageState(action?: typeof undefined | { input_schema?: Record<string, unknown> }) {
+  return { values: action ? pluginActionInputDefaults(action) : {}, busy: false, error: "", result: "" };
 }

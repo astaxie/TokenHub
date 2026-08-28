@@ -79,6 +79,75 @@ describe("PluginPageView", () => {
     expect(screen.queryByText("secret-plugin-token")).not.toBeInTheDocument();
   });
 
+  it("collects page action inputs through the shared runner", async () => {
+    const user = userEvent.setup();
+    const data = emptyData();
+    data.pluginUI = [{
+      plugin_id: "tokenhub.admin.plugin-ecosystem",
+      id: "ecosystem-page",
+      slot: "nav.section",
+      title: "Plugin Ecosystem",
+      action: "ecosystem.configure",
+      schema: { description: "Configure the plugin ecosystem." },
+    }];
+    data.plugins = [{
+      id: "tokenhub.admin.plugin-ecosystem",
+      name: "TokenHub Plugin Ecosystem Dashboard",
+      version: "built-in",
+      source: "built_in",
+      kinds: ["admin_ui"],
+      placements: ["presentation"],
+      capabilities: [],
+    }];
+    data.pluginActions = [{
+      plugin_id: "tokenhub.admin.plugin-ecosystem",
+      action_id: "ecosystem.configure",
+      kind: "mutate",
+      capability: "ecosystem.configure",
+      subject: "plugin_ecosystem",
+      input_schema: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: { type: "string" },
+          enabled: { type: "boolean" },
+        },
+      },
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { status: "ok", access_token: "secret-plugin-token" },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PluginPageView
+        activePageKey="tokenhub.admin.plugin-ecosystem:ecosystem-page"
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        data={data}
+        onSelectPage={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByRole("textbox", { name: /name/ }), "beta");
+    await user.click(screen.getByRole("checkbox", { name: /enabled/ }));
+    await user.click(screen.getByRole("button", { name: /执行插件面板/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.admin.plugin-ecosystem/actions/ecosystem.configure");
+    expect(JSON.parse(String(init.body))).toEqual({
+      source: "nav.section",
+      contribution_id: "ecosystem-page",
+      name: "beta",
+      enabled: true,
+    });
+    await waitFor(() => expect(screen.getByText(/\[redacted\]/)).toBeInTheDocument());
+    expect(screen.queryByText("secret-plugin-token")).not.toBeInTheDocument();
+  });
+
   it("parses plugin nav pages and formats page fields", () => {
     const data = emptyData();
     data.summary.request_count = 1200;
