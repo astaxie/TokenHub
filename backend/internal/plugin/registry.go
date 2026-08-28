@@ -24,11 +24,17 @@ func (r *Registry) Register(descriptor Descriptor) error {
 	if descriptor.ID == "" {
 		return fmt.Errorf("plugin id is required")
 	}
+	if err := ValidateDescriptorContract(descriptor); err != nil {
+		return err
+	}
 	if existing, ok := r.plugins[descriptor.ID]; ok {
 		if !hasStatus {
 			descriptor.Status = ""
 		}
 		descriptor = mergeDescriptors(existing, descriptor)
+		if err := ValidateDescriptorContract(descriptor); err != nil {
+			return err
+		}
 	}
 	if descriptor.Source == "" {
 		descriptor.Source = SourceLocalFile

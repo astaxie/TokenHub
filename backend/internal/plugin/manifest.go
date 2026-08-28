@@ -237,8 +237,8 @@ func ParseManifest(data []byte) (Manifest, error) {
 }
 
 func (m Manifest) Validate() error {
-	if m.SchemaVersion != 1 {
-		return fmt.Errorf("unsupported plugin manifest schema_version %d", m.SchemaVersion)
+	if m.SchemaVersion != PluginManifestSchemaVersion {
+		return pluginContractErrorf(PluginErrorManifestSchemaUnsupported, "unsupported plugin manifest schema_version %d", m.SchemaVersion)
 	}
 	if strings.TrimSpace(m.ID) == "" {
 		return fmt.Errorf("plugin id is required")
@@ -249,8 +249,8 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.Version) == "" {
 		return fmt.Errorf("plugin version is required")
 	}
-	if strings.TrimSpace(m.TokenHub.PluginAPI) == "" {
-		return fmt.Errorf("tokenhub.plugin_api is required")
+	if err := ValidateManifestCompatibility(m.TokenHub); err != nil {
+		return err
 	}
 	if err := m.Distribution.Validate(); err != nil {
 		return err
@@ -266,7 +266,7 @@ func (m Manifest) Validate() error {
 	}
 	for _, kind := range m.Kinds {
 		if !validKind(kind) {
-			return fmt.Errorf("unsupported plugin kind %q", kind)
+			return pluginContractErrorf(PluginErrorKindUnsupported, "unsupported plugin kind %q", kind)
 		}
 	}
 	for _, resourceType := range m.Capabilities.ResourceTypes {
@@ -288,7 +288,7 @@ func (m Manifest) Validate() error {
 	}
 	for _, placement := range m.Placement {
 		if !validPlacement(placement) {
-			return fmt.Errorf("unsupported plugin placement %q", placement)
+			return pluginContractErrorf(PluginErrorPlacementUnsupported, "unsupported plugin placement %q", placement)
 		}
 	}
 	if (m.hasFrontendSchema() || len(m.Capabilities.AdminUI) > 0) && !manifestHasPlacement(m.Placement, PlacementPresentation) {
@@ -374,6 +374,9 @@ func (m Manifest) Validate() error {
 		if !manifestHasPlacement(m.Placement, PlacementBackground) {
 			return fmt.Errorf("plugin background job %s requires background placement", descriptor.JobID)
 		}
+	}
+	if err := ValidateDescriptorContract(m.Descriptor()); err != nil {
+		return err
 	}
 	return nil
 }
@@ -497,77 +500,77 @@ func (m Manifest) Descriptor() Descriptor {
 	}
 	for _, providerType := range m.Capabilities.ProviderTypes {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-			Kind: "provider_type",
+			Kind: CapabilityKindProviderType,
 			Name: providerType,
 		})
 		if m.Capabilities.Provider.SupportsCustomHeaders != nil {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "supports_custom_headers",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicySupportsCustomHeaders,
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.SupportsCustomHeaders),
 			})
 		}
 		if m.Capabilities.Provider.APIKeyRequired != nil {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "api_key_required",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyAPIKeyRequired,
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.APIKeyRequired),
 			})
 		}
 		if m.Capabilities.Provider.RouteRequiresResource != nil {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "route_requires_resource",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyRouteRequiresResource,
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.RouteRequiresResource),
 			})
 		}
 		if scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope); scope != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "credentials_scope",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyCredentialsScope,
 				Subject: providerType,
 				Value:   scope,
 			})
 		}
 		if kind := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityKind); kind != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "session_affinity_kind",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicySessionAffinityKind,
 				Subject: providerType,
 				Value:   kind,
 			})
 		}
 		if policy := strings.TrimSpace(m.Capabilities.Provider.SystemPromptTransformDefault); policy != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "system_prompt_transform_default",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicySystemPromptTransformDefault,
 				Subject: providerType,
 				Value:   policy,
 			})
 		}
 		if policy := strings.TrimSpace(m.Capabilities.Provider.ClaudeCodeAttributionDefault); policy != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "claude_code_attribution_default",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyClaudeCodeAttributionDefault,
 				Subject: providerType,
 				Value:   policy,
 			})
 		}
 		if m.Capabilities.Provider.ReasoningConfigurable != nil {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "reasoning_configurable",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyReasoningConfigurable,
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.ReasoningConfigurable),
 			})
 		}
 		if m.Capabilities.Provider.PreserveReasoningContent != nil {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "preserve_reasoning_content",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyPreserveReasoningContent,
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.PreserveReasoningContent),
 			})
@@ -578,32 +581,32 @@ func (m Manifest) Descriptor() Descriptor {
 				continue
 			}
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "responses_model_allowlist",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyResponsesModelAllowlist,
 				Subject: providerType,
 				Value:   model,
 			})
 		}
 		if baseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL); baseURL != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "default_base_url",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyDefaultBaseURL,
 				Subject: providerType,
 				Value:   strings.TrimRight(baseURL, "/"),
 			})
 		}
 		if m.Capabilities.Provider.DefaultCatalogProviderType {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "default_catalog_provider_type",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyDefaultCatalogProviderType,
 				Subject: providerType,
 				Value:   "true",
 			})
 		}
 		if profile := strings.TrimSpace(m.Capabilities.Provider.ErrorProfile); profile != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "error_profile",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyErrorProfile,
 				Subject: providerType,
 				Value:   profile,
 			})
@@ -611,24 +614,24 @@ func (m Manifest) Descriptor() Descriptor {
 		modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
 		if modelDiscovery.Path != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "model_discovery_path",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyModelDiscoveryPath,
 				Subject: providerType,
 				Value:   modelDiscovery.Path,
 			})
 		}
 		if modelDiscovery.Auth != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "model_discovery_auth",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyModelDiscoveryAuth,
 				Subject: providerType,
 				Value:   modelDiscovery.Auth,
 			})
 		}
 		if modelDiscovery.APIKeyQueryParam != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "model_discovery_api_key_query_param",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyModelDiscoveryAPIKeyQueryParam,
 				Subject: providerType,
 				Value:   modelDiscovery.APIKeyQueryParam,
 			})
@@ -636,8 +639,8 @@ func (m Manifest) Descriptor() Descriptor {
 		if len(modelDiscovery.Headers) > 0 {
 			if data, err := json.Marshal(modelDiscovery.Headers); err == nil {
 				descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-					Kind:    "provider_policy",
-					Name:    "model_discovery_headers",
+					Kind:    CapabilityKindProviderPolicy,
+					Name:    ProviderPolicyModelDiscoveryHeaders,
 					Subject: providerType,
 					Value:   string(data),
 				})
@@ -649,8 +652,8 @@ func (m Manifest) Descriptor() Descriptor {
 				continue
 			}
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "route_protocol",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyRouteProtocol,
 				Subject: providerType,
 				Value:   protocol,
 			})
@@ -661,39 +664,39 @@ func (m Manifest) Descriptor() Descriptor {
 				continue
 			}
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "auth_mode",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyAuthMode,
 				Subject: providerType,
 				Value:   authMode,
 			})
 		}
 		if option := strings.TrimSpace(m.Capabilities.Provider.AuthModeLegacyOption); option != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "auth_mode_legacy_option",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyAuthModeLegacyOption,
 				Subject: providerType,
 				Value:   option,
 			})
 		}
 		if code := strings.TrimSpace(m.Capabilities.Provider.AuthModeInvalidErrorCode); code != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "auth_mode_invalid_error_code",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyAuthModeInvalidErrorCode,
 				Subject: providerType,
 				Value:   code,
 			})
 		}
 		if message := strings.TrimSpace(m.Capabilities.Provider.AuthModeInvalidErrorMessage); message != "" {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_policy",
-				Name:    "auth_mode_invalid_error_message",
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyAuthModeInvalidErrorMessage,
 				Subject: providerType,
 				Value:   message,
 			})
 		}
 		for _, resourceType := range m.Capabilities.ResourceTypes {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_resource_type",
+				Kind:    CapabilityKindProviderResourceType,
 				Name:    resourceType.Type,
 				Subject: providerType,
 				Value:   resourceType.CapabilityValue(),
@@ -701,15 +704,15 @@ func (m Manifest) Descriptor() Descriptor {
 		}
 		for _, capability := range m.Capabilities.Gateway {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider",
+				Kind:    CapabilityKindProvider,
 				Name:    capability,
 				Subject: providerType,
 			})
 		}
 		if catalogCapability, ok := m.Capabilities.Provider.Catalog.CapabilityValue(providerType); ok {
 			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-				Kind:    "provider_catalog",
-				Name:    "entry",
+				Kind:    CapabilityKindProviderCatalog,
+				Name:    ProviderCatalogEntry,
 				Subject: providerType,
 				Value:   catalogCapability,
 			})
@@ -717,8 +720,8 @@ func (m Manifest) Descriptor() Descriptor {
 		for _, category := range m.Capabilities.Provider.ModelCategories {
 			if categoryCapability, ok := category.CapabilityValue(); ok {
 				descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-					Kind:    "provider_catalog",
-					Name:    "model_category",
+					Kind:    CapabilityKindProviderCatalog,
+					Name:    ProviderCatalogModelCategory,
 					Subject: providerType,
 					Value:   categoryCapability,
 				})
@@ -727,26 +730,26 @@ func (m Manifest) Descriptor() Descriptor {
 	}
 	for _, capability := range m.Capabilities.AdminUI {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-			Kind: "admin_ui",
+			Kind: CapabilityKindAdminUI,
 			Name: capability,
 		})
 	}
 	descriptor.Capabilities = append(descriptor.Capabilities, m.Capabilities.SIM.DescriptorCapabilities()...)
 	for _, hook := range m.Capabilities.Hooks {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-			Kind: "gateway_chain",
+			Kind: CapabilityKindGatewayChain,
 			Name: string(hook.Stage),
 		})
 	}
 	for _, action := range m.Capabilities.Actions {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-			Kind: "management_action",
+			Kind: CapabilityKindManagementAction,
 			Name: strings.TrimSpace(action.ID),
 		})
 	}
 	for _, job := range m.Capabilities.Background {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
-			Kind:    "background_job",
+			Kind:    CapabilityKindBackgroundJob,
 			Name:    strings.TrimSpace(job.ID),
 			Subject: strings.TrimSpace(job.Subject),
 			Value:   strings.TrimSpace(job.Capability),
