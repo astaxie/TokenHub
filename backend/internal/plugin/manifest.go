@@ -58,6 +58,7 @@ type ManifestCapabilities struct {
 	ProviderTypes []string                       `yaml:"provider_types"`
 	ResourceTypes []ManifestProviderResourceType `yaml:"provider_resource_types"`
 	Provider      ManifestProvider               `yaml:"provider"`
+	SIM           ManifestSIM                    `yaml:"sim"`
 	Gateway       []string                       `yaml:"gateway"`
 	AdminUI       []string                       `yaml:"admin_ui"`
 	Hooks         []GatewayHookManifest          `yaml:"hooks"`
@@ -280,6 +281,9 @@ func (m Manifest) Validate() error {
 		return err
 	}
 	if err := m.validateProviderPolicy(); err != nil {
+		return err
+	}
+	if err := m.Capabilities.SIM.Validate(m.Kinds, m.Placement); err != nil {
 		return err
 	}
 	for _, placement := range m.Placement {
@@ -727,6 +731,7 @@ func (m Manifest) Descriptor() Descriptor {
 			Name: capability,
 		})
 	}
+	descriptor.Capabilities = append(descriptor.Capabilities, m.Capabilities.SIM.DescriptorCapabilities()...)
 	for _, hook := range m.Capabilities.Hooks {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
 			Kind: "gateway_chain",

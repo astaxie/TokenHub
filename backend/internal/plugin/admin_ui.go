@@ -22,6 +22,8 @@ const (
 	SlotReportTemplate              AdminUISlot = "report.template"
 	SlotThemeTokens                 AdminUISlot = "theme.tokens"
 	SlotLayoutPreset                AdminUISlot = "layout.preset"
+	SlotPageTemplate                AdminUISlot = "page.template"
+	SlotDashboardComposition        AdminUISlot = "dashboard.composition"
 )
 
 type AdminUIManifest struct {
@@ -146,7 +148,7 @@ func normalizeAdminUIManifest(pluginID string, manifest AdminUIManifest) AdminUI
 
 func validAdminUISlot(slot AdminUISlot) bool {
 	switch slot {
-	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderModelPanel, SlotProviderResourceFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate, SlotThemeTokens, SlotLayoutPreset:
+	case SlotNavigationSection, SlotDashboardCard, SlotProviderCatalogCard, SlotProviderFormSection, SlotProviderModelPanel, SlotProviderResourceFormSection, SlotProviderResourcePanel, SlotRouteDetailPanel, SlotSettingsPanel, SlotReportTemplate, SlotThemeTokens, SlotLayoutPreset, SlotPageTemplate, SlotDashboardComposition:
 		return true
 	default:
 		return false
@@ -203,6 +205,16 @@ func validateAdminUIContributionSchema(contribution AdminUIContribution) error {
 			return err
 		}
 	}
+	if template, ok := contribution.Schema["template"]; ok {
+		if err := validateAdminUIPageTemplate(template); err != nil {
+			return err
+		}
+	}
+	if composition, ok := contribution.Schema["composition"]; ok {
+		if err := validateAdminUIDashboardComposition(composition); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -213,9 +225,13 @@ func allowedAdminUISchemaKey(slot AdminUISlot, key string) bool {
 	case "tokens", "mode":
 		return slot == SlotThemeTokens
 	case "default":
-		return slot == SlotThemeTokens || slot == SlotLayoutPreset
+		return slot == SlotThemeTokens || slot == SlotLayoutPreset || slot == SlotPageTemplate || slot == SlotDashboardComposition
 	case "preset":
 		return slot == SlotLayoutPreset
+	case "template":
+		return slot == SlotPageTemplate
+	case "composition":
+		return slot == SlotDashboardComposition
 	default:
 		return false
 	}
@@ -276,6 +292,30 @@ func validateAdminUILayoutPreset(raw any) error {
 		}
 	}
 	return nil
+}
+
+func validateAdminUIPageTemplate(raw any) error {
+	var template ManifestSIMPageTemplate
+	if err := decodeAdminUISchemaValue(raw, &template); err != nil {
+		return fmt.Errorf("page template must be an object")
+	}
+	return template.Validate()
+}
+
+func validateAdminUIDashboardComposition(raw any) error {
+	var composition ManifestSIMDashboardComposition
+	if err := decodeAdminUISchemaValue(raw, &composition); err != nil {
+		return fmt.Errorf("dashboard composition must be an object")
+	}
+	return composition.Validate()
+}
+
+func decodeAdminUISchemaValue(raw any, target any) error {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, target)
 }
 
 func allowedAdminUIThemeToken(name string) bool {
