@@ -49,7 +49,7 @@ capabilities:
     route_requires_resource: true
     credentials_scope: resource
     session_affinity_kind: codex_session
-    claude_code_attribution_default: strip
+    system_prompt_transform_default: strip
     reasoning_configurable: true
     preserve_reasoning_content: true
     default_base_url: https://chatgpt.example/backend-api/codex
@@ -142,8 +142,8 @@ permissions:
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "session_affinity_kind", Subject: "openai_codex", Value: "codex_session"}) {
 		t.Fatalf("descriptor is missing provider session affinity policy capability: %+v", descriptor.Capabilities)
 	}
-	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "claude_code_attribution_default", Subject: "openai_codex", Value: "strip"}) {
-		t.Fatalf("descriptor is missing provider Claude Code attribution default capability: %+v", descriptor.Capabilities)
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "system_prompt_transform_default", Subject: "openai_codex", Value: "strip"}) {
+		t.Fatalf("descriptor is missing provider system prompt transform default capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "preserve_reasoning_content", Subject: "openai_codex", Value: "true"}) {
 		t.Fatalf("descriptor is missing provider reasoning content default capability: %+v", descriptor.Capabilities)

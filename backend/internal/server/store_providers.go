@@ -289,7 +289,7 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := validateClaudeCodeAttributionOptions(resource.Options); err != nil {
+	if err := validateSystemPromptTransformOptions(resource.Options); err != nil {
 		return ProviderResource{}, err
 	}
 	var provider Provider
@@ -494,7 +494,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	defer s.mu.Unlock()
 	db := s.db.WithContext(ctx)
 
-	if err := validateClaudeCodeAttributionOptions(patch.Options); err != nil {
+	if err := validateSystemPromptTransformOptions(patch.Options); err != nil {
 		return ProviderResource{}, err
 	}
 	var resource ProviderResource

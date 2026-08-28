@@ -5,7 +5,7 @@ import { inferModelCategoryText, normalizeNotificationChannelType, notificationC
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
-import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
+import { defaultProviderSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { defaultProviderTypeValue, legacyProviderAuthModeField, providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
 import { providerPluginOptionValues } from "../domain/provider-plugin-options";
@@ -38,7 +38,8 @@ export function providerPayload(values: Record<string, string>, data?: Pick<AppD
     ...providerHeadersPayload(values.custom_headers),
     [providerAuthModeField]: authMode,
     [legacyProviderAuthModeField]: authMode,
-    claude_code_attribution_policy: values.claude_code_attribution_policy || defaultProviderClaudeCodeAttributionPolicy(values.type, values.catalog_id, providerTypeOptions),
+    system_prompt_transform_policy: values.system_prompt_transform_policy || values.claude_code_attribution_policy || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
+    claude_code_attribution_policy: values.claude_code_attribution_policy || values.system_prompt_transform_policy || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
     catalog_id: values.catalog_id,
     model_category: values.model_category,
     options: { ...providerReasoningOptions(values), ...providerPluginOptionValues(values) },
@@ -129,9 +130,12 @@ export function providerResourceOptions(values: Record<string, string>, data?: A
     scopes: values.scopes,
   } : {};
   const options = providerReasoningOptions(values, accountOptions);
-  if (values.claude_code_attribution_policy === "preserve" || values.claude_code_attribution_policy === "strip") {
-    options.claude_code_attribution_policy = values.claude_code_attribution_policy;
+  const transformPolicy = values.system_prompt_transform_policy || values.claude_code_attribution_policy;
+  if (transformPolicy === "preserve" || transformPolicy === "strip") {
+    options.system_prompt_transform_policy = transformPolicy;
+    delete options.claude_code_attribution_policy;
   } else {
+    delete options.system_prompt_transform_policy;
     delete options.claude_code_attribution_policy;
   }
   return { ...options, ...providerPluginOptionValues(values) };
@@ -168,7 +172,7 @@ export function providerResourceToForm(item: ProviderResource, providerOptions?:
     rate_limit_rpm: String(item.rate_limit_rpm ?? ""),
     token_limit_tpm: String(item.token_limit_tpm ?? ""),
     max_concurrency: String(item.max_concurrency ?? ""),
-    claude_code_attribution_policy: item.options?.claude_code_attribution_policy ?? "inherit",
+    system_prompt_transform_policy: item.options?.system_prompt_transform_policy ?? item.options?.claude_code_attribution_policy ?? "inherit",
     region: item.region ?? "",
     environment: item.environment ?? "",
     status: item.status,
@@ -178,10 +182,15 @@ export function providerResourceToForm(item: ProviderResource, providerOptions?:
   };
 }
 
-export function providerResourceAttributionPolicyPayload(resource: ProviderResource, policy: string) {
+export function providerResourceSystemPromptTransformPolicyPayload(resource: ProviderResource, policy: string) {
   const options = { ...(resource.options ?? {}) };
-  if (policy === "inherit") delete options.claude_code_attribution_policy;
-  else options.claude_code_attribution_policy = policy;
+  if (policy === "inherit") {
+    delete options.system_prompt_transform_policy;
+    delete options.claude_code_attribution_policy;
+  } else {
+    options.system_prompt_transform_policy = policy;
+    delete options.claude_code_attribution_policy;
+  }
   return {
     provider_id: resource.provider_id,
     name: resource.name,

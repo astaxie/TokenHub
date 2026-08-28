@@ -12,9 +12,9 @@ func (s *Server) providerForCreate(ctx context.Context, req ProviderCreateReques
 	}
 	provider, catalog, source, err := s.providerFromCreateRequest(ctx, req)
 	if err == nil {
-		if _, configured := provider.Options[claudeCodeAttributionPolicyOption]; !configured {
+		if effectiveSystemPromptTransformPolicy(provider.Options) == "" {
 			descriptor, _ := s.adapterRegistry.Describe(provider.Type)
-			provider.Options[claudeCodeAttributionPolicyOption] = defaultClaudeCodeAttributionPolicyForDescriptor(descriptor)
+			provider.Options[systemPromptTransformPolicyOption] = defaultSystemPromptTransformPolicyForDescriptor(descriptor)
 		}
 	}
 	if err == nil && provider.Name != "" && provider.Type != "" {

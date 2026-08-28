@@ -485,7 +485,7 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 	if adapter.claudeCodeAttributionDefault != "" {
 		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
 			Kind:    "provider_policy",
-			Name:    claudeCodeAttributionDefaultPolicy,
+			Name:    systemPromptTransformDefaultPolicy,
 			Subject: adapter.providerType,
 			Value:   adapter.claudeCodeAttributionDefault,
 		})

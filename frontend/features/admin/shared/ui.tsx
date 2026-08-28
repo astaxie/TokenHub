@@ -427,6 +427,7 @@ export type ProviderTypeOption = {
   apiKeyRequired?: boolean;
   authModes?: string[];
   routeProtocols?: string[];
+  systemPromptTransformDefault?: string;
   claudeCodeAttributionDefault?: string;
   reasoningConfigurable?: boolean;
   defaultBaseURL?: string;
@@ -446,7 +447,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const apiKeyRequiredByType = new Map<string, boolean>();
   const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
-  const claudeCodeAttributionDefaultByType = new Map<string, string>();
+  const systemPromptTransformDefaultByType = new Map<string, string>();
   const reasoningConfigurableByType = new Map<string, boolean>();
   const defaultBaseURLByType = new Map<string, string>();
   const defaultCatalogProviderTypeByType = new Map<string, boolean>();
@@ -458,8 +459,9 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     if (pluginLabel) labelByType.set(adapter.type, pluginLabel);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
     apiKeyRequiredByType.set(adapter.type, adapter.provider_policy?.api_key_required ?? true);
-    if (adapter.provider_policy?.claude_code_attribution_default) {
-      claudeCodeAttributionDefaultByType.set(adapter.type, adapter.provider_policy.claude_code_attribution_default);
+    const systemPromptTransformDefault = adapter.provider_policy?.system_prompt_transform_default || adapter.provider_policy?.claude_code_attribution_default;
+    if (systemPromptTransformDefault) {
+      systemPromptTransformDefaultByType.set(adapter.type, systemPromptTransformDefault);
     }
     if (typeof adapter.provider_policy?.reasoning_configurable === "boolean") {
       reasoningConfigurableByType.set(adapter.type, adapter.provider_policy.reasoning_configurable);
@@ -529,12 +531,14 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         types.add(providerType);
         applyProviderModelDiscoveryCapability(modelDiscoveryByType, providerType, capability.name, capability.value);
       }
-      if (capability.kind === "provider_policy" && capability.name === "claude_code_attribution_default") {
+      if (capability.kind === "provider_policy" && (capability.name === "system_prompt_transform_default" || capability.name === "claude_code_attribution_default")) {
         const providerType = String(capability.subject || "").trim();
         const policy = String(capability.value || "").trim();
         if (!providerType || !policy) continue;
         types.add(providerType);
-        claudeCodeAttributionDefaultByType.set(providerType, policy);
+        if (capability.name === "system_prompt_transform_default" || !systemPromptTransformDefaultByType.has(providerType)) {
+          systemPromptTransformDefaultByType.set(providerType, policy);
+        }
       }
       if (capability.kind === "provider_policy" && capability.name === "reasoning_configurable") {
         const providerType = String(capability.subject || "").trim();
@@ -566,7 +570,8 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     apiKeyRequired: apiKeyRequiredByType.get(value) ?? true,
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
-    claudeCodeAttributionDefault: claudeCodeAttributionDefaultByType.get(value),
+    systemPromptTransformDefault: systemPromptTransformDefaultByType.get(value),
+    claudeCodeAttributionDefault: systemPromptTransformDefaultByType.get(value),
     reasoningConfigurable: reasoningConfigurableByType.get(value),
     defaultBaseURL: defaultBaseURLByType.get(value),
     defaultCatalogProviderType: defaultCatalogProviderTypeByType.get(value),

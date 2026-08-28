@@ -280,6 +280,7 @@ export type AdapterDescriptor = {
     route_requires_resource?: boolean;
     credentials_scope?: string;
     session_affinity_kind?: string;
+    system_prompt_transform_default?: string;
     claude_code_attribution_default?: string;
     reasoning_configurable?: boolean;
     preserve_reasoning_content?: boolean;

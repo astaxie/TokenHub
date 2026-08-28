@@ -1,18 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { defaultProviderClaudeCodeAttributionPolicy } from "../frontend/features/admin/domain/provider-attribution.ts";
+import { defaultProviderSystemPromptTransformPolicy } from "../frontend/features/admin/domain/provider-attribution.ts";
 
-test("Claude Code attribution defaults come from provider metadata", () => {
+test("system prompt transform defaults come from provider metadata", () => {
   const providerTypeOptions = [
-    { value: "anthropic", claudeCodeAttributionDefault: "preserve" },
-    { value: "vendor_anthropic", claudeCodeAttributionDefault: "strip" },
+    { value: "anthropic", systemPromptTransformDefault: "preserve" },
+    { value: "vendor_anthropic", systemPromptTransformDefault: "strip" },
+    { value: "legacy_anthropic", claudeCodeAttributionDefault: "preserve" },
   ];
 
-  assert.equal(defaultProviderClaudeCodeAttributionPolicy("anthropic", "anthropic", providerTypeOptions), "preserve");
-  assert.equal(defaultProviderClaudeCodeAttributionPolicy("vendor_anthropic", "custom", providerTypeOptions), "strip");
-  assert.equal(defaultProviderClaudeCodeAttributionPolicy("anthropic", "anthropic"), "strip");
-  assert.equal(defaultProviderClaudeCodeAttributionPolicy("anthropic", "custom"), "strip");
-  assert.equal(defaultProviderClaudeCodeAttributionPolicy("openai_compatible", "requesty"), "strip");
-  assert.equal(defaultProviderClaudeCodeAttributionPolicy("openai", "openai"), "strip");
+  assert.equal(defaultProviderSystemPromptTransformPolicy("anthropic", "anthropic", providerTypeOptions), "preserve");
+  assert.equal(defaultProviderSystemPromptTransformPolicy("vendor_anthropic", "custom", providerTypeOptions), "strip");
+  assert.equal(defaultProviderSystemPromptTransformPolicy("legacy_anthropic", "custom", providerTypeOptions), "preserve");
+  assert.equal(defaultProviderSystemPromptTransformPolicy("anthropic", "anthropic"), "strip");
+  assert.equal(defaultProviderSystemPromptTransformPolicy("anthropic", "custom"), "strip");
+  assert.equal(defaultProviderSystemPromptTransformPolicy("openai_compatible", "requesty"), "strip");
+  assert.equal(defaultProviderSystemPromptTransformPolicy("openai", "openai"), "strip");
 });

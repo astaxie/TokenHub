@@ -6,15 +6,19 @@ import (
 )
 
 const (
+	systemPromptTransformPolicyOption  = "system_prompt_transform_policy"
+	systemPromptTransformDefaultPolicy = "system_prompt_transform_default"
+	systemPromptTransformPreserve      = "preserve"
+	systemPromptTransformStrip         = "strip"
 	claudeCodeAttributionPolicyOption  = "claude_code_attribution_policy"
 	claudeCodeAttributionDefaultPolicy = "claude_code_attribution_default"
-	claudeCodeAttributionPreserve      = "preserve"
-	claudeCodeAttributionStrip         = "strip"
+	claudeCodeAttributionPreserve      = systemPromptTransformPreserve
+	claudeCodeAttributionStrip         = systemPromptTransformStrip
 	claudeCodeAttributionPrefix        = "x-anthropic-billing-header:"
 )
 
 func anthropicRequestForRoute(req anthropicMessagesRequest, route RouteSelection) anthropicMessagesRequest {
-	if strings.TrimSpace(route.Provider.Options[claudeCodeAttributionPolicyOption]) != claudeCodeAttributionStrip {
+	if effectiveSystemPromptTransformPolicy(route.Provider.Options) != systemPromptTransformStrip {
 		return req
 	}
 	system, ok := req.Raw["system"].([]any)
@@ -41,25 +45,44 @@ func anthropicRequestForRoute(req anthropicMessagesRequest, route RouteSelection
 }
 
 func defaultClaudeCodeAttributionPolicyForDescriptor(descriptor AdapterDescriptor) string {
-	if policy := normalizeClaudeCodeAttributionPolicyOrEmpty(descriptor.ProviderPolicy.ClaudeCodeAttributionDefault); policy != "" {
+	return defaultSystemPromptTransformPolicyForDescriptor(descriptor)
+}
+
+func defaultSystemPromptTransformPolicyForDescriptor(descriptor AdapterDescriptor) string {
+	if policy := normalizeSystemPromptTransformPolicyOrEmpty(descriptor.ProviderPolicy.SystemPromptTransformDefault); policy != "" {
 		return policy
 	}
-	return claudeCodeAttributionStrip
+	if policy := normalizeSystemPromptTransformPolicyOrEmpty(descriptor.ProviderPolicy.ClaudeCodeAttributionDefault); policy != "" {
+		return policy
+	}
+	return systemPromptTransformStrip
 }
 
 func normalizeClaudeCodeAttributionPolicyOrEmpty(value string) string {
+	return normalizeSystemPromptTransformPolicyOrEmpty(value)
+}
+
+func normalizeSystemPromptTransformPolicyOrEmpty(value string) string {
 	policy := strings.ToLower(strings.TrimSpace(value))
-	if policy == claudeCodeAttributionPreserve || policy == claudeCodeAttributionStrip {
+	if policy == systemPromptTransformPreserve || policy == systemPromptTransformStrip {
 		return policy
 	}
 	return ""
 }
 
 func applyClaudeCodeAttributionPolicy(options map[string]string, requested *string) (map[string]string, error) {
-	if requested == nil {
+	return applySystemPromptTransformPolicy(options, nil, requested)
+}
+
+func applySystemPromptTransformPolicy(options map[string]string, requested *string, legacyRequested *string) (map[string]string, error) {
+	if requested == nil && legacyRequested == nil {
 		return options, nil
 	}
-	policy, err := normalizeClaudeCodeAttributionPolicy(*requested)
+	source := requested
+	if source == nil {
+		source = legacyRequested
+	}
+	policy, err := normalizeSystemPromptTransformPolicy(*source)
 	if err != nil {
 		return nil, err
 	}
@@ -67,30 +90,53 @@ func applyClaudeCodeAttributionPolicy(options map[string]string, requested *stri
 	for key, value := range options {
 		next[key] = value
 	}
-	next[claudeCodeAttributionPolicyOption] = policy
+	next[systemPromptTransformPolicyOption] = policy
+	delete(next, claudeCodeAttributionPolicyOption)
 	return next, nil
 }
 
 func validateClaudeCodeAttributionOptions(options map[string]string) error {
-	value, exists := options[claudeCodeAttributionPolicyOption]
-	if !exists {
+	return validateSystemPromptTransformOptions(options)
+}
+
+func validateSystemPromptTransformOptions(options map[string]string) error {
+	if value, exists := options[systemPromptTransformPolicyOption]; exists {
+		policy, err := normalizeSystemPromptTransformPolicy(value)
+		if err != nil {
+			return err
+		}
+		options[systemPromptTransformPolicyOption] = policy
+		delete(options, claudeCodeAttributionPolicyOption)
 		return nil
 	}
-	policy, err := normalizeClaudeCodeAttributionPolicy(value)
-	if err != nil {
-		return err
+	if value, exists := options[claudeCodeAttributionPolicyOption]; exists {
+		policy, err := normalizeSystemPromptTransformPolicy(value)
+		if err != nil {
+			return err
+		}
+		options[claudeCodeAttributionPolicyOption] = policy
 	}
-	options[claudeCodeAttributionPolicyOption] = policy
 	return nil
 }
 
 func normalizeClaudeCodeAttributionPolicy(value string) (string, error) {
+	return normalizeSystemPromptTransformPolicy(value)
+}
+
+func normalizeSystemPromptTransformPolicy(value string) (string, error) {
 	if policy := normalizeClaudeCodeAttributionPolicyOrEmpty(value); policy != "" {
 		return policy, nil
 	}
 	return "", NewHTTPError(
 		http.StatusBadRequest,
-		"invalid_claude_code_attribution_policy",
-		"claude_code_attribution_policy must be preserve or strip",
+		"invalid_system_prompt_transform_policy",
+		"system_prompt_transform_policy must be preserve or strip",
 	)
+}
+
+func effectiveSystemPromptTransformPolicy(options map[string]string) string {
+	if policy := normalizeSystemPromptTransformPolicyOrEmpty(options[systemPromptTransformPolicyOption]); policy != "" {
+		return policy
+	}
+	return normalizeSystemPromptTransformPolicyOrEmpty(options[claudeCodeAttributionPolicyOption])
 }

@@ -76,6 +76,7 @@ type ManifestProvider struct {
 	RouteRequiresResource        *bool                   `yaml:"route_requires_resource"`
 	CredentialsScope             string                  `yaml:"credentials_scope"`
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
+	SystemPromptTransformDefault string                  `yaml:"system_prompt_transform_default"`
 	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
 	ReasoningConfigurable        *bool                   `yaml:"reasoning_configurable"`
 	PreserveReasoningContent     *bool                   `yaml:"preserve_reasoning_content"`
@@ -377,7 +378,9 @@ func (m Manifest) validateProviderPolicy() error {
 	defaultBaseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL)
 	errorProfile := strings.TrimSpace(m.Capabilities.Provider.ErrorProfile)
 	modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
-	if m.Capabilities.Provider.APIKeyRequired == nil && scope == "" && affinityKind == "" && defaultBaseURL == "" && errorProfile == "" && !modelDiscovery.Configured() {
+	systemPromptTransformDefault := strings.TrimSpace(m.Capabilities.Provider.SystemPromptTransformDefault)
+	legacyAttributionDefault := strings.TrimSpace(m.Capabilities.Provider.ClaudeCodeAttributionDefault)
+	if m.Capabilities.Provider.APIKeyRequired == nil && scope == "" && affinityKind == "" && defaultBaseURL == "" && errorProfile == "" && systemPromptTransformDefault == "" && legacyAttributionDefault == "" && !modelDiscovery.Configured() {
 		return nil
 	}
 	if len(m.Capabilities.ProviderTypes) == 0 {
@@ -397,6 +400,12 @@ func (m Manifest) validateProviderPolicy() error {
 	}
 	if errorProfile != "" && errorProfile != "generic" && errorProfile != "kronk" {
 		return fmt.Errorf("provider error_profile must be generic or kronk")
+	}
+	if systemPromptTransformDefault != "" && systemPromptTransformDefault != "preserve" && systemPromptTransformDefault != "strip" {
+		return fmt.Errorf("provider system_prompt_transform_default must be preserve or strip")
+	}
+	if legacyAttributionDefault != "" && legacyAttributionDefault != "preserve" && legacyAttributionDefault != "strip" {
+		return fmt.Errorf("provider claude_code_attribution_default must be preserve or strip")
 	}
 	if modelDiscovery.Path != "" && !strings.HasPrefix(modelDiscovery.Path, "/") {
 		return fmt.Errorf("provider model_discovery path must start with /")
@@ -523,6 +532,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "session_affinity_kind",
 				Subject: providerType,
 				Value:   kind,
+			})
+		}
+		if policy := strings.TrimSpace(m.Capabilities.Provider.SystemPromptTransformDefault); policy != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "system_prompt_transform_default",
+				Subject: providerType,
+				Value:   policy,
 			})
 		}
 		if policy := strings.TrimSpace(m.Capabilities.Provider.ClaudeCodeAttributionDefault); policy != "" {

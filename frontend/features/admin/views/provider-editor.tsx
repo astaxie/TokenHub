@@ -8,7 +8,7 @@ import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabelFromData } from "../domain/labels";
 import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
-import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
+import { defaultProviderSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
@@ -20,7 +20,7 @@ import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderImageCapability } from "./provider-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardStepTitle, providerCredentialModeLabel, providerCredentialOptions } from "./provider-editor-fields";
-import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceAttributionFields } from "./provider-editor-sections";
+import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues, ProviderResourceSystemPromptTransformFields } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderPluginPanels } from "./provider-plugin-panels";
@@ -140,9 +140,9 @@ export function ProviderUpsertModal({
     clear_api_key: "false",
     [providerAuthModeField]: provider?.options?.auth_mode ?? provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: initialProviderType }, providerTypeOptions),
     priority: String(provider?.priority ?? 10),
-    claude_code_attribution_policy: mode === "edit"
-      ? provider?.options?.claude_code_attribution_policy ?? "preserve"
-      : defaultProviderClaudeCodeAttributionPolicy(initialProviderType, initialEntry?.id ?? "custom", providerTypeOptions),
+    system_prompt_transform_policy: mode === "edit"
+      ? provider?.options?.system_prompt_transform_policy ?? provider?.options?.claude_code_attribution_policy ?? "preserve"
+      : defaultProviderSystemPromptTransformPolicy(initialProviderType, initialEntry?.id ?? "custom", providerTypeOptions),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),
     custom_headers: providerHeadersFormValue(provider?.headers, provider?.sensitive_headers),
@@ -557,7 +557,7 @@ export function ProviderUpsertModal({
       ...current,
       [key]: value,
       ...(mode === "create" && key === "type"
-        ? { claude_code_attribution_policy: defaultProviderClaudeCodeAttributionPolicy(value, catalogID, providerTypeOptions) }
+        ? { system_prompt_transform_policy: defaultProviderSystemPromptTransformPolicy(value, catalogID, providerTypeOptions) }
         : {}),
     }));
     if (mode !== "create") return;
@@ -870,9 +870,9 @@ export function ProviderUpsertModal({
       type: entry.type || providerTypeValue(current, providerTypeOptions),
       base_url: mode === "create" ? entry.base_url ?? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
-      claude_code_attribution_policy: mode === "create"
-        ? defaultProviderClaudeCodeAttributionPolicy(entry.type, entry.id, providerTypeOptions)
-        : current.claude_code_attribution_policy,
+      system_prompt_transform_policy: mode === "create"
+        ? defaultProviderSystemPromptTransformPolicy(entry.type, entry.id, providerTypeOptions)
+        : current.system_prompt_transform_policy,
     }));
     syncAccountDefaults(nextName, entry.base_url, entry.type);
   }
@@ -894,9 +894,9 @@ export function ProviderUpsertModal({
       type: providerTypeValue(current, providerTypeOptions),
       base_url: mode === "create" ? "" : current.base_url,
       api_key: mode === "create" ? "" : current.api_key,
-      claude_code_attribution_policy: mode === "create"
-        ? defaultProviderClaudeCodeAttributionPolicy(current.type, "custom", providerTypeOptions)
-        : current.claude_code_attribution_policy,
+      system_prompt_transform_policy: mode === "create"
+        ? defaultProviderSystemPromptTransformPolicy(current.type, "custom", providerTypeOptions)
+        : current.system_prompt_transform_policy,
     }));
     syncAccountDefaults(values.name || "Provider", "");
   }
@@ -1440,7 +1440,7 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
-                <ProviderResourceAttributionFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
+                <ProviderResourceSystemPromptTransformFields api={api} providerID={provider?.id ?? ""} resources={resources} onSaved={onAccountsChanged ?? onSaved} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} /> : null}

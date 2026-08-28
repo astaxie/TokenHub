@@ -116,13 +116,13 @@ TokenHub は、最後に正常に読み込んだ Provider カタログをデー�
 モデル選択画面は `GET /v1/models` から現在のインベントリを検出し、`/`、`:`、量子化サフィックスを含む Kronk モデル ID 全体を保持します。選択したインベントリを取り込んだ後、**Model Directory** で外部標準モデル名を作成し、**Routing Policies** で Kronk モデル ID にマッピングします。繰り返し取り込んでも冪等です。後続の検出が成功すると、Kronk から削除されたモデルはインベントリやルートを削除せず利用不可としてマークされます。検出に失敗した場合、既存設定は変更されません。
 
 Kronk ルートは SSE ストリーミングを含む OpenAI 互換 Chat Completions、Responses、Embeddings をサポートします。TokenHub は引き続きクライアント認証、Project 分離、クォータ、監査、ルーティング、フェイルオーバーを適用します。呼び出し元の `Authorization` ヘッダーを Kronk へ転送せず、保存済み Kronk token を管理レスポンス、監査ペイロード、ログ、上流エラーレスポンスへ公開しません。
-## Claude Code 帰属ブロックの処理
+## システムプロンプト変換の処理
 
 Claude Code は、Anthropic Messages リクエストの `system` 配列の先頭に帰属テキストブロックを挿入する場合があります。このブロックにはリクエストごとに変化し得るクライアントメタデータが含まれ、サードパーティー上流で本来安定しているプロンプト接頭辞を再利用できなくなることがあります。
 
-各 Provider には `claude_code_attribution_policy` を設定できます。新規の Anthropic 公式 Provider は `preserve`、明確な非公式 Provider はサードパーティー上流のプロンプト接頭辞キャッシュを再利用しやすくするため `strip` がデフォルトです。提供元が不明なカスタム Anthropic エンドポイントは `preserve` がデフォルトです。既存 Provider でこの設定がない場合も、引き続き帰属ブロックを保持します。`strip` は、最初のトップレベル `system` 要素の `type` が `"text"` で、テキストが `x-anthropic-billing-header:` から厳密に始まる場合に限り、その要素を削除します。文字列形式の `system` プロンプト、後続要素、先頭に空白があるテキスト、その他の要素型は削除しません。
+各 Provider には `system_prompt_transform_policy` を設定できます。Provider プラグインは `system_prompt_transform_default` provider policy capability で既定ポリシーを宣言します。新しいサードパーティー Provider は、プラグインが別の既定値を宣言しない限り、上流のプロンプト接頭辞キャッシュを再利用しやすくするため `strip` を既定値にします。既存 Provider でこの設定がない場合は、引き続き帰属ブロックを保持します。従来の `claude_code_attribution_policy` option と `claude_code_attribution_default` capability は、アップグレード互換の別名として引き続き受け付けます。`strip` は、最初のトップレベル `system` 要素の `type` が `"text"` で、テキストが `x-anthropic-billing-header:` から厳密に始まる場合に限り、その要素を削除します。文字列形式の `system` プロンプト、後続要素、先頭に空白があるテキスト、その他の要素型は削除しません。
 
-Provider Resource は既定で Provider ポリシーを継承し、`options.claude_code_attribution_policy` を `preserve` または `strip` に設定して上書きできます。この Resource オプションを省略すると継承に戻ります。TokenHub はルート試行ごとに有効なポリシーを適用するため、フェイルオーバー先の Resource は元のリクエストを受け取り、独自の設定を適用します。監査ペイロードにも元のリクエストを保持します。`POST /v1/messages/count_tokens` は具体的な Provider Resource を選択しないため、引き続き元のリクエストをカウントします。
+Provider Resource は既定で Provider ポリシーを継承し、`options.system_prompt_transform_policy` を `preserve` または `strip` に設定して上書きできます。この Resource オプションを省略すると継承に戻ります。TokenHub はルート試行ごとに有効なポリシーを適用するため、フェイルオーバー先の Resource は元のリクエストを受け取り、独自の設定を適用します。監査ペイロードにも元のリクエストを保持します。`POST /v1/messages/count_tokens` は具体的な Provider Resource を選択しないため、引き続き元のリクエストをカウントします。
 
 ## Codex フィンガープリント集約
 

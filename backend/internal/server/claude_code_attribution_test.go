@@ -23,7 +23,7 @@ func TestAnthropicRequestForRouteStripsOnlyLeadingClaudeCodeAttribution(t *testi
 		"cache_control": map[string]any{"type": "ephemeral"},
 	}
 	route := RouteSelection{Provider: Provider{Options: map[string]string{
-		claudeCodeAttributionPolicyOption: claudeCodeAttributionStrip,
+		systemPromptTransformPolicyOption: systemPromptTransformStrip,
 	}}}
 
 	t.Run("matching first block", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestAnthropicRequestForRouteStripsOnlyLeadingClaudeCodeAttribution(t *testi
 
 func TestAnthropicRequestForRouteNormalizesDynamicAttributionPrefixes(t *testing.T) {
 	route := RouteSelection{Provider: Provider{Options: map[string]string{
-		claudeCodeAttributionPolicyOption: claudeCodeAttributionStrip,
+		systemPromptTransformPolicyOption: systemPromptTransformStrip,
 	}}}
 	filter := func(text string) map[string]any {
 		t.Helper()
@@ -102,35 +102,36 @@ func TestAnthropicRequestForRouteNormalizesDynamicAttributionPrefixes(t *testing
 	}
 }
 
-func TestDefaultClaudeCodeAttributionPolicyForNewProvider(t *testing.T) {
+func TestDefaultSystemPromptTransformPolicyForNewProvider(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		descriptor AdapterDescriptor
 		want       string
 	}{
-		{name: "descriptor preserve", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionPreserve}}, want: claudeCodeAttributionPreserve},
-		{name: "descriptor strip", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionStrip}}, want: claudeCodeAttributionStrip},
-		{name: "missing descriptor policy", descriptor: AdapterDescriptor{Type: ProviderAnthropic}, want: claudeCodeAttributionStrip},
-		{name: "invalid descriptor policy", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: "normalize"}}, want: claudeCodeAttributionStrip},
+		{name: "descriptor preserve", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{SystemPromptTransformDefault: systemPromptTransformPreserve}}, want: systemPromptTransformPreserve},
+		{name: "descriptor strip", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{SystemPromptTransformDefault: systemPromptTransformStrip}}, want: systemPromptTransformStrip},
+		{name: "legacy descriptor preserve", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionPreserve}}, want: systemPromptTransformPreserve},
+		{name: "missing descriptor policy", descriptor: AdapterDescriptor{Type: ProviderAnthropic}, want: systemPromptTransformStrip},
+		{name: "invalid descriptor policy", descriptor: AdapterDescriptor{ProviderPolicy: AdapterProviderPolicy{SystemPromptTransformDefault: "normalize"}}, want: systemPromptTransformStrip},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := defaultClaudeCodeAttributionPolicyForDescriptor(test.descriptor); got != test.want {
+			if got := defaultSystemPromptTransformPolicyForDescriptor(test.descriptor); got != test.want {
 				t.Fatalf("default policy = %q, want %q", got, test.want)
 			}
 		})
 	}
 }
 
-func TestDefaultClaudeCodeAttributionPolicyFollowsAdapterDescriptor(t *testing.T) {
+func TestDefaultSystemPromptTransformPolicyFollowsAdapterDescriptor(t *testing.T) {
 	descriptor := AdapterDescriptor{
-		ProviderPolicy: AdapterProviderPolicy{ClaudeCodeAttributionDefault: claudeCodeAttributionPreserve},
+		ProviderPolicy: AdapterProviderPolicy{SystemPromptTransformDefault: systemPromptTransformPreserve},
 	}
-	if got := defaultClaudeCodeAttributionPolicyForDescriptor(descriptor); got != claudeCodeAttributionPreserve {
-		t.Fatalf("descriptor default policy = %q, want %q", got, claudeCodeAttributionPreserve)
+	if got := defaultSystemPromptTransformPolicyForDescriptor(descriptor); got != systemPromptTransformPreserve {
+		t.Fatalf("descriptor default policy = %q, want %q", got, systemPromptTransformPreserve)
 	}
 }
 
-func TestAdminProviderClaudeCodeAttributionDefaultsOnlyOnCreate(t *testing.T) {
+func TestAdminProviderSystemPromptTransformDefaultsOnlyOnCreate(t *testing.T) {
 	app := newTestServer()
 	thirdParty := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
 		"id":       "prv_default_strip",
@@ -147,7 +148,7 @@ func TestAdminProviderClaudeCodeAttributionDefaultsOnlyOnCreate(t *testing.T) {
 	if err := json.Unmarshal([]byte(thirdParty.Body), &thirdPartyResult); err != nil {
 		t.Fatal(err)
 	}
-	if got := thirdPartyResult.Provider.Options[claudeCodeAttributionPolicyOption]; got != claudeCodeAttributionStrip {
+	if got := thirdPartyResult.Provider.Options[systemPromptTransformPolicyOption]; got != systemPromptTransformStrip {
 		t.Fatalf("third-party default policy = %q, want strip", got)
 	}
 
@@ -166,7 +167,7 @@ func TestAdminProviderClaudeCodeAttributionDefaultsOnlyOnCreate(t *testing.T) {
 	if err := json.Unmarshal([]byte(unknownAnthropic.Body), &anthropicResult); err != nil {
 		t.Fatal(err)
 	}
-	if got := anthropicResult.Provider.Options[claudeCodeAttributionPolicyOption]; got != claudeCodeAttributionPreserve {
+	if got := anthropicResult.Provider.Options[systemPromptTransformPolicyOption]; got != systemPromptTransformPreserve {
 		t.Fatalf("unknown Anthropic default policy = %q, want preserve", got)
 	}
 
@@ -191,7 +192,7 @@ func TestAdminProviderClaudeCodeAttributionDefaultsOnlyOnCreate(t *testing.T) {
 	if err := json.Unmarshal([]byte(patched.Body), &patchedResult); err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := patchedResult.Provider.Options[claudeCodeAttributionPolicyOption]; exists {
+	if _, exists := patchedResult.Provider.Options[systemPromptTransformPolicyOption]; exists {
 		t.Fatalf("legacy patch must not add a new default policy: %+v", patchedResult.Provider.Options)
 	}
 }
@@ -439,7 +440,7 @@ func TestAnthropicStreamingAttributionPolicyAppliesPerFailoverResource(t *testin
 	}
 }
 
-func TestAdminProviderClaudeCodeAttributionPolicyPreservesOtherOptions(t *testing.T) {
+func TestAdminProviderSystemPromptTransformPolicyPreservesOtherOptions(t *testing.T) {
 	app := newTestServer()
 	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
 		"id":                             "prv_attribution_policy",
@@ -449,7 +450,7 @@ func TestAdminProviderClaudeCodeAttributionPolicyPreservesOtherOptions(t *testin
 		"status":                         StatusActive,
 		"healthy":                        true,
 		"options":                        map[string]string{"region": "test"},
-		"claude_code_attribution_policy": claudeCodeAttributionStrip,
+		"system_prompt_transform_policy": systemPromptTransformStrip,
 	}, "")
 	if created.Code != http.StatusCreated {
 		t.Fatalf("expected provider creation, got %d: %s", created.Code, created.Body)
@@ -459,12 +460,12 @@ func TestAdminProviderClaudeCodeAttributionPolicyPreservesOtherOptions(t *testin
 		t.Fatal(err)
 	}
 	if createResult.Provider.Options["region"] != "test" ||
-		createResult.Provider.Options[claudeCodeAttributionPolicyOption] != claudeCodeAttributionStrip {
+		createResult.Provider.Options[systemPromptTransformPolicyOption] != systemPromptTransformStrip {
 		t.Fatalf("provider options were not merged: %+v", createResult.Provider.Options)
 	}
 
 	updated := doJSON(t, app, http.MethodPatch, "/api/admin/providers/prv_attribution_policy", map[string]any{
-		"claude_code_attribution_policy": claudeCodeAttributionPreserve,
+		"system_prompt_transform_policy": systemPromptTransformPreserve,
 	}, "")
 	if updated.Code != http.StatusOK {
 		t.Fatalf("expected provider update, got %d: %s", updated.Code, updated.Body)
@@ -474,22 +475,22 @@ func TestAdminProviderClaudeCodeAttributionPolicyPreservesOtherOptions(t *testin
 		t.Fatal(err)
 	}
 	if updateResult.Provider.Options["region"] != "test" ||
-		updateResult.Provider.Options[claudeCodeAttributionPolicyOption] != claudeCodeAttributionPreserve {
+		updateResult.Provider.Options[systemPromptTransformPolicyOption] != systemPromptTransformPreserve {
 		t.Fatalf("provider policy update erased options: %+v", updateResult.Provider.Options)
 	}
 }
 
-func TestAdminRejectsInvalidClaudeCodeAttributionPolicies(t *testing.T) {
+func TestAdminRejectsInvalidSystemPromptTransformPolicies(t *testing.T) {
 	app := newTestServer()
 	providerField := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
-		"name":                           "Invalid Attribution Policy",
+		"name":                           "Invalid Transform Policy",
 		"type":                           ProviderOpenAICompatible,
 		"base_url":                       "https://example.invalid/v1",
 		"status":                         StatusActive,
 		"healthy":                        true,
-		"claude_code_attribution_policy": "normalize",
+		"system_prompt_transform_policy": "normalize",
 	}, "")
-	if providerField.Code != http.StatusBadRequest || !strings.Contains(providerField.Body, `"code":"invalid_claude_code_attribution_policy"`) {
+	if providerField.Code != http.StatusBadRequest || !strings.Contains(providerField.Body, `"code":"invalid_system_prompt_transform_policy"`) {
 		t.Fatalf("expected invalid provider field policy error, got %d: %s", providerField.Code, providerField.Body)
 	}
 
@@ -500,10 +501,10 @@ func TestAdminRejectsInvalidClaudeCodeAttributionPolicies(t *testing.T) {
 		"status":   StatusActive,
 		"healthy":  true,
 		"options": map[string]string{
-			claudeCodeAttributionPolicyOption: "normalize",
+			systemPromptTransformPolicyOption: "normalize",
 		},
 	}, "")
-	if providerOptions.Code != http.StatusBadRequest || !strings.Contains(providerOptions.Body, `"code":"invalid_claude_code_attribution_policy"`) {
+	if providerOptions.Code != http.StatusBadRequest || !strings.Contains(providerOptions.Body, `"code":"invalid_system_prompt_transform_policy"`) {
 		t.Fatalf("expected invalid provider options policy error, got %d: %s", providerOptions.Code, providerOptions.Body)
 	}
 
@@ -514,10 +515,10 @@ func TestAdminRejectsInvalidClaudeCodeAttributionPolicies(t *testing.T) {
 		"status":        StatusActive,
 		"healthy":       true,
 		"options": map[string]string{
-			claudeCodeAttributionPolicyOption: "normalize",
+			systemPromptTransformPolicyOption: "normalize",
 		},
 	}, "")
-	if resource.Code != http.StatusBadRequest || !strings.Contains(resource.Body, `"code":"invalid_claude_code_attribution_policy"`) {
+	if resource.Code != http.StatusBadRequest || !strings.Contains(resource.Body, `"code":"invalid_system_prompt_transform_policy"`) {
 		t.Fatalf("expected invalid resource policy error, got %d: %s", resource.Code, resource.Body)
 	}
 }
@@ -545,11 +546,11 @@ func newAnthropicAttributionFailoverGateway(t *testing.T, primaryURL string, sec
 			APIKey:  "upstream-secret",
 			Status:  StatusActive,
 			Healthy: true,
-			Options: map[string]string{claudeCodeAttributionPolicyOption: claudeCodeAttributionPreserve},
+			Options: map[string]string{systemPromptTransformPolicyOption: systemPromptTransformPreserve},
 		})
 		resourceOptions := map[string]string{}
 		if index == 0 {
-			resourceOptions[claudeCodeAttributionPolicyOption] = claudeCodeAttributionStrip
+			resourceOptions[systemPromptTransformPolicyOption] = systemPromptTransformStrip
 		}
 		resource, addErr := store.AddProviderResource(ProviderResource{
 			ProviderID:   provider.ID,

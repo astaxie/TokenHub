@@ -163,7 +163,7 @@ describe("providerTypeOptionsFromData", () => {
       provider_policy: {
         auth_modes: ["x-api-key", "bearer"],
         api_key_required: false,
-        claude_code_attribution_default: "preserve",
+        system_prompt_transform_default: "preserve",
         reasoning_configurable: false,
         default_base_url: "https://native.example/v1/",
         default_catalog_provider_type: true,
@@ -187,6 +187,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeRequiresAPIKey(options, "openai_compatible")).toBe(true);
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(options.find((option) => option.value === "native_subscription")?.apiKeyRequired).toBe(false);
+    expect(options.find((option) => option.value === "native_subscription")?.systemPromptTransformDefault).toBe("preserve");
     expect(options.find((option) => option.value === "native_subscription")?.claudeCodeAttributionDefault).toBe("preserve");
     expect(options.find((option) => option.value === "native_subscription")?.reasoningConfigurable).toBe(false);
     expect(options.find((option) => option.value === "native_subscription")?.defaultBaseURL).toBe("https://native.example/v1");
@@ -249,7 +250,7 @@ describe("providerTypeOptionsFromData", () => {
         { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "personal_access_token" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "responses" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "images/generations" },
-        { kind: "provider_policy", name: "claude_code_attribution_default", subject: "oauth_subscription", value: "strip" },
+        { kind: "provider_policy", name: "system_prompt_transform_default", subject: "oauth_subscription", value: "strip" },
         { kind: "provider_policy", name: "reasoning_configurable", subject: "oauth_subscription", value: "true" },
         { kind: "provider_policy", name: "default_base_url", subject: "oauth_subscription", value: "https://oauth.example/v1/" },
         { kind: "provider_policy", name: "default_catalog_provider_type", subject: "oauth_subscription", value: "true" },
@@ -268,6 +269,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypePreferredAuthMode(options, "oauth_subscription")).toBe("oauth");
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
     const option = options.find((option) => option.value === "oauth_subscription");
+    expect(option?.systemPromptTransformDefault).toBe("strip");
     expect(option?.claudeCodeAttributionDefault).toBe("strip");
     expect(option?.reasoningConfigurable).toBe(true);
     expect(option?.defaultBaseURL).toBe("https://oauth.example/v1");

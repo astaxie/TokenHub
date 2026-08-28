@@ -304,7 +304,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: providerAuthModeInvalidErrorMessagePolicy, Subject: providerType, Value: "Subscription authentication mode is not supported"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
-			{Kind: "provider_policy", Name: claudeCodeAttributionDefaultPolicy, Subject: providerType, Value: claudeCodeAttributionStrip},
+			{Kind: "provider_policy", Name: systemPromptTransformDefaultPolicy, Subject: providerType, Value: systemPromptTransformStrip},
 			{Kind: "provider_policy", Name: providerReasoningConfigurablePolicy, Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: reasoningContentOption, Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-a"},
@@ -357,8 +357,8 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("plugin provider session affinity kind = %+v, want codex session", descriptor.ProviderPolicy)
 	}
-	if descriptor.ProviderPolicy.ClaudeCodeAttributionDefault != claudeCodeAttributionStrip {
-		t.Fatalf("plugin provider Claude Code attribution default = %+v, want strip", descriptor.ProviderPolicy)
+	if descriptor.ProviderPolicy.SystemPromptTransformDefault != systemPromptTransformStrip {
+		t.Fatalf("plugin provider system prompt transform default = %+v, want strip", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.ReasoningConfigurable == nil || !*descriptor.ProviderPolicy.ReasoningConfigurable {
 		t.Fatalf("plugin provider reasoning configuration policy = %+v, want true", descriptor.ProviderPolicy)

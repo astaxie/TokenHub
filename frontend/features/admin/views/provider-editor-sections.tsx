@@ -4,7 +4,7 @@ import { providerTypeLabel } from "../domain/labels";
 import { providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
 import { providerReasoningFieldConfigs, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
-import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
+import { adminFetch, providerResourceSystemPromptTransformPolicyPayload, readAdminError } from "../resources/payloads";
 import { providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
@@ -142,12 +142,12 @@ export function ProviderAdvancedFields({
           <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
         </label>
         <label className="field">
-          <span>{tx("Claude Code 归因块")}</span>
-          <select value={values.claude_code_attribution_policy ?? "preserve"} onChange={(event) => onUpdate("claude_code_attribution_policy", event.target.value)}>
-            <option value="preserve">{tx("保留归因块")}</option>
-            <option value="strip">{tx("移除归因块")}</option>
+          <span>{tx("系统提示词转换")}</span>
+          <select value={values.system_prompt_transform_policy ?? "preserve"} onChange={(event) => onUpdate("system_prompt_transform_policy", event.target.value)}>
+            <option value="preserve">{tx("保留系统提示词块")}</option>
+            <option value="strip">{tx("移除客户端归因块")}</option>
           </select>
-          <small>{tx("Provider 插件可声明默认策略；未声明时默认移除归因块。")}</small>
+          <small>{tx("Provider 插件可声明默认策略；未声明时默认移除客户端归因块。")}</small>
         </label>
       </div>
       {showReasoningCompatibility ? <details className="provider-account-runtime">
@@ -171,7 +171,7 @@ export function ProviderAdvancedFields({
   );
 }
 
-export function ProviderResourceAttributionFields({
+export function ProviderResourceSystemPromptTransformFields({
   api,
   providerID,
   resources,
@@ -193,12 +193,12 @@ export function ProviderResourceAttributionFields({
     try {
       const resp = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}`, {
         method: "PATCH",
-        body: JSON.stringify(providerResourceAttributionPolicyPayload(resource, policy)),
+        body: JSON.stringify(providerResourceSystemPromptTransformPolicyPayload(resource, policy)),
       });
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("更新 Claude Code 归因策略")));
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("更新系统提示词转换策略")));
       await onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : tx("更新 Claude Code 归因策略失败"));
+      setError(err instanceof Error ? err.message : tx("更新系统提示词转换策略失败"));
     } finally {
       setBusyID("");
     }
@@ -207,7 +207,7 @@ export function ProviderResourceAttributionFields({
   return (
     <section className="provider-edit-section">
       <div className="wizard-panel-head">
-        <h3>{tx("Provider Resource 归因策略")}</h3>
+        <h3>{tx("Provider Resource 系统提示词转换")}</h3>
         <p>{tx("每个 Resource 默认继承 Provider 策略，也可以独立覆盖。故障切换时会按实际尝试的 Resource 处理请求。")}</p>
       </div>
       <div className="provider-form-grid">
@@ -216,12 +216,12 @@ export function ProviderResourceAttributionFields({
             <span>{resource.name}</span>
             <select
               disabled={busyID === resource.id}
-              value={resource.options?.claude_code_attribution_policy ?? "inherit"}
+              value={resource.options?.system_prompt_transform_policy ?? resource.options?.claude_code_attribution_policy ?? "inherit"}
               onChange={(event) => void updatePolicy(resource, event.target.value)}
             >
               <option value="inherit">{tx("继承 Provider 策略")}</option>
-              <option value="preserve">{tx("保留归因块")}</option>
-              <option value="strip">{tx("移除归因块")}</option>
+              <option value="preserve">{tx("保留系统提示词块")}</option>
+              <option value="strip">{tx("移除客户端归因块")}</option>
             </select>
           </label>
         ))}

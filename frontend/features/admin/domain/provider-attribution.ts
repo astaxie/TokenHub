@@ -1,17 +1,19 @@
-export const claudeCodeAttributionPreserve = "preserve";
-export const claudeCodeAttributionStrip = "strip";
+export const systemPromptTransformPreserve = "preserve";
+export const systemPromptTransformStrip = "strip";
 
-type ProviderAttributionOption = {
+type ProviderSystemPromptTransformOption = {
   value: string;
+  systemPromptTransformDefault?: string;
   claudeCodeAttributionDefault?: string;
 };
 
-export function defaultProviderClaudeCodeAttributionPolicy(providerType?: string, _catalogID?: string, providerTypeOptions: ProviderAttributionOption[] = []) {
-  const pluginDefault = normalizeClaudeCodeAttributionPolicy(providerTypeOptions.find((option) => option.value === providerType)?.claudeCodeAttributionDefault);
-  return pluginDefault || claudeCodeAttributionStrip;
+export function defaultProviderSystemPromptTransformPolicy(providerType?: string, _catalogID?: string, providerTypeOptions: ProviderSystemPromptTransformOption[] = []) {
+  const option = providerTypeOptions.find((item) => item.value === providerType);
+  const pluginDefault = normalizeSystemPromptTransformPolicy(option?.systemPromptTransformDefault ?? option?.claudeCodeAttributionDefault);
+  return pluginDefault || systemPromptTransformStrip;
 }
 
-function normalizeClaudeCodeAttributionPolicy(value?: string) {
+function normalizeSystemPromptTransformPolicy(value?: string) {
   const policy = value?.trim().toLowerCase() ?? "";
-  return policy === claudeCodeAttributionPreserve || policy === claudeCodeAttributionStrip ? policy : "";
+  return policy === systemPromptTransformPreserve || policy === systemPromptTransformStrip ? policy : "";
 }

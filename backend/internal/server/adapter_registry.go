@@ -46,6 +46,7 @@ type AdapterProviderPolicy struct {
 	RouteRequiresResource        bool                        `json:"route_requires_resource"`
 	CredentialsScope             string                      `json:"credentials_scope,omitempty"`
 	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
+	SystemPromptTransformDefault string                      `json:"system_prompt_transform_default,omitempty"`
 	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
 	ReasoningConfigurable        *bool                       `json:"reasoning_configurable,omitempty"`
 	PreserveReasoningContent     *bool                       `json:"preserve_reasoning_content,omitempty"`
@@ -226,6 +227,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		RouteRequiresResource:        adapterRequiresRouteResource(r, descriptor.Type),
 		CredentialsScope:             adapterCredentialsScope(r, descriptor.Type),
 		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
+		SystemPromptTransformDefault: adapterSystemPromptTransformDefault(r, descriptor.Type),
 		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
 		ReasoningConfigurable:        adapterReasoningConfigurable(r, descriptor.Type),
 		PreserveReasoningContent:     adapterPreserveReasoningContent(r, descriptor.Type),
@@ -312,6 +314,13 @@ func adapterClaudeCodeAttributionDefault(registry *AdapterRegistry, providerType
 		return normalizeClaudeCodeAttributionPolicyOrEmpty(value)
 	}
 	return ""
+}
+
+func adapterSystemPromptTransformDefault(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, systemPromptTransformDefaultPolicy); ok {
+		return normalizeSystemPromptTransformPolicyOrEmpty(value)
+	}
+	return adapterClaudeCodeAttributionDefault(registry, providerType)
 }
 
 func adapterReasoningConfigurable(registry *AdapterRegistry, providerType string) *bool {

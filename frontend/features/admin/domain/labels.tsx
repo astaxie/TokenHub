@@ -201,7 +201,7 @@ export function fieldValueLabel(fieldKey: string, value: unknown): string {
   if (normalizedKey === "icon_key") return identityProviderIconLabel(text);
   if (normalizedKey === "status" || normalizedKey.includes("status")) return enumValueLabel(text);
   if (normalizedKey === "strategy") return routeStrategyLabel(text);
-  if (normalizedKey === "claude_code_attribution_policy") return enumValueLabel(text);
+  if (normalizedKey === "system_prompt_transform_policy" || normalizedKey === "claude_code_attribution_policy") return enumValueLabel(text);
   if (normalizedKey === "codex_fingerprint_mode") {
     return tx({
       off: "关闭（透传）",

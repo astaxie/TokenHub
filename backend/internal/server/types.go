@@ -298,7 +298,9 @@ type ProviderCreateRequest struct {
 	Options                     map[string]string `json:"options"`
 	CatalogID                   string            `json:"catalog_id"`
 	ModelCategory               string            `json:"model_category"`
-	ClaudeCodeAttributionPolicy *string           `json:"claude_code_attribution_policy,omitempty"`
+	SystemPromptTransformPolicy *string           `json:"system_prompt_transform_policy,omitempty"`
+	// ClaudeCodeAttributionPolicy is a legacy write-only alias for system prompt transform policy.
+	ClaudeCodeAttributionPolicy *string `json:"claude_code_attribution_policy,omitempty"`
 	// CreateRoutes is accepted only to reject the retired automatic-route workflow.
 	CreateRoutes     *bool                  `json:"create_routes"`
 	SelectedModels   []string               `json:"selected_models"`

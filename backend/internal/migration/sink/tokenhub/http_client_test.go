@@ -69,18 +69,30 @@ func TestProviderRequestsCarryAPIKey(t *testing.T) {
 			t.Fatalf("request %d missing sensitive_headers, payload=%v", i, payload)
 		}
 		options, _ := payload["options"].(map[string]any)
-		if got, _ := options["claude_code_attribution_policy"].(string); got != "preserve" {
-			t.Fatalf("request %d must preserve legacy attribution behavior, payload=%v", i, payload)
+		if got, _ := options["system_prompt_transform_policy"].(string); got != "preserve" {
+			t.Fatalf("request %d must preserve legacy system prompt behavior, payload=%v", i, payload)
 		}
 	}
 }
 
-func TestProviderRequestsKeepExplicitAttributionPolicy(t *testing.T) {
+func TestProviderRequestsKeepExplicitSystemPromptTransformPolicy(t *testing.T) {
+	req := providerWriteRequestFrom(server.Provider{Options: map[string]string{
+		"system_prompt_transform_policy": "strip",
+	}})
+	if got := req.Options["system_prompt_transform_policy"]; got != "strip" {
+		t.Fatalf("expected explicit system prompt transform policy to win, got %q", got)
+	}
+}
+
+func TestProviderRequestsMigrateExplicitLegacyAttributionPolicy(t *testing.T) {
 	req := providerWriteRequestFrom(server.Provider{Options: map[string]string{
 		"claude_code_attribution_policy": "strip",
 	}})
-	if got := req.Options["claude_code_attribution_policy"]; got != "strip" {
-		t.Fatalf("expected explicit attribution policy to win, got %q", got)
+	if got := req.Options["system_prompt_transform_policy"]; got != "strip" {
+		t.Fatalf("expected legacy attribution policy to migrate, got %q", got)
+	}
+	if _, exists := req.Options["claude_code_attribution_policy"]; exists {
+		t.Fatalf("expected migrated request to omit legacy attribution key: %+v", req.Options)
 	}
 }
 
