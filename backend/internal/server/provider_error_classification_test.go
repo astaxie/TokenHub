@@ -286,6 +286,29 @@ func TestProviderErrorProfileComesFromProviderPolicyOptions(t *testing.T) {
 	}
 }
 
+func TestProviderErrorProfileDescriptorNormalizesAndMapsCodes(t *testing.T) {
+	profile := providerErrorProfileDescriptor{
+		Name:               "custom",
+		CodeField:          "error_code",
+		MessageField:       "detail",
+		NormalizeErrorBody: true,
+		CodeClassOverrides: map[string]providerErrorClass{
+			"capacity_exhausted": {http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame},
+		},
+	}
+	err := newProfiledProviderHTTPError(profile, http.StatusBadRequest, http.Header{}, []byte(`{"error_code":"capacity_exhausted","detail":"no room"}`))
+	httpErr := AsHTTPError(err)
+	if httpErr == nil || httpErr.Code != "provider_resource_exhausted" || httpErr.Status != http.StatusServiceUnavailable {
+		t.Fatalf("profile descriptor error = %#v", err)
+	}
+	if message := httpErr.Message; !strings.Contains(message, "no room") || !strings.Contains(message, "capacity_exhausted") {
+		t.Fatalf("profile descriptor did not normalize message: %q", message)
+	}
+	if got := providerErrorDisposition(err); got != ProviderErrorTransientSame {
+		t.Fatalf("profile descriptor disposition = %q, want %q", got, ProviderErrorTransientSame)
+	}
+}
+
 func TestProviderErrorProfileDoesNotInferKronkFromProviderType(t *testing.T) {
 	if profile := providerErrorProfile(Provider{Type: ProviderKronk}); profile != "" {
 		t.Fatalf("provider error profile = %q, want no type-inferred profile", profile)

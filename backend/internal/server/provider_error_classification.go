@@ -16,6 +16,33 @@ const providerErrorBodyPrefix = 4096
 
 const providerErrorProfileKronk = "kronk"
 
+type providerErrorProfileDescriptor struct {
+	Name               string
+	CodeField          string
+	MessageField       string
+	NormalizeErrorBody bool
+	CodeClassOverrides map[string]providerErrorClass
+}
+
+var providerErrorProfileDescriptors = map[string]providerErrorProfileDescriptor{
+	providerErrorProfileKronk: {
+		Name:               providerErrorProfileKronk,
+		CodeField:          "code",
+		MessageField:       "message",
+		NormalizeErrorBody: true,
+		CodeClassOverrides: map[string]providerErrorClass{
+			"resource_exhausted":     {http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame},
+			"insufficient_resources": {http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame},
+			"out_of_memory":          {http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame},
+			"model_not_found":        {http.StatusBadGateway, "provider_model_not_found", ProviderErrorModelUnsupported},
+			"deadline_exceeded":      {http.StatusGatewayTimeout, "provider_upstream_timeout", ProviderErrorTransientSame},
+			"timeout":                {http.StatusGatewayTimeout, "provider_upstream_timeout", ProviderErrorTransientSame},
+			"unauthenticated":        {http.StatusBadGateway, "provider_auth_error", ProviderErrorAuthBroken},
+			"permission_denied":      {http.StatusBadGateway, "provider_auth_error", ProviderErrorAuthBroken},
+		},
+	},
+}
+
 // An upstream failure has to answer three separate questions, and collapsing them
 // into one status code answers none of them well:
 //
@@ -132,8 +159,8 @@ func checkProviderResponseForProviderPolicy(resp *http.Response, provider Provid
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, providerErrorBodyPrefix))
 	data = redactProviderErrorSecrets(data, provider)
-	if policy.ErrorProfile == providerErrorProfileKronk {
-		return newKronkProviderHTTPError(resp.StatusCode, resp.Header, data)
+	if profile, ok := lookupProviderErrorProfileDescriptor(policy.ErrorProfile); ok {
+		return newProfiledProviderHTTPError(profile, resp.StatusCode, resp.Header, data)
 	}
 	return newProviderHTTPError(resp.StatusCode, resp.Header, data)
 }
@@ -145,19 +172,21 @@ func providerErrorProfile(provider Provider) string {
 	return ""
 }
 
-func newKronkProviderHTTPError(upstreamStatus int, headers http.Header, data []byte) error {
-	kronkCode := kronkErrorCode(data)
-	normalized := normalizeKronkErrorBody(data)
+func lookupProviderErrorProfileDescriptor(profile string) (providerErrorProfileDescriptor, bool) {
+	profile = strings.ToLower(strings.TrimSpace(profile))
+	if profile == "" {
+		return providerErrorProfileDescriptor{}, false
+	}
+	descriptor, ok := providerErrorProfileDescriptors[profile]
+	return descriptor, ok
+}
+
+func newProfiledProviderHTTPError(profile providerErrorProfileDescriptor, upstreamStatus int, headers http.Header, data []byte) error {
+	profileCode := providerErrorProfileCode(profile, data)
+	normalized := normalizeProviderErrorProfileBody(profile, data)
 	class := classifyProviderStatus(upstreamStatus)
-	switch kronkCode {
-	case "resource_exhausted", "insufficient_resources", "out_of_memory":
-		class = providerErrorClass{http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame}
-	case "model_not_found":
-		class = providerErrorClass{http.StatusBadGateway, "provider_model_not_found", ProviderErrorModelUnsupported}
-	case "deadline_exceeded", "timeout":
-		class = providerErrorClass{http.StatusGatewayTimeout, "provider_upstream_timeout", ProviderErrorTransientSame}
-	case "unauthenticated", "permission_denied":
-		class = providerErrorClass{http.StatusBadGateway, "provider_auth_error", ProviderErrorAuthBroken}
+	if override, ok := profile.CodeClassOverrides[profileCode]; ok {
+		class = override
 	}
 	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, normalized))
 	httpErr.UpstreamStatus = upstreamStatus
@@ -168,22 +197,25 @@ func newKronkProviderHTTPError(upstreamStatus int, headers http.Header, data []b
 	}
 }
 
-func kronkErrorCode(data []byte) string {
+func providerErrorProfileCode(profile providerErrorProfileDescriptor, data []byte) string {
 	var payload map[string]any
 	if json.Unmarshal(data, &payload) != nil {
 		return ""
 	}
-	code, _ := payload["code"].(string)
+	code, _ := payload[strings.TrimSpace(profile.CodeField)].(string)
 	return strings.ToLower(strings.TrimSpace(code))
 }
 
-func normalizeKronkErrorBody(data []byte) []byte {
+func normalizeProviderErrorProfileBody(profile providerErrorProfileDescriptor, data []byte) []byte {
+	if !profile.NormalizeErrorBody {
+		return data
+	}
 	var payload map[string]any
 	if json.Unmarshal(data, &payload) != nil {
 		return data
 	}
-	message, _ := payload["message"].(string)
-	code, _ := payload["code"].(string)
+	message, _ := payload[strings.TrimSpace(profile.MessageField)].(string)
+	code, _ := payload[strings.TrimSpace(profile.CodeField)].(string)
 	if strings.TrimSpace(message) == "" && strings.TrimSpace(code) == "" {
 		return data
 	}
