@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { type AdminUIContribution } from "../core/types";
 import { emptyData } from "../domain/catalog";
 import { AdminUIDashboardCards, dashboardMetricFields, dashboardMetricValue } from "./admin-ui-dashboard-cards";
 
@@ -57,6 +58,82 @@ describe("AdminUIDashboardCards", () => {
     expect(screen.queryByText("Provider Setup")).not.toBeInTheDocument();
   });
 
+  it("orders cards with SIM dashboard composition metadata", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.sim.operations",
+      name: "Operations SIM",
+      version: "built-in",
+      source: "built_in",
+      kinds: ["sim"],
+      placements: ["presentation"],
+      capabilities: [{
+        kind: "sim",
+        name: "dashboard_composition",
+        subject: "operations",
+        value: JSON.stringify({
+          id: "operations",
+          layout: "operations",
+          cards: [
+            { contribution_id: "requests", region: "main", size: "wide", order: 10 },
+            { contribution_id: "cost", region: "side", size: "medium", order: 20 },
+          ],
+        }),
+      }],
+    }];
+    data.pluginUI = [
+      dashboardCard("cost", "Cost", 20),
+      dashboardCard("requests", "Requests", 10),
+    ];
+
+    render(<AdminUIDashboardCards data={data} />);
+
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Requests", "Cost"]);
+    expect(screen.getByRole("heading", { name: "Requests" }).closest("article")).toHaveAttribute("data-dashboard-region", "main");
+    expect(screen.getByRole("heading", { name: "Requests" }).closest("article")).toHaveAttribute("data-dashboard-size", "wide");
+    expect(screen.getByRole("heading", { name: "Cost" }).closest("article")).toHaveAttribute("data-dashboard-region", "side");
+  });
+
+  it("ignores unknown card ids in dashboard composition metadata", () => {
+    const data = emptyData();
+    data.pluginUI = [
+      dashboardCard("visible", "Visible Card", 1),
+      dashboardCard("hidden", "Hidden Card", 2),
+      {
+        plugin_id: "tokenhub.sim.enterprise",
+        id: "ops-dashboard",
+        slot: "dashboard.composition",
+        schema: {
+          composition: {
+            id: "ops",
+            cards: [
+              { contribution_id: "missing", order: 10 },
+              { contribution_id: "visible", order: 20 },
+            ],
+          },
+        },
+      },
+    ];
+
+    render(<AdminUIDashboardCards data={data} />);
+
+    expect(screen.getByRole("heading", { name: "Visible Card" })).toBeInTheDocument();
+    expect(screen.queryByText("Hidden Card")).not.toBeInTheDocument();
+    expect(screen.queryByText("missing")).not.toBeInTheDocument();
+  });
+
+  it("falls back to legacy dashboard card order when no composition exists", () => {
+    const data = emptyData();
+    data.pluginUI = [
+      dashboardCard("first", "First Card", 1),
+      dashboardCard("second", "Second Card", 2),
+    ];
+
+    render(<AdminUIDashboardCards data={data} />);
+
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["First Card", "Second Card"]);
+  });
+
   it("parses only metric fields and formats dynamic values", () => {
     const data = emptyData();
     data.summary.estimated_cost_usd = 12.345678;
@@ -76,3 +153,15 @@ describe("AdminUIDashboardCards", () => {
     expect(dashboardMetricValue(data, fields[0])).toBe("$12.35");
   });
 });
+
+function dashboardCard(id: string, title: string, value: number): AdminUIContribution {
+  return {
+    plugin_id: "tokenhub.admin.metrics",
+    id,
+    slot: "dashboard.card",
+    title,
+    schema: {
+      fields: [{ name: id, type: "metric", label: title, value }],
+    },
+  };
+}

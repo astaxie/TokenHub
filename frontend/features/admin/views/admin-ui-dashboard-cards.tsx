@@ -1,5 +1,6 @@
 import { PlugZap } from "lucide-react";
 import { type AdminUIContribution, type AppData } from "../core/types";
+import { dashboardCardRegistry } from "../domain/admin-ui-dashboard";
 import { compactNumber, formatMoney, formatNumber } from "../domain/formatting";
 
 type DashboardMetricField = {
@@ -13,17 +14,21 @@ type DashboardMetricField = {
 };
 
 export function AdminUIDashboardCards({ data }: { data: AppData }) {
-  const cards = data.pluginUI
-    .filter((contribution) => contribution.slot === "dashboard.card")
-    .map((contribution) => ({ contribution, fields: dashboardMetricFields(contribution) }))
+  const cards = dashboardCardRegistry(data)
+    .map((entry) => ({ ...entry, fields: dashboardMetricFields(entry.contribution) }))
     .filter((card) => card.fields.length > 0);
 
   if (cards.length === 0) return null;
 
   return (
-    <section className="overview-plugin-cards">
-      {cards.map(({ contribution, fields }) => (
-        <article className="overview-panel admin-ui-dashboard-card" key={`${contribution.plugin_id}:${contribution.id}`}>
+    <section className="overview-plugin-cards" data-dashboard-composition={cards[0]?.composition?.id} data-dashboard-layout={cards[0]?.composition?.layout}>
+      {cards.map(({ contribution, fields, key, slot }) => (
+        <article
+          className="overview-panel admin-ui-dashboard-card"
+          data-dashboard-region={slot?.region}
+          data-dashboard-size={slot?.size}
+          key={key}
+        >
           <div className="admin-ui-dashboard-card-head">
             <span><PlugZap size={16} /></span>
             <div>
