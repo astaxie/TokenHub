@@ -59,6 +59,11 @@ describe("Provider account OAuth UI", () => {
           capabilityUnsupportedValue: "blocked",
           routeBackfillOption: "kimi_image_route_backfill_v1",
           routeBackfillValue: "done",
+          requestDefaultModel: false,
+          requestSupportsMask: true,
+          requestSizePolicy: "gpt-image-2",
+          requestAllowedSizes: [],
+          requestAllowedQualities: ["auto", "low", "medium", "high"],
         }}
         resource={{
           id: "rsrc_kimi",

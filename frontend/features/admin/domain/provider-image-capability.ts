@@ -12,6 +12,11 @@ export type ImageCapabilityProfile = {
   capabilityUnsupportedValue: string;
   routeBackfillOption: string;
   routeBackfillValue: string;
+  requestDefaultModel: boolean;
+  requestSupportsMask: boolean;
+  requestSizePolicy: string;
+  requestAllowedSizes: string[];
+  requestAllowedQualities: string[];
 };
 
 const defaultImageCapabilityDisplayName = "生图能力";
@@ -32,7 +37,30 @@ export function imageCapabilityProfileFromAction(action?: Pick<PluginActionDescr
     capabilityUnsupportedValue: action.metadata?.capability_unsupported_value?.trim() || action.metadata?.unsupported_value?.trim() || "unsupported",
     routeBackfillOption: action.metadata?.route_backfill_option?.trim() || action.metadata?.provider_route_backfill_option?.trim() || "image_capability_route_backfill_v1",
     routeBackfillValue: action.metadata?.route_backfill_value?.trim() || action.metadata?.provider_route_backfill_value?.trim() || "completed",
+    requestDefaultModel: truthyMetadata(action.metadata?.request_default_model ?? action.metadata?.["request.default_model"] ?? action.metadata?.image_request_default_model),
+    requestSupportsMask: booleanMetadata(action.metadata?.request_supports_mask ?? action.metadata?.["request.supports_mask"] ?? action.metadata?.image_request_supports_mask) ?? true,
+    requestSizePolicy: action.metadata?.request_size_policy?.trim() || action.metadata?.["request.size_policy"]?.trim() || action.metadata?.image_request_size_policy?.trim() || "gpt-image-2",
+    requestAllowedSizes: splitMetadataList(action.metadata?.request_allowed_sizes ?? action.metadata?.["request.allowed_sizes"] ?? action.metadata?.image_request_allowed_sizes),
+    requestAllowedQualities: splitMetadataList((action.metadata?.request_allowed_qualities ?? action.metadata?.["request.allowed_qualities"] ?? action.metadata?.image_request_allowed_qualities) || "auto,low,medium,high"),
   };
+}
+
+function truthyMetadata(value: string | undefined) {
+  return ["true", "1", "yes", "y", "on", "enabled"].includes((value ?? "").trim().toLowerCase());
+}
+
+function booleanMetadata(value: string | undefined) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on", "enabled"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", "off", "disabled"].includes(normalized)) return false;
+  return undefined;
+}
+
+function splitMetadataList(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export function providerImageCapabilityContribution(contributions: AdminUIContribution[], providerType: string, action?: PluginActionDescriptor) {
