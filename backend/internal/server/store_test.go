@@ -241,14 +241,24 @@ func TestEffectiveCacheReadPriceUsesCategoryEstimateWhenUnconfigured(t *testing.
 			want:  0.2,
 		},
 		{
-			name:  "deepseek two percent",
-			model: Model{Name: "deepseek-test", Category: "deepseek", InputPriceUSDPer1M: 2},
-			want:  0.04,
+			name: "metadata estimate ratio overrides default",
+			model: Model{
+				Name:               "vendor-test",
+				Category:           "vendor",
+				InputPriceUSDPer1M: 2,
+				Metadata:           map[string]string{"cache_read_estimate_ratio": "0.02"},
+			},
+			want: 0.04,
 		},
 		{
-			name:  "deepseek v4 pro current ratio",
-			model: Model{Name: "deepseek-v4-pro", Category: "deepseek", InputPriceUSDPer1M: 2},
-			want:  2.0 / 120,
+			name: "metadata estimate ratio supports model-scoped pricing",
+			model: Model{
+				Name:               "vendor-pro",
+				Category:           "vendor",
+				InputPriceUSDPer1M: 2,
+				Metadata:           map[string]string{"cache_read_estimate_ratio": "0.008333333333333333"},
+			},
+			want: 2.0 / 120,
 		},
 		{
 			name: "legacy metadata remains supported",

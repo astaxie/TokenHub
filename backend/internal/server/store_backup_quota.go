@@ -548,9 +548,8 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 }
 
 const (
-	defaultCacheReadEstimateRatio  = 0.10
-	deepSeekCacheReadEstimateRatio = 0.02
-	deepSeekV4ProCacheReadRatio    = 1.0 / 120
+	defaultCacheReadEstimateRatio = 0.10
+	cacheReadEstimateRatioKey     = "cache_read_estimate_ratio"
 )
 
 func effectiveCacheReadPriceUSDPer1M(model Model) float64 {
@@ -568,15 +567,22 @@ func effectiveCacheReadPriceUSDPer1M(model Model) float64 {
 	if model.InputPriceUSDPer1M <= 0 {
 		return 0
 	}
-	ratio := defaultCacheReadEstimateRatio
-	category := standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.Name, model.Family)))
-	if category == "deepseek" {
-		ratio = deepSeekCacheReadEstimateRatio
-		if strings.Contains(strings.ToLower(model.Name+" "+model.Family), "v4-pro") {
-			ratio = deepSeekV4ProCacheReadRatio
-		}
+	ratio := cacheReadEstimateRatioFromMetadata(model.Metadata)
+	if ratio <= 0 {
+		ratio = defaultCacheReadEstimateRatio
 	}
 	return model.InputPriceUSDPer1M * ratio
+}
+
+func cacheReadEstimateRatioFromMetadata(metadata map[string]string) float64 {
+	if len(metadata) == 0 {
+		return 0
+	}
+	value, err := strconv.ParseFloat(strings.TrimSpace(metadata[cacheReadEstimateRatioKey]), 64)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
 }
 
 func minInt64(left int64, right int64) int64 {
