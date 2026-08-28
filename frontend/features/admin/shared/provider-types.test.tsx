@@ -80,9 +80,21 @@ describe("providerTypeOptionsFromData", () => {
     expect(options.find((option) => option.value === "openai")?.label).toBe("OpenAI 官方");
   });
 
-  it("uses legacy provider types only when no plugin provider source is loaded", () => {
-    const fallback = providerTypeOptionsFromData(emptyData()).map((option) => option.value);
-    expect(fallback).toContain("qwen");
+  it("does not synthesize legacy provider types without plugin provider sources", () => {
+    expect(providerTypeOptionsFromData(emptyData()).map((option) => option.value)).toEqual([]);
+
+    const historical = emptyData();
+    historical.providers = [{
+      id: "prv_legacy",
+      name: "Legacy Provider",
+      type: "qwen",
+      base_url: "",
+      priority: 10,
+      status: "active",
+      healthy: true,
+    }];
+    expect(providerTypeOptionsFromData(historical).map((option) => option.value)).toEqual(["qwen"]);
+    expect(providerTypeOptionsFromData(emptyData(), { type: "draft_subscription" }).map((option) => option.value)).toEqual(["draft_subscription"]);
 
     const data = emptyData();
     data.providerAdapters = [{
