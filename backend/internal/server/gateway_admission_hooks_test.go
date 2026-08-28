@@ -88,6 +88,107 @@ func TestAdmissionHookDenyReturnsForbidden(t *testing.T) {
 	}
 }
 
+func TestAdmissionHookContinueRecordsPluginAuditEvent(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-admission",
+		HookID:        "allow-audit",
+		Stage:         pluginmeta.StageAdmission,
+		Priority:      2000,
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register admission hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{
+			Decision:    pluginmeta.HookDecisionContinue,
+			AuditEvents: []json.RawMessage{json.RawMessage(`{"outcome":"allowed","authorization":"Bearer hidden"}`)},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register admission handler: %v", err)
+	}
+
+	err := server.runGatewayAdmissionHooks(context.Background(), gatewayPluginTestCall(), http.Header{}, ChatCompletionRequest{Model: "gpt-test"}, 0)
+	if err != nil {
+		t.Fatalf("run admission hook: %v", err)
+	}
+
+	event := requireGatewayAdmissionAuditEvent(t, store.ListAuditEvents(), "success")
+	if !strings.Contains(event.AfterSnapshot, `"authorization":"[redacted]"`) {
+		t.Fatalf("admission audit snapshot did not redact authorization: %s", event.AfterSnapshot)
+	}
+}
+
+func TestAdmissionHookDenyRecordsPluginAuditEvent(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-admission",
+		HookID:        "deny-audit",
+		Stage:         pluginmeta.StageAdmission,
+		Priority:      2000,
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register admission hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{
+			Decision:    pluginmeta.HookDecisionDeny,
+			AuditEvents: []json.RawMessage{json.RawMessage(`{"outcome":"denied","reason":"blocked_model"}`)},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register admission handler: %v", err)
+	}
+
+	err := server.runGatewayAdmissionHooks(context.Background(), gatewayPluginTestCall(), http.Header{}, ChatCompletionRequest{Model: "gpt-test"}, 0)
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusForbidden || httpErr.Code != "gateway_hook_denied" {
+		t.Fatalf("admission hook error = %d/%s, want 403/gateway_hook_denied", httpErr.Status, httpErr.Code)
+	}
+	requireGatewayAdmissionAuditEvent(t, store.ListAuditEvents(), "denied")
+}
+
+func TestAdmissionHookScopeMismatchDoesNotRecordPluginAuditEvent(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-admission",
+		HookID:        "scoped-audit",
+		Stage:         pluginmeta.StageAdmission,
+		Priority:      2000,
+		Scope:         pluginmeta.GatewayHookScope{ProjectIDs: []string{"prj_other"}},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register admission hook: %v", err)
+	}
+	called := false
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		called = true
+		return pluginmeta.GatewayHookResult{
+			AuditEvents: []json.RawMessage{json.RawMessage(`{"outcome":"should_not_record"}`)},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register admission handler: %v", err)
+	}
+
+	err := server.runGatewayAdmissionHooks(context.Background(), gatewayPluginTestCall(), http.Header{}, ChatCompletionRequest{Model: "gpt-test"}, 0)
+	if err != nil {
+		t.Fatalf("run admission hook: %v", err)
+	}
+	if called {
+		t.Fatal("scoped admission hook ran for a non-matching project")
+	}
+	for _, event := range store.ListAuditEvents() {
+		if event.Action == "plugin.gateway.admission" {
+			t.Fatalf("scope-mismatched admission hook recorded audit event: %+v", event)
+		}
+	}
+}
+
 func TestAdmissionHookDenyStopsGatewayChatBeforeProvider(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Admission Plugin App"})
@@ -134,4 +235,21 @@ func TestAdmissionHookDenyStopsGatewayChatBeforeProvider(t *testing.T) {
 	if adapter.seenProviderID != "" {
 		t.Fatalf("adapter was invoked for provider %q after admission denial", adapter.seenProviderID)
 	}
+}
+
+func requireGatewayAdmissionAuditEvent(t *testing.T, events []AuditEvent, status string) AuditEvent {
+	t.Helper()
+	for _, event := range events {
+		if event.Action == "plugin.gateway.admission" && event.Status == status {
+			if event.ResourceType != "gateway_request" {
+				t.Fatalf("admission audit resource type = %q, want gateway_request", event.ResourceType)
+			}
+			if !strings.Contains(event.AfterSnapshot, `"stage":"admission"`) {
+				t.Fatalf("admission audit snapshot missing stage: %s", event.AfterSnapshot)
+			}
+			return event
+		}
+	}
+	t.Fatalf("missing admission audit event with status %s: %+v", status, events)
+	return AuditEvent{}
 }
