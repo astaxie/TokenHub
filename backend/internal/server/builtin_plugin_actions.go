@@ -554,6 +554,7 @@ func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
 			"enabled_required_error_code":                              "codex_image_enabled_required",
 			"enabled_required_error_message":                           "The enabled field is required",
 			"audit_action":                                             "configure_codex_image",
+			"operation_key_prefix":                                     "codex-image-capability",
 			"error_message.codex_image_forbidden":                      "所选 Codex 账号不支持生图，无法创建图片。可更换账号后重试。",
 			"error_message.codex_image_request_failed":                 "Codex 生图上游暂时不可用，请稍后重试；本次结果不会标记为不支持。",
 			"error_message.codex_image_response_failed":                "Codex 生图上游暂时不可用，请稍后重试；本次结果不会标记为不支持。",

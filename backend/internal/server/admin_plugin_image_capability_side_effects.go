@@ -30,6 +30,7 @@ type providerImageCapabilityRouteProfile struct {
 	EnabledRequiredErrorCode   string
 	EnabledRequiredMessage     string
 	AuditAction                string
+	OperationKeyPrefix         string
 }
 
 func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
@@ -157,6 +158,10 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 		AuditAction: strings.TrimSpace(firstNonEmpty(
 			descriptor.Metadata["audit_action"],
 			descriptor.Metadata["admin_audit_action"],
+		)),
+		OperationKeyPrefix: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["operation_key_prefix"],
+			descriptor.Metadata["lock_key_prefix"],
 		)),
 	}
 	profile.withDefaults()
@@ -336,6 +341,9 @@ func (p *providerImageCapabilityRouteProfile) withDefaults() {
 	if p.AuditAction == "" {
 		p.AuditAction = "configure_provider_image_capability"
 	}
+	if p.OperationKeyPrefix == "" {
+		p.OperationKeyPrefix = "provider-image-capability"
+	}
 }
 
 func (p providerImageCapabilityRouteProfile) capabilityIsSupported(capability string) bool {
@@ -370,6 +378,7 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.EnabledRequiredErrorCode,
 		p.EnabledRequiredMessage,
 		p.AuditAction,
+		p.OperationKeyPrefix,
 	}, "\x00")
 }
 

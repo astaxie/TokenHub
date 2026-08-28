@@ -82,3 +82,18 @@ func TestAdminPluginImageVirtualModelRouteUsesPluginDeclaredValidationErrors(t *
 		t.Fatalf("expected plugin-declared capability validation, got %d: %s", activeWithoutCapability.Code, activeWithoutCapability.Body)
 	}
 }
+
+func TestProviderImageCapabilityClusterKeyUsesPluginProfilePrefix(t *testing.T) {
+	if key := providerImageCapabilityClusterKey(providerImageCapabilityRouteProfile{}, "prv_plugin"); key != "provider-image-capability:prv_plugin" {
+		t.Fatalf("default provider image capability key = %q", key)
+	}
+	profile := providerImageCapabilityProfileFromAction(pluginmeta.ActionDescriptor{
+		Metadata: map[string]string{"operation_key_prefix": "plugin-image-lock"},
+	})
+	if key := providerImageCapabilityClusterKey(profile, "prv_plugin"); key != "plugin-image-lock:prv_plugin" {
+		t.Fatalf("plugin provider image capability key = %q", key)
+	}
+	if key := codexImageCapabilityClusterKey("prv_codex"); key != "codex-image-capability:prv_codex" {
+		t.Fatalf("codex image capability key = %q", key)
+	}
+}

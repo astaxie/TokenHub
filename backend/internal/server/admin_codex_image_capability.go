@@ -32,10 +32,11 @@ func (a CodexSubscriptionAdapter) ProviderOperationKey(provider Provider, operat
 	if operation != ProviderAdminOperationDeleteProvider {
 		return "", false
 	}
-	if len(a.imageCapabilityProfilesForProvider(provider.Type)) == 0 {
+	profiles := a.imageCapabilityProfilesForProvider(provider.Type)
+	if len(profiles) == 0 {
 		return "", false
 	}
-	return codexImageCapabilityClusterKey(provider.ID), true
+	return providerImageCapabilityClusterKey(profiles[0], provider.ID), true
 }
 
 func (a CodexSubscriptionAdapter) ProviderResourceOperationKey(provider Provider, resource ProviderResource, operation ProviderAdminOperation) (string, bool) {
@@ -46,7 +47,7 @@ func (a CodexSubscriptionAdapter) ProviderResourceOperationKey(provider Provider
 		if profile.ResourceType != "" && profile.ResourceType != resource.ResourceType {
 			continue
 		}
-		return codexImageCapabilityClusterKey(firstNonEmpty(resource.ProviderID, provider.ID)), true
+		return providerImageCapabilityClusterKey(profile, firstNonEmpty(resource.ProviderID, provider.ID)), true
 	}
 	return "", false
 }
@@ -58,6 +59,9 @@ func (a CodexSubscriptionAdapter) imageCapabilityProfilesForProvider(providerTyp
 	providerType = strings.TrimSpace(providerType)
 	profiles := []providerImageCapabilityRouteProfile{}
 	for _, profile := range a.ImageCapabilityProfiles(providerType) {
+		if profile.OperationKeyPrefix == "" {
+			profile.OperationKeyPrefix = "codex-image-capability"
+		}
 		profile.withDefaults()
 		if profile.ProviderType != "" && profile.ProviderType != providerType {
 			continue
@@ -68,7 +72,12 @@ func (a CodexSubscriptionAdapter) imageCapabilityProfilesForProvider(providerTyp
 }
 
 func codexImageCapabilityClusterKey(providerID string) string {
-	return "codex-image-capability:" + strings.TrimSpace(providerID)
+	return providerImageCapabilityClusterKey(codexImageCapabilityRouteProfile(), providerID)
+}
+
+func providerImageCapabilityClusterKey(profile providerImageCapabilityRouteProfile, providerID string) string {
+	profile.withDefaults()
+	return profile.OperationKeyPrefix + ":" + strings.TrimSpace(providerID)
 }
 
 func (s *Server) handleAdminProviderImageCapability(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
@@ -132,7 +141,7 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		return providerImageCapabilityResult{}, err
 	}
 	result := providerImageCapabilityResult{Enabled: enabled, ResourceID: resource.ID}
-	err = s.store.RunClusterOperation(ctx, codexImageCapabilityClusterKey(provider.ID), func(leaseCtx context.Context) error {
+	err = s.store.RunClusterOperation(ctx, providerImageCapabilityClusterKey(profile, provider.ID), func(leaseCtx context.Context) error {
 		current, currentProvider, currentErr := s.codexImageResource(resourceID, enabled, profile)
 		if currentErr != nil {
 			return currentErr
@@ -320,6 +329,7 @@ func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
 		CapabilityUnsupportedValue: codexImageCapabilityUnsupported,
 		RouteBackfillOption:        codexImageRouteBackfillOption,
 		RouteBackfillValue:         codexImageRouteBackfillCompleted,
+		OperationKeyPrefix:         "codex-image-capability",
 	}
 }
 
@@ -355,7 +365,7 @@ func backfillProviderImageCapabilityRoutesForProfile(store Store, profile provid
 			!providerHasSupportedImageCapabilityResource(resources, provider.ID, profile) || providerImageCapabilityRouteBackfillDone(resources, provider.ID, profile) {
 			continue
 		}
-		err := store.RunClusterOperation(context.Background(), codexImageCapabilityClusterKey(provider.ID), func(context.Context) error {
+		err := store.RunClusterOperation(context.Background(), providerImageCapabilityClusterKey(profile, provider.ID), func(context.Context) error {
 			currentResources := store.ListProviderResources()
 			if !providerHasSupportedImageCapabilityResource(currentResources, provider.ID, profile) || providerImageCapabilityRouteBackfillDone(currentResources, provider.ID, profile) {
 				return nil
