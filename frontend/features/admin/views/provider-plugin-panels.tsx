@@ -1,9 +1,11 @@
 import { Play } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
 import { compactNumber, formatMoney, formatNumber } from "../domain/formatting";
+import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
+import { PluginActionRunner } from "./plugin-action-runner";
 import { ProviderResourceSystemPromptTransformFields } from "./provider-editor-sections";
 
 type PanelField = {
@@ -19,6 +21,7 @@ type PanelField = {
 type PanelLayout = "resource_system_prompt_transform";
 
 type PanelState = {
+  values: Record<string, string | boolean>;
   resourceID: string;
   busy: boolean;
   error: string;
@@ -52,35 +55,53 @@ export function ProviderPluginPanels({
   );
   const layoutPanels = panels.filter((panel) => panel.layout);
   const genericPanels = panels.filter((panel) => !panel.layout);
-  const actionKeys = useMemo(() => new Set(actions.map((action) => actionKey(action.plugin_id, action.action_id))), [actions]);
+  const actionMap = useMemo(() => new Map(actions.map((action) => [pluginActionKey(action.plugin_id, action.action_id), action] as const)), [actions]);
   const [states, setStates] = useState<Record<string, PanelState>>({});
   if (panels.length === 0) return null;
 
-  function stateFor(contribution: AdminUIContribution, panelResources: ProviderResource[]): PanelState {
-    return states[contributionKey(contribution)] ?? defaultPanelState(panelResources);
+  function stateFor(contribution: AdminUIContribution, panelResources: ProviderResource[], action?: PluginActionDescriptor): PanelState {
+    return states[contributionKey(contribution)] ?? defaultPanelState(panelResources, action);
   }
 
-  function updateState(contribution: AdminUIContribution, panelResources: ProviderResource[], patch: Partial<PanelState>) {
+  function updateState(contribution: AdminUIContribution, panelResources: ProviderResource[], patch: Partial<PanelState>, action?: PluginActionDescriptor) {
     setStates((current) => {
       const key = contributionKey(contribution);
-      return { ...current, [key]: { ...(current[key] ?? defaultPanelState(panelResources)), ...patch } };
+      const base = current[key] ?? defaultPanelState(panelResources, action);
+      return {
+        ...current,
+        [key]: {
+          ...base,
+          ...patch,
+          values: patch.values ? { ...base.values, ...patch.values } : base.values,
+        },
+      };
     });
   }
 
-  async function runPanel(contribution: AdminUIContribution, panelResources: ProviderResource[]) {
-    const state = stateFor(contribution, panelResources);
-    if (!contribution.action || !state.resourceID) return;
-    updateState(contribution, panelResources, { busy: true, error: "", result: "" });
+  function updatePanelValue(contribution: AdminUIContribution, panelResources: ProviderResource[], action: PluginActionDescriptor, field: string, value: string | boolean) {
+    updateState(contribution, panelResources, { values: { [field]: value }, error: "" }, action);
+  }
+
+  async function runPanel(contribution: AdminUIContribution, panelResources: ProviderResource[], action: PluginActionDescriptor, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const state = stateFor(contribution, panelResources, action);
+    if (!state.resourceID) return;
+    updateState(contribution, panelResources, { busy: true, error: "", result: "" }, action);
     try {
-      const resp = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(contribution.plugin_id)}/actions/${encodeURIComponent(contribution.action)}`, {
+      const resp = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
         method: "POST",
-        body: JSON.stringify({ provider_id: provider.id, resource_id: state.resourceID, refresh: true }),
+        body: JSON.stringify({
+          provider_id: provider.id,
+          resource_id: state.resourceID,
+          refresh: true,
+          ...pluginActionPayload(action, state.values),
+        }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("插件面板执行失败")));
       const payload = await resp.json();
-      updateState(contribution, panelResources, { busy: false, result: JSON.stringify(redactPanelResult(payload), null, 2) });
+      updateState(contribution, panelResources, { busy: false, result: JSON.stringify(redactPluginActionResult(redactPanelResult(payload)), null, 2) }, action);
     } catch (err) {
-      updateState(contribution, panelResources, { busy: false, error: err instanceof Error ? err.message : tx("插件面板执行失败") });
+      updateState(contribution, panelResources, { busy: false, error: err instanceof Error ? err.message : tx("插件面板执行失败") }, action);
     }
   }
 
@@ -98,9 +119,10 @@ export function ProviderPluginPanels({
           </div>
           <div className="provider-quota-list">
             {genericPanels.map(({ contribution, fields, resources: panelResources }) => {
-              const state = stateFor(contribution, panelResources);
+              const action = contribution.action ? actionMap.get(pluginActionKey(contribution.plugin_id, contribution.action)) : undefined;
+              const state = stateFor(contribution, panelResources, action);
               const selectedResource = panelResources.find((resource) => resource.id === state.resourceID);
-              const registered = !contribution.action || actionKeys.has(actionKey(contribution.plugin_id, contribution.action));
+              const registered = !contribution.action || Boolean(action);
               return (
                 <article className="provider-quota-card" key={contributionKey(contribution)}>
                   <div className="provider-quota-card-head">
@@ -110,14 +132,26 @@ export function ProviderPluginPanels({
                     </div>
                     <div className="provider-quota-card-actions">
                       {panelResources.length > 0 ? (
-                        <select disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, panelResources, { resourceID: event.target.value, error: "", result: "" })}>
+                        <select disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, panelResources, { resourceID: event.target.value, error: "", result: "" }, action)}>
                           {panelResources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name || resource.id}</option>)}
                         </select>
                       ) : null}
-                      {contribution.action ? (
-                        <button className="secondary-button" disabled={state.busy || !registered || !state.resourceID} onClick={() => void runPanel(contribution, panelResources)} type="button">
+                      {contribution.action && action ? (
+                        <PluginActionRunner
+                          action={action}
+                          draft={state}
+                          labels={{
+                            submit: tx("执行插件面板"),
+                            submitting: tx("执行中"),
+                            unsupportedSchema: tx("该插件动作尚未注册。"),
+                          }}
+                          onChange={(descriptor, field, value) => updatePanelValue(contribution, panelResources, descriptor, field, value)}
+                          onSubmit={(descriptor, event) => void runPanel(contribution, panelResources, descriptor, event)}
+                        />
+                      ) : contribution.action ? (
+                        <button className="secondary-button" disabled={true} type="button">
                           <Play size={14} />
-                          {tx(state.busy ? "执行中" : "执行插件面板")}
+                          {tx("执行插件面板")}
                         </button>
                       ) : null}
                     </div>
@@ -134,8 +168,6 @@ export function ProviderPluginPanels({
                     </div>
                   ) : null}
                   {!registered ? <p className="provider-quota-error">{tx("该插件动作尚未注册。")}</p> : null}
-                  {state.error ? <p className="provider-quota-error">{state.error}</p> : null}
-                  {state.result ? <pre className="plugin-action-result">{state.result}</pre> : null}
                 </article>
               );
             })}
@@ -252,17 +284,19 @@ function providerPanelSourceValue(context: ProviderPanelContext, source?: string
   return current;
 }
 
-function defaultPanelState(resources: ProviderResource[]): PanelState {
+function defaultPanelState(resources: ProviderResource[], action?: PluginActionDescriptor): PanelState {
   const activeResources = resources.filter((resource) => resource.status === "active");
-  return { resourceID: activeResources[0]?.id ?? resources[0]?.id ?? "", busy: false, error: "", result: "" };
+  return {
+    values: action ? pluginActionInputDefaults(action) : {},
+    resourceID: activeResources[0]?.id ?? resources[0]?.id ?? "",
+    busy: false,
+    error: "",
+    result: "",
+  };
 }
 
 function contributionKey(panel: AdminUIContribution) {
   return `${panel.plugin_id}:${panel.id}:${panel.action ?? ""}`;
-}
-
-function actionKey(pluginID: string, actionID?: string) {
-  return `${pluginID}:${actionID ?? ""}`;
 }
 
 function redactPanelResult(value: unknown): unknown {

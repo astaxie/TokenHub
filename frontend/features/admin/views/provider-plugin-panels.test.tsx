@@ -14,7 +14,7 @@ describe("ProviderPluginPanels", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(
+    const { container } = render(
       <ProviderPluginPanels
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
         provider={{ id: "prv_plugin", name: "Plugin Provider", type: "plugin_provider", status: "active", healthy: true, priority: 10 }}
@@ -57,6 +57,7 @@ describe("ProviderPluginPanels", () => {
     expect(screen.queryByText("Plugin API Key")).not.toBeInTheDocument();
     expect(screen.queryByText("Other Provider Account")).not.toBeInTheDocument();
     expect(screen.queryByText("Other Quota")).not.toBeInTheDocument();
+    expect(container.querySelector(".plugin-action-runner")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /执行插件面板/ }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
