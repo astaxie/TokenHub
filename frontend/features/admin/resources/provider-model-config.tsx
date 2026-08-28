@@ -4,6 +4,7 @@ import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
+import { cacheReadPriceHelpText } from "../domain/model-pricing-policy";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
@@ -507,7 +508,7 @@ export function modelConfig(): ResourceConfig<Model> {
         label: "对外缓存读价 USD/1M",
         type: "number",
         placeholder: "可选，留空时按同类模型常见比例估算",
-        help: "配置后用于统一对外计费；留空时 DeepSeek V4 Pro 按约 0.83%、其他 DeepSeek 按 2%、其余模型按 10% 估算。",
+        help: cacheReadPriceHelpText,
         visible: (values) => values.modality !== "embedding",
       },
       {

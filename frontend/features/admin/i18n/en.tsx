@@ -1235,7 +1235,6 @@ export const enTranslations: Record<string, string> = {
     "缓存读价 USD/1M": "Cache Read Price USD/1M",
     "缓存读": "Cache Read",
     "可选，留空时按同类模型常见比例估算": "Optional; leave blank to estimate from the common ratio for similar models",
-    "配置值优先用于成本计算；留空时 DeepSeek V4 Pro 按约 0.83%、其他 DeepSeek 按 2%、其余模型按 10% 估算。": "The configured value takes priority in cost estimates. When blank, DeepSeek V4 Pro uses about 0.83% of the input price, other DeepSeek models use 2%, and all remaining models use 10%.",
     "输出价 USD/1M": "Output Price USD/1M",
     "运行时触发的额度、成本和 Provider 健康事件。": "Quota, cost, and Provider health events triggered at runtime.",
     "通知发送记录": "Notification Delivery Records",

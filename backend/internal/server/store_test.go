@@ -229,7 +229,7 @@ func TestPriceUsageClampsNegativeUpstreamUsage(t *testing.T) {
 	}
 }
 
-func TestEffectiveCacheReadPriceUsesCategoryEstimateWhenUnconfigured(t *testing.T) {
+func TestEffectiveCacheReadPriceUsesMetadataEstimateWhenUnconfigured(t *testing.T) {
 	tests := []struct {
 		name  string
 		model Model
