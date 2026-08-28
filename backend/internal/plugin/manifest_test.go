@@ -264,6 +264,33 @@ capabilities:
 	}
 }
 
+func TestParseManifestBuildsDefaultCatalogProviderTypeCapability(t *testing.T) {
+	manifest, err := ParseManifest([]byte(`
+schema_version: 1
+id: tokenhub.provider.default-compatible
+name: Default Compatible
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+capabilities:
+  provider_types:
+    - default_compatible
+  provider:
+    default_catalog_provider_type: true
+`))
+	if err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	descriptor := manifest.Descriptor()
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "default_catalog_provider_type", Subject: "default_compatible", Value: "true"}) {
+		t.Fatalf("descriptor is missing default catalog provider type capability: %+v", descriptor.Capabilities)
+	}
+}
+
 func TestParseManifestBuildsProviderResourceTypeMetadataCapability(t *testing.T) {
 	manifest, err := ParseManifest([]byte(`
 schema_version: 1

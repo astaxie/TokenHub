@@ -19,6 +19,7 @@ type builtinProviderAdapter struct {
 	sessionAffinityKind          string
 	claudeCodeAttributionDefault string
 	errorProfile                 string
+	defaultCatalogProviderType   bool
 	authModes                    []string
 	modelDiscovery               AdapterModelDiscoveryPolicy
 	resourceTypes                []pluginmeta.ManifestProviderResourceType
@@ -60,8 +61,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-compatible", "OpenAI-Compatible", builtinProviderAdapter{
-		providerType: ProviderOpenAICompatible,
-		adapter:      adapters[ProviderOpenAICompatible],
+		providerType:               ProviderOpenAICompatible,
+		adapter:                    adapters[ProviderOpenAICompatible],
+		defaultCatalogProviderType: true,
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -477,6 +479,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "error_profile",
 			Subject: adapter.providerType,
 			Value:   adapter.errorProfile,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.defaultCatalogProviderType {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "default_catalog_provider_type",
+			Subject: adapter.providerType,
+			Value:   "true",
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

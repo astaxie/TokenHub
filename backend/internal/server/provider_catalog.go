@@ -29,6 +29,7 @@ type providerCatalogService struct {
 	upstreamClient providerCatalogHTTPClient
 	catalogTypes   map[string]string
 	builtinEntries []ProviderCatalogEntry
+	defaultType    string
 }
 
 func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
@@ -45,12 +46,16 @@ func newProviderCatalogService(store Store, catalogFile string, clients ...provi
 		catalogFile:    catalogFile,
 		upstreamURL:    providerCatalogUpstreamURL,
 		upstreamClient: upstreamClient,
+		defaultType:    ProviderOpenAICompatible,
 	}
 }
 
 func (s *providerCatalogService) UsePluginCatalogTypes(registry *AdapterRegistry) {
 	s.catalogTypes = providerCatalogTypesFromRegistry(registry)
 	s.builtinEntries = providerCatalogSeedEntriesFromRegistry(registry)
+	if defaultType := providerCatalogDefaultTypeFromRegistry(registry); defaultType != "" {
+		s.defaultType = defaultType
+	}
 }
 
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
@@ -93,7 +98,7 @@ func (s *providerCatalogService) List(ctx context.Context, refresh bool) ([]Prov
 func (s *providerCatalogService) Get(ctx context.Context, id string, refresh bool) (ProviderCatalogEntry, string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "custom" {
-		return customProviderCatalogEntry(), "builtin", true, nil
+		return s.customProviderCatalogEntry(), "builtin", true, nil
 	}
 	if refresh {
 		if _, source, err := s.reload(ctx); err != nil {
@@ -170,7 +175,7 @@ func (s *providerCatalogService) builtinProviderCatalog(includeModels bool) []Pr
 	}
 	entries := cloneCatalogEntries(s.builtinEntries, includeModels)
 	if !providerCatalogHasEntry(entries, "custom") {
-		entries = append(entries, customProviderCatalogEntry())
+		entries = append(entries, s.customProviderCatalogEntry())
 	}
 	sortCatalogEntries(entries)
 	return entries
@@ -210,7 +215,7 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 	if err != nil {
 		return nil, err
 	}
-	entries, err = prepareProviderCatalogRefresh(entries, previous)
+	entries, err = prepareProviderCatalogRefreshWithDefault(entries, previous, s.defaultType)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +226,10 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 }
 
 func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
+	return prepareProviderCatalogRefreshWithDefault(entries, previous, ProviderOpenAICompatible)
+}
+
+func prepareProviderCatalogRefreshWithDefault(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry, defaultType string) ([]ProviderCatalogEntry, error) {
 	if err := validateProviderCatalogRefresh(entries, previous); err != nil {
 		return nil, err
 	}
@@ -230,7 +239,7 @@ func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []Pr
 			filtered = append(filtered, entry)
 		}
 	}
-	entries = append(filtered, customProviderCatalogEntry())
+	entries = append(filtered, customProviderCatalogEntryWithType(defaultType))
 	sortCatalogEntries(entries)
 	return entries, nil
 }
@@ -275,15 +284,19 @@ func loadLocalProviderCatalog(catalogFile string) ([]ProviderCatalogEntry, error
 }
 
 func (s *providerCatalogService) loadLocalProviderCatalog() ([]ProviderCatalogEntry, error) {
-	return loadLocalProviderCatalogWithTypes(s.catalogFile, s.catalogTypes)
+	return loadLocalProviderCatalogWithDefault(s.catalogFile, s.catalogTypes, s.defaultType)
 }
 
 func loadLocalProviderCatalogWithTypes(catalogFile string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithDefault(catalogFile, catalogTypes, ProviderOpenAICompatible)
+}
+
+func loadLocalProviderCatalogWithDefault(catalogFile string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
 	content, err := os.ReadFile(catalogFile)
 	if err != nil {
 		return nil, fmt.Errorf("read provider catalog %s: %w", catalogFile, err)
 	}
-	entries, err := parseProviderCatalogWithTypes(content, providerCatalogLocalSource, catalogTypes)
+	entries, err := parseProviderCatalogWithDefault(content, providerCatalogLocalSource, catalogTypes, defaultType)
 	if err != nil {
 		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
 	}
@@ -295,6 +308,10 @@ func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry
 }
 
 func parseProviderCatalogWithTypes(content []byte, source string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
+	return parseProviderCatalogWithDefault(content, source, catalogTypes, ProviderOpenAICompatible)
+}
+
+func parseProviderCatalogWithDefault(content []byte, source string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
 	var payload struct {
 		Providers map[string]map[string]any `json:"providers"`
 	}
@@ -306,7 +323,7 @@ func parseProviderCatalogWithTypes(content []byte, source string, catalogTypes m
 	}
 	entries := make([]ProviderCatalogEntry, 0, len(payload.Providers))
 	for id, raw := range payload.Providers {
-		entry := normalizeProviderCatalogEntryWithTypes(id, raw, catalogTypes)
+		entry := normalizeProviderCatalogEntryWithDefault(id, raw, catalogTypes, defaultType)
 		if entry.ID == "" || entry.Name == "" {
 			continue
 		}
@@ -327,6 +344,10 @@ func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalo
 }
 
 func normalizeProviderCatalogEntryWithTypes(id string, raw map[string]any, catalogTypes map[string]string) ProviderCatalogEntry {
+	return normalizeProviderCatalogEntryWithDefault(id, raw, catalogTypes, ProviderOpenAICompatible)
+}
+
+func normalizeProviderCatalogEntryWithDefault(id string, raw map[string]any, catalogTypes map[string]string, defaultType string) ProviderCatalogEntry {
 	baseURL := firstNonEmpty(catalogStringField(raw, "base_url"), catalogStringField(raw, "api"))
 	entry := ProviderCatalogEntry{
 		ID:          firstNonEmpty(catalogStringField(raw, "id"), id),
@@ -336,7 +357,7 @@ func normalizeProviderCatalogEntryWithTypes(id string, raw map[string]any, catal
 		DocURL:      firstNonEmpty(catalogStringField(raw, "doc_url"), catalogStringField(raw, "doc")),
 		Source:      "local-provider-catalog",
 	}
-	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), catalogTypes[strings.TrimSpace(entry.ID)], ProviderOpenAICompatible)
+	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), catalogTypes[strings.TrimSpace(entry.ID)], strings.TrimSpace(defaultType), ProviderOpenAICompatible)
 	if rawModels, ok := raw["models"].([]any); ok {
 		entry.Models = make([]ProviderCatalogModel, 0, len(rawModels))
 		for _, rawModel := range rawModels {
@@ -593,11 +614,19 @@ func builtinCatalogEntry(id string, name string, providerType string, baseURL st
 }
 
 func customProviderCatalogEntry() ProviderCatalogEntry {
+	return customProviderCatalogEntryWithType(ProviderOpenAICompatible)
+}
+
+func (s *providerCatalogService) customProviderCatalogEntry() ProviderCatalogEntry {
+	return customProviderCatalogEntryWithType(s.defaultType)
+}
+
+func customProviderCatalogEntryWithType(providerType string) ProviderCatalogEntry {
 	return ProviderCatalogEntry{
 		ID:             "custom",
 		Name:           "自定义 Provider",
 		DisplayName:    "自定义 Provider",
-		Type:           ProviderOpenAICompatible,
+		Type:           firstNonEmpty(strings.TrimSpace(providerType), ProviderOpenAICompatible),
 		Categories:     []string{"custom"},
 		CategoryCounts: map[string]int{"custom": 1},
 		Source:         "builtin",
@@ -693,7 +722,7 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 		ID:             "custom",
 		Name:           name,
 		DisplayName:    name,
-		Type:           firstNonEmpty(strings.TrimSpace(req.Type), ProviderOpenAICompatible),
+		Type:           firstNonEmpty(strings.TrimSpace(req.Type), strings.TrimSpace(descriptor.Type), ProviderOpenAICompatible),
 		BaseURL:        baseURL,
 		Categories:     categories,
 		CategoryCounts: categoryCounts,

@@ -59,6 +59,47 @@ func TestNormalizeProviderCatalogEntryUsesPluginCatalogType(t *testing.T) {
 	}
 }
 
+func TestProviderCatalogServiceUsesPluginDefaultCatalogProviderType(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:         "tokenhub.provider.default-compatible",
+		Name:       "Default Compatible",
+		Version:    "1.0.0",
+		Source:     pluginmeta.SourceLocalFile,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementGatewayChain},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: "default_compatible"},
+			{Kind: "provider_policy", Name: "default_catalog_provider_type", Subject: "default_compatible", Value: "true"},
+		},
+	}); err != nil {
+		t.Fatalf("register default plugin: %v", err)
+	}
+	service := newProviderCatalogService(store, catalogFile)
+	service.UsePluginCatalogTypes(registry)
+
+	custom, _, ok, err := service.Get(context.Background(), "custom", false)
+	if err != nil || !ok {
+		t.Fatalf("load custom catalog entry: ok=%v err=%v", ok, err)
+	}
+	if custom.Type != "default_compatible" {
+		t.Fatalf("custom catalog type = %q, want plugin default", custom.Type)
+	}
+
+	entries, _, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatalf("refresh catalog: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.ID == "fresh-provider" && entry.Type != "default_compatible" {
+			t.Fatalf("local catalog default type = %q, want plugin default", entry.Type)
+		}
+	}
+}
+
 func TestNormalizeProviderCatalogEntryUsesExplicitProviderType(t *testing.T) {
 	entry := normalizeProviderCatalogEntry("vendor-plugin", map[string]any{
 		"name": "Vendor Plugin",

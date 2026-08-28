@@ -75,6 +75,7 @@ type ManifestProvider struct {
 	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
 	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
 	DefaultBaseURL               string                  `yaml:"default_base_url"`
+	DefaultCatalogProviderType   bool                    `yaml:"default_catalog_provider_type"`
 	ErrorProfile                 string                  `yaml:"error_profile"`
 	ModelDiscovery               ManifestModelDiscovery  `yaml:"model_discovery"`
 	Catalog                      ManifestProviderCatalog `yaml:"catalog"`
@@ -492,6 +493,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    "default_base_url",
 				Subject: providerType,
 				Value:   strings.TrimRight(baseURL, "/"),
+			})
+		}
+		if m.Capabilities.Provider.DefaultCatalogProviderType {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    "provider_policy",
+				Name:    "default_catalog_provider_type",
+				Subject: providerType,
+				Value:   "true",
 			})
 		}
 		if profile := strings.TrimSpace(m.Capabilities.Provider.ErrorProfile); profile != "" {

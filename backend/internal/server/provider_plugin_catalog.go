@@ -167,6 +167,26 @@ func providerCatalogTypesFromRegistry(registry *AdapterRegistry) map[string]stri
 	return types
 }
 
+func providerCatalogDefaultTypeFromRegistry(registry *AdapterRegistry) string {
+	if registry == nil {
+		return ""
+	}
+	for _, plugin := range registry.ListPlugins() {
+		for _, capability := range plugin.Capabilities {
+			if capability.Kind != "provider_policy" || capability.Name != "default_catalog_provider_type" {
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(capability.Value), "true") {
+				continue
+			}
+			if providerType := strings.TrimSpace(capability.Subject); providerType != "" {
+				return providerType
+			}
+		}
+	}
+	return ""
+}
+
 func providerCatalogSeedEntriesFromRegistry(registry *AdapterRegistry) []ProviderCatalogEntry {
 	if registry == nil {
 		return nil
