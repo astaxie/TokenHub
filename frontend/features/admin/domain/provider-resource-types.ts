@@ -29,6 +29,7 @@ export function isProviderAccountResourceTypeForData(data: Pick<AppData, "plugin
   const normalized = resourceType?.trim();
   if (!normalized || normalized === providerResourceAPIKeyType) return false;
   const metadata = providerResourceTypeMetadataFromData(data, providerType);
+  if (metadata.length === 0 && providerTypeHasPluginMetadata(data, providerType)) return false;
   if (metadata.length === 0) return isProviderAccountResourceType(normalized);
   return metadata.some((item) => item.type === normalized);
 }
@@ -93,6 +94,16 @@ export function providerResourceTypeMetadataFromData(data: Pick<AppData, "plugin
     }
   }
   return metadata.filter((item) => Boolean(item.type));
+}
+
+export function providerTypeHasPluginMetadata(data: Pick<AppData, "plugins" | "providerAdapters">, providerType: string) {
+  const normalizedProviderType = providerType.trim();
+  if (!normalizedProviderType) return false;
+  if ((data.providerAdapters ?? []).some((adapter) => adapter.type === normalizedProviderType)) return true;
+  return data.plugins.some((plugin) => plugin.capabilities.some((capability) =>
+    (capability.subject === normalizedProviderType && (capability.kind === "provider" || capability.kind === providerResourceTypeCapabilityKind)) ||
+    ((capability.kind === "provider" || capability.kind === "provider_type") && capability.name === normalizedProviderType)
+  ));
 }
 
 export function providerResourceTypeMetadataForValues(data: AppData, values?: Record<string, string>) {

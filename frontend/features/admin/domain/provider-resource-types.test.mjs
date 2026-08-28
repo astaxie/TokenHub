@@ -30,6 +30,35 @@ test("provider account resource type checks follow plugin metadata when it exist
   }), true);
 });
 
+test("provider account resource type checks reject undeclared types for plugin providers", () => {
+  const data = {
+    providers: [{ id: "prv_plain", type: "plain_provider" }],
+    providerAdapters: [{
+      type: "plain_provider",
+      resource_types: [],
+    }],
+    plugins: [],
+  };
+
+  assert.equal(isProviderAccountResourceTypeForData(data, "plain_provider", "plain_account"), false);
+  assert.equal(isProviderAccountResourceForData(data, {
+    provider_id: "prv_plain",
+    resource_type: "plain_account",
+  }), false);
+});
+
+test("provider account resource type checks reject undeclared types for plugin provider capabilities", () => {
+  const data = {
+    providers: [{ id: "prv_plain", type: "plain_provider" }],
+    providerAdapters: [],
+    plugins: [{
+      capabilities: [{ kind: "provider_type", name: "plain_provider" }],
+    }],
+  };
+
+  assert.equal(isProviderAccountResourceTypeForData(data, "plain_provider", "plain_account"), false);
+});
+
 test("provider account resource type checks preserve legacy resources without metadata", () => {
   const data = { providers: [], providerAdapters: [], plugins: [] };
 

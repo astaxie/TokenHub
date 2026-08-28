@@ -118,6 +118,7 @@ func TestProviderResourceAccountClassificationUsesPluginMetadata(t *testing.T) {
 	store := NewMemoryStore()
 	store.ConfigureProviderResourceTypePolicy(map[string][]string{
 		"kimi_subscription": {"kimi_subscription_account"},
+		"plain_plugin":      {},
 	})
 	provider := store.AddProvider(Provider{
 		ID: "prv_kimi_metadata", Name: "Kimi Metadata", Type: "kimi_subscription",
@@ -152,6 +153,9 @@ func TestProviderResourceAccountClassificationUsesPluginMetadata(t *testing.T) {
 	}
 	if stored.CredentialSummary != nil {
 		t.Fatalf("stored undeclared plugin resource credential summary = %+v, want nil", stored.CredentialSummary)
+	}
+	if store.IsProviderAccountResourceType("plain_plugin", "plain_account") {
+		t.Fatal("provider with explicit empty plugin resource policy treated an undeclared type as an account")
 	}
 }
 
@@ -310,8 +314,8 @@ func TestProviderResourceTypePolicyFromRegistry(t *testing.T) {
 	if got := policy["kimi_subscription"]; len(got) != 1 || got[0] != "kimi_subscription_account" {
 		t.Fatalf("registry resource policy = %+v, want Kimi account resource type", policy)
 	}
-	if _, ok := policy["legacy_provider"]; ok {
-		t.Fatalf("registry resource policy = %+v, want no entry for providers without resource metadata", policy)
+	if got, ok := policy["legacy_provider"]; !ok || len(got) != 0 {
+		t.Fatalf("registry resource policy = %+v, want empty policy for providers without resource metadata", policy)
 	}
 }
 

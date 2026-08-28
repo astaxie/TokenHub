@@ -181,20 +181,15 @@ func providerResourceTypePolicyFromRegistry(registry *AdapterRegistry) map[strin
 			continue
 		}
 		resourceTypes := []string{}
-		hasResourceTypeMetadata := false
 		for _, resourceType := range descriptor.ResourceTypes {
 			resourceTypeName := strings.ToLower(strings.TrimSpace(resourceType.Type))
 			if resourceTypeName == "" {
 				continue
 			}
-			hasResourceTypeMetadata = true
 			if resourceTypeName == ProviderResourceAPIKey {
 				continue
 			}
 			resourceTypes = append(resourceTypes, resourceTypeName)
-		}
-		if !hasResourceTypeMetadata {
-			continue
 		}
 		policy[providerType] = sortedUniqueStrings(resourceTypes)
 	}

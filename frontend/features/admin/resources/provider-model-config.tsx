@@ -7,7 +7,7 @@ import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
 import { cacheReadPriceHelpText } from "../domain/model-pricing-policy";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
-import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder } from "../domain/provider-resource-types";
+import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder, providerTypeHasPluginMetadata } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
@@ -155,7 +155,7 @@ export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?
     }
   }
   const currentResourceType = values?.resource_type?.trim() ?? "";
-  if (currentResourceType && currentResourceType !== providerResourceAPIKeyType && !resourceTypes.has(currentResourceType)) {
+  if (currentResourceType && currentResourceType !== providerResourceAPIKeyType && !resourceTypes.has(currentResourceType) && !providerTypeHasPluginMetadata(data, providerType)) {
     resourceTypes.set(currentResourceType, undefined);
   }
   return Array.from(resourceTypes.entries())

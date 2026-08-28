@@ -575,6 +575,24 @@ describe("providerResourceConfig", () => {
     ]);
   });
 
+  it("hides undeclared current resource types for plugin-backed providers", () => {
+    const data = emptyData();
+    data.providers = [{ id: "prv_plain", name: "Plain", type: "plain_plugin", status: "active", healthy: true, priority: 1 }];
+    data.providerAdapters = [{
+      type: "plain_plugin",
+      capabilities: ["chat"],
+      resource_types: [],
+      provider_policy: { supports_custom_headers: true },
+    }];
+
+    expect(providerResourceTypeOptionsFromData(data, null, {
+      provider_id: "prv_plain",
+      resource_type: "plain_account",
+    })).toEqual([
+      { value: "api_key", label: "API Key" },
+    ]);
+  });
+
   it("shows account credential fields only for resource types declared by plugin metadata", () => {
     const data = emptyData();
     data.providers = [{ id: "prv_kimi", name: "Kimi", type: "kimi_subscription", status: "active", healthy: true, priority: 1 }];
