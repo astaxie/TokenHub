@@ -14,6 +14,7 @@ import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/forma
 import { reportDatasetLabel } from "../domain/labels";
 import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
 import { pluginShellPresentation } from "../domain/plugin-theme";
+import { resolveSIMSelection, type SIMSelectionResult } from "../domain/sim-selection";
 import { resourceCreateTarget } from "../domain/resource-create-target";
 import { simRegistryFromPlugins } from "../domain/sim-registry";
 import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
@@ -88,14 +89,25 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const loadRef = useRef<(view?: ViewKey) => Promise<void>>(async () => undefined);
   const [reportHistory, setReportHistory] = useState<ReportExportHistoryItem[]>([]);
   const [resetToken, setResetToken] = useState("");
+  const [simSelectionPreference, setSIMSelectionPreference] = useState<unknown>(null);
+  const [simSelectionLoaded, setSIMSelectionLoaded] = useState(false);
 
   const api = useMemo(() => ({ baseURL, adminToken }), [baseURL, adminToken]);
   const providerTypeOptions = useMemo(() => providerTypeOptionsFromData(data), [data]);
   const activeConfig = resourceConfigFor(activeView);
   const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
-  const simRegistry = useMemo(() => simRegistryFromPlugins(data.plugins), [data.plugins]);
-  const shellPresentation = useMemo(() => pluginShellPresentation(data.pluginUI, theme, { simRegistry }), [data.pluginUI, simRegistry, theme]);
+  const shellState = useMemo(() => adminConsoleShellState(data, theme, simSelectionPreference), [data, simSelectionPreference, theme]);
   setActiveLanguage(language);
+
+  useEffect(() => {
+    setSIMSelectionPreference(readAdminConsoleSIMSelectionPreference());
+    setSIMSelectionLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!simSelectionLoaded) return;
+    saveAdminConsoleSIMSelectionPreference(shellState.simSelection);
+  }, [shellState.simSelection, simSelectionLoaded]);
 
   function changeLanguage(nextLanguage: AppLanguage) {
     setLanguage(nextLanguage);
@@ -875,9 +887,12 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   return (
     <main
       className={sidebarCollapsed ? "app-shell sidebar-collapsed" : "app-shell"}
-      data-layout-density={shellPresentation.density}
+      data-layout-density={shellState.shellPresentation.density}
+      data-sim-layout-key={shellState.simSelection.layout.capability?.key}
+      data-sim-plugin-id={shellState.simSelection.activeSIMPluginID}
+      data-sim-theme-key={shellState.simSelection.theme.capability?.key}
       data-theme={theme}
-      style={shellPresentation.style}
+      style={shellState.shellPresentation.style}
     >
       <Sidebar
         activeView={activeView}
@@ -1326,6 +1341,49 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     }
   }
 }
+
+export function adminConsoleShellState(data: AppData, theme: "light" | "dark", preference: unknown) {
+  const simSelection = resolveSIMSelection({ plugins: data.plugins, preference, themeMode: theme });
+  return {
+    simSelection,
+    shellPresentation: pluginShellPresentation(data.pluginUI, theme, {
+      activeLayoutID: simSelection.layout.capability?.id,
+      activeLayoutKey: simSelection.layout.capability?.key,
+      activeSIMPluginID: simSelection.activeSIMPluginID || undefined,
+      activeThemeID: simSelection.theme.capability?.id,
+      activeThemeKey: simSelection.theme.capability?.key,
+      simRegistry: simRegistryFromPlugins(data.plugins),
+    }),
+  };
+}
+
+export function adminConsoleSIMSelectionPreference(selection: SIMSelectionResult) {
+  return {
+    simPluginID: selection.activeSIMPluginID,
+    themeKey: selection.theme.capability?.key ?? "",
+    themeID: selection.theme.capability?.id ?? "",
+    layoutKey: selection.layout.capability?.key ?? "",
+    layoutID: selection.layout.capability?.id ?? "",
+  };
+}
+
+export function readAdminConsoleSIMSelectionPreference(storage?: Pick<Storage, "getItem">) {
+  if (typeof window === "undefined") return null;
+  const raw = (storage ?? window.localStorage).getItem(adminConsoleSIMSelectionStorageKey);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAdminConsoleSIMSelectionPreference(selection: SIMSelectionResult, storage?: Pick<Storage, "setItem">) {
+  if (typeof window === "undefined") return;
+  (storage ?? window.localStorage).setItem(adminConsoleSIMSelectionStorageKey, JSON.stringify(adminConsoleSIMSelectionPreference(selection)));
+}
+
+export const adminConsoleSIMSelectionStorageKey = "tokenhub.admin.sim.selection.v1";
 
 function pluginPageKeyFromLocation() {
   if (typeof window === "undefined") return "";
