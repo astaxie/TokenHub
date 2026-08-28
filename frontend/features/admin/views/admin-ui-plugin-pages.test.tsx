@@ -103,4 +103,149 @@ describe("PluginPageView", () => {
     expect(pluginPageFieldValue(data, fields[0])).toBe("1.20K");
     expect(pluginPageFieldValue(data, fields[1])).toContain("request_count");
   });
+
+  it("applies SIM page template metadata to selected plugin pages", () => {
+    const data = emptyData();
+    data.pluginUI = [
+      {
+        plugin_id: "tokenhub.admin.runtime",
+        id: "runtime",
+        slot: "nav.section",
+        title: "Runtime",
+        schema: {
+          description: "Runtime status",
+          fields: [{ name: "requests", type: "metric", label: "Requests", value: 42 }],
+        },
+      },
+    ];
+    data.plugins = [{
+      id: "tokenhub.sim.enterprise",
+      name: "Enterprise SIM",
+      version: "1.0.0",
+      source: "built_in",
+      kinds: ["sim"],
+      placements: ["presentation"],
+      capabilities: [{
+        kind: "sim",
+        name: "page_template",
+        subject: "runtime-page",
+        value: JSON.stringify({
+          id: "runtime-template",
+          target: "runtime",
+          plugin_id: "tokenhub.admin.runtime",
+          layout: "metrics",
+          region: "operations",
+          density: "compact",
+          frame: "tool",
+        }),
+      }],
+    }];
+
+    const { container } = render(
+      <PluginPageView
+        activePageKey="tokenhub.admin.runtime:runtime"
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        data={data}
+        onSelectPage={vi.fn()}
+      />,
+    );
+
+    const panel = container.querySelector(".plugin-page-panel");
+    expect(panel).toHaveAttribute("data-page-template", "runtime-template");
+    expect(panel).toHaveAttribute("data-page-template-source", "sim");
+    expect(panel).toHaveAttribute("data-page-layout", "metrics");
+    expect(panel).toHaveAttribute("data-page-region", "operations");
+    expect(panel).toHaveAttribute("data-page-density", "compact");
+    expect(panel).toHaveAttribute("data-page-frame", "tool");
+    expect(screen.getByText("Requests")).toBeInTheDocument();
+  });
+
+  it("falls back when no page template exists", () => {
+    const data = emptyData();
+    data.pluginUI = [{
+      plugin_id: "tokenhub.admin.runtime",
+      id: "runtime",
+      slot: "nav.section",
+      title: "Runtime",
+      schema: { fields: [{ name: "runtime", type: "text", label: "Runtime", value: "ready" }] },
+    }];
+
+    const { container } = render(
+      <PluginPageView
+        activePageKey="tokenhub.admin.runtime:runtime"
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        data={data}
+        onSelectPage={vi.fn()}
+      />,
+    );
+
+    const panel = container.querySelector(".plugin-page-panel");
+    expect(panel).not.toHaveAttribute("data-page-template");
+    expect(screen.getAllByText("Runtime").length).toBeGreaterThan(0);
+    expect(screen.getByText("ready")).toBeInTheDocument();
+  });
+
+  it("ignores unknown and malformed page templates", () => {
+    const data = emptyData();
+    data.pluginUI = [
+      {
+        plugin_id: "tokenhub.admin.runtime",
+        id: "runtime",
+        slot: "nav.section",
+        title: "Runtime",
+      },
+      {
+        plugin_id: "tokenhub.admin.template-pack",
+        id: "unsafe-template",
+        slot: "page.template",
+        title: "Unsafe Template",
+        schema: {
+          template: {
+            contribution_id: "../runtime",
+            plugin_id: "tokenhub.admin.runtime",
+            layout: "grid",
+          },
+        },
+      },
+      {
+        plugin_id: "tokenhub.admin.template-pack",
+        id: "unknown-template",
+        slot: "page.template",
+        title: "Unknown Template",
+        schema: {
+          template: {
+            contribution_id: "missing-page",
+            plugin_id: "tokenhub.admin.runtime",
+            layout: "grid",
+          },
+        },
+      },
+    ];
+    data.plugins = [{
+      id: "tokenhub.sim.bad",
+      name: "Bad SIM",
+      version: "1.0.0",
+      source: "built_in",
+      kinds: ["sim"],
+      placements: ["presentation"],
+      capabilities: [
+        { kind: "sim", name: "page_template", value: JSON.stringify({ target: "runtime", slot: "core:external", layout: "split" }) },
+        { kind: "sim", name: "page_template", value: JSON.stringify({ target: "runtime", layout: "https://example.com" }) },
+      ],
+    }];
+
+    const { container } = render(
+      <PluginPageView
+        activePageKey="tokenhub.admin.runtime:runtime"
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        data={data}
+        onSelectPage={vi.fn()}
+      />,
+    );
+
+    const panel = container.querySelector(".plugin-page-panel");
+    expect(panel).not.toHaveAttribute("data-page-template");
+    expect(screen.queryByText("Unsafe Template")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unknown Template")).not.toBeInTheDocument();
+  });
 });

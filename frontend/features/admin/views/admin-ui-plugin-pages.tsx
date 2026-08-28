@@ -1,11 +1,12 @@
 import { Play, Puzzle } from "lucide-react";
 import { useState } from "react";
-import { type AdminUIContribution, type ApiContext, type AppData } from "../core/types";
-import { adminUIActionKey, adminUIFieldValue, adminUIFields, adminUIPluginPageKey, adminUIPluginPages, redactAdminUIResult, type AdminUIField, type AdminUIPluginPage } from "../domain/admin-ui-registry";
+import { type AdminUIContribution, type ApiContext, type AppData, type PluginDescriptor } from "../core/types";
+import { adminUIPageRegistry, type AdminUIPluginPageEntry } from "../domain/admin-ui-pages";
+import { adminUIActionKey, adminUIFieldValue, adminUIFields, adminUIPluginPageKey, adminUIPluginPages, redactAdminUIResult, type AdminUIField } from "../domain/admin-ui-registry";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 
-export type PluginNavPage = AdminUIPluginPage;
+export type PluginNavPage = AdminUIPluginPageEntry;
 type PluginPageField = AdminUIField;
 
 type PageState = {
@@ -25,7 +26,7 @@ export function PluginPageView({
   data: AppData;
   onSelectPage: (key: string) => void;
 }) {
-  const pages = pluginNavPages(data.pluginUI);
+  const pages = pluginNavPages(data.pluginUI, data.plugins);
   const selected = pages.find((page) => page.key === activePageKey) ?? pages[0];
   const fields = selected ? pluginPageFields(selected.contribution) : [];
   const actionKeys = new Set(data.pluginActions.map((action) => adminUIActionKey(action.plugin_id, action.action_id)));
@@ -75,7 +76,15 @@ export function PluginPageView({
           </button>
         ))}
       </aside>
-      <section className="section plugin-page-panel">
+      <section
+        className="section plugin-page-panel"
+        data-page-density={selected.template?.density}
+        data-page-frame={selected.template?.frame}
+        data-page-layout={selected.template?.layout}
+        data-page-region={selected.template?.region}
+        data-page-template={selected.template?.id}
+        data-page-template-source={selected.template?.source}
+      >
         <div className="section-header">
           <h2>{selected.title}</h2>
         </div>
@@ -125,7 +134,8 @@ function PluginPageFieldView({ data, field }: { data: AppData; field: PluginPage
   );
 }
 
-export function pluginNavPages(contributions: AdminUIContribution[]): PluginNavPage[] {
+export function pluginNavPages(contributions: AdminUIContribution[], plugins?: PluginDescriptor[]): PluginNavPage[] {
+  if (plugins) return adminUIPageRegistry({ pluginUI: contributions, plugins });
   return adminUIPluginPages(contributions);
 }
 
