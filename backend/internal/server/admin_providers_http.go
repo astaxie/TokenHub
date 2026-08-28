@@ -261,14 +261,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	var catalog ProviderCatalogEntry
 	catalogSource := ""
 	catalogID := strings.TrimSpace(req.CatalogID)
-	if catalogID == codexProviderCatalogID {
-		if len(req.CustomModels) > 0 {
-			catalog = s.codexProviderCatalogFromSubmittedModels(req.CustomModels)
-		} else {
-			catalog = s.codexProviderCatalogFromStandardModels(req.SelectedModels)
-		}
-		catalogSource = catalog.Source
-	} else if catalogID != "" {
+	if catalogID != "" {
 		entry, source, ok, err := s.providerCatalogEntryWithPlugins(ctx, catalogID, false)
 		if err != nil {
 			return Provider{}, ProviderCatalogEntry{}, source, err
@@ -276,8 +269,11 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		if !ok {
 			return Provider{}, ProviderCatalogEntry{}, source, NewHTTPError(400, "provider_catalog_not_found", "Provider catalog entry not found")
 		}
-		if _, pluginOK := s.pluginProviderCatalogEntry(catalogID); pluginOK && len(req.CustomModels) > 0 {
+		_, pluginOK := s.pluginProviderCatalogEntry(catalogID)
+		if pluginOK && len(req.CustomModels) > 0 {
 			catalog = providerCatalogEntryWithSubmittedModels(entry, req.CustomModels, req.ModelCategory)
+		} else if pluginOK && len(req.SelectedModels) > 0 && len(entry.Models) == 0 {
+			catalog = s.providerCatalogEntryWithSelectedStandardModels(entry, req.SelectedModels, req.ModelCategory)
 		} else {
 			catalog = entry
 		}
@@ -375,6 +371,62 @@ func (s *Server) importSelectedProviderCatalogModels(providerID string, catalog 
 		imported++
 	}
 	return imported
+}
+
+func (s *Server) providerCatalogEntryWithSelectedStandardModels(entry ProviderCatalogEntry, selectedModels []string, category string) ProviderCatalogEntry {
+	modelsByName := map[string]Model{}
+	for _, model := range s.store.ListModels() {
+		modelsByName[normalizeModelLookupName(model.Name)] = model
+	}
+	defaultCategory := providerCatalogEntrySelectedModelCategory(entry, category)
+	models := make([]ProviderCatalogModel, 0, len(selectedModels))
+	for _, modelID := range selectedModels {
+		model, ok := modelsByName[normalizeModelLookupName(modelID)]
+		if !ok {
+			continue
+		}
+		modelCategory := standardModelCategory(firstNonEmpty(defaultCategory, model.Category, inferModelCategory(model.Name, model.Name)))
+		models = append(models, ProviderCatalogModel{
+			ID:                        model.Name,
+			Name:                      model.Name,
+			DisplayName:               firstNonEmpty(model.Metadata["display_name"], model.Name),
+			CanonicalName:             model.Name,
+			Category:                  modelCategory,
+			Family:                    model.Family,
+			Type:                      model.Modality,
+			ContextWindow:             model.ContextWindow,
+			InputPriceUSDPer1M:        model.InputPriceUSDPer1M,
+			CacheReadPriceUSDPer1M:    model.CacheReadPriceUSDPer1M,
+			CacheWritePriceUSDPer1M:   model.CacheWritePriceUSDPer1M,
+			CacheWrite5mPriceUSDPer1M: model.CacheWrite5mPriceUSDPer1M,
+			CacheWrite1hPriceUSDPer1M: model.CacheWrite1hPriceUSDPer1M,
+			OutputPriceUSDPer1M:       model.OutputPriceUSDPer1M,
+			InputModalities:           append([]string(nil), model.InputModalities...),
+			OutputModalities:          append([]string(nil), model.OutputModalities...),
+			Capabilities:              append([]string(nil), model.Capabilities...),
+			SupportedParameters:       append([]string(nil), model.SupportedParameters...),
+			Metadata:                  cloneStringMap(model.Metadata),
+		})
+	}
+	catalog := entry
+	if len(models) > 0 {
+		catalog.Categories, catalog.CategoryCounts = catalogCategorySummary(models)
+	}
+	catalog.Models = models
+	catalog.ModelsCount = len(models)
+	return catalog
+}
+
+func providerCatalogEntrySelectedModelCategory(entry ProviderCatalogEntry, requestedCategory string) string {
+	if category := standardModelCategory(requestedCategory); category != "" && category != "all" {
+		return category
+	}
+	for _, category := range entry.Categories {
+		if category = standardModelCategory(category); category != "" && category != "all" {
+			return category
+		}
+	}
+	return ""
 }
 
 func (s *Server) customProviderCatalogFromStandardModels(category string) ProviderCatalogEntry {

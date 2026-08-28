@@ -614,52 +614,6 @@ func (s *Server) removeProviderResourceModel(resourceID string, modelName string
 	_ = s.persistProviderResourceModels(resourceID, catalogModels, time.Now().UTC())
 }
 
-func (s *Server) codexProviderCatalogFromStandardModels(selected []string) ProviderCatalogEntry {
-	entry := s.codexProviderCatalogMetadata()
-	modelsByName := map[string]Model{}
-	for _, model := range s.store.ListModels() {
-		modelsByName[normalizeModelLookupName(model.Name)] = model
-	}
-	models := make([]ProviderCatalogModel, 0, len(selected))
-	for _, modelID := range selected {
-		model, ok := modelsByName[normalizeModelLookupName(modelID)]
-		if !ok {
-			continue
-		}
-		models = append(models, ProviderCatalogModel{
-			ID:                  model.Name,
-			Name:                model.Name,
-			DisplayName:         firstNonEmpty(model.Metadata["display_name"], model.Name),
-			CanonicalName:       model.Name,
-			Category:            "codex",
-			Family:              model.Family,
-			Type:                model.Modality,
-			ContextWindow:       model.ContextWindow,
-			InputModalities:     append([]string(nil), model.InputModalities...),
-			OutputModalities:    append([]string(nil), model.OutputModalities...),
-			Capabilities:        append([]string(nil), model.Capabilities...),
-			SupportedParameters: append([]string(nil), model.SupportedParameters...),
-			Metadata:            cloneStringMap(model.Metadata),
-		})
-	}
-	categories, counts := catalogCategorySummary(models)
-	if len(models) > 0 {
-		entry.Categories = categories
-		entry.CategoryCounts = counts
-	}
-	entry.ModelsCount = len(models)
-	entry.Models = models
-	return entry
-}
-
-func (s *Server) codexProviderCatalogFromSubmittedModels(models []ProviderCatalogModel) ProviderCatalogEntry {
-	candidates := append([]ProviderCatalogModel(nil), models...)
-	for index := range candidates {
-		candidates[index].Category = "codex"
-	}
-	return providerCatalogEntryWithSubmittedModels(s.codexProviderCatalogMetadata(), candidates, "codex")
-}
-
 func codexProviderCatalogFromModels(models []ProviderCatalogModel) ProviderCatalogEntry {
 	candidates := append([]ProviderCatalogModel(nil), models...)
 	for index := range candidates {

@@ -266,6 +266,82 @@ func TestAdminPluginProviderCatalogGetUsesDeclaredAccountRequiredError(t *testin
 	}
 }
 
+func TestAdminProviderCreationImportsSelectedPluginCatalogModelsFromStandardCatalog(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddModel(Model{
+		Name:                    "plugin-standard-model",
+		Family:                  "plugin",
+		Category:                "chat",
+		Modality:                "chat",
+		ContextWindow:           64000,
+		InputPriceUSDPer1M:      1.25,
+		CacheWritePriceUSDPer1M: 0.75,
+		CacheWritePriceConfiguration: CacheWritePriceConfiguration{
+			CacheWritePriceConfigured: true,
+		},
+		Metadata: map[string]string{"display_name": "Plugin Standard Model"},
+		Status:   StatusActive,
+	})
+	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
+	providerType := "selected_standard_catalog_provider"
+	pluginID := "tokenhub.provider.selected-standard-catalog"
+	entry := pluginProviderCatalogEntry{
+		ID:          "selected-standard-catalog",
+		Name:        "Selected Standard Catalog Provider",
+		DisplayName: "Selected Standard Catalog Provider",
+		Type:        providerType,
+		BaseURL:     "https://selected-standard.example/v1",
+		Categories:  []string{"custom"},
+		Source:      "plugin-catalog",
+	}
+	encoded, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("encode selected standard catalog entry: %v", err)
+	}
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Selected Standard Catalog Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityModels), Subject: providerType},
+			{Kind: "provider_policy", Name: providerAPIKeyRequiredOption, Subject: providerType, Value: "false"},
+			{Kind: "provider_catalog", Name: "entry", Subject: providerType, Value: string(encoded)},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register selected standard catalog provider: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":              "prv_selected_standard_catalog",
+		"catalog_id":      "selected-standard-catalog",
+		"name":            "Selected Standard Catalog Provider",
+		"selected_models": []string{"plugin-standard-model"},
+	}, "plugin-catalog-admin")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("POST provider from selected standard plugin catalog: expected 201, got %d: %s", response.Code, response.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(response.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ImportedModels != 1 || result.Provider.Type != providerType {
+		t.Fatalf("provider creation result = %+v", result)
+	}
+	for _, model := range store.ListProviderModels() {
+		if model.ProviderID == "prv_selected_standard_catalog" && model.UpstreamModel == "plugin-standard-model" &&
+			model.Category == "custom" && model.ContextWindow == 64000 && model.CacheWritePriceConfigured {
+			return
+		}
+	}
+	t.Fatalf("selected standard plugin catalog model was not imported: %+v", store.ListProviderModels())
+}
+
 func TestAdminCustomProviderCatalogPostUsesModelsPreviewAction(t *testing.T) {
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "plugin-catalog-admin"})
