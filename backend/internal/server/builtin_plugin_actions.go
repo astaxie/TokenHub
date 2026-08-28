@@ -561,6 +561,7 @@ func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
 			"probe_request.size":                                             "1024x1024",
 			"probe_error.timeout.code":                                       "codex_upstream_timeout",
 			"probe_error.timeout.message":                                    "Codex image capability test timed out",
+			"runtime_error.unsupported.code":                                 "codex_image_forbidden",
 			"probe_error_message.codex_image_forbidden":                      "This Codex subscription account is not allowed to use image generation",
 			"probe_error_message.codex_quota_exhausted":                      "Codex image capability test is temporarily unavailable",
 			"probe_error_message.codex_rate_limited":                         "Codex image capability test is temporarily unavailable",

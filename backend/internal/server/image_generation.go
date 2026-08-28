@@ -13,6 +13,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1181,9 +1182,6 @@ func imageModelIsSupported(model string, supportedModels []string) bool {
 }
 
 func (s *Server) imageRunnerForRoute(job ImageJob, route RouteSelection) func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
-	if job.Model == codexImageModelName {
-		return s.executeCodexSubscriptionImage
-	}
 	if _, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, route.Provider.Type); ok {
 		return s.executeProviderImage
 	}
@@ -1199,15 +1197,81 @@ func (s *Server) executeProviderImage(ctx context.Context, route RouteSelection,
 	if err != nil {
 		return nil, "", Usage{}, err
 	}
-	adapter, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, prepared.Provider.Type)
-	if !ok {
-		return nil, "", Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support image generation")
-	}
 	request, err := s.providerImageGenerationRequest(prepared, job)
 	if err != nil {
 		return nil, "", Usage{}, err
 	}
-	return adapter.GenerateImage(ctx, prepared.Provider, prepared.ProviderModel, request)
+	return s.executePreparedProviderImage(ctx, prepared, request)
+}
+
+func (s *Server) executePreparedProviderImage(ctx context.Context, route RouteSelection, request ProviderImageGenerationRequest) ([]byte, string, Usage, error) {
+	adapter, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, route.Provider.Type)
+	if !ok {
+		return nil, "", Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support image generation")
+	}
+	imageBytes, revisedPrompt, usage, err := adapter.GenerateImage(ctx, route.Provider, route.ProviderModel, request)
+	if err != nil {
+		s.recordProviderImageGenerationCapabilityError(route, err)
+		return nil, "", usage, err
+	}
+	s.recordProviderImageGenerationCapability(route, "")
+	return imageBytes, revisedPrompt, usage, nil
+}
+
+func (s *Server) recordProviderImageGenerationCapabilityError(route RouteSelection, err error) {
+	code := AsHTTPError(err).Code
+	if code == "" {
+		return
+	}
+	for _, profile := range s.providerImageCapabilityProfilesForRoute(route) {
+		if profile.RuntimeUnsupportedErrorCode != "" && code == profile.RuntimeUnsupportedErrorCode {
+			s.recordProviderImageGenerationCapabilityForProfile(route, profile, profile.CapabilityUnsupportedValue)
+		}
+	}
+}
+
+func (s *Server) recordProviderImageGenerationCapability(route RouteSelection, capability string) {
+	resourceID := routeResourceID(route)
+	if strings.TrimSpace(resourceID) == "" {
+		return
+	}
+	for _, profile := range s.providerImageCapabilityProfilesForRoute(route) {
+		s.recordProviderImageGenerationCapabilityForProfile(route, profile, capability)
+	}
+}
+
+func (s *Server) recordProviderImageGenerationCapabilityForProfile(route RouteSelection, profile providerImageCapabilityRouteProfile, capability string) {
+	resourceID := routeResourceID(route)
+	if strings.TrimSpace(resourceID) == "" {
+		return
+	}
+	profile.withDefaults()
+	value := strings.TrimSpace(capability)
+	if value == "" {
+		value = profile.CapabilitySupportedValue
+	}
+	if _, err := s.updateProviderImageCapability(resourceID, value, profile); err != nil {
+		log.Printf("[tokenhub] failed to record provider image capability resource=%s capability=%s: %v", resourceID, value, err)
+	}
+}
+
+func (s *Server) providerImageCapabilityProfilesForRoute(route RouteSelection) []providerImageCapabilityRouteProfile {
+	providerID := firstNonEmpty(route.Provider.ID, route.Route.ProviderID)
+	profiles := []providerImageCapabilityRouteProfile{}
+	for _, profile := range s.providerImageCapabilityRouteProfiles() {
+		profile.withDefaults()
+		if !providerImageCapabilityRouteMatches(route.Route, providerID, profile) {
+			continue
+		}
+		if profile.ProviderType != "" && route.Provider.Type != profile.ProviderType {
+			continue
+		}
+		if profile.ResourceType != "" && (route.Resource == nil || route.Resource.ResourceType != profile.ResourceType) {
+			continue
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles
 }
 
 func (s *Server) providerImageGenerationRequest(route RouteSelection, job ImageJob) (ProviderImageGenerationRequest, error) {

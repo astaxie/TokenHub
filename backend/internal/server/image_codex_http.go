@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -55,7 +54,7 @@ func (s *Server) executeCodexSubscriptionImage(ctx context.Context, route RouteS
 	response, headers, err := s.codexSubscription.Image(ctx, route.Provider, resourceID, request)
 	if err != nil {
 		if AsHTTPError(err).Code == "codex_image_forbidden" {
-			return nil, "", Usage{}, s.codexImageForbiddenError(resourceID)
+			s.recordProviderImageGenerationCapabilityError(route, err)
 		}
 		return nil, "", Usage{}, err
 	}
@@ -70,8 +69,64 @@ func (s *Server) executeCodexSubscriptionImage(ctx context.Context, route RouteS
 	applyCodexResponseMetadata(&usage, headers)
 	usage.Transport = "http_json"
 	usage.ServedModel = firstNonEmpty(usage.ServedModel, codexImageUpstreamModel)
-	s.recordCodexImageCapability(resourceID, codexImageCapabilitySupported)
+	s.recordProviderImageGenerationCapability(route, codexImageCapabilitySupported)
 	return imageBytes, "", usage, nil
+}
+
+func (a CodexSubscriptionAdapter) GenerateImage(ctx context.Context, provider Provider, providerModel string, request ProviderImageGenerationRequest) ([]byte, string, Usage, error) {
+	resourceID := strings.TrimSpace(provider.Options["resource_id"])
+	if resourceID == "" {
+		return nil, "", Usage{}, NewHTTPError(http.StatusBadRequest, "provider_resource_missing", "Codex Subscription resource is missing")
+	}
+	codexRequest, err := codexSubscriptionImageRequestFromProviderRequest(providerModel, request)
+	if err != nil {
+		return nil, "", Usage{}, err
+	}
+	response, headers, err := a.Image(ctx, provider, resourceID, codexRequest)
+	if err != nil {
+		return nil, "", Usage{}, err
+	}
+	if len(response.Data) == 0 || strings.TrimSpace(response.Data[0].B64JSON) == "" {
+		return nil, "", Usage{}, NewHTTPError(http.StatusBadGateway, "image_result_missing", "Codex image generation completed without an image result")
+	}
+	imageBytes, err := decodeGeneratedImage(response.Data[0].B64JSON)
+	if err != nil {
+		return nil, "", Usage{}, NewHTTPError(http.StatusBadGateway, "image_result_invalid", err.Error())
+	}
+	usage := usageFromMap(map[string]any{"usage": response.Usage})
+	applyCodexResponseMetadata(&usage, headers)
+	usage.Transport = "http_json"
+	usage.ServedModel = firstNonEmpty(usage.ServedModel, codexImageUpstreamModel)
+	return imageBytes, "", usage, nil
+}
+
+func codexSubscriptionImageRequestFromProviderRequest(providerModel string, request ProviderImageGenerationRequest) (codexSubscriptionImageRequest, error) {
+	codexRequest := codexSubscriptionImageRequest{
+		Model:      firstNonEmpty(strings.TrimSpace(providerModel), strings.TrimSpace(request.Model), codexImageUpstreamModel),
+		Prompt:     request.Prompt,
+		Background: "auto",
+		Quality:    normalizedImageOption(request.Quality, "auto"),
+		Size:       normalizedImageOption(request.Size, "auto"),
+	}
+	if request.Action != "edit" {
+		return codexRequest, nil
+	}
+	for _, image := range request.Images {
+		if image.Role != "input" {
+			continue
+		}
+		contentType := strings.TrimSpace(image.ContentType)
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		codexRequest.Images = append(codexRequest.Images, codexSubscriptionImage{
+			ImageURL: "data:" + contentType + ";base64," + strings.TrimSpace(image.DataBase64),
+		})
+	}
+	if len(codexRequest.Images) == 0 {
+		return codexSubscriptionImageRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_input_image", "Image edit job has no input images")
+	}
+	return codexRequest, nil
 }
 
 func (s *Server) codexSubscriptionImageRequest(job ImageJob) (codexSubscriptionImageRequest, error) {
@@ -286,24 +341,4 @@ func codexImageEndpoint(provider Provider, edit bool) (string, error) {
 		parsed.Path = path + "/images/generations"
 	}
 	return parsed.String(), nil
-}
-
-func (s *Server) codexImageForbiddenError(resourceID string) error {
-	s.recordCodexImageCapability(resourceID, codexImageCapabilityUnsupported)
-	return &ProviderInvocationError{
-		Err:         NewHTTPError(http.StatusForbidden, "codex_image_forbidden", "This Codex subscription account is not allowed to use image generation"),
-		Disposition: ProviderErrorModelUnsupported,
-	}
-}
-
-func (s *Server) recordCodexImageCapability(resourceID string, capability string) {
-	if strings.TrimSpace(resourceID) == "" {
-		return
-	}
-	if _, err := s.store.UpdateProviderResourceOptions(resourceID, map[string]string{
-		codexImageCapabilityOption:          capability,
-		codexImageCapabilityCheckedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
-	}); err != nil {
-		log.Printf("[tokenhub] failed to record Codex image capability resource=%s: %v", resourceID, err)
-	}
 }

@@ -427,48 +427,6 @@ func TestStaleUnsupportedCodexImageRouteIsRetried(t *testing.T) {
 	}
 }
 
-func TestCodexImageForbiddenMarksResourceUnsupportedAndAllowsFailover(t *testing.T) {
-	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
-		ID:      "prv_image_capability",
-		Name:    "Codex Image Capability",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	resource, err := store.AddProviderResource(ProviderResource{
-		ID:           "rsrc_image_capability",
-		ProviderID:   provider.ID,
-		Name:         "Codex Image Account",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := NewWithConfig(store, Config{
-		AdminToken: "test-admin-token",
-		SecretKey:  "image-capability-test-secret",
-	})
-	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	forbidden := server.codexImageForbiddenError(resource.ID)
-	if !shouldFailoverRoutedError(forbidden, false) {
-		t.Fatal("image entitlement failure must allow failover to another account")
-	}
-	if !providerAttemptOutcome(forbidden).CountsAsHealthy() {
-		t.Fatal("image entitlement failure must not degrade account health")
-	}
-	updated, ok := server.providerResourceByID(resource.ID)
-	if !ok {
-		t.Fatal("provider resource disappeared")
-	}
-	if updated.Options[codexImageCapabilityOption] != codexImageCapabilityUnsupported ||
-		updated.Options[codexImageCapabilityCheckedAtOption] == "" {
-		t.Fatalf("image capability was not persisted: %+v", updated.Options)
-	}
-}
-
 type imageStartRejectStore struct {
 	*GormStore
 }

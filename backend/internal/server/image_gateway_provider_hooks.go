@@ -57,18 +57,7 @@ func (s *Server) invokeImageRouteWithGatewayHooks(ctx context.Context, call Call
 		}
 		return imageRunResult{data: imageBytes, revisedPrompt: revisedPrompt, providerRequest: request}, usage, nil
 	}
-	if job.Model == codexImageModelName {
-		imageBytes, revisedPrompt, usage, err := s.executeCodexSubscriptionImage(ctx, prepared, transformedJob)
-		if err != nil {
-			return imageRunResult{}, usage, err
-		}
-		return imageRunResult{data: imageBytes, revisedPrompt: revisedPrompt, providerRequest: request}, usage, nil
-	}
-	adapter, ok := resolveTypedAdapter[ProviderImageGenerator](s.adapterRegistry, prepared.Provider.Type)
-	if !ok {
-		return imageRunResult{}, Usage{}, NewHTTPError(http.StatusBadRequest, "adapter_capability_unsupported", "Provider adapter does not support image generation")
-	}
-	imageBytes, revisedPrompt, usage, err := adapter.GenerateImage(ctx, prepared.Provider, prepared.ProviderModel, request)
+	imageBytes, revisedPrompt, usage, err := s.executePreparedProviderImage(ctx, prepared, request)
 	if err != nil {
 		return imageRunResult{}, usage, err
 	}

@@ -12,33 +12,34 @@ import (
 )
 
 type providerImageCapabilityRouteProfile struct {
-	ProviderType               string
-	ResourceType               string
-	PublicModel                string
-	UpstreamModel              string
-	CapabilityOption           string
-	CapabilityCheckedAtOption  string
-	CapabilitySupportedValue   string
-	CapabilityUnsupportedValue string
-	RouteBackfillOption        string
-	RouteBackfillValue         string
-	ProviderErrorCode          string
-	ProviderErrorMessage       string
-	UpstreamModelErrorCode     string
-	UpstreamModelErrorMessage  string
-	CapabilityErrorCode        string
-	CapabilityErrorMessage     string
-	EnabledRequiredErrorCode   string
-	EnabledRequiredMessage     string
-	AuditAction                string
-	OperationKeyPrefix         string
-	ProbePrompt                string
-	ProbeBackground            string
-	ProbeQuality               string
-	ProbeSize                  string
-	ProbeTimeoutErrorCode      string
-	ProbeTimeoutErrorMessage   string
-	ProbeErrorMessages         map[string]string
+	ProviderType                string
+	ResourceType                string
+	PublicModel                 string
+	UpstreamModel               string
+	CapabilityOption            string
+	CapabilityCheckedAtOption   string
+	CapabilitySupportedValue    string
+	CapabilityUnsupportedValue  string
+	RouteBackfillOption         string
+	RouteBackfillValue          string
+	ProviderErrorCode           string
+	ProviderErrorMessage        string
+	UpstreamModelErrorCode      string
+	UpstreamModelErrorMessage   string
+	CapabilityErrorCode         string
+	CapabilityErrorMessage      string
+	EnabledRequiredErrorCode    string
+	EnabledRequiredMessage      string
+	AuditAction                 string
+	OperationKeyPrefix          string
+	ProbePrompt                 string
+	ProbeBackground             string
+	ProbeQuality                string
+	ProbeSize                   string
+	ProbeTimeoutErrorCode       string
+	ProbeTimeoutErrorMessage    string
+	RuntimeUnsupportedErrorCode string
+	ProbeErrorMessages          map[string]string
 }
 
 func (s *Server) applyImageCapabilityActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
@@ -194,6 +195,10 @@ func providerImageCapabilityProfileFromAction(descriptor pluginmeta.ActionDescri
 		ProbeTimeoutErrorMessage: strings.TrimSpace(firstNonEmpty(
 			descriptor.Metadata["probe_error.timeout.message"],
 			descriptor.Metadata["probe_timeout_error_message"],
+		)),
+		RuntimeUnsupportedErrorCode: strings.TrimSpace(firstNonEmpty(
+			descriptor.Metadata["runtime_error.unsupported.code"],
+			descriptor.Metadata["image_generation_unsupported_error_code"],
 		)),
 		ProbeErrorMessages: providerImageCapabilityProbeErrorMessages(descriptor.Metadata),
 	}
@@ -460,6 +465,7 @@ func (p providerImageCapabilityRouteProfile) key() string {
 		p.ProbeSize,
 		p.ProbeTimeoutErrorCode,
 		p.ProbeTimeoutErrorMessage,
+		p.RuntimeUnsupportedErrorCode,
 	}, "\x00")
 	for _, entry := range sortedStringMapEntries(p.ProbeErrorMessages) {
 		key += "\x00" + entry
