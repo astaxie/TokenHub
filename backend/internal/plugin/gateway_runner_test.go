@@ -110,6 +110,86 @@ func TestGatewayHookRunnerRejectsStageMutationLimitViolations(t *testing.T) {
 	}
 }
 
+func TestGatewayHookRunnerReportsAuditEvents(t *testing.T) {
+	chain := NewGatewayChainRegistry()
+	hook := GatewayHookDescriptor{
+		PluginID:      "tokenhub.audit",
+		HookID:        "decision",
+		Stage:         StageAdmission,
+		FailurePolicy: FailurePolicyFailClosed,
+	}
+	if err := chain.RegisterHook(hook); err != nil {
+		t.Fatalf("register hook: %v", err)
+	}
+	runner := NewGatewayHookRunner(chain)
+	auditEvent := json.RawMessage(`{"reason":"policy_match","category":"quota"}`)
+	if err := runner.RegisterHandler(hook, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+		return GatewayHookResult{
+			Decision:    HookDecisionContinue,
+			AuditEvents: []json.RawMessage{auditEvent},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	report, err := runner.RunStage(context.Background(), StageAdmission, GatewayHookInput{RequestID: "req_audit"})
+	if err != nil {
+		t.Fatalf("run stage: %v", err)
+	}
+	if len(report.Results) != 1 || len(report.Results[0].AuditEvents) != 1 {
+		t.Fatalf("audit events = %+v, want one propagated audit event", report.Results)
+	}
+	auditEvent[0] = '['
+	if string(report.Results[0].AuditEvents[0]) != `{"reason":"policy_match","category":"quota"}` {
+		t.Fatalf("audit event was not cloned: %s", report.Results[0].AuditEvents[0])
+	}
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+	if strings.Contains(string(encoded), "policy_match") || strings.Contains(string(encoded), "audit_events") {
+		t.Fatalf("audit events leaked through report JSON: %s", encoded)
+	}
+}
+
+func TestGatewayHookRunnerBoundsAuditEvents(t *testing.T) {
+	hook := GatewayHookDescriptor{
+		PluginID:      "tokenhub.audit",
+		HookID:        "bounded",
+		Stage:         StageAdmission,
+		FailurePolicy: FailurePolicyFailClosed,
+	}
+	runner := NewGatewayHookRunner(NewGatewayChainRegistry())
+	if err := runner.RegisterHandler(hook, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
+		events := make([]json.RawMessage, 0, MaxGatewayHookAuditEventsPerRun+1)
+		events = append(events, json.RawMessage(`"`+strings.Repeat("x", MaxGatewayHookAuditEventBytes+1)+`"`))
+		for index := 0; index < MaxGatewayHookAuditEventsPerRun; index++ {
+			events = append(events, json.RawMessage(`{"event":"allowed"}`))
+		}
+		return GatewayHookResult{
+			Decision:    HookDecisionContinue,
+			AuditEvents: events,
+		}, nil
+	})); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	report, err := runner.RunStageHooks(context.Background(), StageAdmission, GatewayHookInput{}, []GatewayHookDescriptor{hook})
+	if err != nil {
+		t.Fatalf("run stage: %v", err)
+	}
+	if len(report.Results) != 1 || len(report.Results[0].AuditEvents) != MaxGatewayHookAuditEventsPerRun {
+		t.Fatalf("audit events = %+v, want capped at %d", report.Results, MaxGatewayHookAuditEventsPerRun)
+	}
+	var marker map[string]any
+	if err := json.Unmarshal(report.Results[0].AuditEvents[0], &marker); err != nil {
+		t.Fatalf("decode oversized marker: %v", err)
+	}
+	if marker["truncated"] != true || marker["limit_bytes"] != float64(MaxGatewayHookAuditEventBytes) {
+		t.Fatalf("oversized marker = %+v, want truncation marker", marker)
+	}
+}
+
 func TestGatewayHookRunnerAppliesFailurePolicyForMissingHandlers(t *testing.T) {
 	chain := NewGatewayChainRegistry()
 	openHook := GatewayHookDescriptor{PluginID: "tokenhub.cache", HookID: "lookup", Stage: StageCacheLookup, FailurePolicy: FailurePolicyFailOpen}
@@ -252,7 +332,8 @@ func TestGatewayHookRunnerObserveOnlyCannotBlockOrMutate(t *testing.T) {
 	runner := NewGatewayHookRunner(chain)
 	if err := runner.RegisterHandler(observe, GatewayHookHandlerFunc(func(context.Context, GatewayHookInput) (GatewayHookResult, error) {
 		return GatewayHookResult{
-			Decision: HookDecisionDeny,
+			Decision:    HookDecisionDeny,
+			AuditEvents: []json.RawMessage{json.RawMessage(`{"observation":"ranked"}`)},
 			Writes: map[GatewayDataClass]RawPatch{
 				DataRouteCandidates: {Value: json.RawMessage(`[{"route_id":"mutated"}]`)},
 			},
@@ -284,6 +365,9 @@ func TestGatewayHookRunnerObserveOnlyCannotBlockOrMutate(t *testing.T) {
 	}
 	if len(report.Results) != 2 || report.Results[0].Decision != HookDecisionContinue || len(report.Results[0].Writes) != 0 || report.TerminalDecision != "" {
 		t.Fatalf("observe-only report = %+v", report)
+	}
+	if len(report.Results[0].AuditEvents) != 1 || string(report.Results[0].AuditEvents[0]) != `{"observation":"ranked"}` {
+		t.Fatalf("observe-only audit events = %v, want preserved observation event", report.Results[0].AuditEvents)
 	}
 }
 

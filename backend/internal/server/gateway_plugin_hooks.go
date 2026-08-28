@@ -57,7 +57,7 @@ func (s *Server) runGatewayAuthContextHooks(ctx context.Context, call *CallConte
 			input.Data[dataClass] = encoded
 		}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageAuthContext, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, *call, pluginmeta.StageAuthContext, input)
 	if err != nil {
 		return gatewayHookHTTPError(pluginmeta.StageAuthContext, err)
 	}
@@ -96,7 +96,7 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 		},
 		Data: gatewayHookCallData(call, body),
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageCacheLookup, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageCacheLookup, input)
 	if err != nil {
 		return nil, Usage{}, false, gatewayHookHTTPError(pluginmeta.StageCacheLookup, err)
 	}
@@ -151,7 +151,7 @@ func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext
 	if encodedUsage, ok := marshalGatewayHookData(usage); ok {
 		input.Data[pluginmeta.DataUsage] = encodedUsage
 	}
-	if _, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageCacheWrite, input, hooks); err != nil {
+	if _, err := s.runAuditedGatewayHookStageHooks(ctx, call, pluginmeta.StageCacheWrite, input, hooks); err != nil {
 		log.Printf("[tokenhub] gateway cache_write hooks failed for request %s: %v", call.RequestID, err)
 	}
 }
@@ -183,7 +183,7 @@ func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallConte
 			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 		}
 	}
-	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageResponsePost, input, hooks)
+	report, err := s.runAuditedGatewayHookStageHooks(ctx, call, pluginmeta.StageResponsePost, input, hooks)
 	if err != nil {
 		return nil, gatewayHookHTTPError(pluginmeta.StageResponsePost, err)
 	}
@@ -239,7 +239,7 @@ func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallCont
 			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 		}
 	}
-	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageGuardrailPost, input, hooks)
+	report, err := s.runAuditedGatewayHookStageHooks(ctx, call, pluginmeta.StageGuardrailPost, input, hooks)
 	if err != nil {
 		return nil, gatewayHookHTTPError(pluginmeta.StageGuardrailPost, err)
 	}
@@ -294,7 +294,7 @@ func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallC
 			input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 		}
 	}
-	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageUsageAttribution, input, hooks)
+	report, err := s.runAuditedGatewayHookStageHooks(ctx, call, pluginmeta.StageUsageAttribution, input, hooks)
 	if err != nil {
 		return Usage{}, gatewayHookHTTPError(pluginmeta.StageUsageAttribution, err)
 	}
@@ -336,7 +336,7 @@ func (s *Server) runGatewayAdmissionHooks(ctx context.Context, call CallContext,
 	if reservation, ok := marshalGatewayHookData(Usage{TotalTokens: maxInt64(tokenReservation, 0)}); ok {
 		input.Data[pluginmeta.DataUsage] = reservation
 	}
-	if _, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageAdmission, input); err != nil {
+	if _, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageAdmission, input); err != nil {
 		return gatewayHookHTTPError(pluginmeta.StageAdmission, err)
 	}
 	return nil
@@ -366,7 +366,7 @@ func (s *Server) runGatewayDecodeNormalizeHooks(ctx context.Context, call CallCo
 	if requestHeaders, ok := marshalGatewayHookData(sanitizedGatewayHookHeaders(headers)); ok {
 		input.Data[pluginmeta.DataRequestHeaders] = requestHeaders
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageDecodeNormalize, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageDecodeNormalize, input)
 	if err != nil {
 		return gatewayHookHTTPError(pluginmeta.StageDecodeNormalize, err)
 	}
@@ -518,7 +518,7 @@ func (s *Server) runGatewayPrivacyPreHooks(ctx context.Context, call CallContext
 		input.Data[pluginmeta.DataRequestHeaders] = requestHeaders
 	}
 	input.Data[pluginmeta.DataRequestBody] = body
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StagePrivacyPre, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StagePrivacyPre, input)
 	if err != nil {
 		return gatewayHookHTTPError(pluginmeta.StagePrivacyPre, err)
 	}
@@ -558,7 +558,7 @@ func (s *Server) runGatewayGuardrailPreHooks(ctx context.Context, call CallConte
 	if encoded, ok := marshalGatewayHookData(segments); ok {
 		input.Data[pluginmeta.DataNormalizedText] = encoded
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageGuardrailPre, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageGuardrailPre, input)
 	if err != nil {
 		return gatewayHookHTTPError(pluginmeta.StageGuardrailPre, err)
 	}
@@ -678,7 +678,7 @@ func (s *Server) runGatewayContextOptimizeHooks(ctx context.Context, call CallCo
 		},
 		Data: gatewayHookCallData(call, body),
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageContextOptimize, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageContextOptimize, input)
 	if err != nil {
 		return gatewayHookHTTPError(pluginmeta.StageContextOptimize, err)
 	}
@@ -769,7 +769,7 @@ func (s *Server) runGatewayProviderCallHooks(ctx context.Context, call CallConte
 			input.Data[dataClass] = encoded
 		}
 	}
-	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageProviderCall, input, hooks)
+	report, err := s.runAuditedGatewayHookStageHooks(ctx, call, pluginmeta.StageProviderCall, input, hooks)
 	if err != nil {
 		if pluginmeta.IsGatewayHookRouteSkipped(err) {
 			return nil, Usage{}, false, &ProviderInvocationError{
@@ -831,7 +831,7 @@ func (s *Server) runGatewayRouteCandidatesHooks(ctx context.Context, call CallCo
 			input.Data[dataClass] = encoded
 		}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageRouteCandidates, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageRouteCandidates, input)
 	if err != nil {
 		return nil, gatewayHookHTTPError(pluginmeta.StageRouteCandidates, err)
 	}
@@ -881,7 +881,7 @@ func (s *Server) runGatewayRouteRankHooks(ctx context.Context, call CallContext,
 			input.Data[dataClass] = encoded
 		}
 	}
-	report, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageRouteRank, input)
+	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageRouteRank, input)
 	if err != nil {
 		log.Printf("[tokenhub] gateway route_rank hooks failed for request %s: %v", call.RequestID, err)
 		return planned
@@ -925,7 +925,8 @@ func (s *Server) runGatewayTraceExportHooks(ctx context.Context, completion Gate
 	if len(input.Data) == 0 {
 		input.Data = nil
 	}
-	if _, err := s.gatewayHooks.RunStage(ctx, pluginmeta.StageTraceExport, input); err != nil {
+	_, err := s.runAuditedGatewayHookStage(ctx, completion.Call, pluginmeta.StageTraceExport, input)
+	if err != nil {
 		log.Printf("[tokenhub] gateway trace_export hooks failed for request %s: %v", completion.Call.RequestID, err)
 	}
 }

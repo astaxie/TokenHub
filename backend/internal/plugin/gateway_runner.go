@@ -1,11 +1,17 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+)
+
+const (
+	MaxGatewayHookAuditEventsPerRun = 16
+	MaxGatewayHookAuditEventBytes   = 16 * 1024
 )
 
 var (
@@ -79,6 +85,7 @@ type GatewayHookRunResult struct {
 	HookID        string                        `json:"hook_id"`
 	Decision      GatewayHookDecision           `json:"decision"`
 	Writes        map[GatewayDataClass]RawPatch `json:"writes,omitempty"`
+	AuditEvents   []json.RawMessage             `json:"-"`
 	FailurePolicy GatewayHookFailurePolicy      `json:"failure_policy"`
 	Status        GatewayHookRunStatus          `json:"status"`
 	Error         string                        `json:"error,omitempty"`
@@ -205,6 +212,7 @@ func (r *GatewayHookRunner) runHook(ctx context.Context, hook GatewayHookDescrip
 	run.Status = HookRunSucceeded
 	run.Decision = result.Decision
 	run.Writes = result.Writes
+	run.AuditEvents = boundedGatewayHookAuditEvents(result.AuditEvents)
 	run.DurationMS = elapsedMillis(startedAt)
 	return run, nil
 }
@@ -471,6 +479,25 @@ func cloneRawMessage(value json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), value...)
+}
+
+func boundedGatewayHookAuditEvents(values []json.RawMessage) []json.RawMessage {
+	if len(values) == 0 {
+		return nil
+	}
+	if len(values) > MaxGatewayHookAuditEventsPerRun {
+		values = values[:MaxGatewayHookAuditEventsPerRun]
+	}
+	clone := make([]json.RawMessage, 0, len(values))
+	for _, value := range values {
+		trimmed := bytes.TrimSpace(value)
+		if len(trimmed) > MaxGatewayHookAuditEventBytes {
+			clone = append(clone, json.RawMessage(fmt.Sprintf(`{"truncated":true,"bytes":%d,"limit_bytes":%d}`, len(trimmed), MaxGatewayHookAuditEventBytes)))
+			continue
+		}
+		clone = append(clone, cloneRawMessage(trimmed))
+	}
+	return clone
 }
 
 func cloneGatewayEnvelope(envelope GatewayEnvelope) GatewayEnvelope {
