@@ -2,6 +2,7 @@ import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointer
 import { type FormEvent, type ReactNode, Fragment, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
+import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { pluginMarketplaceDisplay, type PluginMarketplaceDisplayState } from "../domain/plugin-marketplace";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
@@ -435,30 +436,43 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {plugins.map((plugin) => (
-                    <tr key={plugin.id}>
-                      <td>
-                        <PluginTitle plugin={plugin} />
-                      </td>
-                      <td>
-                        <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
-                      </td>
-                      <td>
-                        <PluginStatusControl plugin={plugin} draft={pluginStateDraft(plugin)} onUpdate={updatePluginState} />
-                      </td>
-                      <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
-                      <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
-                      <td>
-                        <DistributionMetadata plugin={plugin} draft={pluginUpdateDraft(plugin)} onUpdate={updatePlugin} />
-                      </td>
-                      <td>
-                        <CapabilityList plugin={plugin} />
-                      </td>
-                      <td>
-                        <PluginDeleteControl plugin={plugin} draft={pluginDeleteDraft(plugin)} onDelete={deletePlugin} />
-                      </td>
-                    </tr>
-                  ))}
+                  {plugins.map((plugin) => {
+                    const lifecycle = pluginManagerDisplayState({ plugin });
+                    return (
+                      <tr key={plugin.id}>
+                        <td>
+                          <PluginTitle plugin={plugin} />
+                        </td>
+                        <td>
+                          <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                        </td>
+                        <td>
+                          <PluginLifecycleControl plugin={plugin} lifecycle={lifecycle} draft={pluginStateDraft(plugin)} onUpdate={updatePluginState} />
+                        </td>
+                        <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
+                        <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
+                        <td>
+                          <DistributionMetadata
+                            lifecycle={lifecycle}
+                            plugin={plugin}
+                            draft={pluginUpdateDraft(plugin)}
+                            onUpdate={updatePlugin}
+                          />
+                        </td>
+                        <td>
+                          <CapabilityList plugin={plugin} />
+                        </td>
+                        <td>
+                          <PluginDeleteControl
+                            lifecycle={lifecycle}
+                            plugin={plugin}
+                            draft={pluginDeleteDraft(plugin)}
+                            onDelete={deletePlugin}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -804,21 +818,24 @@ function PluginTitle({ plugin }: { plugin: PluginDescriptor }) {
   );
 }
 
-function PluginStatusControl({
+function PluginLifecycleControl({
   plugin,
+  lifecycle,
   draft,
   onUpdate,
 }: {
   plugin: PluginDescriptor;
+  lifecycle: PluginManagerDisplayState;
   draft: PluginStateDraft;
   onUpdate: (plugin: PluginDescriptor, status: string) => void;
 }) {
-  const status = draft.status ?? plugin.status ?? "enabled";
+  const effectiveLifecycle = draft.status ? pluginManagerDisplayState({ plugin: { ...plugin, status: draft.status } }) : lifecycle;
+  const status = effectiveLifecycle.status;
   const nextStatus = status === "disabled" ? "enabled" : "disabled";
-  const canUpdate = plugin.source !== "built_in";
+  const canUpdate = plugin.source !== "built_in" && !effectiveLifecycle.mandatory && (status === "enabled" || status === "disabled");
   return (
     <div className="stacked-cell">
-      <StatusPill status={status} label={pluginStatusLabel(status)} />
+      <StatusPill status={effectiveLifecycle.pillStatus} label={tx(effectiveLifecycle.labelKey)} />
       {canUpdate ? (
         <button
           className="secondary-button compact-button"
@@ -831,7 +848,7 @@ function PluginStatusControl({
           <span>{tx(draft.busy ? "更新中" : nextStatus === "enabled" ? "启用" : "禁用")}</span>
         </button>
       ) : null}
-      {draft.restartRequired ? <span>{tx("重启后生效")}</span> : null}
+      {draft.restartRequired || effectiveLifecycle.restartRequired ? <span>{tx("重启后生效")}</span> : null}
       {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
     </div>
   );
@@ -854,17 +871,20 @@ function CapabilityList({ plugin }: { plugin: PluginDescriptor }) {
 
 function DistributionMetadata({
   plugin,
+  lifecycle,
   draft,
   onUpdate,
   showUpdate = true,
 }: {
   plugin: PluginDescriptor;
+  lifecycle?: PluginManagerDisplayState;
   draft: PluginUpdateDraft;
   onUpdate: (plugin: PluginDescriptor) => void;
   showUpdate?: boolean;
 }) {
   const distribution = plugin.distribution;
   if (!distribution) return <span className="muted">{tx("未声明")}</span>;
+  const effectiveLifecycle = lifecycle ?? pluginManagerDisplayState({ plugin });
   const candidates: Array<{ href?: string; label: string; icon: ReactNode }> = [
     { href: distribution.marketplace_url, label: tx("市场"), icon: <ExternalLink size={13} /> },
     { href: distribution.repository_url, label: tx("仓库"), icon: <GitBranch size={13} /> },
@@ -887,7 +907,7 @@ function DistributionMetadata({
       ) : (
         <span className="muted">{tx("无下载来源")}</span>
       )}
-      {showUpdate && distribution.download_url && plugin.source !== "built_in" ? (
+      {showUpdate && effectiveLifecycle.actions.update.available ? (
         <button className="secondary-button compact-button" disabled={draft.busy} onClick={() => onUpdate(plugin)} type="button">
           <Download size={13} />
           <span>{tx(draft.busy ? "更新中" : "更新")}</span>
@@ -1032,14 +1052,16 @@ function MarketplaceInstallControl({
 
 function PluginDeleteControl({
   plugin,
+  lifecycle,
   draft,
   onDelete,
 }: {
   plugin: PluginDescriptor;
+  lifecycle: PluginManagerDisplayState;
   draft: PluginDeleteDraft;
   onDelete: (plugin: PluginDescriptor) => void;
 }) {
-  if (plugin.source === "built_in") return <span className="muted">-</span>;
+  if (!lifecycle.actions.uninstall.available) return <span className="muted">-</span>;
   return (
     <div className="stacked-cell">
       <button
@@ -1153,12 +1175,6 @@ function pluginSourceLabel(source: string) {
   if (source === "marketplace") return tx("插件市场");
   if (source === "local_file") return tx("本地文件");
   return source;
-}
-
-function pluginStatusLabel(status?: string) {
-  if (!status || status === "enabled") return tx("已启用");
-  if (status === "disabled") return tx("已禁用");
-  return status;
 }
 
 function mandatoryLabel(mandatory: boolean) {
