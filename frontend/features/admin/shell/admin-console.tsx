@@ -963,7 +963,13 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           ) : activeView === "database-status" ? (
             <DatabaseStatusView api={api} isDark={theme === "dark"} />
           ) : activeView === "plugins" ? (
-            <PluginsView api={api} data={data} />
+            <PluginsView
+              api={api}
+              data={data}
+              onSIMSelectionPreferenceChange={setSIMSelectionPreference}
+              simSelectionPreference={simSelectionPreference}
+              theme={theme}
+            />
           ) : activeView === "plugin-pages" ? (
             <PluginPageView activePageKey={activePluginPageKey} api={api} data={data} onSelectPage={selectPluginPage} />
           ) : activeView === "settings" ? (

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { type PluginCapabilityDescriptor } from "../core/types";
 import { emptyData } from "../domain/catalog";
 import { PluginsView } from "./plugins";
 
@@ -338,4 +339,81 @@ describe("PluginsView", () => {
     expect(screen.getByText("深色")).toBeInTheDocument();
     expect(screen.getByText("紧凑")).toBeInTheDocument();
   });
+
+  it("applies SIM selection changes through the shell preference callback", () => {
+    const onPreferenceChange = vi.fn();
+    const data = emptyData();
+    data.plugins = [
+      simPlugin("tokenhub.sim.default", [
+        themeCapability("default-light", { mode: "light", default: true, order: 1, priority: 10 }),
+        layoutCapability("default-shell", { default: true, order: 1, priority: 10 }),
+      ]),
+      simPlugin("tokenhub.sim.enterprise", [
+        themeCapability("enterprise-light", { mode: "light", order: 20 }),
+        layoutCapability("enterprise-shell", { order: 20 }),
+      ]),
+    ];
+
+    render(
+      <PluginsView
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        data={data}
+        onSIMSelectionPreferenceChange={onPreferenceChange}
+        simSelectionPreference={{}}
+        theme="light"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("SIM 插件"), { target: { value: "tokenhub.sim.enterprise" } });
+    fireEvent.change(screen.getByLabelText("主题 Token"), { target: { value: "tokenhub.sim.enterprise:theme_tokens:enterprise-light" } });
+    fireEvent.change(screen.getByLabelText("布局预设"), { target: { value: "tokenhub.sim.enterprise:shell_layout:enterprise-shell" } });
+    fireEvent.click(screen.getByRole("button", { name: "应用选择" }));
+
+    expect(onPreferenceChange).toHaveBeenCalledWith({
+      simPluginID: "tokenhub.sim.enterprise",
+      themeKey: "tokenhub.sim.enterprise:theme_tokens:enterprise-light",
+      themeID: "enterprise-light",
+      layoutKey: "tokenhub.sim.enterprise:shell_layout:enterprise-shell",
+      layoutID: "enterprise-shell",
+    });
+  });
 });
+
+function simPlugin(id: string, capabilities: PluginCapabilityDescriptor[]) {
+  return {
+    id,
+    name: id,
+    version: "1.0.0",
+    source: "built_in",
+    kinds: ["sim"],
+    placements: ["presentation"],
+    capabilities,
+  };
+}
+
+function themeCapability(id: string, payload: Record<string, unknown> = {}) {
+  return {
+    kind: "sim",
+    name: "theme_tokens",
+    subject: id,
+    value: JSON.stringify({
+      id,
+      mode: "all",
+      tokens: { accent: "#2563eb" },
+      ...payload,
+    }),
+  };
+}
+
+function layoutCapability(id: string, payload: Record<string, unknown> = {}) {
+  return {
+    kind: "sim",
+    name: "shell_layout",
+    subject: id,
+    value: JSON.stringify({
+      id,
+      layout: { density: "comfortable" },
+      ...payload,
+    }),
+  };
+}

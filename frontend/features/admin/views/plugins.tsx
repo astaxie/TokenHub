@@ -1,9 +1,11 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Power, PowerOff, ShieldCheck, Trash2 } from "lucide-react";
-import { type FormEvent, type ReactNode, Fragment, useState } from "react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Power, PowerOff, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { type FormEvent, type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { pluginMarketplaceDisplay, type PluginMarketplaceDisplayState } from "../domain/plugin-marketplace";
+import { simRegistryFromPlugins, type SIMRegistry, type SIMShellLayout, type SIMThemeTokens } from "../domain/sim-registry";
+import { resolveSIMSelection, type SIMSelectionPreference } from "../domain/sim-selection";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
@@ -52,7 +54,19 @@ type PluginBackgroundJobDraft = {
   result: string;
 };
 
-export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
+export function PluginsView({
+  api,
+  data,
+  simSelectionPreference,
+  onSIMSelectionPreferenceChange,
+  theme = "light",
+}: {
+  api: ApiContext;
+  data: AppData;
+  simSelectionPreference?: unknown;
+  onSIMSelectionPreferenceChange?: (preference: SIMSelectionPreference) => void;
+  theme?: "light" | "dark";
+}) {
   const plugins = data.plugins;
   const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
   const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
@@ -61,29 +75,50 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
   const [backgroundJobDrafts, setBackgroundJobDrafts] = useState<Record<string, PluginBackgroundJobDraft>>({});
   const [marketplaceDrafts, setMarketplaceDrafts] = useState<Record<string, PluginInstallDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
+  const simRegistry = useMemo(() => simRegistryFromPlugins(plugins), [plugins]);
+  const simSelection = useMemo(
+    () => resolveSIMSelection({ plugins, preference: simSelectionPreference, themeMode: theme }),
+    [plugins, simSelectionPreference, theme],
+  );
+  const [simSelectionDraft, setSIMSelectionDraft] = useState<SIMSelectionPreference>(simSelection.preference);
   const providerCapabilities = plugins.reduce(
-    (count, plugin) => count + plugin.capabilities.filter((capability) => capability.kind === "provider").length,
+    (count, plugin) => count + (plugin.capabilities ?? []).filter((capability) => capability.kind === "provider").length,
     0,
   );
-  const gatewayPlugins = plugins.filter((plugin) => plugin.placements.includes("gateway_chain")).length;
-  const uiPlugins = plugins.filter((plugin) => plugin.placements.includes("presentation") || plugin.kinds.includes("admin_ui") || plugin.kinds.includes("sim")).length;
+  const gatewayPlugins = plugins.filter((plugin) => plugin.placements?.includes("gateway_chain")).length;
+  const uiPlugins = plugins.filter((plugin) => plugin.placements?.includes("presentation") || plugin.kinds?.includes("admin_ui") || plugin.kinds?.includes("sim")).length;
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const backgroundJobs = data.pluginBackgroundJobs;
   const themeContributions = uiContributions.filter((contribution) => contribution.slot === "theme.tokens");
   const layoutContributions = uiContributions.filter((contribution) => contribution.slot === "layout.preset");
+  const simPlugins = useMemo(() => simSelectionPlugins(plugins, simRegistry), [plugins, simRegistry]);
+  const themeOptions = useMemo(() => simSelectionThemeOptions(simRegistry.themeTokens, theme), [simRegistry.themeTokens, theme]);
+  const layoutOptions = useMemo(() => simSelectionLayoutOptions(simRegistry.shellLayouts), [simRegistry.shellLayouts]);
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const marketplaceEntries = data.pluginMarketplace.map((item) => ({
     item,
     display: pluginMarketplaceDisplay(item, { locale: languageLocale() }),
   }));
+  const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const marketplaceInstallDraft = (plugin: PluginDescriptor) => marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
   const backgroundJobDraft = (job: PluginBackgroundJobDescriptor) => backgroundJobDrafts[pluginBackgroundJobKey(job.plugin_id, job.job_id)] ?? emptyBackgroundJobDraft(job);
+
+  useEffect(() => {
+    setSIMSelectionDraft(simSelection.preference);
+  }, [
+    simSelection.preference,
+    simSelection.preference.layoutID,
+    simSelection.preference.layoutKey,
+    simSelection.preference.simPluginID,
+    simSelection.preference.themeID,
+    simSelection.preference.themeKey,
+  ]);
 
   function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
     const key = pluginActionKey(action.plugin_id, action.action_id);
@@ -337,6 +372,11 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
         },
       }));
     }
+  }
+
+  function applySIMSelection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSIMSelectionPreferenceChange?.(simSelectionDraft);
   }
 
   return (
@@ -670,6 +710,105 @@ export function PluginsView({ api, data }: { api: ApiContext; data: AppData }) {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-header">
+          <h2>{tx("SIM 选择面板")}</h2>
+        </div>
+        <div className="section-body">
+          {simPlugins.length === 0 && themeOptions.length === 0 && layoutOptions.length === 0 ? (
+            <p className="empty-state">{tx("暂无可选 SIM")}</p>
+          ) : (
+            <form className="plugin-action-runner" onSubmit={applySIMSelection}>
+              <div className="stacked-cell">
+                <strong>{tx("当前生效")}</strong>
+                <span>
+                  {activeSIMPlugin ? activeSIMPlugin.name || activeSIMPlugin.id : tx("自动选择")} ·{" "}
+                  {simSelection.theme.capability ? simSelection.theme.capability.title : tx("自动选择")} ·{" "}
+                  {simSelection.layout.capability ? simSelection.layout.capability.title : tx("自动选择")}
+                </span>
+              </div>
+
+              <label className="plugin-action-field">
+                <span>{tx("SIM 插件")}</span>
+                <select
+                  onChange={(event) => {
+                    const nextPluginID = event.currentTarget.value;
+                    setSIMSelectionDraft((draft) => {
+                      const nextTheme = preferredSIMTheme(themeOptions, nextPluginID, draft.themeKey);
+                      const nextLayout = preferredSIMLayout(layoutOptions, nextPluginID, draft.layoutKey);
+                      return {
+                        simPluginID: nextPluginID,
+                        themeKey: nextTheme?.key ?? "",
+                        themeID: nextTheme?.id ?? "",
+                        layoutKey: nextLayout?.key ?? "",
+                        layoutID: nextLayout?.id ?? "",
+                      };
+                    });
+                  }}
+                  value={simSelectionDraft.simPluginID}
+                >
+                  <option value="">{tx("自动选择")}</option>
+                  {simPlugins.map((plugin) => (
+                    <option key={plugin.id} value={plugin.id}>
+                      {plugin.name || plugin.id}{plugin.version ? ` · ${plugin.version}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="plugin-action-field">
+                <span>{tx("主题 Token")}</span>
+                <select
+                  onChange={(event) => {
+                    const nextTheme = themeOptions.find((option) => option.key === event.currentTarget.value);
+                    setSIMSelectionDraft((draft) => ({
+                      ...draft,
+                      themeKey: nextTheme?.key ?? "",
+                      themeID: nextTheme?.id ?? "",
+                    }));
+                  }}
+                  value={simSelectionDraft.themeKey}
+                >
+                  <option value="">{tx("自动选择")}</option>
+                  {themeOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.title} · {option.pluginName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="plugin-action-field">
+                <span>{tx("布局预设")}</span>
+                <select
+                  onChange={(event) => {
+                    const nextLayout = layoutOptions.find((option) => option.key === event.currentTarget.value);
+                    setSIMSelectionDraft((draft) => ({
+                      ...draft,
+                      layoutKey: nextLayout?.key ?? "",
+                      layoutID: nextLayout?.id ?? "",
+                    }));
+                  }}
+                  value={simSelectionDraft.layoutKey}
+                >
+                  <option value="">{tx("自动选择")}</option>
+                  {layoutOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.title} · {option.pluginName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button className="secondary-button plugin-action-button" disabled={!onSIMSelectionPreferenceChange} type="submit">
+                <Save size={14} />
+                <span>{tx("应用选择")}</span>
+              </button>
+            </form>
           )}
         </div>
       </section>
@@ -1156,6 +1295,65 @@ function backgroundJobStatusLabel(status: string) {
   if (status === "failed") return tx("失败");
   if (status === "skipped") return tx("跳过");
   return status;
+}
+
+type SIMSelectionCapabilityOption = {
+  key: string;
+  id: string;
+  title: string;
+  pluginID: string;
+  pluginName: string;
+  pluginVersion: string;
+};
+
+function simSelectionPlugins(plugins: readonly PluginDescriptor[], registry: SIMRegistry) {
+  const capabilityPluginIDs = new Set([...registry.themeTokens, ...registry.shellLayouts].map((capability) => capability.pluginID));
+  return plugins.flatMap((plugin) => {
+    const hasSIMKind = plugin.kinds?.includes("sim");
+    const hasSIMCapability = capabilityPluginIDs.has(plugin.id);
+    if (!hasSIMKind && !hasSIMCapability) return [];
+    return [{
+      id: plugin.id,
+      name: plugin.name || plugin.id,
+      version: plugin.version || "",
+    }];
+  });
+}
+
+function simSelectionThemeOptions(themeTokens: readonly SIMThemeTokens[], theme: "light" | "dark") {
+  return themeTokens
+    .filter((token) => token.payload.mode === "all" || token.payload.mode === theme)
+    .map((token) => ({
+      key: token.key,
+      id: token.id,
+      title: token.title || token.id,
+      pluginID: token.pluginID,
+      pluginName: token.pluginName || token.pluginID,
+      pluginVersion: token.pluginVersion || "",
+    }));
+}
+
+function simSelectionLayoutOptions(layouts: readonly SIMShellLayout[]) {
+  return layouts.map((layout) => ({
+    key: layout.key,
+    id: layout.id,
+    title: layout.title || layout.id,
+    pluginID: layout.pluginID,
+    pluginName: layout.pluginName || layout.pluginID,
+    pluginVersion: layout.pluginVersion || "",
+  }));
+}
+
+function preferredSIMTheme(options: SIMSelectionCapabilityOption[], pluginID: string, currentKey: string) {
+  return options.find((option) => option.key === currentKey && option.pluginID === pluginID) ??
+    options.find((option) => option.pluginID === pluginID && option.id) ??
+    options.find((option) => option.pluginID === pluginID);
+}
+
+function preferredSIMLayout(options: SIMSelectionCapabilityOption[], pluginID: string, currentKey: string) {
+  return options.find((option) => option.key === currentKey && option.pluginID === pluginID) ??
+    options.find((option) => option.pluginID === pluginID && option.id) ??
+    options.find((option) => option.pluginID === pluginID);
 }
 
 function emptyActionDraft(action: PluginActionDescriptor): ActionDraft {
