@@ -31,7 +31,15 @@ type builtinProviderAdapter struct {
 	modelCategories              []providerModelCategoryDefinition
 	resourceTypes                []pluginmeta.ManifestProviderResourceType
 	catalogEntry                 *pluginProviderCatalogEntry
+	managementActions            []builtinProviderPluginCapability
+	backgroundJobs               []builtinProviderPluginCapability
 	capabilities                 []AdapterCapability
+}
+
+type builtinProviderPluginCapability struct {
+	id         string
+	capability string
+	subject    string
 }
 
 func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]ProviderAdapter, codexSubscription *CodexSubscriptionAdapter) {
@@ -96,6 +104,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			[]string{"custom"},
 			nil,
 		),
+		managementActions: []builtinProviderPluginCapability{
+			{id: "kronk.models.preview", capability: "models.preview", subject: ProviderKronk},
+		},
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -140,6 +151,8 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 				"max_concurrency": "3",
 			},
 		}},
+		managementActions: builtinOpenAICodexProviderPluginActions(),
+		backgroundJobs:    builtinOpenAICodexProviderPluginBackgroundJobs(),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityResponses,
 			AdapterCapabilityResponseStream,
@@ -417,6 +430,11 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 		capabilities = append(capabilities, string(capability))
 	}
 	descriptor := pluginmeta.BuiltInProviderWithResourceTypeMetadata(pluginID, name, []string{adapter.providerType}, adapter.resourceTypes, capabilities)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind: pluginmeta.CapabilityKindProviderType,
+		Name: adapter.providerType,
+	})
+	descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	if adapter.supportsCustomHeaders != nil {
 		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
 			Kind:    "provider_policy",
@@ -628,6 +646,36 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 		}
 	}
+	for _, action := range adapter.managementActions {
+		action.id = strings.TrimSpace(action.id)
+		if action.id == "" {
+			continue
+		}
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    pluginmeta.CapabilityKindManagementAction,
+			Name:    action.id,
+			Subject: firstNonEmpty(strings.TrimSpace(action.subject), adapter.providerType),
+			Value:   strings.TrimSpace(action.capability),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if len(adapter.backgroundJobs) > 0 {
+		descriptor.Placements = append(descriptor.Placements, pluginmeta.PlacementBackground)
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	for _, job := range adapter.backgroundJobs {
+		job.id = strings.TrimSpace(job.id)
+		if job.id == "" {
+			continue
+		}
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    pluginmeta.CapabilityKindBackgroundJob,
+			Name:    job.id,
+			Subject: firstNonEmpty(strings.TrimSpace(job.subject), adapter.providerType),
+			Value:   strings.TrimSpace(job.capability),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
 	if adapter.catalogEntry != nil {
 		categoryDefinitions := append([]providerModelCategoryDefinition(nil), adapter.modelCategories...)
 		categoryDefinitions = append(categoryDefinitions, providerModelCategoryDefinitionsForKeys(adapter.catalogEntry.Categories)...)
@@ -653,6 +701,29 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 		}
 	}
 	return descriptor
+}
+
+func builtinOpenAICodexProviderPluginActions() []builtinProviderPluginCapability {
+	return []builtinProviderPluginCapability{
+		{id: "openai_codex.credentials.refresh", capability: "credentials.refresh", subject: ProviderOpenAICodex},
+		{id: "openai_codex.image_capability.configure", capability: "image.capability.configure", subject: ProviderOpenAICodex},
+		{id: "openai_codex.models.preview", capability: "models.preview", subject: ProviderOpenAICodex},
+		{id: "openai_codex.models.read", capability: "models.read", subject: ProviderOpenAICodex},
+		{id: "openai_codex.oauth.exchange", capability: "oauth.exchange", subject: ProviderOpenAICodex},
+		{id: "openai_codex.oauth.start", capability: "oauth.start", subject: ProviderOpenAICodex},
+		{id: "openai_codex.probe.run", capability: "probe.run", subject: ProviderOpenAICodex},
+		{id: "openai_codex.provider.probe.run", capability: "provider.probe.run", subject: ProviderOpenAICodex},
+		{id: "openai_codex.quota.read", capability: "quota.read", subject: ProviderOpenAICodex},
+		{id: "openai_codex.quota.reset", capability: "quota.reset", subject: ProviderOpenAICodex},
+		{id: "openai_codex.quota.reset_credits.read", capability: "quota.reset_credits.read", subject: ProviderOpenAICodex},
+	}
+}
+
+func builtinOpenAICodexProviderPluginBackgroundJobs() []builtinProviderPluginCapability {
+	return []builtinProviderPluginCapability{
+		{id: "openai_codex.credentials.refresh_due", capability: providerCredentialRefreshDueJobCapability, subject: ProviderOpenAICodex},
+		{id: "openai_codex.quota.refresh_due", capability: providerQuotaRefreshDueJobCapability, subject: ProviderOpenAICodex},
+	}
 }
 
 func boolPointer(value bool) *bool {
