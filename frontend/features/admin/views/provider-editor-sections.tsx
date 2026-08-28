@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { type ApiContext, type ProviderResource } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
+import { providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
 import { providerReasoningFieldConfigs, providerTypeOptionsSupportAnthropicReasoning } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
@@ -79,11 +80,11 @@ function providerTypeOptionsForCurrentValue(providerType: string): ProviderTypeO
 export function ProviderAuthModeField({ values, onUpdate, providerTypeOptions = [] }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[] }) {
   const authModes = providerTypeAuthModes(providerTypeOptions, values.type);
   if (authModes.length === 0) return null;
-  const authModeValue = values.anthropic_auth_type || providerTypePreferredAuthMode(providerTypeOptions, values.type);
+  const authModeValue = providerAuthMode(values, providerTypeOptions) || providerTypePreferredAuthMode(providerTypeOptions, values.type);
   return (
     <label className="field">
       <span>{tx("认证方式")}</span>
-      <select value={authModeValue} onChange={(event) => onUpdate("anthropic_auth_type", event.target.value)}>
+      <select value={authModeValue} onChange={(event) => onUpdate(providerAuthModeField, event.target.value)}>
         {authModes.map((mode) => <option key={mode} value={mode}>{providerAuthModeLabel(mode)}</option>)}
       </select>
       <small>{tx("认证密钥始终使用上面的加密 API Key，不需要写入自定义 Headers。")}</small>

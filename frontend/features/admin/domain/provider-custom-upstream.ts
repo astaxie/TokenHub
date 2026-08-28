@@ -9,6 +9,8 @@ type ProviderAuthModeOption = {
 
 const legacyProviderTypeFallback = "openai_compatible";
 const providerModelsPreviewCapability = "models.preview";
+export const providerAuthModeField = "provider_auth_mode";
+export const legacyProviderAuthModeField = "anthropic_auth_type";
 
 export function defaultProviderTypeValue(providerTypeOptions: ProviderAuthModeOption[] = []) {
   return providerTypeOptions.find((option) => option.defaultCatalogProviderType)?.value ??
@@ -25,12 +27,12 @@ export function providerAuthMode(values: Record<string, string>, providerTypeOpt
   const providerType = providerTypeValue(values, providerTypeOptions);
   const modes = providerAuthModes(providerTypeOptions, providerType);
   if (modes.length === 0) return "";
-  const configured = values.anthropic_auth_type?.trim();
+  const configured = (values[providerAuthModeField] || values[legacyProviderAuthModeField])?.trim();
   if (configured && modes.includes(configured)) return configured;
   return preferredProviderAuthMode(modes);
 }
 
-const providerConnectionTestFields = new Set(["base_url", "api_key", "type", "anthropic_auth_type", "custom_headers"]);
+const providerConnectionTestFields = new Set(["base_url", "api_key", "type", providerAuthModeField, legacyProviderAuthModeField, "custom_headers"]);
 
 export function providerConnectionTestRunAfterUpdate(currentRun: number, key: string) {
   return providerConnectionTestFields.has(key) ? currentRun + 1 : currentRun;
@@ -71,6 +73,7 @@ export function customUpstreamDiscoveryPayload(
   headers: Record<string, unknown> = {},
   providerTypeOptions: ProviderAuthModeOption[] = [],
 ) {
+  const authMode = providerAuthMode(values, providerTypeOptions);
   return {
     provider_id: providerID,
     name: values.name,
@@ -78,7 +81,8 @@ export function customUpstreamDiscoveryPayload(
     base_url: values.base_url,
     api_key: values.api_key,
     ...headers,
-    anthropic_auth_type: providerAuthMode(values, providerTypeOptions),
+    [providerAuthModeField]: authMode,
+    [legacyProviderAuthModeField]: authMode,
     model_category: modelCategory,
   };
 }

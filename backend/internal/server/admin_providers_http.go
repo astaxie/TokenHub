@@ -371,7 +371,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
 	applyProviderPluginPolicy(&provider, adapterDescriptor)
-	if err := configureProviderAuthMode(&provider, req.AnthropicAuthType, adapterDescriptor.ProviderPolicy); err != nil {
+	if err := configureProviderAuthMode(&provider, requestedProviderAuthMode(req), adapterDescriptor.ProviderPolicy); err != nil {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
 	if catalog.ID != "" {

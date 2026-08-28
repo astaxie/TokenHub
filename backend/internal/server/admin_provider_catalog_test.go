@@ -394,12 +394,12 @@ func TestAdminPersistsPluginProviderAuthenticationMode(t *testing.T) {
 	app := server.Handler()
 
 	valid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
-		"id":                  "prv_auth_mode_plugin",
-		"name":                "Auth Mode Plugin Provider",
-		"type":                providerType,
-		"base_url":            "https://example.invalid/v1",
-		"api_key":             "plugin-secret",
-		"anthropic_auth_type": "oauth",
+		"id":                 "prv_auth_mode_plugin",
+		"name":               "Auth Mode Plugin Provider",
+		"type":               providerType,
+		"base_url":           "https://example.invalid/v1",
+		"api_key":            "plugin-secret",
+		"provider_auth_mode": "oauth",
 	}, "")
 	if valid.Code != http.StatusCreated {
 		t.Fatalf("expected provider creation 201, got %d: %s", valid.Code, valid.Body)
@@ -416,13 +416,32 @@ func TestAdminPersistsPluginProviderAuthenticationMode(t *testing.T) {
 	}
 
 	invalid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
-		"name":                "Invalid Plugin Auth Mode",
-		"type":                providerType,
-		"base_url":            "https://example.invalid/v1",
-		"anthropic_auth_type": "basic",
+		"name":               "Invalid Plugin Auth Mode",
+		"type":               providerType,
+		"base_url":           "https://example.invalid/v1",
+		"provider_auth_mode": "basic",
 	}, "")
 	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, `"code":"provider_auth_mode_invalid"`) {
 		t.Fatalf("expected invalid plugin auth mode, got %d: %s", invalid.Code, invalid.Body)
+	}
+
+	preferred := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_auth_mode_preferred",
+		"name":                "Preferred Auth Mode Provider",
+		"type":                providerType,
+		"base_url":            "https://example.invalid/v1",
+		"provider_auth_mode":  "oauth",
+		"anthropic_auth_type": "x-api-key",
+	}, "")
+	if preferred.Code != http.StatusCreated {
+		t.Fatalf("expected preferred auth mode creation 201, got %d: %s", preferred.Code, preferred.Body)
+	}
+	var preferredResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(preferred.Body), &preferredResult); err != nil {
+		t.Fatal(err)
+	}
+	if got := preferredResult.Provider.Options[providerAuthModeOption]; got != "oauth" {
+		t.Fatalf("preferred plugin auth mode = %q, want oauth", got)
 	}
 }
 

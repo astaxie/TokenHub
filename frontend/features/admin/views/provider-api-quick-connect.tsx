@@ -4,7 +4,7 @@ import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor,
 import { providerTypeLabel } from "../domain/labels";
 import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
 import { formatModelPrice } from "../domain/formatting";
-import { providerAuthMode, providerCatalogAPIKeyRequired, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
+import { legacyProviderAuthModeField, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
@@ -169,6 +169,7 @@ export function ProviderAPIQuickConnect({
     const startedAt = performance.now();
     setConnectionTest({ status: "testing" });
     try {
+      const authMode = providerAuthMode(values, effectiveProviderTypeOptions);
       const resp = await adminFetch(api, "/api/admin/providers/test-connection", {
         method: "POST",
         body: JSON.stringify({
@@ -178,7 +179,8 @@ export function ProviderAPIQuickConnect({
           base_url: values.base_url,
           api_key: values.api_key,
           ...providerHeadersPayload(values.custom_headers),
-          anthropic_auth_type: providerAuthMode(values, effectiveProviderTypeOptions),
+          [providerAuthModeField]: authMode,
+          [legacyProviderAuthModeField]: authMode,
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));

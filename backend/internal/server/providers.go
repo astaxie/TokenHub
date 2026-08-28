@@ -502,6 +502,13 @@ func configureProviderAuthMode(provider *Provider, requested string, policy Adap
 	return nil
 }
 
+func requestedProviderAuthMode(req ProviderCreateRequest) string {
+	if mode := strings.TrimSpace(req.ProviderAuthMode); mode != "" {
+		return mode
+	}
+	return req.AnthropicAuthType
+}
+
 func providerAuthModeAllowed(authType string, supportedModes []string) bool {
 	for _, supported := range supportedModes {
 		if authType == strings.ToLower(strings.TrimSpace(supported)) {

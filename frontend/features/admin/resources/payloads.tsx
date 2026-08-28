@@ -6,7 +6,7 @@ import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveT
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
-import { defaultProviderTypeValue, providerAuthMode } from "../domain/provider-custom-upstream";
+import { defaultProviderTypeValue, legacyProviderAuthModeField, providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
 import { providerPluginOptionValues } from "../domain/provider-plugin-options";
 import { modelMetadataPayload } from "../domain/model-display-name";
@@ -24,6 +24,7 @@ import { projectQuotaFields, type ProjectQuotaValues } from "../domain/project-q
 
 export function providerPayload(values: Record<string, string>, data?: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">) {
   const providerTypeOptions = data ? providerTypeOptionsFromData(data, values) : [];
+  const authMode = providerAuthMode(values, providerTypeOptions);
   return {
     id: values.id,
     name: values.name,
@@ -35,7 +36,8 @@ export function providerPayload(values: Record<string, string>, data?: Pick<AppD
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 10),
     ...providerHeadersPayload(values.custom_headers),
-    anthropic_auth_type: providerAuthMode(values, providerTypeOptions),
+    [providerAuthModeField]: authMode,
+    [legacyProviderAuthModeField]: authMode,
     claude_code_attribution_policy: values.claude_code_attribution_policy || defaultProviderClaudeCodeAttributionPolicy(values.type, values.catalog_id, providerTypeOptions),
     catalog_id: values.catalog_id,
     model_category: values.model_category,

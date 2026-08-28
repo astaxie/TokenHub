@@ -91,7 +91,7 @@ describe("ProviderPluginFormSections", () => {
       providerAdapters: [{
         type: "plugin_provider",
         capabilities: ["chat"],
-        provider_policy: { supports_custom_headers: true, claude_code_attribution_default: "preserve" },
+        provider_policy: { supports_custom_headers: true, auth_modes: ["oauth", "x-api-key"], claude_code_attribution_default: "preserve" },
       }],
     };
     const payload = providerPayload({
@@ -103,10 +103,13 @@ describe("ProviderPluginFormSections", () => {
       priority: "10",
       base_url: "https://provider.example/v1",
       api_key: "secret",
+      provider_auth_mode: "oauth",
       [tenantKey]: "tenant-updated",
       [cacheKey]: "false",
     }, data);
 
+    expect(payload.provider_auth_mode).toBe("oauth");
+    expect(payload.anthropic_auth_type).toBe("oauth");
     expect(payload.claude_code_attribution_policy).toBe("preserve");
     expect(payload.options).toMatchObject({
       tenant_id: "tenant-updated",

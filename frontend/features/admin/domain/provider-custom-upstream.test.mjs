@@ -22,26 +22,27 @@ const bearerAnthropicValues = {
   type: "anthropic",
   base_url: "https://anthropic.example.test/v1",
   api_key: "test-api-key",
-  anthropic_auth_type: "bearer",
+  provider_auth_mode: "bearer",
 };
 
 const anthropicProviderTypeOptions = [
   { value: "anthropic", label: "Anthropic", supportsCustomHeaders: true, authModes: ["bearer", "x-api-key"] },
 ];
 
-test("create discovery sends the selected Anthropic auth mode", () => {
+test("create discovery sends the selected provider auth mode", () => {
   assert.deepEqual(customUpstreamDiscoveryPayload(bearerAnthropicValues, "", "chat", {}, anthropicProviderTypeOptions), {
     provider_id: "",
     name: "Bearer Anthropic",
     type: "anthropic",
     base_url: "https://anthropic.example.test/v1",
     api_key: "test-api-key",
+    provider_auth_mode: "bearer",
     anthropic_auth_type: "bearer",
     model_category: "chat",
   });
 });
 
-test("edit discovery sends the provider ID and selected Anthropic auth mode", () => {
+test("edit discovery sends the provider ID and selected provider auth mode", () => {
   const values = { ...bearerAnthropicValues, api_key: "" };
 
   assert.deepEqual(customUpstreamDiscoveryPayload(values, "provider-anthropic", "all", {}, anthropicProviderTypeOptions), {
@@ -50,6 +51,7 @@ test("edit discovery sends the provider ID and selected Anthropic auth mode", ()
     type: "anthropic",
     base_url: "https://anthropic.example.test/v1",
     api_key: "",
+    provider_auth_mode: "bearer",
     anthropic_auth_type: "bearer",
     model_category: "all",
   });
@@ -68,6 +70,7 @@ test("discovery includes custom header payloads", () => {
     base_url: "https://anthropic.example.test/v1",
     api_key: "test-api-key",
     ...headers,
+    provider_auth_mode: "bearer",
     anthropic_auth_type: "bearer",
     model_category: "chat",
   });
@@ -76,6 +79,10 @@ test("discovery includes custom header payloads", () => {
 test("discovery omits auth mode when provider metadata does not declare modes", () => {
   assert.equal(providerAuthMode({ type: "anthropic" }), "");
   assert.equal(providerAuthMode({ type: "openai_compatible", anthropic_auth_type: "bearer" }), "");
+});
+
+test("legacy Anthropic auth field remains compatible", () => {
+  assert.equal(providerAuthMode({ type: "anthropic", anthropic_auth_type: "bearer" }, anthropicProviderTypeOptions), "bearer");
 });
 
 test("Anthropic discovery default follows adapter auth modes", () => {
@@ -88,6 +95,7 @@ test("Anthropic discovery default follows adapter auth modes", () => {
     type: "anthropic",
     base_url: undefined,
     api_key: undefined,
+    provider_auth_mode: "bearer",
     anthropic_auth_type: "bearer",
     model_category: "chat",
   });
@@ -97,13 +105,14 @@ test("plugin provider discovery follows descriptor auth modes", () => {
   const providerTypeOptions = [{ value: "subscription_provider", label: "Subscription Provider", supportsCustomHeaders: true, authModes: ["oauth", "x-api-key"] }];
 
   assert.equal(providerAuthMode({ type: "subscription_provider" }, providerTypeOptions), "x-api-key");
-  assert.equal(providerAuthMode({ type: "subscription_provider", anthropic_auth_type: "oauth" }, providerTypeOptions), "oauth");
+  assert.equal(providerAuthMode({ type: "subscription_provider", provider_auth_mode: "oauth" }, providerTypeOptions), "oauth");
   assert.deepEqual(customUpstreamDiscoveryPayload({ type: "subscription_provider" }, "", "chat", {}, providerTypeOptions), {
     provider_id: "",
     name: undefined,
     type: "subscription_provider",
     base_url: undefined,
     api_key: undefined,
+    provider_auth_mode: "x-api-key",
     anthropic_auth_type: "x-api-key",
     model_category: "chat",
   });
@@ -126,6 +135,7 @@ test("provider type defaults prefer plugin metadata before the legacy fallback",
     type: "native_subscription",
     base_url: undefined,
     api_key: undefined,
+    provider_auth_mode: "",
     anthropic_auth_type: "",
     model_category: "chat",
   });
@@ -172,10 +182,10 @@ test("provider catalog preview can require API keys through action schema", () =
   assert.equal(providerCatalogAPIKeyRequired("strict", entry, actions), true);
 });
 
-test("changing the Anthropic auth selector invalidates the custom model cache key", () => {
+test("changing the provider auth selector invalidates the custom model cache key", () => {
   const apiKeyConnection = customUpstreamConnectionKey({
     ...bearerAnthropicValues,
-    anthropic_auth_type: "x-api-key",
+    provider_auth_mode: "x-api-key",
   }, anthropicProviderTypeOptions);
   const bearerConnection = customUpstreamConnectionKey(bearerAnthropicValues, anthropicProviderTypeOptions);
 
@@ -209,7 +219,7 @@ test("changing custom headers invalidates the custom model cache key", () => {
 test("connection inputs invalidate completed and in-flight connection tests", () => {
   const testedRun = 7;
 
-  for (const key of ["base_url", "api_key", "type", "anthropic_auth_type", "custom_headers"]) {
+  for (const key of ["base_url", "api_key", "type", "provider_auth_mode", "anthropic_auth_type", "custom_headers"]) {
     assert.equal(providerConnectionTestRunAfterUpdate(testedRun, key), testedRun + 1, key);
   }
   for (const key of ["name", "priority"]) {

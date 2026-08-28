@@ -816,7 +816,7 @@ func applyProviderModelDiscoveryAuth(httpReq *http.Request, endpoint *url.URL, r
 
 func providerModelDiscoveryAuthMode(req ProviderCreateRequest, descriptor AdapterDescriptor) (string, error) {
 	provider := Provider{Type: strings.TrimSpace(req.Type), APIKey: strings.TrimSpace(req.APIKey), Options: req.Options}
-	if err := configureProviderAuthMode(&provider, req.AnthropicAuthType, descriptor.ProviderPolicy); err != nil {
+	if err := configureProviderAuthMode(&provider, requestedProviderAuthMode(req), descriptor.ProviderPolicy); err != nil {
 		return "", err
 	}
 	if mode := providerConfiguredAuthMode(provider, descriptor.ProviderPolicy); mode != "" {

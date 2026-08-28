@@ -300,10 +300,11 @@ type ProviderCreateRequest struct {
 	ModelCategory               string            `json:"model_category"`
 	ClaudeCodeAttributionPolicy *string           `json:"claude_code_attribution_policy,omitempty"`
 	// CreateRoutes is accepted only to reject the retired automatic-route workflow.
-	CreateRoutes   *bool                  `json:"create_routes"`
-	SelectedModels []string               `json:"selected_models"`
-	CustomModels   []ProviderCatalogModel `json:"custom_models"`
-	// AnthropicAuthType is a legacy write-only field for provider auth mode.
+	CreateRoutes     *bool                  `json:"create_routes"`
+	SelectedModels   []string               `json:"selected_models"`
+	CustomModels     []ProviderCatalogModel `json:"custom_models"`
+	ProviderAuthMode string                 `json:"provider_auth_mode"`
+	// AnthropicAuthType is a legacy write-only alias for provider auth mode.
 	AnthropicAuthType string `json:"anthropic_auth_type"`
 }
 

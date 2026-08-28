@@ -49,6 +49,15 @@ func TestConfigureProviderAuthModeRequiresDeclaredModes(t *testing.T) {
 	}
 }
 
+func TestRequestedProviderAuthModePrefersGenericField(t *testing.T) {
+	if got := requestedProviderAuthMode(ProviderCreateRequest{ProviderAuthMode: "oauth", AnthropicAuthType: anthropicAuthTypeBearer}); got != "oauth" {
+		t.Fatalf("requested provider auth mode = %q, want oauth", got)
+	}
+	if got := requestedProviderAuthMode(ProviderCreateRequest{AnthropicAuthType: anthropicAuthTypeBearer}); got != anthropicAuthTypeBearer {
+		t.Fatalf("legacy requested provider auth mode = %q, want bearer", got)
+	}
+}
+
 func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 	tests := []struct {
 		name string

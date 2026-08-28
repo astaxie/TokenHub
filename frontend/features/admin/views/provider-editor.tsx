@@ -9,7 +9,7 @@ import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/fo
 import { providerTypeLabelFromData } from "../domain/labels";
 import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
 import { defaultProviderClaudeCodeAttributionPolicy } from "../domain/provider-attribution";
-import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerTypeValue } from "../domain/provider-custom-upstream";
+import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
@@ -138,7 +138,7 @@ export function ProviderUpsertModal({
     base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     api_key: "",
     clear_api_key: "false",
-    anthropic_auth_type: provider?.options?.auth_mode ?? provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: initialProviderType }, providerTypeOptions),
+    [providerAuthModeField]: provider?.options?.auth_mode ?? provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: initialProviderType }, providerTypeOptions),
     priority: String(provider?.priority ?? 10),
     claude_code_attribution_policy: mode === "edit"
       ? provider?.options?.claude_code_attribution_policy ?? "preserve"
@@ -436,7 +436,7 @@ export function ProviderUpsertModal({
   useEffect(() => {
     if (!selectedCatalogUsesDiscoveryPreview || !values.base_url?.trim()) return;
     // Load custom upstream models once model selection is on screen. This also
-    // covers edit mode, where changing the Anthropic auth selector on the
+    // covers edit mode, where changing the Provider auth selector on the
     // Advanced tab must refresh discovery when the operator returns to Models.
     if (!customUpstreamModelsVisible(mode, editTab, quickAPIConnect, quickAPITab, createStep)) return;
     if (loadedCustomConnection.current === customConnectionKey) return;
