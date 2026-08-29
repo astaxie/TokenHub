@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -170,11 +171,52 @@ func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pl
 	switch strings.TrimSpace(descriptor.Capability) {
 	case "credentials.refresh":
 		return s.applyCredentialsRefreshActionSideEffects(ctx, descriptor, payload, result)
+	case "quota.read":
+		return s.applyQuotaReadActionSideEffects(ctx, descriptor, payload, result)
 	case "image.capability.configure":
 		return s.applyImageCapabilityActionSideEffects(ctx, descriptor, payload, result)
 	default:
 		return result, nil
 	}
+}
+
+func (s *Server) applyQuotaReadActionSideEffects(_ context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
+	var request struct {
+		ResourceID string `json:"resource_id"`
+	}
+	if len(payload) > 0 {
+		if err := json.Unmarshal(payload, &request); err != nil {
+			return result, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+		}
+	}
+	resourceID := strings.TrimSpace(request.ResourceID)
+	if resourceID == "" {
+		return result, NewHTTPError(http.StatusBadGateway, "plugin_quota_read_missing_resource", "Quota read action returned quota without a resource_id target")
+	}
+	resource, ok := s.store.GetProviderResource(resourceID)
+	if !ok {
+		return result, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return result, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+	}
+	if descriptor.Subject != "" && descriptor.Subject != provider.Type {
+		return result, NewHTTPError(http.StatusForbidden, "plugin_action_subject_mismatch", "Plugin action subject does not match the Provider type")
+	}
+	expectedResourceType := strings.TrimSpace(firstNonEmpty(descriptor.Metadata["provider_resource_type"], descriptor.Metadata["resource_type"]))
+	if expectedResourceType != "" && resource.ResourceType != expectedResourceType {
+		return result, NewHTTPError(http.StatusForbidden, "plugin_action_resource_type_mismatch", "Plugin action resource type does not match the Provider resource")
+	}
+	normalized, snapshot, fetchedAt, ok := pluginActionResultQuotaSnapshot(result.Data, time.Now().UTC())
+	if !ok {
+		return result, NewHTTPError(http.StatusBadGateway, "plugin_quota_read_invalid_result", "Quota read action returned an invalid quota snapshot")
+	}
+	if err := s.store.SaveProviderResourceQuota(resourceID, provider.Type, snapshot, fetchedAt); err != nil {
+		return result, err
+	}
+	result.Data = normalized
+	return result, nil
 }
 
 func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {

@@ -144,6 +144,54 @@ func (s *Server) cachedOpenAIAccountQuota(resourceID string, ttl time.Duration) 
 	return quota, true
 }
 
+func pluginActionResultQuotaSnapshot(data any, now time.Time) (map[string]any, string, time.Time, bool) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, "", time.Time{}, false
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal(raw, &snapshot); err != nil || len(snapshot) == 0 {
+		return nil, "", time.Time{}, false
+	}
+	fetchedAt := quotaSnapshotFetchedAt(snapshot["fetched_at"], now)
+	snapshot["fetched_at"] = fetchedAt.Unix()
+	raw, err = json.Marshal(snapshot)
+	if err != nil {
+		return nil, "", time.Time{}, false
+	}
+	return snapshot, string(raw), fetchedAt, true
+}
+
+func quotaSnapshotFetchedAt(value any, fallback time.Time) time.Time {
+	switch typed := value.(type) {
+	case float64:
+		if typed > 0 {
+			return time.Unix(int64(typed), 0).UTC()
+		}
+	case int64:
+		if typed > 0 {
+			return time.Unix(typed, 0).UTC()
+		}
+	case int:
+		if typed > 0 {
+			return time.Unix(int64(typed), 0).UTC()
+		}
+	case json.Number:
+		if seconds, err := typed.Int64(); err == nil && seconds > 0 {
+			return time.Unix(seconds, 0).UTC()
+		}
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if parsed, err := time.Parse(time.RFC3339, trimmed); err == nil && !parsed.IsZero() {
+			return parsed.UTC()
+		}
+	}
+	if fallback.IsZero() {
+		fallback = time.Now().UTC()
+	}
+	return fallback.UTC()
+}
+
 func (s *Server) fetchOpenAIAccountQuota(ctx context.Context, resourceID string) (OpenAIAccountQuota, error) {
 	creds, err := s.store.RefreshProviderResourceCredentials(ctx, resourceID, false)
 	if err != nil {

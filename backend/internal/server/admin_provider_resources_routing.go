@@ -321,7 +321,7 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	result, handled, err := s.executeProviderPanelAction(ctx, user, provider.Type, "quota", AdapterCapabilityQuota, map[string]any{
 		"resource_id": resourceID,
 		"refresh":     refresh,
-	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
+	}, providerPluginActionOptions{ApplySideEffects: true, ResourceType: resource.ResourceType})
 	if err != nil {
 		return pluginmeta.ActionResult{}, err
 	}

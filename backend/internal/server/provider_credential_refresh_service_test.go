@@ -188,6 +188,107 @@ func TestProviderQuotaRefreshBackgroundJobPersistsQuotaSnapshots(t *testing.T) {
 	}
 }
 
+func TestProviderQuotaRefreshBackgroundJobPersistsExternalPluginSnapshots(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "quota_background_plugin"
+	resourceType := "quota_background_account"
+	pluginID := "tokenhub.provider.quota-background"
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: []string{resourceType}})
+	provider := store.AddProvider(Provider{
+		Name:    "Quota Background Plugin",
+		Type:    providerType,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID:   provider.ID,
+		Name:         "Quota Background Account",
+		ResourceType: resourceType,
+		Status:       StatusActive,
+		Healthy:      true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Quota Background", []string{providerType}, []string{
+		string(AdapterCapabilityQuota),
+	}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityQuota},
+	}); err != nil {
+		t.Fatalf("register quota background provider plugin: %v", err)
+	}
+	var actionCalls atomic.Int64
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "quota_background.quota.read",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "quota.read",
+		Subject:    providerType,
+		Metadata:   map[string]string{"provider_resource_type": resourceType},
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls.Add(1)
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Refresh    bool   `json:"refresh"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		if payload.ResourceID != resource.ID || !payload.Refresh {
+			t.Fatalf("unexpected quota refresh payload: %+v", payload)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"resource_id": payload.ResourceID,
+			"plan_type":   "external-plugin-plan",
+			"fetched_at":  int64(1810000000),
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register quota read action: %v", err)
+	}
+	if err := server.pluginBackgroundJobs.Register(pluginmeta.BackgroundJobDescriptor{
+		PluginID:       pluginID,
+		JobID:          "quota_background.quota.refresh_due",
+		Capability:     providerQuotaRefreshDueJobCapability,
+		Subject:        providerType,
+		Schedule:       "10m",
+		TimeoutMillis:  120000,
+		MaxConcurrency: 1,
+		OutputSchema:   backgroundJobCountSchema(),
+	}, pluginmeta.BackgroundJobHandlerFunc(func(ctx context.Context, _ pluginmeta.BackgroundJobInvocation) (pluginmeta.BackgroundJobResult, error) {
+		return pluginmeta.BackgroundJobResult{Data: server.refreshDueProviderQuotasWithPluginJob(ctx, providerType)}, nil
+	})); err != nil {
+		t.Fatalf("register quota refresh background job: %v", err)
+	}
+
+	record, err := server.pluginBackgroundRunner.Run(context.Background(), pluginmeta.BackgroundJobInvocation{
+		PluginID: pluginID,
+		JobID:    "quota_background.quota.refresh_due",
+		Trigger:  "manual",
+	})
+	if err != nil {
+		t.Fatalf("run external quota refresh background job: %v", err)
+	}
+	data := record.Result.Data.(map[string]int)
+	if data["refreshed"] != 1 || data["failed"] != 0 || data["skipped"] != 0 {
+		t.Fatalf("quota refresh job result = %+v", data)
+	}
+	if actionCalls.Load() != 1 {
+		t.Fatalf("quota read action calls = %d, want 1", actionCalls.Load())
+	}
+	observation, ok := store.GetProviderResourceObservation(resource.ID)
+	if !ok || observation.QuotaFetchedAt == nil {
+		t.Fatalf("quota observation missing: %+v, %v", observation, ok)
+	}
+	if observation.AdapterType != providerType ||
+		observation.QuotaFetchedAt.UTC().Unix() != 1810000000 ||
+		!strings.Contains(observation.QuotaSnapshot, "external-plugin-plan") {
+		t.Fatalf("quota observation = %+v", observation)
+	}
+}
+
 func TestProviderCredentialRefreshServiceUsesNativeRefreshProfilePolicy(t *testing.T) {
 	store := NewMemoryStore()
 	providerType := "profile_oauth_subscription"

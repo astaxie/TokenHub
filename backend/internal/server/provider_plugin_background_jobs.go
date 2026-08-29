@@ -99,7 +99,10 @@ func (s *Server) refreshDueProviderQuotasWithPluginJob(ctx context.Context, prov
 			continue
 		}
 		payload := map[string]any{"resource_id": resource.ID, "refresh": true}
-		_, handled, err := s.executeProviderCapabilityAction(ctx, AdminUser{ID: "system", Name: "System", Role: "system"}, provider.Type, AdapterCapabilityQuota, "quota.read", payload, providerPluginActionOptions{ResourceType: resource.ResourceType})
+		_, handled, err := s.executeProviderCapabilityAction(ctx, AdminUser{ID: "system", Name: "System", Role: "system"}, provider.Type, AdapterCapabilityQuota, "quota.read", payload, providerPluginActionOptions{
+			ApplySideEffects: true,
+			ResourceType:     resource.ResourceType,
+		})
 		if err != nil {
 			result["failed"]++
 			continue
