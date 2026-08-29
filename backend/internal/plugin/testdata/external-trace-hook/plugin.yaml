@@ -1,0 +1,29 @@
+schema_version: 1
+id: tokenhub.extension.external-trace
+name: External Trace Hook
+version: 1.0.0
+description: Contract fixture for an external trace export gateway hook.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: hook.sh
+capabilities:
+  hooks:
+    - id: export
+      stage: trace_export
+      priority: 2300
+      failure_policy: observe_only
+      reads:
+        - audit
+        - usage
+permissions:
+  data:
+    read:
+      - audit
+      - usage
