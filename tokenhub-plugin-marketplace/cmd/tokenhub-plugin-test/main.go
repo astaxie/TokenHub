@@ -80,11 +80,13 @@ func main() {
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: tokenhub-plugin-test provider --package <plugin-dir> [--fixture <provider_operations.json>]")
+		return errors.New("usage: tokenhub-plugin-test <provider|action|hook|background> --package <plugin-dir> [--fixture <fixture.json>]")
 	}
 	switch args[0] {
 	case "action":
 		return runAction(ctx, args[1:], stdout, stderr)
+	case "background":
+		return runBackground(ctx, args[1:], stdout, stderr)
 	case "hook":
 		return runHook(ctx, args[1:], stdout, stderr)
 	case "provider":

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "protocol": "stdio-json-v1",
+  "kind": "background_job",
+  "plugin_id": "tokenhub.background.heartbeat-go",
+  "job_id": "heartbeat.ping",
+  "schedule": "@startup",
+  "cases": [
+    {
+      "name": "manual heartbeat",
+      "trigger": "manual",
+      "actor": { "id": "admin_1", "name": "Admin One", "role": "owner" },
+      "payload": { "resource_id": "rsrc_1", "count": 1 },
+      "forbidden_fragments": ["provider-secret", "refresh_token", "raw prompt sentinel"],
+      "expect": {
+        "resource_id": "rsrc_1",
+        "heartbeat": "ok",
+        "trigger": "manual",
+        "actor_id": "admin_1",
+        "count": 1,
+        "metadata_status": "ok"
+      }
+    },
+    {
+      "name": "scheduled heartbeat",
+      "trigger": "schedule",
+      "actor": { "id": "system", "role": "system" },
+      "payload": { "resource_id": "rsrc_2", "count": 2 },
+      "forbidden_fragments": ["provider-secret", "refresh_token", "raw prompt sentinel"],
+      "expect": {
+        "resource_id": "rsrc_2",
+        "heartbeat": "ok",
+        "trigger": "schedule",
+        "actor_id": "system",
+        "count": 2,
+        "metadata_status": "ok"
+      }
+    }
+  ]
+}

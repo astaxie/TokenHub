@@ -18,12 +18,13 @@ type manifest struct {
 		} `yaml:"backend"`
 	} `yaml:"entry"`
 	Capabilities struct {
-		ProviderTypes         []string         `yaml:"provider_types"`
-		ProviderResourceTypes []string         `yaml:"provider_resource_types"`
-		Provider              map[string]any   `yaml:"provider"`
-		Actions               []manifestAction `yaml:"actions"`
-		Hooks                 []manifestHook   `yaml:"hooks"`
-		Gateway               []string         `yaml:"gateway"`
+		ProviderTypes         []string                `yaml:"provider_types"`
+		ProviderResourceTypes []string                `yaml:"provider_resource_types"`
+		Provider              map[string]any          `yaml:"provider"`
+		Actions               []manifestAction        `yaml:"actions"`
+		Hooks                 []manifestHook          `yaml:"hooks"`
+		Background            []manifestBackgroundJob `yaml:"background_jobs"`
+		Gateway               []string                `yaml:"gateway"`
 	} `yaml:"capabilities"`
 	Permissions struct {
 		Data struct {
@@ -51,4 +52,22 @@ type manifestHook struct {
 	FailurePolicy string   `yaml:"failure_policy"`
 	Reads         []string `yaml:"reads"`
 	Writes        []string `yaml:"writes"`
+}
+
+type manifestBackgroundJob struct {
+	ID             string                  `yaml:"id"`
+	Title          string                  `yaml:"title"`
+	Capability     string                  `yaml:"capability"`
+	Subject        string                  `yaml:"subject"`
+	Schedule       string                  `yaml:"schedule"`
+	TimeoutMillis  int                     `yaml:"timeout_millis"`
+	MaxConcurrency int                     `yaml:"max_concurrency"`
+	Retry          manifestBackgroundRetry `yaml:"retry"`
+	InputSchema    map[string]any          `yaml:"input_schema"`
+	OutputSchema   map[string]any          `yaml:"output_schema"`
+}
+
+type manifestBackgroundRetry struct {
+	MaxAttempts   int `yaml:"max_attempts"`
+	BackoffMillis int `yaml:"backoff_millis"`
 }

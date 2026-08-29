@@ -48,6 +48,19 @@ func TestRunHookPassesGoTraceHookSample(t *testing.T) {
 	}
 }
 
+func TestRunBackgroundPassesGoHeartbeatSample(t *testing.T) {
+	root := moduleRoot(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run(context.Background(), []string{"background", "--package", filepath.Join(root, "samples", "background-heartbeat-go")}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run background contract: %v stderr=%s stdout=%s", err, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "background contract passed (2 cases") {
+		t.Fatalf("stdout = %s", stdout.String())
+	}
+}
+
 func TestRunProviderRejectsManifestPathEscapes(t *testing.T) {
 	root := moduleRoot(t)
 	dir := t.TempDir()
