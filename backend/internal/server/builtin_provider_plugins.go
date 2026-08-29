@@ -123,6 +123,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		providerType:             ProviderOpenAICodex,
 		adapter:                  codexSubscription,
 		supportsCustomHeaders:    boolPointer(false),
+		apiKeyRequired:           boolPointer(false),
 		routeProtocols:           []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
 		credentialsScope:         providerCredentialsScopeResource,
 		credentialRefreshProfile: providerCredentialRefreshProfileOpenAIAccountOAuth,
