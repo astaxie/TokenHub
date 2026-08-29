@@ -418,6 +418,150 @@ func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 	}
 }
 
+func TestImageGuardrailPostPersistsApprovedAssetAndCacheWritePayload(t *testing.T) {
+	providerImageBytes := realPNGFixture(t)
+	responsePostImageBytes := append(append([]byte{}, providerImageBytes...), '\n')
+	guardrailImageBytes := append(append([]byte{}, responsePostImageBytes...), '\n')
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Guardrail Post Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-guardrail-post-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_guardrail_post")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_guardrail_post", Name: "Image Guardrail Post", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_guardrail_post", ProviderID: provider.ID, Name: "Image Guardrail Post Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_guardrail_post", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-guardrail-post-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		return providerImageBytes, "runner unsafe prompt", Usage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}, nil
+	}
+
+	responsePost := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-guardrail-post",
+		HookID:        "response-post",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	guardrailPost := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-guardrail-post",
+		HookID:        "guardrail-post",
+		Stage:         pluginmeta.StageGuardrailPost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	cacheWrite := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-guardrail-post",
+		HookID:        "cache-write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody, pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	for _, hook := range []pluginmeta.GatewayHookDescriptor{responsePost, guardrailPost, cacheWrite} {
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register image post hook %s: %v", hook.HookID, err)
+		}
+	}
+	if err := server.gatewayHooks.RegisterHandler(responsePost, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var response gatewayImageProviderResponse
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
+			t.Fatalf("decode image response_post response: %v", err)
+		}
+		if response.DataBase64 != encodeBase64(providerImageBytes) {
+			t.Fatal("response_post input image does not match provider output")
+		}
+		response.DataBase64 = encodeBase64(responsePostImageBytes)
+		response.RevisedPrompt = "response_post unsafe prompt"
+		return rawProviderResponsePatch(t, response), nil
+	})); err != nil {
+		t.Fatalf("register image response_post handler: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(guardrailPost, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var response gatewayImageProviderResponse
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
+			t.Fatalf("decode image guardrail_post response: %v", err)
+		}
+		if response.DataBase64 != encodeBase64(responsePostImageBytes) || response.RevisedPrompt != "response_post unsafe prompt" {
+			t.Fatalf("guardrail_post input = %+v, want response_post output", response)
+		}
+		if len(input.Data[pluginmeta.DataUsage]) == 0 {
+			t.Fatal("guardrail_post did not receive image usage data")
+		}
+		response.DataBase64 = encodeBase64(guardrailImageBytes)
+		response.RevisedPrompt = "guardrail approved prompt"
+		return rawProviderResponsePatch(t, response), nil
+	})); err != nil {
+		t.Fatalf("register image guardrail_post handler: %v", err)
+	}
+	sawCacheWrite := false
+	if err := server.gatewayHooks.RegisterHandler(cacheWrite, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var response gatewayImageProviderResponse
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
+			t.Fatalf("decode image cache_write response: %v", err)
+		}
+		sawCacheWrite = len(input.Data[pluginmeta.DataRequestBody]) > 0 &&
+			len(input.Data[pluginmeta.DataUsage]) > 0 &&
+			response.DataBase64 == encodeBase64(guardrailImageBytes) &&
+			response.RevisedPrompt == "guardrail approved prompt"
+		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+	})); err != nil {
+		t.Fatalf("register image cache_write handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "image guardrail prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "guardrail approved prompt") || strings.Contains(response.Body, "response_post unsafe prompt") {
+		t.Fatalf("image response body did not use guardrail-approved prompt: %s", response.Body)
+	}
+	if !strings.Contains(response.Body, encodeBase64(guardrailImageBytes)) || strings.Contains(response.Body, encodeBase64(responsePostImageBytes)) {
+		t.Fatalf("image response body did not use guardrail-approved bytes: %s", response.Body)
+	}
+	if !sawCacheWrite {
+		t.Fatal("image cache_write hook did not receive guardrail-approved response data")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(response.Body), &payload); err != nil {
+		t.Fatal(err)
+	}
+	jobID, _ := payload["job_id"].(string)
+	if jobID == "" {
+		t.Fatalf("image response did not include job id: %s", response.Body)
+	}
+	job, ok := store.GetImageJob(jobID)
+	if !ok || job.RevisedPrompt != "guardrail approved prompt" {
+		t.Fatalf("persisted image job = %+v, want guardrail-approved revised prompt", job)
+	}
+	assets := store.ListImageAssets(jobID)
+	if len(assets) != 1 {
+		t.Fatalf("persisted image assets = %+v, want one output asset", assets)
+	}
+	fullPath, err := server.imageAssetPath(assets[0].RelativePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedBytes, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(storedBytes, guardrailImageBytes) {
+		t.Fatalf("persisted image bytes length = %d, want guardrail-approved length %d", len(storedBytes), len(guardrailImageBytes))
+	}
+}
+
 func TestImageCacheLookupHookShortCircuitsProviderInvoke(t *testing.T) {
 	imageBytes := realPNGFixture(t)
 	store := NewMemoryStore()
