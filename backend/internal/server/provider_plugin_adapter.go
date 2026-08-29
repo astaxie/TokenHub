@@ -80,17 +80,14 @@ func (a providerPluginAdapter) commandRunner() pluginmeta.ProviderCommandRunner 
 
 func providerPluginProviderFromRuntime(provider Provider) providerPluginProvider {
 	return providerPluginProvider{
-		ID:               provider.ID,
-		Name:             provider.Name,
-		Type:             provider.Type,
-		BaseURL:          provider.BaseURL,
-		Status:           provider.Status,
-		Healthy:          provider.Healthy,
-		Priority:         provider.Priority,
-		Headers:          provider.Headers,
-		SensitiveHeaders: provider.SensitiveHeaders,
-		Options:          provider.Options,
-		CreatedAt:        provider.CreatedAt,
+		ID:        provider.ID,
+		Name:      provider.Name,
+		Type:      provider.Type,
+		BaseURL:   provider.BaseURL,
+		Status:    provider.Status,
+		Healthy:   provider.Healthy,
+		Priority:  provider.Priority,
+		CreatedAt: provider.CreatedAt,
 	}
 }
 
@@ -99,26 +96,22 @@ func providerPluginResourceFromRuntime(resource *ProviderResource) *providerPlug
 		return nil
 	}
 	converted := providerPluginResource{
-		ID:               resource.ID,
-		ProviderID:       resource.ProviderID,
-		Name:             resource.Name,
-		Group:            resource.Group,
-		ResourceType:     resource.ResourceType,
-		BaseURL:          resource.BaseURL,
-		APIKey:           resource.APIKey,
-		Region:           resource.Region,
-		Environment:      resource.Environment,
-		Status:           resource.Status,
-		Healthy:          resource.Healthy,
-		Priority:         resource.Priority,
-		Weight:           resource.Weight,
-		RateLimitRPM:     resource.RateLimitRPM,
-		TokenLimitTPM:    resource.TokenLimitTPM,
-		MaxConcurrency:   resource.MaxConcurrency,
-		Headers:          resource.Headers,
-		SensitiveHeaders: resource.SensitiveHeaders,
-		Options:          resource.Options,
-		CreatedAt:        resource.CreatedAt,
+		ID:             resource.ID,
+		ProviderID:     resource.ProviderID,
+		Name:           resource.Name,
+		Group:          resource.Group,
+		ResourceType:   resource.ResourceType,
+		BaseURL:        resource.BaseURL,
+		Region:         resource.Region,
+		Environment:    resource.Environment,
+		Status:         resource.Status,
+		Healthy:        resource.Healthy,
+		Priority:       resource.Priority,
+		Weight:         resource.Weight,
+		RateLimitRPM:   resource.RateLimitRPM,
+		TokenLimitTPM:  resource.TokenLimitTPM,
+		MaxConcurrency: resource.MaxConcurrency,
+		CreatedAt:      resource.CreatedAt,
 	}
 	if resource.Credentials != nil {
 		credentials := providerPluginCredentialsFromRuntimeCredentials(*resource.Credentials)

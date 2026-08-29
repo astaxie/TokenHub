@@ -124,6 +124,90 @@ func TestProviderPluginCredentialsFromRuntimeUsesResourceCredentials(t *testing.
 	}
 }
 
+func TestProviderPluginCommandProjectionRedactsSecrets(t *testing.T) {
+	providerJSON, err := json.Marshal(providerPluginProviderFromRuntime(Provider{
+		ID:               "prv_1",
+		Name:             "Provider 1",
+		Type:             "custom_stdio",
+		BaseURL:          "https://provider.example",
+		Status:           StatusActive,
+		Healthy:          true,
+		Priority:         7,
+		Headers:          map[string]string{"X-Tenant": "tenant"},
+		SensitiveHeaders: []string{"Authorization"},
+		Options:          map[string]string{"auth_type": "oauth", "token_expires_at": "2026-09-04T00:00:00Z"},
+	}))
+	if err != nil {
+		t.Fatalf("marshal projected provider: %v", err)
+	}
+	var providerPayload map[string]json.RawMessage
+	if err := json.Unmarshal(providerJSON, &providerPayload); err != nil {
+		t.Fatalf("unmarshal projected provider: %v", err)
+	}
+	for _, forbidden := range []string{"headers", "sensitive_headers", "options"} {
+		if _, ok := providerPayload[forbidden]; ok {
+			t.Fatalf("projected provider leaked %s: %s", forbidden, providerJSON)
+		}
+	}
+
+	resourceJSON, err := json.Marshal(providerPluginResourceFromRuntime(&ProviderResource{
+		ID:               "rsrc_1",
+		ProviderID:       "prv_1",
+		Name:             "Resource 1",
+		Group:            "group-a",
+		ResourceType:     ProviderResourceOpenAISubscription,
+		BaseURL:          "https://resource.example",
+		APIKey:           "resource-secret",
+		Region:           "us-east-1",
+		Environment:      "prod",
+		Status:           StatusActive,
+		Healthy:          true,
+		Priority:         9,
+		Weight:           100,
+		RateLimitRPM:     120,
+		TokenLimitTPM:    240,
+		MaxConcurrency:   6,
+		Headers:          map[string]string{"X-Resource": "value"},
+		SensitiveHeaders: []string{"X-Secret"},
+		Options:          map[string]string{"account_id": "resource-account"},
+		Credentials: &ProviderResourceCredentials{
+			AuthType:       "oauth",
+			AccessToken:    "resource-access",
+			RefreshToken:   "resource-refresh",
+			AccountID:      "resource-account",
+			UserID:         "resource-user",
+			Email:          "resource@example.com",
+			OrganizationID: "resource-org",
+			PlanType:       "team",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("marshal projected resource: %v", err)
+	}
+	var resourcePayload map[string]json.RawMessage
+	if err := json.Unmarshal(resourceJSON, &resourcePayload); err != nil {
+		t.Fatalf("unmarshal projected resource: %v", err)
+	}
+	for _, forbidden := range []string{"api_key", "headers", "sensitive_headers", "options"} {
+		if _, ok := resourcePayload[forbidden]; ok {
+			t.Fatalf("projected resource leaked %s: %s", forbidden, resourceJSON)
+		}
+	}
+	credentialsJSON, ok := resourcePayload["credentials"]
+	if !ok {
+		t.Fatalf("projected resource did not include projected credentials: %s", resourceJSON)
+	}
+	var credentialsPayload map[string]json.RawMessage
+	if err := json.Unmarshal(credentialsJSON, &credentialsPayload); err != nil {
+		t.Fatalf("unmarshal projected credentials: %v", err)
+	}
+	for _, expected := range []string{"access_token", "account_id", "refresh_token"} {
+		if _, ok := credentialsPayload[expected]; !ok {
+			t.Fatalf("projected credentials missing %s: %s", expected, credentialsJSON)
+		}
+	}
+}
+
 func TestExternalProviderPluginAdapterExecutesChatStreamCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")

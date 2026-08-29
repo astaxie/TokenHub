@@ -25,41 +25,34 @@ type ProviderCommandRequest struct {
 }
 
 type ProviderCommandProvider struct {
-	ID               string            `json:"id,omitempty"`
-	Name             string            `json:"name,omitempty"`
-	Type             string            `json:"type,omitempty"`
-	BaseURL          string            `json:"base_url,omitempty"`
-	Status           string            `json:"status,omitempty"`
-	Healthy          bool              `json:"healthy,omitempty"`
-	Priority         int               `json:"priority,omitempty"`
-	Headers          map[string]string `json:"headers,omitempty"`
-	SensitiveHeaders []string          `json:"sensitive_headers,omitempty"`
-	Options          map[string]string `json:"options,omitempty"`
-	CreatedAt        time.Time         `json:"created_at,omitempty"`
+	ID        string    `json:"id,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	Type      string    `json:"type,omitempty"`
+	BaseURL   string    `json:"base_url,omitempty"`
+	Status    string    `json:"status,omitempty"`
+	Healthy   bool      `json:"healthy,omitempty"`
+	Priority  int       `json:"priority,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
 }
 
 type ProviderCommandResource struct {
-	ID               string                      `json:"id,omitempty"`
-	ProviderID       string                      `json:"provider_id,omitempty"`
-	Name             string                      `json:"name,omitempty"`
-	Group            string                      `json:"group,omitempty"`
-	ResourceType     string                      `json:"resource_type,omitempty"`
-	BaseURL          string                      `json:"base_url,omitempty"`
-	APIKey           string                      `json:"api_key,omitempty"`
-	Region           string                      `json:"region,omitempty"`
-	Environment      string                      `json:"environment,omitempty"`
-	Status           string                      `json:"status,omitempty"`
-	Healthy          bool                        `json:"healthy,omitempty"`
-	Priority         int                         `json:"priority,omitempty"`
-	Weight           int                         `json:"weight,omitempty"`
-	RateLimitRPM     int64                       `json:"rate_limit_rpm,omitempty"`
-	TokenLimitTPM    int64                       `json:"token_limit_tpm,omitempty"`
-	MaxConcurrency   int64                       `json:"max_concurrency,omitempty"`
-	Headers          map[string]string           `json:"headers,omitempty"`
-	SensitiveHeaders []string                    `json:"sensitive_headers,omitempty"`
-	Options          map[string]string           `json:"options,omitempty"`
-	Credentials      *ProviderCommandCredentials `json:"credentials,omitempty"`
-	CreatedAt        time.Time                   `json:"created_at,omitempty"`
+	ID             string                      `json:"id,omitempty"`
+	ProviderID     string                      `json:"provider_id,omitempty"`
+	Name           string                      `json:"name,omitempty"`
+	Group          string                      `json:"group,omitempty"`
+	ResourceType   string                      `json:"resource_type,omitempty"`
+	BaseURL        string                      `json:"base_url,omitempty"`
+	Region         string                      `json:"region,omitempty"`
+	Environment    string                      `json:"environment,omitempty"`
+	Status         string                      `json:"status,omitempty"`
+	Healthy        bool                        `json:"healthy,omitempty"`
+	Priority       int                         `json:"priority,omitempty"`
+	Weight         int                         `json:"weight,omitempty"`
+	RateLimitRPM   int64                       `json:"rate_limit_rpm,omitempty"`
+	TokenLimitTPM  int64                       `json:"token_limit_tpm,omitempty"`
+	MaxConcurrency int64                       `json:"max_concurrency,omitempty"`
+	Credentials    *ProviderCommandCredentials `json:"credentials,omitempty"`
+	CreatedAt      time.Time                   `json:"created_at,omitempty"`
 }
 
 type ProviderCommandCredentials struct {
