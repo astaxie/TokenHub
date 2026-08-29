@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -370,5 +371,185 @@ func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 	}
 	if !sawCacheWrite {
 		t.Fatal("image cache_write hook did not receive request, response, and usage data")
+	}
+}
+
+func TestImageCacheLookupHookShortCircuitsProviderInvoke(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Cache Lookup Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-cache-lookup-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_cache_lookup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_cache_lookup", Name: "Image Cache Lookup", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_cache_lookup", ProviderID: provider.ID, Name: "Image Cache Lookup Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_cache_lookup", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-cache-lookup-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		t.Fatal("image runner should not be called on cache hit")
+		return nil, "", Usage{}, nil
+	}
+
+	cacheLookup := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-cache",
+		HookID:        "lookup",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	cacheWrite := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-cache",
+		HookID:        "write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	for _, hook := range []pluginmeta.GatewayHookDescriptor{cacheLookup, cacheWrite} {
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register image cache hook %s: %v", hook.HookID, err)
+		}
+	}
+	if err := server.gatewayHooks.RegisterHandler(cacheLookup, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Data[pluginmeta.DataRequestBody]) == 0 {
+			t.Fatal("cache lookup did not receive image request body")
+		}
+		return rawProviderCallResult(t, gatewayImageProviderResponse{
+			DataBase64:    encodeBase64(imageBytes),
+			RevisedPrompt: "served from image cache",
+		}, Usage{PromptTokens: 6, CompletionTokens: 2, TotalTokens: 8}), nil
+	})); err != nil {
+		t.Fatalf("register image cache lookup handler: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(cacheWrite, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		t.Fatal("cache write should not run after an image cache hit")
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register image cache write handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "cache image prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image cache hit failed: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, encodeBase64(imageBytes)) || !strings.Contains(response.Body, "served from image cache") || !strings.Contains(response.Body, `"total_tokens":8`) {
+		t.Fatalf("unexpected image cache response: %s", response.Body)
+	}
+}
+
+func TestImageCacheLookupFailOpenContinuesToProviderInvoke(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Cache Lookup Failure Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-cache-lookup-failure-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_cache_lookup_failure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_cache_lookup_failure", Name: "Image Cache Lookup Failure", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_cache_lookup_failure", ProviderID: provider.ID, Name: "Image Cache Lookup Failure Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_cache_lookup_failure", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-cache-lookup-failure-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	providerCalls := 0
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		providerCalls++
+		return imageBytes, "provider image", Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7}, nil
+	}
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-cache",
+		HookID:        "lookup-fail-open",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      1000,
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register image cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{}, errors.New("cache lookup unavailable")
+	})); err != nil {
+		t.Fatalf("register image cache lookup handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "provider fallback prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image fallback failed: %d %s", response.Code, response.Body)
+	}
+	if providerCalls != 1 {
+		t.Fatalf("provider calls = %d, want 1 after cache lookup fail-open", providerCalls)
+	}
+	if !strings.Contains(response.Body, "provider image") || !strings.Contains(response.Body, `"total_tokens":7`) {
+		t.Fatalf("unexpected provider fallback response: %s", response.Body)
+	}
+}
+
+func TestImageCacheWriteFailOpenPreservesProviderResponse(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Cache Write Failure Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-cache-write-failure-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_cache_write_failure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_cache_write_failure", Name: "Image Cache Write Failure", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_cache_write_failure", ProviderID: provider.ID, Name: "Image Cache Write Failure Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_cache_write_failure", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-cache-write-failure-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		return imageBytes, "provider write fallback", Usage{PromptTokens: 4, CompletionTokens: 5, TotalTokens: 9}, nil
+	}
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-cache",
+		HookID:        "write-fail-open",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody, pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register image cache write hook: %v", err)
+	}
+	cacheWriteCalls := 0
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		cacheWriteCalls++
+		return pluginmeta.GatewayHookResult{}, errors.New("cache write unavailable")
+	})); err != nil {
+		t.Fatalf("register image cache write handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "cache write fail-open prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image response failed after cache write error: %d %s", response.Code, response.Body)
+	}
+	if cacheWriteCalls != 1 {
+		t.Fatalf("cache write calls = %d, want 1", cacheWriteCalls)
+	}
+	if !strings.Contains(response.Body, "provider write fallback") || !strings.Contains(response.Body, `"total_tokens":9`) {
+		t.Fatalf("unexpected provider response after cache write failure: %s", response.Body)
 	}
 }

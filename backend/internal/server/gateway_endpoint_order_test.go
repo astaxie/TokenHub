@@ -2,7 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -197,6 +200,255 @@ func TestGatewayChatRoutePathRunsCanonicalStageOrder(t *testing.T) {
 	}
 }
 
+func TestGatewayStreamingOpenAIEndpointsSkipCacheLookupAndWrite(t *testing.T) {
+	tests := []struct {
+		name string
+		send func(t *testing.T, handler http.Handler) responseBody
+	}{
+		{
+			name: "chat completions",
+			send: func(t *testing.T, handler http.Handler) responseBody {
+				return doJSON(t, handler, http.MethodPost, "/v1/chat/completions", map[string]any{
+					"model":  "gpt-4.1-mini",
+					"stream": true,
+					"messages": []map[string]any{
+						{"role": "user", "content": "hello"},
+					},
+				}, "thk_demo_local")
+			},
+		},
+		{
+			name: "responses",
+			send: func(t *testing.T, handler http.Handler) responseBody {
+				store := NewMemoryStore()
+				project := store.CreateProject(Project{Name: "Streaming Cache Skip Responses", Status: StatusActive})
+				_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+					Name:    "stream-cache-skip-responses-key",
+					Allowed: []string{"gpt-stream-cache-skip"},
+					Status:  StatusActive,
+				}, "thk_stream_cache_skip_responses")
+				if err != nil {
+					t.Fatal(err)
+				}
+				provider := store.AddProvider(Provider{
+					ID: "prv_stream_cache_skip", Name: "Streaming Cache Skip",
+					Type: "stream_cache_skip_responses", Status: StatusActive, Healthy: true,
+				})
+				store.AddModel(Model{Name: "gpt-stream-cache-skip", Modality: "chat", Status: StatusActive})
+				store.AddRoute(ModelRoute{
+					ID: "route_stream_cache_skip", ModelName: "gpt-stream-cache-skip",
+					ProviderID: provider.ID, ProviderModel: "upstream-responses", Status: StatusActive, Priority: 1, Weight: 100,
+				})
+				server := New(store)
+				server.adapterRegistry.Register("stream_cache_skip_responses", responsesStreamTransformAdapter{}, AdapterCapabilityResponses, AdapterCapabilityResponseStream)
+				registerUnexpectedCacheHooks(t, server)
+				return doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
+					"model":  "gpt-stream-cache-skip",
+					"stream": true,
+					"input":  "hello",
+				}, secret)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var response responseBody
+			if tt.name == "chat completions" {
+				server := newGatewayEndpointOrderTestServer(t)
+				registerUnexpectedCacheHooks(t, server)
+				response = tt.send(t, server.Handler())
+			} else {
+				response = tt.send(t, nil)
+			}
+			if response.Code != http.StatusOK {
+				t.Fatalf("streaming endpoint failed: %d %s", response.Code, response.Body)
+			}
+			if !strings.Contains(response.Body, "Echo") {
+				t.Fatalf("streaming response did not come from provider path: %s", response.Body)
+			}
+		})
+	}
+}
+
+func TestGatewayCacheLookupFailOpenOpenAICompatibleEndpointsContinueToProvider(t *testing.T) {
+	tests := []struct {
+		name         string
+		path         string
+		payload      map[string]any
+		wantContains string
+	}{
+		{
+			name: "chat completions",
+			path: "/v1/chat/completions",
+			payload: map[string]any{
+				"model": "gpt-4.1-mini",
+				"messages": []map[string]any{
+					{"role": "user", "content": "lookup fail-open chat"},
+				},
+			},
+			wantContains: "Echo: lookup fail-open chat",
+		},
+		{
+			name: "responses",
+			path: "/v1/responses",
+			payload: map[string]any{
+				"model": "gpt-4.1-mini",
+				"input": "lookup fail-open responses",
+			},
+			wantContains: "Echo: lookup fail-open responses",
+		},
+		{
+			name: "embeddings",
+			path: "/v1/embeddings",
+			payload: map[string]any{
+				"model": "text-embedding-3-small",
+				"input": "lookup fail-open embeddings",
+			},
+			wantContains: `"object":"list"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newGatewayEndpointOrderTestServer(t)
+			calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheLookup)
+			response := doJSON(t, server.Handler(), http.MethodPost, tt.path, tt.payload, "thk_demo_local")
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected provider response after cache lookup fail-open, got %d: %s", response.Code, response.Body)
+			}
+			if !strings.Contains(response.Body, tt.wantContains) {
+				t.Fatalf("provider response body = %s, want %q", response.Body, tt.wantContains)
+			}
+			if *calls != 1 {
+				t.Fatalf("cache lookup hook calls = %d, want 1", *calls)
+			}
+		})
+	}
+}
+
+func TestGatewayCacheWriteFailOpenOpenAICompatibleEndpointsPreserveProviderResponse(t *testing.T) {
+	tests := []struct {
+		name         string
+		path         string
+		payload      map[string]any
+		wantContains string
+	}{
+		{
+			name: "chat completions",
+			path: "/v1/chat/completions",
+			payload: map[string]any{
+				"model": "gpt-4.1-mini",
+				"messages": []map[string]any{
+					{"role": "user", "content": "write fail-open chat"},
+				},
+			},
+			wantContains: "Echo: write fail-open chat",
+		},
+		{
+			name: "responses",
+			path: "/v1/responses",
+			payload: map[string]any{
+				"model": "gpt-4.1-mini",
+				"input": "write fail-open responses",
+			},
+			wantContains: "Echo: write fail-open responses",
+		},
+		{
+			name: "embeddings",
+			path: "/v1/embeddings",
+			payload: map[string]any{
+				"model": "text-embedding-3-small",
+				"input": "write fail-open embeddings",
+			},
+			wantContains: `"object":"list"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newGatewayEndpointOrderTestServer(t)
+			calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheWrite)
+			response := doJSON(t, server.Handler(), http.MethodPost, tt.path, tt.payload, "thk_demo_local")
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected provider response after cache write fail-open, got %d: %s", response.Code, response.Body)
+			}
+			if !strings.Contains(response.Body, tt.wantContains) {
+				t.Fatalf("provider response body = %s, want %q", response.Body, tt.wantContains)
+			}
+			if *calls != 1 {
+				t.Fatalf("cache write hook calls = %d, want 1", *calls)
+			}
+		})
+	}
+}
+
+func TestForegroundCacheHitPersistsUsageLogAndPluginAudit(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Foreground Cache Hit", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "foreground-cache-hit-key",
+		Allowed: []string{"gpt-cache-hit-persistence"},
+		Status:  StatusActive,
+	}, "thk_foreground_cache_hit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "gpt-cache-hit-persistence", Modality: "chat", Status: StatusActive})
+	server := New(store)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-cache-persistence",
+		HookID:        "lookup",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      1000,
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if input.Envelope.Protocol != "gateway" || input.Envelope.Operation != "cache_lookup" {
+			t.Fatalf("cache lookup envelope = %+v, want gateway/cache_lookup", input.Envelope)
+		}
+		result := rawProviderCallResult(t, map[string]any{
+			"id":     "chatcmpl_cached_persistence",
+			"object": "chat.completion",
+			"model":  "gpt-cache-hit-persistence",
+			"choices": []map[string]any{
+				{"index": 0, "message": map[string]any{"role": "assistant", "content": "cached persistence response"}, "finish_reason": "stop"},
+			},
+		}, Usage{PromptTokens: 7, CompletionTokens: 8, TotalTokens: 15})
+		result.AuditEvents = []json.RawMessage{json.RawMessage(`{"outcome":"hit","cache_key":"semantic-test"}`)}
+		return result, nil
+	})); err != nil {
+		t.Fatalf("register cache lookup handler: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-cache-hit-persistence",
+		"messages": []map[string]any{
+			{"role": "user", "content": "cache hit should not need a route"},
+		},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("cache hit failed: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "cached persistence response") {
+		t.Fatalf("cache hit response body = %s", response.Body)
+	}
+
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].InputTokens != 7 || records[0].OutputTokens != 8 || records[0].TotalTokens != 15 || records[0].ProviderID != "" {
+		t.Fatalf("usage records = %+v, want cache usage without provider attribution", records)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "" || logs[0].RequestID != records[0].RequestID {
+		t.Fatalf("request logs = %+v, want one cache-hit log without provider attribution", logs)
+	}
+	requireGatewayCacheLookupAuditEvent(t, store.ListAuditEvents(), logs[0].RequestID, "short_circuited")
+}
+
 func newGatewayEndpointOrderTestServer(t *testing.T) *Server {
 	t.Helper()
 	store := NewMemoryStore()
@@ -204,6 +456,70 @@ func newGatewayEndpointOrderTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	return New(store)
+}
+
+func registerFailingCacheHook(t *testing.T, server *Server, stage pluginmeta.GatewayHookStage) *int {
+	t.Helper()
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-cache-fail-open",
+		HookID:        "fail-open-" + string(stage),
+		Stage:         stage,
+		Priority:      1000,
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if stage == pluginmeta.StageCacheWrite {
+		hook.Reads = []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody, pluginmeta.DataProviderResponse, pluginmeta.DataUsage}
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register failing %s hook: %v", stage, err)
+	}
+	calls := 0
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		calls++
+		return pluginmeta.GatewayHookResult{}, errors.New("cache hook unavailable")
+	})); err != nil {
+		t.Fatalf("register failing %s handler: %v", stage, err)
+	}
+	return &calls
+}
+
+func requireGatewayCacheLookupAuditEvent(t *testing.T, events []AuditEvent, requestID string, status string) AuditEvent {
+	t.Helper()
+	for _, event := range events {
+		if event.Action == "plugin.gateway.cache_lookup" && event.ResourceID == requestID && event.Status == status {
+			if !strings.Contains(event.AfterSnapshot, `"stage":"cache_lookup"`) ||
+				!strings.Contains(event.AfterSnapshot, `"decision":"short_circuit"`) ||
+				!strings.Contains(event.AfterSnapshot, `"cache_key":"semantic-test"`) {
+				t.Fatalf("cache lookup audit snapshot = %s", event.AfterSnapshot)
+			}
+			return event
+		}
+	}
+	t.Fatalf("missing cache lookup audit event request=%s status=%s: %+v", requestID, status, events)
+	return AuditEvent{}
+}
+
+func registerUnexpectedCacheHooks(t *testing.T, server *Server) {
+	t.Helper()
+	for _, stage := range []pluginmeta.GatewayHookStage{pluginmeta.StageCacheLookup, pluginmeta.StageCacheWrite} {
+		hook := pluginmeta.GatewayHookDescriptor{
+			PluginID:      "tokenhub.test-cache-skip",
+			HookID:        string(stage),
+			Stage:         stage,
+			Priority:      1000,
+			FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+		}
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register unexpected %s hook: %v", stage, err)
+		}
+		currentHook := hook
+		if err := server.gatewayHooks.RegisterHandler(currentHook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+			t.Fatalf("%s hook should not run for streaming requests", currentHook.Stage)
+			return pluginmeta.GatewayHookResult{}, nil
+		})); err != nil {
+			t.Fatalf("register unexpected %s handler: %v", stage, err)
+		}
+	}
 }
 
 func recordGatewayEndpointOrderStages(t *testing.T, server *Server, cacheResponse any) func() []pluginmeta.GatewayHookStage {

@@ -255,6 +255,50 @@ func TestBackgroundResponsesCacheLookupHookCanCompleteJobWithoutProvider(t *test
 	}
 }
 
+func TestBackgroundResponsesCacheLookupFailOpenCompletesViaProvider(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheLookup)
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "lookup fail-open background")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "Echo: lookup fail-open background" {
+		t.Fatalf("unexpected provider job result after cache lookup failure: %#v", completed)
+	}
+	if *calls != 1 {
+		t.Fatalf("cache lookup hook calls = %d, want 1", *calls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("background provider path was not audited once after lookup failure: %+v", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("background provider usage was not persisted after lookup failure: %+v", records)
+	}
+}
+
+func TestBackgroundResponsesCacheWriteFailOpenCompletesJob(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheWrite)
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "write fail-open background")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "Echo: write fail-open background" {
+		t.Fatalf("unexpected provider job result after cache write failure: %#v", completed)
+	}
+	if *calls != 1 {
+		t.Fatalf("cache write hook calls = %d, want 1", *calls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("background job was not audited once after cache write failure: %+v", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("background usage was not persisted after cache write failure: %+v", records)
+	}
+}
+
 func TestBackgroundResponsesEnforcesExactKeyAndRejectsStreaming(t *testing.T) {
 	server, store, secret := newBackgroundResponseTestServer(t)
 	id := submitBackgroundResponse(t, server.Handler(), secret, "private")

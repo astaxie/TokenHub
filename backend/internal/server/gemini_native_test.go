@@ -392,6 +392,63 @@ func TestGeminiNativeCacheLookupHookShortCircuitsGenerateContent(t *testing.T) {
 	}
 }
 
+func TestGeminiNativeStreamSkipsCacheLookupAndWriteHooks(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(map[string]any) string {
+		return geminiCodexTestSSE(
+			map[string]any{"type": "response.output_text.delta", "delta": "stream without cache"},
+			map[string]any{"type": "response.completed", "response": map[string]any{
+				"id": "resp_gemini_stream_cache_skip", "status": "completed",
+				"output": []any{map[string]any{
+					"type": "message", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "stream without cache"}},
+				}},
+				"usage": map[string]any{"input_tokens": 2, "output_tokens": 3, "total_tokens": 5},
+			}},
+		)
+	})
+	registerUnexpectedCacheHooks(t, server)
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:streamGenerateContent?alt=sse", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "stream me"}}}},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("streamGenerateContent failed: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "stream without cache") {
+		t.Fatalf("Gemini stream did not use provider path: %s", response.Body)
+	}
+}
+
+func TestGeminiNativeCacheLookupFailOpenContinuesToProvider(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(map[string]any) string {
+		return geminiCodexTestSSE(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id": "resp_gemini_lookup_fail_open", "status": "completed",
+				"output": []any{map[string]any{
+					"type": "message", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "gemini lookup fallback"}},
+				}},
+				"usage": map[string]any{"input_tokens": 4, "output_tokens": 5, "total_tokens": 9},
+			},
+		})
+	})
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheLookup)
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:generateContent", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "provider after lookup failure"}}}},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("generateContent failed after cache lookup fail-open: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "gemini lookup fallback") {
+		t.Fatalf("Gemini response did not come from provider path: %s", response.Body)
+	}
+	if *calls != 1 {
+		t.Fatalf("cache lookup hook calls = %d, want 1", *calls)
+	}
+}
+
 func TestGeminiNativeRequestTransformHookCanRewriteResponsesPayloadBeforeProvider(t *testing.T) {
 	server, secret := newGeminiCodexTestServer(t, func(request map[string]any) string {
 		input := geminiTestSlice(t, request["input"], "Codex input")
@@ -496,6 +553,36 @@ func TestGeminiNativeCacheWriteHookReceivesGeminiResponse(t *testing.T) {
 	}
 	if !sawGeminiResponse {
 		t.Fatal("cache write hook did not receive Gemini request, response, and usage")
+	}
+}
+
+func TestGeminiNativeCacheWriteFailOpenPreservesProviderResponse(t *testing.T) {
+	server, secret := newGeminiCodexTestServer(t, func(map[string]any) string {
+		return geminiCodexTestSSE(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id": "resp_gemini_write_fail_open", "status": "completed",
+				"output": []any{map[string]any{
+					"type": "message", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "gemini write fallback"}},
+				}},
+				"usage": map[string]any{"input_tokens": 4, "output_tokens": 5, "total_tokens": 9},
+			},
+		})
+	})
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheWrite)
+
+	response := doGeminiJSON(t, server.Handler(), http.MethodPost, "/v1beta/models/gpt-5.5:generateContent", map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "provider after write failure"}}}},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("generateContent failed after cache write fail-open: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "gemini write fallback") {
+		t.Fatalf("Gemini response did not survive cache write failure: %s", response.Body)
+	}
+	if *calls != 1 {
+		t.Fatalf("cache write hook calls = %d, want 1", *calls)
 	}
 }
 

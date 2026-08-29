@@ -397,6 +397,67 @@ func TestAnthropicMessagesCacheLookupHookCanShortCircuitProviderCall(t *testing.
 	}
 }
 
+func TestAnthropicMessagesStreamSkipsCacheLookupAndWriteHooks(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: message_start\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_cache_skip\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"upstream-model\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1}}}\n\n")
+		_, _ = io.WriteString(w, "event: content_block_delta\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"stream without cache\"}}\n\n")
+		_, _ = io.WriteString(w, "event: message_delta\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}\n\n")
+		_, _ = io.WriteString(w, "event: message_stop\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderAnthropic)
+	registerUnexpectedCacheHooks(t, server)
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"stream":     true,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "stream"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "stream without cache") {
+		t.Fatalf("Anthropic stream did not use provider path: %s", resp.Body)
+	}
+}
+
+func TestAnthropicMessagesCacheLookupFailOpenContinuesToProvider(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"msg_lookup_fail_open","type":"message","role":"assistant","content":[{"type":"text","text":"anthropic lookup fallback"}],"model":"upstream-model","stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":5}}`)
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderAnthropic)
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheLookup)
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "provider after lookup failure"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 after cache lookup fail-open, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "anthropic lookup fallback") {
+		t.Fatalf("Anthropic response did not come from provider path: %s", resp.Body.String())
+	}
+	if *calls != 1 {
+		t.Fatalf("cache lookup hook calls = %d, want 1", *calls)
+	}
+}
+
 func TestAnthropicMessagesCacheWriteHookReceivesFinalResponse(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
@@ -450,6 +511,34 @@ func TestAnthropicMessagesCacheWriteHookReceivesFinalResponse(t *testing.T) {
 	}
 	if !sawRequest || !sawResponse || !sawUsage {
 		t.Fatalf("cache write saw request=%v response=%v usage=%v, want all true", sawRequest, sawResponse, sawUsage)
+	}
+}
+
+func TestAnthropicMessagesCacheWriteFailOpenPreservesProviderResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"msg_write_fail_open","type":"message","role":"assistant","content":[{"type":"text","text":"anthropic write fallback"}],"model":"upstream-model","stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":5}}`)
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderAnthropic)
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheWrite)
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "provider after write failure"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 after cache write fail-open, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "anthropic write fallback") {
+		t.Fatalf("Anthropic response did not survive cache write failure: %s", resp.Body.String())
+	}
+	if *calls != 1 {
+		t.Fatalf("cache write hook calls = %d, want 1", *calls)
 	}
 }
 
