@@ -644,6 +644,67 @@ func TestAnthropicMessagesPreservesNativeProtocolAndHeaders(t *testing.T) {
 	}
 }
 
+func TestNativeAnthropicRequestUsesRouteProviderAdapter(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "admin"})
+	const providerType = "custom_native_anthropic"
+	descriptor := providerPluginDescriptorWithRouteProtocol(
+		"tokenhub.provider.custom-native-anthropic",
+		"Custom Native Anthropic",
+		providerType,
+		AdapterCapabilityChat,
+		providerRouteProtocolAnthropic,
+	)
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		req.Header.Set("x-tokenhub-test-adapter", providerType)
+		return http.DefaultTransport.RoundTrip(req)
+	})}
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type: providerType,
+		Adapter: AnthropicAdapter{
+			Client:       client,
+			StreamClient: client,
+		},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register custom native Anthropic provider: %v", err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-tokenhub-test-adapter") != providerType {
+			t.Errorf("native Anthropic request used the wrong adapter")
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_custom_native",
+			"type":"message",
+			"role":"assistant",
+			"model":"custom-upstream-model",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":3,"output_tokens":4}
+		}`)
+	}))
+	defer upstream.Close()
+
+	resp, err := server.doNativeAnthropicRequest(context.Background(), Provider{
+		Type:    providerType,
+		BaseURL: upstream.URL,
+		APIKey:  "custom-secret",
+		Status:  StatusActive,
+		Healthy: true,
+	}, "/v1/messages", map[string]any{
+		"model":      "custom-upstream-model",
+		"max_tokens": 16,
+		"messages":   []any{map[string]any{"role": "user", "content": "Hello"}},
+	}, make(http.Header), false)
+	if err != nil {
+		t.Fatalf("native Anthropic request through custom provider adapter: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("native Anthropic response status = %d", resp.StatusCode)
+	}
+}
+
 func TestAnthropicMessagesUsesBearerAuthForNativeProvider(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("authorization"); got != "Bearer upstream-secret" {

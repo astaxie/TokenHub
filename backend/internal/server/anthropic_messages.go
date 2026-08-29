@@ -961,8 +961,8 @@ func (s *Server) doNativeAnthropicRequest(
 	applyProviderHeaders(req.Header, provider.Headers)
 	applyAnthropicProviderAuth(req, provider)
 	// The native path builds its own request but must follow the same streaming
-	// policy as the adapter: a total deadline would truncate a live stream.
-	adapter, ok := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)
+	// policy as the adapter registered for the provider type serving this route.
+	adapter, ok := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, provider.Type)
 	if !ok {
 		return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Anthropic adapter is not available")
 	}
