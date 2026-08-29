@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -339,7 +341,12 @@ func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Req
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "plugin_checksum_required", "Plugin package checksum_sha256 is required"))
 		return
 	}
-	state := pluginmeta.PackageState{Status: pluginmeta.StatusDisabled, Reason: payload.Reason}
+	state := pluginmeta.PackageState{
+		Status:          pluginmeta.StatusDisabled,
+		Reason:          payload.Reason,
+		RestartRequired: true,
+		AuditEvent:      pluginmeta.PackageLifecycleInstalled,
+	}
 	if payload.Enable {
 		state.Status = pluginmeta.StatusEnabled
 	}
@@ -428,11 +435,14 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
 		return
 	}
+	updateState := current.State
+	updateState.RestartRequired = true
+	updateState.AuditEvent = pluginmeta.PackageLifecyclePendingRestart
 	options := pluginmeta.InstallOptions{
 		ChecksumSHA256: checksum,
 		TrustPolicy:    payload.TrustPolicy,
 		Replace:        true,
-		InitialState:   current.State,
+		InitialState:   updateState,
 	}
 	options, err = s.applyAdminPluginInstallTrust(r, archive, options, payload.adminPluginInstallTrustPayload, distribution)
 	if err != nil {
@@ -442,6 +452,10 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 	pkg, err := s.installPluginArchive(archive, options)
 	if err != nil {
 		writeError(w, r, pluginInstallHTTPError(err))
+		return
+	}
+	if err := removeSupersededPluginPackageDir(s.config.PluginDir, current.Dir, pkg.Dir); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_update_cleanup_failed", "Plugin package update cleanup failed"))
 		return
 	}
 	updated := pkg.Manifest.Descriptor()
@@ -655,6 +669,39 @@ func decodeAdminPluginSignaturePublicKey(encoded string) (ed25519.PublicKey, err
 		return nil, NewHTTPError(http.StatusBadRequest, "invalid_plugin_signature_key", "Plugin package signature_public_key must be a base64 Ed25519 public key")
 	}
 	return ed25519.PublicKey(publicKey), nil
+}
+
+func removeSupersededPluginPackageDir(root string, previousDir string, installedDir string) error {
+	root = strings.TrimSpace(root)
+	previousDir = strings.TrimSpace(previousDir)
+	installedDir = strings.TrimSpace(installedDir)
+	if root == "" || previousDir == "" || installedDir == "" {
+		return nil
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	previousAbs, err := filepath.Abs(previousDir)
+	if err != nil {
+		return err
+	}
+	installedAbs, err := filepath.Abs(installedDir)
+	if err != nil {
+		return err
+	}
+	if previousAbs == installedAbs || previousAbs == rootAbs {
+		return nil
+	}
+	relative, err := filepath.Rel(rootAbs, previousAbs)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) || filepath.IsAbs(relative) {
+		return nil
+	}
+	if installedInsidePrevious, err := filepath.Rel(previousAbs, installedAbs); err == nil &&
+		(installedInsidePrevious == "." || !strings.HasPrefix(installedInsidePrevious, ".."+string(os.PathSeparator)) && !filepath.IsAbs(installedInsidePrevious)) {
+		return nil
+	}
+	return os.RemoveAll(previousAbs)
 }
 
 func (s *Server) installPluginArchive(archive []byte, options pluginmeta.InstallOptions) (pluginmeta.Package, error) {

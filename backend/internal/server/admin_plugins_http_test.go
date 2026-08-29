@@ -51,6 +51,9 @@ func TestAdminPluginInstallPostDownloadsAndInstallsPackage(t *testing.T) {
 	if body.Data.Plugin.ID != "tokenhub.marketplace.kimi" || body.Data.Plugin.Status != pluginmeta.StatusDisabled || !body.Data.RestartRequired {
 		t.Fatalf("install response = %+v, want disabled plugin requiring restart", body.Data)
 	}
+	if !body.Data.Plugin.Lifecycle.RestartRequired || body.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleInstalled {
+		t.Fatalf("install lifecycle = %+v, want installed restart-required event", body.Data.Plugin.Lifecycle)
+	}
 	stateData, err := os.ReadFile(filepath.Join(pluginDir, "tokenhub.marketplace.kimi", "plugin.state.json"))
 	if err != nil {
 		t.Fatalf("read installed package state: %v", err)
@@ -59,7 +62,8 @@ func TestAdminPluginInstallPostDownloadsAndInstallsPackage(t *testing.T) {
 	if err := json.Unmarshal(stateData, &state); err != nil {
 		t.Fatalf("decode installed package state: %v", err)
 	}
-	if state.Status != pluginmeta.StatusDisabled || state.Reason != "installed from marketplace" {
+	if state.Status != pluginmeta.StatusDisabled || state.Reason != "installed from marketplace" ||
+		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleInstalled {
 		t.Fatalf("installed package state = %+v", state)
 	}
 }
@@ -137,6 +141,17 @@ func TestAdminPluginInstallPostVerifiesSignedMarketplaceArtifact(t *testing.T) {
 	}
 	if body.Data.Plugin.ID != "tokenhub.marketplace.signed" || body.Data.Plugin.Status != pluginmeta.StatusEnabled {
 		t.Fatalf("install response = %+v, want enabled signed plugin", body.Data)
+	}
+	stateData, err := os.ReadFile(filepath.Join(pluginDir, "tokenhub.marketplace.signed", "plugin.state.json"))
+	if err != nil {
+		t.Fatalf("read signed installed package state: %v", err)
+	}
+	var state pluginmeta.PackageState
+	if err := json.Unmarshal(stateData, &state); err != nil {
+		t.Fatalf("decode signed installed package state: %v", err)
+	}
+	if state.Status != pluginmeta.StatusEnabled || !state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleInstalled {
+		t.Fatalf("signed installed package state = %+v, want enabled installed restart-required state", state)
 	}
 }
 
@@ -367,7 +382,11 @@ kinds:
 	if body.Data.Plugin.Version != "1.1.0" || body.Data.Plugin.Status != pluginmeta.StatusDisabled || !body.Data.RestartRequired || !body.Data.Replaced {
 		t.Fatalf("update response = %+v, want replaced disabled updated package", body.Data)
 	}
-	stateData, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
+	if !body.Data.Plugin.Lifecycle.RestartRequired || body.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecyclePendingRestart {
+		t.Fatalf("update lifecycle = %+v, want pending restart event", body.Data.Plugin.Lifecycle)
+	}
+	updatedPluginDir := filepath.Join(pluginDir, "tokenhub.marketplace.kimi")
+	stateData, err := os.ReadFile(filepath.Join(updatedPluginDir, "plugin.state.json"))
 	if err != nil {
 		t.Fatalf("read updated package state: %v", err)
 	}
@@ -375,8 +394,12 @@ kinds:
 	if err := json.Unmarshal(stateData, &state); err != nil {
 		t.Fatalf("decode updated package state: %v", err)
 	}
-	if state.Status != pluginmeta.StatusDisabled || state.Reason != "operator disabled" {
+	if state.Status != pluginmeta.StatusDisabled || state.Reason != "operator disabled" ||
+		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecyclePendingRestart {
 		t.Fatalf("updated package state = %+v", state)
+	}
+	if _, err := os.Stat(localPluginDir); !os.IsNotExist(err) {
+		t.Fatalf("old package directory still exists after update: %v", err)
 	}
 }
 
@@ -432,6 +455,17 @@ kinds:
 	}
 	if body.Data.Plugin.Version != "1.1.0" || !body.Data.Replaced {
 		t.Fatalf("update response = %+v, want signed marketplace replacement", body.Data)
+	}
+	stateData, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
+	if err != nil {
+		t.Fatalf("read signed updated package state: %v", err)
+	}
+	var state pluginmeta.PackageState
+	if err := json.Unmarshal(stateData, &state); err != nil {
+		t.Fatalf("decode signed updated package state: %v", err)
+	}
+	if state.Status != pluginmeta.StatusEnabled || !state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecyclePendingRestart {
+		t.Fatalf("signed updated package state = %+v, want enabled pending restart state", state)
 	}
 }
 
@@ -692,6 +726,114 @@ func TestAdminPluginDeleteRejectsMissingPackage(t *testing.T) {
 	response := doJSON(t, server.Handler(), http.MethodDelete, "/api/admin/plugin-packages/tokenhub.missing", nil, "dev_admin_token")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("DELETE missing plugin: expected 404, got %d: %s", response.Code, response.Body)
+	}
+}
+
+func TestRemoveSupersededPluginPackageDirKeepsUnsafeTargets(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	for _, tc := range []struct {
+		name         string
+		previousDir  func(t *testing.T) string
+		installedDir func(t *testing.T) string
+	}{
+		{
+			name: "empty previous dir",
+			previousDir: func(t *testing.T) string {
+				return ""
+			},
+			installedDir: func(t *testing.T) string {
+				return filepath.Join(root, "installed")
+			},
+		},
+		{
+			name: "previous dir is root",
+			previousDir: func(t *testing.T) string {
+				return root
+			},
+			installedDir: func(t *testing.T) string {
+				return filepath.Join(root, "installed")
+			},
+		},
+		{
+			name: "previous dir outside root",
+			previousDir: func(t *testing.T) string {
+				return filepath.Join(outside, "previous")
+			},
+			installedDir: func(t *testing.T) string {
+				return filepath.Join(root, "installed")
+			},
+		},
+		{
+			name: "previous dir equals installed dir",
+			previousDir: func(t *testing.T) string {
+				return filepath.Join(root, "same")
+			},
+			installedDir: func(t *testing.T) string {
+				return filepath.Join(root, "same")
+			},
+		},
+		{
+			name: "installed dir nested under previous dir",
+			previousDir: func(t *testing.T) string {
+				return filepath.Join(root, "previous")
+			},
+			installedDir: func(t *testing.T) string {
+				return filepath.Join(root, "previous", "installed")
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previousDir := tc.previousDir(t)
+			installedDir := tc.installedDir(t)
+			if previousDir != "" {
+				if err := os.MkdirAll(previousDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(previousDir, "keep.txt"), []byte("keep"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if installedDir != "" {
+				if err := os.MkdirAll(installedDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := removeSupersededPluginPackageDir(root, previousDir, installedDir); err != nil {
+				t.Fatalf("remove superseded package dir: %v", err)
+			}
+			if previousDir != "" {
+				if _, err := os.Stat(previousDir); err != nil {
+					t.Fatalf("previous dir was removed or inaccessible: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestRemoveSupersededPluginPackageDirRemovesOnlySupersededChild(t *testing.T) {
+	root := t.TempDir()
+	previousDir := filepath.Join(root, "legacy")
+	installedDir := filepath.Join(root, "tokenhub.marketplace.kimi")
+	if err := os.MkdirAll(previousDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(previousDir, "remove.txt"), []byte("remove"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(installedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := removeSupersededPluginPackageDir(root, previousDir, installedDir); err != nil {
+		t.Fatalf("remove superseded package dir: %v", err)
+	}
+	if _, err := os.Stat(previousDir); !os.IsNotExist(err) {
+		t.Fatalf("previous dir still exists after cleanup: %v", err)
+	}
+	if _, err := os.Stat(installedDir); err != nil {
+		t.Fatalf("installed dir was removed: %v", err)
 	}
 }
 
