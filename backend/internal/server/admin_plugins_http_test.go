@@ -3,7 +3,10 @@ package server
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -93,6 +96,235 @@ func TestAdminPluginInstallPostRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestAdminPluginInstallPostVerifiesSignedMarketplaceArtifact(t *testing.T) {
+	pluginDir := t.TempDir()
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.signed", "Signed Marketplace", "1.0.0"),
+	})
+	keyID, publicKey, signature := adminPluginArtifactSignatureForTest(t, archive)
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/signed.zip":
+			_, _ = w.Write(archive)
+		case "/signed.zip.sig":
+			_, _ = w.Write(signature)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	server.pluginInstallClient = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/install", map[string]any{
+		"download_url":         upstream.URL + "/signed.zip",
+		"checksum_sha256":      adminSHA256Hex(archive),
+		"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+		"signature_url":        upstream.URL + "/signed.zip.sig",
+		"signature_key_id":     keyID,
+		"signature_public_key": publicKey,
+		"enable":               true,
+		"replace":              false,
+	}, "dev_admin_token")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("POST signed plugin install: expected 201, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginInstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode install response: %v", err)
+	}
+	if body.Data.Plugin.ID != "tokenhub.marketplace.signed" || body.Data.Plugin.Status != pluginmeta.StatusEnabled {
+		t.Fatalf("install response = %+v, want enabled signed plugin", body.Data)
+	}
+}
+
+func TestAdminPluginInstallPostRejectsSignedMarketplaceSignatureMismatch(t *testing.T) {
+	signedArchive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.signed", "Signed Marketplace", "1.0.0"),
+	})
+	tamperedArchive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.signed", "Signed Marketplace", "1.0.1"),
+	})
+	keyID, publicKey, signature := adminPluginArtifactSignatureForTest(t, signedArchive)
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/signed.zip":
+			_, _ = w.Write(tamperedArchive)
+		case "/signed.zip.sig":
+			_, _ = w.Write(signature)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: t.TempDir()})
+	server.pluginInstallClient = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/install", map[string]any{
+		"download_url":         upstream.URL + "/signed.zip",
+		"checksum_sha256":      adminSHA256Hex(tamperedArchive),
+		"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+		"signature_url":        upstream.URL + "/signed.zip.sig",
+		"signature_key_id":     keyID,
+		"signature_public_key": publicKey,
+	}, "dev_admin_token")
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("POST signed plugin install with mismatched signature: expected 400, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "plugin_signature_verification_failed") {
+		t.Fatalf("response body = %s, want signature verification failure", response.Body)
+	}
+}
+
+func TestAdminPluginInstallPostRejectsSignedMarketplaceMissingPublicKey(t *testing.T) {
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.signed", "Signed Marketplace", "1.0.0"),
+	})
+	keyID, _, signature := adminPluginArtifactSignatureForTest(t, archive)
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/signed.zip":
+			_, _ = w.Write(archive)
+		case "/signed.zip.sig":
+			_, _ = w.Write(signature)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: t.TempDir()})
+	server.pluginInstallClient = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/install", map[string]any{
+		"download_url":     upstream.URL + "/signed.zip",
+		"checksum_sha256":  adminSHA256Hex(archive),
+		"trust_policy":     string(pluginmeta.TrustPolicySignedMarketplace),
+		"signature_url":    upstream.URL + "/signed.zip.sig",
+		"signature_key_id": keyID,
+	}, "dev_admin_token")
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("POST signed plugin install without public key: expected 400, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "plugin_signature_required") {
+		t.Fatalf("response body = %s, want signature required failure", response.Body)
+	}
+}
+
+func TestAdminPluginInstallPostRejectsSignedMarketplaceTrustFailures(t *testing.T) {
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.signed", "Signed Marketplace", "1.0.0"),
+	})
+	keyID, publicKey, signature := adminPluginArtifactSignatureForTest(t, archive)
+	otherKeyID := "tokenhub-other-2026"
+	_, otherPublicKey, otherSignature := adminPluginArtifactSignatureForTestWithKeyID(t, archive, otherKeyID)
+	_, mismatchedPublicKey, _ := adminPluginArtifactSignatureForTestWithKeyID(t, archive, keyID)
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/signed.zip":
+			_, _ = w.Write(archive)
+		case "/signed.zip.sig":
+			_, _ = w.Write(signature)
+		case "/other-key.sig":
+			_, _ = w.Write(otherSignature)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	for _, tc := range []struct {
+		name     string
+		payload  map[string]any
+		wantCode string
+	}{
+		{
+			name: "missing signature url",
+			payload: map[string]any{
+				"download_url":         upstream.URL + "/signed.zip",
+				"checksum_sha256":      adminSHA256Hex(archive),
+				"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+				"signature_key_id":     keyID,
+				"signature_public_key": publicKey,
+			},
+			wantCode: "plugin_signature_required",
+		},
+		{
+			name: "missing signature key id",
+			payload: map[string]any{
+				"download_url":         upstream.URL + "/signed.zip",
+				"checksum_sha256":      adminSHA256Hex(archive),
+				"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+				"signature_url":        upstream.URL + "/signed.zip.sig",
+				"signature_public_key": publicKey,
+			},
+			wantCode: "plugin_signature_required",
+		},
+		{
+			name: "signature envelope key id mismatch",
+			payload: map[string]any{
+				"download_url":         upstream.URL + "/signed.zip",
+				"checksum_sha256":      adminSHA256Hex(archive),
+				"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+				"signature_url":        upstream.URL + "/other-key.sig",
+				"signature_key_id":     keyID,
+				"signature_public_key": otherPublicKey,
+			},
+			wantCode: "plugin_signature_verification_failed",
+		},
+		{
+			name: "public key mismatch",
+			payload: map[string]any{
+				"download_url":         upstream.URL + "/signed.zip",
+				"checksum_sha256":      adminSHA256Hex(archive),
+				"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+				"signature_url":        upstream.URL + "/signed.zip.sig",
+				"signature_key_id":     keyID,
+				"signature_public_key": mismatchedPublicKey,
+			},
+			wantCode: "plugin_signature_verification_failed",
+		},
+		{
+			name: "malformed public key",
+			payload: map[string]any{
+				"download_url":         upstream.URL + "/signed.zip",
+				"checksum_sha256":      adminSHA256Hex(archive),
+				"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+				"signature_url":        upstream.URL + "/signed.zip.sig",
+				"signature_key_id":     keyID,
+				"signature_public_key": "not base64",
+			},
+			wantCode: "invalid_plugin_signature_key",
+		},
+		{
+			name: "signature download failure",
+			payload: map[string]any{
+				"download_url":         upstream.URL + "/signed.zip",
+				"checksum_sha256":      adminSHA256Hex(archive),
+				"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+				"signature_url":        upstream.URL + "/missing.sig",
+				"signature_key_id":     keyID,
+				"signature_public_key": publicKey,
+			},
+			wantCode: "plugin_signature_download_failed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: t.TempDir()})
+			server.pluginInstallClient = upstream.Client()
+
+			response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/install", tc.payload, "dev_admin_token")
+			if response.Code != http.StatusBadRequest && response.Code != http.StatusBadGateway {
+				t.Fatalf("POST signed plugin install: expected failure, got %d: %s", response.Code, response.Body)
+			}
+			if !strings.Contains(response.Body, tc.wantCode) {
+				t.Fatalf("response body = %s, want code %q", response.Body, tc.wantCode)
+			}
+		})
+	}
+}
+
 func TestAdminPluginUpdatePostDownloadsAndReplacesPackage(t *testing.T) {
 	pluginDir := t.TempDir()
 	localPluginDir := filepath.Join(pluginDir, "kimi")
@@ -145,6 +377,61 @@ kinds:
 	}
 	if state.Status != pluginmeta.StatusDisabled || state.Reason != "operator disabled" {
 		t.Fatalf("updated package state = %+v", state)
+	}
+}
+
+func TestAdminPluginUpdatePostVerifiesSignedMarketplaceDistribution(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "tokenhub.marketplace.signed")
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.signed", "Signed Marketplace", "1.1.0"),
+	})
+	keyID, publicKey, signature := adminPluginArtifactSignatureForTest(t, archive)
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/signed-1.1.0.zip":
+			_, _ = w.Write(archive)
+		case "/signed-1.1.0.zip.sig":
+			_, _ = w.Write(signature)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.marketplace.signed
+name: Signed Marketplace
+version: 1.0.0
+distribution:
+  download_url: `+upstream.URL+`/signed-1.1.0.zip
+  checksum_sha256: `+adminSHA256Hex(archive)+`
+  signature_url: `+upstream.URL+`/signed-1.1.0.zip.sig
+  signature_algorithm: ed25519
+  signature_key_id: `+keyID+`
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	server.pluginInstallClient = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.marketplace.signed/update", map[string]any{
+		"trust_policy":         string(pluginmeta.TrustPolicySignedMarketplace),
+		"signature_public_key": publicKey,
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST signed plugin update: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginInstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if body.Data.Plugin.Version != "1.1.0" || !body.Data.Replaced {
+		t.Fatalf("update response = %+v, want signed marketplace replacement", body.Data)
 	}
 }
 
@@ -466,6 +753,28 @@ kinds:
 func adminSHA256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+func adminPluginArtifactSignatureForTest(t *testing.T, archive []byte) (string, string, []byte) {
+	t.Helper()
+	return adminPluginArtifactSignatureForTestWithKeyID(t, archive, "tokenhub-artifact-2026")
+}
+
+func adminPluginArtifactSignatureForTestWithKeyID(t *testing.T, archive []byte, keyID string) (string, string, []byte) {
+	t.Helper()
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate artifact signing key: %v", err)
+	}
+	envelope, err := pluginmeta.NewMarketplaceSignatureEnvelope(archive, pluginmeta.MarketplaceArtifactMediaType, keyID, privateKey)
+	if err != nil {
+		t.Fatalf("create artifact signature envelope: %v", err)
+	}
+	signature, err := pluginmeta.EncodeMarketplaceSignatureEnvelope(envelope)
+	if err != nil {
+		t.Fatalf("encode artifact signature envelope: %v", err)
+	}
+	return keyID, base64.StdEncoding.EncodeToString(publicKey), signature
 }
 
 func TestAdminPluginStatePatchRejectsInvalidState(t *testing.T) {
