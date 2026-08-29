@@ -3,21 +3,7 @@ package server
 import pluginmeta "tokenhub/backend/internal/plugin"
 
 func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI *pluginmeta.AdminUIRegistry) {
-	mustRegisterPlugin(registry, pluginmeta.Descriptor{
-		ID:         "tokenhub.admin.plugin-ecosystem",
-		Name:       "TokenHub Plugin Ecosystem Dashboard",
-		Version:    "built-in",
-		Source:     pluginmeta.SourceBuiltIn,
-		Kinds:      []pluginmeta.Kind{pluginmeta.KindAdminUI},
-		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
-		Capabilities: []pluginmeta.CapabilityDescriptor{
-			{Kind: "admin_ui", Name: "dashboard_card", Subject: "plugin_ecosystem"},
-			{Kind: "admin_ui", Name: "nav_section", Subject: "plugin_ecosystem"},
-			{Kind: "admin_ui", Name: "route_detail_panel", Subject: "plugin_ecosystem"},
-			{Kind: "admin_ui", Name: "settings_panel", Subject: "plugin_ecosystem"},
-		},
-	})
-	for _, contribution := range []pluginmeta.AdminUIContribution{
+	ecosystemContributions := []pluginmeta.AdminUIContribution{
 		{
 			PluginID: "tokenhub.admin.plugin-ecosystem",
 			ID:       "ecosystem-page",
@@ -73,23 +59,26 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 				},
 			},
 		},
-	} {
-		mustRegisterAdminUIContribution(adminUI, contribution)
 	}
-
-	mustRegisterPlugin(registry, pluginmeta.Descriptor{
-		ID:         "tokenhub.admin.core-provider",
-		Name:       "TokenHub Core Provider Settings",
+	mustRegisterPlugin(registry, builtinAdminUIDescriptor(pluginmeta.Descriptor{
+		ID:         "tokenhub.admin.plugin-ecosystem",
+		Name:       "TokenHub Plugin Ecosystem Dashboard",
 		Version:    "built-in",
 		Source:     pluginmeta.SourceBuiltIn,
 		Kinds:      []pluginmeta.Kind{pluginmeta.KindAdminUI},
 		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
-			{Kind: "admin_ui", Name: "provider_form", Subject: "core_provider_settings"},
-			{Kind: "admin_ui", Name: "provider_resource_panel", Subject: "core_provider_settings"},
+			{Kind: "admin_ui", Name: "dashboard_card", Subject: "plugin_ecosystem"},
+			{Kind: "admin_ui", Name: "nav_section", Subject: "plugin_ecosystem"},
+			{Kind: "admin_ui", Name: "route_detail_panel", Subject: "plugin_ecosystem"},
+			{Kind: "admin_ui", Name: "settings_panel", Subject: "plugin_ecosystem"},
 		},
-	})
-	for _, contribution := range []pluginmeta.AdminUIContribution{
+	}, ecosystemContributions))
+	for _, contribution := range ecosystemContributions {
+		mustRegisterAdminUIContribution(adminUI, contribution)
+	}
+
+	coreProviderContributions := []pluginmeta.AdminUIContribution{
 		{
 			PluginID: "tokenhub.admin.core-provider",
 			ID:       "provider-advanced-settings",
@@ -118,25 +107,24 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 				"layout": "resource_system_prompt_transform",
 			},
 		},
-	} {
-		mustRegisterAdminUIContribution(adminUI, contribution)
 	}
-
-	mustRegisterPlugin(registry, pluginmeta.Descriptor{
-		ID:         "tokenhub.provider.openai-codex",
-		Name:       "OpenAI Codex Subscription",
+	mustRegisterPlugin(registry, builtinAdminUIDescriptor(pluginmeta.Descriptor{
+		ID:         "tokenhub.admin.core-provider",
+		Name:       "TokenHub Core Provider Settings",
 		Version:    "built-in",
 		Source:     pluginmeta.SourceBuiltIn,
 		Kinds:      []pluginmeta.Kind{pluginmeta.KindAdminUI},
 		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
 		Capabilities: []pluginmeta.CapabilityDescriptor{
-			{Kind: "admin_ui", Name: "provider_form", Subject: ProviderOpenAICodex},
-			{Kind: "admin_ui", Name: "provider_model_panel", Subject: ProviderOpenAICodex},
-			{Kind: "admin_ui", Name: "provider_resource_form", Subject: ProviderOpenAICodex},
-			{Kind: "admin_ui", Name: "provider_resource_panel", Subject: ProviderOpenAICodex},
+			{Kind: "admin_ui", Name: "provider_form", Subject: "core_provider_settings"},
+			{Kind: "admin_ui", Name: "provider_resource_panel", Subject: "core_provider_settings"},
 		},
-	})
-	for _, contribution := range []pluginmeta.AdminUIContribution{
+	}, coreProviderContributions))
+	for _, contribution := range coreProviderContributions {
+		mustRegisterAdminUIContribution(adminUI, contribution)
+	}
+
+	codexContributions := []pluginmeta.AdminUIContribution{
 		{
 			PluginID:      "tokenhub.provider.openai-codex",
 			ID:            "provider-setup",
@@ -198,9 +186,39 @@ func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI 
 				},
 			},
 		},
-	} {
+	}
+	mustRegisterPlugin(registry, builtinAdminUIDescriptor(pluginmeta.Descriptor{
+		ID:         "tokenhub.provider.openai-codex",
+		Name:       "OpenAI Codex Subscription",
+		Version:    "built-in",
+		Source:     pluginmeta.SourceBuiltIn,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindAdminUI},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementPresentation},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "admin_ui", Name: "provider_form", Subject: ProviderOpenAICodex},
+			{Kind: "admin_ui", Name: "provider_model_panel", Subject: ProviderOpenAICodex},
+			{Kind: "admin_ui", Name: "provider_resource_form", Subject: ProviderOpenAICodex},
+			{Kind: "admin_ui", Name: "provider_resource_panel", Subject: ProviderOpenAICodex},
+		},
+	}, codexContributions))
+	for _, contribution := range codexContributions {
 		mustRegisterAdminUIContribution(adminUI, contribution)
 	}
+}
+
+func builtinAdminUIDescriptor(descriptor pluginmeta.Descriptor, contributions []pluginmeta.AdminUIContribution) pluginmeta.Descriptor {
+	for _, contribution := range contributions {
+		if contribution.ID == "" || contribution.Slot == "" {
+			continue
+		}
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "admin_ui",
+			Name:    string(contribution.Slot),
+			Subject: contribution.ID,
+			Value:   contribution.Action,
+		})
+	}
+	return pluginmeta.NormalizeDescriptor(descriptor)
 }
 
 func mustRegisterAdminUIContribution(registry *pluginmeta.AdminUIRegistry, contribution pluginmeta.AdminUIContribution) {

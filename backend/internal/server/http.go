@@ -303,7 +303,7 @@ func (s *Server) handleAdminPluginActions(w http.ResponseWriter, r *http.Request
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.pluginActions.List()})
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginActionDescriptors(s.pluginActions.List())})
 }
 
 func (s *Server) handleAdminPluginBackgroundJobs(w http.ResponseWriter, r *http.Request) {

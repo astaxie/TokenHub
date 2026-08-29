@@ -332,6 +332,40 @@ func TestAdminPluginsGetExposesLifecycleTrustAndCompatibilitySummaries(t *testin
 	}
 }
 
+func TestAdminPluginsGetReflectsBuiltinCodexUIContributions(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token"})
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data []adminPluginDescriptorResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode plugin response: %v", err)
+	}
+	codex, ok := adminPluginByID(body.Data, "tokenhub.provider.openai-codex")
+	if !ok {
+		t.Fatal("Codex plugin descriptor is missing")
+	}
+	for _, capability := range []pluginmeta.CapabilityDescriptor{
+		{Kind: "admin_ui", Name: string(pluginmeta.SlotProviderFormSection), Subject: "provider-setup", Value: "openai_codex.oauth.start"},
+		{Kind: "admin_ui", Name: string(pluginmeta.SlotProviderResourceFormSection), Subject: "fingerprint"},
+		{Kind: "admin_ui", Name: string(pluginmeta.SlotProviderModelPanel), Subject: "image-capability", Value: "openai_codex.image_capability.configure"},
+		{Kind: "admin_ui", Name: string(pluginmeta.SlotProviderResourcePanel), Subject: "quota", Value: "openai_codex.quota.read"},
+	} {
+		if !descriptorHasPluginCapability(codex.Descriptor, capability) {
+			t.Fatalf("Codex plugin descriptor missing UI capability %+v in %+v", capability, codex.Capabilities)
+		}
+	}
+	for _, secret := range []string{"download_url", "signature_url", "checksum_sha256"} {
+		if strings.Contains(response.Body, secret) {
+			t.Fatalf("Codex admin plugin payload leaked %q: %s", secret, response.Body)
+		}
+	}
+}
+
 func TestAdminPluginDeleteUninstallsLocalPackage(t *testing.T) {
 	pluginDir := t.TempDir()
 	localPluginDir := filepath.Join(pluginDir, "privacy")

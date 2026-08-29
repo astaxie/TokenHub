@@ -329,6 +329,58 @@ func TestAdminPluginActionsListsBuiltInActions(t *testing.T) {
 	}
 }
 
+func TestAdminPluginActionsListSanitizesDescriptorMetadata(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "test.leaky-descriptor",
+		Kind:       pluginmeta.ActionKindRead,
+		Title:      "Leaky descriptor",
+		Capability: "metadata.read",
+		Metadata: map[string]string{
+			"access_token":        "descriptor-access-secret",
+			"checksum_sha256":     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			"download_url":        "https://plugins.example/download-secret.zip",
+			"local_path":          "/Users/asta/.tokenhub/plugins/secret",
+			"oauth_redirect_uri":  "http://localhost:1455/auth/callback",
+			"safe_display_name":   "Safe action",
+			"signature_url":       "https://plugins.example/signature-secret.sig",
+			"support_article_url": "https://docs.example/tokenhub/support?secret=query",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{Data: map[string]string{"status": "ok"}}, nil
+	})); err != nil {
+		t.Fatalf("register leaky action descriptor: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-actions", nil, "plugin-action-admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET plugin actions: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	for _, secret := range []string{
+		"descriptor-access-secret",
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		"download-secret",
+		"signature-secret",
+		"/Users/asta",
+		"?secret=query",
+		"download_url",
+		"signature_url",
+		"checksum_sha256",
+		"local_path",
+	} {
+		if strings.Contains(response.Body, secret) {
+			t.Fatalf("GET plugin actions leaked descriptor metadata %q: %s", secret, response.Body)
+		}
+	}
+	if !strings.Contains(response.Body, `"safe_display_name":"Safe action"`) ||
+		!strings.Contains(response.Body, `"access_token":"[redacted]"`) ||
+		!strings.Contains(response.Body, `"oauth_redirect_uri":"http://localhost:1455/auth/callback"`) ||
+		!strings.Contains(response.Body, `"support_article_url":"https://docs.example/tokenhub/support"`) {
+		t.Fatalf("GET plugin actions did not preserve safe metadata: %s", response.Body)
+	}
+}
+
 func TestProviderCredentialModelsPreviewUsesPluginAction(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
 	providerType := "preview_action_provider"

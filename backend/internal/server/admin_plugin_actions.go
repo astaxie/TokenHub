@@ -167,6 +167,69 @@ func providerActionAllowsSensitiveResult(descriptor pluginmeta.ActionDescriptor)
 	return descriptor.Capability == "oauth.exchange" && descriptor.Metadata["result_secret_policy"] == "provider_account_credentials"
 }
 
+func adminPluginActionDescriptors(actions []pluginmeta.ActionDescriptor) []pluginmeta.ActionDescriptor {
+	items := make([]pluginmeta.ActionDescriptor, 0, len(actions))
+	for _, action := range actions {
+		action.Metadata = sanitizeAdminPluginActionMetadata(action.Metadata)
+		items = append(items, action)
+	}
+	return items
+}
+
+func sanitizeAdminPluginActionMetadata(metadata map[string]string) map[string]string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	safe := map[string]string{}
+	for key, value := range metadata {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if hiddenAdminPluginActionMetadataKey(key) {
+			continue
+		}
+		if sensitiveAdminPluginActionMetadataKey(key) {
+			safe[key] = "[redacted]"
+			continue
+		}
+		if adminPluginActionMetadataURLKey(key) {
+			if url := sanitizeAdminPluginPublicHTTPSURL(value); url != "" {
+				safe[key] = url
+			}
+			continue
+		}
+		safe[key] = strings.TrimSpace(value)
+	}
+	if len(safe) == 0 {
+		return nil
+	}
+	return safe
+}
+
+func hiddenAdminPluginActionMetadataKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	switch normalized {
+	case "checksum_sha256", "download_url", "signature_url", "local_path", "plugin_path", "command_env":
+		return true
+	default:
+		return strings.HasSuffix(normalized, "_path")
+	}
+}
+
+func sensitiveAdminPluginActionMetadataKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "result_secret_policy" {
+		return false
+	}
+	return sensitivePluginActionResultKey(key)
+}
+
+func adminPluginActionMetadataURLKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	return strings.HasSuffix(normalized, "_url")
+}
+
 func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
 	switch strings.TrimSpace(descriptor.Capability) {
 	case "credentials.refresh":
