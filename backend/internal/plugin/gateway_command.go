@@ -16,7 +16,7 @@ func NewGatewayCommandRunner(dir string, command string) GatewayCommandRunner {
 	return GatewayCommandRunner{
 		Dir:     strings.TrimSpace(dir),
 		Command: strings.TrimSpace(command),
-		Timeout: defaultActionCommandTimeout,
+		Timeout: defaultStdioJSONCommandTimeout,
 	}
 }
 

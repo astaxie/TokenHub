@@ -16,7 +16,7 @@ func NewBackgroundCommandRunner(dir string, command string) BackgroundCommandRun
 	return BackgroundCommandRunner{
 		Dir:     strings.TrimSpace(dir),
 		Command: strings.TrimSpace(command),
-		Timeout: defaultActionCommandTimeout,
+		Timeout: defaultStdioJSONCommandTimeout,
 	}
 }
 

@@ -41,3 +41,14 @@ printf '{"decision":"continue","writes":{"audit":{"value":{"hook":"seen"}}}}'
 		t.Fatalf("audit write = %+v, want seen", audit)
 	}
 }
+
+func TestGatewayCommandRunnerRejectsEscapingCommandPath(t *testing.T) {
+	runner := NewGatewayCommandRunner(t.TempDir(), "../hook.sh")
+	_, err := runner.ExecuteGatewayHook(t.Context(), GatewayHookInput{
+		RequestID: "req_1",
+		Stage:     StagePrivacyPre,
+	})
+	if err == nil {
+		t.Fatal("escaping command path was accepted")
+	}
+}
