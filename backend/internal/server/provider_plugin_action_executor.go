@@ -10,8 +10,9 @@ import (
 )
 
 type providerPluginActionOptions struct {
-	ApplySideEffects bool
-	ResourceType     string
+	ApplySideEffects     bool
+	PreserveActionErrors bool
+	ResourceType         string
 }
 
 func pluginActionActor(user AdminUser) pluginmeta.ActionActor {
@@ -38,6 +39,9 @@ func (s *Server) executeEncodedPluginAction(ctx context.Context, user AdminUser,
 	}
 	result, err := s.executeRawPluginAction(ctx, user, pluginID, actionID, rawPayload)
 	if err != nil {
+		if opts.PreserveActionErrors {
+			return pluginmeta.ActionResult{}, err
+		}
 		return pluginmeta.ActionResult{}, pluginActionHTTPError(err)
 	}
 	if opts.ApplySideEffects {

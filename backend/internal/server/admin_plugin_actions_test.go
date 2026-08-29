@@ -409,6 +409,102 @@ func TestAdminPluginActionStartsOpenAICodexOAuth(t *testing.T) {
 	}
 }
 
+func TestLegacyOpenAICodexOAuthAliasUsesProviderPluginAction(t *testing.T) {
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})
+	server.pluginActions = pluginmeta.NewActionBroker()
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "test_codex.oauth.start",
+		Kind:       pluginmeta.ActionKindExternalRedirect,
+		Capability: "oauth.start",
+		Subject:    ProviderOpenAICodex,
+		OutputSchema: actionObjectSchema([]string{"auth_url", "session_id", "state", "redirect_uri", "expires_at"}, map[string]string{
+			"auth_url":     "string",
+			"session_id":   "string",
+			"state":        "string",
+			"redirect_uri": "string",
+			"expires_at":   "string",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload providerAccountOAuthGenerateRequest
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode legacy OAuth payload: %v", err)
+		}
+		return pluginmeta.ActionResult{Data: providerAccountOAuthGenerateResponse{
+			AuthURL:     "https://codex-plugin.example/oauth?return_url=" + url.QueryEscape(payload.ReturnURL),
+			SessionID:   "plugin-session",
+			State:       "plugin-state",
+			RedirectURI: "https://tokenhub.example/callback",
+			ExpiresAt:   "2026-08-29T00:00:00Z",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register Codex OAuth start action: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.openai-codex",
+		ActionID:   "test_codex.oauth.exchange",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "oauth.exchange",
+		Subject:    ProviderOpenAICodex,
+		Metadata:   map[string]string{"result_secret_policy": "provider_account_credentials"},
+		OutputSchema: actionObjectSchema([]string{"access_token"}, map[string]string{
+			"access_token":    "string",
+			"refresh_token":   "string",
+			"account_email":   "string",
+			"organization_id": "string",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload providerAccountOAuthExchangeRequest
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode legacy OAuth exchange payload: %v", err)
+		}
+		if payload.SessionID != "plugin-session" || payload.State != "plugin-state" || payload.Code != "plugin-code" {
+			t.Fatalf("unexpected legacy OAuth exchange payload: %+v", payload)
+		}
+		return pluginmeta.ActionResult{Data: providerAccountOAuthTokenInfo{
+			AccessToken:    "plugin-access",
+			RefreshToken:   "plugin-refresh",
+			AccountEmail:   "owner@example.com",
+			OrganizationID: "org_plugin",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register Codex OAuth exchange action: %v", err)
+	}
+
+	generated := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-account-oauth/openai/generate-auth-url", map[string]any{
+		"return_url": "http://localhost:3001/providers",
+	}, "plugin-action-admin")
+	if generated.Code != http.StatusOK {
+		t.Fatalf("POST legacy OAuth generate: expected 200, got %d: %s", generated.Code, generated.Body)
+	}
+	var auth providerAccountOAuthGenerateResponse
+	if err := json.Unmarshal([]byte(generated.Body), &auth); err != nil {
+		t.Fatal(err)
+	}
+	if auth.AuthURL != "https://codex-plugin.example/oauth?return_url=http%3A%2F%2Flocalhost%3A3001%2Fproviders" ||
+		auth.SessionID != "plugin-session" || auth.State != "plugin-state" || auth.RedirectURI != "https://tokenhub.example/callback" {
+		t.Fatalf("legacy OAuth generate did not use plugin action result: %+v", auth)
+	}
+
+	exchanged := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-account-oauth/openai/exchange-code", map[string]any{
+		"session_id": "plugin-session",
+		"state":      "plugin-state",
+		"code":       "plugin-code",
+	}, "plugin-action-admin")
+	if exchanged.Code != http.StatusOK {
+		t.Fatalf("POST legacy OAuth exchange: expected 200, got %d: %s", exchanged.Code, exchanged.Body)
+	}
+	var info providerAccountOAuthTokenInfo
+	if err := json.Unmarshal([]byte(exchanged.Body), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.AccessToken != "plugin-access" || info.RefreshToken != "plugin-refresh" ||
+		info.AccountEmail != "owner@example.com" || info.OrganizationID != "org_plugin" {
+		t.Fatalf("legacy OAuth exchange did not use plugin action result: %+v", info)
+	}
+}
+
 func TestAdminProviderActionExecutesOAuthCapabilityByProviderType(t *testing.T) {
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin"})

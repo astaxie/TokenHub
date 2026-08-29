@@ -338,16 +338,9 @@ func (s *Server) exchangeProviderAccountOAuthWithAction(ctx context.Context, use
 }
 
 func (s *Server) executeProviderAccountOAuthAction(ctx context.Context, user AdminUser, providerType string, actionCapability string, payload any) (pluginmeta.ActionResult, bool, error) {
-	action, ok := s.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityOAuth, actionCapability, "")
-	if !ok {
-		return pluginmeta.ActionResult{}, false, nil
-	}
-	rawPayload, err := json.Marshal(payload)
-	if err != nil {
-		return pluginmeta.ActionResult{}, true, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
-	}
-	result, err := s.executeRawPluginAction(ctx, user, action.PluginID, action.ActionID, rawPayload)
-	return result, true, err
+	return s.executeProviderCapabilityAction(ctx, user, providerType, AdapterCapabilityOAuth, actionCapability, payload, providerPluginActionOptions{
+		PreserveActionErrors: true,
+	})
 }
 
 func (s *Server) exchangeOpenAIAccountOAuth(ctx context.Context, req providerAccountOAuthExchangeRequest) (providerAccountOAuthTokenInfo, error) {
