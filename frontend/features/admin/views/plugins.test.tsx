@@ -394,6 +394,41 @@ describe("PluginsView", () => {
     expect(pluginStyles()).toContain(".plugin-action-field select");
     expect(pluginStyles()).toContain(".plugin-action-runner .stacked-cell");
   });
+
+  it("renders stable Plugin Manager hooks for feature-scoped CSS", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.local-privacy",
+      name: "Local Privacy",
+      version: "1.0.0",
+      source: "local_file",
+      status: "enabled",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+      distribution: {
+        download_url: "https://plugins.example/privacy.zip",
+        checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      },
+    }];
+
+    const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(container.querySelector('[data-plugin-manager-section="install"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="registry"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="marketplace"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="chain-hooks"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="ui-contributions"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="sim-contributions"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="sim-selection"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="actions"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="background-jobs"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-control="lifecycle"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-control="distribution"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-control="delete"]')).toBeInTheDocument();
+    expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-section="install"] .plugin-action-runner');
+    expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-control="lifecycle"] .compact-button');
+  });
 });
 
 function simPlugin(id: string, capabilities: PluginCapabilityDescriptor[]) {

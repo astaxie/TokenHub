@@ -392,7 +392,7 @@ export function PluginsView({
         <PluginMetric icon={<Clock3 size={18} />} label={tx("后台任务")} value={backgroundJobs.length} />
       </div>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="install">
         <div className="section-header">
           <h2>{tx("安装插件包")}</h2>
         </div>
@@ -453,7 +453,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="registry">
         <div className="section-header">
           <h2>{tx("插件注册表")}</h2>
         </div>
@@ -520,7 +520,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="marketplace">
         <div className="section-header">
           <h2>{tx("插件市场")}</h2>
         </div>
@@ -583,7 +583,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="chain-hooks">
         <div className="section-header">
           <h2>{tx("链路注入计划")}</h2>
         </div>
@@ -628,7 +628,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="ui-contributions">
         <div className="section-header">
           <h2>{tx("界面贡献清单")}</h2>
         </div>
@@ -671,7 +671,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="sim-contributions">
         <div className="section-header">
           <h2>{tx("SIM 与主题贡献")}</h2>
         </div>
@@ -714,7 +714,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="sim-selection">
         <div className="section-header">
           <h2>{tx("SIM 选择面板")}</h2>
         </div>
@@ -813,7 +813,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="actions">
         <div className="section-header">
           <h2>{tx("动作清单")}</h2>
         </div>
@@ -863,7 +863,7 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" data-plugin-manager-section="background-jobs">
         <div className="section-header">
           <h2>{tx("后台任务清单")}</h2>
         </div>
@@ -973,7 +973,7 @@ function PluginLifecycleControl({
   const nextStatus = status === "disabled" ? "enabled" : "disabled";
   const canUpdate = plugin.source !== "built_in" && !effectiveLifecycle.mandatory && (status === "enabled" || status === "disabled");
   return (
-    <div className="stacked-cell">
+    <div className="stacked-cell" data-plugin-manager-control="lifecycle">
       <StatusPill status={effectiveLifecycle.pillStatus} label={tx(effectiveLifecycle.labelKey)} />
       {canUpdate ? (
         <button
@@ -1033,7 +1033,7 @@ function DistributionMetadata({
   ];
   const links = candidates.flatMap((link) => (link.href ? [{ ...link, href: link.href }] : []));
   return (
-    <div className="stacked-cell">
+    <div className="stacked-cell" data-plugin-manager-control="distribution">
       {links.length > 0 ? (
         <div className="tag-list">
           {links.map((link) => (
@@ -1200,9 +1200,15 @@ function PluginDeleteControl({
   draft: PluginDeleteDraft;
   onDelete: (plugin: PluginDescriptor) => void;
 }) {
-  if (!lifecycle.actions.uninstall.available) return <span className="muted">-</span>;
+  if (!lifecycle.actions.uninstall.available) {
+    return (
+      <div className="stacked-cell" data-plugin-manager-control="delete">
+        <span className="muted">-</span>
+      </div>
+    );
+  }
   return (
-    <div className="stacked-cell">
+    <div className="stacked-cell" data-plugin-manager-control="delete">
       <button
         className="danger-button compact-button"
         disabled={draft.busy}

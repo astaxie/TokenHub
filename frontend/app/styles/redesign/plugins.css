@@ -56,6 +56,42 @@
   white-space: pre-wrap;
 }
 
+.plugins-view {
+  container-type: inline-size;
+}
+
+.plugins-view .metric-grid {
+  align-items: stretch;
+}
+
+.plugins-view [data-plugin-manager-section] .section-body {
+  min-width: 0;
+}
+
+.plugins-view [data-plugin-manager-section="install"] .plugin-action-runner,
+.plugins-view [data-plugin-manager-section="sim-selection"] .plugin-action-runner {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+}
+
+.plugins-view [data-plugin-manager-section="actions"] .plugin-action-runner,
+.plugins-view [data-plugin-manager-section="background-jobs"] .plugin-action-runner {
+  min-width: 220px;
+}
+
+.plugins-view [data-plugin-manager-control] {
+  min-width: 160px;
+}
+
+.plugins-view [data-plugin-manager-control="distribution"] .tag-list {
+  gap: 6px;
+}
+
+.plugins-view [data-plugin-manager-control="lifecycle"] .compact-button,
+.plugins-view [data-plugin-manager-control="delete"] .compact-button {
+  width: max-content;
+}
+
 .plugin-page-panel[data-page-template-source="sim"] {
   border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
 }
