@@ -131,6 +131,48 @@ func TestGatewayCompletionTraceExportRequiresChainRegistration(t *testing.T) {
 	}
 }
 
+func TestGatewayCompletionTraceExportFailureIsObserveOnly(t *testing.T) {
+	store := NewMemoryStore()
+	app := New(store)
+	emitter := &recordingTraceEmitter{}
+	app.traceEmitter = emitter
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-trace",
+		HookID:        "observe-only-error",
+		Stage:         pluginmeta.StageTraceExport,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+	}
+	if err := app.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace hook: %v", err)
+	}
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{}, io.ErrUnexpectedEOF
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Call: CallContext{
+			RequestID: "req_trace_observe_only",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Usage:      Usage{TotalTokens: 7},
+		StatusCode: http.StatusOK,
+	})
+
+	if completions := emitter.take(); len(completions) != 1 {
+		t.Fatalf("trace emitter completions = %d, want 1", len(completions))
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].RequestID != "req_trace_observe_only" || logs[0].StatusCode != http.StatusOK {
+		t.Fatalf("trace hook failure affected request settlement: %+v", logs)
+	}
+}
+
 // TestGatewayCallEmitsExactlyOneCompletion is the load-bearing test for tracing.
 // Langfuse v4 turns a re-ingested span into a duplicate observation and inflates
 // every metric derived from it, so a path that emits twice is a data-corruption bug

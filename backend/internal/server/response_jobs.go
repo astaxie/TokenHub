@@ -761,7 +761,7 @@ func (s *Server) finalizeResponseJob(job ResponseJob, owner string, call CallCon
 		ErrorMessage: errorMessage,
 		FinishedAt:   tracingFinishedAt(),
 	}
-	s.emitGatewayTrace(completion)
+	s.emitGatewayCompletionTraceExports(completion)
 	return true
 }
 

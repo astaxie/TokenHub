@@ -78,6 +78,17 @@ type TraceEmitter interface {
 	Shutdown(ctx context.Context) error
 }
 
+func (s *Server) emitGatewayCompletionTraceExports(completion GatewayCallCompletion) {
+	if completion.Kind == "" {
+		completion.Kind = CompletionKindRouted
+	}
+	if completion.FinishedAt.IsZero() {
+		completion.FinishedAt = tracingFinishedAt()
+	}
+	s.emitGatewayTrace(completion)
+	s.runGatewayTraceExportHooks(context.Background(), completion)
+}
+
 // finishCall records one finished gateway call everywhere it needs to be recorded.
 //
 // Having a single funnel is what makes tracing correct rather than merely
@@ -129,8 +140,7 @@ func (s *Server) finishCall(completion GatewayCallCompletion) {
 		completion.ErrorMessage = ""
 		completion.Attempts = attemptsWithoutErrorText(completion.Attempts)
 	}
-	s.emitGatewayTrace(completion)
-	s.runGatewayTraceExportHooks(context.Background(), completion)
+	s.emitGatewayCompletionTraceExports(completion)
 }
 
 // finishRoutedCall completes a call while its request is still in hand, taking the

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -178,6 +179,51 @@ func TestBackgroundResponsesSuccessPersistsEncryptedPayloadAndAccountsOnce(t *te
 	var payloadLogs int64
 	if err := store.db.Model(&RequestPayloadLog{}).Where("request_id = ?", logs[0].RequestID).Count(&payloadLogs).Error; err != nil || payloadLogs != 0 {
 		t.Fatalf("background payload was copied into plaintext audit storage: count=%d err=%v", payloadLogs, err)
+	}
+}
+
+func TestBackgroundResponseJobRunsTraceExportHookWithoutPayload(t *testing.T) {
+	server, _, secret := newBackgroundResponseTestServer(t)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-trace",
+		HookID:        "export",
+		Stage:         pluginmeta.StageTraceExport,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace export hook: %v", err)
+	}
+	var mu sync.Mutex
+	var captured []pluginmeta.GatewayHookInput
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		mu.Lock()
+		captured = append(captured, input)
+		mu.Unlock()
+		return pluginmeta.GatewayHookResult{}, errors.New("trace exporter unavailable")
+	})); err != nil {
+		t.Fatalf("register trace export handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "background trace secret prompt")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["status"] != "completed" {
+		t.Fatalf("trace hook failure affected background job completion: %#v", completed)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(captured) != 1 {
+		t.Fatalf("trace export calls = %d, want 1", len(captured))
+	}
+	input := captured[0]
+	if input.Envelope.Operation != string(CompletionKindRouted) || input.Envelope.Model != "gpt-background" {
+		t.Fatalf("trace envelope = %+v", input.Envelope)
+	}
+	raw := bytes.Join([][]byte{input.Data[pluginmeta.DataAudit], input.Data[pluginmeta.DataUsage]}, nil)
+	if bytes.Contains(raw, []byte("background trace secret prompt")) || bytes.Contains(raw, []byte("Echo: background trace secret prompt")) {
+		t.Fatalf("background trace export included retained payload: %s", raw)
 	}
 }
 

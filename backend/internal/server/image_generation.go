@@ -104,7 +104,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 	}
 	if err != nil {
 		if call.RequestID != "" && !atomicAdmission {
-			s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
+			s.finishImageGatewayCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
 		}
 		httpErr := AsHTTPError(err)
 		if httpErr.Code == "internal_error" {
@@ -142,7 +142,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := s.enqueueImageJob(work); err != nil {
 		httpErr := AsHTTPError(err)
-		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, work.clientIP, work.userAgent)
+		s.finishImageGatewayCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, work.clientIP, work.userAgent)
 		s.failImageJob(job, httpErr.Code, httpErr.Message)
 		s.recordRequestPayload(call.RequestID, imageAuditRequest(job), auditErrorPayload(err, call.RequestID))
 		writeError(w, r, err)
@@ -271,7 +271,7 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if call.RequestID != "" && !atomicAdmission {
-			s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
+			s.finishImageGatewayCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_job_create_failed", s.clientIP(r), r.UserAgent())
 		}
 		httpErr := AsHTTPError(err)
 		if httpErr.Code == "internal_error" {
@@ -310,7 +310,7 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			s.failImageJob(job, "image_input_storage_failed", saveErr.Error())
-			s.store.FinishCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_input_storage_failed", s.clientIP(r), r.UserAgent())
+			s.finishImageGatewayCall(call, RouteSelection{}, Usage{}, http.StatusInternalServerError, "image_input_storage_failed", s.clientIP(r), r.UserAgent())
 			s.recordRequestPayload(call.RequestID, imageAuditRequest(job), auditErrorPayload(saveErr, call.RequestID))
 			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "image_input_storage_failed", saveErr.Error()))
 			return
@@ -327,7 +327,7 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.enqueueImageJob(work); err != nil {
 		httpErr := AsHTTPError(err)
-		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, work.clientIP, work.userAgent)
+		s.finishImageGatewayCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, work.clientIP, work.userAgent)
 		s.failImageJob(job, httpErr.Code, httpErr.Message)
 		s.recordRequestPayload(call.RequestID, imageAuditRequest(job), auditErrorPayload(err, call.RequestID))
 		writeError(w, r, err)
@@ -526,9 +526,29 @@ func (s *Server) runImageGatewayPreflightHooks(ctx context.Context, call *CallCo
 	return nil
 }
 
+func (s *Server) finishImageGatewayCall(call CallContext, route RouteSelection, usage Usage, status int, code string, clientIP string, userAgent string) {
+	s.store.FinishCall(call, route, usage, status, code, clientIP, userAgent)
+	s.emitImageGatewayCallTrace(call, route, usage, status, code, clientIP, userAgent)
+}
+
+func (s *Server) emitImageGatewayCallTrace(call CallContext, route RouteSelection, usage Usage, status int, code string, clientIP string, userAgent string) {
+	if call.RequestID == "" {
+		return
+	}
+	s.emitGatewayCompletionTraceExports(GatewayCallCompletion{
+		Call:       call,
+		Route:      route,
+		Usage:      priceUsageAt(call.Model, usage, call.StartedAt),
+		StatusCode: status,
+		ErrorCode:  code,
+		ClientIP:   clientIP,
+		UserAgent:  userAgent,
+	})
+}
+
 func (s *Server) finishImageJobPreflightFailure(w http.ResponseWriter, r *http.Request, job ImageJob, call CallContext, err error) {
 	httpErr := AsHTTPError(err)
-	s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
+	s.finishImageGatewayCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 	s.failImageJob(job, httpErr.Code, httpErr.Message)
 	s.recordRequestPayload(call.RequestID, imageAuditRequest(job), auditErrorPayload(err, call.RequestID))
 	writeError(w, r, httpErr)
@@ -648,7 +668,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	for {
 		select {
 		case work := <-s.imageQueue:
-			s.store.FinishCall(work.call, RouteSelection{}, Usage{}, http.StatusServiceUnavailable, "image_worker_stopped", work.clientIP, work.userAgent)
+			s.finishImageGatewayCall(work.call, RouteSelection{}, Usage{}, http.StatusServiceUnavailable, "image_worker_stopped", work.clientIP, work.userAgent)
 			s.failImageJob(work.job, "image_worker_stopped", "Image generation stopped because the server shut down")
 			if work.done != nil {
 				close(work.done)
@@ -672,7 +692,7 @@ func (s *Server) processImageJob(work imageJobWork) {
 		return
 	}
 	if !claimed {
-		s.store.FinishCall(work.call, RouteSelection{}, Usage{}, http.StatusConflict, "image_job_not_queued", work.clientIP, work.userAgent)
+		s.finishImageGatewayCall(work.call, RouteSelection{}, Usage{}, http.StatusConflict, "image_job_not_queued", work.clientIP, work.userAgent)
 		return
 	}
 	ctx := s.imageContext
@@ -772,6 +792,7 @@ func (s *Server) processImageJob(work imageJobWork) {
 		return
 	}
 	job.RevisedPrompt = result.revisedPrompt
+	s.emitImageGatewayCallTrace(work.call, route, usage, http.StatusOK, "", work.clientIP, work.userAgent)
 	s.recordRequestPayload(work.call.RequestID, imageAuditRequest(job), map[string]any{"image_job_id": job.ID, "status": job.Status})
 }
 
@@ -808,7 +829,7 @@ func (s *Server) acquireImageAccount(ctx context.Context, resourceID string) (fu
 }
 
 func (s *Server) finishImageJobFailure(work imageJobWork, job ImageJob, route RouteSelection, usage Usage, status int, code string, message string) {
-	s.store.FinishCall(work.call, route, usage, status, code, work.clientIP, work.userAgent)
+	s.finishImageGatewayCall(work.call, route, usage, status, code, work.clientIP, work.userAgent)
 	s.failImageJob(job, code, message)
 	s.recordRequestPayload(work.call.RequestID, imageAuditRequest(job), map[string]any{
 		"image_job_id": job.ID,

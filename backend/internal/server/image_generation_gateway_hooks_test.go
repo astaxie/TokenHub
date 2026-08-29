@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -415,6 +416,72 @@ func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 	}
 	if !bytes.Equal(storedBytes, transformedImageBytes) {
 		t.Fatalf("persisted image bytes length = %d, want transformed length %d", len(storedBytes), len(transformedImageBytes))
+	}
+}
+
+func TestImageGatewayRunsTraceExportHookWithoutPromptOrImagePayload(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Trace Export Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-trace-export-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_trace_export")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_trace_export", Name: "Image Trace Export", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_trace_export", ProviderID: provider.ID, Name: "Image Trace Export Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_trace_export", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-trace-export-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		return imageBytes, "provider revised prompt", Usage{PromptTokens: 4, CompletionTokens: 5, TotalTokens: 9}, nil
+	}
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-trace",
+		HookID:        "export",
+		Stage:         pluginmeta.StageTraceExport,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace export hook: %v", err)
+	}
+	var mu sync.Mutex
+	var captured []pluginmeta.GatewayHookInput
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		mu.Lock()
+		captured = append(captured, input)
+		mu.Unlock()
+		return pluginmeta.GatewayHookResult{}, errors.New("image trace exporter unavailable")
+	})); err != nil {
+		t.Fatalf("register trace export handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "image trace secret prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image trace hook failure affected response: %d %s", response.Code, response.Body)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(captured) != 1 {
+		t.Fatalf("trace export calls = %d, want 1", len(captured))
+	}
+	input := captured[0]
+	if input.Envelope.Operation != string(CompletionKindRouted) || input.Envelope.Model != openAIImageModelName {
+		t.Fatalf("trace envelope = %+v", input.Envelope)
+	}
+	raw := bytes.Join([][]byte{input.Data[pluginmeta.DataAudit], input.Data[pluginmeta.DataUsage]}, nil)
+	if bytes.Contains(raw, []byte("image trace secret prompt")) ||
+		bytes.Contains(raw, []byte("provider revised prompt")) ||
+		bytes.Contains(raw, []byte(encodeBase64(imageBytes))) {
+		t.Fatalf("image trace export included retained payload: %s", raw)
 	}
 }
 
