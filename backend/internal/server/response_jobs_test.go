@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -296,6 +297,174 @@ func TestBackgroundResponsesCacheWriteFailOpenCompletesJob(t *testing.T) {
 	records := store.ListUsageRecords()
 	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
 		t.Fatalf("background usage was not persisted after cache write failure: %+v", records)
+	}
+}
+
+func TestBackgroundResponsesResponsePostPersistsTransformedResult(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-response-post",
+		HookID:        "rewrite-result",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register response_post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		raw := string(input.Data[pluginmeta.DataProviderResponse])
+		if !strings.Contains(raw, "Echo: durable transform source") {
+			t.Fatalf("response_post input = %s, want provider output", raw)
+		}
+		return rawProviderResponsePatch(t, map[string]any{
+			"id":          "resp_background_transformed",
+			"object":      "response",
+			"model":       "gpt-background",
+			"output_text": "background response_post transformed",
+			"output": []map[string]any{{
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]any{{
+					"type": "output_text",
+					"text": "background response_post transformed",
+				}},
+			}},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register response_post handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "durable transform source")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "background response_post transformed" {
+		t.Fatalf("completed response = %#v, want transformed output", completed)
+	}
+	_, resultJSON, err := store.LoadResponseJobPayload(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultRaw := string(resultJSON)
+	if !strings.Contains(resultRaw, "background response_post transformed") || strings.Contains(resultRaw, "durable transform source") {
+		t.Fatalf("persisted result = %s, want transformed response only", resultRaw)
+	}
+	var persisted ResponseJob
+	if err := store.db.First(&persisted, "id = ?", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(persisted.ResultCiphertext, "background response_post transformed") ||
+		strings.Contains(persisted.ResultCiphertext, "durable transform source") {
+		t.Fatalf("result ciphertext contains plaintext response: %q", persisted.ResultCiphertext)
+	}
+}
+
+func TestBackgroundResponsesCacheWriteReceivesResponsePostOutput(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	responsePost := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-cache-write-transform",
+		HookID:        "response-post",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	cacheWrite := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-cache-write-transform",
+		HookID:        "cache-write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	for _, hook := range []pluginmeta.GatewayHookDescriptor{responsePost, cacheWrite} {
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register %s hook: %v", hook.Stage, err)
+		}
+	}
+	if err := server.gatewayHooks.RegisterHandler(responsePost, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderResponsePatch(t, map[string]any{
+			"id":          "resp_background_cache_write_transformed",
+			"object":      "response",
+			"model":       "gpt-background",
+			"output_text": "background cache_write transformed",
+			"output":      []map[string]any{},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register response_post handler: %v", err)
+	}
+	cacheWriteCalls := 0
+	if err := server.gatewayHooks.RegisterHandler(cacheWrite, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		cacheWriteCalls++
+		raw := string(input.Data[pluginmeta.DataProviderResponse])
+		if !strings.Contains(raw, "background cache_write transformed") || strings.Contains(raw, "cache write transform source") {
+			t.Fatalf("cache_write provider response = %s, want response_post output only", raw)
+		}
+		if len(input.Data[pluginmeta.DataUsage]) == 0 {
+			t.Fatal("cache_write hook did not receive usage data")
+		}
+		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+	})); err != nil {
+		t.Fatalf("register cache_write handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "cache write transform source")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "background cache_write transformed" {
+		t.Fatalf("completed response = %#v, want transformed output", completed)
+	}
+	if cacheWriteCalls != 1 {
+		t.Fatalf("cache_write calls = %d, want 1", cacheWriteCalls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("request logs = %+v, want one successful provider-backed job", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("usage records = %+v, want one provider-backed usage record", records)
+	}
+}
+
+func TestBackgroundResponsesResponseTransformFailOpenPersistsProviderResult(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-response-post",
+		HookID:        "fail-open",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register response_post hook: %v", err)
+	}
+	responsePostCalls := 0
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		responsePostCalls++
+		return pluginmeta.GatewayHookResult{}, errors.New("response transform unavailable")
+	})); err != nil {
+		t.Fatalf("register response_post handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "fail-open response transform")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "Echo: fail-open response transform" {
+		t.Fatalf("completed response = %#v, want provider response", completed)
+	}
+	if responsePostCalls != 1 {
+		t.Fatalf("response_post calls = %d, want 1", responsePostCalls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("request logs = %+v, want one successful provider-backed job", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("usage records = %+v, want provider response usage", records)
 	}
 }
 

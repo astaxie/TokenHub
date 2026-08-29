@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -284,6 +286,7 @@ func TestImageRequestTransformHookRewritesProviderRequestBeforeInvoke(t *testing
 
 func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 	imageBytes := realPNGFixture(t)
+	transformedImageBytes := append(append([]byte{}, imageBytes...), '\n')
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Image Post Plugin Project", Status: StatusActive})
 	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-post-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_post_plugin")
@@ -339,6 +342,10 @@ func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
 			t.Fatalf("decode image response: %v", err)
 		}
+		if response.DataBase64 != encodeBase64(imageBytes) {
+			t.Fatalf("response_post input image does not match provider output")
+		}
+		response.DataBase64 = encodeBase64(transformedImageBytes)
 		response.RevisedPrompt = "post-stage revised prompt"
 		return rawProviderResponsePatch(t, response), nil
 	})); err != nil {
@@ -354,7 +361,14 @@ func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 	}
 	sawCacheWrite := false
 	if err := server.gatewayHooks.RegisterHandler(cacheWrite, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
-		sawCacheWrite = len(input.Data[pluginmeta.DataRequestBody]) > 0 && len(input.Data[pluginmeta.DataProviderResponse]) > 0 && len(input.Data[pluginmeta.DataUsage]) > 0
+		var response gatewayImageProviderResponse
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderResponse], &response); err != nil {
+			t.Fatalf("decode cache_write image response: %v", err)
+		}
+		sawCacheWrite = len(input.Data[pluginmeta.DataRequestBody]) > 0 &&
+			len(input.Data[pluginmeta.DataUsage]) > 0 &&
+			response.DataBase64 == encodeBase64(transformedImageBytes) &&
+			response.RevisedPrompt == "post-stage revised prompt"
 		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
 	})); err != nil {
 		t.Fatalf("register image cache write handler: %v", err)
@@ -369,8 +383,38 @@ func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 	if !strings.Contains(response.Body, "post-stage revised prompt") || !strings.Contains(response.Body, `"total_tokens":9`) {
 		t.Fatalf("image response was not post-processed: %s", response.Body)
 	}
+	if !strings.Contains(response.Body, encodeBase64(transformedImageBytes)) || strings.Contains(response.Body, encodeBase64(imageBytes)) {
+		t.Fatalf("image response body did not use transformed image bytes: %s", response.Body)
+	}
 	if !sawCacheWrite {
-		t.Fatal("image cache_write hook did not receive request, response, and usage data")
+		t.Fatal("image cache_write hook did not receive transformed request, response, and usage data")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(response.Body), &payload); err != nil {
+		t.Fatal(err)
+	}
+	jobID, _ := payload["job_id"].(string)
+	if jobID == "" {
+		t.Fatalf("image response did not include job id: %s", response.Body)
+	}
+	job, ok := store.GetImageJob(jobID)
+	if !ok || job.RevisedPrompt != "post-stage revised prompt" {
+		t.Fatalf("persisted image job = %+v, want transformed revised prompt", job)
+	}
+	assets := store.ListImageAssets(jobID)
+	if len(assets) != 1 {
+		t.Fatalf("persisted image assets = %+v, want one output asset", assets)
+	}
+	fullPath, err := server.imageAssetPath(assets[0].RelativePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedBytes, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(storedBytes, transformedImageBytes) {
+		t.Fatalf("persisted image bytes length = %d, want transformed length %d", len(storedBytes), len(transformedImageBytes))
 	}
 }
 
@@ -551,5 +595,71 @@ func TestImageCacheWriteFailOpenPreservesProviderResponse(t *testing.T) {
 	}
 	if !strings.Contains(response.Body, "provider write fallback") || !strings.Contains(response.Body, `"total_tokens":9`) {
 		t.Fatalf("unexpected provider response after cache write failure: %s", response.Body)
+	}
+}
+
+func TestImageResponseTransformFailOpenPreservesProviderImage(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Response Transform Failure Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-response-transform-failure-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_response_transform_failure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_image_response_transform_failure", Name: "Image Response Transform Failure", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_response_transform_failure", ProviderID: provider.ID, Name: "Image Response Transform Failure Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_response_transform_failure", ModelName: openAIImageModelName, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: openAIImageModelName, Status: StatusActive, Priority: 1, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-response-transform-failure-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.imageRunner = func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error) {
+		return imageBytes, "provider fail-open prompt", Usage{PromptTokens: 4, CompletionTokens: 5, TotalTokens: 9}, nil
+	}
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-response-transform",
+		HookID:        "fail-open",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register image response_post hook: %v", err)
+	}
+	responsePostCalls := 0
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		responsePostCalls++
+		return pluginmeta.GatewayHookResult{}, errors.New("response transform unavailable")
+	})); err != nil {
+		t.Fatalf("register image response_post handler: %v", err)
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "response transform fail-open prompt", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image response failed after response transform error: %d %s", response.Code, response.Body)
+	}
+	if responsePostCalls != 1 {
+		t.Fatalf("response_post calls = %d, want 1", responsePostCalls)
+	}
+	if !strings.Contains(response.Body, "provider fail-open prompt") ||
+		!strings.Contains(response.Body, encodeBase64(imageBytes)) ||
+		!strings.Contains(response.Body, `"total_tokens":9`) {
+		t.Fatalf("unexpected provider response after response transform failure: %s", response.Body)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(response.Body), &payload); err != nil {
+		t.Fatal(err)
+	}
+	jobID, _ := payload["job_id"].(string)
+	job, ok := store.GetImageJob(jobID)
+	if !ok || job.RevisedPrompt != "provider fail-open prompt" || job.TotalTokens != 9 {
+		t.Fatalf("persisted image job = %+v, want provider result after fail-open", job)
 	}
 }
