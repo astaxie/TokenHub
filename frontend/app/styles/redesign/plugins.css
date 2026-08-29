@@ -12,7 +12,8 @@
 }
 
 .plugin-action-field input[type="text"],
-.plugin-action-field input[type="number"] {
+.plugin-action-field input[type="number"],
+.plugin-action-field select {
   width: 100%;
   min-height: 32px;
   border: 1px solid var(--border);
@@ -20,6 +21,14 @@
   padding: 0 9px;
   background: var(--surface);
   color: var(--ink);
+}
+
+.plugin-action-field select {
+  cursor: pointer;
+}
+
+.plugin-action-runner .stacked-cell {
+  min-width: 0;
 }
 
 .plugin-action-field input[type="checkbox"] {
@@ -45,4 +54,38 @@
   color: var(--ink);
   font-size: 11.5px;
   white-space: pre-wrap;
+}
+
+.plugin-page-panel[data-page-template-source="sim"] {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+}
+
+.plugin-page-panel[data-page-density="compact"] .section-body {
+  gap: 10px;
+}
+
+.plugin-page-panel[data-page-frame="tool"] {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 55%, transparent), var(--shadow-sm);
+}
+
+.plugin-page-panel[data-page-layout="metrics"] .system-settings-plugin-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.overview-plugin-cards[data-dashboard-composition] {
+  align-items: stretch;
+}
+
+.admin-ui-dashboard-card[data-dashboard-size="wide"] {
+  grid-column: span 2;
+}
+
+.admin-ui-dashboard-card[data-dashboard-region="side"] {
+  align-self: start;
+}
+
+@media (max-width: 760px) {
+  .admin-ui-dashboard-card[data-dashboard-size="wide"] {
+    grid-column: span 1;
+  }
 }

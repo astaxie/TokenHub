@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -226,6 +228,8 @@ describe("PluginPageView", () => {
     expect(panel).toHaveAttribute("data-page-region", "operations");
     expect(panel).toHaveAttribute("data-page-density", "compact");
     expect(panel).toHaveAttribute("data-page-frame", "tool");
+    expect(pluginStyles()).toContain('.plugin-page-panel[data-page-template-source="sim"]');
+    expect(pluginStyles()).toContain('.plugin-page-panel[data-page-layout="metrics"] .system-settings-plugin-grid');
     expect(screen.getByText("Requests")).toBeInTheDocument();
   });
 
@@ -318,3 +322,7 @@ describe("PluginPageView", () => {
     expect(screen.queryByText("Unknown Template")).not.toBeInTheDocument();
   });
 });
+
+function pluginStyles() {
+  return readFileSync(resolve("app/styles/redesign/plugins.css"), "utf8");
+}

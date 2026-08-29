@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type PluginCapabilityDescriptor } from "../core/types";
@@ -377,6 +379,21 @@ describe("PluginsView", () => {
       layoutID: "enterprise-shell",
     });
   });
+
+  it("keeps SIM selection controls on the shared plugin CSS surface", () => {
+    render(
+      <PluginsView
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        data={emptyData()}
+        onSIMSelectionPreferenceChange={vi.fn()}
+        theme="light"
+      />,
+    );
+
+    expect(screen.getByText("SIM 选择面板")).toBeInTheDocument();
+    expect(pluginStyles()).toContain(".plugin-action-field select");
+    expect(pluginStyles()).toContain(".plugin-action-runner .stacked-cell");
+  });
 });
 
 function simPlugin(id: string, capabilities: PluginCapabilityDescriptor[]) {
@@ -416,4 +433,8 @@ function layoutCapability(id: string, payload: Record<string, unknown> = {}) {
       ...payload,
     }),
   };
+}
+
+function pluginStyles() {
+  return readFileSync(resolve("app/styles/redesign/plugins.css"), "utf8");
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { type AdminUIContribution } from "../core/types";
@@ -92,6 +94,9 @@ describe("AdminUIDashboardCards", () => {
     expect(screen.getByRole("heading", { name: "Requests" }).closest("article")).toHaveAttribute("data-dashboard-region", "main");
     expect(screen.getByRole("heading", { name: "Requests" }).closest("article")).toHaveAttribute("data-dashboard-size", "wide");
     expect(screen.getByRole("heading", { name: "Cost" }).closest("article")).toHaveAttribute("data-dashboard-region", "side");
+    expect(pluginStyles()).toContain(".overview-plugin-cards[data-dashboard-composition]");
+    expect(pluginStyles()).toContain('.admin-ui-dashboard-card[data-dashboard-size="wide"]');
+    expect(pluginStyles()).toContain('.admin-ui-dashboard-card[data-dashboard-region="side"]');
   });
 
   it("ignores unknown card ids in dashboard composition metadata", () => {
@@ -164,4 +169,8 @@ function dashboardCard(id: string, title: string, value: number): AdminUIContrib
       fields: [{ name: id, type: "metric", label: title, value }],
     },
   };
+}
+
+function pluginStyles() {
+  return readFileSync(resolve("app/styles/redesign/plugins.css"), "utf8");
 }
