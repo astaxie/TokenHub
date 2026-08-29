@@ -488,15 +488,26 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_state", "Plugin status is required"))
 		return
 	}
-	state, err := pluginmeta.NormalizePackageState(pluginmeta.PackageState{
-		Status: payload.Status,
-		Reason: payload.Reason,
-	})
+	if !adminPluginStatePatchStatusAllowed(payload.Status) {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_state", "unsupported plugin package status "+string(payload.Status)))
+		return
+	}
+	runtime := pluginmeta.NewRuntime(s.config.PluginDir)
+	current, found, err := runtime.DescribeInstalledPackage(pluginID)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_state_update_failed", "Plugin state could not be inspected"))
+		return
+	}
+	if !found {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	state, err := adminPluginStatePatchState(current.State, payload.Status, payload.Reason)
 	if err != nil {
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_state", err.Error()))
 		return
 	}
-	pkg, err := pluginmeta.NewRuntime(s.config.PluginDir).UpdatePackageState(pluginID, state)
+	pkg, err := runtime.UpdatePackageState(pluginID, state)
 	if err != nil {
 		if errors.Is(err, pluginmeta.ErrPackageNotFound) {
 			writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
@@ -523,6 +534,46 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		Lifecycle:         plugin.Lifecycle,
 		Plugin:            &plugin,
 	}})
+}
+
+func adminPluginStatePatchState(current pluginmeta.PackageState, status pluginmeta.Status, reason string) (pluginmeta.PackageState, error) {
+	state := current
+	state.Status = status
+	state.Reason = reason
+	state.RestartRequired = true
+	state.AuditEvent = adminPluginLifecycleEventForStatus(status)
+	return pluginmeta.NormalizePackageState(state)
+}
+
+func adminPluginStatePatchStatusAllowed(status pluginmeta.Status) bool {
+	switch status {
+	case pluginmeta.StatusEnabled,
+		pluginmeta.StatusDisabled,
+		pluginmeta.StatusPendingRestart,
+		pluginmeta.StatusFailedValidation,
+		pluginmeta.StatusRollbackAvailable,
+		pluginmeta.StatusMandatory:
+		return true
+	default:
+		return false
+	}
+}
+
+func adminPluginLifecycleEventForStatus(status pluginmeta.Status) pluginmeta.PackageLifecycleEvent {
+	switch status {
+	case pluginmeta.StatusEnabled, pluginmeta.StatusMandatory:
+		return pluginmeta.PackageLifecycleEnabled
+	case pluginmeta.StatusDisabled:
+		return pluginmeta.PackageLifecycleDisabled
+	case pluginmeta.StatusPendingRestart:
+		return pluginmeta.PackageLifecyclePendingRestart
+	case pluginmeta.StatusFailedValidation:
+		return pluginmeta.PackageLifecycleValidationFailed
+	case pluginmeta.StatusRollbackAvailable:
+		return pluginmeta.PackageLifecycleRollbackAvailable
+	default:
+		return ""
+	}
 }
 
 func (s *Server) handleAdminPluginDelete(w http.ResponseWriter, r *http.Request) {

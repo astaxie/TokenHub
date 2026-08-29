@@ -549,6 +549,9 @@ kinds:
 	if body.Data.PluginID != "tokenhub.local-privacy" || body.Data.Status != pluginmeta.StatusDisabled || !body.Data.RestartRequired {
 		t.Fatalf("state response = %+v, want disabled restart-required response", body.Data)
 	}
+	if body.Data.AuditEvent != pluginmeta.PackageLifecycleDisabled || body.Data.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleDisabled {
+		t.Fatalf("state response = %+v, want disabled audit event", body.Data)
+	}
 	data, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
 	if err != nil {
 		t.Fatalf("read package state: %v", err)
@@ -557,8 +560,65 @@ kinds:
 	if err := json.Unmarshal(data, &state); err != nil {
 		t.Fatalf("decode package state: %v", err)
 	}
-	if state.Status != pluginmeta.StatusDisabled || state.Reason != "disable before upgrade" {
-		t.Fatalf("package state = %+v, want disabled state file", state)
+	if state.Status != pluginmeta.StatusDisabled || state.Reason != "disable before upgrade" ||
+		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleDisabled {
+		t.Fatalf("package state = %+v, want disabled restart-required state file", state)
+	}
+	listResponse := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", listResponse.Code, listResponse.Body)
+	}
+	if !strings.Contains(listResponse.Body, `"audit_event":"disabled"`) || !strings.Contains(listResponse.Body, `"restart_required":true`) {
+		t.Fatalf("GET /api/admin/plugins body = %s, want disabled restart-required lifecycle", listResponse.Body)
+	}
+}
+
+func TestAdminPluginStatePatchRecordsEnabledLifecycleEvent(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "privacy")
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.local-privacy
+name: Local Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	if err := os.WriteFile(filepath.Join(localPluginDir, "plugin.state.json"), []byte(`{"status":"disabled","reason":"operator disabled"}`), 0o644); err != nil {
+		t.Fatalf("write package state: %v", err)
+	}
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	response := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/plugins/tokenhub.local-privacy/state", map[string]any{
+		"status": "enabled",
+		"reason": "operator enabled after review",
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/admin/plugins/{id}/state: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginStateResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Data.Status != pluginmeta.StatusEnabled || !body.Data.RestartRequired ||
+		body.Data.AuditEvent != pluginmeta.PackageLifecycleEnabled || !body.Data.Loadable {
+		t.Fatalf("state response = %+v, want enabled restart-required lifecycle", body.Data)
+	}
+	data, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
+	if err != nil {
+		t.Fatalf("read package state: %v", err)
+	}
+	var state pluginmeta.PackageState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatalf("decode package state: %v", err)
+	}
+	if state.Status != pluginmeta.StatusEnabled || state.Reason != "operator enabled after review" ||
+		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleEnabled {
+		t.Fatalf("package state = %+v, want enabled restart-required state file", state)
 	}
 }
 
@@ -943,5 +1003,43 @@ func TestAdminPluginStatePatchRejectsMissingPlugin(t *testing.T) {
 	}, "dev_admin_token")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("PATCH missing plugin state: expected 404, got %d: %s", response.Code, response.Body)
+	}
+}
+
+func TestAdminPluginStatePatchRejectsDisablingMandatoryPlugin(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "mandatory")
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.local-mandatory
+name: Local Mandatory
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	if err := os.WriteFile(filepath.Join(localPluginDir, "plugin.state.json"), []byte(`{"status":"mandatory","mandatory":true}`), 0o644); err != nil {
+		t.Fatalf("write mandatory package state: %v", err)
+	}
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	response := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/plugins/tokenhub.local-mandatory/state", map[string]any{
+		"status": "disabled",
+		"reason": "operator tried to disable mandatory plugin",
+	}, "dev_admin_token")
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("PATCH mandatory plugin state: expected 400, got %d: %s", response.Code, response.Body)
+	}
+	data, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
+	if err != nil {
+		t.Fatalf("read mandatory package state: %v", err)
+	}
+	var state pluginmeta.PackageState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatalf("decode mandatory package state: %v", err)
+	}
+	if state.Status != pluginmeta.StatusMandatory || !state.Mandatory {
+		t.Fatalf("package state = %+v, want original mandatory state", state)
 	}
 }
