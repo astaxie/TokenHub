@@ -296,6 +296,10 @@ func (s *Server) responseWorker(index int) {
 		}
 		requeued, failed, cancelled, err := s.store.RecoverResponseJobs(resultTTL)
 		if err != nil {
+			if responseWorkerStoreClosed(err) {
+				log.Printf("[tokenhub] response job worker stopped after store closed worker=%d: %v", index, err)
+				return
+			}
 			log.Printf("[tokenhub] response job recovery failed worker=%d: %v", index, err)
 		}
 		s.metrics.ObserveResponseJobRecovery("requeued", requeued)
@@ -305,6 +309,10 @@ func (s *Server) responseWorker(index int) {
 		s.metrics.ObserveResponseJobTerminalCount(responseJobStatusCancelled, "response_cancelled_worker_lost", cancelled)
 		expired, err := s.store.ExpireResponseJobs()
 		if err != nil {
+			if responseWorkerStoreClosed(err) {
+				log.Printf("[tokenhub] response job worker stopped after store closed worker=%d: %v", index, err)
+				return
+			}
 			log.Printf("[tokenhub] response job expiry failed worker=%d: %v", index, err)
 		}
 		s.metrics.ObserveResponseJobTerminalCount(responseJobStatusExpired, "response_expired", expired)
@@ -315,6 +323,10 @@ func (s *Server) responseWorker(index int) {
 		}
 		job, claimed, err := s.store.ClaimResponseJob(owner, leaseTTL, resultTTL)
 		if err != nil {
+			if responseWorkerStoreClosed(err) {
+				log.Printf("[tokenhub] response job worker stopped after store closed worker=%d: %v", index, err)
+				return
+			}
 			log.Printf("[tokenhub] response job claim failed worker=%d: %v", index, err)
 			timer.Reset(poll)
 			continue
@@ -334,6 +346,13 @@ func (s *Server) responseWorker(index int) {
 		s.processResponseJob(job, owner, leaseTTL, resultTTL)
 		timer.Reset(0)
 	}
+}
+
+func responseWorkerStoreClosed(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "sql: database is closed")
 }
 
 func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time.Duration, resultTTL time.Duration) {

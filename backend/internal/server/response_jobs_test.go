@@ -603,6 +603,37 @@ func TestBackgroundResponsesReservesQuotaBeforeUpstreamExecution(t *testing.T) {
 	}
 }
 
+func TestResponseWorkerStopsWhenStoreIsClosed(t *testing.T) {
+	config := responseJobTestConfig()
+	config.ResponsePollIntervalMillis = 10
+	config.ResponseWorkerConcurrency = 1
+	store := NewMemoryStoreWithConfig(config)
+	server := NewWithConfig(store, config)
+	if server.stopHeartbeat != nil {
+		server.stopHeartbeat()
+		server.stopHeartbeat = nil
+	}
+	sqlDB, err := store.db.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		server.responseWorkerGroup.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		server.responseCancel()
+		t.Fatal("response worker kept polling after the store closed")
+	}
+	server.responseCancel()
+}
+
 type blockingResponseAdapter struct {
 	MockAdapter
 	started chan struct{}
