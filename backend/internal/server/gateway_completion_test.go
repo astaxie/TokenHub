@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -170,6 +171,65 @@ func TestGatewayCompletionTraceExportFailureIsObserveOnly(t *testing.T) {
 	logs := store.ListRequestLogs()
 	if len(logs) != 1 || logs[0].RequestID != "req_trace_observe_only" || logs[0].StatusCode != http.StatusOK {
 		t.Fatalf("trace hook failure affected request settlement: %+v", logs)
+	}
+}
+
+func TestGatewayCompletionTraceExportOmitsAttemptErrorText(t *testing.T) {
+	const upstreamError = "upstream body sentinel must not leak to trace export"
+	store := NewMemoryStore()
+	app := New(store)
+	emitter := &recordingTraceEmitter{}
+	app.traceEmitter = emitter
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-trace",
+		HookID:        "redacted-attempts",
+		Stage:         pluginmeta.StageTraceExport,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+	}
+	if err := app.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace hook: %v", err)
+	}
+	var captured pluginmeta.GatewayHookInput
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		captured = input
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Call: CallContext{
+			RequestID: "req_trace_attempt_redaction",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Route: RouteSelection{Provider: Provider{ID: "prv_backup", Type: ProviderMock}, Route: ModelRoute{ID: "route_backup"}, ProviderModel: "backup-model"},
+		Usage: Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3},
+		Attempts: []RouteAttempt{
+			{Selection: RouteSelection{Provider: Provider{ID: "prv_failed", Type: ProviderMock}, Route: ModelRoute{ID: "route_failed"}, ProviderModel: "failed-model"}, Status: http.StatusBadGateway, ErrorCode: "provider_error", Error: upstreamError},
+			{Selection: RouteSelection{Provider: Provider{ID: "prv_backup", Type: ProviderMock}, Route: ModelRoute{ID: "route_backup"}, ProviderModel: "backup-model"}, Status: http.StatusOK},
+		},
+		StatusCode: http.StatusOK,
+	})
+
+	if captured.RequestID != "req_trace_attempt_redaction" {
+		t.Fatalf("trace export request id = %q", captured.RequestID)
+	}
+	raw := bytes.Join([][]byte{captured.Data[pluginmeta.DataAudit], captured.Data[pluginmeta.DataUsage]}, nil)
+	if bytes.Contains(raw, []byte(upstreamError)) {
+		t.Fatalf("trace export included upstream error text: %s", raw)
+	}
+	completions := emitter.take()
+	if len(completions) != 1 {
+		t.Fatalf("trace emitter completions = %d, want 1", len(completions))
+	}
+	for _, attempt := range completions[0].Attempts {
+		if attempt.Error != "" {
+			t.Fatalf("trace emitter attempt retained upstream error text: %+v", attempt)
+		}
 	}
 }
 

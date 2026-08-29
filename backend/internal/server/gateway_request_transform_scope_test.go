@@ -221,6 +221,95 @@ func TestRequestTransformFailOpenUsesOriginalChatRequest(t *testing.T) {
 	}
 }
 
+func TestRequestTransformFailOpenDoesNotPoisonNextFailoverAttempt(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Request Transform Fail Open Failover App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "request-transform-fail-open-failover-key",
+		Allowed: []string{"gpt-transform-open-failover"},
+		Status:  StatusActive,
+	}, "thk_request_transform_open_failover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstProvider := store.AddProvider(Provider{ID: "prv_transform_open_failover_a", Name: "Transform Open Failover A", Type: requestTransformFailoverCaptureType, Status: StatusActive, Healthy: true, Priority: 1})
+	secondProvider := store.AddProvider(Provider{ID: "prv_transform_open_failover_b", Name: "Transform Open Failover B", Type: requestTransformFailoverCaptureType, Status: StatusActive, Healthy: true, Priority: 1})
+	store.AddModel(Model{Name: "gpt-transform-open-failover", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_transform_open_failover_a", ModelName: "gpt-transform-open-failover", ProviderID: firstProvider.ID, ProviderModel: "upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_transform_open_failover_b", ModelName: "gpt-transform-open-failover", ProviderID: secondProvider.ID, ProviderModel: "upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	server := New(store)
+	adapter := &requestTransformFailoverCaptureAdapter{failProviderID: firstProvider.ID}
+	server.adapterRegistry.Register(requestTransformFailoverCaptureType, adapter, AdapterCapabilityChat)
+
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-transform",
+		HookID:        "open-failover",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest, pluginmeta.DataProviderCredentials},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	seenHookInputs := map[string]string{}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var credentials map[string]any
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderCredentials], &credentials); err != nil {
+			t.Fatalf("decode provider credentials: %v", err)
+		}
+		provider, _ := credentials["provider"].(map[string]any)
+		providerID, _ := provider["id"].(string)
+		var request ChatCompletionRequest
+		if err := json.Unmarshal(input.Data[pluginmeta.DataProviderRequest], &request); err != nil {
+			t.Fatalf("decode provider request: %v", err)
+		}
+		content, ok := request.Messages[0].Content.(string)
+		if !ok {
+			t.Fatalf("provider request content = %#v, want string", request.Messages[0].Content)
+		}
+		seenHookInputs[providerID] = content
+		if providerID == firstProvider.ID {
+			return pluginmeta.GatewayHookResult{}, NewHTTPError(http.StatusBadGateway, "plugin_transform_unavailable", "first transform unavailable")
+		}
+		return rawProviderRequestPatch(t, map[string]any{
+			"model":  "gpt-transform-open-failover",
+			"stream": false,
+			"messages": []map[string]any{
+				{"role": "user", "content": "[second-provider-shaped]"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "gpt-transform-open-failover",
+		"messages": []map[string]any{
+			{"role": "user", "content": "original"},
+		},
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 after failover, got %d: %s", resp.Code, resp.Body)
+	}
+	if got := seenHookInputs[firstProvider.ID]; got != "original" {
+		t.Fatalf("first transform hook input = %q, want original", got)
+	}
+	if got := seenHookInputs[secondProvider.ID]; got != "original" {
+		t.Fatalf("second transform hook input = %q, want original", got)
+	}
+	if len(adapter.seenAttempts) != 2 {
+		t.Fatalf("seen attempts = %+v, want two provider attempts", adapter.seenAttempts)
+	}
+	if got := adapter.seenAttempts[0].Message; got != "original" {
+		t.Fatalf("first upstream message = %q, want original after fail-open", got)
+	}
+	if got := adapter.seenAttempts[1].Message; got != "[second-provider-shaped]" {
+		t.Fatalf("second upstream message = %q, want second-provider-shaped", got)
+	}
+}
+
 const requestTransformFailoverCaptureType = "request_transform_failover_capture"
 
 type requestTransformFailoverCaptureAdapter struct {

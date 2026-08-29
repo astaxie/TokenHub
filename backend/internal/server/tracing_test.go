@@ -463,6 +463,78 @@ func TestTracingRecordsFailoverPerCandidate(t *testing.T) {
 	}
 }
 
+func TestTracingFailoverAttemptSpansOmitErrorMessageWhenPayloadCaptureDisabled(t *testing.T) {
+	const upstreamError = "upstream failed after emitting tokens"
+	endpoint := newFakeOTLPEndpoint(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Failover Redaction App"})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "failover-redaction-key",
+		Allowed: []string{"gpt-4.1-mini"},
+		Status:  StatusActive,
+	}, "thk_trace_failover_redaction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	failing := store.AddProvider(Provider{ID: "prv_redaction_partial", Name: "Partial", Type: "partial_usage_mock", Status: StatusActive, Healthy: true})
+	backup := store.AddProvider(Provider{ID: "prv_redaction_backup", Name: "Backup", Type: ProviderMock, Status: StatusActive, Healthy: true})
+	store.AddModel(Model{Name: "gpt-4.1-mini", Modality: "chat", Status: StatusActive, InputPriceUSDPer1M: 3, OutputPriceUSDPer1M: 12})
+	store.AddRoute(ModelRoute{ID: "route_redaction_partial", ModelName: "gpt-4.1-mini", ProviderID: failing.ID, ProviderModel: "partial-chat", Priority: 1, Weight: 100, Status: StatusActive, Strategy: "priority_only"})
+	store.AddRoute(ModelRoute{ID: "route_redaction_backup", ModelName: "gpt-4.1-mini", ProviderID: backup.ID, ProviderModel: "backup-chat", Priority: 2, Weight: 100, Status: StatusActive, Strategy: "priority_only"})
+
+	config := tracingTestConfig(endpoint.tracesURL())
+	config.TracingCapturePayloads = false
+	app := NewWithConfig(store, config)
+	registerTestAdapter(app, "partial_usage_mock", partialUsageFailingAdapter{})
+
+	response := doJSON(t, app.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model":    "gpt-4.1-mini",
+		"messages": []map[string]any{{"role": "user", "content": "fail over without leaking upstream text"}},
+	}, secret)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
+	}
+	flushTracing(t, app)
+
+	generations := 0
+	for _, span := range endpoint.collected() {
+		if spanString(t, span, attrObservationType) == observationTypeGeneration {
+			generations++
+		}
+		for _, attribute := range span.GetAttributes() {
+			if anyValueContains(attribute.GetValue(), upstreamError) {
+				t.Fatalf("upstream error text leaked through span %q attribute %q", span.GetName(), attribute.GetKey())
+			}
+		}
+	}
+	if generations != 2 {
+		t.Fatalf("expected one generation per failover candidate, got %d", generations)
+	}
+}
+
+func anyValueContains(value *commonpb.AnyValue, needle string) bool {
+	if value == nil {
+		return false
+	}
+	switch kind := value.Value.(type) {
+	case *commonpb.AnyValue_StringValue:
+		return strings.Contains(kind.StringValue, needle)
+	case *commonpb.AnyValue_ArrayValue:
+		for _, nested := range kind.ArrayValue.GetValues() {
+			if anyValueContains(nested, needle) {
+				return true
+			}
+		}
+	case *commonpb.AnyValue_KvlistValue:
+		for _, nested := range kind.KvlistValue.GetValues() {
+			if anyValueContains(nested.GetValue(), needle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // TestTracingUsageDetailsAreMutuallyExclusive is the check that keeps token
 // accounting honest: TokenHub nests cached tokens inside prompt tokens and reasoning
 // tokens inside completion tokens, while Langfuse sums usage_details verbatim.
