@@ -23,37 +23,6 @@ const (
 	secretSentinel        = "provider-secret"
 )
 
-type manifest struct {
-	SchemaVersion int    `yaml:"schema_version"`
-	ID            string `yaml:"id"`
-	Name          string `yaml:"name"`
-	Version       string `yaml:"version"`
-	Description   string `yaml:"description"`
-	TokenHub      struct {
-		PluginAPI string `yaml:"plugin_api"`
-	} `yaml:"tokenhub"`
-	Kinds     []string `yaml:"kinds"`
-	Placement []string `yaml:"placement"`
-	Entry     struct {
-		Backend *struct {
-			Protocol string `yaml:"protocol"`
-			Command  string `yaml:"command"`
-		} `yaml:"backend"`
-	} `yaml:"entry"`
-	Capabilities struct {
-		ProviderTypes         []string       `yaml:"provider_types"`
-		ProviderResourceTypes []string       `yaml:"provider_resource_types"`
-		Provider              map[string]any `yaml:"provider"`
-		Gateway               []string       `yaml:"gateway"`
-	} `yaml:"capabilities"`
-	Permissions struct {
-		Data struct {
-			Read []string `yaml:"read"`
-		} `yaml:"data"`
-	} `yaml:"permissions"`
-	Distribution map[string]any `yaml:"distribution"`
-}
-
 type providerFixture struct {
 	SchemaVersion               int            `json:"schema_version"`
 	Protocol                    string         `json:"protocol"`
@@ -114,6 +83,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		return errors.New("usage: tokenhub-plugin-test provider --package <plugin-dir> [--fixture <provider_operations.json>]")
 	}
 	switch args[0] {
+	case "action":
+		return runAction(ctx, args[1:], stdout, stderr)
 	case "provider":
 		return runProvider(ctx, args[1:], stdout, stderr)
 	default:
@@ -143,7 +114,7 @@ func runProvider(ctx context.Context, args []string, stdout io.Writer, stderr io
 	if err := validateProviderManifest(manifest, fixture); err != nil {
 		return err
 	}
-	commandPath, cleanup, err := providerCommandPath(ctx, *packageDir, manifest.Entry.Backend.Command)
+	commandPath, cleanup, err := pluginCommandPath(ctx, *packageDir, manifest.Entry.Backend.Command, "provider")
 	if err != nil {
 		return err
 	}
@@ -252,7 +223,7 @@ func validateProviderManifest(manifest manifest, fixture providerFixture) error 
 	return nil
 }
 
-func providerCommandPath(ctx context.Context, packageDir string, command string) (string, func(), error) {
+func pluginCommandPath(ctx context.Context, packageDir string, command string, sampleKind string) (string, func(), error) {
 	relativeCommand, err := safePackageCommand(command)
 	if err != nil {
 		return "", func() {}, err
@@ -278,7 +249,7 @@ func providerCommandPath(ctx context.Context, packageDir string, command string)
 	build.Stderr = &stderr
 	if err := build.Run(); err != nil {
 		cleanup()
-		return "", func() {}, fmt.Errorf("build provider sample: %s", strings.TrimSpace(stderr.String()))
+		return "", func() {}, fmt.Errorf("build %s sample: %s", sampleKind, strings.TrimSpace(stderr.String()))
 	}
 	return binaryPath, cleanup, nil
 }
