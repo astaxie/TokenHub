@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "repository_id": "tokenhub-official-marketplace",
+  "channel": "stable",
+  "sequence": 1042,
+  "generated_at": "2026-08-29T08:00:00Z",
+  "expires_at": "2026-09-05T08:00:00Z",
+  "plugins": [
+    {
+      "id": "tokenhub.openai-codex",
+      "origin": "official",
+      "publisher": {"id": "tokenhub-official", "verification": "official"},
+      "listing": {"name": "OpenAI Codex Subscription", "summary": "Adds Codex subscription capabilities."},
+      "latest": "1.0.0",
+      "releases": [
+        {
+          "version": "1.0.0",
+          "channel": "stable",
+          "published_at": "2026-08-29T07:00:00Z",
+          "source_commit": "0123456789abcdef0123456789abcdef01234567",
+          "compatibility": {"plugin_api": "v1", "manifest_schema_version": 1, "min_core": "0.7.0"},
+          "manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "permissions_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "artifacts": [
+            {
+              "target": "linux-amd64",
+              "url": "https://plugins.example/tokenhub.openai-codex/latest/tokenhub.openai-codex.zip",
+              "size": 1234567,
+              "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "signature": {"algorithm": "ed25519", "key_id": "tokenhub-release-2026", "url": "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_linux-amd64.zip.sig"}
+            }
+          ],
+          "review": {"status": "approved", "reviewed_at": "2026-08-29T07:30:00Z", "permission_change": "none"}
+        }
+      ]
+    }
+  ]
+}

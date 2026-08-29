@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "repository_id": "tokenhub-community-marketplace",
+  "channel": "stable",
+  "sequence": 42,
+  "generated_at": "2026-08-29T08:00:00Z",
+  "expires_at": "2026-09-05T08:00:00Z",
+  "plugins": [
+    {
+      "id": "com.example.tokenhub-dlp",
+      "origin": "third_party",
+      "publisher": {"id": "example-corp", "verification": "verified"},
+      "listing": {"name": "Example DLP Guardrail", "summary": "Adds request privacy and response guardrail hooks."},
+      "latest": "1.0.0",
+      "releases": [
+        {
+          "version": "1.0.0",
+          "channel": "stable",
+          "published_at": "2026-08-29T07:00:00Z",
+          "source_commit": "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          "compatibility": {"plugin_api": "v1", "manifest_schema_version": 1, "min_core": "0.7.0", "required_features": ["gateway_chain_hooks"]},
+          "manifest_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "permissions_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "artifacts": [
+            {
+              "target": "any",
+              "url": "https://plugins.example/com.example.tokenhub-dlp/1.0.0/com.example.tokenhub-dlp_1.0.0_any.zip",
+              "size": 65536,
+              "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+              "signature": {"algorithm": "ed25519", "key_id": "example-corp-2026", "url": "https://plugins.example/com.example.tokenhub-dlp/1.0.0/com.example.tokenhub-dlp_1.0.0_any.zip.sig"}
+            }
+          ],
+          "review": {"status": "approved", "reviewed_at": "2026-08-29T07:30:00Z", "permission_change": "increased"}
+        }
+      ]
+    }
+  ]
+}
