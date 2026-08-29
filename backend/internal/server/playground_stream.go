@@ -542,7 +542,7 @@ func (s *Server) executeRoutedPlaygroundStream(
 				if omitReasoningEffort {
 					upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
 				}
-				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundResponses(ctx, r, prepared, upstreamReq, events, routed.Call.RequestID)
+				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundResponses(ctx, r, prepared, upstreamReq, routed.Call, events, routed.Call.RequestID)
 				if providerResourceModelUnsupportedError(attemptErr) {
 					s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
 				}
@@ -604,6 +604,7 @@ func (s *Server) streamPlaygroundResponses(
 	r *http.Request,
 	route RouteSelection,
 	req ResponsesRequest,
+	call CallContext,
 	events *playgroundEventStream,
 	requestID string,
 ) (playgroundStreamResult, Usage, error) {
@@ -628,7 +629,18 @@ func (s *Server) streamPlaygroundResponses(
 	}
 	defer opened.Body.Close()
 	sink := newPlaygroundDeltaSink(events, requestID)
-	response, outputText, usage, streamErr := consumeCodexResponsesStream(opened.Body, sink)
+	streamWriter := io.Writer(sink)
+	var transformer *gatewayStreamTransformWriter
+	if s.hasGatewayStreamTransformHooksForRoute(route, providerRouteProtocolResponses) {
+		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolResponses, sink)
+		streamWriter = transformer
+	}
+	response, outputText, usage, streamErr := consumeCodexResponsesStream(opened.Body, streamWriter)
+	if transformer != nil {
+		if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
+			streamErr = closeErr
+		}
+	}
 	applyCodexResponseMetadata(&usage, opened.Header)
 	if finishErr := sink.finish(); streamErr == nil {
 		streamErr = finishErr

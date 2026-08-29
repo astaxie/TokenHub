@@ -271,6 +271,34 @@ func TestGatewayStreamingOpenAIEndpointsSkipCacheLookupAndWrite(t *testing.T) {
 	}
 }
 
+func TestGatewayStreamingRoutePathRunsStreamTransformAfterRequestTransform(t *testing.T) {
+	server := newGatewayEndpointOrderTestServer(t)
+	got := recordGatewayStreamingRoutePathStages(t, server)
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model":  "gpt-4.1-mini",
+		"stream": true,
+		"messages": []map[string]any{
+			{"role": "user", "content": "hello"},
+		},
+	}, "thk_demo_local")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
+	}
+	stages := got()
+	if serverGatewayStageContains(stages, pluginmeta.StageCacheLookup) || serverGatewayStageContains(stages, pluginmeta.StageCacheWrite) {
+		t.Fatalf("streaming route stages included cache hooks: %v", stages)
+	}
+	requestTransform := firstServerGatewayStageIndex(stages, pluginmeta.StageRequestTransform)
+	streamTransform := firstServerGatewayStageIndex(stages, pluginmeta.StageStreamTransform)
+	if requestTransform < 0 || streamTransform < 0 {
+		t.Fatalf("streaming route stages = %v, want request_transform and stream_transform", stages)
+	}
+	if requestTransform >= streamTransform {
+		t.Fatalf("streaming route stages = %v, want request_transform before stream_transform", stages)
+	}
+}
+
 func TestGatewayCacheLookupFailOpenOpenAICompatibleEndpointsContinueToProvider(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -638,6 +666,51 @@ func recordGatewayRoutePathStages(t *testing.T, server *Server, providerResponse
 	}
 }
 
+func recordGatewayStreamingRoutePathStages(t *testing.T, server *Server) func() []pluginmeta.GatewayHookStage {
+	t.Helper()
+	stages := []pluginmeta.GatewayHookStage{}
+	record := func(stage pluginmeta.GatewayHookStage) {
+		stages = append(stages, stage)
+	}
+	for _, stage := range []pluginmeta.GatewayHookStage{
+		pluginmeta.StageCacheLookup,
+		pluginmeta.StageRequestTransform,
+		pluginmeta.StageProviderCall,
+		pluginmeta.StageStreamTransform,
+		pluginmeta.StageCacheWrite,
+	} {
+		hook := pluginmeta.GatewayHookDescriptor{
+			PluginID:      "tokenhub.test-stream-route-order",
+			HookID:        string(stage),
+			Stage:         stage,
+			Priority:      1000,
+			FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+		}
+		switch stage {
+		case pluginmeta.StageCacheLookup, pluginmeta.StageCacheWrite:
+			hook.FailurePolicy = pluginmeta.FailurePolicyFailOpen
+		case pluginmeta.StageProviderCall:
+			hook.FailurePolicy = pluginmeta.FailurePolicySkipRoute
+		case pluginmeta.StageStreamTransform:
+			hook.Reads = []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents}
+			hook.Writes = []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents}
+		}
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register %s hook: %v", stage, err)
+		}
+		currentHook := hook
+		if err := server.gatewayHooks.RegisterHandler(currentHook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+			record(currentHook.Stage)
+			return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+		})); err != nil {
+			t.Fatalf("register %s handler: %v", stage, err)
+		}
+	}
+	return func() []pluginmeta.GatewayHookStage {
+		return append([]pluginmeta.GatewayHookStage(nil), stages...)
+	}
+}
+
 func serverGatewayStageSlicesEqual(a []pluginmeta.GatewayHookStage, b []pluginmeta.GatewayHookStage) bool {
 	if len(a) != len(b) {
 		return false
@@ -648,4 +721,17 @@ func serverGatewayStageSlicesEqual(a []pluginmeta.GatewayHookStage, b []pluginme
 		}
 	}
 	return true
+}
+
+func serverGatewayStageContains(stages []pluginmeta.GatewayHookStage, target pluginmeta.GatewayHookStage) bool {
+	return firstServerGatewayStageIndex(stages, target) >= 0
+}
+
+func firstServerGatewayStageIndex(stages []pluginmeta.GatewayHookStage, target pluginmeta.GatewayHookStage) int {
+	for index, stage := range stages {
+		if stage == target {
+			return index
+		}
+	}
+	return -1
 }

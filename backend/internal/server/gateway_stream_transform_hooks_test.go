@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -288,6 +289,166 @@ func TestPlaygroundChatStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	}
 }
 
+func TestStreamTransformHookFailurePolicyHandlesInvalidPatches(t *testing.T) {
+	tests := []struct {
+		name          string
+		failurePolicy pluginmeta.GatewayHookFailurePolicy
+		wantErrCode   string
+	}{
+		{name: "fail open preserves original event", failurePolicy: pluginmeta.FailurePolicyFailOpen},
+		{name: "fail closed returns stream patch error", failurePolicy: pluginmeta.FailurePolicyFailClosed, wantErrCode: "gateway_hook_stream_event_invalid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := New(NewMemoryStore())
+			hook := streamTransformHook(tt.failurePolicy)
+			if err := server.gatewayChain.RegisterHook(hook); err != nil {
+				t.Fatalf("register stream transform hook: %v", err)
+			}
+			if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+				return pluginmeta.GatewayHookResult{
+					Decision: pluginmeta.HookDecisionContinue,
+					Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+						pluginmeta.DataStreamEvents: {Value: json.RawMessage(`{"event":"bad
+name"}`)},
+					},
+				}, nil
+			})); err != nil {
+				t.Fatalf("register stream transform handler: %v", err)
+			}
+
+			original := serverSentEvent{Event: "message", Data: `{"delta":"original"}`}
+			transformed, emit, err := server.runGatewayStreamTransformHooks(context.Background(), gatewayPluginTestCall(), streamTransformRoute(), providerRouteProtocolChatCompletions, original)
+			if tt.wantErrCode != "" {
+				httpErr := AsHTTPError(err)
+				if httpErr.Code != tt.wantErrCode || httpErr.Status != http.StatusBadGateway {
+					t.Fatalf("stream transform error = %d/%s, want 502/%s", httpErr.Status, httpErr.Code, tt.wantErrCode)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("fail-open stream transform returned error: %v", err)
+			}
+			if !emit || transformed.Event != original.Event || transformed.Data != original.Data {
+				t.Fatalf("fail-open transformed event = %+v emit=%v, want original %+v", transformed, emit, original)
+			}
+		})
+	}
+}
+
+func TestStreamTransformHookCanDropEventAndRewriteMultilineData(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := streamTransformHook(pluginmeta.FailurePolicyFailClosed)
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	callCount := 0
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		callCount++
+		var event gatewayStreamEventView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataStreamEvents], &event); err != nil {
+			t.Fatalf("decode stream event: %v", err)
+		}
+		if strings.Contains(event.Data, "drop-me") {
+			return streamEventPatchResult(t, map[string]any{"drop": true}), nil
+		}
+		return streamEventPatchResult(t, map[string]any{
+			"event": "message.delta",
+			"data":  "first line\nsecond line",
+		}), nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	kept, emit, err := server.runGatewayStreamTransformHooks(context.Background(), gatewayPluginTestCall(), streamTransformRoute(), providerRouteProtocolChatCompletions, serverSentEvent{Event: "message", Data: "keep-me"})
+	if err != nil {
+		t.Fatalf("run stream transform keep: %v", err)
+	}
+	if !emit || kept.Event != "message.delta" || kept.Data != "first line\nsecond line" {
+		t.Fatalf("kept event = %+v emit=%v", kept, emit)
+	}
+	decoded, err := newSSEDecoder(bytes.NewReader(renderSSEEvent(kept))).Next()
+	if err != nil {
+		t.Fatalf("decode rendered multiline event: %v", err)
+	}
+	if decoded.Event != kept.Event || decoded.Data != kept.Data {
+		t.Fatalf("decoded rendered event = %+v, want %+v", decoded, kept)
+	}
+
+	dropped, emit, err := server.runGatewayStreamTransformHooks(context.Background(), gatewayPluginTestCall(), streamTransformRoute(), providerRouteProtocolChatCompletions, serverSentEvent{Event: "message", Data: "drop-me"})
+	if err != nil {
+		t.Fatalf("run stream transform drop: %v", err)
+	}
+	if emit || dropped.Data != "drop-me" {
+		t.Fatalf("dropped event = %+v emit=%v, want original data with emit=false", dropped, emit)
+	}
+	if callCount != 2 {
+		t.Fatalf("stream transform hook calls = %d, want 2", callCount)
+	}
+}
+
+func TestStreamTransformWriterPassesThroughCommentEvents(t *testing.T) {
+	server := New(NewMemoryStore())
+	hook := streamTransformHook(pluginmeta.FailurePolicyFailClosed)
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	called := false
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		called = true
+		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	var output bytes.Buffer
+	writer := server.newGatewayStreamTransformWriter(context.Background(), gatewayPluginTestCall(), streamTransformRoute(), providerRouteProtocolChatCompletions, &output)
+	if _, err := writer.Write([]byte(": keepalive\n")); err != nil {
+		t.Fatalf("write keepalive: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stream transform writer: %v", err)
+	}
+	if called {
+		t.Fatal("stream transform hook ran for a comment-only event")
+	}
+	if output.String() != ": keepalive\n" {
+		t.Fatalf("comment output = %q, want raw keepalive", output.String())
+	}
+}
+
+func TestStreamTransformHookDenyReturnsForbiddenAndRecordsAuditEvent(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	hook := streamTransformHook(pluginmeta.FailurePolicyFailClosed)
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{
+			Decision: pluginmeta.HookDecisionDeny,
+			AuditEvents: []json.RawMessage{
+				json.RawMessage(`{"outcome":"denied","authorization":"Bearer hidden","nested":{"api_key":"raw-secret"}}`),
+			},
+		}, nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	_, _, err := server.runGatewayStreamTransformHooks(context.Background(), gatewayPluginTestCall(), streamTransformRoute(), providerRouteProtocolChatCompletions, serverSentEvent{Event: "message", Data: "deny"})
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != http.StatusForbidden || httpErr.Code != "gateway_hook_denied" {
+		t.Fatalf("stream deny error = %d/%s, want 403/gateway_hook_denied", httpErr.Status, httpErr.Code)
+	}
+	event := requireStreamTransformAuditEvent(t, store.ListAuditEvents(), "denied")
+	if strings.Contains(event.AfterSnapshot, "Bearer hidden") || strings.Contains(event.AfterSnapshot, "raw-secret") {
+		t.Fatalf("stream transform audit snapshot leaked secret material: %s", event.AfterSnapshot)
+	}
+	if !strings.Contains(event.AfterSnapshot, `"authorization":"[redacted]"`) || !strings.Contains(event.AfterSnapshot, `"api_key":"[redacted]"`) {
+		t.Fatalf("stream transform audit snapshot did not redact plugin event: %s", event.AfterSnapshot)
+	}
+}
+
 type responsesStreamTransformAdapter struct{}
 
 func (a responsesStreamTransformAdapter) OpenResponses(context.Context, Provider, string, ResponsesRequest, http.Header) (*http.Response, error) {
@@ -318,4 +479,41 @@ func streamEventPatchResult(t *testing.T, value any) pluginmeta.GatewayHookResul
 			pluginmeta.DataStreamEvents: {Value: data},
 		},
 	}
+}
+
+func streamTransformHook(policy pluginmeta.GatewayHookFailurePolicy) pluginmeta.GatewayHookDescriptor {
+	return pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-stream",
+		HookID:        "stream-transform",
+		Stage:         pluginmeta.StageStreamTransform,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents},
+		FailurePolicy: policy,
+	}
+}
+
+func streamTransformRoute() RouteSelection {
+	return RouteSelection{
+		Route:         ModelRoute{ID: "route_stream_transform", Status: StatusActive},
+		Provider:      Provider{ID: "prv_stream_transform", Type: ProviderMock, Status: StatusActive, Healthy: true},
+		ProviderModel: "upstream-stream-transform",
+	}
+}
+
+func requireStreamTransformAuditEvent(t *testing.T, events []AuditEvent, status string) AuditEvent {
+	t.Helper()
+	for _, event := range events {
+		if event.Action == "plugin.gateway.stream_transform" && event.Status == status {
+			if event.ResourceType != "gateway_request" {
+				t.Fatalf("stream transform audit resource type = %q, want gateway_request", event.ResourceType)
+			}
+			if !strings.Contains(event.AfterSnapshot, `"stage":"stream_transform"`) {
+				t.Fatalf("stream transform audit snapshot missing stage: %s", event.AfterSnapshot)
+			}
+			return event
+		}
+	}
+	t.Fatalf("missing stream transform audit event with status %s: %+v", status, events)
+	return AuditEvent{}
 }

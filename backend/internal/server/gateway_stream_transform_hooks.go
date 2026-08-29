@@ -143,7 +143,7 @@ func (s *Server) runGatewayStreamTransformHooks(ctx context.Context, call CallCo
 	}); ok {
 		input.Envelope.Metadata = map[string]json.RawMessage{"route": routeData}
 	}
-	report, err := s.gatewayHooks.RunStageHooks(ctx, pluginmeta.StageStreamTransform, input, hooks)
+	report, err := s.runAuditedGatewayHookStageHooks(ctx, call, pluginmeta.StageStreamTransform, input, hooks)
 	if err != nil {
 		return event, true, gatewayHookHTTPError(pluginmeta.StageStreamTransform, err)
 	}
