@@ -7,17 +7,12 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
-const providerPluginCommandTimeout = 120 * time.Second
-
 type providerPluginAdapter struct {
-	dir                     string
-	command                 string
-	timeout                 time.Duration
+	commandRunner           pluginmeta.ProviderCommandRunner
 	supportsChatStream      bool
 	supportsResponsesStream bool
 	supportsImageGenerate   bool
@@ -60,9 +55,7 @@ type providerPluginImageResponse struct {
 
 func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 	return providerPluginAdapter{
-		dir:                     pkg.Dir,
-		command:                 pkg.Manifest.Entry.Backend.Command,
-		timeout:                 providerPluginCommandTimeout,
+		commandRunner:           pluginmeta.NewProviderCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command),
 		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
 		supportsResponsesStream: providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityResponseStream),
 		supportsImageGenerate:   providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityImageGenerate),
@@ -70,12 +63,8 @@ func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 	}
 }
 
-func (a providerPluginAdapter) commandRunner() pluginmeta.ProviderCommandRunner {
-	return pluginmeta.ProviderCommandRunner{
-		Dir:     a.dir,
-		Command: a.command,
-		Timeout: a.timeout,
-	}
+func (a providerPluginAdapter) executeProviderCommand(ctx context.Context, invocation providerPluginRequest, output any) error {
+	return a.commandRunner.ExecuteProviderCommand(ctx, invocation, output)
 }
 
 func providerPluginProviderFromRuntime(provider Provider) providerPluginProvider {
@@ -123,7 +112,7 @@ func providerPluginResourceFromRuntime(resource *ProviderResource) *providerPlug
 func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
 	req.Stream = false
 	var result providerPluginResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:     "chat",
 		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
@@ -141,7 +130,7 @@ func (a providerPluginAdapter) ChatStream(ctx context.Context, provider Provider
 	}
 	req.Stream = true
 	var result providerPluginStreamResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:     "chat_stream",
 		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
@@ -168,7 +157,7 @@ func (a providerPluginAdapter) ChatStream(ctx context.Context, provider Provider
 func (a providerPluginAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	req.Stream = false
 	var result providerPluginResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:     "responses",
 		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
@@ -186,7 +175,7 @@ func (a providerPluginAdapter) OpenResponses(ctx context.Context, provider Provi
 	}
 	req.Stream = true
 	var result providerPluginStreamResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:     "responses_stream",
 		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
@@ -219,7 +208,7 @@ func (a providerPluginAdapter) CompactWithHeaders(ctx context.Context, provider 
 		return nil, Usage{}, providerPluginCapabilityUnsupported("Responses compact")
 	}
 	var result providerPluginResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:     "responses_compact",
 		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
@@ -233,7 +222,7 @@ func (a providerPluginAdapter) CompactWithHeaders(ctx context.Context, provider 
 
 func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
 	var result providerPluginResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:     "embeddings",
 		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
@@ -250,7 +239,7 @@ func (a providerPluginAdapter) GenerateImage(ctx context.Context, provider Provi
 		return nil, "", Usage{}, providerPluginCapabilityUnsupported("image generation")
 	}
 	var result providerPluginImageResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:     "image_generation",
 		Provider:      providerPluginProviderFromRuntime(provider),
 		ProviderModel: providerModel,
@@ -277,7 +266,7 @@ func (a providerPluginAdapter) GenerateImage(ctx context.Context, provider Provi
 func (a providerPluginAdapter) ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error) {
 	effective := effectiveProviderResourceConfig(provider, &resource)
 	var result providerPluginModelsResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:   "models",
 		Provider:    providerPluginProviderFromRuntime(effective),
 		Resource:    providerPluginResourceFromRuntime(&resource),
@@ -302,7 +291,7 @@ func (a providerPluginAdapter) DefaultProbeRequest() ProviderProbeRequest {
 func (a providerPluginAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, req ProviderProbeRequest) (ProviderProbeResult, error) {
 	effective := effectiveProviderResourceConfig(provider, &resource)
 	var result providerPluginProbeResponse
-	if err := a.commandRunner().ExecuteProviderCommand(ctx, providerPluginRequest{
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{
 		Operation:   "probe",
 		Provider:    providerPluginProviderFromRuntime(effective),
 		Resource:    providerPluginResourceFromRuntime(&resource),

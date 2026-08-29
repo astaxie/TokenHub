@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -121,6 +122,34 @@ func TestProviderPluginCredentialsFromRuntimeUsesResourceCredentials(t *testing.
 		credentials.Email != "resource@example.com" || credentials.OrganizationID != "resource-org" ||
 		credentials.PlanType != "team" {
 		t.Fatalf("credentials = %+v, want resource account credentials", credentials)
+	}
+}
+
+func TestNewProviderPluginAdapterConfiguresCommandRunner(t *testing.T) {
+	pkg := pluginmeta.Package{
+		Dir: "/tmp/provider-plugin",
+		Manifest: pluginmeta.Manifest{
+			Entry: pluginmeta.ManifestEntry{
+				Backend: &pluginmeta.ManifestBackendEntry{
+					Protocol: pluginmeta.BackendProtocolStdioJSONV1,
+					Command:  "provider.sh",
+				},
+			},
+			Capabilities: pluginmeta.ManifestCapabilities{
+				Gateway: []string{"chat_stream", "responses_stream"},
+			},
+		},
+	}
+
+	adapter := newProviderPluginAdapter(pkg)
+	if adapter.commandRunner.Dir != pkg.Dir || adapter.commandRunner.Command != "provider.sh" {
+		t.Fatalf("command runner = %+v, want package directory and command", adapter.commandRunner)
+	}
+	if adapter.commandRunner.Timeout != 120*time.Second {
+		t.Fatalf("command runner timeout = %v, want 120s", adapter.commandRunner.Timeout)
+	}
+	if !adapter.supportsResponsesStream || !adapter.supportsChatStream {
+		t.Fatalf("streaming capabilities were not derived from manifest: %+v", adapter)
 	}
 }
 
