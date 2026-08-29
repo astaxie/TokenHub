@@ -22,6 +22,7 @@ type manifest struct {
 		ProviderResourceTypes []string         `yaml:"provider_resource_types"`
 		Provider              map[string]any   `yaml:"provider"`
 		Actions               []manifestAction `yaml:"actions"`
+		Hooks                 []manifestHook   `yaml:"hooks"`
 		Gateway               []string         `yaml:"gateway"`
 	} `yaml:"capabilities"`
 	Permissions struct {
@@ -41,4 +42,13 @@ type manifestAction struct {
 	Metadata     map[string]string `yaml:"metadata"`
 	InputSchema  map[string]any    `yaml:"input_schema"`
 	OutputSchema map[string]any    `yaml:"output_schema"`
+}
+
+type manifestHook struct {
+	ID            string   `yaml:"id"`
+	Stage         string   `yaml:"stage"`
+	Priority      int      `yaml:"priority"`
+	FailurePolicy string   `yaml:"failure_policy"`
+	Reads         []string `yaml:"reads"`
+	Writes        []string `yaml:"writes"`
 }

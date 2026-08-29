@@ -1,0 +1,33 @@
+schema_version: 1
+id: tokenhub.hook.trace-go
+name: Trace Go Hook
+version: 1.0.0
+description: Reference observe-only trace export hook for the TokenHub stdio-json-v1 contract kit.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/hook-trace-go
+capabilities:
+  hooks:
+    - id: trace.export
+      stage: trace_export
+      priority: 2300
+      failure_policy: observe_only
+      reads:
+        - audit
+        - usage
+permissions:
+  data:
+    read:
+      - audit
+      - usage
+distribution:
+  repository_url: https://github.com/tokenhub-dev/tokenhub-plugin-marketplace
+  homepage_url: https://github.com/tokenhub-dev/tokenhub-plugin-marketplace/tree/main/samples/hook-trace-go
+  license: Apache-2.0

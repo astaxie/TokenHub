@@ -85,6 +85,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	switch args[0] {
 	case "action":
 		return runAction(ctx, args[1:], stdout, stderr)
+	case "hook":
+		return runHook(ctx, args[1:], stdout, stderr)
 	case "provider":
 		return runProvider(ctx, args[1:], stdout, stderr)
 	default:

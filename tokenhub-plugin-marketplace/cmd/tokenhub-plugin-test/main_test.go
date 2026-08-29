@@ -22,6 +22,32 @@ func TestRunProviderPassesGoProviderSample(t *testing.T) {
 	}
 }
 
+func TestRunActionPassesGoActionSample(t *testing.T) {
+	root := moduleRoot(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run(context.Background(), []string{"action", "--package", filepath.Join(root, "samples", "action-echo-go")}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run action contract: %v stderr=%s stdout=%s", err, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "action contract passed (2 cases") {
+		t.Fatalf("stdout = %s", stdout.String())
+	}
+}
+
+func TestRunHookPassesGoTraceHookSample(t *testing.T) {
+	root := moduleRoot(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run(context.Background(), []string{"hook", "--package", filepath.Join(root, "samples", "hook-trace-go")}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run hook contract: %v stderr=%s stdout=%s", err, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "hook contract passed (1 cases") {
+		t.Fatalf("stdout = %s", stdout.String())
+	}
+}
+
 func TestRunProviderRejectsManifestPathEscapes(t *testing.T) {
 	root := moduleRoot(t)
 	dir := t.TempDir()
