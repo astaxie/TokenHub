@@ -35,6 +35,7 @@ export function ProviderPluginPanels({
   contributions,
   actions,
   onSaved = noopSaved,
+  handledContributionKeys = [],
 }: {
   api: ApiContext;
   provider: Provider;
@@ -42,16 +43,19 @@ export function ProviderPluginPanels({
   contributions: AdminUIContribution[];
   actions: PluginActionDescriptor[];
   onSaved?: () => Promise<void>;
+  handledContributionKeys?: string[];
 }) {
+  const handledContributions = useMemo(() => new Set(handledContributionKeys), [handledContributionKeys]);
   const panels = useMemo(
     () => contributions
       .filter((contribution) =>
         contribution.slot === "provider.resource.panel" &&
         (contribution.provider_types?.length ? contribution.provider_types.includes(provider.type) : true),
       )
+      .filter((contribution) => !handledContributions.has(providerPanelContributionKey(contribution)))
       .map((contribution) => ({ contribution, fields: providerPanelFields(contribution), layout: providerPanelLayout(contribution), resources: providerPanelResources(contribution, resources, provider.id) }))
       .filter((panel) => panel.layout || panel.fields.length > 0 || Boolean(panel.contribution.action)),
-    [contributions, provider.id, provider.type, resources],
+    [contributions, handledContributions, provider.id, provider.type, resources],
   );
   const layoutPanels = panels.filter((panel) => panel.layout);
   const genericPanels = panels.filter((panel) => !panel.layout);
@@ -60,12 +64,12 @@ export function ProviderPluginPanels({
   if (panels.length === 0) return null;
 
   function stateFor(contribution: AdminUIContribution, panelResources: ProviderResource[], action?: PluginActionDescriptor): PanelState {
-    return states[contributionKey(contribution)] ?? defaultPanelState(panelResources, action);
+    return states[providerPanelContributionKey(contribution)] ?? defaultPanelState(panelResources, action);
   }
 
   function updateState(contribution: AdminUIContribution, panelResources: ProviderResource[], patch: Partial<PanelState>, action?: PluginActionDescriptor) {
     setStates((current) => {
-      const key = contributionKey(contribution);
+      const key = providerPanelContributionKey(contribution);
       const base = current[key] ?? defaultPanelState(panelResources, action);
       return {
         ...current,
@@ -109,7 +113,7 @@ export function ProviderPluginPanels({
     <>
       {layoutPanels.map(({ contribution, layout, resources: panelResources }) => (
         layout === "resource_system_prompt_transform"
-          ? <ProviderResourceSystemPromptTransformFields api={api} key={contributionKey(contribution)} providerID={provider.id} resources={panelResources} onSaved={onSaved} />
+          ? <ProviderResourceSystemPromptTransformFields api={api} key={providerPanelContributionKey(contribution)} providerID={provider.id} resources={panelResources} onSaved={onSaved} />
           : null
       ))}
       {genericPanels.length > 0 ? (
@@ -124,7 +128,7 @@ export function ProviderPluginPanels({
               const selectedResource = panelResources.find((resource) => resource.id === state.resourceID);
               const registered = !contribution.action || Boolean(action);
               return (
-                <article className="provider-quota-card" key={contributionKey(contribution)}>
+                <article className="provider-quota-card" key={providerPanelContributionKey(contribution)}>
                   <div className="provider-quota-card-head">
                     <div className="provider-quota-account">
                       <span>{contribution.title || contribution.id}</span>
@@ -295,8 +299,48 @@ function defaultPanelState(resources: ProviderResource[], action?: PluginActionD
   };
 }
 
-function contributionKey(panel: AdminUIContribution) {
+export function providerPanelContributionKey(panel: AdminUIContribution) {
   return `${panel.plugin_id}:${panel.id}:${panel.action ?? ""}`;
+}
+
+export function providerQuotaPanelSelection(
+  contributions: AdminUIContribution[],
+  providerType: string,
+  resources: ProviderResource[],
+  actionsByResourceID: Record<string, PluginActionDescriptor>,
+) {
+  const selections = resources.flatMap((resource) => {
+    const action = actionsByResourceID[resource.id];
+    const contribution = action ? providerQuotaPanelContribution(contributions, providerType, resource.resource_type, action) : undefined;
+    return action && contribution ? [{ action, contribution, resource }] : [];
+  });
+  const handledContributionKeys = Array.from(new Set(selections.map((selection) => providerPanelContributionKey(selection.contribution))));
+  return {
+    firstAction: selections[0]?.action,
+    firstContribution: selections[0]?.contribution,
+    handledContributionKeys,
+    resources: selections.map((selection) => selection.resource),
+  };
+}
+
+export function providerQuotaPanelDescription(contribution: AdminUIContribution) {
+  const description = contribution.schema?.description;
+  return typeof description === "string" ? description.trim() : "";
+}
+
+function providerQuotaPanelContribution(
+  contributions: AdminUIContribution[],
+  providerType: string,
+  resourceType: string,
+  action: PluginActionDescriptor,
+) {
+  return contributions.find((contribution) =>
+    contribution.slot === "provider.resource.panel" &&
+    contribution.plugin_id === action.plugin_id &&
+    contribution.action === action.action_id &&
+    (!contribution.provider_types?.length || contribution.provider_types.includes(providerType)) &&
+    (!contribution.resource_types?.length || contribution.resource_types.includes(resourceType)),
+  );
 }
 
 function redactPanelResult(value: unknown): unknown {

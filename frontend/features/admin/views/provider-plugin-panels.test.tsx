@@ -155,4 +155,29 @@ describe("ProviderPluginPanels", () => {
       { id: "rsrc_other", provider_id: "prv_other", name: "Other Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1 },
     ], "prv_plugin").map((resource) => resource.id)).toEqual(["rsrc_plugin"]);
   });
+
+  it("skips provider resource panels already handled by a rich host renderer", () => {
+    render(
+      <ProviderPluginPanels
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        provider={{ id: "prv_plugin", name: "Plugin Provider", type: "plugin_provider", status: "active", healthy: true, priority: 10 }}
+        resources={[{ id: "rsrc_plugin", provider_id: "prv_plugin", name: "Plugin Account", resource_type: "plugin_account", status: "active", healthy: true, priority: 10, weight: 1 }]}
+        contributions={[{
+          plugin_id: "tokenhub.provider.plugin",
+          id: "quota",
+          slot: "provider.resource.panel",
+          title: "Plugin Quota",
+          provider_types: ["plugin_provider"],
+          resource_types: ["plugin_account"],
+          action: "quota.read",
+          schema: { fields: [{ name: "resource_status", type: "text", label: "Resource status", source: "resource.status" }] },
+        }]}
+        actions={[{ plugin_id: "tokenhub.provider.plugin", action_id: "quota.read", kind: "read", capability: "quota.read", subject: "plugin_provider" }]}
+        handledContributionKeys={["tokenhub.provider.plugin:quota:quota.read"]}
+      />,
+    );
+
+    expect(screen.queryByText("Plugin Quota")).not.toBeInTheDocument();
+    expect(screen.queryByText("插件面板")).not.toBeInTheDocument();
+  });
 });

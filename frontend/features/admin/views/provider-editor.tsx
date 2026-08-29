@@ -23,7 +23,7 @@ import { ProviderInlineField, providerCreateWizardSteps, providerCreateWizardSte
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
-import { ProviderPluginPanels } from "./provider-plugin-panels";
+import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanelSelection } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { isProviderAccountResourceForData, isProviderAccountResourceTypeForData } from "../domain/provider-resource-types";
@@ -98,8 +98,8 @@ export function ProviderUpsertModal({
   const directCredentialCatalog = useMemo(() => directProviderCatalogOptions(catalog, accountProviderCatalogOptions), [accountProviderCatalogOptions, catalog]);
   const selectableProviderCatalog = mode === "create" ? directCredentialCatalog : catalog;
   const availableCategories = useMemo(
-    () => catalogModelCategoryOptions(selectableProviderCatalog, modelCategoryData).filter((item) => mode !== "create" || item.key !== "codex"),
-    [mode, modelCategoryData, selectableProviderCatalog],
+    () => catalogModelCategoryOptions(selectableProviderCatalog, modelCategoryData),
+    [modelCategoryData, selectableProviderCatalog],
   );
   const providerCatalogID = provider?.options?.catalog_id;
   const providerModelCategory = provider?.options?.model_category;
@@ -199,7 +199,8 @@ export function ProviderUpsertModal({
   );
   const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
   const selectedAccountResources = useMemo(() => selectedAccountID === "all" ? accountResources : accountResources.filter((resource) => resource.id === selectedAccountID), [accountResources, selectedAccountID]);
-  const { actionsByResourceID: accountQuotaActionsByResourceID, firstAction: accountQuotaAction, selectedResources: selectedQuotaAccountResources } = useMemo(() => providerResourceActionSelection(pluginActions, values.type, accountResources, selectedAccountResources, "quota.read"), [accountResources, pluginActions, selectedAccountResources, values.type]);
+  const { actionsByResourceID: accountQuotaActionsByResourceID, selectedResources: selectedQuotaAccountResources } = useMemo(() => providerResourceActionSelection(pluginActions, values.type, accountResources, selectedAccountResources, "quota.read"), [accountResources, pluginActions, selectedAccountResources, values.type]);
+  const richQuotaPanel = useMemo(() => providerQuotaPanelSelection(pluginUI, values.type, selectedQuotaAccountResources, accountQuotaActionsByResourceID), [accountQuotaActionsByResourceID, pluginUI, selectedQuotaAccountResources, values.type]);
   const categoryCatalog = useMemo(() => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory, modelCategoryData)), [modelCategory, modelCategoryData, selectableProviderCatalog]);
   const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory, standardModels), [modelCategory, standardModels]);
   const selectedCatalogTemplateEntry = catalogID === "custom" ? customCatalogEntry : selectableProviderCatalog.find((entry) => entry.id === catalogID);
@@ -445,13 +446,13 @@ export function ProviderUpsertModal({
   }, [createStep, customConnectionKey, editTab, mode, quickAPIConnect, quickAPITab, selectedCatalogUsesDiscoveryPreview, values.base_url]);
 
   useEffect(() => {
-    if (mode !== "edit" || editTab !== "advanced" || !accountQuotaAction) return;
-    for (const resource of selectedQuotaAccountResources) {
+    if (mode !== "edit" || editTab !== "advanced" || !richQuotaPanel.firstAction) return;
+    for (const resource of richQuotaPanel.resources) {
       if (!accountQuotas[resource.id]) void queryAccountQuota(resource);
     }
-    const timer = window.setInterval(() => { for (const resource of selectedQuotaAccountResources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => { for (const resource of richQuotaPanel.resources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
-  }, [accountQuotaAction, editTab, mode, selectedQuotaAccountResources]);
+  }, [editTab, mode, richQuotaPanel.firstAction, richQuotaPanel.resources]);
 
   const selectedAccountCatalog = useMemo(
     () => {
@@ -1443,15 +1444,15 @@ export function ProviderUpsertModal({
                 <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" provider={provider} values={values} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}
-            {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} onSaved={onAccountsChanged ?? onSaved} /> : null}
-            {mode === "edit" && editTab === "advanced" && accountQuotaAction && selectedQuotaAccountResources.length > 0 ? (
+            {mode === "edit" && editTab === "advanced" && provider ? <ProviderPluginPanels api={api} provider={provider} resources={resources} contributions={pluginUI} actions={pluginActions} handledContributionKeys={richQuotaPanel.handledContributionKeys} onSaved={onAccountsChanged ?? onSaved} /> : null}
+            {mode === "edit" && editTab === "advanced" && richQuotaPanel.firstAction && richQuotaPanel.firstContribution && richQuotaPanel.resources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
-                  <h3>{accountQuotaAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
-                  <p>{accountQuotaAction.metadata?.panel_description?.trim() || tx("实时查询账号订阅用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
+                  <h3>{richQuotaPanel.firstContribution.title || richQuotaPanel.firstAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
+                  <p>{providerQuotaPanelDescription(richQuotaPanel.firstContribution) || richQuotaPanel.firstAction.metadata?.panel_description?.trim() || tx("实时查询账号订阅用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
                 </div>
                 <div className="provider-quota-list">
-                  {selectedQuotaAccountResources.map((resource) => {
+                  {richQuotaPanel.resources.map((resource) => {
                     const quota = accountQuotas[resource.id];
                     const primary = quota?.rate_limit?.primary_window;
                     const secondary = quota?.rate_limit?.secondary_window;
