@@ -89,13 +89,22 @@ func (s *Server) executeChatRoute(
 	req ChatCompletionRequest,
 	headers http.Header,
 ) (any, Usage, error) {
-	if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
-		adapter, err := s.adapterForRoute(route)
-		if err != nil {
-			return nil, Usage{}, err
-		}
-		return adapter.Chat(ctx, route.Provider, route.ProviderModel, req)
+	if bridge, ok := s.chatRouteBridge(route); ok {
+		return bridge.ExecuteChat(s, ctx, route, req, headers)
 	}
+	adapter, err := s.adapterForRoute(route)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	return adapter.Chat(ctx, route.Provider, route.ProviderModel, req)
+}
+
+func (s *Server) executeCodexChatRoute(
+	ctx context.Context,
+	route RouteSelection,
+	req ChatCompletionRequest,
+	headers http.Header,
+) (any, Usage, error) {
 	upstream, err := chatToCodexResponsesRequest(req)
 	if err != nil {
 		return nil, Usage{}, err
@@ -122,8 +131,8 @@ func (s *Server) streamChatRoute(
 	headers http.Header,
 	writer io.Writer,
 ) (Usage, error) {
-	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
-		return s.streamCodexAsChat(ctx, route, req, headers, writer)
+	if bridge, ok := s.streamChatRouteBridge(route); ok {
+		return bridge.StreamChat(s, ctx, route, req, headers, writer)
 	}
 	adapter, err := s.adapterForRoute(route)
 	if err != nil {
@@ -133,30 +142,34 @@ func (s *Server) streamChatRoute(
 }
 
 func (s *Server) compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {
-	hasBridgeRoute := false
+	compatible := routed
+	compatible.Routes = make([]RouteSelection, 0, len(routed.Routes))
+	var firstErr error
+	checkedBridge := false
+	droppedBridge := false
 	for _, route := range routed.Routes {
-		if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
-			hasBridgeRoute = true
-			break
+		bridge, ok := s.chatRouteBridge(route)
+		if !ok || bridge.ChatCompatible == nil {
+			compatible.Routes = append(compatible.Routes, route)
+			continue
 		}
+		checkedBridge = true
+		if err := bridge.ChatCompatible(req); err != nil {
+			droppedBridge = true
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		compatible.Routes = append(compatible.Routes, route)
 	}
-	if !hasBridgeRoute {
+	if !checkedBridge || !droppedBridge {
 		return routed, nil
 	}
-	if _, err := chatToCodexResponsesRequest(req); err != nil {
-		compatible := routed
-		compatible.Routes = make([]RouteSelection, 0, len(routed.Routes))
-		for _, route := range routed.Routes {
-			if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
-				compatible.Routes = append(compatible.Routes, route)
-			}
-		}
-		if len(compatible.Routes) == 0 {
-			return compatible, err
-		}
-		return compatible, nil
+	if len(compatible.Routes) == 0 {
+		return compatible, firstErr
 	}
-	return routed, nil
+	return compatible, nil
 }
 
 func compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {

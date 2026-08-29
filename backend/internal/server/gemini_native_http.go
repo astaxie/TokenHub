@@ -343,7 +343,11 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 			}
 			return body, usage, nil
 		}
-		response, usage, err := s.invokeResponsesAdapter(ctx, prepared, upstream, geminiCodexCompatibilityHeaders(r.Header, payload))
+		headers := r.Header
+		if bridge, ok := s.geminiRouteBridge(prepared); ok {
+			headers = bridge.GeminiHeaders(r.Header, payload)
+		}
+		response, usage, err := s.invokeResponsesAdapter(ctx, prepared, upstream, headers)
 		if providerResourceModelUnsupportedError(err) {
 			s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
 		}
@@ -385,8 +389,12 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolGemini, tracker)
 			streamWriter = transformer
 		}
+		headers := r.Header
+		if bridge, ok := s.geminiRouteBridge(prepared); ok {
+			headers = bridge.GeminiHeaders(r.Header, payload)
+		}
 		sink := newCodexGeminiStreamSink(streamWriter, request.Model, reverseNames)
-		usage, err := s.streamCodexCompatibility(ctx, prepared, upstream, geminiCodexCompatibilityHeaders(r.Header, payload), sink)
+		usage, err := s.streamCodexCompatibility(ctx, prepared, upstream, headers, sink)
 		if transformer != nil {
 			if closeErr := transformer.Close(); err == nil && closeErr != nil {
 				err = closeErr
@@ -496,7 +504,7 @@ func (s *Server) geminiAccessibleModels(key APIKey) []Model {
 		}
 		routes = s.routesWithAdapterCapability(routes, AdapterCapabilityResponses)
 		for _, route := range routes {
-			if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) && routeMatchesProject(route.Route, key.ProjectID) {
+			if _, ok := s.geminiRouteBridge(route); ok && routeMatchesProject(route.Route, key.ProjectID) {
 				compatible = append(compatible, model)
 				break
 			}

@@ -340,16 +340,16 @@ func (s *Server) executeRoutedAnthropicMessages(
 }
 
 func anthropicGatewayRouteProtocol(registry *AdapterRegistry, route RouteSelection) string {
-	switch {
-	case routeSupportsProviderProtocol(registry, route, providerRouteProtocolAnthropic):
+	if routeSupportsProviderProtocol(registry, route, providerRouteProtocolAnthropic) {
 		return providerRouteProtocolAnthropic
-	case routeSupportsProviderProtocol(registry, route, providerRouteProtocolCodexResponses):
-		return providerRouteProtocolCodexResponses
-	case routeSupportsProviderProtocol(registry, route, providerRouteProtocolChatCompletions):
-		return providerRouteProtocolChatCompletions
-	default:
-		return ""
 	}
+	if bridge, ok := providerRouteBridgeForRoute(registry, route, anthropicRouteBridgeSupported); ok {
+		return bridge.Protocol
+	}
+	if routeSupportsProviderProtocol(registry, route, providerRouteProtocolChatCompletions) {
+		return providerRouteProtocolChatCompletions
+	}
+	return ""
 }
 
 func anthropicToOpenAIChatRequest(req anthropicMessagesRequest, provider Provider) (ChatCompletionRequest, error) {
@@ -1028,16 +1028,18 @@ func (s *Server) handleAnthropicMessagesStream(
 			switch protocol {
 			case providerRouteProtocolAnthropic:
 				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, attemptReq, r.Header, streamWriter)
-			case providerRouteProtocolCodexResponses:
-				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, attemptReq, r.Header, streamWriter)
 			case providerRouteProtocolChatCompletions:
 				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, attemptReq, streamWriter)
 			default:
-				streamErr = NewHTTPError(
-					http.StatusNotImplemented,
-					"provider_capability_not_supported",
-					"Provider does not support the Anthropic Messages gateway",
-				)
+				if bridge, ok := providerRouteBridgeByProtocol(protocol, streamAnthropicRouteBridgeSupported); ok {
+					streamUsage, streamErr = bridge.StreamAnthropic(s, ctx, prepared, attemptReq, r.Header, streamWriter)
+				} else {
+					streamErr = NewHTTPError(
+						http.StatusNotImplemented,
+						"provider_capability_not_supported",
+						"Provider does not support the Anthropic Messages gateway",
+					)
+				}
 			}
 			if transformer != nil {
 				if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {

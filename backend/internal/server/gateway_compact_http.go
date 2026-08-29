@@ -166,7 +166,7 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, request, response, usage, providerRouteProtocolResponses)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
-	writeCodexResponseHeaders(w.Header(), usage.ResponseHeaders)
+	s.writeProviderResponseHeaders(w.Header(), route, usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, response)
 }

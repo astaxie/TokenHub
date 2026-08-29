@@ -14,8 +14,8 @@ func (s *Server) executeAnthropicMessagesRoute(
 	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolAnthropic) {
 		return s.executeNativeAnthropicMessages(ctx, route, req, headers)
 	}
-	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
-		return s.executeCodexAnthropicMessages(ctx, route, req, headers)
+	if bridge, ok := s.anthropicRouteBridge(route); ok {
+		return bridge.ExecuteAnthropic(s, ctx, route, req, headers)
 	}
 	if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolChatCompletions) {
 		return nil, Usage{}, NewHTTPError(
@@ -77,9 +77,8 @@ func (s *Server) validateAnthropicRouteCompatibility(route RouteSelection, req a
 	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolAnthropic) {
 		return nil
 	}
-	if routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolCodexResponses) {
-		_, err := anthropicToCodexResponsesRequest(req)
-		return err
+	if bridge, ok := s.anthropicRouteBridge(route); ok {
+		return bridge.ValidateAnthropic(req)
 	}
 	if !routeSupportsProviderProtocol(s.adapterRegistry, route, providerRouteProtocolChatCompletions) {
 		return NewHTTPError(
