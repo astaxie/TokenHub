@@ -18,7 +18,7 @@ type serverPluginBootstrap struct {
 	adapterRegistry        *AdapterRegistry
 }
 
-func bootstrapServerPlugins(store Store, config Config, adapters map[string]ProviderAdapter, codexSubscription *CodexSubscriptionAdapter) (serverPluginBootstrap, error) {
+func bootstrapServerPlugins(store Store, config Config, adapters map[string]any) (serverPluginBootstrap, error) {
 	pluginRegistry := pluginmeta.NewRegistry()
 	gatewayChain := pluginmeta.NewGatewayChainRegistry()
 	gatewayHooks := pluginmeta.NewGatewayHookRunner(gatewayChain)
@@ -27,8 +27,9 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]Prov
 	pluginBackgroundJobs := pluginmeta.NewBackgroundJobBroker()
 	pluginBackgroundRunner := pluginmeta.NewBackgroundJobRunner(pluginBackgroundJobs)
 	adapterRegistry := NewAdapterRegistryWithPlugins(pluginRegistry)
+	codexSubscription := codexSubscriptionAdapterFrom(adapters)
 
-	registerBuiltinProviderAdapters(adapterRegistry, adapters, codexSubscription)
+	registerBuiltinProviderAdapters(adapterRegistry, adapters)
 	registerBuiltinProviderCatalogPlugins(pluginRegistry)
 	if codexSubscription != nil {
 		codexSubscription.SupportsResourceModels = func(providerType string, resourceType string) bool {

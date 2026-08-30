@@ -15,8 +15,7 @@ type builtinProviderRuntimeDependencies struct {
 }
 
 type builtinProviderRuntime struct {
-	adapters          map[string]ProviderAdapter
-	codexSubscription *CodexSubscriptionAdapter
+	adapters map[string]any
 }
 
 func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinProviderRuntime {
@@ -48,7 +47,7 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 		codexSubscription.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
 	}
 	return builtinProviderRuntime{
-		adapters: map[string]ProviderAdapter{
+		adapters: map[string]any{
 			ProviderMock:             MockAdapter{},
 			ProviderOpenAI:           openai,
 			ProviderOpenAICompatible: openai,
@@ -71,7 +70,21 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 				StreamClient:      deps.StreamClient,
 				StreamIdleTimeout: deps.StreamIdleTimeout,
 			},
+			ProviderOpenAICodex: codexSubscription,
 		},
-		codexSubscription: codexSubscription,
+	}
+}
+
+func codexSubscriptionAdapterFrom(adapters map[string]any) *CodexSubscriptionAdapter {
+	if adapters == nil {
+		return nil
+	}
+	switch adapter := adapters[ProviderOpenAICodex].(type) {
+	case *CodexSubscriptionAdapter:
+		return adapter
+	case CodexSubscriptionAdapter:
+		return &adapter
+	default:
+		return nil
 	}
 }

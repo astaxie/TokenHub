@@ -41,16 +41,17 @@ func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T)
 	if _, ok := runtime.adapters[ProviderKronk].(KronkAdapter); !ok {
 		t.Fatalf("Kronk runtime adapter = %T, want KronkAdapter", runtime.adapters[ProviderKronk])
 	}
-	if runtime.codexSubscription == nil {
+	codexSubscription := codexSubscriptionAdapterFrom(runtime.adapters)
+	if codexSubscription == nil {
 		t.Fatal("Codex subscription runtime adapter was not built")
 	}
-	if runtime.codexSubscription.StreamIdleTimeout != 3*time.Second {
-		t.Fatalf("Codex stream idle timeout = %v, want 3s", runtime.codexSubscription.StreamIdleTimeout)
+	if codexSubscription.StreamIdleTimeout != 3*time.Second {
+		t.Fatalf("Codex stream idle timeout = %v, want 3s", codexSubscription.StreamIdleTimeout)
 	}
-	if runtime.codexSubscription.Client == nil || runtime.codexSubscription.Client.Transport == nil {
+	if codexSubscription.Client == nil || codexSubscription.Client.Transport == nil {
 		t.Fatal("Codex subscription client or transport was not configured")
 	}
-	if runtime.codexSubscription.RefreshCredentials == nil {
+	if codexSubscription.RefreshCredentials == nil {
 		t.Fatal("Codex subscription credential refresh callback was not configured")
 	}
 }

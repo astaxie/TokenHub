@@ -161,7 +161,8 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		SyntheticDNSPolicy:  syntheticDNSPolicy,
 		ProviderProxyPolicy: providerProxyPolicy,
 	})
-	pluginBootstrap, err := bootstrapServerPlugins(store, config, providerRuntime.adapters, providerRuntime.codexSubscription)
+	codexSubscription := codexSubscriptionAdapterFrom(providerRuntime.adapters)
+	pluginBootstrap, err := bootstrapServerPlugins(store, config, providerRuntime.adapters)
 	if err != nil {
 		panic(err)
 	}
@@ -178,7 +179,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
 		adapterRegistry:         pluginBootstrap.adapterRegistry,
 		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
-		codexSubscription:       providerRuntime.codexSubscription,
+		codexSubscription:       codexSubscription,
 		providerCatalog:         providerCatalog,
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
 		billingAvailable:        billingAvailable,

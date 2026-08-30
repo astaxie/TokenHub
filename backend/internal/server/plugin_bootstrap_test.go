@@ -34,9 +34,10 @@ permissions:
       - audit
 `)
 
-	bootstrap, err := bootstrapServerPlugins(NewMemoryStore(), Config{PluginDir: pluginDir}, map[string]ProviderAdapter{
-		ProviderMock: MockAdapter{},
-	}, &CodexSubscriptionAdapter{})
+	bootstrap, err := bootstrapServerPlugins(NewMemoryStore(), Config{PluginDir: pluginDir}, map[string]any{
+		ProviderMock:        MockAdapter{},
+		ProviderOpenAICodex: &CodexSubscriptionAdapter{},
+	})
 	if err != nil {
 		t.Fatalf("bootstrap plugins: %v", err)
 	}

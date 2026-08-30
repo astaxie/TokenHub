@@ -43,7 +43,7 @@ type builtinProviderPluginCapability struct {
 	subject    string
 }
 
-func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]ProviderAdapter, codexSubscription *CodexSubscriptionAdapter) {
+func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]any) {
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.mock", "Mock Provider", builtinProviderAdapter{
 		providerType:       ProviderMock,
 		adapter:            adapters[ProviderMock],
@@ -121,7 +121,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
 		providerType:             ProviderOpenAICodex,
-		adapter:                  codexSubscription,
+		adapter:                  adapters[ProviderOpenAICodex],
 		supportsCustomHeaders:    boolPointer(false),
 		apiKeyRequired:           boolPointer(false),
 		routeProtocols:           []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
@@ -320,7 +320,7 @@ func builtinProviderPluginCatalogDefaultType() string {
 
 func builtinProviderPluginCatalogRegistry() *AdapterRegistry {
 	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
-	registerBuiltinProviderAdapters(registry, map[string]ProviderAdapter{}, &CodexSubscriptionAdapter{})
+	registerBuiltinProviderAdapters(registry, map[string]any{ProviderOpenAICodex: &CodexSubscriptionAdapter{}})
 	registerBuiltinProviderCatalogPlugins(registry.plugins)
 	return registry
 }
