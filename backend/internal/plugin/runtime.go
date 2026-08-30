@@ -86,6 +86,10 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 			continue
 		}
 		packageDirsByID[pkg.Manifest.ID] = pkg.Dir
+		if pkg.State.FailedValidation() || pkg.State.FailedStartup() {
+			packages = append(packages, pkg)
+			continue
+		}
 		if !candidate.ManifestValidated && !pkg.State.Enabled() {
 			packages = append(packages, pkg)
 			continue
@@ -309,6 +313,64 @@ func (r Runtime) DescribeInstalledPackage(pluginID string) (Package, bool, error
 		}
 	}
 	return Package{}, false, nil
+}
+
+func (r Runtime) DiscoverRecoverable() ([]Package, error) {
+	dirs, err := r.packageDirs()
+	if err != nil {
+		return nil, err
+	}
+	packages := make([]Package, 0, len(dirs))
+	for _, dir := range dirs {
+		candidate, err := readPackageForLoad(dir)
+		if err != nil {
+			failed, ok, failErr := r.markPackageLoadFailure(dir, runtimeLoadTargets{}, StatusFailedValidation, PackageLifecycleValidationFailed, err)
+			if failErr != nil {
+				return nil, failErr
+			}
+			if ok {
+				packages = append(packages, failed)
+			}
+			continue
+		}
+		packages = append(packages, candidate.Package)
+	}
+	return packages, nil
+}
+
+func (r Runtime) RollbackPackageToBuiltInFallback(pluginID string, reason string) (Package, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return Package{}, ErrPackageNotFound
+	}
+	packages, err := r.DiscoverRecoverable()
+	if err != nil {
+		return Package{}, err
+	}
+	for _, pkg := range packages {
+		if pkg.Manifest.ID != pluginID {
+			continue
+		}
+		if !pkg.State.BuiltInFallbackAvailable() {
+			return Package{}, ErrPackageRollbackUnavailable
+		}
+		if err := os.RemoveAll(pkg.Dir); err != nil {
+			return Package{}, err
+		}
+		state := PackageState{
+			Status:     StatusEnabled,
+			Reason:     strings.TrimSpace(reason),
+			Health:     PackageHealthUnknown,
+			AuditEvent: PackageLifecycleRollbackStarted,
+		}
+		state, err := NormalizePackageState(state)
+		if err != nil {
+			return Package{}, err
+		}
+		pkg.State = state
+		return pkg, nil
+	}
+	return Package{}, ErrPackageNotFound
 }
 
 func (r Runtime) packageDirs() ([]string, error) {

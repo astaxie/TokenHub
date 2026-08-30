@@ -28,6 +28,7 @@ type adminPluginDescriptorResponse struct {
 	Mandatory         bool                             `json:"mandatory,omitempty"`
 	RollbackAvailable bool                             `json:"rollback_available"`
 	RollbackVersion   string                           `json:"rollback_version,omitempty"`
+	RollbackTarget    pluginmeta.PackageRollbackTarget `json:"rollback_target,omitempty"`
 	LastErrorCode     string                           `json:"last_error_code,omitempty"`
 	AuditEvent        pluginmeta.PackageLifecycleEvent `json:"audit_event,omitempty"`
 	Loadable          bool                             `json:"loadable"`
@@ -44,6 +45,7 @@ type adminPluginLifecycleResponse struct {
 	Mandatory         bool                             `json:"mandatory"`
 	RollbackAvailable bool                             `json:"rollback_available"`
 	RollbackVersion   string                           `json:"rollback_version,omitempty"`
+	RollbackTarget    pluginmeta.PackageRollbackTarget `json:"rollback_target,omitempty"`
 	LastErrorCode     string                           `json:"last_error_code,omitempty"`
 	AuditEvent        pluginmeta.PackageLifecycleEvent `json:"audit_event,omitempty"`
 	Loadable          bool                             `json:"loadable"`
@@ -78,6 +80,7 @@ type adminPluginStateResponse struct {
 	Mandatory         bool                             `json:"mandatory,omitempty"`
 	RollbackAvailable bool                             `json:"rollback_available"`
 	RollbackVersion   string                           `json:"rollback_version,omitempty"`
+	RollbackTarget    pluginmeta.PackageRollbackTarget `json:"rollback_target,omitempty"`
 	LastErrorCode     string                           `json:"last_error_code,omitempty"`
 	AuditEvent        pluginmeta.PackageLifecycleEvent `json:"audit_event,omitempty"`
 	Loadable          bool                             `json:"loadable"`
@@ -97,9 +100,10 @@ type adminPluginUninstallResponse struct {
 }
 
 type adminPluginRollbackResponse struct {
-	Plugin          adminPluginDescriptorResponse `json:"plugin"`
-	RestartRequired bool                          `json:"restart_required"`
-	RollbackVersion string                        `json:"rollback_version"`
+	Plugin          adminPluginDescriptorResponse    `json:"plugin"`
+	RestartRequired bool                             `json:"restart_required"`
+	RollbackVersion string                           `json:"rollback_version"`
+	RollbackTarget  pluginmeta.PackageRollbackTarget `json:"rollback_target,omitempty"`
 }
 
 type adminPluginInstallTrustPayload struct {
@@ -112,7 +116,7 @@ type adminPluginInstallTrustPayload struct {
 func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, error) {
 	installed := map[string]pluginmeta.Package{}
 	if s != nil && strings.TrimSpace(s.config.PluginDir) != "" {
-		packages, err := pluginmeta.NewRuntime(s.config.PluginDir).Discover()
+		packages, err := pluginmeta.NewRuntime(s.config.PluginDir).DiscoverRecoverable()
 		if err != nil {
 			return nil, err
 		}
@@ -122,9 +126,19 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 	}
 	descriptors := s.pluginRegistry.List()
 	response := make([]adminPluginDescriptorResponse, 0, len(descriptors))
+	seen := map[string]bool{}
 	for _, descriptor := range descriptors {
 		pkg, ok := installed[descriptor.ID]
 		response = append(response, adminPluginDescriptorForPackage(descriptor, pkg, ok))
+		seen[descriptor.ID] = true
+	}
+	for _, pkg := range installed {
+		if seen[pkg.Manifest.ID] {
+			continue
+		}
+		descriptor := pkg.Manifest.Descriptor()
+		descriptor.Status = pkg.State.Status
+		response = append(response, adminPluginDescriptorForPackage(descriptor, pkg, true))
 	}
 	return response, nil
 }
@@ -155,6 +169,7 @@ func adminPluginDescriptorForPackage(descriptor pluginmeta.Descriptor, pkg plugi
 		Mandatory:         lifecycle.Mandatory,
 		RollbackAvailable: lifecycle.RollbackAvailable,
 		RollbackVersion:   lifecycle.RollbackVersion,
+		RollbackTarget:    lifecycle.RollbackTarget,
 		LastErrorCode:     lifecycle.LastErrorCode,
 		AuditEvent:        lifecycle.AuditEvent,
 		Loadable:          lifecycle.Loadable,
@@ -177,6 +192,7 @@ func adminPluginLifecycleForState(state pluginmeta.PackageState) adminPluginLife
 		Mandatory:         state.Mandatory,
 		RollbackAvailable: state.RollbackAvailable(),
 		RollbackVersion:   state.RollbackVersion,
+		RollbackTarget:    state.RollbackTarget,
 		LastErrorCode:     state.LastErrorCode,
 		AuditEvent:        state.AuditEvent,
 		Loadable:          state.Loadable(),
@@ -496,8 +512,14 @@ func (s *Server) handleAdminPluginRollbackPost(w http.ResponseWriter, r *http.Re
 		writeError(w, r, err)
 		return
 	}
-	pkg, err := pluginmeta.NewRuntime(s.config.PluginDir).RollbackPackage(pluginID, payload.Reason)
+	runtime := pluginmeta.NewRuntime(s.config.PluginDir)
+	pkg, err := runtime.RollbackPackage(pluginID, payload.Reason)
 	if err != nil {
+		if errors.Is(err, pluginmeta.ErrPackageRollbackUnavailable) {
+			if s.handleAdminPluginBuiltInFallbackRollback(w, r, user, runtime, pluginID, payload.Reason) {
+				return
+			}
+		}
 		httpErr := pluginRollbackHTTPError(err)
 		if httpErr.Status != http.StatusNotFound {
 			s.recordPluginRollbackAudit(r, user, pluginID, "failed", httpErr.Code)
@@ -513,7 +535,29 @@ func (s *Server) handleAdminPluginRollbackPost(w http.ResponseWriter, r *http.Re
 		Plugin:          plugin,
 		RestartRequired: true,
 		RollbackVersion: pkg.Manifest.Version,
+		RollbackTarget:  pluginmeta.PackageRollbackTargetPreviousPackage,
 	}})
+}
+
+func (s *Server) handleAdminPluginBuiltInFallbackRollback(w http.ResponseWriter, r *http.Request, user AdminUser, runtime pluginmeta.Runtime, pluginID string, reason string) bool {
+	descriptor, ok := s.pluginRegistry.Describe(pluginID)
+	if !ok || descriptor.Source != pluginmeta.SourceBuiltIn {
+		return false
+	}
+	pkg, err := runtime.RollbackPackageToBuiltInFallback(pluginID, reason)
+	if err != nil {
+		return false
+	}
+	descriptor.Status = pkg.State.Status
+	plugin := adminPluginDescriptorForPackage(descriptor, pluginmeta.Package{}, false)
+	s.recordPluginRollbackAudit(r, user, pluginID, "success", string(pluginmeta.PackageRollbackTargetBuiltIn))
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginRollbackResponse{
+		Plugin:          plugin,
+		RestartRequired: false,
+		RollbackVersion: "built-in",
+		RollbackTarget:  pluginmeta.PackageRollbackTargetBuiltIn,
+	}})
+	return true
 }
 
 func pluginRollbackHTTPError(err error) *HTTPError {
@@ -602,6 +646,7 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		Mandatory:         pkg.State.Mandatory,
 		RollbackAvailable: pkg.State.RollbackAvailable(),
 		RollbackVersion:   pkg.State.RollbackVersion,
+		RollbackTarget:    pkg.State.RollbackTarget,
 		LastErrorCode:     pkg.State.LastErrorCode,
 		AuditEvent:        pkg.State.AuditEvent,
 		Loadable:          pkg.State.Loadable(),
@@ -625,6 +670,7 @@ func adminPluginStatePatchStatusAllowed(status pluginmeta.Status) bool {
 		pluginmeta.StatusDisabled,
 		pluginmeta.StatusPendingRestart,
 		pluginmeta.StatusFailedValidation,
+		pluginmeta.StatusFailedStartup,
 		pluginmeta.StatusRollbackAvailable,
 		pluginmeta.StatusMandatory:
 		return true
@@ -643,6 +689,8 @@ func adminPluginLifecycleEventForStatus(status pluginmeta.Status) pluginmeta.Pac
 		return pluginmeta.PackageLifecyclePendingRestart
 	case pluginmeta.StatusFailedValidation:
 		return pluginmeta.PackageLifecycleValidationFailed
+	case pluginmeta.StatusFailedStartup:
+		return pluginmeta.PackageLifecycleStartupFailed
 	case pluginmeta.StatusRollbackAvailable:
 		return pluginmeta.PackageLifecycleRollbackAvailable
 	default:

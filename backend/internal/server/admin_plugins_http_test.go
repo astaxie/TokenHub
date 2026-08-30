@@ -757,6 +757,11 @@ func TestAdminPluginsGetExposesLifecycleTrustAndCompatibilitySummaries(t *testin
 			state: `{"status":"failed_validation","health":"unhealthy","last_error_code":"plugin_api_unsupported","audit_event":"validation_failed"}`,
 		},
 		{
+			dir:   "startup-failed",
+			id:    "tokenhub.local-startup-failed",
+			state: `{"status":"failed_startup","health":"unhealthy","rollback_target":"built_in","last_error_code":"plugin_startup_failed","audit_event":"startup_failed"}`,
+		},
+		{
 			dir:   "rollback",
 			id:    "tokenhub.local-rollback",
 			state: `{"status":"rollback_available","rollback_version":"1.0.0","audit_event":"rollback_available"}`,
@@ -809,15 +814,22 @@ func TestAdminPluginsGetExposesLifecycleTrustAndCompatibilitySummaries(t *testin
 	if failed.Health != pluginmeta.PackageHealthUnhealthy || failed.LastErrorCode != string(pluginmeta.PluginErrorAPIUnsupported) || failed.Loadable {
 		t.Fatalf("failed plugin = %+v, want unhealthy failed validation", failed)
 	}
+	startupFailed := plugins["tokenhub.local-startup-failed"]
+	if startupFailed.Status != pluginmeta.StatusFailedStartup ||
+		startupFailed.Lifecycle.RollbackTarget != pluginmeta.PackageRollbackTargetBuiltIn ||
+		startupFailed.Loadable {
+		t.Fatalf("startup failed plugin = %+v, want built-in fallback target and non-loadable", startupFailed)
+	}
 	rollback := plugins["tokenhub.local-rollback"]
-	if !rollback.RollbackAvailable || rollback.RollbackVersion != "1.0.0" || !rollback.Loadable {
+	if !rollback.RollbackAvailable || rollback.RollbackVersion != "1.0.0" ||
+		rollback.RollbackTarget != pluginmeta.PackageRollbackTargetPreviousPackage || !rollback.Loadable {
 		t.Fatalf("rollback plugin = %+v, want rollback available and loadable", rollback)
 	}
 	mandatory := plugins["tokenhub.local-mandatory"]
 	if !mandatory.Mandatory || mandatory.Health != pluginmeta.PackageHealthHealthy || !mandatory.Loadable {
 		t.Fatalf("mandatory plugin = %+v, want mandatory healthy loadable", mandatory)
 	}
-	for _, plugin := range []adminPluginDescriptorResponse{pending, failed, rollback, mandatory} {
+	for _, plugin := range []adminPluginDescriptorResponse{pending, failed, startupFailed, rollback, mandatory} {
 		if plugin.Compatibility.Verdict != "compatible" || plugin.Compatibility.PluginAPI != pluginmeta.CurrentPluginAPI {
 			t.Fatalf("plugin compatibility = %+v, want compatible current API", plugin.Compatibility)
 		}
@@ -827,6 +839,55 @@ func TestAdminPluginsGetExposesLifecycleTrustAndCompatibilitySummaries(t *testin
 		if plugin.Distribution == nil || plugin.Distribution.DownloadURL != "" || plugin.Distribution.SignatureURL != "" || plugin.Distribution.ChecksumSHA256 != "" {
 			t.Fatalf("plugin distribution = %+v, want sanitized admin distribution", plugin.Distribution)
 		}
+	}
+}
+
+func TestAdminPluginRollbackPostUsesBuiltInFallbackAndAudits(t *testing.T) {
+	pluginDir := t.TempDir()
+	failedDir := filepath.Join(pluginDir, "codex")
+	writeServerPluginManifest(t, failedDir, `
+schema_version: 1
+id: tokenhub.provider.openai-codex
+name: External Codex
+version: 2.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+`)
+	if err := os.WriteFile(filepath.Join(failedDir, "plugin.state.json"), []byte(`{"status":"failed_startup","health":"unhealthy","rollback_target":"built_in","last_error_code":"plugin_startup_failed","audit_event":"startup_failed"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/rollback", map[string]any{
+		"reason": "operator fallback",
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST built-in fallback rollback: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginRollbackResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode rollback response: %v", err)
+	}
+	if body.Data.RestartRequired || body.Data.RollbackVersion != "built-in" ||
+		body.Data.RollbackTarget != pluginmeta.PackageRollbackTargetBuiltIn ||
+		body.Data.Plugin.Source != pluginmeta.SourceBuiltIn ||
+		body.Data.Plugin.Status != pluginmeta.StatusEnabled {
+		t.Fatalf("built-in fallback response = %+v", body.Data)
+	}
+	if _, err := os.Stat(failedDir); !os.IsNotExist(err) {
+		t.Fatalf("failed external package still exists after fallback rollback: %v", err)
+	}
+	events := store.ListAuditEvents()
+	if len(events) == 0 || events[0].Action != "plugin.rollback" ||
+		events[0].ResourceID != "tokenhub.provider.openai-codex" ||
+		events[0].Status != "success" ||
+		events[0].Message != string(pluginmeta.PackageRollbackTargetBuiltIn) {
+		t.Fatalf("built-in fallback rollback audit events = %+v", events)
 	}
 }
 

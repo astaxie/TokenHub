@@ -205,6 +205,12 @@ func TestRuntimeLoadIntoSkipsNonLoadableLifecycleStates(t *testing.T) {
 	}
 	for _, pkg := range packages {
 		descriptor, ok := plugins.Describe(pkg.Manifest.ID)
+		if pkg.State.FailedValidation() {
+			if ok {
+				t.Fatalf("failed validation descriptor for %s was registered: %+v", pkg.Manifest.ID, descriptor)
+			}
+			continue
+		}
 		if !ok {
 			t.Fatalf("descriptor for %s was not registered", pkg.Manifest.ID)
 		}
@@ -963,6 +969,55 @@ kinds:
 	_, err := NewRuntime(root).RollbackPackage("tokenhub.privacy", "operator rollback")
 	if !errors.Is(err, ErrPackageRollbackUnavailable) {
 		t.Fatalf("rollback unavailable error = %v, want ErrPackageRollbackUnavailable", err)
+	}
+}
+
+func TestRuntimeRollbackPackageToBuiltInFallbackRemovesFailedExternalPackage(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "codex")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.provider.openai-codex
+name: External Codex
+version: 2.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+`)
+	writePackageStateFile(t, pluginDir, `{"status":"failed_startup","health":"unhealthy","rollback_target":"built_in","last_error_code":"plugin_startup_failed","audit_event":"startup_failed"}`)
+
+	pkg, err := NewRuntime(root).RollbackPackageToBuiltInFallback("tokenhub.provider.openai-codex", "use built-in")
+	if err != nil {
+		t.Fatalf("rollback package to built-in fallback: %v", err)
+	}
+	if pkg.Manifest.ID != "tokenhub.provider.openai-codex" || pkg.State.Status != StatusEnabled ||
+		pkg.State.AuditEvent != PackageLifecycleRollbackStarted || pkg.State.Reason != "use built-in" {
+		t.Fatalf("fallback rollback package = %+v, want enabled built-in fallback state", pkg)
+	}
+	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) {
+		t.Fatalf("failed external package still exists after built-in fallback rollback: %v", err)
+	}
+}
+
+func TestRuntimeRollbackPackageToBuiltInFallbackRejectsOtherTargets(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "privacy")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.privacy
+name: Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	writePackageStateFile(t, pluginDir, `{"status":"failed_startup","health":"unhealthy","rollback_version":"0.9.0","rollback_target":"previous_package","audit_event":"startup_failed"}`)
+
+	_, err := NewRuntime(root).RollbackPackageToBuiltInFallback("tokenhub.privacy", "use built-in")
+	if !errors.Is(err, ErrPackageRollbackUnavailable) {
+		t.Fatalf("built-in fallback rollback error = %v, want ErrPackageRollbackUnavailable", err)
 	}
 }
 
