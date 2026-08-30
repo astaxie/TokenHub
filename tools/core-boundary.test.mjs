@@ -115,6 +115,18 @@ describe("minimal core boundary gate", () => {
     }
   });
 
+  it("keeps protocol-specific gateway patchers out of generic hook core", () => {
+    const genericHooks = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/gateway_plugin_hooks.go"), "utf8");
+    for (const forbidden of [
+      "applyAnthropicGatewayRequestPatch",
+      "applyGeminiGatewayRequestPatch",
+      "anthropicMessagesRequest",
+      '"contents"',
+    ]) {
+      assert.equal(genericHooks.includes(forbidden), false, `${forbidden} must stay in protocol-specific gateway hook files`);
+    }
+  });
+
   it("reports frontend core and domain imports from React views", () => {
     const violations = scanCoreBoundary(`
       import { PluginsView } from "../views/plugins";
