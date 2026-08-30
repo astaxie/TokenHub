@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1148,6 +1149,13 @@ func TestAdminPluginBackgroundJobRunExecutesThroughRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reqBody, err = json.Marshal(map[string]any{
+		"resource_id":   "rsrc_1",
+		"refresh_token": "request-refresh-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run", strings.NewReader(string(reqBody)))
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", "Bearer plugin-action-admin")
@@ -1176,13 +1184,70 @@ func TestAdminPluginBackgroundJobRunExecutesThroughRunner(t *testing.T) {
 	if strings.Contains(events[0].BeforeSnapshot, "secret-access") || strings.Contains(events[0].AfterSnapshot, "secret-access") {
 		t.Fatalf("plugin background job audit snapshots leaked secret: %+v", events[0])
 	}
-	if !strings.Contains(events[0].BeforeSnapshot, `"resource_id":"rsrc_1"`) || !strings.Contains(events[0].AfterSnapshot, `"access_token":"[redacted]"`) {
+	if !strings.Contains(events[0].BeforeSnapshot, `"resource_id":"rsrc_1"`) ||
+		!strings.Contains(events[0].BeforeSnapshot, `"refresh_token":"[redacted]"`) ||
+		!strings.Contains(events[0].AfterSnapshot, `"access_token":"[redacted]"`) {
 		t.Fatalf("plugin background job audit snapshots missing redaction: %+v", events[0])
 	}
 
 	list := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-background-jobs", nil, "plugin-action-admin")
 	if strings.Contains(list.Body, "secret-access") || !strings.Contains(list.Body, `"access_token":"[redacted]"`) {
 		t.Fatalf("GET plugin background jobs did not sanitize last run: %s", list.Body)
+	}
+}
+
+func TestAdminPluginBackgroundJobRunRedactsErrorText(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-action-admin"})
+	if err := server.pluginRegistry.Register(pluginmeta.Descriptor{
+		ID:      "tokenhub.jobs",
+		Name:    "Jobs Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindExtension},
+	}); err != nil {
+		t.Fatalf("register plugin descriptor: %v", err)
+	}
+	if err := server.pluginBackgroundJobs.Register(pluginmeta.BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+	}, pluginmeta.BackgroundJobHandlerFunc(func(context.Context, pluginmeta.BackgroundJobInvocation) (pluginmeta.BackgroundJobResult, error) {
+		return pluginmeta.BackgroundJobResult{}, errors.New("failed to refresh request-refresh-secret because the token expired")
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+
+	reqBody, err := json.Marshal(map[string]any{"resource_id": "rsrc_1", "refresh_token": "request-refresh-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run", strings.NewReader(string(reqBody)))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer plugin-action-admin")
+	req.Header.Set("x-request-id", "req_bg_error_redaction")
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+	response := responseBody{Code: rr.Code, Header: rr.Header(), Body: rr.Body.String()}
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("POST plugin background job: expected 500, got %d: %s", response.Code, response.Body)
+	}
+	if strings.Contains(response.Body, "request-refresh-secret") || strings.Contains(response.Body, "token expired") {
+		t.Fatalf("POST plugin background job error leaked secret text: %s", response.Body)
+	}
+	events := server.store.ListAuditEvents()
+	if len(events) == 0 {
+		t.Fatal("expected a plugin background job audit event")
+	}
+	if strings.Contains(events[0].BeforeSnapshot, "request-refresh-secret") || strings.Contains(events[0].AfterSnapshot, "request-refresh-secret") {
+		t.Fatalf("plugin background job error audit leaked secret text: %+v", events[0])
+	}
+	if !strings.Contains(events[0].AfterSnapshot, `"error":"[redacted]"`) {
+		t.Fatalf("plugin background job error audit missing redaction: %+v", events[0])
+	}
+	list := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-background-jobs", nil, "plugin-action-admin")
+	if strings.Contains(list.Body, "request-refresh-secret") || !strings.Contains(list.Body, `"error":"[redacted]"`) {
+		t.Fatalf("GET plugin background jobs did not sanitize failed run: %s", list.Body)
 	}
 }
 

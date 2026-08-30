@@ -472,6 +472,7 @@ func sensitivePluginActionResultKey(key string) bool {
 
 func sanitizePluginBackgroundJobRunRecord(record pluginmeta.BackgroundJobRunRecord) pluginmeta.BackgroundJobRunRecord {
 	record.Result.Data = sanitizePluginActionValue(record.Result.Data)
+	record.Error = backgroundJobRedactErrorText(nil, record.Error)
 	if len(record.Result.Metadata) > 0 {
 		metadata := map[string]string{}
 		for key, value := range record.Result.Metadata {
@@ -509,14 +510,14 @@ func (s *Server) recordPluginBackgroundJobAudit(r *http.Request, user AdminUser,
 		ResourceID:     record.PluginID,
 		Status:         status,
 		Message:        message,
-		BeforeSnapshot: auditSnapshotJSON(payload),
+		BeforeSnapshot: backgroundJobAuditSnapshot(payload),
 		AfterSnapshot: auditSnapshotJSON(map[string]any{
 			"plugin_id": record.PluginID,
 			"job_id":    record.JobID,
 			"trigger":   record.Trigger,
 			"status":    record.Status,
 			"attempts":  record.Attempts,
-			"error":     record.Error,
+			"error":     backgroundJobRedactErrorText(payload, record.Error),
 			"result":    record.Result,
 		}),
 		IP:        s.clientIP(r),
