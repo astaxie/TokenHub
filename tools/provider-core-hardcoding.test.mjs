@@ -101,4 +101,9 @@ describe("provider-specific core hardcoding gate", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/views/provider-editor.tsx"), "utf8");
     assert.equal(source.includes("https://api.openai.com/v1"), false);
   });
+
+  it("keeps provider adapter startup migration orchestration provider-neutral", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_adapter_migration.go"), "utf8");
+    assert.equal(/\b(?:OpenAI|Codex|ProviderOpenAI)\b/.test(source), false);
+  });
 });
