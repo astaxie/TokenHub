@@ -55,6 +55,7 @@ describe("provider-specific core hardcoding gate", () => {
   it("does not scan every provider-specific adapter file by accident", () => {
     const frontendSources = discoverSourceFiles(REPOSITORY_ROOT, "frontend/features/admin");
     assert.ok(frontendSources.includes("frontend/features/admin/views/provider-editor.tsx"));
+    assert.ok(GENERIC_CORE_SURFACES.includes("frontend/features/admin/domain/catalog.tsx"));
     assert.equal(GENERIC_CORE_SURFACES.length < frontendSources.length, true);
   });
 });

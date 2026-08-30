@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalModelNameForUI, catalogModelCategoryOptions, emptyData, modelCategory, modelCategoryLabel, modelCategoryTabs, providerCategories, providerEntrySupportsCategory } from "./catalog";
+import { canonicalModelNameForUI, catalogModelCategoryOptions, emptyData, modelCategory, modelCategoryInitial, modelCategoryLabel, modelCategoryTabs, providerCategories, providerEntrySupportsCategory } from "./catalog";
 import type { Provider } from "../core/types";
 
 describe("providerCategories", () => {
@@ -65,6 +65,26 @@ describe("providerCategories", () => {
     }];
 
     expect(providerCategories(provider, data)).toEqual(["kimi"]);
+  });
+
+  it("does not infer plugin provider categories from provider type names", () => {
+    const provider: Provider = {
+      id: "prv_opaque",
+      name: "Opaque",
+      type: "anthropic_gemini_codex_proxy",
+      status: "active",
+      healthy: true,
+      priority: 1,
+    };
+    const data = emptyData();
+    data.providers = [provider];
+
+    expect(providerCategories(provider, data)).toEqual(["custom"]);
+  });
+
+  it("derives category initials from labels without provider-specific branches", () => {
+    expect(modelCategoryInitial("opaque", "Acme")).toBe("A");
+    expect(modelCategoryInitial("opaque", "")).toBe("O");
   });
 
   it("uses adapter model category metadata declared by provider plugins", () => {

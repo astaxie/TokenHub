@@ -338,14 +338,6 @@ export function maskWebhookURL(url: string) {
 }
 
 export function modelCategoryInitial(category: string, label: string) {
-  const normalized = category.toLowerCase();
-  if (normalized === "codex") return "C";
-  if (normalized === "claude") return "A";
-  if (normalized === "gemini") return "G";
-  if (normalized === "openai") return "O";
-  if (normalized === "deepseek") return "D";
-  if (normalized === "qwen") return "Q";
-  if (normalized === "grok") return "X";
   return (label || category || "M").trim().slice(0, 1).toUpperCase();
 }
 
@@ -405,14 +397,7 @@ export function providerAdapterCategoryForType(type: string, data: Pick<AppData,
 }
 
 export function providerTypeToModelCategory(type: string) {
-  const normalized = type.toLowerCase();
-  if (normalized.includes("codex")) return "codex";
-  if (normalized.includes("anthropic")) return "claude";
-  if (normalized.includes("gemini")) return "gemini";
-  if (normalized.includes("deepseek")) return "deepseek";
-  if (normalized.includes("qwen")) return "qwen";
-  if (normalized.includes("azure") || normalized.includes("openai")) return "openai";
-  if (normalized.includes("local")) return "custom";
+  void type;
   return "custom";
 }
 
