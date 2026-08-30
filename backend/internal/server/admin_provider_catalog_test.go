@@ -399,6 +399,7 @@ func TestAdminPersistsPluginProviderAuthenticationMode(t *testing.T) {
 		"type":               providerType,
 		"base_url":           "https://example.invalid/v1",
 		"api_key":            "plugin-secret",
+		"options":            map[string]string{"region": "legacy"},
 		"provider_auth_mode": "oauth",
 	}, "")
 	if valid.Code != http.StatusCreated {
@@ -413,6 +414,26 @@ func TestAdminPersistsPluginProviderAuthenticationMode(t *testing.T) {
 	}
 	if got := result.Provider.Options[anthropicAuthTypeOption]; got != "" {
 		t.Fatalf("plugin provider stored legacy Anthropic auth option = %q", got)
+	}
+	if got := result.Provider.Options["region"]; got != "legacy" {
+		t.Fatalf("stored plugin provider lost existing options = %q", got)
+	}
+
+	patched := doJSON(t, app, http.MethodPatch, "/api/admin/providers/prv_auth_mode_plugin", map[string]any{
+		"anthropic_auth_type": anthropicAuthTypeAPIKey,
+	}, "")
+	if patched.Code != http.StatusOK {
+		t.Fatalf("expected provider patch 200, got %d: %s", patched.Code, patched.Body)
+	}
+	var patchedResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(patched.Body), &patchedResult); err != nil {
+		t.Fatal(err)
+	}
+	if got := patchedResult.Provider.Options[providerAuthModeOption]; got != anthropicAuthTypeAPIKey {
+		t.Fatalf("patched plugin auth mode = %q, want x-api-key", got)
+	}
+	if got := patchedResult.Provider.Options["region"]; got != "legacy" {
+		t.Fatalf("patched plugin provider lost existing options = %q", got)
 	}
 
 	invalid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{

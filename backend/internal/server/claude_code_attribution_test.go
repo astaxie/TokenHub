@@ -480,6 +480,52 @@ func TestAdminProviderSystemPromptTransformPolicyPreservesOtherOptions(t *testin
 	}
 }
 
+func TestAdminLegacyClaudeCodeAttributionPolicyNormalizesOptions(t *testing.T) {
+	app := newTestServer()
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                             "prv_legacy_attribution_policy",
+		"name":                           "Legacy Attribution Policy",
+		"type":                           ProviderOpenAICompatible,
+		"base_url":                       "https://example.invalid/v1",
+		"status":                         StatusActive,
+		"healthy":                        true,
+		"options":                        map[string]string{"region": "legacy"},
+		"claude_code_attribution_policy": systemPromptTransformStrip,
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected legacy provider creation, got %d: %s", created.Code, created.Body)
+	}
+	var createResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(created.Body), &createResult); err != nil {
+		t.Fatal(err)
+	}
+	if createResult.Provider.Options["region"] != "legacy" ||
+		createResult.Provider.Options[systemPromptTransformPolicyOption] != systemPromptTransformStrip {
+		t.Fatalf("legacy attribution policy was not normalized: %+v", createResult.Provider.Options)
+	}
+	if _, exists := createResult.Provider.Options[claudeCodeAttributionPolicyOption]; exists {
+		t.Fatalf("legacy attribution alias was not removed: %+v", createResult.Provider.Options)
+	}
+
+	updated := doJSON(t, app, http.MethodPatch, "/api/admin/providers/prv_legacy_attribution_policy", map[string]any{
+		"claude_code_attribution_policy": systemPromptTransformPreserve,
+	}, "")
+	if updated.Code != http.StatusOK {
+		t.Fatalf("expected legacy provider patch, got %d: %s", updated.Code, updated.Body)
+	}
+	var updateResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(updated.Body), &updateResult); err != nil {
+		t.Fatal(err)
+	}
+	if updateResult.Provider.Options["region"] != "legacy" ||
+		updateResult.Provider.Options[systemPromptTransformPolicyOption] != systemPromptTransformPreserve {
+		t.Fatalf("legacy attribution patch erased options: %+v", updateResult.Provider.Options)
+	}
+	if _, exists := updateResult.Provider.Options[claudeCodeAttributionPolicyOption]; exists {
+		t.Fatalf("legacy attribution alias survived patch: %+v", updateResult.Provider.Options)
+	}
+}
+
 func TestAdminRejectsInvalidSystemPromptTransformPolicies(t *testing.T) {
 	app := newTestServer()
 	providerField := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{

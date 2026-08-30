@@ -114,7 +114,8 @@ func validateSystemPromptTransformOptions(options map[string]string) error {
 		if err != nil {
 			return err
 		}
-		options[claudeCodeAttributionPolicyOption] = policy
+		options[systemPromptTransformPolicyOption] = policy
+		delete(options, claudeCodeAttributionPolicyOption)
 	}
 	return nil
 }
