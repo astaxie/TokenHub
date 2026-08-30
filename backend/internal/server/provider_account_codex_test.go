@@ -1404,6 +1404,18 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 		ResourceType: ProviderResourceOpenAISubscription,
 		Status:       StatusActive,
 		Healthy:      true,
+		APIKey:       store.encryptSecret("legacy-subscription-access"),
+		CredentialBlob: store.encryptProviderResourceCredentialBlob(ProviderResourceCredentials{
+			AuthType:     "personal_access_token",
+			RefreshToken: "legacy-subscription-refresh",
+			AccountID:    "acct_legacy_subscription",
+			Email:        "legacy.subscription@example.com",
+		}),
+		FailureCount: 2,
+		LastCheckedAt: func() *time.Time {
+			v := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+			return &v
+		}(),
 	}
 	if err := store.db.Create(&direct).Error; err != nil {
 		t.Fatal(err)
@@ -1458,6 +1470,16 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	migratedSubscription, ok := integrationProviderResource(store, subscription.ID)
 	if !ok || migratedSubscription.ProviderID != splitProvider.ID {
 		t.Fatalf("subscription resource was not moved to Codex Provider: %+v", migratedSubscription)
+	}
+	if migratedSubscription.ID != subscription.ID || migratedSubscription.Healthy != subscription.Healthy || migratedSubscription.FailureCount != subscription.FailureCount {
+		t.Fatalf("subscription resource state changed during migration: before=%+v after=%+v", subscription, migratedSubscription)
+	}
+	if migratedSubscription.LastCheckedAt == nil || !migratedSubscription.LastCheckedAt.Equal(*subscription.LastCheckedAt) {
+		t.Fatalf("subscription last_checked_at changed during migration: before=%v after=%v", subscription.LastCheckedAt, migratedSubscription.LastCheckedAt)
+	}
+	creds := store.providerResourceCredentialsForRuntime(migratedSubscription)
+	if creds.AccessToken != "legacy-subscription-access" || creds.RefreshToken != "legacy-subscription-refresh" || creds.AccountID != "acct_legacy_subscription" || creds.Email != "legacy.subscription@example.com" {
+		t.Fatalf("subscription credentials were not preserved: %+v", creds)
 	}
 	migratedRoutes := 0
 	for _, route := range store.ListRoutes() {
