@@ -97,9 +97,6 @@ func providerAttemptOutcome(err error) AttemptOutcome {
 	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorModelUnsupported, ProviderErrorEgress, ProviderErrorRouteSkipped:
 		return AttemptNeutral
 	default:
-		if isCodexModelUnsupportedError(err) {
-			return AttemptNeutral
-		}
 		return AttemptFailed
 	}
 }

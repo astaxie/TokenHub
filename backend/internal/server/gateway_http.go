@@ -1355,9 +1355,6 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 	case ProviderErrorModelUnsupported:
 		return !routeIsBound
 	}
-	if isCodexModelUnsupportedError(err) {
-		return !routeIsBound
-	}
 	httpErr := AsHTTPError(err)
 	if routeIsBound {
 		return false
@@ -1370,24 +1367,8 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 	}
 }
 
-func isCodexModelUnsupportedError(err error) bool {
-	if err == nil {
-		return false
-	}
-	httpErr := AsHTTPError(err)
-	if httpErr.Code == "codex_model_unsupported" {
-		return true
-	}
-	if httpErr.Code != "codex_upstream_error" {
-		return false
-	}
-	message := strings.ToLower(httpErr.Message)
-	return strings.Contains(message, "model is not supported") ||
-		(strings.Contains(message, "model") && strings.Contains(message, "not supported") && strings.Contains(message, "chatgpt account"))
-}
-
 func providerResourceModelUnsupportedError(err error) bool {
-	return providerErrorDisposition(err) == ProviderErrorModelUnsupported || isCodexModelUnsupportedError(err)
+	return providerErrorDisposition(err) == ProviderErrorModelUnsupported
 }
 
 func lastAttemptRoute(attempts []RouteAttempt) RouteSelection {
