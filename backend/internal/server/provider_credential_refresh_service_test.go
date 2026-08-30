@@ -17,6 +17,7 @@ import (
 )
 
 func addOpenAIAccountRefreshProvider(store *GormStore, name string) Provider {
+	configureOpenAIAccountRefreshHandlerForTest(store)
 	store.ConfigureProviderResourceCredentialIdentityProfiles(map[string]string{
 		ProviderResourceOpenAISubscription: providerResourceIdentityProfileOpenAIIDToken,
 	})
@@ -29,6 +30,18 @@ func addOpenAIAccountRefreshProvider(store *GormStore, name string) Provider {
 			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
 		},
 	})
+}
+
+func configureOpenAIAccountRefreshHandlerForTest(store *GormStore) {
+	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
+		ProviderType:        ProviderOpenAICodex,
+		Profile:             providerCredentialRefreshProfileOpenAIAccountOAuth,
+		RefreshLead:         openAIAccountOAuthRefreshLead,
+		AuthenticationEqual: openAIAccountAuthenticationEqual,
+		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return refreshOpenAIAccountOAuthCredentials(ctx, current)
+		},
+	}})
 }
 
 func TestProviderCredentialRefreshServiceRenewsExpiringOpenAIAccounts(t *testing.T) {
@@ -293,14 +306,24 @@ func TestProviderCredentialRefreshServiceUsesNativeRefreshProfilePolicy(t *testi
 	store := NewMemoryStore()
 	providerType := "profile_oauth_subscription"
 	resourceType := "profile_oauth_account"
+	refreshProfile := "profile_oauth"
 	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: []string{resourceType}})
+	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
+		ProviderType:        providerType,
+		Profile:             refreshProfile,
+		RefreshLead:         openAIAccountOAuthRefreshLead,
+		AuthenticationEqual: openAIAccountAuthenticationEqual,
+		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return refreshOpenAIAccountOAuthCredentials(ctx, current)
+		},
+	}})
 	provider := store.AddProvider(Provider{
 		Name:    "Profile OAuth",
 		Type:    providerType,
 		Status:  StatusActive,
 		Healthy: true,
 		Options: map[string]string{
-			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+			providerCredentialRefreshProfileOption: refreshProfile,
 		},
 	})
 	resource, err := store.AddProviderResource(ProviderResource{
@@ -340,6 +363,66 @@ func TestProviderCredentialRefreshServiceUsesNativeRefreshProfilePolicy(t *testi
 	}
 	if credentials.AccessToken != "profile-access-after" || credentials.RefreshToken != "profile-refresh-after" {
 		t.Fatalf("expected profile-refreshed credentials to be stored, got %+v", credentials)
+	}
+}
+
+func TestProviderCredentialRefreshUsesRegisteredNativeHandler(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "native_handler_subscription"
+	resourceType := "native_handler_account"
+	refreshProfile := "native_handler_oauth"
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: []string{resourceType}})
+	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
+		ProviderType: "native_handler_subscription",
+		Profile:      refreshProfile,
+		RefreshLead:  time.Minute,
+		Refresh: func(_ context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return ProviderResourceCredentials{
+				AuthType:     current.AuthType,
+				AccessToken:  "native-handler-access-after",
+				RefreshToken: firstNonEmpty(current.RefreshToken, "native-handler-refresh-after"),
+				ExpiresAt:    time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+				Email:        "native-handler@example.com",
+			}, nil
+		},
+	}})
+	provider := store.AddProvider(Provider{
+		Name:    "Native Handler OAuth",
+		Type:    providerType,
+		Status:  StatusActive,
+		Healthy: true,
+		Options: map[string]string{
+			providerCredentialRefreshProfileOption: refreshProfile,
+		},
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ProviderID: provider.ID, Name: "Native Handler Account", ResourceType: resourceType, Status: StatusActive, Healthy: true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType:     "oauth",
+			AccessToken:  "native-handler-access-before",
+			RefreshToken: "native-handler-refresh-before",
+			ExpiresAt:    time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	credentials, err := store.RefreshProviderResourceCredentials(context.Background(), resource.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credentials.AccessToken != "native-handler-access-after" ||
+		credentials.RefreshToken != "native-handler-refresh-before" ||
+		credentials.Email != "native-handler@example.com" {
+		t.Fatalf("registered native refresh handler was not used: %+v", credentials)
+	}
+	stored, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("expected refreshed resource to exist")
+	}
+	if stored.CredentialSummary["account_email"] != "native-handler@example.com" {
+		t.Fatalf("native refresh summary was not persisted: %+v", stored.CredentialSummary)
 	}
 }
 

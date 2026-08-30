@@ -556,7 +556,7 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	}
 	provider := store.AddProvider(Provider{
 		ID: "prv_refreshing", Name: "Refreshing Provider", Type: "capture", Status: StatusActive, Healthy: true,
-		Options: map[string]string{providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth},
+		Options: map[string]string{providerCredentialRefreshProfileOption: "capture_oauth"},
 	})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_refreshing",
@@ -588,6 +588,16 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	adapter := &captureAdapter{}
 	server := New(store)
 	registerTestAdapter(server, "capture", adapter)
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{"capture": {ProviderResourceOpenAISubscription}})
+	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
+		ProviderType:        "capture",
+		Profile:             "capture_oauth",
+		RefreshLead:         openAIAccountOAuthRefreshLead,
+		AuthenticationEqual: openAIAccountAuthenticationEqual,
+		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return refreshOpenAIAccountOAuthCredentials(ctx, current)
+		},
+	}})
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{

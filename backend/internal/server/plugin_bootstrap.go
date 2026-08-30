@@ -39,6 +39,9 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 	registerExternalProviderPluginAdapters(adapterRegistry, packages)
 	configureProviderResourceModelSupport(adapterRegistry.adapters, adapterRegistry)
 	configureProviderResourceTypeDefaults(store, adapterRegistry)
+	if err := configureProviderCredentialRefreshHandlers(store, adapterRegistry); err != nil {
+		return serverPluginBootstrap{}, fmt.Errorf("configure provider credential refresh handlers: %w", err)
+	}
 	reconcileProviderPluginPolicies(store, adapterRegistry)
 
 	return serverPluginBootstrap{

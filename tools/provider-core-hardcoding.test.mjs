@@ -118,4 +118,13 @@ describe("provider-specific core hardcoding gate", () => {
     ];
     assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
+
+  it("keeps native credential refresh implementations outside store orchestration", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_resource_credentials.go"), "utf8");
+    const forbidden = [
+      "refreshOpenAIAccountOAuthCredentials",
+      "providerCredentialRefreshProfileOpenAIAccountOAuth",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
 });

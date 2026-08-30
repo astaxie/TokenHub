@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -15,6 +16,26 @@ import (
 )
 
 const codexCompatibilityRouteModel = "gpt-5.5"
+
+type codexBridgeTestAdapter struct {
+	*CodexSubscriptionAdapter
+	providerType string
+}
+
+func (a *codexBridgeTestAdapter) ProviderResourceCredentialRefreshHandlers() []providerResourceCredentialRefreshRegistration {
+	if a == nil || a.CodexSubscriptionAdapter == nil {
+		return nil
+	}
+	return []providerResourceCredentialRefreshRegistration{{
+		ProviderType:        a.providerType,
+		Profile:             providerCredentialRefreshProfileOpenAIAccountOAuth,
+		RefreshLead:         openAIAccountOAuthRefreshLead,
+		AuthenticationEqual: openAIAccountAuthenticationEqual,
+		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return refreshOpenAIAccountOAuthCredentials(ctx, current, a.CredentialRefreshClient)
+		},
+	}}
+}
 
 func newCodexCompatibilityRouteTestServer(t *testing.T, transport http.RoundTripper) (*Server, *GormStore, string) {
 	t.Helper()
@@ -64,6 +85,10 @@ func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType 
 	}
 	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
 	if providerType != ProviderOpenAICodex {
+		adapter := &codexBridgeTestAdapter{
+			CodexSubscriptionAdapter: mustCodexSubscriptionAdapterForTest(t, server),
+			providerType:             providerType,
+		}
 		descriptor := providerPluginDescriptorWithRouteProtocol(
 			"tokenhub.provider.codex-bridge-test",
 			"Codex Bridge Test Provider",
@@ -84,12 +109,15 @@ func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType 
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 		if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
 			Type:         providerType,
-			Adapter:      mustCodexSubscriptionAdapterForTest(t, server),
+			Adapter:      adapter,
 			Capabilities: []AdapterCapability{AdapterCapabilityResponses},
 		}); err != nil {
 			t.Fatalf("register plugin Codex bridge provider: %v", err)
 		}
 		configureProviderResourceTypeDefaults(store, server.adapterRegistry)
+		if err := configureProviderCredentialRefreshHandlers(store, server.adapterRegistry); err != nil {
+			t.Fatalf("configure plugin Codex bridge credential refresh handlers: %v", err)
+		}
 	}
 	return server, store, secret
 }

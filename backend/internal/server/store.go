@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -288,40 +287,40 @@ type Store interface {
 var _ Store = (*GormStore)(nil)
 
 type GormStore struct {
-	db                     *gorm.DB
-	analyticsDB            *gorm.DB
-	mu                     *sync.Mutex
-	leaseHeartbeats        *sync.Map
-	lastUsed               *lastUsedThrottle
-	modelLabels            *modelLabelCache
-	secretKey              string
-	metrics                *GatewayMetrics
-	providerUpstreamClient *http.Client
-	providerProxyPolicy    *providerProxyPolicy
-	failureThreshold       int
-	cooldownDuration       time.Duration
-	cooldownMax            time.Duration
-	sqliteDSN              string
-	backupDir              string
-	dbDriver               string        // "sqlite" or "postgres"
-	heartbeatState         *atomic.Int32 // shared across value copies of the store
-	heartbeatStop          *instanceHeartbeatStopper
+	db                  *gorm.DB
+	analyticsDB         *gorm.DB
+	mu                  *sync.Mutex
+	leaseHeartbeats     *sync.Map
+	lastUsed            *lastUsedThrottle
+	modelLabels         *modelLabelCache
+	secretKey           string
+	metrics             *GatewayMetrics
+	providerProxyPolicy *providerProxyPolicy
+	failureThreshold    int
+	cooldownDuration    time.Duration
+	cooldownMax         time.Duration
+	sqliteDSN           string
+	backupDir           string
+	dbDriver            string        // "sqlite" or "postgres"
+	heartbeatState      *atomic.Int32 // shared across value copies of the store
+	heartbeatStop       *instanceHeartbeatStopper
 	// instanceHeartbeatID identifies the row this instance published while it
 	// still held the schema migration lock; StartInstanceHeartbeat refreshes
 	// that row instead of creating a second one.
-	instanceHeartbeatID      string
-	inFlightLeaseTTL         time.Duration
-	clusterLockTTL           time.Duration
-	imageCapabilityRetry     time.Duration
-	imageCapabilityProfiles  []providerImageCapabilityRouteProfile
-	providerDefaultBaseURLs  map[string]string
-	providerResourceDefaults map[string]map[string]string
-	providerResourceTypes    map[string]map[string]struct{}
-	providerResourceIdentity map[string]string
-	providerResourceOptional map[string]bool
-	billingRedis             *redisBillingCoordinator
-	billingRepository        billing.Repository
-	billingPersistence       *billingpersistence.Store
+	instanceHeartbeatID          string
+	inFlightLeaseTTL             time.Duration
+	clusterLockTTL               time.Duration
+	imageCapabilityRetry         time.Duration
+	imageCapabilityProfiles      []providerImageCapabilityRouteProfile
+	providerDefaultBaseURLs      map[string]string
+	providerResourceDefaults     map[string]map[string]string
+	providerResourceTypes        map[string]map[string]struct{}
+	providerResourceIdentity     map[string]string
+	providerResourceOptional     map[string]bool
+	providerCredentialRefreshers map[string]providerResourceCredentialRefreshRegistration
+	billingRedis                 *redisBillingCoordinator
+	billingRepository            billing.Repository
+	billingPersistence           *billingpersistence.Store
 }
 
 // BillingRepositoryForComposition is deliberately outside Store. Only the

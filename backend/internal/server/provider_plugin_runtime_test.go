@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +13,14 @@ import (
 type configurableProviderAdapterForTest struct {
 	supportsResourceModel func(providerType string, resourceType string) bool
 	imageProfiles         func(providerType string) []providerImageCapabilityRouteProfile
+}
+
+type credentialRefreshAdapterForTest struct {
+	registrations []providerResourceCredentialRefreshRegistration
+}
+
+func (a credentialRefreshAdapterForTest) ProviderResourceCredentialRefreshHandlers() []providerResourceCredentialRefreshRegistration {
+	return a.registrations
 }
 
 func (a *configurableProviderAdapterForTest) ConfigureProviderResourceModelSupport(supports func(providerType string, resourceType string) bool) {
@@ -66,8 +76,24 @@ func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T)
 	if codexSubscription.Client == nil || codexSubscription.Client.Transport == nil {
 		t.Fatal("Codex subscription client or transport was not configured")
 	}
+	if codexSubscription.CredentialRefreshClient != client {
+		t.Fatal("Codex subscription credential refresh client should use the shared upstream client")
+	}
 	if codexSubscription.RefreshCredentials == nil {
 		t.Fatal("Codex subscription credential refresh callback was not configured")
+	}
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	registerBuiltinProviderAdapters(registry, runtime.adapters)
+	if err := configureProviderCredentialRefreshHandlers(store, registry); err != nil {
+		t.Fatalf("configure credential refresh handlers: %v", err)
+	}
+	if _, ok := store.providerCredentialRefreshRegistration(Provider{
+		Type: ProviderOpenAICodex,
+		Options: map[string]string{
+			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+		},
+	}); !ok {
+		t.Fatal("Codex subscription native credential refresh handler was not configured")
 	}
 }
 
@@ -88,6 +114,86 @@ func TestServerCodexSubscriptionAdapterResolvesFromRegistry(t *testing.T) {
 	}
 	if resolved != registered {
 		t.Fatal("Codex subscription adapter should resolve from the adapter registry")
+	}
+}
+
+func TestProviderCredentialRefreshRegistrationsAreProviderScoped(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	for _, providerType := range []string{"refresh_alpha", "refresh_beta"} {
+		adapter := credentialRefreshAdapterForTest{registrations: []providerResourceCredentialRefreshRegistration{{
+			Profile: "shared_oauth_profile",
+			Refresh: func(context.Context, ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+				return ProviderResourceCredentials{}, nil
+			},
+		}}}
+		if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+			ID:      "tokenhub.provider." + providerType,
+			Name:    providerType,
+			Version: "test",
+			Source:  pluginmeta.SourceBuiltIn,
+			Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+			Capabilities: []pluginmeta.CapabilityDescriptor{{
+				Kind:    pluginmeta.CapabilityKindProviderType,
+				Name:    providerType,
+				Subject: providerType,
+			}, {
+				Kind:    pluginmeta.CapabilityKindProviderPolicy,
+				Name:    providerCredentialRefreshProfileOption,
+				Subject: providerType,
+				Value:   "shared_oauth_profile",
+			}},
+		}, AdapterRegistration{Type: providerType, Adapter: adapter}); err != nil {
+			t.Fatalf("register %s adapter: %v", providerType, err)
+		}
+	}
+
+	registrations, err := registry.ProviderCredentialRefreshRegistrations()
+	if err != nil {
+		t.Fatalf("credential refresh registrations: %v", err)
+	}
+	if len(registrations) != 2 {
+		t.Fatalf("registrations = %+v, want two provider-scoped registrations", registrations)
+	}
+	for _, registration := range registrations {
+		if registration.Profile != "shared_oauth_profile" || registration.ProviderType == "" || registration.Refresh == nil {
+			t.Fatalf("registration was not normalized: %+v", registration)
+		}
+	}
+}
+
+func TestProviderCredentialRefreshRegistrationsRejectDuplicateProviderProfile(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	adapter := credentialRefreshAdapterForTest{registrations: []providerResourceCredentialRefreshRegistration{
+		{Profile: "duplicate_oauth_profile", Refresh: func(context.Context, ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return ProviderResourceCredentials{}, nil
+		}},
+		{Profile: "duplicate_oauth_profile", Refresh: func(context.Context, ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return ProviderResourceCredentials{}, nil
+		}},
+	}}
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.refresh-duplicate",
+		Name:    "Refresh Duplicate",
+		Version: "test",
+		Source:  pluginmeta.SourceBuiltIn,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{{
+			Kind:    pluginmeta.CapabilityKindProviderType,
+			Name:    "refresh_duplicate",
+			Subject: "refresh_duplicate",
+		}, {
+			Kind:    pluginmeta.CapabilityKindProviderPolicy,
+			Name:    providerCredentialRefreshProfileOption,
+			Subject: "refresh_duplicate",
+			Value:   "duplicate_oauth_profile",
+		}},
+	}, AdapterRegistration{Type: "refresh_duplicate", Adapter: adapter}); err != nil {
+		t.Fatalf("register duplicate adapter: %v", err)
+	}
+
+	_, err := registry.ProviderCredentialRefreshRegistrations()
+	if err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("duplicate provider refresh profile error = %v, want already registered", err)
 	}
 }
 

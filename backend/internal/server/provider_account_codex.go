@@ -38,7 +38,8 @@ var errCodexStreamIdle = NewHTTPError(
 )
 
 type CodexSubscriptionAdapter struct {
-	Client *http.Client
+	Client                  *http.Client
+	CredentialRefreshClient *http.Client
 	// Client deliberately carries no total deadline: a Codex stream is bounded by
 	// how long it stays silent, not by how long it runs. StreamIdleTimeout is that
 	// budget; zero keeps the historical five minutes.

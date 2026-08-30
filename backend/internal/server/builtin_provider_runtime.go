@@ -25,7 +25,8 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 			),
 			CheckRedirect: strictProviderUpstreamRedirect,
 		},
-		StreamIdleTimeout: deps.StreamIdleTimeout,
+		CredentialRefreshClient: deps.Client,
+		StreamIdleTimeout:       deps.StreamIdleTimeout,
 	}
 	if deps.Store != nil {
 		codexSubscription.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials

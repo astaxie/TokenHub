@@ -275,6 +275,9 @@ func TestProviderCredentialRefreshPreservesConcurrentAvailabilityState(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
+			for _, store := range []*GormStore{storeA, storeB} {
+				configureOpenAIAccountRefreshHandlerForTest(store)
+			}
 			t.Cleanup(func() {
 				for _, store := range []*GormStore{storeA, storeB} {
 					if sqlDB, dbErr := store.db.DB(); dbErr == nil {

@@ -465,6 +465,21 @@ func refreshOpenAIAccountOAuthCredentials(ctx context.Context, current ProviderR
 	return creds, nil
 }
 
+func (a *CodexSubscriptionAdapter) ProviderResourceCredentialRefreshHandlers() []providerResourceCredentialRefreshRegistration {
+	if a == nil {
+		return nil
+	}
+	return []providerResourceCredentialRefreshRegistration{{
+		ProviderType:        ProviderOpenAICodex,
+		Profile:             providerCredentialRefreshProfileOpenAIAccountOAuth,
+		RefreshLead:         openAIAccountOAuthRefreshLead,
+		AuthenticationEqual: openAIAccountAuthenticationEqual,
+		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return refreshOpenAIAccountOAuthCredentials(ctx, current, a.CredentialRefreshClient)
+		},
+	}}
+}
+
 func isOpenAIAccountOAuthReauthorizationRequired(err error) bool {
 	httpErr := AsHTTPError(err)
 	if httpErr == nil {

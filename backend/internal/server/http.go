@@ -149,7 +149,6 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		Timeout:       providerCatalogUpstreamTimeout,
 	}
 	if gormStore, ok := store.(*GormStore); ok {
-		gormStore.providerUpstreamClient = client
 		gormStore.providerProxyPolicy = providerProxyPolicy
 	}
 	providerRuntime := newBuiltinProviderRuntime(builtinProviderRuntimeDependencies{

@@ -391,14 +391,22 @@ func TestProviderResourceCachedCatalogSourceUsesPluginCatalogSource(t *testing.T
 
 func TestPrepareRouteForUpstreamUsesRefreshProfilePolicy(t *testing.T) {
 	store := NewMemoryStore()
+	refreshProfile := "profiled_route_oauth"
 	store.ConfigureProviderResourceTypePolicy(map[string][]string{
 		"profiled_provider": {"profiled_account"},
 	})
+	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
+		ProviderType: "profiled_provider",
+		Profile:      refreshProfile,
+		Refresh: func(context.Context, ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return ProviderResourceCredentials{}, nil
+		},
+	}})
 	provider := store.AddProvider(Provider{
 		ID: "prv_profiled_route", Name: "Profiled Route", Type: "profiled_provider",
 		Status: StatusActive, Healthy: true,
 		Options: map[string]string{
-			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+			providerCredentialRefreshProfileOption: refreshProfile,
 		},
 	})
 	resource, err := store.AddProviderResource(ProviderResource{
