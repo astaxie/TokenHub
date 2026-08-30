@@ -200,7 +200,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		claudeCodeAttributionDefault: claudeCodeAttributionPreserve,
 		modelDiscovery: AdapterModelDiscoveryPolicy{
 			Path: "/v1/models",
-			Auth: "provider_auth_mode",
+			Auth: providerModelDiscoveryAuthProviderAuthMode,
 			Headers: map[string]string{
 				"anthropic-version": "2023-06-01",
 			},

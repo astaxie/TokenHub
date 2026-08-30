@@ -7,6 +7,8 @@ import (
 
 const (
 	providerAuthModeOption                             = "auth_mode"
+	providerAuthModeAPIKeyHeader                       = "x-api-key"
+	providerAuthModeBearer                             = "bearer"
 	providerAuthModeLegacyOptionPolicy                 = "auth_mode_legacy_option"
 	providerAuthModeInvalidErrorCodePolicy             = "auth_mode_invalid_error_code"
 	providerAuthModeInvalidErrorMessagePolicy          = "auth_mode_invalid_error_message"
@@ -19,6 +21,9 @@ const (
 	providerErrorProfileOption                         = "error_profile"
 	providerReasoningConfigurablePolicy                = "reasoning_configurable"
 	providerRouteRequiresResourceOption                = "route_requires_resource"
+	providerModelDiscoveryAuthBearerHeader             = "bearer_header"
+	providerModelDiscoveryAuthQueryParam               = "query_param"
+	providerModelDiscoveryAuthProviderAuthMode         = "provider_auth_mode"
 )
 
 func applyProviderPluginPolicy(provider *Provider, descriptor AdapterDescriptor) {

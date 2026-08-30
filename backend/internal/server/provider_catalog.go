@@ -656,7 +656,7 @@ func providerModelDiscoveryPolicy(descriptor AdapterDescriptor) AdapterModelDisc
 	}
 	policy.Auth = strings.ToLower(strings.TrimSpace(policy.Auth))
 	if policy.Auth == "" {
-		policy.Auth = "bearer_header"
+		policy.Auth = providerModelDiscoveryAuthBearerHeader
 	}
 	policy.APIKeyQueryParam = strings.TrimSpace(policy.APIKeyQueryParam)
 	policy.Headers = normalizedStringMap(policy.Headers)
@@ -678,23 +678,23 @@ func applyProviderModelDiscoveryAuth(httpReq *http.Request, endpoint *url.URL, r
 		return nil
 	}
 	switch discovery.Auth {
-	case "bearer_header":
+	case providerModelDiscoveryAuthBearerHeader:
 		httpReq.Header.Set("authorization", "Bearer "+apiKey)
-	case "query_param":
+	case providerModelDiscoveryAuthQueryParam:
 		queryParam := firstNonEmpty(discovery.APIKeyQueryParam, "key")
 		query := endpoint.Query()
 		query.Set(queryParam, apiKey)
 		endpoint.RawQuery = query.Encode()
 		httpReq.URL = endpoint
-	case "provider_auth_mode":
+	case providerModelDiscoveryAuthProviderAuthMode:
 		mode, err := providerModelDiscoveryAuthMode(req, descriptor)
 		if err != nil {
 			return err
 		}
 		switch mode {
-		case anthropicAuthTypeBearer:
+		case providerAuthModeBearer:
 			httpReq.Header.Set("authorization", "Bearer "+apiKey)
-		case anthropicAuthTypeAPIKey:
+		case providerAuthModeAPIKeyHeader:
 			httpReq.Header.Set("x-api-key", apiKey)
 		case "":
 		default:
@@ -719,8 +719,8 @@ func providerModelDiscoveryAuthMode(req ProviderCreateRequest, descriptor Adapte
 
 func preferredProviderAuthMode(modes []string) string {
 	for _, mode := range modes {
-		if strings.EqualFold(strings.TrimSpace(mode), anthropicAuthTypeAPIKey) {
-			return anthropicAuthTypeAPIKey
+		if strings.EqualFold(strings.TrimSpace(mode), providerAuthModeAPIKeyHeader) {
+			return providerAuthModeAPIKeyHeader
 		}
 	}
 	for _, mode := range modes {

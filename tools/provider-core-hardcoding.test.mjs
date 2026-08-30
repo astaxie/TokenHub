@@ -22,12 +22,14 @@ describe("provider-specific core hardcoding gate", () => {
       if (item.key !== "codex") {
         return "legacy";
       }
+      const mode = anthropicAuthTypeBearer;
     `, "backend/internal/server/gateway_http.go");
 
     assert.deepEqual(violations.map((violation) => violation.rule), [
       "provider constant branch",
       "provider type literal",
       "provider type literal",
+      "provider-specific auth identifier",
     ]);
   });
 

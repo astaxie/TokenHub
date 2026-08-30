@@ -470,8 +470,8 @@ type AnthropicAdapter struct {
 
 const (
 	anthropicAuthTypeOption = "anthropic_auth_type"
-	anthropicAuthTypeAPIKey = "x-api-key"
-	anthropicAuthTypeBearer = "bearer"
+	anthropicAuthTypeAPIKey = providerAuthModeAPIKeyHeader
+	anthropicAuthTypeBearer = providerAuthModeBearer
 )
 
 func configureProviderAuthMode(provider *Provider, requested string, policy AdapterProviderPolicy) error {

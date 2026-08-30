@@ -30,6 +30,10 @@ export const PROVIDER_CORE_PATTERNS = [
     name: "provider type literal",
     pattern: /(["'`])(?:openai_codex|openai-codex|codex|anthropic|gemini)\1/g,
   },
+  {
+    name: "provider-specific auth identifier",
+    pattern: /\banthropicAuthType[A-Za-z0-9_]*\b/g,
+  },
 ];
 
 const JS_TS_EXTENSIONS = new Set([".js", ".mjs", ".ts", ".tsx"]);
