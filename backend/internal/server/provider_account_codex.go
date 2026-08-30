@@ -58,6 +58,40 @@ func (a *CodexSubscriptionAdapter) ConfigureProviderResourceModelSupport(support
 	a.SupportsResourceModels = supports
 }
 
+func codexSubscriptionAdapterFrom(adapters map[string]any) *CodexSubscriptionAdapter {
+	if adapters == nil {
+		return nil
+	}
+	switch adapter := adapters[ProviderOpenAICodex].(type) {
+	case *CodexSubscriptionAdapter:
+		return adapter
+	case CodexSubscriptionAdapter:
+		return &adapter
+	default:
+		return nil
+	}
+}
+
+func (s *Server) codexSubscriptionAdapter() (*CodexSubscriptionAdapter, error) {
+	if s == nil {
+		return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Provider adapter is not registered")
+	}
+	if s.adapterRegistry != nil {
+		adapter, err := s.adapterRegistry.Resolve(ProviderOpenAICodex)
+		if err == nil {
+			switch typed := adapter.(type) {
+			case *CodexSubscriptionAdapter:
+				if typed != nil {
+					return typed, nil
+				}
+			case CodexSubscriptionAdapter:
+				return &typed, nil
+			}
+		}
+	}
+	return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Provider adapter is not registered")
+}
+
 type ProviderProbeRequest struct {
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`

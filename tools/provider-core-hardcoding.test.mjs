@@ -43,6 +43,7 @@ describe("provider-specific core hardcoding gate", () => {
 
   it("keeps built-in provider declarations outside the generic surface list", () => {
     assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_provider_plugins.go"), false);
+    assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_provider_runtime.go"), false);
     assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_plugin_actions.go"), false);
     assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_admin_ui_plugins.go"), false);
   });
