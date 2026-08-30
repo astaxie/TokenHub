@@ -147,6 +147,7 @@ type Descriptor struct {
 	Marketplace  *MarketplaceMetadata   `json:"marketplace,omitempty"`
 	Kinds        []Kind                 `json:"kinds"`
 	Placements   []Placement            `json:"placements"`
+	Permissions  []PermissionDescriptor `json:"permissions,omitempty"`
 	Capabilities []CapabilityDescriptor `json:"capabilities"`
 }
 
@@ -200,6 +201,7 @@ func NormalizeDescriptor(descriptor Descriptor) Descriptor {
 	descriptor.Marketplace = descriptor.Marketplace.Normalized()
 	descriptor.Kinds = normalizeKinds(descriptor.Kinds)
 	descriptor.Placements = normalizePlacements(descriptor.Placements)
+	descriptor.Permissions = NormalizePermissionDescriptors(descriptor.Permissions)
 	descriptor.Capabilities = normalizeCapabilities(descriptor.Capabilities)
 	return descriptor
 }

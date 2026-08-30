@@ -84,6 +84,7 @@ func mergeDescriptors(existing Descriptor, next Descriptor) Descriptor {
 	}
 	next.Kinds = append(existing.Kinds, next.Kinds...)
 	next.Placements = append(existing.Placements, next.Placements...)
+	next.Permissions = append(existing.Permissions, next.Permissions...)
 	next.Capabilities = append(existing.Capabilities, next.Capabilities...)
 	return NormalizeDescriptor(next)
 }

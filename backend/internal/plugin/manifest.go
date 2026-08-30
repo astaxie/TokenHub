@@ -291,6 +291,9 @@ func (m Manifest) Validate() error {
 	if err := m.validateProviderPolicy(); err != nil {
 		return err
 	}
+	if err := ValidateManifestPermissions(m.Permissions); err != nil {
+		return err
+	}
 	if err := m.Capabilities.SIM.Validate(m.Kinds, m.Placement); err != nil {
 		return err
 	}
@@ -562,6 +565,7 @@ func (m Manifest) Descriptor() Descriptor {
 		Marketplace:  m.Marketplace.Normalized(),
 		Kinds:        m.Kinds,
 		Placements:   m.Placement,
+		Permissions:  ManifestPermissionDescriptors(m.Permissions),
 	}
 	for _, providerType := range m.Capabilities.ProviderTypes {
 		descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{

@@ -65,6 +65,9 @@ func TestRegistryMergesDescriptorsForSamePlugin(t *testing.T) {
 		},
 		Kinds:      []Kind{KindProvider},
 		Placements: []Placement{PlacementGatewayChain},
+		Permissions: []PermissionDescriptor{
+			{Kind: PermissionKindData, Name: string(DataProviderCredentials), Access: PermissionAccessRead},
+		},
 		Capabilities: []CapabilityDescriptor{
 			{Kind: "provider", Name: "responses", Subject: "openai_codex"},
 		},
@@ -75,6 +78,9 @@ func TestRegistryMergesDescriptorsForSamePlugin(t *testing.T) {
 		ID:         "tokenhub.codex",
 		Kinds:      []Kind{KindAdminUI},
 		Placements: []Placement{PlacementPresentation},
+		Permissions: []PermissionDescriptor{
+			{Kind: PermissionKindData, Name: string(DataAudit), Access: PermissionAccessWrite},
+		},
 		Capabilities: []CapabilityDescriptor{
 			{Kind: "admin_ui", Name: "provider_form"},
 		},
@@ -94,6 +100,9 @@ func TestRegistryMergesDescriptorsForSamePlugin(t *testing.T) {
 	}
 	if len(descriptor.Capabilities) != 2 {
 		t.Fatalf("capabilities = %v, want 2 entries", descriptor.Capabilities)
+	}
+	if len(descriptor.Permissions) != 2 {
+		t.Fatalf("permissions = %v, want 2 entries", descriptor.Permissions)
 	}
 	if descriptor.Marketplace == nil || descriptor.Marketplace.Summary != "Official Codex subscription provider." {
 		t.Fatalf("marketplace metadata was not preserved: %+v", descriptor.Marketplace)

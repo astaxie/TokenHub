@@ -262,6 +262,10 @@ permissions:
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "background_job", Name: "codex.quota.refresh", Subject: "openai_codex", Value: "quota.refresh"}) {
 		t.Fatalf("descriptor is missing background job capability: %+v", descriptor.Capabilities)
 	}
+	if !descriptorHasPermission(descriptor, PermissionDescriptor{Kind: PermissionKindData, Name: "route_candidates", Access: PermissionAccessRead, Sensitivity: PermissionSensitivityInternal}) ||
+		!descriptorHasPermission(descriptor, PermissionDescriptor{Kind: PermissionKindData, Name: "route_candidates", Access: PermissionAccessWrite, Sensitivity: PermissionSensitivityInternal}) {
+		t.Fatalf("descriptor permissions = %+v", descriptor.Permissions)
+	}
 	if descriptor.Distribution == nil ||
 		descriptor.Distribution.MarketplaceURL != "https://plugins.example/tokenhub.openai-codex" ||
 		descriptor.Distribution.DownloadURL != "https://plugins.example/tokenhub.openai-codex/1.0.0/plugin.tar.gz" ||
@@ -274,6 +278,15 @@ permissions:
 func descriptorHasCapability(descriptor Descriptor, capability CapabilityDescriptor) bool {
 	for _, candidate := range descriptor.Capabilities {
 		if candidate == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func descriptorHasPermission(descriptor Descriptor, permission PermissionDescriptor) bool {
+	for _, candidate := range descriptor.Permissions {
+		if candidate == permission {
 			return true
 		}
 	}

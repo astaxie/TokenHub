@@ -26,6 +26,8 @@ const (
 	PluginErrorPlacementUnsupported      PluginErrorCode = "plugin_placement_unsupported"
 	PluginErrorCapabilityUnsupported     PluginErrorCode = "plugin_capability_unsupported"
 	PluginErrorCapabilityRequired        PluginErrorCode = "plugin_capability_required"
+	PluginErrorPermissionUnsupported     PluginErrorCode = "plugin_permission_unsupported"
+	PluginErrorPermissionRequired        PluginErrorCode = "plugin_permission_required"
 	PluginErrorTrustChecksumRequired     PluginErrorCode = "plugin_trust_checksum_required"
 	PluginErrorTrustSignatureRequired    PluginErrorCode = "plugin_trust_signature_required"
 	PluginErrorTrustSignatureUnverified  PluginErrorCode = "plugin_trust_signature_unverified"
@@ -93,6 +95,7 @@ const (
 	PluginFeatureBackgroundJobs                  = "background_jobs"
 	PluginFeatureStdioJSONV1                     = "stdio_json_v1"
 	PluginFeatureMarketplaceDistribution         = "marketplace_distribution"
+	PluginFeaturePermissionRuntime               = "permission_runtime"
 )
 
 type PluginContractError struct {
@@ -108,12 +111,15 @@ func (e PluginContractError) Error() string {
 }
 
 type PluginAPICompatibility struct {
-	PluginAPI             string   `json:"plugin_api"`
-	ManifestSchemaVersion int      `json:"manifest_schema_version"`
-	MinCore               string   `json:"min_core"`
-	MaxCore               string   `json:"max_core,omitempty"`
-	CapabilityKinds       []string `json:"capability_kinds"`
-	FeatureFlags          []string `json:"feature_flags"`
+	PluginAPI               string   `json:"plugin_api"`
+	ManifestSchemaVersion   int      `json:"manifest_schema_version"`
+	MinCore                 string   `json:"min_core"`
+	MaxCore                 string   `json:"max_core,omitempty"`
+	CapabilityKinds         []string `json:"capability_kinds"`
+	PermissionKinds         []string `json:"permission_kinds"`
+	PermissionSensitivities []string `json:"permission_sensitivities"`
+	GatewayDataClasses      []string `json:"gateway_data_classes"`
+	FeatureFlags            []string `json:"feature_flags"`
 }
 
 func SupportedPluginAPICompatibility() []PluginAPICompatibility {
@@ -133,6 +139,9 @@ func SupportedPluginAPICompatibility() []PluginAPICompatibility {
 			CapabilityKindProviderType,
 			CapabilityKindSIM,
 		},
+		PermissionKinds:         SupportedPermissionKinds(),
+		PermissionSensitivities: SupportedPermissionSensitivities(),
+		GatewayDataClasses:      SupportedGatewayDataClasses(),
 		FeatureFlags: []string{
 			PluginFeatureProviderPlugins,
 			PluginFeatureAdminUIContributions,
@@ -142,6 +151,7 @@ func SupportedPluginAPICompatibility() []PluginAPICompatibility {
 			PluginFeatureBackgroundJobs,
 			PluginFeatureStdioJSONV1,
 			PluginFeatureMarketplaceDistribution,
+			PluginFeaturePermissionRuntime,
 		},
 	}}
 }
@@ -196,6 +206,11 @@ func ValidateDescriptorContract(descriptor Descriptor) error {
 	}
 	for _, capability := range descriptor.Capabilities {
 		if err := ValidateCapabilityDescriptor(capability); err != nil {
+			return err
+		}
+	}
+	for _, permission := range descriptor.Permissions {
+		if err := ValidatePermissionDescriptor(permission); err != nil {
 			return err
 		}
 	}

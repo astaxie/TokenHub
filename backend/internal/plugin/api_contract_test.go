@@ -42,10 +42,20 @@ func TestSupportedPluginAPICompatibilityDescribesV1Contract(t *testing.T) {
 		PluginFeatureBackgroundJobs,
 		PluginFeatureStdioJSONV1,
 		PluginFeatureMarketplaceDistribution,
+		PluginFeaturePermissionRuntime,
 	} {
 		if !containsString(v1.FeatureFlags, feature) {
 			t.Fatalf("v1 compatibility is missing feature %q: %+v", feature, v1.FeatureFlags)
 		}
+	}
+	for _, kind := range []string{string(PermissionKindData), string(PermissionKindNetwork)} {
+		if !containsString(v1.PermissionKinds, kind) {
+			t.Fatalf("v1 compatibility is missing permission kind %q: %+v", kind, v1.PermissionKinds)
+		}
+	}
+	if !containsString(v1.PermissionSensitivities, string(PermissionSensitivitySecret)) ||
+		!containsString(v1.GatewayDataClasses, string(DataProviderCredentials)) {
+		t.Fatalf("v1 compatibility is missing permission catalog fields: %+v", v1)
 	}
 }
 
@@ -193,6 +203,28 @@ func TestRegistryAcceptsStoreProbeFallbackProviderPolicy(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("descriptor with store probe fallback policy should register: %v", err)
+	}
+}
+
+func TestRegistryRejectsUnsupportedPermissionDescriptorsWithStableErrorCode(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(Descriptor{
+		ID:         "tokenhub.bad-permission",
+		Name:       "Bad Permission",
+		Version:    "1.0.0",
+		Kinds:      []Kind{KindExtension},
+		Placements: []Placement{PlacementBackground},
+		Permissions: []PermissionDescriptor{{
+			Kind:   PermissionKindData,
+			Name:   "raw_database",
+			Access: PermissionAccessRead,
+		}},
+	})
+	if err == nil {
+		t.Fatal("descriptor with unsupported permission registered successfully")
+	}
+	if code, ok := PluginErrorCodeOf(err); !ok || code != PluginErrorPermissionUnsupported {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, PluginErrorPermissionUnsupported, err)
 	}
 }
 
