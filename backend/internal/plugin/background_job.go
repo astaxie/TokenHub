@@ -258,20 +258,20 @@ func validateBackgroundJobResult(schema map[string]any, data any) error {
 type BackgroundJobRunner struct {
 	broker *BackgroundJobBroker
 
-	mu            sync.Mutex
-	running       map[string]int
-	lastRuns      map[string]BackgroundJobRunRecord
-	schedulerMu   sync.Mutex
-	schedulerStop context.CancelFunc
-	schedulerDone chan struct{}
+	mu        sync.Mutex
+	running   map[string]int
+	lastRuns  map[string]BackgroundJobRunRecord
+	scheduler *backgroundScheduler
 }
 
 func NewBackgroundJobRunner(broker *BackgroundJobBroker) *BackgroundJobRunner {
-	return &BackgroundJobRunner{
+	runner := &BackgroundJobRunner{
 		broker:   broker,
 		running:  map[string]int{},
 		lastRuns: map[string]BackgroundJobRunRecord{},
 	}
+	runner.scheduler = newBackgroundScheduler(runner)
+	return runner
 }
 
 func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
@@ -327,63 +327,6 @@ func (r *BackgroundJobRunner) LastRuns() []BackgroundJobRunRecord {
 		return items[i].JobID < items[j].JobID
 	})
 	return items
-}
-
-func (r *BackgroundJobRunner) StartScheduler(interval time.Duration) {
-	if r == nil || r.broker == nil {
-		return
-	}
-	if interval <= 0 {
-		interval = time.Minute
-	}
-	r.schedulerMu.Lock()
-	defer r.schedulerMu.Unlock()
-	if r.schedulerStop != nil {
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	r.schedulerStop = cancel
-	r.schedulerDone = make(chan struct{})
-	go func() {
-		defer close(r.schedulerDone)
-		r.RunDue(ctx, time.Now().UTC(), "startup")
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case now := <-ticker.C:
-				r.RunDue(ctx, now.UTC(), "schedule")
-			}
-		}
-	}()
-}
-
-func (r *BackgroundJobRunner) Shutdown(ctx context.Context) error {
-	if r == nil {
-		return nil
-	}
-	r.schedulerMu.Lock()
-	stop := r.schedulerStop
-	done := r.schedulerDone
-	r.schedulerMu.Unlock()
-	if stop == nil {
-		return nil
-	}
-	stop()
-	select {
-	case <-done:
-		r.schedulerMu.Lock()
-		if r.schedulerDone == done {
-			r.schedulerStop = nil
-			r.schedulerDone = nil
-		}
-		r.schedulerMu.Unlock()
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 func (r *BackgroundJobRunner) RunDue(ctx context.Context, now time.Time, trigger string) []BackgroundJobRunRecord {
