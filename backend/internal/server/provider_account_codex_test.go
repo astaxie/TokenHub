@@ -1368,6 +1368,15 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	if !ok || normalized.Type != ProviderOpenAICodex || normalized.BaseURL != openAICodexBaseURL {
 		t.Fatalf("empty OpenAI Provider was not normalized to Codex: %+v", normalized)
 	}
+	server := New(store)
+	codexAdapter, ok := server.adapterRegistry.Describe(ProviderOpenAICodex)
+	if !ok || codexAdapter.PluginID != "tokenhub.provider.openai-codex" {
+		t.Fatalf("Codex adapter plugin mapping = %+v, ok=%v", codexAdapter, ok)
+	}
+	codexCatalog, ok := server.pluginProviderCatalogCapabilityEntryForType(ProviderOpenAICodex)
+	if !ok || codexCatalog.ID != codexProviderCatalogID || codexCatalog.Type != ProviderOpenAICodex {
+		t.Fatalf("Codex catalog mapping = %+v, ok=%v", codexCatalog, ok)
+	}
 
 	legacy := store.AddProvider(Provider{
 		ID:               "prv_legacy_mixed",
