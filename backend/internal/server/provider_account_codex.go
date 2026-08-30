@@ -51,6 +51,13 @@ type CodexSubscriptionAdapter struct {
 	MaxRequestRetries       int
 }
 
+func (a *CodexSubscriptionAdapter) ConfigureProviderResourceModelSupport(supports func(providerType string, resourceType string) bool) {
+	if a == nil {
+		return
+	}
+	a.SupportsResourceModels = supports
+}
+
 type ProviderProbeRequest struct {
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`

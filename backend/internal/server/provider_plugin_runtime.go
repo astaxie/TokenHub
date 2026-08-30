@@ -18,6 +18,14 @@ type builtinProviderRuntime struct {
 	adapters map[string]any
 }
 
+type providerResourceModelSupportConfigurer interface {
+	ConfigureProviderResourceModelSupport(func(providerType string, resourceType string) bool)
+}
+
+type providerImageCapabilityProfileConfigurer interface {
+	ConfigureProviderImageCapabilityProfiles(func(providerType string) []providerImageCapabilityRouteProfile)
+}
+
 func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinProviderRuntime {
 	openai := OpenAICompatibleAdapter{
 		Client:            deps.Client,
@@ -86,6 +94,29 @@ func codexSubscriptionAdapterFrom(adapters map[string]any) *CodexSubscriptionAda
 		return &adapter
 	default:
 		return nil
+	}
+}
+
+func configureProviderResourceModelSupport(adapters map[string]any, registry *AdapterRegistry) {
+	for _, adapter := range adapters {
+		configurer, ok := adapter.(providerResourceModelSupportConfigurer)
+		if !ok {
+			continue
+		}
+		configurer.ConfigureProviderResourceModelSupport(func(providerType string, resourceType string) bool {
+			descriptor, ok := registry.Describe(providerType)
+			return ok && adapterSupportsResourceType(descriptor, resourceType)
+		})
+	}
+}
+
+func configureProviderImageCapabilityProfiles(adapters map[string]any, profiles func(providerType string) []providerImageCapabilityRouteProfile) {
+	for _, adapter := range adapters {
+		configurer, ok := adapter.(providerImageCapabilityProfileConfigurer)
+		if !ok {
+			continue
+		}
+		configurer.ConfigureProviderImageCapabilityProfiles(profiles)
 	}
 }
 

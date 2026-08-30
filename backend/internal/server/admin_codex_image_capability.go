@@ -53,6 +53,13 @@ func (a CodexSubscriptionAdapter) ProviderResourceOperationKey(provider Provider
 	return "", false
 }
 
+func (a *CodexSubscriptionAdapter) ConfigureProviderImageCapabilityProfiles(profiles func(providerType string) []providerImageCapabilityRouteProfile) {
+	if a == nil {
+		return
+	}
+	a.ImageCapabilityProfiles = profiles
+}
+
 func (a CodexSubscriptionAdapter) imageCapabilityProfilesForProvider(providerType string) []providerImageCapabilityRouteProfile {
 	if a.ImageCapabilityProfiles == nil {
 		return nil

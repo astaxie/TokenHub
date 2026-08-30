@@ -27,16 +27,9 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 	pluginBackgroundJobs := pluginmeta.NewBackgroundJobBroker()
 	pluginBackgroundRunner := pluginmeta.NewBackgroundJobRunner(pluginBackgroundJobs)
 	adapterRegistry := NewAdapterRegistryWithPlugins(pluginRegistry)
-	codexSubscription := codexSubscriptionAdapterFrom(adapters)
 
 	registerBuiltinProviderAdapters(adapterRegistry, adapters)
 	registerBuiltinProviderCatalogPlugins(pluginRegistry)
-	if codexSubscription != nil {
-		codexSubscription.SupportsResourceModels = func(providerType string, resourceType string) bool {
-			descriptor, ok := adapterRegistry.Describe(providerType)
-			return ok && adapterSupportsResourceType(descriptor, resourceType)
-		}
-	}
 	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
 	registerBuiltinAdminUIContributions(pluginRegistry, adminUI)
 	packages, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActionsAndBackground(pluginRegistry, gatewayChain, adminUI, pluginActions, pluginBackgroundJobs, gatewayHooks)
@@ -44,6 +37,7 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 		return serverPluginBootstrap{}, fmt.Errorf("load TokenHub plugins: %w", err)
 	}
 	registerExternalProviderPluginAdapters(adapterRegistry, packages)
+	configureProviderResourceModelSupport(adapterRegistry.adapters, adapterRegistry)
 	configureProviderResourceTypeDefaults(store, adapterRegistry)
 	reconcileProviderPluginPolicies(store, adapterRegistry)
 
@@ -65,8 +59,8 @@ func (s *Server) installServerPluginHandlers() {
 	}
 	registerBuiltinPluginActions(s)
 	registerBuiltinPluginBackgroundJobs(s)
-	if codexSubscription, err := s.codexSubscriptionAdapter(); err == nil {
-		codexSubscription.ImageCapabilityProfiles = func(providerType string) []providerImageCapabilityRouteProfile {
+	if s.adapterRegistry != nil {
+		configureProviderImageCapabilityProfiles(s.adapterRegistry.adapters, func(providerType string) []providerImageCapabilityRouteProfile {
 			profiles := []providerImageCapabilityRouteProfile{}
 			for _, profile := range providerImageCapabilityRouteProfilesFromActions(s.pluginActions.List()) {
 				if profile.ProviderType == strings.TrimSpace(providerType) {
@@ -74,7 +68,7 @@ func (s *Server) installServerPluginHandlers() {
 				}
 			}
 			return profiles
-		}
+		})
 	}
 	s.syncProviderImageCapabilityRouteProfiles()
 	if s.credentialRefresh != nil {

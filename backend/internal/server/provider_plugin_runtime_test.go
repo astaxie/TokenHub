@@ -4,7 +4,22 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
+
+type configurableProviderAdapterForTest struct {
+	supportsResourceModel func(providerType string, resourceType string) bool
+	imageProfiles         func(providerType string) []providerImageCapabilityRouteProfile
+}
+
+func (a *configurableProviderAdapterForTest) ConfigureProviderResourceModelSupport(supports func(providerType string, resourceType string) bool) {
+	a.supportsResourceModel = supports
+}
+
+func (a *configurableProviderAdapterForTest) ConfigureProviderImageCapabilityProfiles(profiles func(providerType string) []providerImageCapabilityRouteProfile) {
+	a.imageProfiles = profiles
+}
 
 func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T) {
 	store := NewMemoryStore()
@@ -73,5 +88,51 @@ func TestServerCodexSubscriptionAdapterResolvesFromRegistry(t *testing.T) {
 	}
 	if resolved != registered {
 		t.Fatal("Codex subscription adapter should resolve from the adapter registry")
+	}
+}
+
+func TestProviderRuntimeConfiguratorsAreAdapterDriven(t *testing.T) {
+	adapter := &configurableProviderAdapterForTest{}
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.configurable",
+		Name:    "Configurable Provider",
+		Version: "test",
+		Source:  pluginmeta.SourceBuiltIn,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{{
+			Kind:    "provider_resource_type",
+			Name:    "configurable_account",
+			Subject: "configurable",
+		}},
+	}, AdapterRegistration{
+		Type:         "configurable",
+		Adapter:      adapter,
+		Capabilities: []AdapterCapability{AdapterCapabilityModels, AdapterCapabilityImageGenerate},
+	}); err != nil {
+		t.Fatalf("register configurable adapter: %v", err)
+	}
+
+	configureProviderResourceModelSupport(registry.adapters, registry)
+	if adapter.supportsResourceModel == nil {
+		t.Fatal("resource model support resolver was not configured")
+	}
+	if !adapter.supportsResourceModel("configurable", "configurable_account") {
+		t.Fatal("resource model support resolver should use adapter registry resource metadata")
+	}
+	if adapter.supportsResourceModel("configurable", "other_account") {
+		t.Fatal("resource model support resolver should reject undeclared resource metadata")
+	}
+
+	profile := providerImageCapabilityRouteProfile{ProviderType: "configurable", PublicModel: "configurable-image"}
+	configureProviderImageCapabilityProfiles(registry.adapters, func(string) []providerImageCapabilityRouteProfile {
+		return []providerImageCapabilityRouteProfile{profile}
+	})
+	if adapter.imageProfiles == nil {
+		t.Fatal("image capability profile resolver was not configured")
+	}
+	profiles := adapter.imageProfiles("configurable")
+	if len(profiles) != 1 || profiles[0].PublicModel != "configurable-image" {
+		t.Fatalf("image capability profiles = %+v, want configurable profile", profiles)
 	}
 }
