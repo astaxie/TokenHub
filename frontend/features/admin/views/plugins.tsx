@@ -4,12 +4,14 @@ import { type ApiContext, type AppData, type PluginActionDescriptor, type Plugin
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { pluginMarketplaceDisplay, type PluginMarketplaceDisplayState } from "../domain/plugin-marketplace";
+import { type PluginPermissionDiffPreviewPayload } from "../domain/plugin-permission-diff";
 import { simRegistryFromPlugins, type SIMRegistry, type SIMShellLayout, type SIMThemeTokens } from "../domain/sim-registry";
 import { resolveSIMSelection, type SIMSelectionPreference } from "../domain/sim-selection";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 import { PluginActionRunner, PluginBackgroundJobRunner } from "./plugin-action-runner";
+import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
 type ActionDraft = {
   values: Record<string, string | boolean>;
@@ -74,6 +76,8 @@ export function PluginsView({
   const [pluginDeleteDrafts, setPluginDeleteDrafts] = useState<Record<string, PluginDeleteDraft>>({});
   const [backgroundJobDrafts, setBackgroundJobDrafts] = useState<Record<string, PluginBackgroundJobDraft>>({});
   const [marketplaceDrafts, setMarketplaceDrafts] = useState<Record<string, PluginInstallDraft>>({});
+  const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
+  const [pluginPermissionPreviews, setPluginPermissionPreviews] = useState<Record<string, PluginPermissionDiffPreviewDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
   const simRegistry = useMemo(() => simRegistryFromPlugins(plugins), [plugins]);
   const simSelection = useMemo(
@@ -107,6 +111,7 @@ export function PluginsView({
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const marketplaceInstallDraft = (plugin: PluginDescriptor) => marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
+  const pluginPermissionPreviewDraft = (plugin: PluginDescriptor) => pluginPermissionPreviews[plugin.id] ?? emptyPermissionPreviewDraft();
   const backgroundJobDraft = (job: PluginBackgroundJobDescriptor) => backgroundJobDrafts[pluginBackgroundJobKey(job.plugin_id, job.job_id)] ?? emptyBackgroundJobDraft(job);
 
   useEffect(() => {
@@ -248,6 +253,70 @@ export function PluginsView({
         busy: false,
         error: reason instanceof Error ? reason.message : tx("安装插件失败"),
         result: "",
+      }));
+    }
+  }
+
+  async function previewInstallPluginPermissions() {
+    setInstallPermissionPreview({ busy: true, error: "", preview: null });
+    try {
+      const response = await adminFetch(api, "/api/admin/plugins/permission-diff", {
+        method: "POST",
+        body: JSON.stringify({
+          download_url: installDraft.downloadURL,
+          checksum_sha256: installDraft.checksumSHA256,
+        }),
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("预览权限")));
+      const payload = await response.json() as { data?: PluginPermissionDiffPreviewPayload };
+      setInstallPermissionPreview({ busy: false, error: "", preview: payload.data ?? null });
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setInstallPermissionPreview({
+        busy: false,
+        error: reason instanceof Error ? reason.message : tx("权限预览失败"),
+        preview: null,
+      });
+    }
+  }
+
+  async function previewPluginPermissions(plugin: PluginDescriptor, operation: "install" | "update") {
+    const current = pluginPermissionPreviewDraft(plugin);
+    setPluginPermissionPreviews((drafts) => ({
+      ...drafts,
+      [plugin.id]: { ...current, busy: true, error: "", preview: null },
+    }));
+    try {
+      const distribution = plugin.distribution;
+      if (!distribution?.download_url || !distribution.checksum_sha256) {
+        throw new Error(tx("无下载来源"));
+      }
+      const path = operation === "update"
+        ? `/api/admin/plugins/${encodeURIComponent(plugin.id)}/permission-diff`
+        : "/api/admin/plugins/permission-diff";
+      const response = await adminFetch(api, path, {
+        method: "POST",
+        body: JSON.stringify({
+          download_url: distribution.download_url,
+          checksum_sha256: distribution.checksum_sha256,
+        }),
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("预览权限")));
+      const payload = await response.json() as { data?: PluginPermissionDiffPreviewPayload };
+      setPluginPermissionPreviews((drafts) => ({
+        ...drafts,
+        [plugin.id]: { busy: false, error: "", preview: payload.data ?? null },
+      }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setPluginPermissionPreviews((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          ...current,
+          busy: false,
+          error: reason instanceof Error ? reason.message : tx("权限预览失败"),
+          preview: null,
+        },
       }));
     }
   }
@@ -447,6 +516,11 @@ export function PluginsView({
               <Download size={14} />
               <span>{tx(installDraft.busy ? "安装中" : "安装插件")}</span>
             </button>
+            <PluginPermissionDiffPreview
+              disabled={!installDraft.downloadURL.trim() || !installDraft.checksumSHA256.trim()}
+              draft={installPermissionPreview}
+              onPreview={previewInstallPluginPermissions}
+            />
             {installDraft.error ? <p className="provider-quota-error">{installDraft.error}</p> : null}
             {installDraft.result ? <p className="empty-state">{installDraft.result}</p> : null}
           </form>
@@ -497,6 +571,8 @@ export function PluginsView({
                             plugin={plugin}
                             draft={pluginUpdateDraft(plugin)}
                             onUpdate={updatePlugin}
+                            onPreview={(target) => previewPluginPermissions(target, "update")}
+                            previewDraft={pluginPermissionPreviewDraft(plugin)}
                           />
                         </td>
                         <td>
@@ -557,7 +633,12 @@ export function PluginsView({
                           <MarketplaceStatusCell item={item} display={display} />
                         </td>
                         <td>
-                          <DistributionMetadata plugin={item.plugin} draft={marketplaceInstallDraft(item.plugin)} onUpdate={updatePlugin} showUpdate={false} />
+                          <DistributionMetadata
+                            plugin={item.plugin}
+                            draft={marketplaceInstallDraft(item.plugin)}
+                            onUpdate={updatePlugin}
+                            showUpdate={false}
+                          />
                         </td>
                         <td>
                           <MarketplaceInstallControl
@@ -566,6 +647,8 @@ export function PluginsView({
                             updateDraft={pluginUpdateDraft(item.plugin)}
                             onInstall={installMarketplacePlugin}
                             onUpdate={updatePlugin}
+                            onPreview={(target) => previewPluginPermissions(target, item.installed ? "update" : "install")}
+                            previewDraft={pluginPermissionPreviewDraft(item.plugin)}
                           />
                         </td>
                       </tr>
@@ -1013,12 +1096,16 @@ function DistributionMetadata({
   lifecycle,
   draft,
   onUpdate,
+  onPreview,
+  previewDraft,
   showUpdate = true,
 }: {
   plugin: PluginDescriptor;
   lifecycle?: PluginManagerDisplayState;
   draft: PluginUpdateDraft;
   onUpdate: (plugin: PluginDescriptor) => void;
+  onPreview?: (plugin: PluginDescriptor) => void;
+  previewDraft?: PluginPermissionDiffPreviewDraft;
   showUpdate?: boolean;
 }) {
   const distribution = plugin.distribution;
@@ -1051,6 +1138,13 @@ function DistributionMetadata({
           <Download size={13} />
           <span>{tx(draft.busy ? "更新中" : "更新")}</span>
         </button>
+      ) : null}
+      {previewDraft && onPreview ? (
+        <PluginPermissionDiffPreview
+          disabled={!distribution.download_url || !distribution.checksum_sha256}
+          draft={previewDraft}
+          onPreview={() => onPreview(plugin)}
+        />
       ) : null}
       {showUpdate && draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
       {showUpdate && draft.result ? <span>{draft.result}</span> : null}
@@ -1137,14 +1231,18 @@ function MarketplaceInstallControl({
   item,
   draft,
   updateDraft,
+  previewDraft,
   onInstall,
   onUpdate,
+  onPreview,
 }: {
   item: PluginMarketplacePlugin;
   draft: PluginInstallDraft;
   updateDraft: PluginUpdateDraft;
+  previewDraft: PluginPermissionDiffPreviewDraft;
   onInstall: (item: PluginMarketplacePlugin) => void;
   onUpdate: (plugin: PluginDescriptor) => void;
+  onPreview: (plugin: PluginDescriptor) => void;
 }) {
   if (item.installed && !item.update_available) {
     return (
@@ -1166,6 +1264,11 @@ function MarketplaceInstallControl({
           <Download size={13} />
           <span>{tx(updateDraft.busy ? "更新中" : "更新")}</span>
         </button>
+        <PluginPermissionDiffPreview
+          disabled={updateDraft.busy}
+          draft={previewDraft}
+          onPreview={() => onPreview(item.plugin)}
+        />
         {updateDraft.error ? <span className="provider-quota-error">{updateDraft.error}</span> : null}
         {updateDraft.result ? <span>{updateDraft.result}</span> : null}
       </div>
@@ -1182,6 +1285,11 @@ function MarketplaceInstallControl({
         <Download size={13} />
         <span>{tx(draft.busy ? "安装中" : "安装插件")}</span>
       </button>
+      <PluginPermissionDiffPreview
+        disabled={draft.busy}
+        draft={previewDraft}
+        onPreview={() => onPreview(item.plugin)}
+      />
       {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
       {draft.result ? <span>{draft.result}</span> : null}
     </div>

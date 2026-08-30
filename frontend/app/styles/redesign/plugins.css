@@ -92,6 +92,49 @@
   width: max-content;
 }
 
+.plugin-permission-diff-preview {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.plugin-permission-diff-result {
+  display: grid;
+  gap: 8px;
+  max-width: min(100%, 520px);
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.plugin-permission-diff-status,
+.plugin-permission-diff-summary {
+  gap: 6px;
+}
+
+.plugin-permission-diff-sections {
+  display: grid;
+  gap: 7px;
+}
+
+.plugin-permission-diff-section {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.plugin-permission-diff-changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.plugin-permission-diff-changes .tag {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .plugin-marketplace-status {
   gap: 7px;
 }
