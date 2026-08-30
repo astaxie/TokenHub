@@ -42,6 +42,10 @@ export const PROVIDER_CORE_PATTERNS = [
     name: "provider-specific catalog URL literal",
     pattern: /(["'`])(?:dmxapi|302ai|https:\/\/www\.dmxapi\.cn|https:\/\/api\.dmxapi\.cn|api\.highwayapi\.ai\/openai)\1/g,
   },
+  {
+    name: "provider-specific frontend OAuth endpoint",
+    pattern: /(["'`])\/api\/admin\/provider-account-oauth\/openai\/(?:generate-auth-url|exchange-code)\1/g,
+  },
 ];
 
 const JS_TS_EXTENSIONS = new Set([".js", ".mjs", ".ts", ".tsx"]);

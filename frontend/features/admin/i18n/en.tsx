@@ -358,6 +358,8 @@ export const enTranslations: Record<string, string> = {
     "账号授权失败": "Account authorization failed",
     "授权回调缺少会话信息，请重新打开授权。": "The authorization callback is missing session information. Open authorization again.",
     "正在换取账号 Token...": "Exchanging account token...",
+    "该 Provider 插件未声明账号授权动作。": "This Provider plugin has not declared an account authorization action.",
+    "该 Provider 插件未声明账号授权回填动作。": "This Provider plugin has not declared an account authorization callback action.",
     "账号授权换取 Token": "Account authorization token exchange",
     "账号授权换取 Token 失败": "Account authorization token exchange failed",
     "生成账号授权地址": "Generate account authorization URL",

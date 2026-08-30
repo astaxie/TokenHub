@@ -25,6 +25,7 @@ describe("provider-specific core hardcoding gate", () => {
       }
       const mode = anthropicAuthTypeBearer;
       const normalized = normalizeOpenAICompatibleBaseURL("dmxapi", "https://www.dmxapi.cn");
+      const oauth = "/api/admin/provider-account-oauth/openai/generate-auth-url";
     `, "backend/internal/server/gateway_http.go");
 
     assert.deepEqual(violations.map((violation) => violation.rule), [
@@ -35,6 +36,7 @@ describe("provider-specific core hardcoding gate", () => {
       "provider catalog URL normalizer",
       "provider-specific catalog URL literal",
       "provider-specific catalog URL literal",
+      "provider-specific frontend OAuth endpoint",
     ]);
   });
 

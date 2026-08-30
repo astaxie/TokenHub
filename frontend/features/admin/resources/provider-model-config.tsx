@@ -242,31 +242,21 @@ export async function runProviderPluginActionEnvelope<T>(ctx: ApiContext, action
 }
 
 export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, returnURL: string) {
-  const oauthAction = providerPluginActionForCapability(actions, providerType, "oauth.start");
-  if (oauthAction) {
-    const payload = providerPluginOAuthPayload(oauthAction, { return_url: returnURL });
-    return runProviderCapabilityAction<ProviderAccountOAuthGenerateResponse>(ctx, providerType, "oauth.start", oauthAction, payload, tx("生成账号授权地址"));
-  }
-  const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/generate-auth-url", {
-    method: "POST",
-    body: JSON.stringify({ return_url: returnURL }),
-  });
-  if (!resp.ok) throw new Error(await readAdminError(resp, tx("生成账号授权地址")));
-  return (await resp.json()) as ProviderAccountOAuthGenerateResponse;
+	const oauthAction = providerPluginActionForCapability(actions, providerType, "oauth.start");
+	if (oauthAction) {
+		const payload = providerPluginOAuthPayload(oauthAction, { return_url: returnURL });
+		return runProviderCapabilityAction<ProviderAccountOAuthGenerateResponse>(ctx, providerType, "oauth.start", oauthAction, payload, tx("生成账号授权地址"));
+	}
+	throw new Error(tx("该 Provider 插件未声明账号授权动作。"));
 }
 
 export async function exchangeProviderAccountOAuthCode(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, payload: { session_id: string; state: string; code: string }) {
-  const exchangeAction = providerPluginActionForCapability(actions, providerType, "oauth.exchange");
-  if (exchangeAction) {
-    const actionPayload = providerPluginOAuthPayload(exchangeAction, { ...payload });
-    return runProviderCapabilityAction<ProviderAccountOAuthResult>(ctx, providerType, "oauth.exchange", exchangeAction, actionPayload, tx("账号授权换取 Token"));
-  }
-  const resp = await adminFetch(ctx, "/api/admin/provider-account-oauth/openai/exchange-code", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  if (!resp.ok) throw new Error(await readAdminError(resp, tx("账号授权换取 Token")));
-  return (await resp.json()) as ProviderAccountOAuthResult;
+	const exchangeAction = providerPluginActionForCapability(actions, providerType, "oauth.exchange");
+	if (exchangeAction) {
+		const actionPayload = providerPluginOAuthPayload(exchangeAction, { ...payload });
+		return runProviderCapabilityAction<ProviderAccountOAuthResult>(ctx, providerType, "oauth.exchange", exchangeAction, actionPayload, tx("账号授权换取 Token"));
+	}
+	throw new Error(tx("该 Provider 插件未声明账号授权回填动作。"));
 }
 
 export function providerResourceCredentialRefreshAction(data: AppData, item: ProviderResource): PluginActionDescriptor | undefined {

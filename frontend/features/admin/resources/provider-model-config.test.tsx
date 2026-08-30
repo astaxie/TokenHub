@@ -354,28 +354,17 @@ describe("providerResourceConfig", () => {
     });
   });
 
-  it("falls back to the legacy OpenAI account OAuth endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      auth_url: "https://legacy.example/oauth",
-      session_id: "session-legacy",
-      state: "state-legacy",
-    }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }));
+  it("requires a plugin OAuth start action instead of calling legacy provider-specific endpoints", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await generateProviderAccountOAuthURL(
+    await expect(generateProviderAccountOAuthURL(
       { baseURL: "http://localhost:8080", adminToken: "admin-token" },
       [],
       "openai_codex",
       "http://localhost:3000/providers/callback",
-    );
-
-    expect(result.auth_url).toBe("https://legacy.example/oauth");
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:8080/api/admin/provider-account-oauth/openai/generate-auth-url");
-    expect(JSON.parse(String(init.body))).toEqual({ return_url: "http://localhost:3000/providers/callback" });
+    )).rejects.toThrow("该 Provider 插件未声明账号授权动作。");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("exchanges provider account OAuth codes through plugin actions first", async () => {
@@ -416,31 +405,17 @@ describe("providerResourceConfig", () => {
     });
   });
 
-  it("falls back to the legacy OpenAI account OAuth exchange endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      access_token: "token-redacted",
-      account_email: "legacy@example.com",
-    }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }));
+  it("requires a plugin OAuth exchange action instead of calling legacy provider-specific endpoints", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await exchangeProviderAccountOAuthCode(
+    await expect(exchangeProviderAccountOAuthCode(
       { baseURL: "http://localhost:8080", adminToken: "admin-token" },
       [],
       "openai_codex",
       { session_id: "session-legacy", state: "state-legacy", code: "code-legacy" },
-    );
-
-    expect(result.account_email).toBe("legacy@example.com");
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:8080/api/admin/provider-account-oauth/openai/exchange-code");
-    expect(JSON.parse(String(init.body))).toEqual({
-      session_id: "session-legacy",
-      state: "state-legacy",
-      code: "code-legacy",
-    });
+    )).rejects.toThrow("该 Provider 插件未声明账号授权回填动作。");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("unwraps plugin action envelopes", () => {
