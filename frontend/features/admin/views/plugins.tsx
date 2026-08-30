@@ -1068,14 +1068,14 @@ function MarketplaceStatusCell({
   display: PluginMarketplaceDisplayState;
 }) {
   return (
-    <div className="stacked-cell">
+    <div className="stacked-cell plugin-marketplace-status" data-plugin-marketplace-block="status">
       <StatusPill status={item.installed ? "enabled" : "disabled"} label={item.installed ? tx("已安装") : tx("未安装")} />
       {item.installed_version ? <span>{tx("已安装版本")} {item.installed_version}</span> : null}
       {item.update_available ? <span>{tx("更新可用")}</span> : null}
       <StatusPill status={statusPillStatus(display.compatibility.tone)} label={tx(display.compatibility.labelKey)} />
       {display.compatibility.reasonCode ? <span>{display.compatibility.reasonCode}</span> : null}
       {display.compatibility.badges.length > 0 ? (
-        <div className="tag-list">
+        <div className="tag-list plugin-marketplace-badges" data-plugin-marketplace-block="compatibility-badges">
           {display.compatibility.badges.map((badge) => (
             <a className="tag" href={badge.url || undefined} key={`${display.id}:${badge.id}`} rel="noreferrer" target="_blank">
               <StatusPill status={statusPillStatus(badge.tone)} label={badge.label} />
@@ -1089,31 +1089,30 @@ function MarketplaceStatusCell({
 
 function MarketplaceDetails({ display }: { display: PluginMarketplaceDisplayState }) {
   return (
-    <div className="stacked-cell">
-      {display.summary ? <span>{display.summary}</span> : null}
+    <div className="stacked-cell plugin-marketplace-details" data-plugin-marketplace-block="details">
+      {display.summary ? <span className="plugin-marketplace-summary">{display.summary}</span> : null}
       {display.categories.length > 0 ? (
-        <div className="tag-list">
+        <div className="tag-list plugin-marketplace-categories" data-plugin-marketplace-block="categories">
           {display.categories.map((category) => (
             <span className="tag" key={`${display.id}:${category}`}>{category}</span>
           ))}
         </div>
       ) : null}
-      <div className="tag-list">
+      <div className="tag-list plugin-marketplace-publisher" data-plugin-marketplace-block="publisher">
         <StatusPill status={display.publisher.verified ? "ok" : "pending"} label={tx(display.publisher.verificationLabelKey)} />
         <span className="tag">{display.publisher.name}</span>
         <StatusPill status={statusPillStatus(display.trust.tone)} label={tx(display.trust.labelKey)} />
         {display.latestReleaseNote ? <span className="tag">{display.latestReleaseNote.version || display.latestReleaseNote.title}</span> : null}
       </div>
-      {display.latestReleaseNote?.notes ? <span>{display.latestReleaseNote.notes}</span> : null}
+      {display.latestReleaseNote?.notes ? <span className="plugin-marketplace-release-note">{display.latestReleaseNote.notes}</span> : null}
       {display.screenshots.length > 0 ? (
-        <div className="tag-list">
+        <div className="plugin-marketplace-screenshots" data-plugin-marketplace-block="screenshots">
           {display.screenshots.slice(0, 3).map((screenshot) => (
-            <a href={screenshot.url} key={`${display.id}:${screenshot.url}`} rel="noreferrer" target="_blank" title={screenshot.caption || screenshot.alt}>
+            <a className="plugin-marketplace-screenshot" href={screenshot.url} key={`${display.id}:${screenshot.url}`} rel="noreferrer" target="_blank" title={screenshot.caption || screenshot.alt}>
               <img
                 alt={screenshot.alt}
                 height={54}
                 src={screenshot.thumbnailURL}
-                style={{ borderRadius: 4, display: "block", height: 54, objectFit: "cover", width: 96 }}
                 width={96}
               />
             </a>
@@ -1121,7 +1120,7 @@ function MarketplaceDetails({ display }: { display: PluginMarketplaceDisplayStat
         </div>
       ) : null}
       {display.advisories.length > 0 ? (
-        <div className="tag-list">
+        <div className="tag-list plugin-marketplace-advisories" data-plugin-marketplace-block="advisories">
           {display.advisories.map((advisory) => (
             <a className="tag" href={advisory.url || undefined} key={`${display.id}:${advisory.id}`} rel="noreferrer" target="_blank">
               <StatusPill status={advisory.tone} label={tx(advisory.labelKey)} />

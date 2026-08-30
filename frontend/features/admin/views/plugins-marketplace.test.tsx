@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { emptyData } from "../domain/catalog";
@@ -59,7 +61,7 @@ describe("PluginsView marketplace view", () => {
       },
     }];
 
-    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
     expect(screen.getByText("管理 Codex 订阅")).toBeInTheDocument();
     expect(screen.getByText("provider")).toBeInTheDocument();
@@ -70,5 +72,26 @@ describe("PluginsView marketplace view", () => {
     expect(screen.getByText("已验证")).toBeInTheDocument();
     expect(screen.getByText("高危")).toBeInTheDocument();
     expect(screen.getByAltText("Codex dashboard")).toHaveAttribute("src", "https://cdn.example/codex-thumb.png");
+    expect(container.querySelector('[data-plugin-marketplace-block="status"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="compatibility-badges"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="details"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="categories"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="publisher"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="screenshots"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="advisories"]')).toBeInTheDocument();
+    expect(container.querySelector(".plugin-marketplace-screenshot img")).not.toHaveAttribute("style");
+  });
+
+  it("keeps marketplace presentation styles feature-scoped", () => {
+    const styles = pluginStyles();
+
+    expect(styles).toContain(".plugin-marketplace-details");
+    expect(styles).toContain(".plugin-marketplace-screenshots");
+    expect(styles).toContain(".plugin-marketplace-screenshot img");
+    expect(styles).toContain(".plugin-marketplace-advisories .tag");
   });
 });
+
+function pluginStyles() {
+  return readFileSync(resolve("app/styles/redesign/plugins.css"), "utf8");
+}

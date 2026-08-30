@@ -92,6 +92,60 @@
   width: max-content;
 }
 
+.plugin-marketplace-status {
+  gap: 7px;
+}
+
+.plugin-marketplace-badges {
+  gap: 6px;
+}
+
+.plugin-marketplace-details {
+  max-width: 100%;
+  padding: 10px 0 2px;
+}
+
+.plugin-marketplace-summary,
+.plugin-marketplace-release-note {
+  max-width: 880px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.plugin-marketplace-categories,
+.plugin-marketplace-publisher,
+.plugin-marketplace-advisories {
+  gap: 6px;
+}
+
+.plugin-marketplace-screenshots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 96px));
+  gap: 8px;
+  align-items: start;
+}
+
+.plugin-marketplace-screenshot {
+  display: block;
+  width: 96px;
+  height: 54px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.plugin-marketplace-screenshot img {
+  display: block;
+  width: 96px;
+  height: 54px;
+  object-fit: cover;
+}
+
+.plugin-marketplace-advisories .tag {
+  max-width: min(100%, 420px);
+}
+
 .plugin-page-panel[data-page-template-source="sim"] {
   border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
 }
