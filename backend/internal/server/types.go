@@ -741,6 +741,7 @@ type AuditEvent struct {
 	ActorUserID    string    `json:"actor_user_id" gorm:"index"`
 	ActorName      string    `json:"actor_name,omitempty"`
 	ActorRole      string    `json:"actor_role,omitempty"`
+	CorrelationID  string    `json:"correlation_id,omitempty" gorm:"index"`
 	Action         string    `json:"action" gorm:"index"`
 	ResourceType   string    `json:"resource_type" gorm:"index"`
 	ResourceID     string    `json:"resource_id" gorm:"index"`

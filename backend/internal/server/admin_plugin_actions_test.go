@@ -1144,9 +1144,17 @@ func TestAdminPluginBackgroundJobRunExecutesThroughRunner(t *testing.T) {
 		t.Fatalf("register background job: %v", err)
 	}
 
-	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run", map[string]any{
-		"resource_id": "rsrc_1",
-	}, "plugin-action-admin")
+	reqBody, err := json.Marshal(map[string]any{"resource_id": "rsrc_1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run", strings.NewReader(string(reqBody)))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer plugin-action-admin")
+	req.Header.Set("x-request-id", "req_bg_audit_1")
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+	response := responseBody{Code: rr.Code, Header: rr.Header(), Body: rr.Body.String()}
 	if response.Code != http.StatusOK {
 		t.Fatalf("POST plugin background job: expected 200, got %d: %s", response.Code, response.Body)
 	}
@@ -1161,6 +1169,15 @@ func TestAdminPluginBackgroundJobRunExecutesThroughRunner(t *testing.T) {
 	events := store.ListAuditEvents()
 	if len(events) == 0 || events[0].Action != "plugin.background_job.quota.refresh" || events[0].ResourceID != "tokenhub.jobs" {
 		t.Fatalf("plugin background job audit events = %+v", events)
+	}
+	if events[0].CorrelationID != "req_bg_audit_1" {
+		t.Fatalf("plugin background job audit correlation = %q, want req_bg_audit_1", events[0].CorrelationID)
+	}
+	if strings.Contains(events[0].BeforeSnapshot, "secret-access") || strings.Contains(events[0].AfterSnapshot, "secret-access") {
+		t.Fatalf("plugin background job audit snapshots leaked secret: %+v", events[0])
+	}
+	if !strings.Contains(events[0].BeforeSnapshot, `"resource_id":"rsrc_1"`) || !strings.Contains(events[0].AfterSnapshot, `"access_token":"[redacted]"`) {
+		t.Fatalf("plugin background job audit snapshots missing redaction: %+v", events[0])
 	}
 
 	list := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugin-background-jobs", nil, "plugin-action-admin")

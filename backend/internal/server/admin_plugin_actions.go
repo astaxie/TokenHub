@@ -125,11 +125,11 @@ func (s *Server) handleAdminPluginBackgroundJobRunPost(w http.ResponseWriter, r 
 	})
 	record = sanitizePluginBackgroundJobRunRecord(record)
 	if err != nil {
-		s.recordPluginBackgroundJobAudit(r, user, pluginID, jobID, "failed", err.Error())
+		s.recordPluginBackgroundJobAudit(r, user, payload, record, "failed", err.Error())
 		writeError(w, r, pluginBackgroundJobHTTPError(err))
 		return
 	}
-	s.recordPluginBackgroundJobAudit(r, user, pluginID, jobID, "success", "")
+	s.recordPluginBackgroundJobAudit(r, user, payload, record, "success", "")
 	writeJSON(w, http.StatusOK, map[string]any{"data": record})
 }
 
@@ -494,18 +494,33 @@ func sanitizePluginBackgroundJobRunRecords(records []pluginmeta.BackgroundJobRun
 	return sanitized
 }
 
-func (s *Server) recordPluginBackgroundJobAudit(r *http.Request, user AdminUser, pluginID string, jobID string, status string, message string) {
+func (s *Server) recordPluginBackgroundJobAudit(r *http.Request, user AdminUser, payload json.RawMessage, record pluginmeta.BackgroundJobRunRecord, status string, message string) {
+	correlationID := strings.TrimSpace(r.Header.Get("x-request-id"))
+	if correlationID == "" {
+		correlationID = NewID("req")
+	}
 	s.store.RecordAuditEvent(AuditEvent{
-		ActorUserID:  user.ID,
-		ActorName:    user.Name,
-		ActorRole:    user.Role,
-		Action:       "plugin.background_job." + jobID,
-		ResourceType: "plugin",
-		ResourceID:   pluginID,
-		Status:       status,
-		Message:      message,
-		IP:           s.clientIP(r),
-		UserAgent:    r.UserAgent(),
+		ActorUserID:    user.ID,
+		ActorName:      user.Name,
+		ActorRole:      user.Role,
+		CorrelationID:  correlationID,
+		Action:         "plugin.background_job." + record.JobID,
+		ResourceType:   "plugin",
+		ResourceID:     record.PluginID,
+		Status:         status,
+		Message:        message,
+		BeforeSnapshot: auditSnapshotJSON(payload),
+		AfterSnapshot: auditSnapshotJSON(map[string]any{
+			"plugin_id": record.PluginID,
+			"job_id":    record.JobID,
+			"trigger":   record.Trigger,
+			"status":    record.Status,
+			"attempts":  record.Attempts,
+			"error":     record.Error,
+			"result":    record.Result,
+		}),
+		IP:        s.clientIP(r),
+		UserAgent: r.UserAgent(),
 	})
 }
 
