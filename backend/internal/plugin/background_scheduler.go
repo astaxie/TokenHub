@@ -80,10 +80,20 @@ func (r *BackgroundJobRunner) StartScheduler(interval time.Duration) {
 }
 
 func (r *BackgroundJobRunner) Shutdown(ctx context.Context) error {
-	if r == nil || r.scheduler == nil {
+	if r == nil {
 		return nil
 	}
-	return r.scheduler.Shutdown(ctx)
+	dones := r.beginShutdown()
+	var schedulerErr error
+	if r.scheduler != nil {
+		schedulerErr = r.scheduler.Shutdown(ctx)
+	}
+	waitErr := waitBackgroundJobRuns(ctx, dones)
+	r.finishShutdown()
+	if schedulerErr != nil {
+		return schedulerErr
+	}
+	return waitErr
 }
 
 func (s *backgroundScheduler) State() BackgroundSchedulerState {
@@ -148,14 +158,6 @@ func (s *backgroundScheduler) Shutdown(ctx context.Context) error {
 	stop()
 	select {
 	case <-done:
-		s.mu.Lock()
-		if s.done == done {
-			s.stop = nil
-			s.done = nil
-			s.state.Status = BackgroundSchedulerStopped
-			s.state.StoppedAt = s.now().UTC()
-		}
-		s.mu.Unlock()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -163,7 +165,10 @@ func (s *backgroundScheduler) Shutdown(ctx context.Context) error {
 }
 
 func (s *backgroundScheduler) loop(ctx context.Context, done chan struct{}, interval time.Duration) {
-	defer close(done)
+	defer func() {
+		s.markStopped(done)
+		close(done)
+	}()
 	s.runner.runStartupJobs(ctx)
 	s.markStartupRan()
 	ticker := s.newTicker(interval)
@@ -190,6 +195,18 @@ func (s *backgroundScheduler) markTick(now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state.LastTickAt = now.UTC()
+}
+
+func (s *backgroundScheduler) markStopped(done chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done != done {
+		return
+	}
+	s.stop = nil
+	s.done = nil
+	s.state.Status = BackgroundSchedulerStopped
+	s.state.StoppedAt = s.now().UTC()
 }
 
 func (r *BackgroundJobRunner) runStartupJobs(ctx context.Context) []BackgroundJobRunRecord {

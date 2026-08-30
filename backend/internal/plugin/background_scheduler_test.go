@@ -2,7 +2,9 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -161,6 +163,56 @@ func TestBackgroundSchedulerTicksRunDueJobs(t *testing.T) {
 	}
 }
 
+func TestBackgroundSchedulerShutdownTimeoutEventuallyResumes(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	var block atomic.Bool
+	block.Store(true)
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "startup",
+		Schedule:       "@startup",
+		MaxConcurrency: 1,
+	}, BackgroundJobHandlerFunc(func(context.Context, BackgroundJobInvocation) (BackgroundJobResult, error) {
+		started <- struct{}{}
+		if block.Load() {
+			<-release
+		}
+		return BackgroundJobResult{Data: "ok"}, nil
+	})); err != nil {
+		t.Fatalf("register startup job: %v", err)
+	}
+	runner := NewBackgroundJobRunner(broker)
+
+	runner.StartScheduler(time.Hour)
+	waitForBackgroundSchedulerSignal(t, started)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if err := runner.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shutdown error = %v, want deadline exceeded", err)
+	}
+	if state := runner.SchedulerState(); state.Status != BackgroundSchedulerStopping {
+		t.Fatalf("scheduler state after timed out shutdown = %+v, want stopping", state)
+	}
+
+	block.Store(false)
+	close(release)
+	waitForBackgroundSchedulerState(t, runner, func(state BackgroundSchedulerState) bool {
+		return state.Status == BackgroundSchedulerStopped
+	})
+
+	runner.StartScheduler(time.Hour)
+	waitForBackgroundSchedulerSignal(t, started)
+	if state := runner.SchedulerState(); state.Status != BackgroundSchedulerRunning || state.Generation != 2 {
+		t.Fatalf("restarted scheduler state = %+v, want running generation 2", state)
+	}
+	if err := runner.Shutdown(context.Background()); err != nil {
+		t.Fatalf("second shutdown scheduler: %v", err)
+	}
+}
+
 func waitForBackgroundSchedulerValue[T any](t *testing.T, values <-chan T) T {
 	t.Helper()
 	select {
@@ -179,6 +231,15 @@ func assertNoBackgroundSchedulerValue[T any](t *testing.T, values <-chan T) {
 	case value := <-values:
 		t.Fatalf("unexpected scheduler value: %+v", value)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func waitForBackgroundSchedulerSignal(t *testing.T, signal <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for scheduler signal")
 	}
 }
 

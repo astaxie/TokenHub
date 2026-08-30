@@ -19,6 +19,7 @@ var (
 	ErrPluginBackgroundJobInvalidPayload = errors.New("plugin background job payload is invalid")
 	ErrPluginBackgroundJobInvalidResult  = errors.New("plugin background job result is invalid")
 	ErrPluginBackgroundJobBusy           = errors.New("plugin background job concurrency limit reached")
+	ErrPluginBackgroundJobShuttingDown   = errors.New("plugin background job runner is shutting down")
 )
 
 const maxBackgroundJobRetryDelay = time.Duration(1<<63 - 1)
@@ -282,6 +283,16 @@ type BackgroundJobRunner struct {
 
 	retrySleeper func(context.Context, time.Duration) error
 	retryJitter  func(time.Duration) time.Duration
+
+	lifecycleMu    sync.Mutex
+	shuttingDown   bool
+	shutdownActive bool
+	activeRuns     map[*backgroundJobRunToken]struct{}
+}
+
+type backgroundJobRunToken struct {
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 func NewBackgroundJobRunner(broker *BackgroundJobBroker) *BackgroundJobRunner {
@@ -292,6 +303,7 @@ func NewBackgroundJobRunner(broker *BackgroundJobBroker) *BackgroundJobRunner {
 		deadRuns:     map[string][]BackgroundJobRunRecord{},
 		retrySleeper: backgroundJobRetrySleep,
 		retryJitter:  backgroundJobRetryJitter,
+		activeRuns:   map[*backgroundJobRunToken]struct{}{},
 	}
 	runner.scheduler = newBackgroundScheduler(runner)
 	return runner
@@ -310,6 +322,22 @@ func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobI
 	if !ok {
 		return BackgroundJobRunRecord{}, ErrPluginBackgroundJobNotFound
 	}
+	runCtx, runToken, ok := r.beginRun(ctx)
+	if !ok {
+		now := time.Now().UTC()
+		record := BackgroundJobRunRecord{
+			PluginID:    invocation.PluginID,
+			JobID:       invocation.JobID,
+			Trigger:     invocation.Trigger,
+			Status:      BackgroundJobRunSkipped,
+			StartedAt:   now,
+			CompletedAt: now,
+			Error:       ErrPluginBackgroundJobShuttingDown.Error(),
+		}
+		r.recordRun(record)
+		return record, ErrPluginBackgroundJobShuttingDown
+	}
+	defer r.finishRun(runToken)
 	if !r.tryStart(descriptor) {
 		now := time.Now().UTC()
 		record := BackgroundJobRunRecord{
@@ -325,7 +353,7 @@ func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobI
 		return record, ErrPluginBackgroundJobBusy
 	}
 	defer r.finish(descriptor)
-	record, err := r.executeWithRetry(ctx, descriptor, invocation)
+	record, err := r.executeWithRetry(runCtx, descriptor, invocation)
 	r.recordRun(record)
 	if record.Status == BackgroundJobRunFailed && descriptor.Retry.DeadLetter {
 		r.recordDeadLetter(record)
@@ -567,6 +595,75 @@ func (r *BackgroundJobRunner) configureRetryForTest(sleeper func(context.Context
 	if jitter != nil {
 		r.retryJitter = jitter
 	}
+}
+
+func (r *BackgroundJobRunner) beginRun(ctx context.Context) (context.Context, *backgroundJobRunToken, bool) {
+	runCtx, cancel := context.WithCancel(ctx)
+	token := &backgroundJobRunToken{
+		cancel: cancel,
+		done:   make(chan struct{}),
+	}
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+	if r.shuttingDown {
+		cancel()
+		return nil, nil, false
+	}
+	r.activeRuns[token] = struct{}{}
+	return runCtx, token, true
+}
+
+func (r *BackgroundJobRunner) finishRun(token *backgroundJobRunToken) {
+	if r == nil || token == nil {
+		return
+	}
+	token.cancel()
+	r.lifecycleMu.Lock()
+	delete(r.activeRuns, token)
+	if len(r.activeRuns) == 0 && !r.shutdownActive {
+		r.shuttingDown = false
+	}
+	r.lifecycleMu.Unlock()
+	close(token.done)
+}
+
+func (r *BackgroundJobRunner) beginShutdown() []chan struct{} {
+	if r == nil {
+		return nil
+	}
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+	r.shuttingDown = true
+	r.shutdownActive = true
+	dones := make([]chan struct{}, 0, len(r.activeRuns))
+	for token := range r.activeRuns {
+		token.cancel()
+		dones = append(dones, token.done)
+	}
+	return dones
+}
+
+func (r *BackgroundJobRunner) finishShutdown() {
+	if r == nil {
+		return
+	}
+	r.lifecycleMu.Lock()
+	r.shutdownActive = false
+	if len(r.activeRuns) == 0 {
+		r.shuttingDown = false
+	}
+	r.lifecycleMu.Unlock()
+}
+
+func waitBackgroundJobRuns(ctx context.Context, dones []chan struct{}) error {
+	for _, done := range dones {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func backgroundJobDue(schedule string, last BackgroundJobRunRecord, hasLast bool, now time.Time) bool {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -259,6 +260,156 @@ func TestBackgroundJobRunnerRecordsDeadLettersAfterRetryExhaustion(t *testing.T)
 	}
 }
 
+func TestBackgroundJobRunnerAppliesAttemptTimeout(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		TimeoutMillis:  10,
+		MaxConcurrency: 1,
+	}, BackgroundJobHandlerFunc(func(ctx context.Context, _ BackgroundJobInvocation) (BackgroundJobResult, error) {
+		<-ctx.Done()
+		return BackgroundJobResult{}, ctx.Err()
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+
+	record, err := NewBackgroundJobRunner(broker).Run(context.Background(), BackgroundJobInvocation{
+		PluginID: "tokenhub.jobs",
+		JobID:    "quota.refresh",
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want deadline exceeded", err)
+	}
+	if record.Status != BackgroundJobRunFailed || record.Attempts != 1 {
+		t.Fatalf("run record = %+v, want failed first attempt", record)
+	}
+}
+
+func TestBackgroundJobRunnerShutdownCancelsInFlightRunsAndResumes(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	started := make(chan struct{}, 2)
+	canceled := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	var immediate atomic.Bool
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+	}, BackgroundJobHandlerFunc(func(ctx context.Context, _ BackgroundJobInvocation) (BackgroundJobResult, error) {
+		started <- struct{}{}
+		if immediate.Load() {
+			return BackgroundJobResult{Data: "ok"}, nil
+		}
+		<-ctx.Done()
+		close(canceled)
+		<-release
+		return BackgroundJobResult{}, ctx.Err()
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+	runner := NewBackgroundJobRunner(broker)
+	runDone := make(chan error, 1)
+	go func() {
+		_, err := runner.Run(context.Background(), BackgroundJobInvocation{PluginID: "tokenhub.jobs", JobID: "quota.refresh"})
+		runDone <- err
+	}()
+	waitForBackgroundJobSignal(t, started)
+
+	shutdownDone := make(chan error, 1)
+	go func() {
+		shutdownDone <- runner.Shutdown(context.Background())
+	}()
+	waitForBackgroundJobSignal(t, canceled)
+
+	record, err := runner.Run(context.Background(), BackgroundJobInvocation{PluginID: "tokenhub.jobs", JobID: "quota.refresh"})
+	if !errors.Is(err, ErrPluginBackgroundJobShuttingDown) {
+		t.Fatalf("error = %v, want ErrPluginBackgroundJobShuttingDown", err)
+	}
+	if record.Status != BackgroundJobRunSkipped {
+		t.Fatalf("run record = %+v, want skipped while shutting down", record)
+	}
+
+	releaseOnce.Do(func() { close(release) })
+	if err := waitForBackgroundJobError(t, runDone); !errors.Is(err, context.Canceled) {
+		t.Fatalf("in-flight error = %v, want context canceled", err)
+	}
+	if err := waitForBackgroundJobError(t, shutdownDone); err != nil {
+		t.Fatalf("shutdown error: %v", err)
+	}
+
+	immediate.Store(true)
+	record, err = runner.Run(context.Background(), BackgroundJobInvocation{PluginID: "tokenhub.jobs", JobID: "quota.refresh"})
+	if err != nil {
+		t.Fatalf("run after shutdown: %v", err)
+	}
+	if record.Status != BackgroundJobRunSucceeded {
+		t.Fatalf("run after shutdown record = %+v, want succeeded", record)
+	}
+}
+
+func TestBackgroundJobRunnerShutdownTimeoutRejectsUntilRunsFinish(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	started := make(chan struct{}, 2)
+	canceled := make(chan struct{})
+	release := make(chan struct{})
+	var immediate atomic.Bool
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+	}, BackgroundJobHandlerFunc(func(ctx context.Context, _ BackgroundJobInvocation) (BackgroundJobResult, error) {
+		started <- struct{}{}
+		if immediate.Load() {
+			return BackgroundJobResult{Data: "ok"}, nil
+		}
+		<-ctx.Done()
+		close(canceled)
+		<-release
+		return BackgroundJobResult{}, ctx.Err()
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+	runner := NewBackgroundJobRunner(broker)
+	runDone := make(chan error, 1)
+	go func() {
+		_, err := runner.Run(context.Background(), BackgroundJobInvocation{PluginID: "tokenhub.jobs", JobID: "quota.refresh"})
+		runDone <- err
+	}()
+	waitForBackgroundJobSignal(t, started)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if err := runner.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shutdown error = %v, want deadline exceeded", err)
+	}
+	waitForBackgroundJobSignal(t, canceled)
+	record, err := runner.Run(context.Background(), BackgroundJobInvocation{PluginID: "tokenhub.jobs", JobID: "quota.refresh"})
+	if !errors.Is(err, ErrPluginBackgroundJobShuttingDown) {
+		t.Fatalf("error = %v, want ErrPluginBackgroundJobShuttingDown", err)
+	}
+	if record.Status != BackgroundJobRunSkipped {
+		t.Fatalf("run record = %+v, want skipped while timed-out shutdown is draining", record)
+	}
+
+	close(release)
+	if err := waitForBackgroundJobError(t, runDone); !errors.Is(err, context.Canceled) {
+		t.Fatalf("in-flight error = %v, want context canceled", err)
+	}
+	immediate.Store(true)
+	record, err = runner.Run(context.Background(), BackgroundJobInvocation{PluginID: "tokenhub.jobs", JobID: "quota.refresh"})
+	if err != nil {
+		t.Fatalf("run after timed-out shutdown drain: %v", err)
+	}
+	if record.Status != BackgroundJobRunSucceeded {
+		t.Fatalf("run after timed-out shutdown drain record = %+v, want succeeded", record)
+	}
+}
+
 func TestBackgroundJobRunnerEnforcesConcurrencyLimit(t *testing.T) {
 	broker := NewBackgroundJobBroker()
 	started := make(chan struct{})
@@ -342,6 +493,26 @@ func TestBackgroundJobRunnerRunsDueJobsAndTracksLastRuns(t *testing.T) {
 	last := runner.LastRuns()
 	if len(last) != 2 {
 		t.Fatalf("last runs = %+v, want two entries", last)
+	}
+}
+
+func waitForBackgroundJobSignal(t *testing.T, signal <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for background job signal")
+	}
+}
+
+func waitForBackgroundJobError(t *testing.T, errors <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-errors:
+		return err
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for background job error")
+		return nil
 	}
 }
 
