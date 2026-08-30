@@ -1,4 +1,4 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Power, PowerOff, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Save, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
@@ -11,6 +11,7 @@ import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 import { PluginActionRunner, PluginBackgroundJobRunner } from "./plugin-action-runner";
+import { PluginDeleteControl, PluginLifecycleControl, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
 type ActionDraft = {
@@ -18,13 +19,6 @@ type ActionDraft = {
   busy: boolean;
   error: string;
   result: string;
-};
-
-type PluginStateDraft = {
-  status?: string;
-  busy?: boolean;
-  error?: string;
-  restartRequired?: boolean;
 };
 
 type PluginInstallDraft = {
@@ -38,12 +32,6 @@ type PluginInstallDraft = {
 };
 
 type PluginUpdateDraft = {
-  busy: boolean;
-  error: string;
-  result: string;
-};
-
-type PluginDeleteDraft = {
   busy: boolean;
   error: string;
   result: string;
@@ -74,6 +62,7 @@ export function PluginsView({
   const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
   const [pluginUpdateDrafts, setPluginUpdateDrafts] = useState<Record<string, PluginUpdateDraft>>({});
   const [pluginDeleteDrafts, setPluginDeleteDrafts] = useState<Record<string, PluginDeleteDraft>>({});
+  const [pluginRollbackDrafts, setPluginRollbackDrafts] = useState<Record<string, PluginRollbackDraft>>({});
   const [backgroundJobDrafts, setBackgroundJobDrafts] = useState<Record<string, PluginBackgroundJobDraft>>({});
   const [marketplaceDrafts, setMarketplaceDrafts] = useState<Record<string, PluginInstallDraft>>({});
   const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
@@ -110,6 +99,7 @@ export function PluginsView({
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
+  const pluginRollbackDraft = (plugin: PluginDescriptor) => pluginRollbackDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const marketplaceInstallDraft = (plugin: PluginDescriptor) => marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
   const pluginPermissionPreviewDraft = (plugin: PluginDescriptor) => pluginPermissionPreviews[plugin.id] ?? emptyPermissionPreviewDraft();
   const backgroundJobDraft = (job: PluginBackgroundJobDescriptor) => backgroundJobDrafts[pluginBackgroundJobKey(job.plugin_id, job.job_id)] ?? emptyBackgroundJobDraft(job);
@@ -396,6 +386,41 @@ export function PluginsView({
     }
   }
 
+  async function rollbackPlugin(plugin: PluginDescriptor) {
+    const current = pluginRollbackDraft(plugin);
+    setPluginRollbackDrafts((drafts) => ({
+      ...drafts,
+      [plugin.id]: { ...current, busy: true, error: "", result: "" },
+    }));
+    try {
+      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(plugin.id)}/rollback`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error(await readAdminError(response, tx("回滚插件")));
+      const payload = await response.json() as { data?: { plugin?: { version?: string }; rollback_version?: string; restart_required?: boolean } };
+      const rollbackVersion = payload.data?.rollback_version ?? payload.data?.plugin?.version ?? plugin.version ?? plugin.id;
+      setPluginRollbackDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          busy: false,
+          error: "",
+          result: `${rollbackVersion} · ${payload.data?.restart_required ? tx("插件回滚完成，重启后生效") : tx("插件回滚完成")}`,
+        },
+      }));
+    } catch (reason) {
+      if (isAuthExpiredError(reason)) return;
+      setPluginRollbackDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: {
+          ...current,
+          busy: false,
+          error: reason instanceof Error ? reason.message : tx("回滚插件失败"),
+          result: "",
+        },
+      }));
+    }
+  }
+
   async function installMarketplacePlugin(item: PluginMarketplacePlugin) {
     const plugin = item.plugin;
     const distribution = plugin.distribution;
@@ -561,7 +586,14 @@ export function PluginsView({
                           <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
                         </td>
                         <td>
-                          <PluginLifecycleControl plugin={plugin} lifecycle={lifecycle} draft={pluginStateDraft(plugin)} onUpdate={updatePluginState} />
+                          <PluginLifecycleControl
+                            draft={pluginStateDraft(plugin)}
+                            lifecycle={lifecycle}
+                            onRollback={rollbackPlugin}
+                            onUpdate={updatePluginState}
+                            plugin={plugin}
+                            rollbackDraft={pluginRollbackDraft(plugin)}
+                          />
                         </td>
                         <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
                         <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
@@ -1040,42 +1072,6 @@ function PluginTitle({ plugin }: { plugin: PluginDescriptor }) {
   );
 }
 
-function PluginLifecycleControl({
-  plugin,
-  lifecycle,
-  draft,
-  onUpdate,
-}: {
-  plugin: PluginDescriptor;
-  lifecycle: PluginManagerDisplayState;
-  draft: PluginStateDraft;
-  onUpdate: (plugin: PluginDescriptor, status: string) => void;
-}) {
-  const effectiveLifecycle = draft.status ? pluginManagerDisplayState({ plugin: { ...plugin, status: draft.status } }) : lifecycle;
-  const status = effectiveLifecycle.status;
-  const nextStatus = status === "disabled" ? "enabled" : "disabled";
-  const canUpdate = plugin.source !== "built_in" && !effectiveLifecycle.mandatory && (status === "enabled" || status === "disabled");
-  return (
-    <div className="stacked-cell" data-plugin-manager-control="lifecycle">
-      <StatusPill status={effectiveLifecycle.pillStatus} label={tx(effectiveLifecycle.labelKey)} />
-      {canUpdate ? (
-        <button
-          className="secondary-button compact-button"
-          disabled={Boolean(draft.busy)}
-          onClick={() => onUpdate(plugin, nextStatus)}
-          title={tx(nextStatus === "enabled" ? "启用插件" : "禁用插件")}
-          type="button"
-        >
-          {nextStatus === "enabled" ? <Power size={14} /> : <PowerOff size={14} />}
-          <span>{tx(draft.busy ? "更新中" : nextStatus === "enabled" ? "启用" : "禁用")}</span>
-        </button>
-      ) : null}
-      {draft.restartRequired || effectiveLifecycle.restartRequired ? <span>{tx("重启后生效")}</span> : null}
-      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
-    </div>
-  );
-}
-
 function CapabilityList({ plugin }: { plugin: PluginDescriptor }) {
   const visible = plugin.capabilities.slice(0, 6);
   const remaining = plugin.capabilities.length - visible.length;
@@ -1290,42 +1286,6 @@ function MarketplaceInstallControl({
         draft={previewDraft}
         onPreview={() => onPreview(item.plugin)}
       />
-      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
-      {draft.result ? <span>{draft.result}</span> : null}
-    </div>
-  );
-}
-
-function PluginDeleteControl({
-  plugin,
-  lifecycle,
-  draft,
-  onDelete,
-}: {
-  plugin: PluginDescriptor;
-  lifecycle: PluginManagerDisplayState;
-  draft: PluginDeleteDraft;
-  onDelete: (plugin: PluginDescriptor) => void;
-}) {
-  if (!lifecycle.actions.uninstall.available) {
-    return (
-      <div className="stacked-cell" data-plugin-manager-control="delete">
-        <span className="muted">-</span>
-      </div>
-    );
-  }
-  return (
-    <div className="stacked-cell" data-plugin-manager-control="delete">
-      <button
-        className="danger-button compact-button"
-        disabled={draft.busy}
-        onClick={() => onDelete(plugin)}
-        title={tx("卸载插件")}
-        type="button"
-      >
-        <Trash2 size={13} />
-        <span>{tx(draft.busy ? "卸载中" : "卸载")}</span>
-      </button>
       {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
       {draft.result ? <span>{draft.result}</span> : null}
     </div>
