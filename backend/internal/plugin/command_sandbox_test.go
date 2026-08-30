@@ -33,6 +33,9 @@ func TestBuildCommandSandboxPolicyUsesExplicitSafeEnvironment(t *testing.T) {
 	if policy.NetworkEnforcement != SandboxEnforcementUnsupported || policy.ResourceEnforcement != SandboxEnforcementUnsupported {
 		t.Fatalf("policy = %+v, want unsupported network/resource enforcement until OS sandbox exists", policy)
 	}
+	if policy.ProcessEnforcement != commandProcessEnforcementStatus() {
+		t.Fatalf("process enforcement = %q, want platform status %q", policy.ProcessEnforcement, commandProcessEnforcementStatus())
+	}
 	if len(policy.AllowedNetwork) != 1 || policy.AllowedNetwork[0] != "api.example.com" {
 		t.Fatalf("allowed network = %v, want api.example.com", policy.AllowedNetwork)
 	}

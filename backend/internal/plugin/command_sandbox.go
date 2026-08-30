@@ -41,6 +41,7 @@ type CommandSandboxPolicy struct {
 	TempDir             string
 	OutputLimitBytes    int
 	StderrLimitBytes    int
+	ProcessEnforcement  SandboxEnforcementStatus
 	NetworkEnforcement  SandboxEnforcementStatus
 	ResourceEnforcement SandboxEnforcementStatus
 }
@@ -59,6 +60,7 @@ func BuildCommandSandboxPolicy(options CommandSandboxOptions) (CommandSandboxPol
 		TempDir:             tempDir,
 		OutputLimitBytes:    maxStdioJSONCommandOutputBytes,
 		StderrLimitBytes:    maxStdioJSONCommandOutputBytes,
+		ProcessEnforcement:  commandProcessEnforcementStatus(),
 		NetworkEnforcement:  SandboxEnforcementUnsupported,
 		ResourceEnforcement: SandboxEnforcementUnsupported,
 	}

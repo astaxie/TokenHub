@@ -106,6 +106,28 @@ dd if=/dev/zero bs=1048577 count=1 2>/dev/null | tr '\000' x
 	}
 }
 
+func TestStdioJSONCommandTimeoutKillsChildProcessGroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	marker := filepath.Join(t.TempDir(), "child-survived")
+	dir, command := writeStdioCommandScript(t, fmt.Sprintf(`#!/bin/sh
+(sleep 1; printf child-survived > %s) &
+wait
+`, shellQuote(marker)))
+
+	err := RunCommandJSON(t.Context(), dir, command, 20*time.Millisecond, ActionInvocation{PluginID: "tokenhub.test", ActionID: "timeout-child"}, &ActionResult{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context deadline exceeded", err)
+	}
+	time.Sleep(1500 * time.Millisecond)
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatalf("sandbox timeout left a child process alive; marker %s was written", marker)
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("stat child marker: %v", statErr)
+	}
+}
+
 func TestStdioJSONCommandUsesSandboxEnvironmentAcrossPlanes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture uses POSIX sh")
@@ -207,4 +229,8 @@ func writeStdioCommandScript(t *testing.T, body string) (string, string) {
 		t.Fatalf("write command script: %v", err)
 	}
 	return dir, name
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }

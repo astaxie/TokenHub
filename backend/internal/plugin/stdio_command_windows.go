@@ -17,3 +17,7 @@ func configureStdioCommandProcess(cmd *exec.Cmd) {
 		return kill.Run()
 	}
 }
+
+func commandProcessEnforcementStatus() SandboxEnforcementStatus {
+	return SandboxEnforcementEnforced
+}
