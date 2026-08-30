@@ -13,6 +13,10 @@ export function defaultProviderSystemPromptTransformPolicy(providerType?: string
   return pluginDefault || systemPromptTransformStrip;
 }
 
+export function providerSystemPromptTransformPolicy(values: Record<string, string>) {
+  return values.system_prompt_transform_policy || values.claude_code_attribution_policy || "";
+}
+
 function normalizeSystemPromptTransformPolicy(value?: string) {
   const policy = value?.trim().toLowerCase() ?? "";
   return policy === systemPromptTransformPreserve || policy === systemPromptTransformStrip ? policy : "";

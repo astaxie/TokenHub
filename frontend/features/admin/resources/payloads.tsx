@@ -5,7 +5,7 @@ import { inferModelCategoryText, normalizeNotificationChannelType, notificationC
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
-import { defaultProviderSystemPromptTransformPolicy } from "../domain/provider-attribution";
+import { defaultProviderSystemPromptTransformPolicy, providerSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { defaultProviderTypeValue, legacyProviderAuthModeField, providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
 import { providerPluginOptionValues } from "../domain/provider-plugin-options";
@@ -38,8 +38,8 @@ export function providerPayload(values: Record<string, string>, data?: Pick<AppD
     ...providerHeadersPayload(values.custom_headers),
     [providerAuthModeField]: authMode,
     [legacyProviderAuthModeField]: authMode,
-    system_prompt_transform_policy: values.system_prompt_transform_policy || values.claude_code_attribution_policy || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
-    claude_code_attribution_policy: values.claude_code_attribution_policy || values.system_prompt_transform_policy || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
+    system_prompt_transform_policy: providerSystemPromptTransformPolicy(values) || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
+    claude_code_attribution_policy: providerSystemPromptTransformPolicy(values) || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
     catalog_id: values.catalog_id,
     model_category: values.model_category,
     options: { ...providerReasoningOptions(values), ...providerPluginOptionValues(values) },
@@ -130,7 +130,7 @@ export function providerResourceOptions(values: Record<string, string>, data?: A
     scopes: values.scopes,
   } : {};
   const options = providerReasoningOptions(values, accountOptions);
-  const transformPolicy = values.system_prompt_transform_policy || values.claude_code_attribution_policy;
+  const transformPolicy = providerSystemPromptTransformPolicy(values);
   if (transformPolicy === "preserve" || transformPolicy === "strip") {
     options.system_prompt_transform_policy = transformPolicy;
     delete options.claude_code_attribution_policy;
@@ -172,7 +172,7 @@ export function providerResourceToForm(item: ProviderResource, providerOptions?:
     rate_limit_rpm: String(item.rate_limit_rpm ?? ""),
     token_limit_tpm: String(item.token_limit_tpm ?? ""),
     max_concurrency: String(item.max_concurrency ?? ""),
-    system_prompt_transform_policy: item.options?.system_prompt_transform_policy ?? item.options?.claude_code_attribution_policy ?? "inherit",
+    system_prompt_transform_policy: providerSystemPromptTransformPolicy(item.options ?? {}) || "inherit",
     region: item.region ?? "",
     environment: item.environment ?? "",
     status: item.status,

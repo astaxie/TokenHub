@@ -4,6 +4,7 @@ import { importTypeScript } from "./typescript-test-loader.mjs";
 
 const {
   defaultProviderSystemPromptTransformPolicy,
+  providerSystemPromptTransformPolicy,
 } = await importTypeScript(new URL("./provider-attribution.ts", import.meta.url));
 
 test("system prompt transform default follows provider metadata", () => {
@@ -32,4 +33,11 @@ test("system prompt transform default ignores invalid provider metadata", () => 
   const providerTypeOptions = [{ value: "anthropic", systemPromptTransformDefault: "normalize" }];
 
   assert.equal(defaultProviderSystemPromptTransformPolicy("anthropic", "anthropic", providerTypeOptions), "strip");
+});
+
+test("legacy provider alias values normalize to the current transform policy field", () => {
+  assert.equal(providerSystemPromptTransformPolicy({ system_prompt_transform_policy: "preserve" }), "preserve");
+  assert.equal(providerSystemPromptTransformPolicy({ claude_code_attribution_policy: "strip" }), "strip");
+  assert.equal(providerSystemPromptTransformPolicy({ system_prompt_transform_policy: "strip", claude_code_attribution_policy: "preserve" }), "strip");
+  assert.equal(providerSystemPromptTransformPolicy({}), "");
 });

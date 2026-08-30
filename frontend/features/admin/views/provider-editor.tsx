@@ -8,7 +8,7 @@ import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
 import { providerTypeLabelFromData } from "../domain/labels";
 import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
-import { defaultProviderSystemPromptTransformPolicy } from "../domain/provider-attribution";
+import { defaultProviderSystemPromptTransformPolicy, providerSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
@@ -141,7 +141,7 @@ export function ProviderUpsertModal({
     [providerAuthModeField]: provider?.options?.auth_mode ?? provider?.options?.anthropic_auth_type ?? providerAuthMode({ type: initialProviderType }, providerTypeOptions),
     priority: String(provider?.priority ?? 10),
     system_prompt_transform_policy: mode === "edit"
-      ? provider?.options?.system_prompt_transform_policy ?? provider?.options?.claude_code_attribution_policy ?? "preserve"
+      ? providerSystemPromptTransformPolicy(provider?.options ?? {}) || "preserve"
       : defaultProviderSystemPromptTransformPolicy(initialProviderType, initialEntry?.id ?? "custom", providerTypeOptions),
     status: provider?.status ?? "active",
     healthy: String(provider?.healthy ?? true),

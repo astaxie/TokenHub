@@ -236,6 +236,74 @@ describe("ProviderUpsertModal", () => {
     });
   });
 
+  it("hydrates legacy provider aliases into the provider editor form", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    const provider: Provider = {
+      id: "prv_legacy_aliases",
+      name: "Legacy Aliases",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      status: "active",
+      healthy: true,
+      priority: 10,
+      options: {
+        anthropic_auth_type: "bearer",
+        claude_code_attribution_policy: "strip",
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/admin/provider-catalog/quality-provider")) {
+        return new Response(JSON.stringify({ data: catalogEntry }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: GET ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[catalogEntry]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        pluginUI={[{
+          plugin_id: "tokenhub.admin.core-provider",
+          id: "provider-legacy-aliases",
+          slot: "provider.form.section",
+          title: "Legacy Provider Aliases",
+          schema: {
+            placement: "advanced",
+            fields: [{
+              name: "system_prompt_transform_policy",
+              type: "select",
+              label: "System prompt transform",
+              target: "provider",
+              options: ["preserve", "strip"],
+            }],
+          },
+        }]}
+        provider={provider}
+        providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, authModes: ["bearer", "x-api-key"] }]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+        standardModels={[]}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+    expect(screen.getByText("认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
+    expect(screen.getByLabelText("System prompt transform")).toHaveValue("strip");
+  });
+
   it("defaults Anthropic auth selection from adapter metadata", async () => {
     const user = userEvent.setup();
     setActiveLanguage("zh-CN");
