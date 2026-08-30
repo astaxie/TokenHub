@@ -7,17 +7,23 @@ import (
 )
 
 type GatewayCommandRunner struct {
-	Dir     string
-	Command string
-	Timeout time.Duration
+	Dir         string
+	Command     string
+	Timeout     time.Duration
+	permissions PermissionGrant
 }
 
-func NewGatewayCommandRunner(dir string, command string) GatewayCommandRunner {
+func NewGatewayCommandRunner(dir string, command string, permissions ...PermissionGrant) GatewayCommandRunner {
 	return GatewayCommandRunner{
-		Dir:     strings.TrimSpace(dir),
-		Command: strings.TrimSpace(command),
-		Timeout: defaultStdioJSONCommandTimeout,
+		Dir:         strings.TrimSpace(dir),
+		Command:     strings.TrimSpace(command),
+		Timeout:     defaultStdioJSONCommandTimeout,
+		permissions: firstPermissionGrant(permissions),
 	}
+}
+
+func (r GatewayCommandRunner) PluginPermissionGrant() PermissionGrant {
+	return r.permissions
 }
 
 func (r GatewayCommandRunner) ExecuteGatewayHook(ctx context.Context, input GatewayHookInput) (GatewayHookResult, error) {

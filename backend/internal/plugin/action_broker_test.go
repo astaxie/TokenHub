@@ -178,6 +178,32 @@ func TestActionBrokerValidatesInputSchemaBeforeHandler(t *testing.T) {
 	}
 }
 
+func TestActionBrokerEnforcesPermissionGrantsBeforeCommandHandler(t *testing.T) {
+	broker := NewActionBroker()
+	descriptor := ActionDescriptor{
+		PluginID: "tokenhub.test",
+		ActionID: "credentials.refresh",
+		Kind:     ActionKindMutate,
+		Permissions: []PermissionDescriptor{
+			{Kind: PermissionKindData, Name: string(DataProviderCredentials), Access: PermissionAccessRead},
+		},
+	}
+	if err := broker.Register(descriptor, NewActionCommandRunner(t.TempDir(), "missing.sh", PermissionGrant{Enforced: true})); err != nil {
+		t.Fatalf("register action: %v", err)
+	}
+
+	_, err := broker.Execute(context.Background(), ActionInvocation{
+		PluginID: "tokenhub.test",
+		ActionID: "credentials.refresh",
+	})
+	if err == nil {
+		t.Fatal("action command executed without its required permission grant")
+	}
+	if code, ok := PluginErrorCodeOf(err); !ok || code != PluginErrorPermissionRequired {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, PluginErrorPermissionRequired, err)
+	}
+}
+
 func TestActionBrokerValidatesOutputSchemaAfterHandler(t *testing.T) {
 	broker := NewActionBroker()
 	calls := 0

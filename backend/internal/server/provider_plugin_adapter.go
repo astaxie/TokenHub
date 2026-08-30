@@ -55,7 +55,7 @@ type providerPluginImageResponse struct {
 
 func newProviderPluginAdapter(pkg pluginmeta.Package) providerPluginAdapter {
 	return providerPluginAdapter{
-		commandRunner:           pluginmeta.NewProviderCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command),
+		commandRunner:           pluginmeta.NewProviderCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command, pluginmeta.PermissionGrantFromManifest(pkg.Manifest.Permissions)),
 		supportsChatStream:      providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityChatStream),
 		supportsResponsesStream: providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityResponseStream),
 		supportsImageGenerate:   providerPluginHasGatewayCapability(pkg.Manifest, AdapterCapabilityImageGenerate),

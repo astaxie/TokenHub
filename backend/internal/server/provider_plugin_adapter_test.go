@@ -138,6 +138,11 @@ func TestNewProviderPluginAdapterConfiguresCommandRunner(t *testing.T) {
 			Capabilities: pluginmeta.ManifestCapabilities{
 				Gateway: []string{"chat_stream", "responses_stream"},
 			},
+			Permissions: pluginmeta.ManifestPermissions{
+				Data: pluginmeta.ManifestDataPermissions{
+					Read: []pluginmeta.GatewayDataClass{pluginmeta.DataProviderCredentials},
+				},
+			},
 		},
 	}
 
@@ -148,8 +153,36 @@ func TestNewProviderPluginAdapterConfiguresCommandRunner(t *testing.T) {
 	if adapter.commandRunner.Timeout != 120*time.Second {
 		t.Fatalf("command runner timeout = %v, want 120s", adapter.commandRunner.Timeout)
 	}
+	if grant := adapter.commandRunner.PluginPermissionGrant(); !grant.Enforced || len(grant.Permissions) != 1 {
+		t.Fatalf("command runner permission grant = %+v, want enforced manifest grant", grant)
+	}
 	if !adapter.supportsResponsesStream || !adapter.supportsChatStream {
 		t.Fatalf("streaming capabilities were not derived from manifest: %+v", adapter)
+	}
+}
+
+func TestExternalProviderPluginAdapterEnforcesCredentialPermissionAtInvocation(t *testing.T) {
+	adapter := newProviderPluginAdapter(pluginmeta.Package{
+		Dir: t.TempDir(),
+		Manifest: pluginmeta.Manifest{
+			Entry: pluginmeta.ManifestEntry{
+				Backend: &pluginmeta.ManifestBackendEntry{
+					Protocol: pluginmeta.BackendProtocolStdioJSONV1,
+					Command:  "missing.sh",
+				},
+			},
+			Capabilities: pluginmeta.ManifestCapabilities{
+				Gateway: []string{"chat"},
+			},
+		},
+	})
+
+	_, _, err := adapter.Chat(context.Background(), Provider{Type: "custom_stdio", APIKey: "provider-secret"}, "upstream-model", ChatCompletionRequest{Model: "gateway-model"})
+	if err == nil {
+		t.Fatal("provider plugin adapter invoked command with credentials but no provider_credentials permission")
+	}
+	if code, ok := pluginmeta.PluginErrorCodeOf(err); !ok || code != pluginmeta.PluginErrorPermissionRequired {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, pluginmeta.PluginErrorPermissionRequired, err)
 	}
 }
 

@@ -34,6 +34,7 @@ type BackgroundJobDescriptor struct {
 	TimeoutMillis  int                      `json:"timeout_millis,omitempty"`
 	MaxConcurrency int                      `json:"max_concurrency"`
 	Retry          BackgroundJobRetryPolicy `json:"retry,omitempty"`
+	Permissions    []PermissionDescriptor   `json:"permissions,omitempty"`
 	InputSchema    map[string]any           `json:"input_schema,omitempty"`
 	OutputSchema   map[string]any           `json:"output_schema,omitempty"`
 }
@@ -134,6 +135,11 @@ func (b *BackgroundJobBroker) register(descriptor BackgroundJobDescriptor, handl
 	if descriptor.Retry.BackoffMillis < 0 {
 		return fmt.Errorf("plugin background job retry backoff_millis cannot be negative")
 	}
+	for _, permission := range descriptor.Permissions {
+		if err := ValidatePermissionDescriptor(permission); err != nil {
+			return err
+		}
+	}
 	if handler == nil {
 		return fmt.Errorf("plugin background job handler is required")
 	}
@@ -157,6 +163,11 @@ func (b *BackgroundJobBroker) Execute(ctx context.Context, invocation Background
 	}
 	if err := validateBackgroundJobPayload(entry.descriptor.InputSchema, invocation.Payload); err != nil {
 		return BackgroundJobResult{}, err
+	}
+	if grant, ok := PluginPermissionGrantFromHandler(entry.handler); ok {
+		if err := RequirePluginPermissions(entry.descriptor.Permissions, grant); err != nil {
+			return BackgroundJobResult{}, err
+		}
 	}
 	result, err := entry.handler.ExecuteBackgroundJob(ctx, invocation)
 	if err != nil {
@@ -200,6 +211,7 @@ func NormalizeBackgroundJobDescriptor(descriptor BackgroundJobDescriptor) Backgr
 	descriptor.Capability = strings.TrimSpace(descriptor.Capability)
 	descriptor.Subject = strings.TrimSpace(descriptor.Subject)
 	descriptor.Schedule = strings.TrimSpace(descriptor.Schedule)
+	descriptor.Permissions = NormalizePermissionDescriptors(descriptor.Permissions)
 	if descriptor.MaxConcurrency == 0 {
 		descriptor.MaxConcurrency = 1
 	}

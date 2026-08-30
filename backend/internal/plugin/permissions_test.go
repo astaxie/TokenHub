@@ -58,3 +58,29 @@ func TestSupportedPermissionCatalogIsStable(t *testing.T) {
 		t.Fatalf("gateway data classes = %+v", classes)
 	}
 }
+
+func TestRequirePluginPermissionsRejectsMissingGrantWithStableErrorCode(t *testing.T) {
+	err := RequirePluginPermissions([]PermissionDescriptor{
+		{Kind: PermissionKindData, Name: string(DataProviderCredentials), Access: PermissionAccessRead},
+	}, PermissionGrant{
+		Enforced: true,
+		Permissions: []PermissionDescriptor{
+			{Kind: PermissionKindData, Name: string(DataAudit), Access: PermissionAccessRead},
+		},
+	})
+	if err == nil {
+		t.Fatal("missing permission grant was accepted")
+	}
+	if code, ok := PluginErrorCodeOf(err); !ok || code != PluginErrorPermissionRequired {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, PluginErrorPermissionRequired, err)
+	}
+}
+
+func TestRequirePluginPermissionsAllowsUnenforcedHandlers(t *testing.T) {
+	err := RequirePluginPermissions([]PermissionDescriptor{
+		{Kind: PermissionKindData, Name: string(DataProviderCredentials), Access: PermissionAccessRead},
+	}, PermissionGrant{})
+	if err != nil {
+		t.Fatalf("unenforced grant error = %v, want nil", err)
+	}
+}

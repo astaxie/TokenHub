@@ -160,7 +160,7 @@ func actionHandlerForPackage(pkg Package) ActionHandler {
 	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Command) == "" {
 		return nil
 	}
-	return NewActionCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
+	return NewActionCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command, PermissionGrantFromManifest(pkg.Manifest.Permissions))
 }
 
 func gatewayHookHandlerForPackage(pkg Package) GatewayHookHandler {
@@ -173,7 +173,7 @@ func gatewayHookHandlerForPackage(pkg Package) GatewayHookHandler {
 	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Command) == "" {
 		return nil
 	}
-	return NewGatewayCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
+	return NewGatewayCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command, PermissionGrantFromManifest(pkg.Manifest.Permissions))
 }
 
 func backgroundJobHandlerForPackage(pkg Package) BackgroundJobHandler {
@@ -186,7 +186,7 @@ func backgroundJobHandlerForPackage(pkg Package) BackgroundJobHandler {
 	if strings.TrimSpace(pkg.Manifest.Entry.Backend.Command) == "" {
 		return nil
 	}
-	return NewBackgroundCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
+	return NewBackgroundCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command, PermissionGrantFromManifest(pkg.Manifest.Permissions))
 }
 
 func (r Runtime) Discover() ([]Package, error) {

@@ -85,6 +85,35 @@ func TestBackgroundJobRunnerValidatesInputBeforeHandler(t *testing.T) {
 	}
 }
 
+func TestBackgroundJobRunnerEnforcesPermissionGrantsBeforeCommandHandler(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "credentials.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+		Permissions: []PermissionDescriptor{
+			{Kind: PermissionKindData, Name: string(DataProviderCredentials), Access: PermissionAccessRead},
+		},
+	}, NewBackgroundCommandRunner(t.TempDir(), "missing.sh", PermissionGrant{Enforced: true})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+
+	record, err := NewBackgroundJobRunner(broker).Run(context.Background(), BackgroundJobInvocation{
+		PluginID: "tokenhub.jobs",
+		JobID:    "credentials.refresh",
+	})
+	if err == nil {
+		t.Fatal("background command executed without its required permission grant")
+	}
+	if code, ok := PluginErrorCodeOf(err); !ok || code != PluginErrorPermissionRequired {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, PluginErrorPermissionRequired, err)
+	}
+	if record.Status != BackgroundJobRunFailed || record.Attempts != 1 {
+		t.Fatalf("record = %+v, want failed first attempt", record)
+	}
+}
+
 func TestBackgroundJobRunnerRetriesFailures(t *testing.T) {
 	broker := NewBackgroundJobBroker()
 	calls := 0

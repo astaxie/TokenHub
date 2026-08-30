@@ -29,15 +29,16 @@ const (
 )
 
 type ActionDescriptor struct {
-	PluginID     string            `json:"plugin_id"`
-	ActionID     string            `json:"action_id"`
-	Kind         ActionKind        `json:"kind"`
-	Title        string            `json:"title,omitempty"`
-	Capability   string            `json:"capability,omitempty"`
-	Subject      string            `json:"subject,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
-	InputSchema  map[string]any    `json:"input_schema,omitempty"`
-	OutputSchema map[string]any    `json:"output_schema,omitempty"`
+	PluginID     string                 `json:"plugin_id"`
+	ActionID     string                 `json:"action_id"`
+	Kind         ActionKind             `json:"kind"`
+	Title        string                 `json:"title,omitempty"`
+	Capability   string                 `json:"capability,omitempty"`
+	Subject      string                 `json:"subject,omitempty"`
+	Metadata     map[string]string      `json:"metadata,omitempty"`
+	Permissions  []PermissionDescriptor `json:"permissions,omitempty"`
+	InputSchema  map[string]any         `json:"input_schema,omitempty"`
+	OutputSchema map[string]any         `json:"output_schema,omitempty"`
 }
 
 type ActionActor struct {
@@ -112,6 +113,11 @@ func (b *ActionBroker) register(descriptor ActionDescriptor, handler ActionHandl
 	if !validActionKind(descriptor.Kind) {
 		return fmt.Errorf("unsupported plugin action kind %q", descriptor.Kind)
 	}
+	for _, permission := range descriptor.Permissions {
+		if err := ValidatePermissionDescriptor(permission); err != nil {
+			return err
+		}
+	}
 	if handler == nil {
 		return fmt.Errorf("plugin action handler is required")
 	}
@@ -135,6 +141,11 @@ func (b *ActionBroker) Execute(ctx context.Context, invocation ActionInvocation)
 	}
 	if err := validateActionInvocationPayload(entry.descriptor.InputSchema, invocation.Payload); err != nil {
 		return ActionResult{}, err
+	}
+	if grant, ok := PluginPermissionGrantFromHandler(entry.handler); ok {
+		if err := RequirePluginPermissions(entry.descriptor.Permissions, grant); err != nil {
+			return ActionResult{}, err
+		}
 	}
 	result, err := entry.handler.ExecutePluginAction(ctx, invocation)
 	if err != nil {
@@ -178,6 +189,7 @@ func NormalizeActionDescriptor(descriptor ActionDescriptor) ActionDescriptor {
 	descriptor.Capability = strings.TrimSpace(descriptor.Capability)
 	descriptor.Subject = strings.TrimSpace(descriptor.Subject)
 	descriptor.Metadata = normalizeStringMap(descriptor.Metadata)
+	descriptor.Permissions = NormalizePermissionDescriptors(descriptor.Permissions)
 	if descriptor.Kind == "" {
 		descriptor.Kind = ActionKindRead
 	}

@@ -9,9 +9,10 @@ import (
 const defaultProviderCommandTimeout = 120 * time.Second
 
 type ProviderCommandRunner struct {
-	Dir     string
-	Command string
-	Timeout time.Duration
+	Dir         string
+	Command     string
+	Timeout     time.Duration
+	permissions PermissionGrant
 }
 
 type ProviderCommandRequest struct {
@@ -72,17 +73,25 @@ type ProviderCommandCredentials struct {
 	PlanType       string `json:"plan_type,omitempty"`
 }
 
-func NewProviderCommandRunner(dir string, command string) ProviderCommandRunner {
+func NewProviderCommandRunner(dir string, command string, permissions ...PermissionGrant) ProviderCommandRunner {
 	return ProviderCommandRunner{
-		Dir:     strings.TrimSpace(dir),
-		Command: strings.TrimSpace(command),
-		Timeout: defaultProviderCommandTimeout,
+		Dir:         strings.TrimSpace(dir),
+		Command:     strings.TrimSpace(command),
+		Timeout:     defaultProviderCommandTimeout,
+		permissions: firstPermissionGrant(permissions),
 	}
+}
+
+func (r ProviderCommandRunner) PluginPermissionGrant() PermissionGrant {
+	return r.permissions
 }
 
 func (r ProviderCommandRunner) ExecuteProviderCommand(ctx context.Context, invocation ProviderCommandRequest, output any) error {
 	if r.Timeout <= 0 {
 		r.Timeout = defaultProviderCommandTimeout
+	}
+	if err := RequirePluginPermissions(configuredProviderCommandPermissions(invocation), r.permissions); err != nil {
+		return err
 	}
 	return RunCommandJSON(ctx, r.Dir, r.Command, r.Timeout, invocation, output)
 }

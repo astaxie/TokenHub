@@ -39,6 +39,15 @@ type PermissionDescriptor struct {
 	Sensitivity PermissionSensitivity `json:"sensitivity"`
 }
 
+type PermissionGrant struct {
+	Enforced    bool
+	Permissions []PermissionDescriptor
+}
+
+type PermissionGrantProvider interface {
+	PluginPermissionGrant() PermissionGrant
+}
+
 func SupportedPermissionKinds() []string {
 	return []string{string(PermissionKindData), string(PermissionKindNetwork)}
 }
@@ -108,6 +117,67 @@ func ValidatePermissionDescriptor(permission PermissionDescriptor) error {
 	return nil
 }
 
+func PermissionGrantFromManifest(permissions ManifestPermissions) PermissionGrant {
+	return PermissionGrant{
+		Enforced:    true,
+		Permissions: ManifestPermissionDescriptors(permissions),
+	}
+}
+
+func RequirePluginPermissions(required []PermissionDescriptor, grant PermissionGrant) error {
+	required = NormalizePermissionDescriptors(required)
+	if len(required) == 0 || !grant.Enforced {
+		return nil
+	}
+	allowed := permissionKeySet(grant.Permissions)
+	for _, permission := range required {
+		key := permissionKeyFor(permission)
+		if _, ok := allowed[key]; !ok {
+			return pluginContractErrorf(PluginErrorPermissionRequired, "plugin permission %s:%s:%s is required", permission.Kind, permission.Name, permission.Access)
+		}
+	}
+	return nil
+}
+
+func RequireGatewayHookPermissions(hook GatewayHookDescriptor, grant PermissionGrant) error {
+	return RequirePluginPermissions(GatewayHookRequiredPermissions(hook), grant)
+}
+
+func GatewayHookRequiredPermissions(hook GatewayHookDescriptor) []PermissionDescriptor {
+	hook = NormalizeGatewayHookDescriptor(hook)
+	return DataPermissionDescriptors(hook.Reads, hook.Writes)
+}
+
+func DataPermissionDescriptors(reads []GatewayDataClass, writes []GatewayDataClass) []PermissionDescriptor {
+	descriptors := make([]PermissionDescriptor, 0, len(reads)+len(writes))
+	for _, dataClass := range normalizeDataClasses(reads) {
+		descriptors = append(descriptors, dataPermissionDescriptor(dataClass, PermissionAccessRead))
+	}
+	for _, dataClass := range normalizeDataClasses(writes) {
+		descriptors = append(descriptors, dataPermissionDescriptor(dataClass, PermissionAccessWrite))
+	}
+	return NormalizePermissionDescriptors(descriptors)
+}
+
+func PluginPermissionGrantFromHandler(handler any) (PermissionGrant, bool) {
+	provider, ok := handler.(PermissionGrantProvider)
+	if !ok {
+		return PermissionGrant{}, false
+	}
+	grant := provider.PluginPermissionGrant()
+	grant.Permissions = NormalizePermissionDescriptors(grant.Permissions)
+	return grant, true
+}
+
+func firstPermissionGrant(grants []PermissionGrant) PermissionGrant {
+	if len(grants) == 0 {
+		return PermissionGrant{}
+	}
+	grant := grants[0]
+	grant.Permissions = NormalizePermissionDescriptors(grant.Permissions)
+	return grant
+}
+
 func ManifestPermissionDescriptors(permissions ManifestPermissions) []PermissionDescriptor {
 	descriptors := make([]PermissionDescriptor, 0, len(permissions.Data.Read)+len(permissions.Data.Write)+len(permissions.Network.Allow))
 	for _, dataClass := range normalizeDataClasses(permissions.Data.Read) {
@@ -128,6 +198,16 @@ func ManifestPermissionDescriptors(permissions ManifestPermissions) []Permission
 		})
 	}
 	return NormalizePermissionDescriptors(descriptors)
+}
+
+func configuredProviderCommandPermissions(invocation ProviderCommandRequest) []PermissionDescriptor {
+	if providerCommandCredentialsConfigured(invocation.Credentials) {
+		return []PermissionDescriptor{dataPermissionDescriptor(DataProviderCredentials, PermissionAccessRead)}
+	}
+	if invocation.Resource != nil && invocation.Resource.Credentials != nil && providerCommandCredentialsConfigured(*invocation.Resource.Credentials) {
+		return []PermissionDescriptor{dataPermissionDescriptor(DataProviderCredentials, PermissionAccessRead)}
+	}
+	return nil
 }
 
 func NormalizePermissionDescriptors(items []PermissionDescriptor) []PermissionDescriptor {
@@ -202,6 +282,36 @@ func dataPermissionDescriptor(dataClass GatewayDataClass, access PermissionAcces
 		Access:      access,
 		Sensitivity: PermissionSensitivityFor(PermissionKindData, string(dataClass)),
 	}
+}
+
+func permissionKeySet(permissions []PermissionDescriptor) map[permissionKey]struct{} {
+	allowed := map[permissionKey]struct{}{}
+	for _, permission := range NormalizePermissionDescriptors(permissions) {
+		allowed[permissionKeyFor(permission)] = struct{}{}
+	}
+	return allowed
+}
+
+type permissionKey struct {
+	Kind   PermissionKind
+	Name   string
+	Access PermissionAccess
+}
+
+func permissionKeyFor(permission PermissionDescriptor) permissionKey {
+	return permissionKey{
+		Kind:   PermissionKind(strings.TrimSpace(string(permission.Kind))),
+		Name:   strings.TrimSpace(permission.Name),
+		Access: PermissionAccess(strings.TrimSpace(string(permission.Access))),
+	}
+}
+
+func providerCommandCredentialsConfigured(credentials ProviderCommandCredentials) bool {
+	return strings.TrimSpace(credentials.APIKey) != "" ||
+		strings.TrimSpace(credentials.AccessToken) != "" ||
+		strings.TrimSpace(credentials.RefreshToken) != "" ||
+		strings.TrimSpace(credentials.IDToken) != "" ||
+		strings.TrimSpace(credentials.ClientID) != ""
 }
 
 func validNetworkPermissionTarget(target string) bool {

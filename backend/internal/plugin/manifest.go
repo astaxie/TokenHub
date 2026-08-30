@@ -343,6 +343,7 @@ func (m Manifest) Validate() error {
 			Capability:   action.Capability,
 			Subject:      action.Subject,
 			Metadata:     action.Metadata,
+			Permissions:  ManifestPermissionDescriptors(m.Permissions),
 			InputSchema:  action.InputSchema,
 			OutputSchema: action.OutputSchema,
 		})
@@ -367,6 +368,7 @@ func (m Manifest) Validate() error {
 			TimeoutMillis:  job.TimeoutMillis,
 			MaxConcurrency: job.MaxConcurrency,
 			Retry:          job.Retry,
+			Permissions:    ManifestPermissionDescriptors(m.Permissions),
 			InputSchema:    job.InputSchema,
 			OutputSchema:   job.OutputSchema,
 		})
@@ -1076,6 +1078,7 @@ func (m Manifest) Actions() []ActionDescriptor {
 			Capability:   action.Capability,
 			Subject:      action.Subject,
 			Metadata:     action.Metadata,
+			Permissions:  ManifestPermissionDescriptors(m.Permissions),
 			InputSchema:  action.InputSchema,
 			OutputSchema: action.OutputSchema,
 		}))
@@ -1096,6 +1099,7 @@ func (m Manifest) BackgroundJobs() []BackgroundJobDescriptor {
 			TimeoutMillis:  job.TimeoutMillis,
 			MaxConcurrency: job.MaxConcurrency,
 			Retry:          job.Retry,
+			Permissions:    ManifestPermissionDescriptors(m.Permissions),
 			InputSchema:    job.InputSchema,
 			OutputSchema:   job.OutputSchema,
 		}))

@@ -42,7 +42,12 @@ esac
 				t.Fatal(err)
 			}
 
-			runner := NewProviderCommandRunner(dir, "provider.sh")
+			runner := NewProviderCommandRunner(dir, "provider.sh", PermissionGrant{
+				Enforced: true,
+				Permissions: []PermissionDescriptor{
+					{Kind: PermissionKindData, Name: string(DataProviderCredentials), Access: PermissionAccessRead},
+				},
+			})
 			var result struct {
 				Response map[string]any `json:"response"`
 				Usage    map[string]any `json:"usage,omitempty"`
@@ -84,5 +89,22 @@ func TestProviderCommandRunnerRejectsEscapingCommandPath(t *testing.T) {
 	}, &result)
 	if err == nil {
 		t.Fatal("escaping command path was accepted")
+	}
+}
+
+func TestProviderCommandRunnerRequiresCredentialReadPermission(t *testing.T) {
+	runner := NewProviderCommandRunner(t.TempDir(), "missing.sh", PermissionGrant{Enforced: true})
+	var result struct {
+		Response map[string]any `json:"response"`
+	}
+	err := runner.ExecuteProviderCommand(t.Context(), ProviderCommandRequest{
+		Operation:   "chat",
+		Credentials: ProviderCommandCredentials{APIKey: "provider-secret"},
+	}, &result)
+	if err == nil {
+		t.Fatal("provider command with credentials executed without provider_credentials permission")
+	}
+	if code, ok := PluginErrorCodeOf(err); !ok || code != PluginErrorPermissionRequired {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, PluginErrorPermissionRequired, err)
 	}
 }

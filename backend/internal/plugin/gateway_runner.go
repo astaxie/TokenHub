@@ -182,6 +182,12 @@ func (r *GatewayHookRunner) runHook(ctx context.Context, hook GatewayHookDescrip
 		run.DurationMS = elapsedMillis(startedAt)
 		return applyGatewayHookFailure(run, hook, err)
 	}
+	if grant, ok := PluginPermissionGrantFromHandler(handler); ok {
+		if err := RequireGatewayHookPermissions(hook, grant); err != nil {
+			run.DurationMS = elapsedMillis(startedAt)
+			return applyGatewayHookFailure(run, hook, err)
+		}
+	}
 	hookCtx := ctx
 	cancel := func() {}
 	if hook.TimeoutMillis > 0 {

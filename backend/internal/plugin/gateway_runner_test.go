@@ -79,6 +79,33 @@ func TestGatewayHookRunnerRejectsUndeclaredWrites(t *testing.T) {
 	}
 }
 
+func TestGatewayHookRunnerEnforcesCommandHandlerPermissionGrants(t *testing.T) {
+	hook := GatewayHookDescriptor{
+		PluginID:      "tokenhub.external-privacy",
+		HookID:        "mask",
+		Stage:         StagePrivacyPre,
+		Reads:         []GatewayDataClass{DataRequestBody},
+		FailurePolicy: FailurePolicyFailClosed,
+	}
+	runner := NewGatewayHookRunner(NewGatewayChainRegistry())
+	if err := runner.RegisterHandler(hook, NewGatewayCommandRunner(t.TempDir(), "missing.sh", PermissionGrant{Enforced: true})); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+
+	report, err := runner.RunStageHooks(context.Background(), StagePrivacyPre, GatewayHookInput{
+		Envelope: GatewayEnvelope{RequestBody: json.RawMessage(`{"prompt":"secret"}`)},
+	}, []GatewayHookDescriptor{hook})
+	if err == nil {
+		t.Fatal("gateway command handler ran without its required permission grant")
+	}
+	if code, ok := PluginErrorCodeOf(err); !ok || code != PluginErrorPermissionRequired {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, PluginErrorPermissionRequired, err)
+	}
+	if len(report.Results) != 1 || report.Results[0].Status != HookRunFailed {
+		t.Fatalf("report = %+v, want failed permission result", report)
+	}
+}
+
 func TestGatewayHookRunnerRejectsStageMutationLimitViolations(t *testing.T) {
 	hook := GatewayHookDescriptor{
 		PluginID:      "tokenhub.trace",
