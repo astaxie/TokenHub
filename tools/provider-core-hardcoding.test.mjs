@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -66,5 +67,23 @@ describe("provider-specific core hardcoding gate", () => {
     assert.ok(frontendSources.includes("frontend/features/admin/views/provider-editor.tsx"));
     assert.ok(GENERIC_CORE_SURFACES.includes("frontend/features/admin/domain/catalog.tsx"));
     assert.equal(GENERIC_CORE_SURFACES.length < frontendSources.length, true);
+  });
+
+  it("keeps Codex live model catalog parsing outside generic provider account model cache", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_account_models.go"), "utf8");
+    const forbidden = [
+      /\bcodexRemoteModelsResponse\b/,
+      /\bcodexRemoteModel\b/,
+      /\bCodexSubscriptionAdapter\)\s+Models\b/,
+      /\bCodexSubscriptionAdapter\)\s+ModelsWithCredentials\b/,
+      /\bCodexSubscriptionAdapter\)\s+ModelsWithETag\b/,
+      /\bCodexSubscriptionAdapter\)\s+ResourceModels\b/,
+      /\bmodelsWithCredentials\b/,
+      /\bqueryOpenAICodexModels\b/,
+      /\bcodexProviderCatalogFromModels\b/,
+      /\bcodexProviderCatalogMetadata\b/,
+    ];
+    const matches = forbidden.flatMap((pattern) => source.match(pattern) ?? []);
+    assert.deepEqual(matches, []);
   });
 });
