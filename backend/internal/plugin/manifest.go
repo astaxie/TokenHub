@@ -234,11 +234,19 @@ type ManifestDataPermissions struct {
 }
 
 func ParseManifest(data []byte) (Manifest, error) {
+	manifest, err := parseManifestDocument(data)
+	if err != nil {
+		return Manifest{}, err
+	}
+	return manifest, manifest.Validate()
+}
+
+func parseManifestDocument(data []byte) (Manifest, error) {
 	var manifest Manifest
 	if err := yaml.Unmarshal(data, &manifest); err != nil {
 		return Manifest{}, err
 	}
-	return manifest, manifest.Validate()
+	return manifest, nil
 }
 
 func (m Manifest) Validate() error {

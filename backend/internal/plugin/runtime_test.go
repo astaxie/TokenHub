@@ -408,7 +408,7 @@ capabilities:
 	}
 }
 
-func TestRuntimeLoadIntoWithActionsRejectsUnboundAdminUIAction(t *testing.T) {
+func TestRuntimeLoadIntoWithActionsMarksUnboundAdminUIActionAsStartupFailed(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "ui-action")
 	writeManifest(t, pluginDir, `
@@ -444,12 +444,21 @@ capabilities:
 	adminUI := NewAdminUIRegistry()
 	actions := NewActionBroker()
 
-	_, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), NewGatewayChainRegistry(), adminUI, actions)
-	if err == nil {
-		t.Fatal("runtime loaded an Admin UI contribution with an unbound action")
+	packages, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), NewGatewayChainRegistry(), adminUI, actions)
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
 	}
-	if !strings.Contains(err.Error(), "action oauth.start is not registered for plugin tokenhub.ui-action") {
-		t.Fatalf("runtime error = %v", err)
+	if len(packages) != 1 || !packages[0].State.FailedStartup() ||
+		packages[0].State.AuditEvent != PackageLifecycleStartupFailed ||
+		packages[0].State.LastErrorCode != "plugin_startup_failed" {
+		t.Fatalf("packages = %+v, want startup-failed package", packages)
+	}
+	state, err := readPackageState(pluginDir)
+	if err != nil {
+		t.Fatalf("read failed package state: %v", err)
+	}
+	if !state.FailedStartup() || !strings.Contains(state.Reason, "action oauth.start is not registered for plugin tokenhub.ui-action") {
+		t.Fatalf("failed package state = %+v", state)
 	}
 	if contributions := adminUI.List(); len(contributions) != 0 {
 		t.Fatalf("unbound Admin UI contribution was published: %+v", contributions)
@@ -708,7 +717,7 @@ entry:
 	}
 }
 
-func TestRuntimeLoadIntoRejectsDuplicatePluginIDs(t *testing.T) {
+func TestRuntimeLoadIntoMarksDuplicatePluginIDAsFailedValidation(t *testing.T) {
 	root := t.TempDir()
 	for _, dir := range []string{"a", "b"} {
 		writeManifest(t, filepath.Join(root, dir), `
@@ -723,9 +732,122 @@ kinds:
 `)
 	}
 
-	_, err := NewRuntime(root).LoadInto(NewRegistry(), NewGatewayChainRegistry())
-	if err == nil {
-		t.Fatal("runtime loaded duplicate plugin IDs successfully")
+	packages, err := NewRuntime(root).LoadInto(NewRegistry(), NewGatewayChainRegistry())
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if len(packages) != 2 || packages[0].State.FailedValidation() || !packages[1].State.FailedValidation() {
+		t.Fatalf("packages = %+v, want only second duplicate failed validation", packages)
+	}
+	state, err := readPackageState(filepath.Join(root, "b"))
+	if err != nil {
+		t.Fatalf("read duplicate package state: %v", err)
+	}
+	if !state.FailedValidation() || state.AuditEvent != PackageLifecycleValidationFailed ||
+		!strings.Contains(state.Reason, "duplicate plugin id tokenhub.duplicate") {
+		t.Fatalf("duplicate package state = %+v", state)
+	}
+}
+
+func TestRuntimeLoadIntoMarksInvalidManifestWithoutActivatingHooks(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "bad-hook")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.bad-hook
+name: Bad Hook
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: unsafe
+      stage: unsupported_stage
+      failure_policy: fail_closed
+`)
+	plugins := NewRegistry()
+	chain := NewGatewayChainRegistry()
+
+	packages, err := NewRuntime(root).LoadInto(plugins, chain)
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if len(packages) != 1 || !packages[0].State.FailedValidation() ||
+		packages[0].State.AuditEvent != PackageLifecycleValidationFailed {
+		t.Fatalf("packages = %+v, want failed-validation package", packages)
+	}
+	if _, ok := plugins.Describe("tokenhub.bad-hook"); ok {
+		t.Fatal("invalid manifest registered a plugin descriptor")
+	}
+	if hooks := chain.Hooks(StagePrivacyPre); len(hooks) != 0 {
+		t.Fatalf("invalid manifest activated hooks: %+v", hooks)
+	}
+}
+
+func TestRuntimeLoadIntoKeepsBuiltInFallbackWhenExternalStartupFails(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "external-codex")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.provider.openai-codex
+name: External Codex
+version: 2.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+  - admin_ui
+placement:
+  - presentation
+entry:
+  frontend:
+    schema: admin-ui.schema.json
+capabilities:
+  provider_types:
+    - openai_codex
+  admin_ui:
+    - provider_form
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "admin-ui.schema.json"), []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "setup",
+				"slot": "provider.form.section",
+				"action": "codex.oauth.start"
+			}
+		]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+	if err := registry.Register(BuiltInProvider("tokenhub.provider.openai-codex", "OpenAI Codex Subscription", []string{"openai_codex"}, nil)); err != nil {
+		t.Fatalf("register built-in fallback: %v", err)
+	}
+	adminUI := NewAdminUIRegistry()
+	actions := NewActionBroker()
+
+	packages, err := NewRuntime(root).LoadIntoWithActions(registry, NewGatewayChainRegistry(), adminUI, actions)
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if len(packages) != 1 || !packages[0].State.FailedStartup() ||
+		!packages[0].State.BuiltInFallbackAvailable() {
+		t.Fatalf("packages = %+v, want startup failure with built-in fallback", packages)
+	}
+	descriptor, ok := registry.Describe("tokenhub.provider.openai-codex")
+	if !ok {
+		t.Fatal("built-in fallback descriptor is missing")
+	}
+	if descriptor.Source != SourceBuiltIn || descriptor.Name != "OpenAI Codex Subscription" || descriptor.Version != "built-in" {
+		t.Fatalf("descriptor = %+v, want unchanged built-in fallback", descriptor)
+	}
+	if contributions := adminUI.List(); len(contributions) != 0 {
+		t.Fatalf("failed external Admin UI contribution was published: %+v", contributions)
 	}
 }
 

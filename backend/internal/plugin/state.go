@@ -36,6 +36,13 @@ const (
 	PackageLifecycleStartupFailed     PackageLifecycleEvent = "startup_failed"
 )
 
+type PackageRollbackTarget string
+
+const (
+	PackageRollbackTargetPreviousPackage PackageRollbackTarget = "previous_package"
+	PackageRollbackTargetBuiltIn         PackageRollbackTarget = "built_in"
+)
+
 type PackageState struct {
 	Status          Status                `json:"status,omitempty"`
 	Reason          string                `json:"reason,omitempty"`
@@ -43,6 +50,7 @@ type PackageState struct {
 	Health          PackageHealthStatus   `json:"health,omitempty"`
 	Mandatory       bool                  `json:"mandatory,omitempty"`
 	RollbackVersion string                `json:"rollback_version,omitempty"`
+	RollbackTarget  PackageRollbackTarget `json:"rollback_target,omitempty"`
 	LastErrorCode   string                `json:"last_error_code,omitempty"`
 	AuditEvent      PackageLifecycleEvent `json:"audit_event,omitempty"`
 }
@@ -67,6 +75,7 @@ func NormalizePackageState(state PackageState) (PackageState, error) {
 	state.Reason = strings.TrimSpace(state.Reason)
 	state.Health = PackageHealthStatus(strings.TrimSpace(string(state.Health)))
 	state.RollbackVersion = strings.TrimSpace(state.RollbackVersion)
+	state.RollbackTarget = PackageRollbackTarget(strings.TrimSpace(string(state.RollbackTarget)))
 	state.LastErrorCode = strings.TrimSpace(state.LastErrorCode)
 	state.AuditEvent = PackageLifecycleEvent(strings.TrimSpace(string(state.AuditEvent)))
 	if state.Status == "" {
@@ -84,6 +93,9 @@ func NormalizePackageState(state PackageState) (PackageState, error) {
 	if state.AuditEvent != "" && !validPackageLifecycleEvent(state.AuditEvent) {
 		return PackageState{}, fmt.Errorf("unsupported plugin package audit event %q", state.AuditEvent)
 	}
+	if state.RollbackTarget != "" && !validPackageRollbackTarget(state.RollbackTarget) {
+		return PackageState{}, fmt.Errorf("unsupported plugin package rollback target %q", state.RollbackTarget)
+	}
 	if state.Status == StatusPendingRestart {
 		state.RestartRequired = true
 	}
@@ -95,6 +107,12 @@ func NormalizePackageState(state PackageState) (PackageState, error) {
 	}
 	if state.Status == StatusRollbackAvailable && state.RollbackVersion == "" {
 		return PackageState{}, fmt.Errorf("plugin package rollback_version is required when rollback is available")
+	}
+	if state.RollbackVersion != "" && state.RollbackTarget == "" {
+		state.RollbackTarget = PackageRollbackTargetPreviousPackage
+	}
+	if state.RollbackTarget == PackageRollbackTargetPreviousPackage && state.RollbackVersion == "" {
+		return PackageState{}, fmt.Errorf("plugin package rollback_version is required for previous package rollback")
 	}
 	return state, nil
 }
@@ -124,9 +142,26 @@ func (s PackageState) FailedValidation() bool {
 	return s.Status == StatusFailedValidation
 }
 
+func (s PackageState) FailedStartup() bool {
+	return s.Status == StatusFailedStartup
+}
+
+func (s PackageState) BuiltInFallbackAvailable() bool {
+	return s.RollbackTarget == PackageRollbackTargetBuiltIn
+}
+
 func validPackageStatus(status Status) bool {
 	switch status {
-	case StatusEnabled, StatusDisabled, StatusPendingRestart, StatusFailedValidation, StatusRollbackAvailable, StatusMandatory:
+	case StatusEnabled, StatusDisabled, StatusPendingRestart, StatusFailedValidation, StatusFailedStartup, StatusRollbackAvailable, StatusMandatory:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPackageRollbackTarget(target PackageRollbackTarget) bool {
+	switch target {
+	case PackageRollbackTargetPreviousPackage, PackageRollbackTargetBuiltIn:
 		return true
 	default:
 		return false
@@ -267,13 +302,14 @@ func (r Runtime) RollbackPackage(pluginID string, reason string) (Package, error
 	}
 	state := pkg.State
 	state.Status = current.State.Status
-	if state.Status == StatusPendingRestart || state.Status == StatusFailedValidation {
+	if state.Status == StatusPendingRestart || state.Status == StatusFailedValidation || state.Status == StatusFailedStartup {
 		state.Status = StatusDisabled
 	}
 	state.Reason = strings.TrimSpace(reason)
 	state.RestartRequired = true
 	state.Health = PackageHealthUnknown
 	state.RollbackVersion = ""
+	state.RollbackTarget = ""
 	state.LastErrorCode = ""
 	state.AuditEvent = PackageLifecycleRollbackStarted
 	state, err = NormalizePackageState(state)

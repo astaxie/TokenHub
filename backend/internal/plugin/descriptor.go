@@ -38,6 +38,7 @@ const (
 	StatusDisabled          Status = "disabled"
 	StatusPendingRestart    Status = "pending_restart"
 	StatusFailedValidation  Status = "failed_validation"
+	StatusFailedStartup     Status = "failed_startup"
 	StatusRollbackAvailable Status = "rollback_available"
 	StatusMandatory         Status = "mandatory"
 )

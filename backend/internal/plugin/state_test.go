@@ -42,6 +42,20 @@ func TestNormalizePackageStateSupportsLifecycleContract(t *testing.T) {
 		t.Fatalf("failed validation state = %+v", failed)
 	}
 
+	startupFailed, err := NormalizePackageState(PackageState{
+		Status:         StatusFailedStartup,
+		Health:         PackageHealthUnhealthy,
+		RollbackTarget: PackageRollbackTargetBuiltIn,
+		LastErrorCode:  "plugin_startup_failed",
+		AuditEvent:     PackageLifecycleStartupFailed,
+	})
+	if err != nil {
+		t.Fatalf("normalize failed startup state: %v", err)
+	}
+	if !startupFailed.FailedStartup() || startupFailed.Loadable() || !startupFailed.BuiltInFallbackAvailable() {
+		t.Fatalf("failed startup state = %+v", startupFailed)
+	}
+
 	rollback, err := NormalizePackageState(PackageState{
 		Status:          StatusRollbackAvailable,
 		RollbackVersion: "1.0.0",
@@ -52,6 +66,9 @@ func TestNormalizePackageStateSupportsLifecycleContract(t *testing.T) {
 	}
 	if !rollback.RollbackAvailable() || !rollback.Loadable() {
 		t.Fatalf("rollback state = %+v", rollback)
+	}
+	if rollback.RollbackTarget != PackageRollbackTargetPreviousPackage {
+		t.Fatalf("rollback target = %q, want previous package", rollback.RollbackTarget)
 	}
 
 	restartWithRollback, err := NormalizePackageState(PackageState{
@@ -84,8 +101,10 @@ func TestNormalizePackageStateRejectsInvalidLifecycleState(t *testing.T) {
 		{name: "unsupported status", state: PackageState{Status: Status("paused")}},
 		{name: "unsupported health", state: PackageState{Health: PackageHealthStatus("warming")}},
 		{name: "unsupported audit event", state: PackageState{AuditEvent: PackageLifecycleEvent("moved")}},
+		{name: "unsupported rollback target", state: PackageState{RollbackTarget: PackageRollbackTarget("sidecar")}},
 		{name: "mandatory disabled", state: PackageState{Status: StatusDisabled, Mandatory: true}},
 		{name: "rollback without version", state: PackageState{Status: StatusRollbackAvailable}},
+		{name: "previous package target without version", state: PackageState{RollbackTarget: PackageRollbackTargetPreviousPackage}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := NormalizePackageState(tc.state); err == nil {
