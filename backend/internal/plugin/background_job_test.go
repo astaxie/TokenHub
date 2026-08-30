@@ -145,6 +145,120 @@ func TestBackgroundJobRunnerRetriesFailures(t *testing.T) {
 	}
 }
 
+func TestBackgroundJobRunnerAppliesExponentialBackoffAndJitter(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	calls := 0
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+		Retry: BackgroundJobRetryPolicy{
+			MaxAttempts:       4,
+			BackoffMillis:     100,
+			BackoffMultiplier: 2,
+			JitterMillis:      25,
+		},
+	}, BackgroundJobHandlerFunc(func(context.Context, BackgroundJobInvocation) (BackgroundJobResult, error) {
+		calls++
+		if calls < 4 {
+			return BackgroundJobResult{}, errors.New("temporary failure")
+		}
+		return BackgroundJobResult{Data: "ok"}, nil
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+	var delays []time.Duration
+	runner := NewBackgroundJobRunner(broker)
+	runner.configureRetryForTest(func(_ context.Context, delay time.Duration) error {
+		delays = append(delays, delay)
+		return nil
+	}, func(max time.Duration) time.Duration {
+		return max / 5
+	})
+
+	record, err := runner.Run(context.Background(), BackgroundJobInvocation{
+		PluginID: "tokenhub.jobs",
+		JobID:    "quota.refresh",
+	})
+	if err != nil {
+		t.Fatalf("run background job: %v", err)
+	}
+	if record.Status != BackgroundJobRunSucceeded || record.Attempts != 4 || calls != 4 {
+		t.Fatalf("run record=%+v calls=%d, want success after four attempts", record, calls)
+	}
+	want := []time.Duration{105 * time.Millisecond, 205 * time.Millisecond, 405 * time.Millisecond}
+	if !equalBackgroundJobDurations(delays, want) {
+		t.Fatalf("retry delays = %v, want %v", delays, want)
+	}
+}
+
+func TestBackgroundJobRunnerStopsRetryWhenBackoffContextCancels(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	calls := 0
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+		Retry:          BackgroundJobRetryPolicy{MaxAttempts: 3, BackoffMillis: 100},
+	}, BackgroundJobHandlerFunc(func(context.Context, BackgroundJobInvocation) (BackgroundJobResult, error) {
+		calls++
+		return BackgroundJobResult{}, errors.New("temporary failure")
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+	runner := NewBackgroundJobRunner(broker)
+	runner.configureRetryForTest(func(context.Context, time.Duration) error {
+		return context.Canceled
+	}, nil)
+
+	record, err := runner.Run(context.Background(), BackgroundJobInvocation{
+		PluginID: "tokenhub.jobs",
+		JobID:    "quota.refresh",
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context canceled", err)
+	}
+	if record.Status != BackgroundJobRunFailed || record.Attempts != 1 || calls != 1 {
+		t.Fatalf("run record=%+v calls=%d, want one failed attempt", record, calls)
+	}
+}
+
+func TestBackgroundJobRunnerRecordsDeadLettersAfterRetryExhaustion(t *testing.T) {
+	broker := NewBackgroundJobBroker()
+	if err := broker.Register(BackgroundJobDescriptor{
+		PluginID:       "tokenhub.jobs",
+		JobID:          "quota.refresh",
+		Schedule:       "10m",
+		MaxConcurrency: 1,
+		Retry:          BackgroundJobRetryPolicy{MaxAttempts: 2, DeadLetter: true},
+	}, BackgroundJobHandlerFunc(func(context.Context, BackgroundJobInvocation) (BackgroundJobResult, error) {
+		return BackgroundJobResult{}, errors.New("permanent failure")
+	})); err != nil {
+		t.Fatalf("register background job: %v", err)
+	}
+
+	runner := NewBackgroundJobRunner(broker)
+	record, err := runner.Run(context.Background(), BackgroundJobInvocation{
+		PluginID: "tokenhub.jobs",
+		JobID:    "quota.refresh",
+	})
+	if err == nil {
+		t.Fatal("run background job succeeded unexpectedly")
+	}
+	if record.Status != BackgroundJobRunFailed || record.Attempts != 2 {
+		t.Fatalf("run record = %+v, want failed after two attempts", record)
+	}
+	letters := runner.DeadLetters()
+	if len(letters) != 1 || letters[0].PluginID != "tokenhub.jobs" || letters[0].JobID != "quota.refresh" {
+		t.Fatalf("dead letters = %+v, want failed quota.refresh record", letters)
+	}
+	if letters[0].Error != "permanent failure" || letters[0].Attempts != 2 {
+		t.Fatalf("dead letter = %+v, want exhausted failure", letters[0])
+	}
+}
+
 func TestBackgroundJobRunnerEnforcesConcurrencyLimit(t *testing.T) {
 	broker := NewBackgroundJobBroker()
 	started := make(chan struct{})
@@ -229,6 +343,18 @@ func TestBackgroundJobRunnerRunsDueJobsAndTracksLastRuns(t *testing.T) {
 	if len(last) != 2 {
 		t.Fatalf("last runs = %+v, want two entries", last)
 	}
+}
+
+func equalBackgroundJobDurations(left []time.Duration, right []time.Duration) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestBackgroundJobScheduleInterval(t *testing.T) {

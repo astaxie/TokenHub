@@ -390,6 +390,15 @@ func (m Manifest) Validate() error {
 		if descriptor.Retry.BackoffMillis < 0 {
 			return fmt.Errorf("plugin background job %s retry backoff_millis cannot be negative", descriptor.JobID)
 		}
+		if descriptor.Retry.BackoffMultiplier < 0 {
+			return fmt.Errorf("plugin background job %s retry backoff_multiplier cannot be negative", descriptor.JobID)
+		}
+		if descriptor.Retry.BackoffMultiplier > 0 && descriptor.Retry.BackoffMultiplier < 1 {
+			return fmt.Errorf("plugin background job %s retry backoff_multiplier must be 1 or greater", descriptor.JobID)
+		}
+		if descriptor.Retry.JitterMillis < 0 {
+			return fmt.Errorf("plugin background job %s retry jitter_millis cannot be negative", descriptor.JobID)
+		}
 		if !manifestHasPlacement(m.Placement, PlacementBackground) {
 			return fmt.Errorf("plugin background job %s requires background placement", descriptor.JobID)
 		}

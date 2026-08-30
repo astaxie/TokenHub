@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -19,9 +21,14 @@ var (
 	ErrPluginBackgroundJobBusy           = errors.New("plugin background job concurrency limit reached")
 )
 
+const maxBackgroundJobRetryDelay = time.Duration(1<<63 - 1)
+
 type BackgroundJobRetryPolicy struct {
-	MaxAttempts   int `json:"max_attempts,omitempty" yaml:"max_attempts"`
-	BackoffMillis int `json:"backoff_millis,omitempty" yaml:"backoff_millis"`
+	MaxAttempts       int     `json:"max_attempts,omitempty" yaml:"max_attempts"`
+	BackoffMillis     int     `json:"backoff_millis,omitempty" yaml:"backoff_millis"`
+	BackoffMultiplier float64 `json:"backoff_multiplier,omitempty" yaml:"backoff_multiplier"`
+	JitterMillis      int     `json:"jitter_millis,omitempty" yaml:"jitter_millis"`
+	DeadLetter        bool    `json:"dead_letter,omitempty" yaml:"dead_letter"`
 }
 
 type BackgroundJobDescriptor struct {
@@ -134,6 +141,15 @@ func (b *BackgroundJobBroker) register(descriptor BackgroundJobDescriptor, handl
 	}
 	if descriptor.Retry.BackoffMillis < 0 {
 		return fmt.Errorf("plugin background job retry backoff_millis cannot be negative")
+	}
+	if descriptor.Retry.BackoffMultiplier < 0 {
+		return fmt.Errorf("plugin background job retry backoff_multiplier cannot be negative")
+	}
+	if descriptor.Retry.BackoffMultiplier > 0 && descriptor.Retry.BackoffMultiplier < 1 {
+		return fmt.Errorf("plugin background job retry backoff_multiplier must be 1 or greater")
+	}
+	if descriptor.Retry.JitterMillis < 0 {
+		return fmt.Errorf("plugin background job retry jitter_millis cannot be negative")
 	}
 	for _, permission := range descriptor.Permissions {
 		if err := ValidatePermissionDescriptor(permission); err != nil {
@@ -261,14 +277,21 @@ type BackgroundJobRunner struct {
 	mu        sync.Mutex
 	running   map[string]int
 	lastRuns  map[string]BackgroundJobRunRecord
+	deadRuns  map[string][]BackgroundJobRunRecord
 	scheduler *backgroundScheduler
+
+	retrySleeper func(context.Context, time.Duration) error
+	retryJitter  func(time.Duration) time.Duration
 }
 
 func NewBackgroundJobRunner(broker *BackgroundJobBroker) *BackgroundJobRunner {
 	runner := &BackgroundJobRunner{
-		broker:   broker,
-		running:  map[string]int{},
-		lastRuns: map[string]BackgroundJobRunRecord{},
+		broker:       broker,
+		running:      map[string]int{},
+		lastRuns:     map[string]BackgroundJobRunRecord{},
+		deadRuns:     map[string][]BackgroundJobRunRecord{},
+		retrySleeper: backgroundJobRetrySleep,
+		retryJitter:  backgroundJobRetryJitter,
 	}
 	runner.scheduler = newBackgroundScheduler(runner)
 	return runner
@@ -304,6 +327,9 @@ func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobI
 	defer r.finish(descriptor)
 	record, err := r.executeWithRetry(ctx, descriptor, invocation)
 	r.recordRun(record)
+	if record.Status == BackgroundJobRunFailed && descriptor.Retry.DeadLetter {
+		r.recordDeadLetter(record)
+	}
 	if record.Status != BackgroundJobRunSucceeded {
 		return record, err
 	}
@@ -325,6 +351,28 @@ func (r *BackgroundJobRunner) LastRuns() []BackgroundJobRunRecord {
 			return items[i].PluginID < items[j].PluginID
 		}
 		return items[i].JobID < items[j].JobID
+	})
+	return items
+}
+
+func (r *BackgroundJobRunner) DeadLetters() []BackgroundJobRunRecord {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := make([]BackgroundJobRunRecord, 0)
+	for _, records := range r.deadRuns {
+		items = append(items, records...)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].PluginID != items[j].PluginID {
+			return items[i].PluginID < items[j].PluginID
+		}
+		if items[i].JobID != items[j].JobID {
+			return items[i].JobID < items[j].JobID
+		}
+		return items[i].StartedAt.Before(items[j].StartedAt)
 	})
 	return items
 }
@@ -388,12 +436,17 @@ func (r *BackgroundJobRunner) executeWithRetry(ctx context.Context, descriptor B
 			return record, nil
 		}
 		lastErr = err
-		if attempt < attempts && descriptor.Retry.BackoffMillis > 0 {
-			select {
-			case <-time.After(time.Duration(descriptor.Retry.BackoffMillis) * time.Millisecond):
-			case <-ctx.Done():
-				lastErr = ctx.Err()
-				attempt = attempts
+		if attempt < attempts {
+			delay := r.retryDelay(descriptor.Retry, attempt)
+			if delay > 0 {
+				sleeper := r.retrySleeper
+				if sleeper == nil {
+					sleeper = backgroundJobRetrySleep
+				}
+				if sleepErr := sleeper(ctx, delay); sleepErr != nil {
+					lastErr = sleepErr
+					break
+				}
 			}
 		}
 	}
@@ -437,11 +490,83 @@ func (r *BackgroundJobRunner) recordRun(record BackgroundJobRunRecord) {
 	r.lastRuns[pluginBackgroundJobKey(record.PluginID, record.JobID)] = record
 }
 
+func (r *BackgroundJobRunner) recordDeadLetter(record BackgroundJobRunRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := pluginBackgroundJobKey(record.PluginID, record.JobID)
+	r.deadRuns[key] = append(r.deadRuns[key], record)
+}
+
 func (r *BackgroundJobRunner) lastRun(pluginID string, jobID string) (BackgroundJobRunRecord, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	record, ok := r.lastRuns[pluginBackgroundJobKey(pluginID, jobID)]
 	return record, ok
+}
+
+func (r *BackgroundJobRunner) retryDelay(policy BackgroundJobRetryPolicy, failedAttempt int) time.Duration {
+	delay := backgroundJobRetryBackoff(policy, failedAttempt)
+	if policy.JitterMillis <= 0 {
+		return delay
+	}
+	jitterFunc := r.retryJitter
+	if jitterFunc == nil {
+		jitterFunc = backgroundJobRetryJitter
+	}
+	jitter := jitterFunc(time.Duration(policy.JitterMillis) * time.Millisecond)
+	if jitter <= 0 {
+		return delay
+	}
+	if delay > maxBackgroundJobRetryDelay-jitter {
+		return maxBackgroundJobRetryDelay
+	}
+	return delay + jitter
+}
+
+func backgroundJobRetryBackoff(policy BackgroundJobRetryPolicy, failedAttempt int) time.Duration {
+	if policy.BackoffMillis <= 0 || failedAttempt <= 0 {
+		return 0
+	}
+	base := float64(time.Duration(policy.BackoffMillis) * time.Millisecond)
+	multiplier := policy.BackoffMultiplier
+	if multiplier <= 0 {
+		multiplier = 1
+	}
+	delay := base * math.Pow(multiplier, float64(failedAttempt-1))
+	if delay >= float64(maxBackgroundJobRetryDelay) {
+		return maxBackgroundJobRetryDelay
+	}
+	return time.Duration(delay)
+}
+
+func backgroundJobRetrySleep(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func backgroundJobRetryJitter(max time.Duration) time.Duration {
+	if max <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int63n(int64(max) + 1))
+}
+
+func (r *BackgroundJobRunner) configureRetryForTest(sleeper func(context.Context, time.Duration) error, jitter func(time.Duration) time.Duration) {
+	if r == nil {
+		return
+	}
+	if sleeper != nil {
+		r.retrySleeper = sleeper
+	}
+	if jitter != nil {
+		r.retryJitter = jitter
+	}
 }
 
 func backgroundJobDue(schedule string, last BackgroundJobRunRecord, hasLast bool, now time.Time) bool {

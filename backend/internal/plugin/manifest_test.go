@@ -111,6 +111,9 @@ capabilities:
       retry:
         max_attempts: 2
         backoff_millis: 1000
+        backoff_multiplier: 2
+        jitter_millis: 250
+        dead_letter: true
 permissions:
   data:
     read:
@@ -258,6 +261,13 @@ permissions:
 	jobs := manifest.BackgroundJobs()
 	if len(jobs) != 1 || jobs[0].JobID != "codex.quota.refresh" || jobs[0].Schedule != "*/10 * * * *" {
 		t.Fatalf("background jobs = %+v", jobs)
+	}
+	if jobs[0].Retry.MaxAttempts != 2 ||
+		jobs[0].Retry.BackoffMillis != 1000 ||
+		jobs[0].Retry.BackoffMultiplier != 2 ||
+		jobs[0].Retry.JitterMillis != 250 ||
+		!jobs[0].Retry.DeadLetter {
+		t.Fatalf("background job retry policy = %+v", jobs[0].Retry)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "background_job", Name: "codex.quota.refresh", Subject: "openai_codex", Value: "quota.refresh"}) {
 		t.Fatalf("descriptor is missing background job capability: %+v", descriptor.Capabilities)
@@ -1111,6 +1121,58 @@ capabilities:
 `))
 	if err == nil {
 		t.Fatal("manifest with background job but no background placement parsed successfully")
+	}
+}
+
+func TestParseManifestRejectsInvalidBackgroundRetryPolicy(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		retry string
+	}{
+		{
+			name: "negative backoff multiplier",
+			retry: `
+      retry:
+        backoff_multiplier: -1
+`,
+		},
+		{
+			name: "fractional backoff multiplier",
+			retry: `
+      retry:
+        backoff_multiplier: 0.5
+`,
+		},
+		{
+			name: "negative jitter",
+			retry: `
+      retry:
+        jitter_millis: -1
+`,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := ParseManifest([]byte(fmt.Sprintf(`
+schema_version: 1
+id: tokenhub.job
+name: Job Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - background
+capabilities:
+  background_jobs:
+    - id: quota.refresh
+      schedule: "*/10 * * * *"
+      max_concurrency: 1
+%s`, testCase.retry)))
+			if err == nil {
+				t.Fatal("manifest with invalid retry policy parsed successfully")
+			}
+		})
 	}
 }
 
