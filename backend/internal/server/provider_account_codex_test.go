@@ -1469,6 +1469,55 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	if err := store.db.Create(&auditEvent).Error; err != nil {
 		t.Fatal(err)
 	}
+	requestLog := RequestLog{
+		ID:                 "log_legacy_subscription",
+		RequestID:          "req_legacy_subscription",
+		ProjectID:          "prj_legacy_subscription",
+		APIKeyID:           "thk_legacy_subscription",
+		ModelName:          "gpt-legacy-codex",
+		ProviderID:         legacy.ID,
+		ProviderResourceID: subscription.ID,
+		ProviderModel:      "gpt-legacy-codex",
+		StatusCode:         http.StatusOK,
+		LatencyMS:          12,
+		CreatedAt:          quotaFetchedAt,
+	}
+	if err := store.db.Create(&requestLog).Error; err != nil {
+		t.Fatal(err)
+	}
+	routeAttempt := RouteAttemptLog{
+		ID:                 "attempt_legacy_subscription",
+		RequestID:          requestLog.RequestID,
+		AttemptIndex:       1,
+		RouteID:            "route_legacy_subscription",
+		ProviderID:         legacy.ID,
+		ProviderResourceID: subscription.ID,
+		ProviderModel:      "gpt-legacy-codex",
+		StatusCode:         http.StatusOK,
+		Invoked:            true,
+		LatencyMS:          12,
+		TotalTokens:        18,
+		StartedAt:          quotaFetchedAt,
+		EndedAt:            quotaFetchedAt,
+		CreatedAt:          quotaFetchedAt,
+	}
+	if err := store.db.Create(&routeAttempt).Error; err != nil {
+		t.Fatal(err)
+	}
+	providerObservation := ProviderObservation{
+		ID:          "pob_legacy_subscription",
+		ProviderID:  legacy.ID,
+		ResourceID:  subscription.ID,
+		AdapterType: legacy.Type,
+		Source:      "gateway_request",
+		Operation:   "inference",
+		Success:     true,
+		LatencyMS:   12,
+		ObservedAt:  quotaFetchedAt,
+	}
+	if err := store.db.Create(&providerObservation).Error; err != nil {
+		t.Fatal(err)
+	}
 	store.AddModel(Model{Name: "gpt-legacy-codex", Category: "codex", Family: "codex", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{
 		ID:                 "route_legacy_subscription",
@@ -1560,6 +1609,31 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	}
 	if !foundAudit {
 		t.Fatalf("audit event was not preserved: %+v", auditEvent)
+	}
+	requestDetail, err := store.GetRequestDetail(requestLog.RequestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detailLog, ok := requestDetail["log"].(RequestLog)
+	if !ok || detailLog.ProviderID != legacy.ID || detailLog.ProviderResourceID != subscription.ID {
+		t.Fatalf("request detail log was not preserved: %+v", requestDetail["log"])
+	}
+	attempts, ok := requestDetail["attempts"].([]RouteAttemptLog)
+	if !ok || len(attempts) != 1 || attempts[0].ProviderID != legacy.ID || attempts[0].ProviderResourceID != subscription.ID {
+		t.Fatalf("request detail attempts were not preserved: %+v", requestDetail["attempts"])
+	}
+	observations := store.ListProviderObservations(time.Time{})
+	foundObservation := false
+	for _, observation := range observations {
+		if observation.ID == providerObservation.ID {
+			foundObservation = true
+			if observation.ProviderID != legacy.ID || observation.ResourceID != subscription.ID || observation.Operation != providerObservation.Operation {
+				t.Fatalf("provider observation was not preserved: before=%+v after=%+v", providerObservation, observation)
+			}
+		}
+	}
+	if !foundObservation {
+		t.Fatalf("provider observation was not preserved: %+v", providerObservation)
 	}
 	migratedRoutes := 0
 	for _, route := range store.ListRoutes() {
