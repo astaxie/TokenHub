@@ -1,0 +1,35 @@
+schema_version: 1
+id: tokenhub.extension.external-privacy
+name: External Privacy Hook
+version: 1.0.0
+description: Contract fixture for an external privacy_pre gateway hook.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: hook.sh
+capabilities:
+  hooks:
+    - id: mask
+      stage: privacy_pre
+      priority: 1200
+      failure_policy: fail_closed
+      reads:
+        - request_headers
+        - request_body
+      writes:
+        - request_body
+        - audit
+permissions:
+  data:
+    read:
+      - request_headers
+      - request_body
+    write:
+      - request_body
+      - audit

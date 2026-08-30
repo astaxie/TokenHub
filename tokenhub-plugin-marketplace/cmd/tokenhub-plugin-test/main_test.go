@@ -9,16 +9,40 @@ import (
 	"testing"
 )
 
-func TestRunProviderPassesGoProviderSample(t *testing.T) {
+func TestRunProviderPassesGoProviderSamples(t *testing.T) {
 	root := moduleRoot(t)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := run(context.Background(), []string{"provider", "--package", filepath.Join(root, "samples", "provider-mock-go")}, &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("run provider contract: %v stderr=%s stdout=%s", err, stderr.String(), stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "provider contract passed (7 cases") {
-		t.Fatalf("stdout = %s", stdout.String())
+	for _, sample := range []struct {
+		name    string
+		dir     string
+		fixture string
+	}{
+		{
+			name:    "mock",
+			dir:     filepath.Join(root, "samples", "provider-mock-go"),
+			fixture: filepath.Join(root, "contract-tests", "protocol", "stdio-json-v1", "provider_operations.json"),
+		},
+		{
+			name:    "kimi",
+			dir:     filepath.Join(root, "samples", "provider-kimi-go"),
+			fixture: filepath.Join(root, "samples", "provider-kimi-go", "provider_operations.json"),
+		},
+		{
+			name:    "glm",
+			dir:     filepath.Join(root, "samples", "provider-glm-go"),
+			fixture: filepath.Join(root, "samples", "provider-glm-go", "provider_operations.json"),
+		},
+	} {
+		t.Run(sample.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			err := run(context.Background(), []string{"provider", "--package", sample.dir, "--fixture", sample.fixture}, &stdout, &stderr)
+			if err != nil {
+				t.Fatalf("run provider contract: %v stderr=%s stdout=%s", err, stderr.String(), stdout.String())
+			}
+			if !strings.Contains(stdout.String(), "provider contract passed (7 cases") {
+				t.Fatalf("stdout = %s", stdout.String())
+			}
+		})
 	}
 }
 

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "protocol": "stdio-json-v1",
+  "kind": "provider",
+  "provider_type": "kimi_subscription",
+  "required_gateway_capabilities": [
+    "chat",
+    "chat_stream",
+    "responses",
+    "responses_stream",
+    "embeddings",
+    "models",
+    "probe"
+  ],
+  "cases": [
+    {
+      "name": "chat",
+      "operation": "chat",
+      "provider_model": "kimi-upstream-chat",
+      "request": {
+        "model": "gateway-model",
+        "messages": [{ "role": "user", "content": "hello" }]
+      },
+      "expect": { "response_id": "chatcmpl_kimi_subscription", "total_tokens": 5 }
+    },
+    {
+      "name": "chat_stream",
+      "operation": "chat_stream",
+      "provider_model": "kimi-upstream-chat-stream",
+      "request": {
+        "model": "gateway-model",
+        "messages": [{ "role": "user", "content": "hello" }],
+        "stream": true
+      },
+      "expect": { "events": 2, "total_tokens": 7 }
+    },
+    {
+      "name": "responses",
+      "operation": "responses",
+      "provider_model": "kimi-upstream-responses",
+      "request": { "model": "gateway-model", "input": "hello" },
+      "expect": { "response_id": "resp_kimi_subscription", "total_tokens": 9 }
+    },
+    {
+      "name": "responses_stream",
+      "operation": "responses_stream",
+      "provider_model": "kimi-upstream-responses-stream",
+      "request": { "model": "gateway-model", "input": "hello", "stream": true },
+      "expect": { "events": 2 }
+    },
+    {
+      "name": "embeddings",
+      "operation": "embeddings",
+      "provider_model": "kimi-upstream-embeddings",
+      "request": { "model": "gateway-model", "input": "hello" },
+      "expect": { "response_object": "list", "total_tokens": 6 }
+    },
+    {
+      "name": "models",
+      "operation": "models",
+      "provider_model": "kimi-upstream-chat",
+      "resource": { "id": "rsrc_kimi_subscription", "provider_id": "prv_kimi_subscription" },
+      "request": {},
+      "expect": { "status": 200, "catalog_type": "kimi_subscription", "catalog_etag": "kimi-etag" }
+    },
+    {
+      "name": "probe",
+      "operation": "probe",
+      "provider_model": "kimi-upstream-chat",
+      "resource": { "id": "rsrc_kimi_subscription", "provider_id": "prv_kimi_subscription" },
+      "request": { "model": "gateway-model", "input": "hello" },
+      "expect": { "probe_resource_id": "rsrc_kimi_subscription", "probe_text": "kimi subscription provider is reachable" }
+    }
+  ]
+}

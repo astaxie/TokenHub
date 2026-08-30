@@ -305,6 +305,7 @@ type GormStore struct {
 	backupDir              string
 	dbDriver               string        // "sqlite" or "postgres"
 	heartbeatState         *atomic.Int32 // shared across value copies of the store
+	heartbeatStop          *instanceHeartbeatStopper
 	// instanceHeartbeatID identifies the row this instance published while it
 	// still held the schema migration lock; StartInstanceHeartbeat refreshes
 	// that row instead of creating a second one.

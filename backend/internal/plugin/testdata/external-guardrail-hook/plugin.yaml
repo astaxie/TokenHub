@@ -1,0 +1,43 @@
+schema_version: 1
+id: tokenhub.extension.external-guardrail
+name: External Guardrail Hook
+version: 1.0.0
+description: Contract fixture for an external guardrail_post gateway hook.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: hook.sh
+capabilities:
+  hooks:
+    - id: policy
+      stage: guardrail_post
+      priority: 2200
+      failure_policy: fail_closed
+      reads:
+        - auth_context
+        - project_metadata
+        - api_key_metadata
+        - provider_response
+        - stream_events
+        - usage
+      writes:
+        - provider_response
+        - audit
+permissions:
+  data:
+    read:
+      - auth_context
+      - project_metadata
+      - api_key_metadata
+      - provider_response
+      - stream_events
+      - usage
+    write:
+      - provider_response
+      - audit

@@ -684,6 +684,7 @@ func (s *pauseAfterResponseClaimStore) ClaimResponseJob(owner string, leaseTTL t
 func TestBackgroundResponsesShutdownAfterClaimRequeuesForRestart(t *testing.T) {
 	config := responseJobTestConfig()
 	config.ResponseLeaseTTLSeconds = 10
+	config.ResponseWorkerStartupEnabled = true
 	store, secret := newBackgroundResponseTestStore(t, config)
 	key := store.ListAPIKeys()[0]
 	project, ok := store.GetProject(key.ProjectID)
@@ -1037,6 +1038,7 @@ func TestBackgroundResponsesCancellationWinsCompletionRaceAndSettlesQuota(t *tes
 
 func TestBackgroundResponsesSQLiteRestartProcessesQueuedJob(t *testing.T) {
 	config := responseJobTestConfig()
+	config.ResponseWorkerStartupEnabled = true
 	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "responses-restart.db")
 	store, err := NewSQLiteStoreWithConfig(databaseURL, config)
 	if err != nil {

@@ -37,6 +37,31 @@ func TestInstanceHeartbeatLifecycle(t *testing.T) {
 	stop()
 }
 
+func TestInstanceHeartbeatStopsWhenStoreCloses(t *testing.T) {
+	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "heartbeat-close.db")
+	store, err := NewSQLiteStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.StartInstanceHeartbeat("v0.5.0-heartbeat-close-test")
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	maintenanceStore, err := OpenStoreForMaintenance(databaseURL, Config{AppVersion: "v0.5.0-heartbeat-close-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer maintenanceStore.Close()
+	heartbeats, err := maintenanceStore.ListInstanceHeartbeats(context.Background())
+	if err != nil {
+		t.Fatalf("list heartbeats after store close: %v", err)
+	}
+	if len(heartbeats) != 0 {
+		t.Fatalf("closed store must remove its heartbeat row, got %+v", heartbeats)
+	}
+}
+
 func TestOpenStoreFailsWhenInitialHeartbeatCannotPublish(t *testing.T) {
 	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "heartbeat-startup.db")
 	maintenanceStore, err := OpenStoreForMaintenance(databaseURL, Config{AppVersion: "v0.6.0-test"})

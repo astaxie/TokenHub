@@ -257,10 +257,12 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	}
 	s.installTraceEmitter(config)
 	s.routes()
-	// Every replica must poll the durable queue even when it was empty at startup.
-	// Otherwise a replica that never handled a submission cannot take over after
-	// the submitting replica fails.
-	s.startResponseWorkers()
+	if config.ResponseWorkerStartupEnabled {
+		// Every replica must poll the durable queue even when it was empty at startup.
+		// Otherwise a replica that never handled a submission cannot take over after
+		// the submitting replica fails.
+		s.startResponseWorkers()
+	}
 	return s
 }
 func (s *Server) Handler() http.Handler {

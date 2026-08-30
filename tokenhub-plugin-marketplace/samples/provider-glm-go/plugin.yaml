@@ -1,0 +1,48 @@
+schema_version: 1
+id: tokenhub.provider.glm-go
+name: GLM Subscription Go Provider
+version: 1.0.0
+description: Reference Go provider plugin for the TokenHub stdio-json-v1 contract kit.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/provider-glm-go
+capabilities:
+  provider_types:
+    - glm_subscription
+  provider_resource_types:
+    - glm_subscription_account
+  provider:
+    route_protocols:
+      - chat/completions
+      - responses
+    supports_custom_headers: false
+    api_key_required: true
+    credentials_scope: provider
+    default_base_url: https://open.bigmodel.cn/api/paas/v4
+    error_profile: generic
+    model_discovery:
+      path: /models
+      auth: bearer_header
+  gateway:
+    - chat
+    - chat_stream
+    - responses
+    - responses_stream
+    - embeddings
+    - models
+    - probe
+permissions:
+  data:
+    read:
+      - provider_credentials
+distribution:
+  repository_url: https://github.com/tokenhub-dev/tokenhub-plugin-marketplace
+  homepage_url: https://github.com/tokenhub-dev/tokenhub-plugin-marketplace/tree/main/samples/provider-glm-go
+  license: Apache-2.0

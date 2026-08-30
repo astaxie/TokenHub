@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,6 +49,31 @@ const instanceHeartbeatTableDDL = `CREATE TABLE IF NOT EXISTS instance_heartbeat
 	started_at TEXT NOT NULL,
 	last_seen TEXT NOT NULL
 )`
+
+type instanceHeartbeatStopper struct {
+	mu   sync.Mutex
+	stop func()
+}
+
+func (s *instanceHeartbeatStopper) Set(stop func()) {
+	s.mu.Lock()
+	previous := s.stop
+	s.stop = stop
+	s.mu.Unlock()
+	if previous != nil {
+		previous()
+	}
+}
+
+func (s *instanceHeartbeatStopper) Stop() {
+	s.mu.Lock()
+	stop := s.stop
+	s.stop = nil
+	s.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
+}
 
 // upsertInstanceHeartbeat publishes or refreshes one instance row.
 func upsertInstanceHeartbeat(db *gorm.DB, instanceID, release string) error {
@@ -93,8 +120,11 @@ func (s *GormStore) StartInstanceHeartbeat(release string) (stop func()) {
 	refresh := func() error {
 		return upsertInstanceHeartbeat(s.db, instanceID, release)
 	}
-	publish := func() {
+	publish := func() bool {
 		if err := refresh(); err != nil {
+			if isClosedDatabaseError(err) {
+				return false
+			}
 			if s.heartbeatState != nil {
 				s.heartbeatState.Store(heartbeatFailing)
 			}
@@ -102,8 +132,11 @@ func (s *GormStore) StartInstanceHeartbeat(release string) (stop func()) {
 		} else if s.heartbeatState != nil {
 			s.heartbeatState.Store(heartbeatOK)
 		}
+		return true
 	}
-	publish()
+	if !publish() {
+		return func() {}
+	}
 	done := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(InstanceHeartbeatInterval)
@@ -113,22 +146,38 @@ func (s *GormStore) StartInstanceHeartbeat(release string) (stop func()) {
 			case <-done:
 				return
 			case <-ticker.C:
-				publish()
+				if !publish() {
+					return
+				}
 			}
 		}
 	}()
 	var stopOnce sync.Once
-	return func() {
+	stop = func() {
 		stopOnce.Do(func() {
 			close(done)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := s.db.WithContext(ctx).
-				Exec("DELETE FROM instance_heartbeats WHERE instance_id = ?", instanceID).Error; err != nil {
+				Exec("DELETE FROM instance_heartbeats WHERE instance_id = ?", instanceID).Error; err != nil && !isClosedDatabaseError(err) {
 				log.Printf("[tokenhub] failed to remove instance heartbeat: %v", err)
 			}
 		})
 	}
+	if s.heartbeatStop != nil {
+		s.heartbeatStop.Set(stop)
+	}
+	return stop
+}
+
+func isClosedDatabaseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, sql.ErrConnDone) {
+		return true
+	}
+	return strings.Contains(err.Error(), "sql: database is closed")
 }
 
 // ListInstanceHeartbeats returns every published heartbeat row.

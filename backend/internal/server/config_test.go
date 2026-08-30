@@ -143,6 +143,13 @@ func TestConfigParsesImageExecutionSettings(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnvEnablesResponseWorkerStartup(t *testing.T) {
+	config := ConfigFromEnv()
+	if !config.ResponseWorkerStartupEnabled {
+		t.Fatal("environment config must enable response worker startup polling")
+	}
+}
+
 func TestProductionConfigRejectsPlaceholderCredentials(t *testing.T) {
 	config := Config{
 		Environment:            "prod",
