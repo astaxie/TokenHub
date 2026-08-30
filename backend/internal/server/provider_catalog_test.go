@@ -208,6 +208,47 @@ func TestNormalizeProviderCatalogEntryAcceptsManifestURLFields(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderBaseURLUsesBuiltinProviderCatalogBoundary(t *testing.T) {
+	tests := []struct {
+		name       string
+		providerID string
+		raw        string
+		want       string
+	}{
+		{
+			name:       "JieKou provider ID",
+			providerID: "302ai",
+			raw:        "https://api.highwayapi.ai/openai",
+			want:       "https://api.highwayapi.ai/openai/v1",
+		},
+		{
+			name:       "JieKou known OpenAI-compatible URL",
+			providerID: "custom-vendor",
+			raw:        "https://api.highwayapi.ai/openai",
+			want:       "https://api.highwayapi.ai/openai/v1",
+		},
+		{
+			name:       "DMXAPI provider ID",
+			providerID: "dmxapi",
+			raw:        "https://www.dmxapi.cn",
+			want:       "https://www.dmxapi.cn/v1",
+		},
+		{
+			name:       "third-party plugin URL remains explicit",
+			providerID: "vendor-plugin",
+			raw:        "https://api.vendor.example/openai",
+			want:       "https://api.vendor.example/openai",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeProviderBaseURL(tt.providerID, tt.raw); got != tt.want {
+				t.Fatalf("normalizeProviderBaseURL(%q, %q) = %q, want %q", tt.providerID, tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 	var deepSeek ProviderCatalogEntry
 	for _, entry := range builtinProviderCatalog(true) {

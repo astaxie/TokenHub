@@ -1,5 +1,7 @@
 package server
 
+import "strings"
+
 func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
 	entries := builtinProviderPluginCatalogSeedEntries()
 	if !providerCatalogHasEntry(entries, "custom") {
@@ -14,6 +16,23 @@ func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
 
 func builtinProviderCatalogRequiredProviderIDs() []string {
 	return []string{"openai", "anthropic", "google"}
+}
+
+func builtinProviderCatalogNormalizeBaseURL(id string, raw string) string {
+	if raw == "" {
+		return raw
+	}
+	normalizedID := strings.ToLower(strings.TrimSpace(id))
+	normalizedRaw := strings.ToLower(raw)
+	if normalizedID == "dmxapi" || normalizedRaw == "https://www.dmxapi.cn" || normalizedRaw == "https://api.dmxapi.cn" {
+		return raw + "/v1"
+	}
+	if normalizedID == "302ai" || strings.Contains(normalizedRaw, "api.highwayapi.ai/openai") {
+		if strings.HasSuffix(normalizedRaw, "/openai") {
+			return raw + "/v1"
+		}
+	}
+	return raw
 }
 
 func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {

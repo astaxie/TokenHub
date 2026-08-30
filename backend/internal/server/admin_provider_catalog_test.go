@@ -854,12 +854,6 @@ func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	if normalizeModelLookupName("DeepSeekV4") != "deepseek-v4" || normalizeModelLookupName("openai/gpt5") != "gpt-5" {
 		t.Fatalf("expected compact provider model names to normalize")
 	}
-	if got := normalizeProviderBaseURL("302ai", "https://api.highwayapi.ai/openai"); got != "https://api.highwayapi.ai/openai/v1" {
-		t.Fatalf("expected JieKou OpenAI-compatible base URL to include /v1, got %s", got)
-	}
-	if got := normalizeProviderBaseURL("dmxapi", "https://www.dmxapi.cn"); got != "https://www.dmxapi.cn/v1" {
-		t.Fatalf("expected dmxapi OpenAI-compatible base URL to include /v1, got %s", got)
-	}
 }
 
 func TestAdminImportsProviderModelWithoutPublishing(t *testing.T) {

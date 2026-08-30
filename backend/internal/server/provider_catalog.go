@@ -858,24 +858,7 @@ func sortCatalogEntries(entries []ProviderCatalogEntry) {
 
 func normalizeProviderBaseURL(id string, raw string) string {
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
-	return normalizeOpenAICompatibleBaseURL(id, raw)
-}
-
-func normalizeOpenAICompatibleBaseURL(id string, raw string) string {
-	if raw == "" {
-		return raw
-	}
-	normalizedID := strings.ToLower(strings.TrimSpace(id))
-	normalizedRaw := strings.ToLower(raw)
-	if normalizedID == "dmxapi" || normalizedRaw == "https://www.dmxapi.cn" || normalizedRaw == "https://api.dmxapi.cn" {
-		return raw + "/v1"
-	}
-	if normalizedID == "302ai" || strings.Contains(normalizedRaw, "api.highwayapi.ai/openai") {
-		if strings.HasSuffix(normalizedRaw, "/openai") {
-			return raw + "/v1"
-		}
-	}
-	return raw
+	return builtinProviderCatalogNormalizeBaseURL(id, raw)
 }
 
 func normalizeModelModality(value string) string {

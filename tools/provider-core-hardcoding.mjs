@@ -34,6 +34,14 @@ export const PROVIDER_CORE_PATTERNS = [
     name: "provider-specific auth identifier",
     pattern: /\banthropicAuthType[A-Za-z0-9_]*\b/g,
   },
+  {
+    name: "provider catalog URL normalizer",
+    pattern: /\bnormalizeOpenAICompatibleBaseURL\b/g,
+  },
+  {
+    name: "provider-specific catalog URL literal",
+    pattern: /(["'`])(?:dmxapi|302ai|https:\/\/www\.dmxapi\.cn|https:\/\/api\.dmxapi\.cn|api\.highwayapi\.ai\/openai)\1/g,
+  },
 ];
 
 const JS_TS_EXTENSIONS = new Set([".js", ".mjs", ".ts", ".tsx"]);
