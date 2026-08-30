@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type providerRouteBridge struct {
@@ -20,28 +21,24 @@ type providerRouteBridge struct {
 	WriteResponseHeaders func(http.Header, http.Header)
 }
 
-var providerRouteBridges = []providerRouteBridge{
-	{
-		Protocol:             providerRouteProtocolCodexResponses,
-		ChatCompatible:       validateCodexChatBridge,
-		ExecuteChat:          (*Server).executeCodexChatRoute,
-		StreamChat:           (*Server).streamCodexAsChat,
-		ValidateAnthropic:    validateCodexAnthropicBridge,
-		ExecuteAnthropic:     (*Server).executeCodexAnthropicMessages,
-		StreamAnthropic:      (*Server).streamCodexAsAnthropic,
-		GeminiHeaders:        geminiCodexCompatibilityHeaders,
-		WriteResponseHeaders: writeCodexResponseHeaders,
-	},
+var (
+	providerRouteBridgeMu sync.RWMutex
+	providerRouteBridges  []providerRouteBridge
+)
+
+func registerProviderRouteBridge(bridge providerRouteBridge) {
+	if strings.TrimSpace(bridge.Protocol) == "" {
+		return
+	}
+	providerRouteBridgeMu.Lock()
+	defer providerRouteBridgeMu.Unlock()
+	providerRouteBridges = append(providerRouteBridges, bridge)
 }
 
-func validateCodexChatBridge(req ChatCompletionRequest) error {
-	_, err := chatToCodexResponsesRequest(req)
-	return err
-}
-
-func validateCodexAnthropicBridge(req anthropicMessagesRequest) error {
-	_, err := anthropicToCodexResponsesRequest(req)
-	return err
+func registeredProviderRouteBridges() []providerRouteBridge {
+	providerRouteBridgeMu.RLock()
+	defer providerRouteBridgeMu.RUnlock()
+	return append([]providerRouteBridge(nil), providerRouteBridges...)
 }
 
 func providerRouteBridgeByProtocol(protocol string, supports func(providerRouteBridge) bool) (providerRouteBridge, bool) {
@@ -49,7 +46,7 @@ func providerRouteBridgeByProtocol(protocol string, supports func(providerRouteB
 	if protocol == "" {
 		return providerRouteBridge{}, false
 	}
-	for _, bridge := range providerRouteBridges {
+	for _, bridge := range registeredProviderRouteBridges() {
 		if strings.EqualFold(bridge.Protocol, protocol) && (supports == nil || supports(bridge)) {
 			return bridge, true
 		}

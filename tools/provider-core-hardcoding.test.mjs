@@ -106,4 +106,16 @@ describe("provider-specific core hardcoding gate", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_adapter_migration.go"), "utf8");
     assert.equal(/\b(?:OpenAI|Codex|ProviderOpenAI)\b/.test(source), false);
   });
+
+  it("keeps route bridge lookup free of Codex bridge implementation wiring", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_route_bridge.go"), "utf8");
+    const forbidden = [
+      "validateCodexChatBridge",
+      "validateCodexAnthropicBridge",
+      "executeCodexChatRoute",
+      "executeCodexAnthropicMessages",
+      "providerRouteProtocolCodexResponses",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
 });
