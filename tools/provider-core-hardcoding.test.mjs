@@ -42,6 +42,7 @@ describe("provider-specific core hardcoding gate", () => {
   });
 
   it("keeps built-in provider declarations outside the generic surface list", () => {
+    assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_provider_catalog.go"), false);
     assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_provider_plugins.go"), false);
     assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_provider_runtime.go"), false);
     assert.equal(GENERIC_CORE_SURFACES.includes("backend/internal/server/builtin_plugin_actions.go"), false);
@@ -55,6 +56,7 @@ describe("provider-specific core hardcoding gate", () => {
 
   it("does not scan every provider-specific adapter file by accident", () => {
     const frontendSources = discoverSourceFiles(REPOSITORY_ROOT, "frontend/features/admin");
+    assert.ok(GENERIC_CORE_SURFACES.includes("backend/internal/server/provider_catalog.go"));
     assert.ok(frontendSources.includes("frontend/features/admin/views/provider-editor.tsx"));
     assert.ok(GENERIC_CORE_SURFACES.includes("frontend/features/admin/domain/catalog.tsx"));
     assert.equal(GENERIC_CORE_SURFACES.length < frontendSources.length, true);
