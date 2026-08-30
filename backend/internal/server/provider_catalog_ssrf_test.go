@@ -835,7 +835,7 @@ func TestUpstreamClientsGuardInferenceDial(t *testing.T) {
 		_ = listener.Close()
 	}
 	server := New(NewMemoryStore())
-	proxying, ok := server.codexSubscription.Client.Transport.(*providerEnvironmentProxyTransport)
+	proxying, ok := mustCodexSubscriptionAdapterForTest(t, server).Client.Transport.(*providerEnvironmentProxyTransport)
 	if !ok {
 		t.Fatal("expected Codex subscription client to honor the operator forward proxy")
 	}

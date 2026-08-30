@@ -31,7 +31,6 @@ type Server struct {
 	pluginBackgroundRunner  *pluginmeta.BackgroundJobRunner
 	adapterRegistry         *AdapterRegistry
 	integrations            *IntegrationService
-	codexSubscription       *CodexSubscriptionAdapter
 	providerCatalog         *providerCatalogService
 	billing                 *billing.Service
 	billingAdmin            *admin.BillingHandler
@@ -161,7 +160,6 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		SyntheticDNSPolicy:  syntheticDNSPolicy,
 		ProviderProxyPolicy: providerProxyPolicy,
 	})
-	codexSubscription := codexSubscriptionAdapterFrom(providerRuntime.adapters)
 	pluginBootstrap, err := bootstrapServerPlugins(store, config, providerRuntime.adapters)
 	if err != nil {
 		panic(err)
@@ -179,7 +177,6 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
 		adapterRegistry:         pluginBootstrap.adapterRegistry,
 		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
-		codexSubscription:       codexSubscription,
 		providerCatalog:         providerCatalog,
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
 		billingAvailable:        billingAvailable,

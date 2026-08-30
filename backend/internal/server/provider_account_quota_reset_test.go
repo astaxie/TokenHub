@@ -71,8 +71,8 @@ func newQuotaResetTestServer(t *testing.T, upstream *quotaResetUpstream, credent
 	fake := httptest.NewServer(http.HandlerFunc(upstream.handler))
 	t.Cleanup(fake.Close)
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "quota-reset-test-secret"})
-	server.codexSubscription.QuotaURL = fake.URL + "/backend-api/wham/usage"
-	server.codexSubscription.Client = fake.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).QuotaURL = fake.URL + "/backend-api/wham/usage"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = fake.Client()
 	return server, store, fake
 }
 
@@ -322,7 +322,7 @@ func TestCodexQuotaResetRefreshesCredentialsAfterUnauthorized(t *testing.T) {
 	openAIAccountOAuthTokenEndpoint = tokenServer.URL
 	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
 
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Method == http.MethodGet {
 			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"available_count":1,"credits":[{"id":"credit_refresh","status":"available"}]}`)), Request: request}, nil
 		}

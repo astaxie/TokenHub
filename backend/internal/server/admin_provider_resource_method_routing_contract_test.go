@@ -172,8 +172,8 @@ func TestAdminProviderResourceQuotaRoutePreservesRefreshAndUpstreamHeaders(t *te
 	}))
 	t.Cleanup(upstream.Close)
 	server := New(store)
-	server.codexSubscription.QuotaURL = upstream.URL + "/backend-api/wham/usage"
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).QuotaURL = upstream.URL + "/backend-api/wham/usage"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	app := server.Handler()
 
 	readQuota := func(path string) OpenAIAccountQuota {

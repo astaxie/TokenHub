@@ -60,9 +60,9 @@ func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType 
 	})
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "codex-bridge-route-secret"})
 	if transport != nil {
-		server.codexSubscription.Client = &http.Client{Transport: transport}
+		mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: transport}
 	}
-	server.codexSubscription.MaxRequestRetries = 1
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
 	if providerType != ProviderOpenAICodex {
 		descriptor := providerPluginDescriptorWithRouteProtocol(
 			"tokenhub.provider.codex-bridge-test",
@@ -84,7 +84,7 @@ func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType 
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 		if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
 			Type:         providerType,
-			Adapter:      server.codexSubscription,
+			Adapter:      mustCodexSubscriptionAdapterForTest(t, server),
 			Capabilities: []AdapterCapability{AdapterCapabilityResponses},
 		}); err != nil {
 			t.Fatalf("register plugin Codex bridge provider: %v", err)
@@ -403,8 +403,8 @@ func TestCodexCompatibilityChatFailsOverAndKeepsSessionAffinity(t *testing.T) {
 	badCalls := 0
 	goodCalls := 0
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "codex-affinity-route-secret"})
-	server.codexSubscription.MaxRequestRetries = 1
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Header.Get("authorization") == "Bearer access_bad" {
 			badCalls++
 			return &http.Response{StatusCode: http.StatusInternalServerError, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":{"code":"server_error"}}`)), Request: request}, nil

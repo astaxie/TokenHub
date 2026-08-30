@@ -43,8 +43,8 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 	})
 	quotaCalls := 0
 	server := New(store)
-	server.codexSubscription.QuotaURL = "https://chatgpt.example/backend-api/wham/usage"
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).QuotaURL = "https://chatgpt.example/backend-api/wham/usage"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		quotaCalls++
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -180,7 +180,7 @@ func TestProviderTestUsesCodexDefaultProbeProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		var payload map[string]any
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			t.Fatal(err)

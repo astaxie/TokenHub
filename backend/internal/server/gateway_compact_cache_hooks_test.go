@@ -122,7 +122,7 @@ func newResponsesCompactCacheFailOpenTestServer(t *testing.T, outputText string)
 		Status: StatusActive, Priority: 1, Weight: 100,
 	})
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "compact-cache-fail-open-secret"})
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		if request.URL.Path != "/backend-api/codex/responses/compact" {
 			t.Fatalf("unexpected compact path: %s", request.URL.Path)
 		}

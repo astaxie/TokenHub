@@ -369,8 +369,8 @@ func TestAdminProviderCatalogRoutesPreserveCodexQueriesCredentialsAndHeaders(t *
 	}
 	observed := make([]observedCredentials, 0, 2)
 	server := NewWithConfig(store, config)
-	server.codexSubscription.ModelsURL = "https://codex-models.example/models"
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).ModelsURL = "https://codex-models.example/models"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Method != http.MethodGet || request.URL.String() != "https://codex-models.example/models?client_version="+openAICodexVersion {
 			t.Fatalf("unexpected Codex models request: %s %s", request.Method, request.URL.String())
 		}

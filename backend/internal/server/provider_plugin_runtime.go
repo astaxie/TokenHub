@@ -106,8 +106,5 @@ func (s *Server) codexSubscriptionAdapter() (*CodexSubscriptionAdapter, error) {
 			}
 		}
 	}
-	if s.codexSubscription != nil {
-		return s.codexSubscription, nil
-	}
 	return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Provider adapter is not registered")
 }

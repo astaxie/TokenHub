@@ -165,7 +165,7 @@ func TestProviderQuotaRefreshBackgroundJobPersistsQuotaSnapshots(t *testing.T) {
 		})
 	}))
 	defer quotaServer.Close()
-	server.codexSubscription.QuotaURL = quotaServer.URL
+	mustCodexSubscriptionAdapterForTest(t, server).QuotaURL = quotaServer.URL
 
 	record, err := server.pluginBackgroundRunner.Run(context.Background(), pluginmeta.BackgroundJobInvocation{
 		PluginID: "tokenhub.provider.openai-codex",

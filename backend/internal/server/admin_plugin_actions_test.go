@@ -795,7 +795,7 @@ func TestAdminPluginActionConfiguresOpenAICodexImageCapability(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.image_capability.configure", map[string]any{
 		"resource_id": resource.ID,
@@ -839,7 +839,7 @@ func TestAdminPluginActionRunsOpenAICodexProviderProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin", SecretKey: "plugin-provider-probe-secret-key"})
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		var payload map[string]any
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
@@ -904,8 +904,8 @@ func TestAdminPluginActionReadsOpenAICodexModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewWithConfig(store, Config{AdminToken: "plugin-action-admin", SecretKey: "plugin-models-secret-key"})
-	server.codexSubscription.ModelsURL = "https://chatgpt.example/backend-api/codex/models"
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).ModelsURL = "https://chatgpt.example/backend-api/codex/models"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Header.Get("authorization") != "Bearer plugin-models-secret" || req.Header.Get("chatgpt-account-id") != "plugin-models-account" {
 			t.Fatalf("models action missing Codex credentials: %#v", req.Header)
 		}

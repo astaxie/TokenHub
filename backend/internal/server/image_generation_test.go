@@ -1191,7 +1191,7 @@ func TestImageGenerationAsyncUsesCodexSubscriptionAndPersistsImage(t *testing.T)
 		SecretKey:  "image-signing-and-encryption-secret",
 	})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	server.imageStorageDir = t.TempDir()
 	handler := server.Handler()
 

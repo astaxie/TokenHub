@@ -666,7 +666,7 @@ func newGeminiCodexTestServerForModel(t *testing.T, modelName string, responder 
 	store.AddRoute(ModelRoute{ID: "route_gemini_chat_only", ModelName: "chat-only-model", ProviderID: chatProvider.ID, ProviderModel: "chat-only-model", Status: StatusActive})
 	server := New(store)
 	server.adapterRegistry.Register(chatOnlyProviderType, MockAdapter{}, AdapterCapabilityChat, AdapterCapabilityChatStream)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		if request.URL.Path != "/backend-api/codex/responses" {
 			t.Fatalf("unexpected Codex path: %s", request.URL)
 		}

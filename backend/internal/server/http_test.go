@@ -397,7 +397,7 @@ func TestAdminPlaygroundModesPreserveImagesForCodexSubscription(t *testing.T) {
 	})
 
 	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/backend-api/codex/responses" {
 			t.Fatalf("expected Codex Responses endpoint, got %s", req.URL)
 		}

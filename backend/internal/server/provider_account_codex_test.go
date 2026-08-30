@@ -106,8 +106,8 @@ func TestCodexModelCatalogUsesETagAndPersistedSnapshot(t *testing.T) {
 	}
 	requests := 0
 	server := New(store)
-	server.codexSubscription.ModelsURL = "https://chatgpt.example/backend-api/codex/models"
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).ModelsURL = "https://chatgpt.example/backend-api/codex/models"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		requests++
 		if requests == 2 {
 			if req.Header.Get("If-None-Match") != `"models-v1"` {
@@ -372,9 +372,9 @@ func TestCodexRouteFilteringUsesPersistedAccountCatalog(t *testing.T) {
 	})
 
 	server := New(store)
-	server.codexSubscription.ModelsURL = "https://chatgpt.example/backend-api/codex/models"
+	mustCodexSubscriptionAdapterForTest(t, server).ModelsURL = "https://chatgpt.example/backend-api/codex/models"
 	modelRequests := 0
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		modelRequests++
 		model := "gpt-5.6-luna"
 		if req.Header.Get("ChatGPT-Account-ID") == "account_live_sol" {
@@ -470,7 +470,7 @@ func TestCodexUnsupportedModelFailsOverAndUpdatesAccountModels(t *testing.T) {
 	})
 
 	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Header.Get("ChatGPT-Account-ID") == "account_unsupported" {
 			return &http.Response{
 				StatusCode: http.StatusBadRequest,
@@ -621,8 +621,8 @@ func TestResponsesRawGenerationControlsAreFilteredOnlyForCodex(t *testing.T) {
 
 	server := New(store)
 	var codexPayloads []map[string]any
-	server.codexSubscription.MaxRequestRetries = 1
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		var payload map[string]any
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode Codex request: %v", err)
@@ -764,8 +764,8 @@ func TestCodexSessionAffinityPersistsRebindsAndPreservesProtocol(t *testing.T) {
 
 	newServer := func() *Server {
 		server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "session-affinity-secret"})
-		server.codexSubscription.Client = &http.Client{Transport: transport}
-		server.codexSubscription.MaxRequestRetries = 1
+		mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: transport}
+		mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
 		return server
 	}
 	invoke := func(server *Server, threadID string) *httptest.ResponseRecorder {
@@ -1005,9 +1005,9 @@ func TestCodexCompactConvergesFingerprintAcrossRetriesAndPreservesUpstreamMetada
 	})
 
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "compact-secret"})
-	server.codexSubscription.MaxRequestRetries = 1
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
 	var fingerprintHeaders []http.Header
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/backend-api/codex/responses/compact" {
 			t.Fatalf("unexpected compact path: %s", req.URL.Path)
 		}

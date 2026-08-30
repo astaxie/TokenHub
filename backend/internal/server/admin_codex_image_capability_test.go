@@ -42,7 +42,7 @@ func TestAdminCodexImageCapabilityTestsOnceAndManagesRoute(t *testing.T) {
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	responses := make(chan responseBody, 2)
 	requestCapability := func(enabled bool) {
@@ -128,7 +128,7 @@ func TestAdminCodexImageCapabilityUsesPluginActionMetadataProfile(t *testing.T) 
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	result, err := server.configureCodexImageCapability(context.Background(), resource.ID, true, profile)
 	if err != nil {
 		t.Fatalf("enable metadata-driven image capability: %v", err)
@@ -161,7 +161,7 @@ func TestAdminCodexImageCapabilityDisablesRouteAfterLastAccountDeleted(t *testin
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enabled := doJSON(t, handler, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if enabled.Code != http.StatusOK {
@@ -192,7 +192,7 @@ func TestAdminCodexImageCapabilitySerializesFinalAccountDeletionWithProbe(t *tes
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enableDone := make(chan responseBody, 1)
 	go func() {
@@ -243,7 +243,7 @@ func TestAdminCodexImageCapabilityInvalidatesReplacementCredentials(t *testing.T
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	if response := doJSON(t, handler, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, ""); response.Code != http.StatusOK {
 		t.Fatalf("enable image capability: status=%d body=%s", response.Code, response.Body)
@@ -346,7 +346,7 @@ func TestAdminCodexImageCapabilitySerializesCredentialReplacementWithProbe(t *te
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enableDone := make(chan responseBody, 1)
 	go func() {
@@ -405,7 +405,7 @@ func TestAdminCodexImageCapabilitySerializesProviderDeletionWithProbe(t *testing
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enableDone := make(chan responseBody, 1)
 	go func() {
@@ -448,7 +448,7 @@ func TestAdminCodexImageCapabilityClassifiesUnsupportedWithoutRoute(t *testing.T
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusForbidden || !bytes.Contains([]byte(response.Body), []byte(`"code":"codex_image_forbidden"`)) {
@@ -472,7 +472,7 @@ func TestAdminCodexImageCapabilityLeavesTransientFailureRetryable(t *testing.T) 
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusTooManyRequests {
@@ -498,7 +498,7 @@ func TestAdminCodexImageCapabilityRejectsNonImageResult(t *testing.T) {
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body, `"code":"image_result_invalid"`) {
@@ -525,7 +525,7 @@ func TestAdminCodexImageCapabilityRejectsTruncatedImageResult(t *testing.T) {
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body, `"code":"image_result_invalid"`) {
@@ -550,7 +550,7 @@ func TestAdminCodexImageCapabilityStateSurvivesOrdinaryAccountEdit(t *testing.T)
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	if response := doJSON(t, handler, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, ""); response.Code != http.StatusOK {
 		t.Fatalf("enable image capability: status=%d body=%s", response.Code, response.Body)
@@ -602,7 +602,7 @@ func TestAdminCodexImageCapabilityStateSurvivesOrdinaryAccountEdit(t *testing.T)
 
 func TestAdminCodexImageCapabilityRequiresReauthorizationWithoutRoute(t *testing.T) {
 	store, server, resource := newCodexImageCapabilityTestServer(t, "http://127.0.0.1:1")
-	server.codexSubscription.RefreshCredentials = func(context.Context, string, bool) (ProviderResourceCredentials, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).RefreshCredentials = func(context.Context, string, bool) (ProviderResourceCredentials, error) {
 		return ProviderResourceCredentials{}, NewHTTPError(http.StatusUnauthorized, "provider_resource_reauthorization_required", "OpenAI account session ended; reauthorization is required")
 	}
 

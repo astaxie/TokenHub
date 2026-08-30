@@ -61,7 +61,7 @@ func TestCodexImageAdapterSuccessMarksResourceSupported(t *testing.T) {
 	}))
 	defer upstream.Close()
 	store, server, provider, resource := newCodexImageAdapterServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	imageBytes, _, _, err := server.executeProviderImage(context.Background(), codexImageAdapterRoute(provider, resource), ImageJob{
 		Action: "generate", Model: codexImageModelName, Prompt: "Draw one red square.", Quality: "low", Size: "1024x1024",
@@ -85,7 +85,7 @@ func TestCodexImageAdapterForbiddenMarksResourceUnsupported(t *testing.T) {
 	}))
 	defer upstream.Close()
 	store, server, provider, resource := newCodexImageAdapterServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	_, _, _, err := server.executeProviderImage(context.Background(), codexImageAdapterRoute(provider, resource), ImageJob{
 		Action: "generate", Model: codexImageModelName, Prompt: "Draw one red square.", Quality: "low", Size: "1024x1024",

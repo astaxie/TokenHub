@@ -24,6 +24,15 @@ func newTestServer() http.Handler {
 	return New(store).Handler()
 }
 
+func mustCodexSubscriptionAdapterForTest(t testing.TB, server *Server) *CodexSubscriptionAdapter {
+	t.Helper()
+	adapter, err := server.codexSubscriptionAdapter()
+	if err != nil {
+		t.Fatalf("resolve Codex subscription adapter: %v", err)
+	}
+	return adapter
+}
+
 func configureTestSMTPChannel(t *testing.T, store *GormStore) <-chan string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

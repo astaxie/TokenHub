@@ -58,12 +58,15 @@ func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T)
 
 func TestServerCodexSubscriptionAdapterResolvesFromRegistry(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token"})
-	registered := server.codexSubscription
-	if registered == nil {
-		t.Fatal("test server did not initialize the Codex subscription adapter")
+	raw, err := server.adapterRegistry.Resolve(ProviderOpenAICodex)
+	if err != nil {
+		t.Fatalf("resolve registered Codex subscription adapter: %v", err)
+	}
+	registered, ok := raw.(*CodexSubscriptionAdapter)
+	if !ok || registered == nil {
+		t.Fatalf("registered Codex adapter = %T, want *CodexSubscriptionAdapter", raw)
 	}
 
-	server.codexSubscription = nil
 	resolved, err := server.codexSubscriptionAdapter()
 	if err != nil {
 		t.Fatalf("resolve Codex subscription adapter: %v", err)
