@@ -93,5 +93,11 @@ func (r ProviderCommandRunner) ExecuteProviderCommand(ctx context.Context, invoc
 	if err := RequirePluginPermissions(configuredProviderCommandPermissions(invocation), r.permissions); err != nil {
 		return err
 	}
-	return RunCommandJSON(ctx, r.Dir, r.Command, r.Timeout, invocation, output)
+	return runCommandJSON(ctx, CommandSandboxOptions{
+		Dir:         r.Dir,
+		Command:     r.Command,
+		Timeout:     r.Timeout,
+		Permissions: r.permissions,
+		Plane:       CommandPlaneProvider,
+	}, invocation, output)
 }

@@ -32,7 +32,13 @@ func (r ActionCommandRunner) PluginPermissionGrant() PermissionGrant {
 
 func (r ActionCommandRunner) ExecutePluginAction(ctx context.Context, invocation ActionInvocation) (ActionResult, error) {
 	var result ActionResult
-	if err := RunCommandJSON(ctx, r.Dir, r.Command, r.Timeout, invocation, &result); err != nil {
+	if err := runCommandJSON(ctx, CommandSandboxOptions{
+		Dir:         r.Dir,
+		Command:     r.Command,
+		Timeout:     r.Timeout,
+		Permissions: r.permissions,
+		Plane:       CommandPlaneAction,
+	}, invocation, &result); err != nil {
 		return ActionResult{}, err
 	}
 	return result, nil

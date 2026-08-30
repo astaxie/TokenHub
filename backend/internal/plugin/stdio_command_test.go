@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -102,6 +103,54 @@ dd if=/dev/zero bs=1048577 count=1 2>/dev/null | tr '\000' x
 	}
 	if !strings.Contains(err.Error(), "plugin command output exceeded") {
 		t.Fatalf("error = %q", err.Error())
+	}
+}
+
+func TestStdioJSONCommandUsesSandboxEnvironmentAcrossPlanes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	t.Setenv("TOKENHUB_ADMIN_TOKEN", "admin-secret")
+	t.Setenv("TOKENHUB_SECRET_KEY", "core-secret")
+	t.Setenv("OPENAI_API_KEY", "provider-secret")
+	for _, plane := range stdioCommandPlanes() {
+		t.Run(plane.name, func(t *testing.T) {
+			dir, command := writeStdioCommandScript(t, `#!/bin/sh
+if [ "${TOKENHUB_ADMIN_TOKEN:-}" != "" ] || [ "${TOKENHUB_SECRET_KEY:-}" != "" ] || [ "${OPENAI_API_KEY:-}" != "" ]; then
+  printf 'sandbox leaked core environment' >&2
+  exit 2
+fi
+if [ "${TMPDIR:-}" = "" ] || [ ! -d "$TMPDIR" ]; then
+  printf 'sandbox temp dir missing' >&2
+  exit 3
+fi
+case ":$PATH:" in
+  *:/bin:*|*:/usr/bin:*) printf '{}';;
+  *) printf 'sandbox path missing system bin' >&2; exit 4;;
+esac
+`)
+			if err := plane.run(t.Context(), dir, command, stdioCommandTestTimeout); err != nil {
+				t.Fatalf("run %s command with sandbox env: %v", plane.name, err)
+			}
+		})
+	}
+}
+
+func TestStdioJSONCommandRejectsOversizedInput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture uses POSIX sh")
+	}
+	dir, command := writeStdioCommandScript(t, `#!/bin/sh
+printf '{}'
+`)
+	err := RunCommandJSON(t.Context(), dir, command, stdioCommandTestTimeout, map[string]string{
+		"payload": strings.Repeat("x", maxStdioJSONCommandInputBytes+1),
+	}, &ActionResult{})
+	if err == nil {
+		t.Fatal("oversized stdio command input was accepted")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("plugin command input exceeded %d bytes", maxStdioJSONCommandInputBytes)) {
+		t.Fatalf("error = %q, want input size rejection", err.Error())
 	}
 }
 

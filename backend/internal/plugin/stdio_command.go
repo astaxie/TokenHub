@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -12,35 +13,54 @@ import (
 
 const (
 	defaultStdioJSONCommandTimeout = 30 * time.Second
+	maxStdioJSONCommandInputBytes  = 4 << 20
 	maxStdioJSONCommandOutputBytes = 1 << 20
 )
 
 func RunCommandJSON(ctx context.Context, dir string, command string, timeout time.Duration, input any, output any) error {
-	if strings.TrimSpace(command) == "" {
+	return runCommandJSON(ctx, CommandSandboxOptions{
+		Dir:     dir,
+		Command: command,
+		Timeout: timeout,
+	}, input, output)
+}
+
+func runCommandJSON(ctx context.Context, options CommandSandboxOptions, input any, output any) error {
+	if strings.TrimSpace(options.Command) == "" {
 		return ErrPluginActionUnavailable
 	}
-	commandPath, err := packageRelativePath(dir, command)
-	if err != nil {
-		return err
+	if options.Timeout <= 0 {
+		options.Timeout = defaultStdioJSONCommandTimeout
 	}
-	if timeout <= 0 {
-		timeout = defaultStdioJSONCommandTimeout
-	}
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	runCtx, cancel := context.WithTimeout(ctx, options.Timeout)
 	defer cancel()
 
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return fmt.Errorf("encode plugin command input: %w", err)
 	}
-	cmd := exec.CommandContext(runCtx, commandPath)
-	cmd.Dir = dir
+	if len(payload) > maxStdioJSONCommandInputBytes {
+		return fmt.Errorf("plugin command input exceeded %d bytes", maxStdioJSONCommandInputBytes)
+	}
+	tempDir, err := os.MkdirTemp("", "tokenhub-plugin-command-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+	options.TempDir = tempDir
+	policy, err := BuildCommandSandboxPolicy(options)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(runCtx, policy.Executable)
+	cmd.Dir = policy.WorkDir
+	cmd.Env = policy.Env
 	configureStdioCommandProcess(cmd)
 	cmd.Stdin = bytes.NewReader(payload)
 	var stdout cappedBuffer
 	var stderr cappedBuffer
-	stdout.limit = maxStdioJSONCommandOutputBytes
-	stderr.limit = maxStdioJSONCommandOutputBytes
+	stdout.limit = policy.OutputLimitBytes
+	stderr.limit = policy.StderrLimitBytes
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

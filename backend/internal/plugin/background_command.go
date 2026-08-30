@@ -28,7 +28,13 @@ func (r BackgroundCommandRunner) PluginPermissionGrant() PermissionGrant {
 
 func (r BackgroundCommandRunner) ExecuteBackgroundJob(ctx context.Context, invocation BackgroundJobInvocation) (BackgroundJobResult, error) {
 	var result BackgroundJobResult
-	if err := RunCommandJSON(ctx, r.Dir, r.Command, r.Timeout, invocation, &result); err != nil {
+	if err := runCommandJSON(ctx, CommandSandboxOptions{
+		Dir:         r.Dir,
+		Command:     r.Command,
+		Timeout:     r.Timeout,
+		Permissions: r.permissions,
+		Plane:       CommandPlaneBackground,
+	}, invocation, &result); err != nil {
 		return BackgroundJobResult{}, err
 	}
 	return result, nil
