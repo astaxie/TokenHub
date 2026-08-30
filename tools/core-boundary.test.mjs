@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -52,6 +53,66 @@ describe("minimal core boundary gate", () => {
       "gateway-marketplace-term",
       "gateway-marketplace-term",
     ]);
+  });
+
+  it("reports plugin attempts to own public v1 endpoint routing", () => {
+    const violations = scanCoreBoundary(`
+      package plugin
+
+      type PublicEndpoint struct {
+        Path string
+      }
+
+      const completionsEndpoint = "/v1/chat/completions"
+    `, "backend/internal/plugin/manifest.go");
+
+    assert.deepEqual(violations.map((violation) => violation.rule), [
+      "public-v1-endpoint-ownership",
+      "public-v1-endpoint-ownership",
+    ]);
+  });
+
+  it("does not confuse plugin API v1 compatibility with public v1 endpoints", () => {
+    const violations = scanCoreBoundary(`
+      package plugin
+
+      const CurrentPluginAPI = "v1"
+      const ProviderPolicyRouteProtocol = "route_protocol"
+    `, "backend/internal/plugin/api_contract.go");
+
+    assert.deepEqual(violations, []);
+  });
+
+  it("reports plugin attempts to own credential storage", () => {
+    const violations = scanCoreBoundary(`
+      package plugin
+
+      import "gorm.io/gorm"
+
+      type ProviderCredentialStore struct {
+        DB *gorm.DB
+        CredentialBlob string
+      }
+    `, "backend/internal/plugin/manifest.go");
+
+    assert.deepEqual(violations.map((violation) => violation.rule), [
+      "sensitive-storage-ownership",
+      "sensitive-storage-ownership",
+      "sensitive-storage-ownership",
+    ]);
+  });
+
+  it("keeps stable public v1 endpoints declared from server routes", () => {
+    const routes = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/routes.go"), "utf8");
+    for (const endpoint of [
+      '"/v1/chat/completions"',
+      '"/v1/responses"',
+      '"/v1/embeddings"',
+      '"/v1/images/generations"',
+      '"/v1/images/edits"',
+    ]) {
+      assert.equal(routes.includes(endpoint), true, `${endpoint} must stay in the core server route table`);
+    }
   });
 
   it("reports frontend core and domain imports from React views", () => {

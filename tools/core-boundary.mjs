@@ -4,35 +4,39 @@ import { join } from "node:path";
 export const CORE_BOUNDARY_SURFACES = [
   {
     path: "backend/internal/plugin/manifest.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/plugin/descriptor.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/plugin/registry.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/plugin/gateway_chain.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/plugin/gateway_runner.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/plugin/action_broker.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/plugin/background_job.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/plugin/api_contract.go",
-    rules: ["backend-implementation-import", "external-runtime-import"],
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
+  },
+  {
+    path: "backend/internal/plugin/provider_command.go",
+    rules: ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"],
   },
   {
     path: "backend/internal/server/gateway_http.go",
@@ -85,6 +89,14 @@ export const CORE_BOUNDARY_RULES = {
     message: "gateway hot path files must not depend on marketplace implementation concepts",
     scan: scanGatewayMarketplaceTerms,
   },
+  "public-v1-endpoint-ownership": {
+    message: "plugin contracts must not own public /v1 endpoint routing",
+    scan: scanPublicV1EndpointOwnership,
+  },
+  "sensitive-storage-ownership": {
+    message: "plugin contracts must not own credential or secret persistence",
+    scan: scanSensitiveStorageOwnership,
+  },
   "frontend-view-import": {
     message: "frontend core/domain files must not import React views",
     scan: scanFrontendViewImports,
@@ -134,7 +146,7 @@ export function scanImports(source, path = "source") {
 
 function ruleNamesForPath(path) {
   if (path.startsWith("backend/internal/plugin/")) {
-    return ["backend-implementation-import", "external-runtime-import"];
+    return ["backend-implementation-import", "external-runtime-import", "public-v1-endpoint-ownership", "sensitive-storage-ownership"];
   }
   if (path.startsWith("backend/internal/server/gateway")) {
     return ["backend-implementation-import", "gateway-marketplace-term"];
@@ -165,6 +177,41 @@ function scanGatewayMarketplaceTerms(source) {
   const violations = [];
   for (const match of source.matchAll(/\b(?:Marketplace|marketplace|Advisory|advisory|ReleaseNotes|release_notes|download_url|signature_url)\b/g)) {
     violations.push(violationAt(source, match.index ?? 0, match[0]));
+  }
+  return violations;
+}
+
+function scanPublicV1EndpointOwnership(source) {
+  const violations = [];
+  const patterns = [
+    /\b(?:HandleFunc|Handle|ServeHTTP|http\.Handler|http\.ServeMux)\b/g,
+    /\b(?:PublicEndpoint|PublicRoute|GatewayEndpoint|EndpointPath|RoutePath)\b/g,
+    /(["'`])\/v1\/[^"'`]*\1/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      violations.push(violationAt(source, match.index ?? 0, match[0]));
+    }
+  }
+  return violations;
+}
+
+function scanSensitiveStorageOwnership(source, path) {
+  const violations = [];
+  for (const item of scanImports(source, path)) {
+    if (/^(?:database\/sql|gorm\.io\/gorm|github\.com\/jmoiron\/sqlx)$/.test(item.specifier)) {
+      violations.push(violationAt(source, item.index, item.specifier));
+    }
+  }
+  const patterns = [
+    /\b(?:CredentialBlob|SecretHash|EncryptedSecret|EncryptionKey|ProviderCredentialStore|CredentialStore)\b/g,
+    /\b(?:EncryptProviderCredential|DecryptProviderCredential|StoreProviderCredential|LoadProviderCredential)s?\b/g,
+    /(["'`])(?:credential_blob|secret_hash|encrypted_secret|provider_credential_store)\1/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      violations.push(violationAt(source, match.index ?? 0, match[0]));
+    }
   }
   return violations;
 }
