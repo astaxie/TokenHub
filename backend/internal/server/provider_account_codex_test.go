@@ -1468,6 +1468,29 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	if migratedRoutes != 2 {
 		t.Fatalf("expected resource route and cloned generic route on split Provider, got %d", migratedRoutes)
 	}
+	candidates, err := store.SelectRouteCandidates("gpt-legacy-codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundSubscription := false
+	foundLegacyGeneric := false
+	for _, candidate := range candidates {
+		switch candidate.Route.ID {
+		case "route_legacy_subscription":
+			foundSubscription = true
+			if candidate.Provider.ID != splitProvider.ID {
+				t.Fatalf("migrated subscription route provider = %q, want %q", candidate.Provider.ID, splitProvider.ID)
+			}
+		case "route_legacy_generic":
+			foundLegacyGeneric = true
+			if candidate.Provider.ID != legacy.ID {
+				t.Fatalf("legacy generic route provider = %q, want %q", candidate.Provider.ID, legacy.ID)
+			}
+		}
+	}
+	if !foundSubscription || !foundLegacyGeneric {
+		t.Fatalf("legacy route candidates missing preserved routes: %+v", candidates)
+	}
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
