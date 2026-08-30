@@ -1438,6 +1438,37 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	if err := store.SaveProviderResourceQuota(subscription.ID, legacy.Type, string(encodedQuotaSnapshot), quotaFetchedAt); err != nil {
 		t.Fatal(err)
 	}
+	usageRecord := UsageRecord{
+		ID:                 "usage_legacy_subscription",
+		RequestID:          "req_legacy_subscription",
+		ProjectID:          "prj_legacy_subscription",
+		APIKeyID:           "thk_legacy_subscription",
+		ModelName:          "gpt-legacy-codex",
+		ProviderID:         legacy.ID,
+		ProviderResourceID: subscription.ID,
+		InputTokens:        11,
+		OutputTokens:       7,
+		TotalTokens:        18,
+		CostUSD:            0.42,
+		CreatedAt:          quotaFetchedAt,
+	}
+	if err := store.db.Create(&usageRecord).Error; err != nil {
+		t.Fatal(err)
+	}
+	auditEvent := AuditEvent{
+		ID:            "audit_legacy_subscription",
+		ActorUserID:   "usr_legacy_admin",
+		CorrelationID: "corr_legacy_subscription",
+		Action:        "provider_resource_quota_refresh",
+		ResourceType:  "provider_resource",
+		ResourceID:    subscription.ID,
+		Status:        "succeeded",
+		Message:       "legacy quota snapshot recorded",
+		CreatedAt:     quotaFetchedAt,
+	}
+	if err := store.db.Create(&auditEvent).Error; err != nil {
+		t.Fatal(err)
+	}
 	store.AddModel(Model{Name: "gpt-legacy-codex", Category: "codex", Family: "codex", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{
 		ID:                 "route_legacy_subscription",
@@ -1505,6 +1536,30 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	}
 	if cached, ok := New(store).cachedOpenAIAccountQuota(subscription.ID, 0); !ok || cached.PlanType != "plus" || cached.AccountID != "acct_legacy_subscription" {
 		t.Fatalf("subscription cached quota was not readable after migration: ok=%v quota=%+v", ok, cached)
+	}
+	foundUsage := false
+	for _, record := range store.ListUsageRecords() {
+		if record.ID == usageRecord.ID {
+			foundUsage = true
+			if record.ProviderID != legacy.ID || record.ProviderResourceID != subscription.ID || record.TotalTokens != usageRecord.TotalTokens {
+				t.Fatalf("usage record changed during migration: before=%+v after=%+v", usageRecord, record)
+			}
+		}
+	}
+	if !foundUsage {
+		t.Fatalf("usage record was not preserved: %+v", usageRecord)
+	}
+	foundAudit := false
+	for _, event := range store.ListAuditEvents() {
+		if event.ID == auditEvent.ID {
+			foundAudit = true
+			if event.ResourceID != auditEvent.ResourceID || event.CorrelationID != auditEvent.CorrelationID || event.Action != auditEvent.Action {
+				t.Fatalf("audit event changed during migration: before=%+v after=%+v", auditEvent, event)
+			}
+		}
+	}
+	if !foundAudit {
+		t.Fatalf("audit event was not preserved: %+v", auditEvent)
 	}
 	migratedRoutes := 0
 	for _, route := range store.ListRoutes() {
