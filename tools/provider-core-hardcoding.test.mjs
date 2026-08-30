@@ -96,4 +96,9 @@ describe("provider-specific core hardcoding gate", () => {
     const matches = forbidden.flatMap((pattern) => source.match(pattern) ?? []);
     assert.deepEqual(matches, []);
   });
+
+  it("keeps provider editor Base URL defaults metadata-driven", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/views/provider-editor.tsx"), "utf8");
+    assert.equal(source.includes("https://api.openai.com/v1"), false);
+  });
 });

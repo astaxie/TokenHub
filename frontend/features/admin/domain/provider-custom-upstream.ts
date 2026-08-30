@@ -38,6 +38,10 @@ export function providerConnectionTestRunAfterUpdate(currentRun: number, key: st
   return providerConnectionTestFields.has(key) ? currentRun + 1 : currentRun;
 }
 
+export function providerResourceBaseURLForProviderUpdate(value: string, entry: ProviderCatalogEntry | null | undefined) {
+  return value || entry?.base_url || "";
+}
+
 export function providerCatalogModelsPreviewAction(entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
   if (!entry?.type) return undefined;
   return actions.find((action) => action.capability === providerModelsPreviewCapability && action.subject === entry.type);

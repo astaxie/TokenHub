@@ -14,6 +14,7 @@ const {
   providerCatalogSupportsModelPreview,
   providerCatalogUsesDiscoveryPreview,
   providerConnectionTestRunAfterUpdate,
+  providerResourceBaseURLForProviderUpdate,
   providerTypeValue,
 } = await importTypeScript(new URL("./provider-custom-upstream.ts", import.meta.url));
 
@@ -225,6 +226,12 @@ test("connection inputs invalidate completed and in-flight connection tests", ()
   for (const key of ["name", "priority"]) {
     assert.equal(providerConnectionTestRunAfterUpdate(testedRun, key), testedRun, key);
   }
+});
+
+test("account resource base URL follows provider input or selected catalog metadata", () => {
+  assert.equal(providerResourceBaseURLForProviderUpdate("https://provider.example/v1", { base_url: "https://catalog.example/v1" }), "https://provider.example/v1");
+  assert.equal(providerResourceBaseURLForProviderUpdate("", { base_url: "https://catalog.example/v1" }), "https://catalog.example/v1");
+  assert.equal(providerResourceBaseURLForProviderUpdate("", { type: "plugin_without_default" }), "");
 });
 
 test("custom model discovery becomes visible in both create and edit flows", () => {
