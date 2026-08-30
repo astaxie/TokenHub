@@ -241,7 +241,11 @@ func (s *Server) resetOpenAIAccountQuota(ctx context.Context, resourceID string,
 				return NewHTTPError(http.StatusConflict, "quota_reset_operation_in_progress", "Another quota reset operation must be resolved before starting a new one")
 			}
 			var endpointErr error
-			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
+			codexSubscription, adapterErr := s.codexSubscriptionAdapter()
+			if adapterErr != nil {
+				return adapterErr
+			}
+			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
 			if endpointErr != nil {
 				return endpointErr
 			}
@@ -271,7 +275,11 @@ func (s *Server) resetOpenAIAccountQuota(ctx context.Context, resourceID string,
 		}
 		if endpoint == "" {
 			var endpointErr error
-			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
+			codexSubscription, adapterErr := s.codexSubscriptionAdapter()
+			if adapterErr != nil {
+				return adapterErr
+			}
+			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
 			if endpointErr != nil {
 				return endpointErr
 			}
@@ -437,13 +445,17 @@ func (s *Server) executeOpenAIAccountQuotaResetOperation(ctx context.Context, re
 		RedeemRequestID: operation.IdempotencyKey,
 		CreditID:        operation.CreditID,
 	}
-	result, status, consumeErr := consumeOpenAIAccountQuotaResetWithClient(ctx, s.codexSubscription.Client, endpoint, creds, payload)
+	codexSubscription, err := s.codexSubscriptionAdapter()
+	if err != nil {
+		return openAIAccountQuotaResetResult{}, err
+	}
+	result, status, consumeErr := consumeOpenAIAccountQuotaResetWithClient(ctx, codexSubscription.Client, endpoint, creds, payload)
 	if status == http.StatusUnauthorized {
 		refreshed, refreshErr := s.store.RefreshProviderResourceCredentials(ctx, resourceID, true)
 		if refreshErr != nil {
 			return openAIAccountQuotaResetResult{}, refreshErr
 		}
-		result, status, consumeErr = consumeOpenAIAccountQuotaResetWithClient(ctx, s.codexSubscription.Client, endpoint, refreshed, payload)
+		result, status, consumeErr = consumeOpenAIAccountQuotaResetWithClient(ctx, codexSubscription.Client, endpoint, refreshed, payload)
 	}
 	if consumeErr != nil {
 		return openAIAccountQuotaResetResult{}, s.finishOpenAIAccountQuotaResetOperationError(operation, openAIAccountQuotaResetResult{}, consumeErr)
@@ -572,11 +584,15 @@ func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resour
 	if err != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, err
 	}
-	endpoint, err := openAIAccountQuotaResetEndpoint(firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL), false)
+	codexSubscription, err := s.codexSubscriptionAdapter()
 	if err != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, err
 	}
-	details, status, err := fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, s.codexSubscription.Client, endpoint, creds)
+	endpoint, err := openAIAccountQuotaResetEndpoint(firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL), false)
+	if err != nil {
+		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, err
+	}
+	details, status, err := fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, codexSubscription.Client, endpoint, creds)
 	if status != http.StatusUnauthorized {
 		return details, creds, err
 	}
@@ -584,7 +600,7 @@ func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resour
 	if refreshErr != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, refreshErr
 	}
-	details, _, err = fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, s.codexSubscription.Client, endpoint, refreshed)
+	details, _, err = fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, codexSubscription.Client, endpoint, refreshed)
 	return details, refreshed, err
 }
 

@@ -55,3 +55,20 @@ func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T)
 		t.Fatal("Codex subscription credential refresh callback was not configured")
 	}
 }
+
+func TestServerCodexSubscriptionAdapterResolvesFromRegistry(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token"})
+	registered := server.codexSubscription
+	if registered == nil {
+		t.Fatal("test server did not initialize the Codex subscription adapter")
+	}
+
+	server.codexSubscription = nil
+	resolved, err := server.codexSubscriptionAdapter()
+	if err != nil {
+		t.Fatalf("resolve Codex subscription adapter: %v", err)
+	}
+	if resolved != registered {
+		t.Fatal("Codex subscription adapter should resolve from the adapter registry")
+	}
+}

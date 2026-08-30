@@ -165,7 +165,11 @@ func (s *Server) configureCodexImageCapability(ctx context.Context, resourceID s
 		testCtx, cancel := context.WithTimeout(leaseCtx, codexImageCapabilityTestTimeout)
 		defer cancel()
 		effectiveProvider := effectiveProviderResourceConfig(currentProvider, &current)
-		response, _, imageErr := s.codexSubscription.Image(testCtx, effectiveProvider, current.ID, codexSubscriptionImageRequest{
+		codexSubscription, adapterErr := s.codexSubscriptionAdapter()
+		if adapterErr != nil {
+			return adapterErr
+		}
+		response, _, imageErr := codexSubscription.Image(testCtx, effectiveProvider, current.ID, codexSubscriptionImageRequest{
 			Model:      profile.UpstreamModel,
 			Prompt:     profile.ProbePrompt,
 			Background: profile.ProbeBackground,

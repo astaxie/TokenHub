@@ -197,8 +197,12 @@ func (s *Server) fetchOpenAIAccountQuota(ctx context.Context, resourceID string)
 	if err != nil {
 		return OpenAIAccountQuota{}, err
 	}
-	quotaURL := firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL)
-	quota, status, err := fetchOpenAIAccountQuotaWithClient(ctx, s.codexSubscription.Client, quotaURL, creds)
+	codexSubscription, err := s.codexSubscriptionAdapter()
+	if err != nil {
+		return OpenAIAccountQuota{}, err
+	}
+	quotaURL := firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL)
+	quota, status, err := fetchOpenAIAccountQuotaWithClient(ctx, codexSubscription.Client, quotaURL, creds)
 	if status != http.StatusUnauthorized {
 		return quota, err
 	}
@@ -207,7 +211,7 @@ func (s *Server) fetchOpenAIAccountQuota(ctx context.Context, resourceID string)
 	if refreshErr != nil {
 		return OpenAIAccountQuota{}, refreshErr
 	}
-	quota, _, err = fetchOpenAIAccountQuotaWithClient(ctx, s.codexSubscription.Client, quotaURL, refreshed)
+	quota, _, err = fetchOpenAIAccountQuotaWithClient(ctx, codexSubscription.Client, quotaURL, refreshed)
 	return quota, err
 }
 

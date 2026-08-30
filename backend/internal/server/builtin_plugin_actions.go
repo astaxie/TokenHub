@@ -416,7 +416,11 @@ func registerBuiltinPluginActions(server *Server) {
 				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
 			}
 		}
-		catalog, err := server.codexSubscription.ModelsWithCredentials(ctx, credentials)
+		codexSubscription, err := server.codexSubscriptionAdapter()
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		catalog, err := codexSubscription.ModelsWithCredentials(ctx, credentials)
 		if err != nil {
 			return pluginmeta.ActionResult{}, err
 		}

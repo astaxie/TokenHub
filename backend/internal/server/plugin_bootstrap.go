@@ -65,8 +65,8 @@ func (s *Server) installServerPluginHandlers() {
 	}
 	registerBuiltinPluginActions(s)
 	registerBuiltinPluginBackgroundJobs(s)
-	if s.codexSubscription != nil {
-		s.codexSubscription.ImageCapabilityProfiles = func(providerType string) []providerImageCapabilityRouteProfile {
+	if codexSubscription, err := s.codexSubscriptionAdapter(); err == nil {
+		codexSubscription.ImageCapabilityProfiles = func(providerType string) []providerImageCapabilityRouteProfile {
 			profiles := []providerImageCapabilityRouteProfile{}
 			for _, profile := range providerImageCapabilityRouteProfilesFromActions(s.pluginActions.List()) {
 				if profile.ProviderType == strings.TrimSpace(providerType) {

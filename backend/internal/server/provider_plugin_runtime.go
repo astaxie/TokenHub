@@ -88,3 +88,26 @@ func codexSubscriptionAdapterFrom(adapters map[string]any) *CodexSubscriptionAda
 		return nil
 	}
 }
+
+func (s *Server) codexSubscriptionAdapter() (*CodexSubscriptionAdapter, error) {
+	if s == nil {
+		return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Provider adapter is not registered")
+	}
+	if s.adapterRegistry != nil {
+		adapter, err := s.adapterRegistry.Resolve(ProviderOpenAICodex)
+		if err == nil {
+			switch typed := adapter.(type) {
+			case *CodexSubscriptionAdapter:
+				if typed != nil {
+					return typed, nil
+				}
+			case CodexSubscriptionAdapter:
+				return &typed, nil
+			}
+		}
+	}
+	if s.codexSubscription != nil {
+		return s.codexSubscription, nil
+	}
+	return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Provider adapter is not registered")
+}
