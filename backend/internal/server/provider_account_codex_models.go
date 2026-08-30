@@ -15,6 +15,13 @@ import (
 
 const codexProviderCatalogID = "openai-codex"
 
+const (
+	codexResourceSupportedModelsOption = "codex_supported_models"
+	codexResourceModelsFetchedAtOption = "codex_models_fetched_at"
+	codexResourceModelsETagOption      = "codex_models_etag"
+	codexResourceModelCatalogOption    = "codex_model_catalog"
+)
+
 type codexRemoteModelsResponse struct {
 	Models []codexRemoteModel `json:"models"`
 }
@@ -311,6 +318,21 @@ func codexResourceCachedModels(resource *ProviderResource) ([]string, time.Time,
 
 func codexModelInList(modelName string, models []string) bool {
 	return providerResourceModelInList(modelName, models)
+}
+
+func providerResourceModelOptionLegacyKeys(key string) []string {
+	switch key {
+	case providerResourceSupportedModelsOption:
+		return []string{codexResourceSupportedModelsOption}
+	case providerResourceModelsFetchedAtOption:
+		return []string{codexResourceModelsFetchedAtOption}
+	case providerResourceModelsETagOption:
+		return []string{codexResourceModelsETagOption}
+	case providerResourceModelCatalogOption:
+		return []string{codexResourceModelCatalogOption}
+	default:
+		return nil
+	}
 }
 
 func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, routes []RouteSelection) ([]RouteSelection, error) {

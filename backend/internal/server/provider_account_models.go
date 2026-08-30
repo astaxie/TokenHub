@@ -15,11 +15,6 @@ const (
 	providerResourceModelsFetchedAtOption = "provider_resource_models_fetched_at"
 	providerResourceModelsETagOption      = "provider_resource_models_etag"
 	providerResourceModelCatalogOption    = "provider_resource_model_catalog"
-
-	codexResourceSupportedModelsOption = "codex_supported_models"
-	codexResourceModelsFetchedAtOption = "codex_models_fetched_at"
-	codexResourceModelsETagOption      = "codex_models_etag"
-	codexResourceModelCatalogOption    = "codex_model_catalog"
 )
 
 func (s *Server) queryProviderResourceModels(ctx context.Context, resourceID string) (ProviderCatalogEntry, error) {
@@ -210,29 +205,29 @@ func providerResourceCachedModels(resource *ProviderResource) ([]string, time.Ti
 }
 
 func providerResourceSupportedModelsJSON(resource *ProviderResource) string {
-	return providerResourceModelOption(resource, providerResourceSupportedModelsOption, codexResourceSupportedModelsOption)
+	return providerResourceModelOption(resource, providerResourceSupportedModelsOption)
 }
 
 func providerResourceModelsFetchedAt(resource *ProviderResource) string {
-	return providerResourceModelOption(resource, providerResourceModelsFetchedAtOption, codexResourceModelsFetchedAtOption)
+	return providerResourceModelOption(resource, providerResourceModelsFetchedAtOption)
 }
 
 func providerResourceModelsETag(resource *ProviderResource) string {
-	return providerResourceModelOption(resource, providerResourceModelsETagOption, codexResourceModelsETagOption)
+	return providerResourceModelOption(resource, providerResourceModelsETagOption)
 }
 
 func providerResourceModelCatalogJSON(resource *ProviderResource) string {
-	return providerResourceModelOption(resource, providerResourceModelCatalogOption, codexResourceModelCatalogOption)
+	return providerResourceModelOption(resource, providerResourceModelCatalogOption)
 }
 
-func providerResourceModelOption(resource *ProviderResource, key string, legacyKeys ...string) string {
+func providerResourceModelOption(resource *ProviderResource, key string) string {
 	if resource == nil || resource.Options == nil {
 		return ""
 	}
 	if value := strings.TrimSpace(resource.Options[key]); value != "" {
 		return value
 	}
-	for _, legacyKey := range legacyKeys {
+	for _, legacyKey := range providerResourceModelOptionLegacyKeys(key) {
 		if value := strings.TrimSpace(resource.Options[legacyKey]); value != "" {
 			return value
 		}

@@ -82,6 +82,14 @@ describe("provider-specific core hardcoding gate", () => {
       /\bqueryOpenAICodexModels\b/,
       /\bcodexProviderCatalogFromModels\b/,
       /\bcodexProviderCatalogMetadata\b/,
+      /\bcodexResourceSupportedModelsOption\b/,
+      /\bcodexResourceModelsFetchedAtOption\b/,
+      /\bcodexResourceModelsETagOption\b/,
+      /\bcodexResourceModelCatalogOption\b/,
+      /"codex_supported_models"/,
+      /"codex_models_fetched_at"/,
+      /"codex_models_etag"/,
+      /"codex_model_catalog"/,
     ];
     const matches = forbidden.flatMap((pattern) => source.match(pattern) ?? []);
     assert.deepEqual(matches, []);
