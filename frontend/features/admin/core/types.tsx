@@ -406,13 +406,14 @@ export type PluginMarketplaceMetadata = {
 };
 
 export type PluginLifecycle = {
-  status: "enabled" | "disabled" | "pending_restart" | "failed_validation" | "rollback_available" | "mandatory" | string;
+  status: "enabled" | "disabled" | "pending_restart" | "failed_validation" | "failed_startup" | "rollback_available" | "mandatory" | string;
   reason?: string;
   restart_required: boolean;
   health: "healthy" | "unhealthy" | "unknown" | string;
   mandatory: boolean;
   rollback_available: boolean;
   rollback_version?: string;
+  rollback_target?: "previous_package" | "built_in" | string;
   last_error_code?: string;
   audit_event?: string;
   loadable: boolean;
@@ -455,6 +456,7 @@ export type PluginDescriptor = {
   mandatory?: boolean;
   rollback_available?: boolean;
   rollback_version?: string;
+  rollback_target?: "previous_package" | "built_in" | string;
   last_error_code?: string;
   audit_event?: string;
   loadable?: boolean;

@@ -93,6 +93,30 @@ test("Plugin Manager lifecycle surfaces validation failure as an unavailable ope
   assert.equal(state.actions.disable.available, false);
 });
 
+test("Plugin Manager lifecycle surfaces failed startup with built-in fallback rollback target", () => {
+  const state = pluginManagerDisplayState({
+    plugin: {
+      id: "tokenhub.local-startup-failed",
+      source: "local_file",
+      status: "failed_startup",
+      health: "unhealthy",
+      rollback_target: "built_in",
+      last_error_code: "plugin_startup_failed",
+    },
+  });
+
+  assert.equal(state.status, "failed_startup");
+  assert.equal(state.labelKey, "启动失败");
+  assert.equal(state.tone, "error");
+  assert.equal(state.lastErrorCode, "plugin_startup_failed");
+  assert.equal(state.rollbackTarget, "built_in");
+  assert.equal(state.rollbackTargetLabelKey, "内置");
+  assert.equal(state.rollbackAvailable, true);
+  assert.equal(state.loadable, false);
+  assert.equal(state.actions.rollback.available, true);
+  assert.equal(state.actions.operation.available, false);
+});
+
 test("Plugin Manager lifecycle derives rollback availability from optional payload fields", () => {
   const state = pluginManagerDisplayState({
     plugin: {

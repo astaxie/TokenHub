@@ -45,6 +45,7 @@ export function PluginLifecycleControl({
   return (
     <div className="stacked-cell" data-plugin-manager-control="lifecycle">
       <StatusPill status={effectiveLifecycle.pillStatus} label={tx(effectiveLifecycle.labelKey)} />
+      {effectiveLifecycle.rollbackTarget ? <span>{tx("回滚目标")} {tx(effectiveLifecycle.rollbackTargetLabelKey)}</span> : null}
       {effectiveLifecycle.rollbackAvailable && effectiveLifecycle.rollbackVersion ? <span>{tx("回滚版本")} {effectiveLifecycle.rollbackVersion}</span> : null}
       {canUpdate ? (
         <button

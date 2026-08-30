@@ -38,6 +38,35 @@ describe("PluginsView lifecycle controls", () => {
     expect(screen.queryByRole("button", { name: "禁用" })).not.toBeInTheDocument();
   });
 
+  it("renders failed startup lifecycle state with built-in fallback rollback target", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.local-startup-failed",
+      name: "Startup Failed Plugin",
+      version: "2.0.0",
+      source: "local_file",
+      status: "failed_startup",
+      health: "unhealthy",
+      rollback_target: "built_in",
+      last_error_code: "plugin_startup_failed",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+      distribution: {
+        download_url: "https://plugins.example/startup-failed.zip",
+        checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      },
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(screen.getByText("启动失败")).toBeInTheDocument();
+    expect(screen.getByText("回滚目标 内置")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回滚" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "启用" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "禁用" })).not.toBeInTheDocument();
+  });
+
   it("sends the rollback request through the admin endpoint", async () => {
     const data = emptyData();
     data.plugins = [{

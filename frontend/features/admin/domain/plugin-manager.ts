@@ -3,6 +3,7 @@ export type PluginManagerLifecycleStatus =
   | "disabled"
   | "pending_restart"
   | "failed_validation"
+  | "failed_startup"
   | "rollback_available"
   | "mandatory"
   | "unknown";
@@ -26,6 +27,7 @@ export type PluginManagerLifecyclePayload = {
   mandatory?: boolean;
   rollback_available?: boolean;
   rollback_version?: string;
+  rollback_target?: string;
   last_error_code?: string;
   audit_event?: string;
   loadable?: boolean;
@@ -77,6 +79,8 @@ export type PluginManagerLifecycleDisplayState = {
   loadable: boolean;
   rollbackAvailable: boolean;
   rollbackVersion: string;
+  rollbackTarget: string;
+  rollbackTargetLabelKey: string;
   lastErrorCode: string;
   auditEvent: string;
   unknownStatus: boolean;
@@ -96,6 +100,7 @@ const lifecycleStatuses = new Set<string>([
   "disabled",
   "pending_restart",
   "failed_validation",
+  "failed_startup",
   "rollback_available",
   "mandatory",
 ]);
@@ -107,11 +112,14 @@ export function pluginManagerLifecycleState(plugin?: PluginManagerPluginPayload 
   const restartRequired = Boolean(lifecycle.restart_required ?? plugin?.restart_required) || normalizedStatus === "pending_restart";
   const mandatory = Boolean(lifecycle.mandatory ?? plugin?.mandatory) || normalizedStatus === "mandatory";
   const rollbackVersion = firstNonEmpty(lifecycle.rollback_version, plugin?.rollback_version);
-  const rollbackAvailable = (Boolean(lifecycle.rollback_available ?? plugin?.rollback_available) || normalizedStatus === "rollback_available") && rollbackVersion !== "";
+  const rollbackTarget = firstNonEmpty(lifecycle.rollback_target, plugin?.rollback_target);
+  const rollbackAvailable =
+    ((Boolean(lifecycle.rollback_available ?? plugin?.rollback_available) || normalizedStatus === "rollback_available") && rollbackVersion !== "") ||
+    rollbackTarget === "built_in";
   const health = firstNonEmpty(lifecycle.health, plugin?.health, "unknown");
   const explicitLoadable = lifecycle.loadable ?? plugin?.loadable;
-  const loadable = typeof explicitLoadable === "boolean" ? explicitLoadable : defaultLifecycleLoadable(normalizedStatus, rollbackAvailable);
   const status = displayLifecycleStatus(normalizedStatus, { mandatory, restartRequired, rollbackAvailable });
+  const loadable = typeof explicitLoadable === "boolean" ? explicitLoadable : defaultLifecycleLoadable(status);
 
   return {
     status,
@@ -127,6 +135,8 @@ export function pluginManagerLifecycleState(plugin?: PluginManagerPluginPayload 
     loadable,
     rollbackAvailable,
     rollbackVersion,
+    rollbackTarget,
+    rollbackTargetLabelKey: pluginManagerRollbackTargetLabelKey(rollbackTarget),
     lastErrorCode: firstNonEmpty(lifecycle.last_error_code, plugin?.last_error_code),
     auditEvent: firstNonEmpty(lifecycle.audit_event, plugin?.audit_event),
     unknownStatus: status === "unknown",
@@ -186,6 +196,8 @@ export function pluginManagerLifecycleLabelKey(status: PluginManagerLifecycleSta
       return "待重启";
     case "failed_validation":
       return "校验失败";
+    case "failed_startup":
+      return "启动失败";
     case "rollback_available":
       return "可回滚";
     case "mandatory":
@@ -198,6 +210,7 @@ export function pluginManagerLifecycleLabelKey(status: PluginManagerLifecycleSta
 export function pluginManagerLifecycleTone(status: PluginManagerLifecycleStatus, health = "unknown"): PluginManagerStatusTone {
   if (status === "unknown") return "neutral";
   if (status === "failed_validation" || health === "unhealthy") return "error";
+  if (status === "failed_startup") return "error";
   if (status === "pending_restart" || status === "rollback_available") return "warn";
   if (status === "enabled" || status === "mandatory" || health === "healthy") return "ok";
   if (status === "disabled") return "error";
@@ -219,7 +232,8 @@ function displayLifecycleStatus(
   if (status === "unknown") return "unknown";
   if (flags.mandatory) return "mandatory";
   if (flags.restartRequired) return "pending_restart";
-  if (flags.rollbackAvailable) return "rollback_available";
+  if (status === "failed_validation" || status === "failed_startup") return status;
+  if (flags.rollbackAvailable && (status === "enabled" || status === "disabled" || status === "rollback_available")) return "rollback_available";
   return status;
 }
 
@@ -228,8 +242,8 @@ function normalizeLifecycleStatus(status: string): PluginManagerLifecycleStatus 
   return lifecycleStatuses.has(normalized) ? (normalized as PluginManagerLifecycleStatus) : "unknown";
 }
 
-function defaultLifecycleLoadable(status: PluginManagerLifecycleStatus, rollbackAvailable: boolean): boolean {
-  return status === "enabled" || status === "mandatory" || rollbackAvailable;
+function defaultLifecycleLoadable(status: PluginManagerLifecycleStatus): boolean {
+  return status === "enabled" || status === "mandatory" || status === "rollback_available";
 }
 
 function actionState(available: boolean, labelKey: string, busyLabelKey: string, disabledReason: PluginManagerActionState["disabledReason"]): PluginManagerActionState {
@@ -253,6 +267,13 @@ function firstNonEmpty(...values: Array<string | undefined | null>): string {
     if (nonEmpty(value)) return value.trim();
   }
   return "";
+}
+
+export function pluginManagerRollbackTargetLabelKey(target: string): string {
+  const normalized = target.trim().toLowerCase();
+  if (normalized === "built_in") return "内置";
+  if (normalized === "previous_package") return "上一包";
+  return normalized === "" ? "" : "未知";
 }
 
 function nonEmpty(value: string | undefined | null): value is string {
