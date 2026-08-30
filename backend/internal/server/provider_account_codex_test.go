@@ -1423,6 +1423,21 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	if err := store.db.Create(&subscription).Error; err != nil {
 		t.Fatal(err)
 	}
+	quotaFetchedAt := time.Date(2026, time.August, 30, 9, 30, 0, 0, time.UTC)
+	quotaSnapshot := OpenAIAccountQuota{
+		UserID:    "usr_legacy_subscription",
+		AccountID: "acct_legacy_subscription",
+		Email:     "legacy.subscription@example.com",
+		PlanType:  "plus",
+		FetchedAt: quotaFetchedAt.Unix(),
+	}
+	encodedQuotaSnapshot, err := json.Marshal(quotaSnapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProviderResourceQuota(subscription.ID, legacy.Type, string(encodedQuotaSnapshot), quotaFetchedAt); err != nil {
+		t.Fatal(err)
+	}
 	store.AddModel(Model{Name: "gpt-legacy-codex", Category: "codex", Family: "codex", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{
 		ID:                 "route_legacy_subscription",
@@ -1480,6 +1495,16 @@ func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
 	creds := store.providerResourceCredentialsForRuntime(migratedSubscription)
 	if creds.AccessToken != "legacy-subscription-access" || creds.RefreshToken != "legacy-subscription-refresh" || creds.AccountID != "acct_legacy_subscription" || creds.Email != "legacy.subscription@example.com" {
 		t.Fatalf("subscription credentials were not preserved: %+v", creds)
+	}
+	quotaObservation, ok := store.GetProviderResourceObservation(subscription.ID)
+	if !ok || quotaObservation.QuotaFetchedAt == nil || quotaObservation.QuotaFetchedAt.Unix() != quotaFetchedAt.Unix() {
+		t.Fatalf("subscription quota observation was not preserved: %+v", quotaObservation)
+	}
+	if !strings.Contains(quotaObservation.QuotaSnapshot, `"plan_type":"plus"`) {
+		t.Fatalf("subscription quota snapshot was not preserved: %+v", quotaObservation)
+	}
+	if cached, ok := New(store).cachedOpenAIAccountQuota(subscription.ID, 0); !ok || cached.PlanType != "plus" || cached.AccountID != "acct_legacy_subscription" {
+		t.Fatalf("subscription cached quota was not readable after migration: ok=%v quota=%+v", ok, cached)
 	}
 	migratedRoutes := 0
 	for _, route := range store.ListRoutes() {
