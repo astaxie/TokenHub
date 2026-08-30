@@ -782,6 +782,68 @@ kinds:
 	}
 }
 
+func TestRuntimeRollbackPackageRestoresRollbackPackage(t *testing.T) {
+	root := t.TempDir()
+	runtime := NewRuntime(root)
+	archive := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml": {Body: minimalPluginManifest("tokenhub.rollback", "Rollback", "1.0.0"), Mode: 0o644},
+		"data.txt":    {Body: "old", Mode: 0o644},
+	})
+	if _, err := runtime.InstallZipArchive(archive, InstallOptions{}); err != nil {
+		t.Fatalf("install first package: %v", err)
+	}
+	next := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml": {Body: minimalPluginManifest("tokenhub.rollback", "Rollback", "2.0.0"), Mode: 0o644},
+		"data.txt":    {Body: "new", Mode: 0o644},
+	})
+	if _, err := runtime.InstallZipArchive(next, InstallOptions{
+		Replace:          true,
+		PreserveRollback: true,
+		InitialState: PackageState{
+			Status:          StatusEnabled,
+			RestartRequired: true,
+			RollbackVersion: "1.0.0",
+		},
+	}); err != nil {
+		t.Fatalf("install update package: %v", err)
+	}
+
+	pkg, err := runtime.RollbackPackage("tokenhub.rollback", "operator rollback")
+	if err != nil {
+		t.Fatalf("rollback package: %v", err)
+	}
+	if pkg.Manifest.Version != "1.0.0" || pkg.State.AuditEvent != PackageLifecycleRollbackStarted ||
+		!pkg.State.RestartRequired || pkg.State.RollbackVersion != "" {
+		t.Fatalf("rollback package = %+v, want restored version with rollback-started state", pkg)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "tokenhub.rollback", "data.txt"))
+	if err != nil {
+		t.Fatalf("read restored package data: %v", err)
+	}
+	if string(data) != "old" {
+		t.Fatalf("restored package data = %q, want old", data)
+	}
+}
+
+func TestRuntimeRollbackPackageRejectsUnavailableRollback(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, filepath.Join(root, "privacy"), `
+schema_version: 1
+id: tokenhub.privacy
+name: Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+
+	_, err := NewRuntime(root).RollbackPackage("tokenhub.privacy", "operator rollback")
+	if !errors.Is(err, ErrPackageRollbackUnavailable) {
+		t.Fatalf("rollback unavailable error = %v, want ErrPackageRollbackUnavailable", err)
+	}
+}
+
 func TestRuntimeUninstallPackageRemovesInstalledDirectory(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "privacy")

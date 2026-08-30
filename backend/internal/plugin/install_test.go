@@ -107,6 +107,52 @@ func TestRuntimeInstallZipArchiveReplaceControlsUpdates(t *testing.T) {
 	}
 }
 
+func TestRuntimeInstallZipArchivePreservesRollbackPackage(t *testing.T) {
+	root := t.TempDir()
+	runtime := NewRuntime(root)
+	first := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml":       {Body: minimalPluginManifest("tokenhub.rollback", "Rollback", "1.0.0"), Mode: 0o644},
+		"bin/provider.sh":   {Body: "#!/bin/sh\nprintf old\n", Mode: 0o755},
+		"private/state.txt": {Body: "old-state", Mode: 0o600},
+	})
+	if _, err := runtime.InstallZipArchive(first, InstallOptions{}); err != nil {
+		t.Fatalf("install first package: %v", err)
+	}
+	next := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml":     {Body: minimalPluginManifest("tokenhub.rollback", "Rollback", "2.0.0"), Mode: 0o644},
+		"bin/provider.sh": {Body: "#!/bin/sh\nprintf new\n", Mode: 0o755},
+	})
+	pkg, err := runtime.InstallZipArchive(next, InstallOptions{
+		Replace:          true,
+		PreserveRollback: true,
+		InitialState: PackageState{
+			Status:          StatusEnabled,
+			RollbackVersion: "1.0.0",
+			AuditEvent:      PackageLifecyclePendingRestart,
+		},
+	})
+	if err != nil {
+		t.Fatalf("replace package with rollback backup: %v", err)
+	}
+	if pkg.Manifest.Version != "2.0.0" || !pkg.State.RollbackAvailable() {
+		t.Fatalf("updated package = %+v, want version 2.0.0 with rollback", pkg)
+	}
+	rollbackManifest, err := readManifestOnly(filepath.Join(root, ".rollback", "tokenhub.rollback"))
+	if err != nil {
+		t.Fatalf("read rollback manifest: %v", err)
+	}
+	if rollbackManifest.Version != "1.0.0" {
+		t.Fatalf("rollback manifest version = %q, want 1.0.0", rollbackManifest.Version)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".rollback", "tokenhub.rollback", "private", "state.txt"))
+	if err != nil {
+		t.Fatalf("read rollback private data: %v", err)
+	}
+	if string(data) != "old-state" {
+		t.Fatalf("rollback private data = %q, want old-state", data)
+	}
+}
+
 type zipFixtureFile struct {
 	Body string
 	Mode os.FileMode

@@ -31,6 +31,7 @@ type InstallOptions struct {
 	SignatureKeyID    string
 	SignatureVerified bool
 	Replace           bool
+	PreserveRollback  bool
 	InitialState      PackageState
 }
 
@@ -72,10 +73,51 @@ func (r Runtime) InstallZipArchive(archive []byte, options InstallOptions) (Pack
 		return Package{}, err
 	}
 	target := filepath.Join(root, packageDirName(manifest.ID))
-	if err := replacePackageDir(packageDir, target, options.Replace); err != nil {
+	rollbackBackupDir := ""
+	if options.PreserveRollback {
+		rollbackBackupDir = rollbackPackageDir(root, manifest.ID)
+	}
+	if err := replacePackageDir(packageDir, target, options.Replace, rollbackBackupDir); err != nil {
 		return Package{}, err
 	}
 	return readPackage(target)
+}
+
+func (r Runtime) PreserveRollbackPackage(pluginID string, sourceDir string) error {
+	pluginID = strings.TrimSpace(pluginID)
+	sourceDir = strings.TrimSpace(sourceDir)
+	if pluginID == "" || sourceDir == "" {
+		return ErrPackageNotFound
+	}
+	root, err := r.prepareInstallRoot()
+	if err != nil {
+		return err
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	sourceAbs, err := filepath.Abs(sourceDir)
+	if err != nil {
+		return err
+	}
+	if sourceAbs == rootAbs || !strings.HasPrefix(sourceAbs, rootAbs+string(os.PathSeparator)) {
+		return fmt.Errorf("plugin package rollback source must be inside plugin directory")
+	}
+	manifest, err := readManifestOnly(sourceAbs)
+	if err != nil {
+		return err
+	}
+	if manifest.ID != pluginID {
+		return ErrPackageNotFound
+	}
+	target := rollbackPackageDir(root, pluginID)
+	_ = os.RemoveAll(target)
+	if err := copyPluginPackageDir(sourceAbs, target); err != nil {
+		_ = os.RemoveAll(target)
+		return err
+	}
+	return nil
 }
 
 func (r Runtime) prepareInstallRoot() (string, error) {
@@ -250,7 +292,7 @@ func packageDirName(pluginID string) string {
 	return name
 }
 
-func replacePackageDir(source string, target string, replace bool) error {
+func replacePackageDir(source string, target string, replace bool, rollbackBackupDir string) error {
 	if _, err := os.Stat(target); err == nil {
 		if !replace {
 			return ErrInstallPackageExists
@@ -264,9 +306,85 @@ func replacePackageDir(source string, target string, replace bool) error {
 			_ = os.Rename(backup, target)
 			return err
 		}
-		return os.RemoveAll(backup)
+		if strings.TrimSpace(rollbackBackupDir) == "" {
+			return os.RemoveAll(backup)
+		}
+		if err := replaceRollbackBackupDir(backup, rollbackBackupDir); err != nil {
+			return err
+		}
+		return nil
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 	return os.Rename(source, target)
+}
+
+func replaceRollbackBackupDir(source string, target string) error {
+	if strings.TrimSpace(source) == "" || strings.TrimSpace(target) == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(target)
+	return os.Rename(source, target)
+}
+
+func copyPluginPackageDir(source string, target string) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("plugin package rollback source is not a directory")
+	}
+	if err := os.MkdirAll(target, info.Mode().Perm()); err != nil {
+		return err
+	}
+	return filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == source {
+			return nil
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		clean, err := safeZipEntryPath(rel)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(target, clean)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(dst, info.Mode().Perm())
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("plugin package rollback entry %s must be a regular file", rel)
+		}
+		return copyPluginPackageFile(path, dst, info.Mode().Perm())
+	})
+}
+
+func copyPluginPackageFile(source string, target string, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	src, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+	_, err = io.Copy(dst, src)
+	return err
 }

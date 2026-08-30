@@ -96,6 +96,12 @@ type adminPluginUninstallResponse struct {
 	RestartRequired bool   `json:"restart_required"`
 }
 
+type adminPluginRollbackResponse struct {
+	Plugin          adminPluginDescriptorResponse `json:"plugin"`
+	RestartRequired bool                          `json:"restart_required"`
+	RollbackVersion string                        `json:"rollback_version"`
+}
+
 type adminPluginInstallTrustPayload struct {
 	TrustPolicy        pluginmeta.PluginTrustPolicy `json:"trust_policy"`
 	SignatureURL       string                       `json:"signature_url"`
@@ -437,16 +443,22 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 	}
 	updateState := current.State
 	updateState.RestartRequired = true
+	updateState.RollbackVersion = current.Manifest.Version
 	updateState.AuditEvent = pluginmeta.PackageLifecyclePendingRestart
 	options := pluginmeta.InstallOptions{
-		ChecksumSHA256: checksum,
-		TrustPolicy:    payload.TrustPolicy,
-		Replace:        true,
-		InitialState:   updateState,
+		ChecksumSHA256:   checksum,
+		TrustPolicy:      payload.TrustPolicy,
+		Replace:          true,
+		PreserveRollback: true,
+		InitialState:     updateState,
 	}
 	options, err = s.applyAdminPluginInstallTrust(r, archive, options, payload.adminPluginInstallTrustPayload, distribution)
 	if err != nil {
 		writeError(w, r, err)
+		return
+	}
+	if err := pluginmeta.NewRuntime(s.config.PluginDir).PreserveRollbackPackage(pluginID, current.Dir); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_prepare_failed", "Plugin rollback package could not be prepared"))
 		return
 	}
 	pkg, err := s.installPluginArchive(archive, options)
@@ -465,6 +477,68 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		RestartRequired: true,
 		Replaced:        true,
 	}})
+}
+
+func (s *Server) handleAdminPluginRollbackPost(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAdmin(w, r, "providers", r.Method)
+	if !ok {
+		return
+	}
+	pluginID := strings.TrimSpace(r.PathValue("plugin_id"))
+	if pluginID == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	var payload struct {
+		Reason string `json:"reason"`
+	}
+	if err := s.decodeJSONOptional(w, r, &payload); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	pkg, err := pluginmeta.NewRuntime(s.config.PluginDir).RollbackPackage(pluginID, payload.Reason)
+	if err != nil {
+		httpErr := pluginRollbackHTTPError(err)
+		if httpErr.Status != http.StatusNotFound {
+			s.recordPluginRollbackAudit(r, user, pluginID, "failed", httpErr.Code)
+		}
+		writeError(w, r, httpErr)
+		return
+	}
+	descriptor := pkg.Manifest.Descriptor()
+	descriptor.Status = pkg.State.Status
+	plugin := adminPluginDescriptorForPackage(descriptor, pkg, true)
+	s.recordPluginRollbackAudit(r, user, pluginID, "success", string(pluginmeta.PackageLifecycleRollbackStarted))
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginRollbackResponse{
+		Plugin:          plugin,
+		RestartRequired: true,
+		RollbackVersion: pkg.Manifest.Version,
+	}})
+}
+
+func pluginRollbackHTTPError(err error) *HTTPError {
+	if errors.Is(err, pluginmeta.ErrPackageNotFound) {
+		return NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found")
+	}
+	if errors.Is(err, pluginmeta.ErrPackageRollbackUnavailable) {
+		return NewHTTPError(http.StatusConflict, "plugin_rollback_unavailable", "Plugin rollback is unavailable")
+	}
+	return NewHTTPError(http.StatusInternalServerError, "plugin_rollback_failed", "Plugin package could not be rolled back")
+}
+
+func (s *Server) recordPluginRollbackAudit(r *http.Request, user AdminUser, pluginID string, status string, message string) {
+	s.store.RecordAuditEvent(AuditEvent{
+		ActorUserID:  user.ID,
+		ActorName:    user.Name,
+		ActorRole:    user.Role,
+		Action:       "plugin.rollback",
+		ResourceType: "plugin",
+		ResourceID:   pluginID,
+		Status:       status,
+		Message:      message,
+		IP:           s.clientIP(r),
+		UserAgent:    r.UserAgent(),
+	})
 }
 
 func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Request) {

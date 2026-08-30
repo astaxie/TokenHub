@@ -54,6 +54,19 @@ func TestNormalizePackageStateSupportsLifecycleContract(t *testing.T) {
 		t.Fatalf("rollback state = %+v", rollback)
 	}
 
+	restartWithRollback, err := NormalizePackageState(PackageState{
+		Status:          StatusEnabled,
+		RestartRequired: true,
+		RollbackVersion: "1.0.0",
+		AuditEvent:      PackageLifecyclePendingRestart,
+	})
+	if err != nil {
+		t.Fatalf("normalize restart rollback state: %v", err)
+	}
+	if !restartWithRollback.RollbackAvailable() || !restartWithRollback.PendingRestart() || !restartWithRollback.Loadable() {
+		t.Fatalf("restart rollback state = %+v", restartWithRollback)
+	}
+
 	mandatory, err := NormalizePackageState(PackageState{Status: StatusMandatory})
 	if err != nil {
 		t.Fatalf("normalize mandatory state: %v", err)

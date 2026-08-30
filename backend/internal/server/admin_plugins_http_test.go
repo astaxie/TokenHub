@@ -385,6 +385,9 @@ kinds:
 	if !body.Data.Plugin.Lifecycle.RestartRequired || body.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecyclePendingRestart {
 		t.Fatalf("update lifecycle = %+v, want pending restart event", body.Data.Plugin.Lifecycle)
 	}
+	if !body.Data.Plugin.Lifecycle.RollbackAvailable || body.Data.Plugin.Lifecycle.RollbackVersion != "1.0.0" {
+		t.Fatalf("update lifecycle = %+v, want rollback to previous version", body.Data.Plugin.Lifecycle)
+	}
 	updatedPluginDir := filepath.Join(pluginDir, "tokenhub.marketplace.kimi")
 	stateData, err := os.ReadFile(filepath.Join(updatedPluginDir, "plugin.state.json"))
 	if err != nil {
@@ -400,6 +403,120 @@ kinds:
 	}
 	if _, err := os.Stat(localPluginDir); !os.IsNotExist(err) {
 		t.Fatalf("old package directory still exists after update: %v", err)
+	}
+}
+
+func TestAdminPluginRollbackPostRestoresPreviousPackageAndAudits(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "kimi")
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.marketplace.kimi", "Marketplace Kimi", "1.1.0"),
+	})
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer upstream.Close()
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.marketplace.kimi
+name: Marketplace Kimi
+version: 1.0.0
+distribution:
+  download_url: `+upstream.URL+`/kimi-1.1.0.zip
+  checksum_sha256: `+adminSHA256Hex(archive)+`
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	if err := os.WriteFile(filepath.Join(localPluginDir, "private-state.txt"), []byte("legacy-state"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(localPluginDir, "plugin.state.json"), []byte(`{"status":"disabled","reason":"operator disabled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	server.pluginInstallClient = upstream.Client()
+
+	update := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.marketplace.kimi/update", map[string]any{}, "dev_admin_token")
+	if update.Code != http.StatusOK {
+		t.Fatalf("POST /api/admin/plugins/{id}/update: expected 200, got %d: %s", update.Code, update.Body)
+	}
+	var updateBody struct {
+		Data adminPluginInstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(update.Body), &updateBody); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if !updateBody.Data.Plugin.RollbackAvailable || updateBody.Data.Plugin.RollbackVersion != "1.0.0" {
+		t.Fatalf("update plugin lifecycle = %+v, want rollback to 1.0.0", updateBody.Data.Plugin.Lifecycle)
+	}
+	if _, err := os.Stat(filepath.Join(pluginDir, ".rollback", "tokenhub.marketplace.kimi", "plugin.yaml")); err != nil {
+		t.Fatalf("rollback package was not preserved: %v", err)
+	}
+
+	rollback := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.marketplace.kimi/rollback", map[string]any{
+		"reason": "operator rollback",
+	}, "dev_admin_token")
+	if rollback.Code != http.StatusOK {
+		t.Fatalf("POST /api/admin/plugins/{id}/rollback: expected 200, got %d: %s", rollback.Code, rollback.Body)
+	}
+	var rollbackBody struct {
+		Data adminPluginRollbackResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(rollback.Body), &rollbackBody); err != nil {
+		t.Fatalf("decode rollback response: %v", err)
+	}
+	if rollbackBody.Data.Plugin.Version != "1.0.0" || rollbackBody.Data.RollbackVersion != "1.0.0" ||
+		!rollbackBody.Data.RestartRequired || rollbackBody.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleRollbackStarted {
+		t.Fatalf("rollback response = %+v, want restored previous version with rollback-started lifecycle", rollbackBody.Data)
+	}
+	if rollbackBody.Data.Plugin.RollbackAvailable || rollbackBody.Data.Plugin.RollbackVersion != "" {
+		t.Fatalf("rollback response retained rollback availability: %+v", rollbackBody.Data.Plugin.Lifecycle)
+	}
+	data, err := os.ReadFile(filepath.Join(pluginDir, "tokenhub.marketplace.kimi", "private-state.txt"))
+	if err != nil {
+		t.Fatalf("read restored package private file: %v", err)
+	}
+	if string(data) != "legacy-state" {
+		t.Fatalf("restored private file = %q, want legacy-state", data)
+	}
+	events := store.ListAuditEvents()
+	if len(events) == 0 || events[0].Action != "plugin.rollback" || events[0].ResourceID != "tokenhub.marketplace.kimi" ||
+		events[0].Status != "success" || strings.Contains(events[0].AfterSnapshot, "legacy-state") {
+		t.Fatalf("rollback audit events = %+v, want redacted success event", events)
+	}
+}
+
+func TestAdminPluginRollbackPostRejectsUnavailableRollback(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "privacy")
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.local-privacy
+name: Local Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+`)
+	store := NewMemoryStore()
+	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.local-privacy/rollback", map[string]any{
+		"reason": "operator rollback",
+	}, "dev_admin_token")
+	if response.Code != http.StatusConflict {
+		t.Fatalf("POST unavailable plugin rollback: expected 409, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "plugin_rollback_unavailable") {
+		t.Fatalf("response body = %s, want rollback unavailable code", response.Body)
+	}
+	events := store.ListAuditEvents()
+	if len(events) == 0 || events[0].Action != "plugin.rollback" || events[0].Status != "failed" {
+		t.Fatalf("rollback failure audit events = %+v", events)
 	}
 }
 
