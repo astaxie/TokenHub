@@ -12,6 +12,10 @@ TokenHub documentation is organized around the three roles used in enterprise To
 - [PostgreSQL Setup Guide](postgresql-setup.md): PostgreSQL configuration, operations, and migration.
 - [Performance Benchmarking](performance-benchmarking.md): reproducible gateway comparisons, internal allocation benchmarks, and regression budgets.
 
+## Plugin Platform
+
+- [Plugin Development Guide](plugin-development.md): plugin kinds, placements, manifest shape, runtime contracts, security, testing, release flow, and migration from built-ins.
+
 ## Role Guides
 
 | Guide | Audience | Primary workflow |

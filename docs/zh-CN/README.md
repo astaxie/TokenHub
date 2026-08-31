@@ -12,6 +12,10 @@ TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默�
 - [PostgreSQL 设置指南](../postgresql-setup.md)：PostgreSQL 配置、运维和迁移。
 - [性能基准测试](performance-benchmarking.md)：可复现的网关对比、进程内分配基准和回退预算。
 
+## 插件平台
+
+- [插件开发指南](plugin-development.md)：插件种类、运行位置、manifest 结构、运行时契约、安全、测试、发布流程，以及从内置能力迁移到插件的路径。
+
 ## 角色指南
 
 | 指南 | 读者 | 主要工作流 |

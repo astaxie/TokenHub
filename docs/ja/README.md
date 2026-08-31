@@ -12,6 +12,10 @@ TokenHub のドキュメントは、エンタープライズ Token Governance �
 - [PostgreSQL 設定ガイド](../postgresql-setup.md)：PostgreSQL の設定、運用、移行。
 - [パフォーマンスベンチマーク](performance-benchmarking.md)：再現可能なゲートウェイ比較、プロセス内割り当てベンチマーク、回帰バジェット。
 
+## プラグインプラットフォーム
+
+- [プラグイン開発ガイド](plugin-development.md)：プラグインの種類、配置先、manifest 形状、実行時契約、セキュリティ、テスト、公開手順、built-in からの移行方法。
+
 ## ロールガイド
 
 | ガイド | 対象者 | 主なワークフロー |
