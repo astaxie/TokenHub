@@ -39,6 +39,9 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 	registerExternalProviderPluginAdapters(adapterRegistry, packages)
 	configureProviderResourceModelSupport(adapterRegistry.adapters, adapterRegistry)
 	configureProviderResourceTypeDefaults(store, adapterRegistry)
+	if err := configureProviderCredentialIdentityProfileHandlers(store, adapterRegistry); err != nil {
+		return serverPluginBootstrap{}, fmt.Errorf("configure provider credential identity profiles: %w", err)
+	}
 	if err := configureProviderCredentialRefreshHandlers(store, adapterRegistry); err != nil {
 		return serverPluginBootstrap{}, fmt.Errorf("configure provider credential refresh handlers: %w", err)
 	}

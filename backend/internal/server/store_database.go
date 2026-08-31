@@ -326,6 +326,7 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		inFlightLeaseTTL:             time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300)) * time.Second,
 		clusterLockTTL:               time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
 		imageCapabilityRetry:         time.Duration(defaultInt(config.ImageCapabilityRetrySecs, 86400)) * time.Second,
+		providerCredentialIdentities: map[string]providerResourceCredentialIdentityRegistration{},
 		providerCredentialRefreshers: map[string]providerResourceCredentialRefreshRegistration{},
 		billingRedis:                 billingRedis,
 	}

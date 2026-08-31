@@ -18,6 +18,7 @@ import (
 
 func addOpenAIAccountRefreshProvider(store *GormStore, name string) Provider {
 	configureOpenAIAccountRefreshHandlerForTest(store)
+	configureOpenAIAccountIdentityProfileForTest(store, ProviderOpenAICodex)
 	store.ConfigureProviderResourceCredentialIdentityProfiles(map[string]string{
 		ProviderResourceOpenAISubscription: providerResourceIdentityProfileOpenAIIDToken,
 	})
@@ -41,6 +42,14 @@ func configureOpenAIAccountRefreshHandlerForTest(store *GormStore) {
 		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
 			return refreshOpenAIAccountOAuthCredentials(ctx, current)
 		},
+	}})
+}
+
+func configureOpenAIAccountIdentityProfileForTest(store *GormStore, providerType string) {
+	store.ConfigureProviderCredentialIdentityProfileHandlers([]providerResourceCredentialIdentityRegistration{{
+		ProviderType: providerType,
+		Profile:      providerResourceIdentityProfileOpenAIIDToken,
+		Resolve:      applyOpenAIIDTokenClaims,
 	}})
 }
 

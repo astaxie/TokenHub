@@ -241,6 +241,7 @@ func TestProviderResourceCredentialIdentityProfileControlsIDTokenClaims(t *testi
 	store.ConfigureProviderResourceCredentialIdentityProfiles(map[string]string{
 		"profiled_account": providerResourceIdentityProfileOpenAIIDToken,
 	})
+	configureOpenAIAccountIdentityProfileForTest(store, "profiled_provider")
 	provider := store.AddProvider(Provider{
 		ID: "prv_profiled_identity", Name: "Profiled Identity", Type: "profiled_provider",
 		Status: StatusActive, Healthy: true,

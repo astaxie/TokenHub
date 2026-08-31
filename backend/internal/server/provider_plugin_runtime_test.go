@@ -19,7 +19,15 @@ type credentialRefreshAdapterForTest struct {
 	registrations []providerResourceCredentialRefreshRegistration
 }
 
+type credentialIdentityAdapterForTest struct {
+	registrations []providerResourceCredentialIdentityRegistration
+}
+
 func (a credentialRefreshAdapterForTest) ProviderResourceCredentialRefreshHandlers() []providerResourceCredentialRefreshRegistration {
+	return a.registrations
+}
+
+func (a credentialIdentityAdapterForTest) ProviderResourceCredentialIdentityProfiles() []providerResourceCredentialIdentityRegistration {
 	return a.registrations
 }
 
@@ -84,8 +92,15 @@ func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T)
 	}
 	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
 	registerBuiltinProviderAdapters(registry, runtime.adapters)
+	if err := configureProviderCredentialIdentityProfileHandlers(store, registry); err != nil {
+		t.Fatalf("configure credential identity profile handlers: %v", err)
+	}
 	if err := configureProviderCredentialRefreshHandlers(store, registry); err != nil {
 		t.Fatalf("configure credential refresh handlers: %v", err)
+	}
+	store.ConfigureProviderResourceCredentialIdentityProfiles(providerResourceCredentialIdentityProfilesFromRegistry(registry))
+	if _, ok := store.providerCredentialIdentityRegistration(ProviderOpenAICodex, ProviderResourceOpenAISubscription); !ok {
+		t.Fatal("Codex subscription identity profile handler was not configured")
 	}
 	if _, ok := store.providerCredentialRefreshRegistration(Provider{
 		Type: ProviderOpenAICodex,
@@ -194,6 +209,72 @@ func TestProviderCredentialRefreshRegistrationsRejectDuplicateProviderProfile(t 
 	_, err := registry.ProviderCredentialRefreshRegistrations()
 	if err == nil || !strings.Contains(err.Error(), "already registered") {
 		t.Fatalf("duplicate provider refresh profile error = %v, want already registered", err)
+	}
+}
+
+func TestProviderCredentialIdentityProfileRegistrationsAreProviderScoped(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	for _, providerType := range []string{"identity_alpha", "identity_beta"} {
+		adapter := credentialIdentityAdapterForTest{registrations: []providerResourceCredentialIdentityRegistration{{
+			Profile: "shared_id_token_profile",
+			Resolve: func(credentials ProviderResourceCredentials) ProviderResourceCredentials {
+				return credentials
+			},
+		}}}
+		if err := registry.RegisterPlugin(pluginmeta.BuiltInProviderWithResourceTypeMetadata(
+			"tokenhub.provider."+providerType,
+			providerType,
+			[]string{providerType},
+			[]pluginmeta.ManifestProviderResourceType{{
+				Type:                      providerType + "_account",
+				CredentialIdentityProfile: "shared_id_token_profile",
+			}},
+			nil,
+		), AdapterRegistration{Type: providerType, Adapter: adapter}); err != nil {
+			t.Fatalf("register %s adapter: %v", providerType, err)
+		}
+	}
+
+	registrations, err := registry.ProviderCredentialIdentityProfileRegistrations()
+	if err != nil {
+		t.Fatalf("credential identity registrations: %v", err)
+	}
+	if len(registrations) != 2 {
+		t.Fatalf("registrations = %+v, want two provider-scoped identity registrations", registrations)
+	}
+	for _, registration := range registrations {
+		if registration.Profile != "shared_id_token_profile" || registration.ProviderType == "" || registration.Resolve == nil {
+			t.Fatalf("registration was not normalized: %+v", registration)
+		}
+	}
+}
+
+func TestProviderCredentialIdentityProfileRegistrationsRejectDuplicateProviderProfile(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	adapter := credentialIdentityAdapterForTest{registrations: []providerResourceCredentialIdentityRegistration{
+		{Profile: "duplicate_id_token_profile", Resolve: func(credentials ProviderResourceCredentials) ProviderResourceCredentials {
+			return credentials
+		}},
+		{Profile: "duplicate_id_token_profile", Resolve: func(credentials ProviderResourceCredentials) ProviderResourceCredentials {
+			return credentials
+		}},
+	}}
+	if err := registry.RegisterPlugin(pluginmeta.BuiltInProviderWithResourceTypeMetadata(
+		"tokenhub.provider.identity-duplicate",
+		"Identity Duplicate",
+		[]string{"identity_duplicate"},
+		[]pluginmeta.ManifestProviderResourceType{{
+			Type:                      "identity_duplicate_account",
+			CredentialIdentityProfile: "duplicate_id_token_profile",
+		}},
+		nil,
+	), AdapterRegistration{Type: "identity_duplicate", Adapter: adapter}); err != nil {
+		t.Fatalf("register duplicate identity adapter: %v", err)
+	}
+
+	_, err := registry.ProviderCredentialIdentityProfileRegistrations()
+	if err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("duplicate provider identity profile error = %v, want already registered", err)
 	}
 }
 
