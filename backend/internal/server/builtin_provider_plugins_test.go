@@ -146,6 +146,9 @@ func TestBuiltinOpenAICodexReferencePluginDescriptor(t *testing.T) {
 	if codex.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("OpenAI Codex session affinity kind = %q, want %q", codex.ProviderPolicy.SessionAffinityKind, AffinityKindCodexSession)
 	}
+	if codex.ProviderPolicy.SessionAffinityIdentifierProfile != sessionAffinityIdentifierProfileCompatibility {
+		t.Fatalf("OpenAI Codex session affinity identifier profile = %q, want compatibility", codex.ProviderPolicy.SessionAffinityIdentifierProfile)
+	}
 	if codex.ProviderPolicy.DefaultBaseURL != openAICodexBaseURL {
 		t.Fatalf("OpenAI Codex default base URL = %q, want %q", codex.ProviderPolicy.DefaultBaseURL, openAICodexBaseURL)
 	}
@@ -179,6 +182,7 @@ func TestBuiltinOpenAICodexReferencePluginDescriptor(t *testing.T) {
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialsScopeOption, Subject: ProviderOpenAICodex, Value: providerCredentialsScopeResource},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialRefreshProfileOption, Subject: ProviderOpenAICodex, Value: providerCredentialRefreshProfileOpenAIAccountOAuth},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "session_affinity_kind", Subject: ProviderOpenAICodex, Value: AffinityKindCodexSession},
+		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "session_affinity_identifier_profile", Subject: ProviderOpenAICodex, Value: sessionAffinityIdentifierProfileCompatibility},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "supports_custom_headers", Subject: ProviderOpenAICodex, Value: "false"},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "route_protocol", Subject: ProviderOpenAICodex, Value: providerRouteProtocolCodexResponses},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "route_protocol", Subject: ProviderOpenAICodex, Value: providerRouteProtocolResponses},

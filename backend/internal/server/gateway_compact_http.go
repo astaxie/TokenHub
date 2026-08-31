@@ -124,7 +124,7 @@ func (s *Server) handleResponsesCompact(w http.ResponseWriter, r *http.Request) 
 	}
 	affinityRequest := ResponsesRequest{Model: model, raw: request}
 	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
-		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), r.Header, affinityRequest)
+		affinity, err := resolveProviderSessionAffinityWithPolicy(s.config.SecretKey, key.ID, adapterType, adapterSessionAffinityPolicy(s.adapterRegistry, adapterType), r.Header, affinityRequest)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 			writeError(w, r, err)

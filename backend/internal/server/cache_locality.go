@@ -116,32 +116,13 @@ func (s *Server) chatCacheLocalityAffinity(apiKeyID string, headers http.Header,
 }
 
 // responsesCacheLocalityAffinity resolves stateless cache locality for generic
-// /v1/responses providers such as DeepSeek. The upstream may ignore
-// prompt_cache_key (DeepSeek manages its prefix cache automatically), but Codex
-// still sends stable session hints that are useful to keep successive turns on
-// the same upstream account.
+// /v1/responses providers such as DeepSeek. Provider-specific compatibility
+// fields are handled by descriptor-selected session affinity policies instead
+// of this generic cache-locality fallback.
 func (s *Server) responsesCacheLocalityAffinity(apiKeyID string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
 	if !s.cacheAffinityEnabledForModel(request.Model) {
 		return nil, nil
 	}
-	identifier, scope := responsesSessionIdentifier(headers, request)
+	identifier, scope := providerResponsesSessionIdentifier(headers, request)
 	return resolveCacheLocalityAffinity(s.config.SecretKey, apiKeyID, identifier, scope, s.config.CacheAffinityAllowUserScope)
-}
-
-func responsesSessionIdentifier(headers http.Header, request ResponsesRequest) (string, sessionIdentifierScope) {
-	for _, value := range []string{
-		headers.Get("x-tokenhub-session-id"),
-		headers.Get("session-id"),
-		codexClientMetadataSessionID(request),
-		codexRawStringField(request, "prompt_cache_key"),
-		headers.Get("thread-id"),
-	} {
-		if value = strings.TrimSpace(value); value != "" {
-			return value, sessionScopeSession
-		}
-	}
-	if value := strings.TrimSpace(codexRawStringField(request, "user")); value != "" {
-		return value, sessionScopeUser
-	}
-	return "", sessionScopeNone
 }

@@ -221,7 +221,7 @@ func TestCacheAffinityDisabledByDefault(t *testing.T) {
 	}
 }
 
-func TestResponsesCacheAffinityUsesCodexSessionHints(t *testing.T) {
+func TestResponsesCacheAffinityUsesGenericSessionHints(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{
 		SecretKey:            "secret",
 		CacheAffinityEnabled: true,
@@ -257,12 +257,12 @@ func TestResponsesCacheAffinityUsesCodexSessionHints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err = resolveCacheLocalityAffinity("secret", "key_alpha", "metadata-session", sessionScopeSession, false)
+	want, err = resolveCacheLocalityAffinity("secret", "key_alpha", "prompt-session", sessionScopeSession, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if affinity == nil || affinity.KeyHash != want.KeyHash {
-		t.Fatalf("client_metadata.session_id must precede prompt_cache_key: got %#v want %#v", affinity, want)
+		t.Fatalf("prompt_cache_key must be the generic fallback: got %#v want %#v", affinity, want)
 	}
 }
 

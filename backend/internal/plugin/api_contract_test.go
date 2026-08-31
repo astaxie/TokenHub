@@ -206,6 +206,26 @@ func TestRegistryAcceptsStoreProbeFallbackProviderPolicy(t *testing.T) {
 	}
 }
 
+func TestRegistryAcceptsSessionAffinityIdentifierProfileProviderPolicy(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(Descriptor{
+		ID:         "tokenhub.compat-affinity-provider",
+		Name:       "Compatibility Affinity Provider",
+		Version:    "1.0.0",
+		Kinds:      []Kind{KindProvider},
+		Placements: []Placement{PlacementGatewayChain},
+		Capabilities: []CapabilityDescriptor{{
+			Kind:    CapabilityKindProviderPolicy,
+			Name:    ProviderPolicySessionAffinityIdentifierProfile,
+			Subject: "compat_affinity_provider",
+			Value:   "compatibility",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("descriptor with session affinity identifier profile policy should register: %v", err)
+	}
+}
+
 func TestRegistryRejectsUnsupportedPermissionDescriptorsWithStableErrorCode(t *testing.T) {
 	registry := NewRegistry()
 	err := registry.Register(Descriptor{

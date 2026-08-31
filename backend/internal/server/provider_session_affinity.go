@@ -19,6 +19,9 @@ const (
 	AffinityKindProviderSession = "provider_session"
 	noBindingGeneration         = int64(-1)
 	codexSessionAffinityTTL     = time.Hour
+
+	sessionAffinityIdentifierProfileProvider      = "provider"
+	sessionAffinityIdentifierProfileCompatibility = "compatibility"
 )
 
 type RequestAffinity struct {
@@ -46,14 +49,37 @@ func validProviderSessionAffinityKind(kind string) bool {
 	return kind == AffinityKindCodexSession || kind == AffinityKindProviderSession
 }
 
+type providerSessionAffinityPolicy struct {
+	Kind              string
+	IdentifierProfile string
+}
+
+func normalizeSessionAffinityIdentifierProfile(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case sessionAffinityIdentifierProfileProvider:
+		return sessionAffinityIdentifierProfileProvider
+	case sessionAffinityIdentifierProfileCompatibility, "codex", "codex_compatible":
+		return sessionAffinityIdentifierProfileCompatibility
+	default:
+		return ""
+	}
+}
+
 func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType string, affinityKind string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
-	canonical, ok := responsesAffinityIdentifier(headers, request, affinityKind)
+	return resolveProviderSessionAffinityWithPolicy(secret, apiKeyID, adapterType, providerSessionAffinityPolicy{Kind: affinityKind}, headers, request)
+}
+
+func resolveProviderSessionAffinityWithPolicy(secret string, apiKeyID string, adapterType string, policy providerSessionAffinityPolicy, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
+	policy = normalizedProviderSessionAffinityPolicy(policy)
+	canonical, ok := responsesAffinityIdentifier(headers, request, policy.IdentifierProfile)
 	if !ok {
 		return nil, nil
 	}
 	code := "provider_session_id_invalid"
 	label := "Provider session identifier"
-	if affinityKind == AffinityKindCodexSession {
+	if policy.Kind == AffinityKindCodexSession {
 		code = "codex_session_id_invalid"
 		label = "Codex session identifier"
 	}
@@ -64,17 +90,32 @@ func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType 
 	if adapterType == "" {
 		return nil, nil
 	}
-	affinityKind = firstNonEmpty(strings.TrimSpace(affinityKind), AffinityKindProviderSession)
 	return &RequestAffinity{
 		AdapterType: adapterType,
-		Kind:        affinityKind,
+		Kind:        policy.Kind,
 		KeyHash:     deriveSessionAffinityKey(secret, apiKeyID, canonical),
 	}, nil
 }
 
-func responsesAffinityIdentifier(headers http.Header, request ResponsesRequest, affinityKind string) (string, bool) {
-	if affinityKind == AffinityKindCodexSession {
-		return codexSessionIdentifier(headers, request)
+func normalizedProviderSessionAffinityPolicy(policy providerSessionAffinityPolicy) providerSessionAffinityPolicy {
+	policy.Kind = strings.TrimSpace(policy.Kind)
+	if !validProviderSessionAffinityKind(policy.Kind) {
+		policy.Kind = AffinityKindProviderSession
+	}
+	policy.IdentifierProfile = normalizeSessionAffinityIdentifierProfile(policy.IdentifierProfile)
+	if policy.IdentifierProfile == "" {
+		if policy.Kind == AffinityKindCodexSession {
+			policy.IdentifierProfile = sessionAffinityIdentifierProfileCompatibility
+		} else {
+			policy.IdentifierProfile = sessionAffinityIdentifierProfileProvider
+		}
+	}
+	return policy
+}
+
+func responsesAffinityIdentifier(headers http.Header, request ResponsesRequest, identifierProfile string) (string, bool) {
+	if normalizeSessionAffinityIdentifierProfile(identifierProfile) == sessionAffinityIdentifierProfileCompatibility {
+		return compatibilitySessionIdentifier(headers, request)
 	}
 	identifier, scope := providerResponsesSessionIdentifier(headers, request)
 	if scope != sessionScopeSession {
@@ -83,11 +124,11 @@ func responsesAffinityIdentifier(headers http.Header, request ResponsesRequest, 
 	return identifier, true
 }
 
-func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
+func compatibilitySessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
 	for _, value := range []string{
 		headers.Get("session-id"),
 		headers.Get("session_id"),
-		codexClientMetadataSessionID(request),
+		compatibilityClientMetadataSessionID(request),
 		responsesRawStringField(request, "prompt_cache_key"),
 		headers.Get("thread-id"),
 		headers.Get("x-client-request-id"),
@@ -100,7 +141,15 @@ func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (stri
 	return "", false
 }
 
+func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
+	return compatibilitySessionIdentifier(headers, request)
+}
+
 func codexClientMetadataSessionID(request ResponsesRequest) string {
+	return compatibilityClientMetadataSessionID(request)
+}
+
+func compatibilityClientMetadataSessionID(request ResponsesRequest) string {
 	if request.raw == nil {
 		return ""
 	}

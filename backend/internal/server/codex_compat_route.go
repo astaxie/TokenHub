@@ -186,7 +186,7 @@ func (s *Server) anthropicGatewayAffinity(
 	identifier, scope := anthropicSessionIdentifier(headers, raw)
 	if scope == sessionScopeSession {
 		if adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity); adapterType != "" {
-			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), codexBridgeProtocolAnthropic, identifier)
+			return resolveProviderBridgeAffinityWithPolicy(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityPolicy(s.adapterRegistry, adapterType), codexBridgeProtocolAnthropic, identifier)
 		}
 	}
 	return s.anthropicCacheLocalityAffinity(apiKeyID, model, headers, raw)
@@ -201,7 +201,7 @@ func (s *Server) chatGatewayAffinity(
 	identifier, scope := chatCompletionSessionIdentifier(headers, request)
 	if scope == sessionScopeSession {
 		if adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity); adapterType != "" {
-			return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), codexBridgeProtocolChat, identifier)
+			return resolveProviderBridgeAffinityWithPolicy(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityPolicy(s.adapterRegistry, adapterType), codexBridgeProtocolChat, identifier)
 		}
 	}
 	return s.chatCacheLocalityAffinity(apiKeyID, headers, request)
@@ -215,6 +215,18 @@ func resolveProviderBridgeAffinity(
 	protocol string,
 	identifier string,
 ) (*RequestAffinity, error) {
+	return resolveProviderBridgeAffinityWithPolicy(secret, apiKeyID, adapterType, providerSessionAffinityPolicy{Kind: affinityKind}, protocol, identifier)
+}
+
+func resolveProviderBridgeAffinityWithPolicy(
+	secret string,
+	apiKeyID string,
+	adapterType string,
+	policy providerSessionAffinityPolicy,
+	protocol string,
+	identifier string,
+) (*RequestAffinity, error) {
+	policy = normalizedProviderSessionAffinityPolicy(policy)
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
 		return nil, nil
@@ -226,10 +238,9 @@ func resolveProviderBridgeAffinity(
 	if adapterType == "" {
 		return nil, nil
 	}
-	kind := firstNonEmpty(strings.TrimSpace(affinityKind), AffinityKindProviderSession)
 	return &RequestAffinity{
 		AdapterType: adapterType,
-		Kind:        kind,
+		Kind:        policy.Kind,
 		KeyHash:     deriveSessionAffinityKey(secret, apiKeyID, protocol+"\x00"+identifier),
 	}, nil
 }

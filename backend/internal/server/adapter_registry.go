@@ -36,28 +36,29 @@ type AdapterDescriptor struct {
 }
 
 type AdapterProviderPolicy struct {
-	RouteProtocols               []string                    `json:"route_protocols,omitempty"`
-	AuthModes                    []string                    `json:"auth_modes,omitempty"`
-	AuthModeLegacyOption         string                      `json:"auth_mode_legacy_option,omitempty"`
-	AuthModeInvalidErrorCode     string                      `json:"auth_mode_invalid_error_code,omitempty"`
-	AuthModeInvalidErrorMessage  string                      `json:"auth_mode_invalid_error_message,omitempty"`
-	SupportsCustomHeaders        bool                        `json:"supports_custom_headers"`
-	APIKeyRequired               bool                        `json:"api_key_required"`
-	RouteRequiresResource        bool                        `json:"route_requires_resource"`
-	StoreProbeFallback           bool                        `json:"store_probe_fallback"`
-	CredentialsScope             string                      `json:"credentials_scope,omitempty"`
-	SessionAffinityKind          string                      `json:"session_affinity_kind,omitempty"`
-	SystemPromptTransformDefault string                      `json:"system_prompt_transform_default,omitempty"`
-	ClaudeCodeAttributionDefault string                      `json:"claude_code_attribution_default,omitempty"`
-	ReasoningConfigurable        *bool                       `json:"reasoning_configurable,omitempty"`
-	PreserveReasoningContent     *bool                       `json:"preserve_reasoning_content,omitempty"`
-	ResponsesModelAllowlist      []string                    `json:"responses_model_allowlist,omitempty"`
-	DefaultBaseURL               string                      `json:"default_base_url,omitempty"`
-	DefaultCatalogProviderType   bool                        `json:"default_catalog_provider_type,omitempty"`
-	ErrorProfile                 string                      `json:"error_profile,omitempty"`
-	CredentialRefreshProfile     string                      `json:"credential_refresh_profile,omitempty"`
-	ModelDiscovery               AdapterModelDiscoveryPolicy `json:"model_discovery,omitempty"`
-	ModelCategories              []AdapterModelCategory      `json:"model_categories,omitempty"`
+	RouteProtocols                   []string                    `json:"route_protocols,omitempty"`
+	AuthModes                        []string                    `json:"auth_modes,omitempty"`
+	AuthModeLegacyOption             string                      `json:"auth_mode_legacy_option,omitempty"`
+	AuthModeInvalidErrorCode         string                      `json:"auth_mode_invalid_error_code,omitempty"`
+	AuthModeInvalidErrorMessage      string                      `json:"auth_mode_invalid_error_message,omitempty"`
+	SupportsCustomHeaders            bool                        `json:"supports_custom_headers"`
+	APIKeyRequired                   bool                        `json:"api_key_required"`
+	RouteRequiresResource            bool                        `json:"route_requires_resource"`
+	StoreProbeFallback               bool                        `json:"store_probe_fallback"`
+	CredentialsScope                 string                      `json:"credentials_scope,omitempty"`
+	SessionAffinityKind              string                      `json:"session_affinity_kind,omitempty"`
+	SessionAffinityIdentifierProfile string                      `json:"session_affinity_identifier_profile,omitempty"`
+	SystemPromptTransformDefault     string                      `json:"system_prompt_transform_default,omitempty"`
+	ClaudeCodeAttributionDefault     string                      `json:"claude_code_attribution_default,omitempty"`
+	ReasoningConfigurable            *bool                       `json:"reasoning_configurable,omitempty"`
+	PreserveReasoningContent         *bool                       `json:"preserve_reasoning_content,omitempty"`
+	ResponsesModelAllowlist          []string                    `json:"responses_model_allowlist,omitempty"`
+	DefaultBaseURL                   string                      `json:"default_base_url,omitempty"`
+	DefaultCatalogProviderType       bool                        `json:"default_catalog_provider_type,omitempty"`
+	ErrorProfile                     string                      `json:"error_profile,omitempty"`
+	CredentialRefreshProfile         string                      `json:"credential_refresh_profile,omitempty"`
+	ModelDiscovery                   AdapterModelDiscoveryPolicy `json:"model_discovery,omitempty"`
+	ModelCategories                  []AdapterModelCategory      `json:"model_categories,omitempty"`
 }
 
 type AdapterModelDiscoveryPolicy struct {
@@ -223,28 +224,29 @@ func (r *AdapterRegistry) List() []AdapterDescriptor {
 func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) AdapterDescriptor {
 	descriptor.ResourceTypes = adapterProviderResourceTypes(r, descriptor.Type)
 	descriptor.ProviderPolicy = AdapterProviderPolicy{
-		RouteProtocols:               adapterRouteProtocols(r, descriptor),
-		AuthModes:                    adapterAuthModes(r, descriptor.Type),
-		AuthModeLegacyOption:         adapterAuthModeLegacyOption(r, descriptor.Type),
-		AuthModeInvalidErrorCode:     adapterAuthModeInvalidErrorCode(r, descriptor.Type),
-		AuthModeInvalidErrorMessage:  adapterAuthModeInvalidErrorMessage(r, descriptor.Type),
-		SupportsCustomHeaders:        adapterSupportsProviderHeaders(r, descriptor.Type),
-		APIKeyRequired:               adapterAPIKeyRequired(r, descriptor.Type),
-		RouteRequiresResource:        adapterRequiresRouteResource(r, descriptor.Type),
-		StoreProbeFallback:           adapterStoreProbeFallback(r, descriptor.Type),
-		CredentialsScope:             adapterCredentialsScope(r, descriptor.Type),
-		SessionAffinityKind:          adapterSessionAffinityKind(r, descriptor.Type),
-		SystemPromptTransformDefault: adapterSystemPromptTransformDefault(r, descriptor.Type),
-		ClaudeCodeAttributionDefault: adapterClaudeCodeAttributionDefault(r, descriptor.Type),
-		ReasoningConfigurable:        adapterReasoningConfigurable(r, descriptor.Type),
-		PreserveReasoningContent:     adapterPreserveReasoningContent(r, descriptor.Type),
-		ResponsesModelAllowlist:      adapterResponsesModelAllowlist(r, descriptor.Type),
-		DefaultBaseURL:               adapterDefaultBaseURL(r, descriptor.Type),
-		DefaultCatalogProviderType:   adapterDefaultCatalogProviderType(r, descriptor.Type),
-		ErrorProfile:                 adapterErrorProfile(r, descriptor.Type),
-		CredentialRefreshProfile:     adapterCredentialRefreshProfile(r, descriptor.Type),
-		ModelDiscovery:               adapterModelDiscovery(r, descriptor.Type),
-		ModelCategories:              adapterModelCategories(r, descriptor.Type),
+		RouteProtocols:                   adapterRouteProtocols(r, descriptor),
+		AuthModes:                        adapterAuthModes(r, descriptor.Type),
+		AuthModeLegacyOption:             adapterAuthModeLegacyOption(r, descriptor.Type),
+		AuthModeInvalidErrorCode:         adapterAuthModeInvalidErrorCode(r, descriptor.Type),
+		AuthModeInvalidErrorMessage:      adapterAuthModeInvalidErrorMessage(r, descriptor.Type),
+		SupportsCustomHeaders:            adapterSupportsProviderHeaders(r, descriptor.Type),
+		APIKeyRequired:                   adapterAPIKeyRequired(r, descriptor.Type),
+		RouteRequiresResource:            adapterRequiresRouteResource(r, descriptor.Type),
+		StoreProbeFallback:               adapterStoreProbeFallback(r, descriptor.Type),
+		CredentialsScope:                 adapterCredentialsScope(r, descriptor.Type),
+		SessionAffinityKind:              adapterSessionAffinityKind(r, descriptor.Type),
+		SessionAffinityIdentifierProfile: adapterSessionAffinityIdentifierProfile(r, descriptor.Type),
+		SystemPromptTransformDefault:     adapterSystemPromptTransformDefault(r, descriptor.Type),
+		ClaudeCodeAttributionDefault:     adapterClaudeCodeAttributionDefault(r, descriptor.Type),
+		ReasoningConfigurable:            adapterReasoningConfigurable(r, descriptor.Type),
+		PreserveReasoningContent:         adapterPreserveReasoningContent(r, descriptor.Type),
+		ResponsesModelAllowlist:          adapterResponsesModelAllowlist(r, descriptor.Type),
+		DefaultBaseURL:                   adapterDefaultBaseURL(r, descriptor.Type),
+		DefaultCatalogProviderType:       adapterDefaultCatalogProviderType(r, descriptor.Type),
+		ErrorProfile:                     adapterErrorProfile(r, descriptor.Type),
+		CredentialRefreshProfile:         adapterCredentialRefreshProfile(r, descriptor.Type),
+		ModelDiscovery:                   adapterModelDiscovery(r, descriptor.Type),
+		ModelCategories:                  adapterModelCategories(r, descriptor.Type),
 	}
 	return descriptor
 }
@@ -321,6 +323,25 @@ func adapterSessionAffinityKind(registry *AdapterRegistry, providerType string) 
 		return value
 	}
 	return AffinityKindProviderSession
+}
+
+func adapterSessionAffinityPolicy(registry *AdapterRegistry, providerType string) providerSessionAffinityPolicy {
+	return providerSessionAffinityPolicy{
+		Kind:              adapterSessionAffinityKind(registry, providerType),
+		IdentifierProfile: adapterSessionAffinityIdentifierProfile(registry, providerType),
+	}
+}
+
+func adapterSessionAffinityIdentifierProfile(registry *AdapterRegistry, providerType string) string {
+	if value, ok := providerPolicyStringCapability(registry, providerType, "session_affinity_identifier_profile"); ok {
+		if profile := normalizeSessionAffinityIdentifierProfile(value); profile != "" {
+			return profile
+		}
+	}
+	if adapterSessionAffinityKind(registry, providerType) == AffinityKindCodexSession {
+		return sessionAffinityIdentifierProfileCompatibility
+	}
+	return sessionAffinityIdentifierProfileProvider
 }
 
 func adapterClaudeCodeAttributionDefault(registry *AdapterRegistry, providerType string) string {

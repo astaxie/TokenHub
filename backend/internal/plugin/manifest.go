@@ -70,28 +70,29 @@ type ManifestCapabilities struct {
 }
 
 type ManifestProvider struct {
-	RouteProtocols               []string                `yaml:"route_protocols"`
-	AuthModes                    []string                `yaml:"auth_modes"`
-	AuthModeLegacyOption         string                  `yaml:"auth_mode_legacy_option"`
-	AuthModeInvalidErrorCode     string                  `yaml:"auth_mode_invalid_error_code"`
-	AuthModeInvalidErrorMessage  string                  `yaml:"auth_mode_invalid_error_message"`
-	SupportsCustomHeaders        *bool                   `yaml:"supports_custom_headers"`
-	APIKeyRequired               *bool                   `yaml:"api_key_required"`
-	RouteRequiresResource        *bool                   `yaml:"route_requires_resource"`
-	StoreProbeFallback           *bool                   `yaml:"store_probe_fallback"`
-	CredentialsScope             string                  `yaml:"credentials_scope"`
-	SessionAffinityKind          string                  `yaml:"session_affinity_kind"`
-	SystemPromptTransformDefault string                  `yaml:"system_prompt_transform_default"`
-	ClaudeCodeAttributionDefault string                  `yaml:"claude_code_attribution_default"`
-	ReasoningConfigurable        *bool                   `yaml:"reasoning_configurable"`
-	PreserveReasoningContent     *bool                   `yaml:"preserve_reasoning_content"`
-	ResponsesModelAllowlist      []string                `yaml:"responses_model_allowlist"`
-	DefaultBaseURL               string                  `yaml:"default_base_url"`
-	DefaultCatalogProviderType   bool                    `yaml:"default_catalog_provider_type"`
-	ErrorProfile                 string                  `yaml:"error_profile"`
-	ModelDiscovery               ManifestModelDiscovery  `yaml:"model_discovery"`
-	ModelCategories              []ManifestModelCategory `yaml:"model_categories"`
-	Catalog                      ManifestProviderCatalog `yaml:"catalog"`
+	RouteProtocols                   []string                `yaml:"route_protocols"`
+	AuthModes                        []string                `yaml:"auth_modes"`
+	AuthModeLegacyOption             string                  `yaml:"auth_mode_legacy_option"`
+	AuthModeInvalidErrorCode         string                  `yaml:"auth_mode_invalid_error_code"`
+	AuthModeInvalidErrorMessage      string                  `yaml:"auth_mode_invalid_error_message"`
+	SupportsCustomHeaders            *bool                   `yaml:"supports_custom_headers"`
+	APIKeyRequired                   *bool                   `yaml:"api_key_required"`
+	RouteRequiresResource            *bool                   `yaml:"route_requires_resource"`
+	StoreProbeFallback               *bool                   `yaml:"store_probe_fallback"`
+	CredentialsScope                 string                  `yaml:"credentials_scope"`
+	SessionAffinityKind              string                  `yaml:"session_affinity_kind"`
+	SessionAffinityIdentifierProfile string                  `yaml:"session_affinity_identifier_profile"`
+	SystemPromptTransformDefault     string                  `yaml:"system_prompt_transform_default"`
+	ClaudeCodeAttributionDefault     string                  `yaml:"claude_code_attribution_default"`
+	ReasoningConfigurable            *bool                   `yaml:"reasoning_configurable"`
+	PreserveReasoningContent         *bool                   `yaml:"preserve_reasoning_content"`
+	ResponsesModelAllowlist          []string                `yaml:"responses_model_allowlist"`
+	DefaultBaseURL                   string                  `yaml:"default_base_url"`
+	DefaultCatalogProviderType       bool                    `yaml:"default_catalog_provider_type"`
+	ErrorProfile                     string                  `yaml:"error_profile"`
+	ModelDiscovery                   ManifestModelDiscovery  `yaml:"model_discovery"`
+	ModelCategories                  []ManifestModelCategory `yaml:"model_categories"`
+	Catalog                          ManifestProviderCatalog `yaml:"catalog"`
 }
 
 type ManifestModelCategory struct {
@@ -420,12 +421,13 @@ func (m Manifest) Validate() error {
 func (m Manifest) validateProviderPolicy() error {
 	scope := strings.TrimSpace(m.Capabilities.Provider.CredentialsScope)
 	affinityKind := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityKind)
+	affinityIdentifierProfile := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityIdentifierProfile)
 	defaultBaseURL := strings.TrimSpace(m.Capabilities.Provider.DefaultBaseURL)
 	errorProfile := strings.TrimSpace(m.Capabilities.Provider.ErrorProfile)
 	modelDiscovery := m.Capabilities.Provider.ModelDiscovery.Normalized()
 	systemPromptTransformDefault := strings.TrimSpace(m.Capabilities.Provider.SystemPromptTransformDefault)
 	legacyAttributionDefault := strings.TrimSpace(m.Capabilities.Provider.ClaudeCodeAttributionDefault)
-	if m.Capabilities.Provider.APIKeyRequired == nil && scope == "" && affinityKind == "" && defaultBaseURL == "" && errorProfile == "" && systemPromptTransformDefault == "" && legacyAttributionDefault == "" && !modelDiscovery.Configured() {
+	if m.Capabilities.Provider.APIKeyRequired == nil && scope == "" && affinityKind == "" && affinityIdentifierProfile == "" && defaultBaseURL == "" && errorProfile == "" && systemPromptTransformDefault == "" && legacyAttributionDefault == "" && !modelDiscovery.Configured() {
 		return nil
 	}
 	if len(m.Capabilities.ProviderTypes) == 0 {
@@ -458,11 +460,11 @@ func (m Manifest) validateProviderPolicy() error {
 	if modelDiscovery.Auth != "" && modelDiscovery.Auth != "bearer_header" && modelDiscovery.Auth != "query_param" && modelDiscovery.Auth != "provider_auth_mode" {
 		return fmt.Errorf("provider model_discovery auth must be bearer_header, query_param, or provider_auth_mode")
 	}
-	if affinityKind == "" {
-		return nil
-	}
-	if affinityKind != "provider_session" && affinityKind != "codex_session" {
+	if affinityKind != "" && affinityKind != "provider_session" && affinityKind != "codex_session" {
 		return fmt.Errorf("provider session_affinity_kind must be provider_session or codex_session")
+	}
+	if affinityIdentifierProfile != "" && affinityIdentifierProfile != "provider" && affinityIdentifierProfile != "compatibility" && affinityIdentifierProfile != "codex" && affinityIdentifierProfile != "codex_compatible" {
+		return fmt.Errorf("provider session_affinity_identifier_profile must be provider or compatibility")
 	}
 	return nil
 }
@@ -637,6 +639,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    ProviderPolicySessionAffinityKind,
 				Subject: providerType,
 				Value:   kind,
+			})
+		}
+		if profile := strings.TrimSpace(m.Capabilities.Provider.SessionAffinityIdentifierProfile); profile != "" {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicySessionAffinityIdentifierProfile,
+				Subject: providerType,
+				Value:   profile,
 			})
 		}
 		if policy := strings.TrimSpace(m.Capabilities.Provider.SystemPromptTransformDefault); policy != "" {

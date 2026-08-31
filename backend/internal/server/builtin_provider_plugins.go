@@ -8,33 +8,34 @@ import (
 )
 
 type builtinProviderAdapter struct {
-	providerType                 string
-	adapter                      any
-	supportsCustomHeaders        *bool
-	apiKeyRequired               *bool
-	routeProtocols               []string
-	credentialsScope             string
-	credentialRefreshProfile     string
-	routeRequiresResource        bool
-	sessionAffinityKind          string
-	claudeCodeAttributionDefault string
-	reasoningConfigurable        *bool
-	preserveReasoningContent     *bool
-	responsesModelAllowlist      []string
-	errorProfile                 string
-	storeProbeFallback           bool
-	defaultCatalogProviderType   bool
-	authModes                    []string
-	authModeLegacyOption         string
-	authModeInvalidErrorCode     string
-	authModeInvalidErrorMessage  string
-	modelDiscovery               AdapterModelDiscoveryPolicy
-	modelCategories              []providerModelCategoryDefinition
-	resourceTypes                []pluginmeta.ManifestProviderResourceType
-	catalogEntry                 *pluginProviderCatalogEntry
-	managementActions            []builtinProviderPluginCapability
-	backgroundJobs               []builtinProviderPluginCapability
-	capabilities                 []AdapterCapability
+	providerType                     string
+	adapter                          any
+	supportsCustomHeaders            *bool
+	apiKeyRequired                   *bool
+	routeProtocols                   []string
+	credentialsScope                 string
+	credentialRefreshProfile         string
+	routeRequiresResource            bool
+	sessionAffinityKind              string
+	sessionAffinityIdentifierProfile string
+	claudeCodeAttributionDefault     string
+	reasoningConfigurable            *bool
+	preserveReasoningContent         *bool
+	responsesModelAllowlist          []string
+	errorProfile                     string
+	storeProbeFallback               bool
+	defaultCatalogProviderType       bool
+	authModes                        []string
+	authModeLegacyOption             string
+	authModeInvalidErrorCode         string
+	authModeInvalidErrorMessage      string
+	modelDiscovery                   AdapterModelDiscoveryPolicy
+	modelCategories                  []providerModelCategoryDefinition
+	resourceTypes                    []pluginmeta.ManifestProviderResourceType
+	catalogEntry                     *pluginProviderCatalogEntry
+	managementActions                []builtinProviderPluginCapability
+	backgroundJobs                   []builtinProviderPluginCapability
+	capabilities                     []AdapterCapability
 }
 
 type builtinProviderPluginCapability struct {
@@ -120,15 +121,16 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		},
 	})
 	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
-		providerType:             ProviderOpenAICodex,
-		adapter:                  adapters[ProviderOpenAICodex],
-		supportsCustomHeaders:    boolPointer(false),
-		apiKeyRequired:           boolPointer(false),
-		routeProtocols:           []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
-		credentialsScope:         providerCredentialsScopeResource,
-		credentialRefreshProfile: providerCredentialRefreshProfileOpenAIAccountOAuth,
-		routeRequiresResource:    true,
-		sessionAffinityKind:      AffinityKindCodexSession,
+		providerType:                     ProviderOpenAICodex,
+		adapter:                          adapters[ProviderOpenAICodex],
+		supportsCustomHeaders:            boolPointer(false),
+		apiKeyRequired:                   boolPointer(false),
+		routeProtocols:                   []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
+		credentialsScope:                 providerCredentialsScopeResource,
+		credentialRefreshProfile:         providerCredentialRefreshProfileOpenAIAccountOAuth,
+		routeRequiresResource:            true,
+		sessionAffinityKind:              AffinityKindCodexSession,
+		sessionAffinityIdentifierProfile: sessionAffinityIdentifierProfileCompatibility,
 		catalogEntry: &pluginProviderCatalogEntry{
 			ID:                                codexProviderCatalogID,
 			Name:                              "OpenAI Codex",
@@ -511,6 +513,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "session_affinity_kind",
 			Subject: adapter.providerType,
 			Value:   adapter.sessionAffinityKind,
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	if adapter.sessionAffinityIdentifierProfile != "" {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "session_affinity_identifier_profile",
+			Subject: adapter.providerType,
+			Value:   adapter.sessionAffinityIdentifierProfile,
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

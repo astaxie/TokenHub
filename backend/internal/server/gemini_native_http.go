@@ -439,7 +439,7 @@ func (s *Server) geminiGatewayAffinity(apiKeyID string, headers http.Header, pay
 		return nil, nil
 	}
 	identifier := geminiSessionIdentifier(headers, payload)
-	return resolveProviderBridgeAffinity(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), codexBridgeProtocolGemini, identifier)
+	return resolveProviderBridgeAffinityWithPolicy(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityPolicy(s.adapterRegistry, adapterType), codexBridgeProtocolGemini, identifier)
 }
 
 func geminiSessionIdentifier(headers http.Header, payload map[string]any) string {

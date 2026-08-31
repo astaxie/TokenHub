@@ -203,6 +203,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if codex.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("OpenAI Codex session affinity kind = %q, want codex session", codex.ProviderPolicy.SessionAffinityKind)
 	}
+	if codex.ProviderPolicy.SessionAffinityIdentifierProfile != sessionAffinityIdentifierProfileCompatibility {
+		t.Fatalf("OpenAI Codex session affinity identifier profile = %q, want compatibility", codex.ProviderPolicy.SessionAffinityIdentifierProfile)
+	}
 
 	compatible, ok := server.adapterRegistry.Describe(ProviderOpenAICompatible)
 	if !ok {
@@ -258,6 +261,9 @@ func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T
 	}
 	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindProviderSession {
 		t.Fatalf("bare adapter session affinity kind = %q, want provider session", descriptor.ProviderPolicy.SessionAffinityKind)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityIdentifierProfile != sessionAffinityIdentifierProfileProvider {
+		t.Fatalf("bare adapter session affinity identifier profile = %q, want provider", descriptor.ProviderPolicy.SessionAffinityIdentifierProfile)
 	}
 	if !descriptor.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("bare adapter registration should keep custom headers enabled by default")
@@ -387,6 +393,7 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 			{Kind: "provider_policy", Name: providerAuthModeInvalidErrorMessagePolicy, Subject: providerType, Value: "Subscription authentication mode is not supported"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
 			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
+			{Kind: "provider_policy", Name: "session_affinity_identifier_profile", Subject: providerType, Value: sessionAffinityIdentifierProfileCompatibility},
 			{Kind: "provider_policy", Name: systemPromptTransformDefaultPolicy, Subject: providerType, Value: systemPromptTransformStrip},
 			{Kind: "provider_policy", Name: providerReasoningConfigurablePolicy, Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: reasoningContentOption, Subject: providerType, Value: "true"},
@@ -439,6 +446,9 @@ func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
 	}
 	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("plugin provider session affinity kind = %+v, want codex session", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityIdentifierProfile != sessionAffinityIdentifierProfileCompatibility {
+		t.Fatalf("plugin provider session affinity identifier profile = %+v, want compatibility", descriptor.ProviderPolicy)
 	}
 	if descriptor.ProviderPolicy.SystemPromptTransformDefault != systemPromptTransformStrip {
 		t.Fatalf("plugin provider system prompt transform default = %+v, want strip", descriptor.ProviderPolicy)

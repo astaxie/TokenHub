@@ -149,4 +149,22 @@ describe("provider-specific core hardcoding gate", () => {
     ];
     assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
+
+  it("keeps cache locality free of Codex-compatible session hint parsing", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/cache_locality.go"), "utf8");
+    const forbidden = [
+      "codexClientMetadataSessionID",
+      "codexRawStringField",
+      "codexSessionIdentifier",
+      "client_metadata",
+      "thread-id",
+      "x-client-request-id",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
+
+  it("resolves Responses gateway session affinity through adapter policy", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/gateway_http.go"), "utf8");
+    assert.equal(source.includes("adapterSessionAffinityPolicy(s.adapterRegistry, adapterType)"), true);
+  });
 });

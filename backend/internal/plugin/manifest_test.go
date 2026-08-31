@@ -50,6 +50,7 @@ capabilities:
     route_requires_resource: true
     credentials_scope: resource
     session_affinity_kind: codex_session
+    session_affinity_identifier_profile: compatibility
     system_prompt_transform_default: strip
     reasoning_configurable: true
     preserve_reasoning_content: true
@@ -132,8 +133,8 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 28 {
-		t.Fatalf("descriptor capabilities = %v, want 28 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 29 {
+		t.Fatalf("descriptor capabilities = %v, want 29 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
@@ -152,6 +153,9 @@ permissions:
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "session_affinity_kind", Subject: "openai_codex", Value: "codex_session"}) {
 		t.Fatalf("descriptor is missing provider session affinity policy capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "session_affinity_identifier_profile", Subject: "openai_codex", Value: "compatibility"}) {
+		t.Fatalf("descriptor is missing provider session affinity identifier profile policy capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "system_prompt_transform_default", Subject: "openai_codex", Value: "strip"}) {
 		t.Fatalf("descriptor is missing provider system prompt transform default capability: %+v", descriptor.Capabilities)
@@ -226,6 +230,9 @@ permissions:
 	}
 	if manifest.Capabilities.Provider.SessionAffinityKind != "codex_session" {
 		t.Fatalf("provider session affinity kind = %q", manifest.Capabilities.Provider.SessionAffinityKind)
+	}
+	if manifest.Capabilities.Provider.SessionAffinityIdentifierProfile != "compatibility" {
+		t.Fatalf("provider session affinity identifier profile = %q", manifest.Capabilities.Provider.SessionAffinityIdentifierProfile)
 	}
 	if manifest.Capabilities.Provider.ModelDiscovery.Path != "/codex/models" ||
 		manifest.Capabilities.Provider.ModelDiscovery.Auth != "query_param" ||

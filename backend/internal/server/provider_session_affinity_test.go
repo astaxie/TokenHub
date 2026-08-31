@@ -256,11 +256,14 @@ func TestResponsesGatewayAffinityUsesDescriptorSelectedCodexPolicy(t *testing.T)
 	}`)); err != nil {
 		t.Fatal(err)
 	}
-	affinity, err := resolveProviderSessionAffinity(
+	affinity, err := resolveProviderSessionAffinityWithPolicy(
 		"secret",
 		"key_alpha",
 		providerType,
-		descriptor.ProviderPolicy.SessionAffinityKind,
+		providerSessionAffinityPolicy{
+			Kind:              descriptor.ProviderPolicy.SessionAffinityKind,
+			IdentifierProfile: descriptor.ProviderPolicy.SessionAffinityIdentifierProfile,
+		},
 		make(http.Header),
 		request,
 	)
@@ -272,5 +275,37 @@ func TestResponsesGatewayAffinityUsesDescriptorSelectedCodexPolicy(t *testing.T)
 	}
 	if affinity.AdapterType != providerType || affinity.Kind != AffinityKindCodexSession {
 		t.Fatalf("descriptor-selected affinity metadata = %+v", affinity)
+	}
+}
+
+func TestResponsesGatewayAffinityUsesDescriptorSelectedCompatibilityProfile(t *testing.T) {
+	var request ResponsesRequest
+	if err := request.UnmarshalJSON([]byte(`{
+		"model":"gpt-test",
+		"input":[],
+		"client_metadata":{"session_id":"metadata-session"}
+	}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	affinity, err := resolveProviderSessionAffinityWithPolicy(
+		"secret",
+		"key_alpha",
+		"compat_profile_provider",
+		providerSessionAffinityPolicy{
+			Kind:              AffinityKindProviderSession,
+			IdentifierProfile: sessionAffinityIdentifierProfileCompatibility,
+		},
+		make(http.Header),
+		request,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affinity == nil {
+		t.Fatal("expected compatibility profile to consume client_metadata.session_id")
+	}
+	if affinity.AdapterType != "compat_profile_provider" || affinity.Kind != AffinityKindProviderSession {
+		t.Fatalf("compatibility profile affinity metadata = %+v", affinity)
 	}
 }

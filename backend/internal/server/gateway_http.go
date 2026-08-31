@@ -366,7 +366,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	var affinity *RequestAffinity
 	sessionAffinityApplied := false
 	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
-		affinity, err := resolveProviderSessionAffinity(s.config.SecretKey, key.ID, adapterType, adapterSessionAffinityKind(s.adapterRegistry, adapterType), r.Header, req)
+		affinity, err := resolveProviderSessionAffinityWithPolicy(s.config.SecretKey, key.ID, adapterType, adapterSessionAffinityPolicy(s.adapterRegistry, adapterType), r.Header, req)
 		if err != nil {
 			s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 			writeError(w, r, err)
