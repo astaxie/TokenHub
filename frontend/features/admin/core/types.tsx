@@ -554,21 +554,40 @@ export type ProviderMonitoringSignal = {
   observed_at?: string;
 };
 
-export type OpenAIQuotaWindow = {
-  used_percent: number;
-  reset_after_seconds: number;
-  reset_at: number;
+export type ProviderQuotaWindow = {
+  key?: string;
+  label?: string;
+  used_percent?: number;
+  reset_after_seconds?: number;
+  reset_at?: number;
 };
 
-export type OpenAIAccountQuota = {
+export type ProviderQuotaMetric = {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "warning" | "danger";
+};
+
+export type ProviderQuotaRateLimit = { allowed: boolean; limit_reached: boolean; primary_window?: ProviderQuotaWindow; secondary_window?: ProviderQuotaWindow };
+
+export type ProviderAccountQuota = {
+  account_id?: string;
+  email?: string;
   plan_type?: string;
+  status?: string;
+  status_label?: string;
+  allowed?: boolean;
+  limit_reached?: boolean;
+  remaining_percent?: number;
+  used_percent?: number;
+  primary_window?: ProviderQuotaWindow;
+  secondary_window?: ProviderQuotaWindow;
+  windows?: ProviderQuotaWindow[];
+  metrics?: ProviderQuotaMetric[];
   fetched_at?: number;
-  rate_limit?: {
-    allowed: boolean;
-    limit_reached: boolean;
-    primary_window?: OpenAIQuotaWindow;
-    secondary_window?: OpenAIQuotaWindow;
-  };
+  rate_limit?: ProviderQuotaRateLimit;
+  additional_rate_limits?: Array<{ limit_name?: string; metered_feature?: string; rate_limit?: ProviderQuotaRateLimit }>;
+  rate_limit_reset_credits?: { available_count: number };
 };
 
 export type ProviderQuotaSummary = {
@@ -583,7 +602,7 @@ export type ProviderQuotaSummary = {
   accounts?: Array<{
     resource_id: string;
     resource_name: string;
-    quota?: OpenAIAccountQuota;
+    quota?: ProviderAccountQuota;
     error_code?: string;
   }>;
 };

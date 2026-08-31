@@ -2,7 +2,7 @@ import { Plus, RefreshCw, Search, Trash2, UserRoundCheck, X } from "lucide-react
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { appRole } from "../core/navigation";
-import { type AdminResource, type AdminUser, type ApiContext, type AppData, type AuditEvent, type OpenAIAccountQuota, type OpenAIQuotaWindow, type Project, type Provider, type ProviderMonitoringSnapshot, type ProviderQuotaSummary, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type ToolbarAction } from "../core/types";
+import { type AdminResource, type AdminUser, type ApiContext, type AppData, type AuditEvent, type Project, type Provider, type ProviderAccountQuota, type ProviderMonitoringSnapshot, type ProviderQuotaSummary, type ProviderResource, type ProviderQuotaWindow, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type ToolbarAction } from "../core/types";
 import { notificationChannelLabel } from "../domain/catalog";
 import { providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerRoutesFor, providerRouteSummary, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
@@ -16,6 +16,7 @@ import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
 import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
+import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent } from "./provider-account-ui";
 import { latencyDisplay, requestLogFailed } from "./overview";
 import { PaginationControls, type PaginationState } from "../shared/pagination";
 import { APIKeyFlowHint, EntityTable, ResourceEmptyState, resultCountLabel, RouteStrategyHint, TableSkeleton } from "./settings-table";
@@ -290,7 +291,7 @@ export function ProviderChannelTable({
     try {
       const action = providerQuotaReadAction(data, resource);
       if (!action) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: true }, tx("查询账号配额"));
+      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: true }, tx("查询账号配额"));
       const snapshot = data.providerMonitoring.find((item) => item.provider.id === resource.provider_id);
       if (snapshot) {
         setQuotaOverrides((current) => ({
@@ -530,14 +531,14 @@ export function ProviderAccountQuota({
             const accountQuota = account.quota;
             const accountLabel = resource?.credential_summary?.account_email || resource?.credential_summary?.account_id || account.resource_name;
             const accountPlan = accountQuota?.plan_type || resource?.credential_summary?.plan_type || "-";
-            const accountLimited = accountQuota?.rate_limit?.limit_reached || accountQuota?.rate_limit?.allowed === false;
+            const accountLimited = providerAccountQuotaIsLimited(accountQuota);
             return (
               <div className="provider-account-quota-row" key={account.resource_id}>
                 <div>
                   <strong title={accountLabel}>{accountLabel}</strong>
                   {accountQuota ? (
                     <span className={accountLimited ? "limited" : ""}>
-                      {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(accountQuota.rate_limit?.primary_window)}
+                      {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(providerAccountQuotaPrimaryWindow(accountQuota))}
                     </span>
                   ) : (
                     <span className="limited" title={account.error_code}>
@@ -563,19 +564,17 @@ export function ProviderAccountQuota({
   );
 }
 
-function quotaRemainingPercent(quota: OpenAIAccountQuota) {
-  const used = quota.rate_limit?.primary_window?.used_percent;
-  if (!Number.isFinite(used)) return quota.rate_limit?.allowed === false ? 0 : 100;
-  return clampNumber(100 - Number(used), 0, 100);
+function quotaRemainingPercent(quota: ProviderAccountQuota) {
+  return providerAccountQuotaRemainingPercent(quota);
 }
 
-function quotaResetLabel(window?: OpenAIQuotaWindow) {
+function quotaResetLabel(window?: ProviderQuotaWindow) {
   if (!window) return tx("无重置信息");
-  if (window.reset_at > 0) {
-    return new Date(window.reset_at * 1000).toLocaleString(languageLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  if ((window.reset_at ?? 0) > 0) {
+    return new Date((window.reset_at ?? 0) * 1000).toLocaleString(languageLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
-  if (window.reset_after_seconds > 0) {
-    const hours = Math.ceil(window.reset_after_seconds / 3600);
+  if ((window.reset_after_seconds ?? 0) > 0) {
+    const hours = Math.ceil((window.reset_after_seconds ?? 0) / 3600);
     return hours > 1 ? `${hours} ${tx("小时后重置")}` : tx("1 小时内重置");
   }
   return tx("即将重置");
@@ -590,7 +589,7 @@ function formatQuotaPercent(value: number) {
   return String(Math.round(value * 10) / 10);
 }
 
-function updateProviderQuotaSummary(summary: ProviderQuotaSummary, resource: ProviderResource, quota: OpenAIAccountQuota): ProviderQuotaSummary {
+function updateProviderQuotaSummary(summary: ProviderQuotaSummary, resource: ProviderResource, quota: ProviderAccountQuota): ProviderQuotaSummary {
   const accounts = (summary.accounts ?? []).filter((account) => account.resource_id !== resource.id);
   accounts.push({ resource_id: resource.id, resource_name: resource.name, quota });
   return recalculateProviderQuotaSummary({ ...summary, accounts });
@@ -613,7 +612,7 @@ function recalculateProviderQuotaSummary(summary: ProviderQuotaSummary): Provide
     successful_accounts: successful.length,
     failed_accounts: (summary.accounts?.length ?? 0) - successful.length,
     remaining_percent: limiting?.quota ? quotaRemainingPercent(limiting.quota) : undefined,
-    limit_reached: successful.some((account) => account.quota?.rate_limit?.limit_reached || account.quota?.rate_limit?.allowed === false),
+    limit_reached: successful.some((account) => providerAccountQuotaIsLimited(account.quota)),
     plan_type: limiting?.quota?.plan_type,
   };
 }

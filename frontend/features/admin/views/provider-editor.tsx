@@ -1,7 +1,7 @@
 import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type AdapterDescriptor, type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
+import { type AdapterDescriptor, type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderAccountQuota, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
@@ -27,30 +27,7 @@ import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanel
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { isProviderAccountResourceForData, isProviderAccountResourceTypeForData } from "../domain/provider-resource-types";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type OpenAIQuotaWindow, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaUsagePercent, quotaWindowResetLabel } from "./provider-account-ui";
-type OpenAIAccountQuota = {
-  account_id?: string;
-  email?: string;
-  plan_type?: string;
-  rate_limit?: {
-    allowed: boolean;
-    limit_reached: boolean;
-    primary_window?: OpenAIQuotaWindow;
-    secondary_window?: OpenAIQuotaWindow;
-  };
-  additional_rate_limits?: Array<{
-    limit_name: string;
-    metered_feature: string;
-    rate_limit?: {
-      allowed: boolean;
-      limit_reached: boolean;
-      primary_window?: OpenAIQuotaWindow;
-      secondary_window?: OpenAIQuotaWindow;
-    };
-  }>;
-  rate_limit_reset_credits?: { available_count: number };
-  fetched_at: number;
-};
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, providerAccountQuotaIsLimited, providerAccountQuotaMetrics, providerAccountQuotaPrimaryWindow, providerAccountQuotaSecondaryWindow, providerAccountQuotaStatusLabel, ProviderAccountTokenRenewal, providerAccountQuotaUsedPercent, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaWindowResetLabel } from "./provider-account-ui";
 type ProviderEditTab = "connect" | "models" | "advanced";
 type ProviderAccountConfirmation = { action: "enable" | "disable" | "delete"; resource: ProviderResource };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
@@ -164,7 +141,7 @@ export function ProviderUpsertModal({
   const [accountOAuthCallbackModalError, setAccountOAuthCallbackModalError] = useState("");
   const [accountQuotaBusyIDs, setAccountQuotaBusyIDs] = useState<Record<string, boolean>>({});
   const [accountQuotaErrors, setAccountQuotaErrors] = useState<Record<string, string>>({});
-  const [accountQuotas, setAccountQuotas] = useState<Record<string, OpenAIAccountQuota>>({});
+  const [accountQuotas, setAccountQuotas] = useState<Record<string, ProviderAccountQuota>>({});
   const [accountConfirmation, setAccountConfirmation] = useState<ProviderAccountConfirmation | null>(null);
   const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
   const [accountConfirmationError, setAccountConfirmationError] = useState("");
@@ -735,7 +712,7 @@ export function ProviderUpsertModal({
     try {
       const action = accountQuotaActionsByResourceID[resource.id];
       if (!action) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<OpenAIAccountQuota>(api, resource, action, { refresh: force }, tx("查询订阅额度"));
+      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: force }, tx("查询订阅额度"));
       setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
       return true;
     } catch (err) {
@@ -1454,12 +1431,14 @@ export function ProviderUpsertModal({
                 <div className="provider-quota-list">
                   {richQuotaPanel.resources.map((resource) => {
                     const quota = accountQuotas[resource.id];
-                    const primary = quota?.rate_limit?.primary_window;
-                    const secondary = quota?.rate_limit?.secondary_window;
+                    const primary = providerAccountQuotaPrimaryWindow(quota);
+                    const secondary = providerAccountQuotaSecondaryWindow(quota);
                     const accountEmail = providerResourceAccountLabel(resource);
-                    const quotaStatus = quota?.rate_limit?.limit_reached ? "已达上限" : quota?.rate_limit?.allowed ? "可用" : "不可用";
+                    const quotaStatus = providerAccountQuotaStatusLabel(quota);
+                    const quotaLimited = providerAccountQuotaIsLimited(quota);
                     const imageCapability = imageCapabilityProfile ? resource.options?.[imageCapabilityProfile.capabilityOption] : undefined;
-                    const usagePercent = quotaUsagePercent(primary);
+                    const usagePercent = providerAccountQuotaUsedPercent(quota);
+                    const metrics = providerAccountQuotaMetrics(quota);
                     return (
                       <article className="provider-quota-card" key={resource.id}>
                         <div className="provider-quota-card-head">
@@ -1468,7 +1447,7 @@ export function ProviderUpsertModal({
                             <strong>{accountEmail}</strong>
                           </div>
                           <div className="provider-quota-card-actions">
-                            {quota ? <span className={`provider-quota-status ${quotaStatus === "可用" ? "available" : "limited"}`}>{tx(quotaStatus)}</span> : null}
+                            {quota ? <span className={`provider-quota-status ${quotaLimited ? "limited" : "available"}`}>{tx(quotaStatus)}</span> : null}
                             {imageCapabilityProfile ? <span className={`provider-image-capability ${imageCapability || "unknown"}`}>
                               {tx(formatImageGenerationCapabilityTag(imageCapability, imageCapabilityProfile?.capabilitySupportedValue, imageCapabilityProfile?.capabilityUnsupportedValue))}
                             </span> : null}
@@ -1512,7 +1491,7 @@ export function ProviderUpsertModal({
                             <div className="provider-quota-summary">
                               <div className="provider-quota-usage">
                                 <span>{tx("主窗口使用率")}</span>
-                                <strong>{primary ? `${formatQuotaPercent(primary.used_percent)}%` : "-"}</strong>
+                                <strong>{quota ? `${formatQuotaPercent(usagePercent)}%` : "-"}</strong>
                                 <div
                                   aria-label={tx("主窗口使用率")}
                                   aria-valuemax={100}
@@ -1528,16 +1507,19 @@ export function ProviderUpsertModal({
                                 <QuotaMetric label="套餐" value={quota.plan_type || resource.credential_summary?.plan_type || "-"} />
                                 {imageCapabilityProfile ? <QuotaMetric label="生图能力" value={formatImageGenerationCapability(imageCapability, imageCapabilityProfile.capabilitySupportedValue, imageCapabilityProfile.capabilityUnsupportedValue)} /> : null}
                                 <QuotaMetric label="主窗口重置时间" value={quotaWindowResetLabel(primary)} />
+                                {metrics.map((metric) => <QuotaMetric key={`${metric.label}:${metric.value}`} label={metric.label} value={metric.value} />)}
                               </div>
                             </div>
-                            <div className="provider-quota-fetched-at">
-                              {tx("查询时间")} · {new Date(quota.fetched_at * 1000).toLocaleString()}
-                            </div>
+                            {quota.fetched_at ? (
+                              <div className="provider-quota-fetched-at">
+                                {tx("查询时间")} · {new Date(quota.fetched_at * 1000).toLocaleString()}
+                              </div>
+                            ) : null}
                             <details className="provider-quota-details">
                               <summary>{tx("账号与更多用量详情")}</summary>
                               {secondary ? (
                                 <div className="provider-quota-grid">
-                                  <QuotaMetric label="次窗口使用率" value={`${formatQuotaPercent(secondary.used_percent)}%`} />
+                                  <QuotaMetric label="次窗口使用率" value={Number.isFinite(secondary.used_percent) ? `${formatQuotaPercent(secondary.used_percent ?? 0)}%` : "-"} />
                                   <QuotaMetric label="次窗口重置" value={quotaWindowResetLabel(secondary)} />
                                 </div>
                               ) : null}

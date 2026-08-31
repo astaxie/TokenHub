@@ -211,6 +211,19 @@ describe("provider-specific core hardcoding gate", () => {
     assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
 
+  it("keeps provider quota UI typed through generic quota contracts", () => {
+    const sources = [
+      "frontend/features/admin/views/provider-account-ui.tsx",
+      "frontend/features/admin/views/provider-editor.tsx",
+      "frontend/features/admin/views/crud-projects.tsx",
+    ].map((path) => readFileSync(join(REPOSITORY_ROOT, path), "utf8"));
+    const forbidden = [
+      "OpenAIAccountQuota",
+      "OpenAIQuotaWindow",
+    ];
+    assert.deepEqual(forbidden.filter((item) => sources.some((source) => source.includes(item))), []);
+  });
+
   it("keeps cache locality free of Codex-compatible session hint parsing", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/cache_locality.go"), "utf8");
     const forbidden = [

@@ -1,6 +1,6 @@
 import { AlertCircle, Check, Copy, KeyRound, Send } from "lucide-react";
 import { useState } from "react";
-import type { ProviderResource } from "../core/types";
+import type { ProviderAccountQuota, ProviderQuotaMetric, ProviderQuotaWindow, ProviderResource } from "../core/types";
 import { copyText } from "../domain/clipboard";
 import type { ImageCapabilityProfile } from "../domain/provider-image-capability";
 import { tx } from "../i18n/runtime";
@@ -16,13 +16,6 @@ export async function launchProviderAccountAuthorization(action: ProviderAccount
   }
   if (!await copyText(authURL)) throw new Error(tx("复制授权链接失败，请允许浏览器访问剪贴板后重试。"));
 }
-
-export type OpenAIQuotaWindow = {
-  used_percent: number;
-  limit_window_seconds: number;
-  reset_after_seconds: number;
-  reset_at: number;
-};
 
 export function QuotaMetric({ label, value }: { label: string; value: string }) {
   return (
@@ -104,19 +97,71 @@ export function formatQuotaPercent(value: number) {
   return Number.isFinite(value) ? String(Math.round(value * 10) / 10) : "0";
 }
 
-export function quotaUsagePercent(window?: OpenAIQuotaWindow) {
+export function quotaUsagePercent(window?: ProviderQuotaWindow) {
   if (!window || !Number.isFinite(window.used_percent)) return 0;
-  return Math.min(100, Math.max(0, window.used_percent));
+  return clampQuotaPercent(window.used_percent);
 }
 
-export function quotaWindowResetLabel(window?: OpenAIQuotaWindow) {
+export function quotaWindowResetLabel(window?: ProviderQuotaWindow) {
   if (!window) return "-";
-  if (window.reset_at > 0) return new Date(window.reset_at * 1000).toLocaleString();
-  if (window.reset_after_seconds > 0) {
-    const minutes = Math.ceil(window.reset_after_seconds / 60);
+  if ((window.reset_at ?? 0) > 0) return new Date((window.reset_at ?? 0) * 1000).toLocaleString();
+  if ((window.reset_after_seconds ?? 0) > 0) {
+    const minutes = Math.ceil((window.reset_after_seconds ?? 0) / 60);
     return minutes >= 60 ? `${Math.ceil(minutes / 60)} ${tx("小时后")}` : `${minutes} ${tx("分钟后")}`;
   }
   return "-";
+}
+
+export function providerAccountQuotaPrimaryWindow(quota?: ProviderAccountQuota) {
+  return quota?.primary_window ?? quota?.rate_limit?.primary_window ?? quota?.windows?.[0];
+}
+
+export function providerAccountQuotaSecondaryWindow(quota?: ProviderAccountQuota) {
+  return quota?.secondary_window ?? quota?.rate_limit?.secondary_window ?? quota?.windows?.[1];
+}
+
+export function providerAccountQuotaStatusLabel(quota?: ProviderAccountQuota) {
+  if (!quota) return "不可用";
+  const explicit = quota.status_label?.trim();
+  if (explicit) return explicit;
+  if (providerAccountQuotaIsLimited(quota)) return "已达上限";
+  if (quota.allowed ?? quota.rate_limit?.allowed) return "可用";
+  return "不可用";
+}
+
+export function providerAccountQuotaIsLimited(quota?: ProviderAccountQuota) {
+  if (!quota) return false;
+  return Boolean(quota.limit_reached || quota.rate_limit?.limit_reached || quota.allowed === false || quota.rate_limit?.allowed === false);
+}
+
+export function providerAccountQuotaRemainingPercent(quota?: ProviderAccountQuota) {
+  if (!quota) return 100;
+  if (Number.isFinite(quota.remaining_percent)) return clampQuotaPercent(quota.remaining_percent);
+  const used = quota.used_percent ?? providerAccountQuotaPrimaryWindow(quota)?.used_percent;
+  if (Number.isFinite(used)) return clampQuotaPercent(100 - Number(used));
+  return providerAccountQuotaIsLimited(quota) ? 0 : 100;
+}
+
+export function providerAccountQuotaUsedPercent(quota?: ProviderAccountQuota) {
+  if (!quota) return 0;
+  if (Number.isFinite(quota.used_percent)) return clampQuotaPercent(quota.used_percent);
+  if (Number.isFinite(quota.remaining_percent)) return clampQuotaPercent(100 - Number(quota.remaining_percent));
+  return quotaUsagePercent(providerAccountQuotaPrimaryWindow(quota));
+}
+
+export function providerAccountQuotaMetrics(quota?: ProviderAccountQuota): ProviderQuotaMetric[] {
+  return (quota?.metrics ?? [])
+    .map((metric) => ({
+      label: metric.label?.trim() ?? "",
+      value: metric.value?.trim() ?? "",
+      tone: metric.tone,
+    }))
+    .filter((metric) => metric.label && metric.value);
+}
+
+function clampQuotaPercent(value: number | undefined) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Number(value)));
 }
 
 export function ProviderOAuthNoticeModal({

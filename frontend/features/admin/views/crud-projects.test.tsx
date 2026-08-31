@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerChannelAccountDetail, providerMonitorSamples, providerQuotaReadAction } from "./crud-projects";
+import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent, providerAccountQuotaStatusLabel, providerAccountQuotaUsedPercent } from "./provider-account-ui";
 
 describe("providerQuotaReadAction", () => {
   it("matches quota plugin actions by Provider and resource type metadata", () => {
@@ -22,6 +23,24 @@ describe("providerQuotaReadAction", () => {
       priority: 1,
       weight: 100,
     })?.plugin_id).toBe("tokenhub.provider.openai-codex");
+  });
+});
+
+describe("provider account quota display helpers", () => {
+  it("accepts generic plugin quota fields without OpenAI rate-limit windows", () => {
+    const quota = {
+      plan_type: "enterprise",
+      status_label: "额度健康",
+      remaining_percent: 72.4,
+      primary_window: { label: "daily", reset_after_seconds: 3600 },
+      metrics: [{ label: "Seats", value: "20" }],
+    };
+
+    expect(providerAccountQuotaStatusLabel(quota)).toBe("额度健康");
+    expect(providerAccountQuotaIsLimited(quota)).toBe(false);
+    expect(providerAccountQuotaRemainingPercent(quota)).toBe(72.4);
+    expect(providerAccountQuotaUsedPercent(quota)).toBeCloseTo(27.6);
+    expect(providerAccountQuotaPrimaryWindow(quota)?.label).toBe("daily");
   });
 });
 
