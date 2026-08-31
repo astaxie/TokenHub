@@ -14,6 +14,7 @@ export const GENERIC_CORE_SURFACES = [
   "backend/internal/server/provider_headers.go",
   "backend/internal/server/provider_adapter_migration.go",
   "backend/internal/server/provider_catalog.go",
+  "backend/internal/server/provider_monitoring.go",
   "backend/internal/server/provider_model_categories.go",
   "backend/internal/server/provider_plugin_runtime.go",
   "backend/internal/server/provider_route_bridge.go",
@@ -41,6 +42,10 @@ export const PROVIDER_CORE_PATTERNS = [
   {
     name: "provider-specific auth identifier",
     pattern: /\banthropicAuthType[A-Za-z0-9_]*\b/g,
+  },
+  {
+    name: "provider-specific quota contract",
+    pattern: /\b(?:OpenAIAccountQuota|OpenAIAccountQuotaWindow|queryOpenAIAccountQuota)\b/g,
   },
   {
     name: "provider catalog URL normalizer",

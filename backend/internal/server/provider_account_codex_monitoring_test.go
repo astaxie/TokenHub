@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
@@ -84,6 +86,105 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 		snapshot.ActiveProbe.LatencyMS != 321 || snapshot.Quota.RemainingPercent != 75 ||
 		snapshot.Quota.SuccessfulAccounts != 1 {
 		t.Fatalf("monitoring did not preserve source semantics or quota: %+v", snapshot)
+	}
+}
+
+func TestProviderMonitoringQuotaUsesPluginActionSnapshot(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "quota_monitor_plugin"
+	resourceType := "quota_monitor_account"
+	provider := store.AddProvider(Provider{
+		ID:      "prv_quota_monitor_plugin",
+		Name:    "Quota Monitor Plugin",
+		Type:    providerType,
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_quota_monitor_plugin",
+		ProviderID:   provider.ID,
+		Name:         "Plugin Account",
+		ResourceType: resourceType,
+		Status:       StatusActive,
+		Healthy:      true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.quota-monitor-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Quota Monitor Plugin", []string{providerType}, []string{string(AdapterCapabilityQuota)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityQuota},
+	}); err != nil {
+		t.Fatalf("register quota monitoring plugin: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "quota_monitor.quota.read",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "quota.read",
+		Subject:    providerType,
+		Metadata:   map[string]string{"provider_resource_type": resourceType},
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Refresh    bool   `json:"refresh"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode monitoring quota action payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || payload.Refresh {
+			t.Fatalf("unexpected monitoring quota payload: %+v", payload)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"plan_type":         "plugin-team",
+			"remaining_percent": 42.5,
+			"limit_reached":     false,
+			"primary_window": map[string]any{
+				"used_percent": 57.5,
+				"reset_at":     int64(1999999999),
+			},
+			"fetched_at": int64(1999999900),
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register quota monitoring action: %v", err)
+	}
+
+	invoke := func() ProviderMonitoringSnapshot {
+		request := httptest.NewRequest(http.MethodGet, "/api/admin/providers/monitoring", nil)
+		request.Header.Set("Authorization", "Bearer dev_admin_token")
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("monitoring request failed: %d %s", response.Code, response.Body.String())
+		}
+		var payload struct {
+			Data []ProviderMonitoringSnapshot `json:"data"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.Data) != 1 {
+			t.Fatalf("unexpected monitoring snapshots: %+v", payload.Data)
+		}
+		return payload.Data[0]
+	}
+	first := invoke()
+	second := invoke()
+	if actionCalls != 1 {
+		t.Fatalf("monitoring quota action calls = %d, want cached single call", actionCalls)
+	}
+	if first.Quota.RemainingPercent != 42.5 || first.Quota.PlanType != "plugin-team" ||
+		first.Quota.EarliestResetAt != 1999999999 || first.Quota.SuccessfulAccounts != 1 ||
+		len(first.Quota.Accounts) != 1 || first.Quota.Accounts[0].Quota["plan_type"] != "plugin-team" {
+		t.Fatalf("monitoring quota summary did not use plugin snapshot: %+v", first.Quota)
+	}
+	if second.Quota.SuccessfulAccounts != 1 || second.Quota.Accounts[0].Quota["remaining_percent"] != 42.5 {
+		t.Fatalf("monitoring cached quota snapshot mismatch: %+v", second.Quota)
 	}
 }
 

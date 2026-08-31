@@ -28,6 +28,8 @@ describe("provider-specific core hardcoding gate", () => {
       const oauth = "/api/admin/provider-account-oauth/openai/generate-auth-url";
       const legacyQuotaReset = "tokenhub.codex-quota-reset.";
       const openAIQuotaReset = "openai_quota_reset_forbidden";
+      const quota = OpenAIAccountQuota{};
+      return s.queryOpenAIAccountQuota(ctx, resourceID);
     `, "backend/internal/server/gateway_http.go");
 
     assert.deepEqual(violations.map((violation) => violation.rule), [
@@ -35,6 +37,8 @@ describe("provider-specific core hardcoding gate", () => {
       "provider type literal",
       "provider type literal",
       "provider-specific auth identifier",
+      "provider-specific quota contract",
+      "provider-specific quota contract",
       "provider catalog URL normalizer",
       "provider-specific catalog URL literal",
       "provider-specific catalog URL literal",
@@ -224,6 +228,17 @@ describe("provider-specific core hardcoding gate", () => {
       "openAIAccountQuotaResetResultFromActionData",
       "(openAIAccountQuotaResetCredits, bool, error)",
       "(openAIAccountQuotaResetResult, bool, error)",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
+
+  it("keeps provider monitoring quota provider-neutral", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_monitoring.go"), "utf8");
+    const forbidden = [
+      "OpenAIAccountQuota",
+      "OpenAIAccountQuotaWindow",
+      "queryOpenAIAccountQuota",
+      "openAIQuotaRemainingPercent",
     ];
     assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
