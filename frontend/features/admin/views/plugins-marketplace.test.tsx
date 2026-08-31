@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { PluginsView } from "./plugins";
@@ -62,6 +62,7 @@ describe("PluginsView marketplace view", () => {
     }];
 
     const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "插件市场" }));
 
     expect(screen.getByText("管理 Codex 订阅")).toBeInTheDocument();
     expect(screen.getByText("provider")).toBeInTheDocument();
