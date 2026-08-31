@@ -942,7 +942,8 @@ export function isAuthExpiredError(error: unknown) {
 export async function adminFetch(ctx: ApiContext, path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${ctx.adminToken}`);
-  if (init.body && !headers.has("content-type")) {
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !isFormData && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
   const resp = await fetch(`${ctx.baseURL.replace(/\/$/, "")}${path}`, { ...init, headers });

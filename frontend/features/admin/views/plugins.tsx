@@ -12,21 +12,12 @@ import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 import { PluginActionRunner, PluginBackgroundJobRunner } from "./plugin-action-runner";
+import { emptyInstallDraft, PluginInstallForm, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
 import { PluginDeleteControl, PluginLifecycleControl, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
 type ActionDraft = {
   values: Record<string, string | boolean>;
-  busy: boolean;
-  error: string;
-  result: string;
-};
-
-type PluginInstallDraft = {
-  downloadURL: string;
-  checksumSHA256: string;
-  replace: boolean;
-  enable: boolean;
   busy: boolean;
   error: string;
   result: string;
@@ -223,12 +214,7 @@ export function PluginsView({
     try {
       const response = await adminFetch(api, "/api/admin/plugins/install", {
         method: "POST",
-        body: JSON.stringify({
-          download_url: installDraft.downloadURL,
-          checksum_sha256: installDraft.checksumSHA256,
-          replace: installDraft.replace,
-          enable: installDraft.enable,
-        }),
+        body: pluginInstallRequestBody(installDraft),
       });
       if (!response.ok) throw new Error(await readAdminError(response, tx("安装插件")));
       const payload = await response.json() as { data?: { plugin?: { id?: string }; restart_required?: boolean } };
@@ -495,7 +481,7 @@ export function PluginsView({
         </div>
         <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
           <ExternalLink size={14} />
-          <span>{tx("插件扩展")}</span>
+          <span>{tx("插件市场")}</span>
         </a>
       </div>
 
@@ -512,71 +498,13 @@ export function PluginsView({
 
       {activeTab === "registry" ? (
         <>
-      <section className="section" data-plugin-manager-section="install">
-        <div className="section-header">
-          <h2>{tx("安装插件包")}</h2>
-        </div>
-        <div className="section-body">
-          <form className="plugin-action-runner" onSubmit={installPlugin}>
-            <label className="plugin-action-field">
-              <span>{tx("下载 URL")}</span>
-              <input
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setInstallDraft((draft) => ({ ...draft, downloadURL: value }));
-                }}
-                required
-                type="url"
-                value={installDraft.downloadURL}
-              />
-            </label>
-            <label className="plugin-action-field">
-              <span>{tx("SHA-256 校验")}</span>
-              <input
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setInstallDraft((draft) => ({ ...draft, checksumSHA256: value }));
-                }}
-                required
-                value={installDraft.checksumSHA256}
-              />
-            </label>
-            <label className="plugin-action-field">
-              <span>{tx("允许替换")}</span>
-              <input
-                checked={installDraft.replace}
-                onChange={(event) => {
-                  const checked = event.currentTarget.checked;
-                  setInstallDraft((draft) => ({ ...draft, replace: checked }));
-                }}
-                type="checkbox"
-              />
-            </label>
-            <label className="plugin-action-field">
-              <span>{tx("安装后启用")}</span>
-              <input
-                checked={installDraft.enable}
-                onChange={(event) => {
-                  const checked = event.currentTarget.checked;
-                  setInstallDraft((draft) => ({ ...draft, enable: checked }));
-                }}
-                type="checkbox"
-              />
-            </label>
-            <button className="secondary-button plugin-action-button" disabled={installDraft.busy} type="submit">
-              <Download size={14} />
-              <span>{tx(installDraft.busy ? "安装中" : "安装插件")}</span>
-            </button>
-            <PluginPermissionDiffPreview
-              disabled={!installDraft.downloadURL.trim() || !installDraft.checksumSHA256.trim()}
-              draft={installPermissionPreview}
-              onPreview={previewInstallPluginPermissions}
-            />
-            {installDraft.error ? <p className="provider-quota-error">{installDraft.error}</p> : null}
-            {installDraft.result ? <p className="empty-state">{installDraft.result}</p> : null}
-          </form>
-        </div>
-      </section>
+      <PluginInstallForm
+        draft={installDraft}
+        onInstall={installPlugin}
+        onPermissionPreview={previewInstallPluginPermissions}
+        permissionPreviewDraft={installPermissionPreview}
+        setDraft={setInstallDraft}
+      />
 
       <section className="section" data-plugin-manager-section="registry">
         <div className="section-header">
@@ -1475,10 +1403,6 @@ function emptyActionDraft(action: PluginActionDescriptor): ActionDraft {
 
 function emptyBackgroundJobDraft(job: PluginBackgroundJobDescriptor): PluginBackgroundJobDraft {
   return { values: pluginActionInputDefaults(job), busy: false, error: "", result: "" };
-}
-
-function emptyInstallDraft(): PluginInstallDraft {
-  return { downloadURL: "", checksumSHA256: "", replace: false, enable: false, busy: false, error: "", result: "" };
 }
 
 function pluginSourceLabel(source: string) {

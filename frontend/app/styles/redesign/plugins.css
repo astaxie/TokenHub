@@ -138,6 +138,24 @@
   align-items: end;
 }
 
+.plugins-view [data-plugin-manager-section="install"] .plugin-install-source {
+  min-width: 220px;
+  align-self: end;
+}
+
+.plugins-view [data-plugin-manager-section="install"] .plugin-upload-field {
+  min-width: min(100%, 280px);
+}
+
+.plugins-view [data-plugin-manager-section="install"] input[type="file"] {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
 .plugins-view [data-plugin-manager-section="actions"] .plugin-action-runner,
 .plugins-view [data-plugin-manager-section="background-jobs"] .plugin-action-runner {
   min-width: 220px;

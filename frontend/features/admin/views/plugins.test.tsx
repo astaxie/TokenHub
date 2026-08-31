@@ -41,7 +41,7 @@ describe("PluginsView", () => {
     expect(screen.getByText("已禁用")).toBeInTheDocument();
     expect(screen.getByText("许可证 Apache-2.0")).toBeInTheDocument();
     expect(screen.getByText("SHA-256 0123456789ab...cdef")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /市场/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi");
+    expect(screen.getByRole("link", { name: "市场" })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi");
     expect(screen.getByRole("link", { name: /仓库/ })).toHaveAttribute("href", "https://github.com/tokenhub/kimi-provider");
     expect(screen.getByRole("link", { name: /下载/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi/1.2.3.zip");
   });
@@ -148,6 +148,38 @@ describe("PluginsView", () => {
       enable: true,
     });
     await waitFor(() => expect(screen.getByText("tokenhub.marketplace.kimi · 插件安装完成，重启后生效")).toBeInTheDocument());
+  });
+
+  it("uploads a local zip plugin package through the admin endpoint", async () => {
+    const data = emptyData();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { plugin: { id: "tokenhub.local.upload" }, restart_required: true },
+    }), { status: 201, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "上传 ZIP" }));
+    const file = new File(["plugin archive"], "tokenhub-local.zip", { type: "application/zip" });
+    fireEvent.change(screen.getByLabelText("插件 ZIP 包"), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("SHA-256 校验"), {
+      target: { value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+    });
+    fireEvent.click(screen.getByLabelText("安装后启用"));
+    const installButtons = screen.getAllByRole("button", { name: "安装插件" });
+    fireEvent.submit(installButtons[installButtons.length - 1].closest("form") as HTMLFormElement);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/install");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeInstanceOf(FormData);
+    const form = init.body as FormData;
+    expect(form.get("package")).toBe(file);
+    expect(form.get("checksum_sha256")).toBe("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    expect(form.get("replace")).toBe("false");
+    expect(form.get("enable")).toBe("true");
+    expect(new Headers(init.headers).has("content-type")).toBe(false);
+    await waitFor(() => expect(screen.getByText("tokenhub.local.upload · 插件安装完成，重启后生效")).toBeInTheDocument());
   });
 
   it("updates an installed plugin package through the admin endpoint", async () => {
@@ -446,7 +478,7 @@ describe("PluginsView", () => {
 
     const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
-    expect(screen.getByRole("link", { name: "插件扩展" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
+    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
     expect(container.querySelector('[data-plugin-manager-section="install"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="registry"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="marketplace"]')).not.toBeInTheDocument();
@@ -478,7 +510,7 @@ describe("PluginsView", () => {
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
-    expect(screen.getByRole("link", { name: "插件扩展" })).toHaveAttribute("href", "https://plugins.example/custom");
+    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.example/custom");
     expect(pluginMarketplaceWebsiteURL(emptyData())).toBe("https://plugins.betokenhub.com");
     data.resources.settings[0].fields = { plugin_marketplace_url: "javascript:alert(1)" };
     expect(pluginMarketplaceWebsiteURL(data)).toBe("https://plugins.betokenhub.com");

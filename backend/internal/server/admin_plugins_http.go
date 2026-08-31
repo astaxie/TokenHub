@@ -113,6 +113,16 @@ type adminPluginInstallTrustPayload struct {
 	SignaturePublicKey string                       `json:"signature_public_key"`
 }
 
+type adminPluginInstallPayload struct {
+	DownloadURL    string            `json:"download_url"`
+	ChecksumSHA256 string            `json:"checksum_sha256"`
+	Replace        bool              `json:"replace"`
+	Enable         bool              `json:"enable"`
+	Reason         string            `json:"reason"`
+	Status         pluginmeta.Status `json:"status"`
+	adminPluginInstallTrustPayload
+}
+
 func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, error) {
 	installed := map[string]pluginmeta.Package{}
 	if s != nil && strings.TrimSpace(s.config.PluginDir) != "" {
@@ -340,28 +350,27 @@ func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Req
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
-	var payload struct {
-		DownloadURL    string            `json:"download_url"`
-		ChecksumSHA256 string            `json:"checksum_sha256"`
-		Replace        bool              `json:"replace"`
-		Enable         bool              `json:"enable"`
-		Reason         string            `json:"reason"`
-		Status         pluginmeta.Status `json:"status"`
-		adminPluginInstallTrustPayload
-	}
-	if err := s.decodeJSON(w, r, &payload); err != nil {
+	payload, archive, err := s.readAdminPluginInstallRequest(w, r)
+	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	downloadURL := strings.TrimSpace(payload.DownloadURL)
-	if err := validatePluginInstallDownloadURL(downloadURL); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_download_url", err.Error()))
-		return
-	}
 	checksum := strings.ToLower(strings.TrimSpace(payload.ChecksumSHA256))
-	if checksum == "" {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "plugin_checksum_required", "Plugin package checksum_sha256 is required"))
-		return
+	if archive == nil {
+		if err := validatePluginInstallDownloadURL(downloadURL); err != nil {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_download_url", err.Error()))
+			return
+		}
+		if checksum == "" {
+			writeError(w, r, NewHTTPError(http.StatusBadRequest, "plugin_checksum_required", "Plugin package checksum_sha256 is required"))
+			return
+		}
+		archive, err = s.downloadPluginInstallArchive(r, downloadURL)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
 	}
 	state := pluginmeta.PackageState{
 		Status:          pluginmeta.StatusDisabled,
@@ -374,11 +383,6 @@ func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Req
 	}
 	if strings.TrimSpace(string(payload.Status)) != "" {
 		state.Status = payload.Status
-	}
-	archive, err := s.downloadPluginInstallArchive(r, downloadURL)
-	if err != nil {
-		writeError(w, r, err)
-		return
 	}
 	options := pluginmeta.InstallOptions{
 		ChecksumSHA256: checksum,
@@ -403,6 +407,71 @@ func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Req
 		RestartRequired: true,
 		Replaced:        payload.Replace,
 	}})
+}
+
+func (s *Server) readAdminPluginInstallRequest(w http.ResponseWriter, r *http.Request) (adminPluginInstallPayload, []byte, error) {
+	if !strings.HasPrefix(strings.ToLower(r.Header.Get("content-type")), "multipart/form-data") {
+		var payload adminPluginInstallPayload
+		if err := s.decodeJSON(w, r, &payload); err != nil {
+			return adminPluginInstallPayload{}, nil, err
+		}
+		return payload, nil, nil
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, int64(maxAdminPluginInstallArchiveBytes)+(1<<20))
+	if err := r.ParseMultipartForm(int64(maxAdminPluginInstallArchiveBytes)); err != nil {
+		return adminPluginInstallPayload{}, nil, NewHTTPError(http.StatusBadRequest, "invalid_plugin_upload", "Plugin package upload is invalid")
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	file, err := firstAdminPluginUploadFile(r, "package", "plugin_package", "file")
+	if err != nil {
+		return adminPluginInstallPayload{}, nil, err
+	}
+	defer file.Close()
+	archive, err := io.ReadAll(io.LimitReader(file, int64(maxAdminPluginInstallArchiveBytes)+1))
+	if err != nil {
+		return adminPluginInstallPayload{}, nil, NewHTTPError(http.StatusBadRequest, "invalid_plugin_upload", "Plugin package upload could not be read")
+	}
+	if len(archive) > maxAdminPluginInstallArchiveBytes {
+		return adminPluginInstallPayload{}, nil, NewHTTPError(http.StatusBadRequest, "plugin_upload_too_large", "Plugin package is too large")
+	}
+	payload := adminPluginInstallPayload{
+		ChecksumSHA256: strings.TrimSpace(r.FormValue("checksum_sha256")),
+		Replace:        adminPluginFormBool(r.FormValue("replace")),
+		Enable:         adminPluginFormBool(r.FormValue("enable")),
+		Reason:         strings.TrimSpace(r.FormValue("reason")),
+		Status:         pluginmeta.Status(strings.TrimSpace(r.FormValue("status"))),
+		adminPluginInstallTrustPayload: adminPluginInstallTrustPayload{
+			TrustPolicy:        pluginmeta.PluginTrustPolicy(strings.TrimSpace(r.FormValue("trust_policy"))),
+			SignatureURL:       strings.TrimSpace(r.FormValue("signature_url")),
+			SignatureKeyID:     strings.TrimSpace(r.FormValue("signature_key_id")),
+			SignaturePublicKey: strings.TrimSpace(r.FormValue("signature_public_key")),
+		},
+	}
+	return payload, archive, nil
+}
+
+func firstAdminPluginUploadFile(r *http.Request, names ...string) (io.ReadCloser, error) {
+	for _, name := range names {
+		file, _, err := r.FormFile(name)
+		if err == nil {
+			return file, nil
+		}
+		if !errors.Is(err, http.ErrMissingFile) {
+			return nil, NewHTTPError(http.StatusBadRequest, "invalid_plugin_upload", "Plugin package upload is invalid")
+		}
+	}
+	return nil, NewHTTPError(http.StatusBadRequest, "plugin_package_required", "Plugin package file is required")
+}
+
+func adminPluginFormBool(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "t", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Request) {

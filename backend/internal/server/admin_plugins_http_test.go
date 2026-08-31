@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -65,6 +66,50 @@ func TestAdminPluginInstallPostDownloadsAndInstallsPackage(t *testing.T) {
 	if state.Status != pluginmeta.StatusDisabled || state.Reason != "installed from marketplace" ||
 		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleInstalled {
 		t.Fatalf("installed package state = %+v", state)
+	}
+}
+
+func TestAdminPluginInstallPostUploadsAndInstallsPackage(t *testing.T) {
+	pluginDir := t.TempDir()
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": adminPluginManifest("tokenhub.uploaded.kimi", "Uploaded Kimi", "1.0.0"),
+	})
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	file, err := writer.CreateFormFile("package", "uploaded-kimi.zip")
+	if err != nil {
+		t.Fatalf("create upload file field: %v", err)
+	}
+	if _, err := file.Write(archive); err != nil {
+		t.Fatalf("write upload file field: %v", err)
+	}
+	if err := writer.WriteField("checksum_sha256", adminSHA256Hex(archive)); err != nil {
+		t.Fatalf("write checksum field: %v", err)
+	}
+	if err := writer.WriteField("enable", "true"); err != nil {
+		t.Fatalf("write enable field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/admin/plugins/install", &requestBody)
+	request.Header.Set("authorization", "Bearer dev_admin_token")
+	request.Header.Set("content-type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("POST uploaded plugin install: expected 201, got %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Data adminPluginInstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode upload install response: %v", err)
+	}
+	if body.Data.Plugin.ID != "tokenhub.uploaded.kimi" || body.Data.Plugin.Status != pluginmeta.StatusEnabled || !body.Data.RestartRequired {
+		t.Fatalf("upload install response = %+v, want enabled uploaded plugin requiring restart", body.Data)
 	}
 }
 
