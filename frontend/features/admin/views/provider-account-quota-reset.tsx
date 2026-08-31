@@ -55,18 +55,18 @@ export function ProviderAccountQuotaReset({
   resource: ProviderResource;
   onRefreshQuota: () => Promise<boolean>;
 }) {
+  const resetCreditsAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset_credits.read"), [pluginActions, providerType, resource.resource_type]);
+  const resetAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset"), [pluginActions, providerType, resource.resource_type]);
   const [details, setDetails] = useState<ProviderResetCredits | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
   const [detailsError, setDetailsError] = useState("");
   const [selectedCreditID, setSelectedCreditID] = useState("");
-  const [confirmation, setConfirmation] = useState<ResetConfirmation | null>(() => readStoredResetConfirmation(resource.id));
+  const [confirmation, setConfirmation] = useState<ResetConfirmation | null>(() => readStoredResetConfirmation(resource.id, resetAction));
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetNotice, setResetNotice] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const quotaWasBusy = useRef(quotaBusy);
-  const resetCreditsAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset_credits.read"), [pluginActions, providerType, resource.resource_type]);
-  const resetAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset"), [pluginActions, providerType, resource.resource_type]);
 
   const loadResetCredits = useCallback(async () => {
     if (!resetCreditsAction) return false;
@@ -144,7 +144,7 @@ export function ProviderAccountQuotaReset({
 
   function closeConfirmation() {
     if (resetBusy || confirmation?.attempted) return;
-    clearStoredResetConfirmation(resource.id);
+    clearStoredResetConfirmation(resource.id, resetAction);
     setConfirmation(null);
     setResetError("");
   }
@@ -172,12 +172,12 @@ export function ProviderAccountQuotaReset({
           danger_confirmation: quotaResetDangerConfirmation(resetAction),
         }),
       });
-      if (!resp.ok) throw await readResetError(resp);
+      if (!resp.ok) throw await readResetError(resp, resetAction);
       const result = unwrapPluginActionData<{ code?: string; windows_reset?: number }>(await resp.json().catch(() => ({})));
       if (result.code !== "reset" && result.code !== "already_redeemed") {
         throw new Error(tx("重置请求返回未知结果。请保留当前弹窗并直接重试。"));
       }
-      clearStoredResetConfirmation(resource.id);
+      clearStoredResetConfirmation(resource.id, resetAction);
       const completed = result.code === "already_redeemed" ? tx("该重置请求此前已完成，正在刷新额度。") : tx("重置请求已完成，正在刷新额度。");
       const windowsReset = typeof result.windows_reset === "number" && Number.isFinite(result.windows_reset) ? result.windows_reset : null;
       setSelectedCreditID("");
@@ -192,11 +192,11 @@ export function ProviderAccountQuotaReset({
       setResetError("");
     } catch (error) {
       if (isAuthExpiredError(error)) {
-        clearStoredResetConfirmation(resource.id);
+        clearStoredResetConfirmation(resource.id, resetAction);
         return;
       }
-      if (error instanceof ResetRequestError && resetErrorIsFinal(error.code)) {
-        clearStoredResetConfirmation(resource.id);
+      if (error instanceof ResetRequestError && resetErrorIsFinal(error.code, resetAction)) {
+        clearStoredResetConfirmation(resource.id, resetAction);
         setConfirmation((current) => current ? { ...current, attempted: false } : current);
       }
       setResetError(error instanceof Error ? error.message : tx("重置用量窗口失败"));
@@ -346,18 +346,18 @@ function quotaResetDangerConfirmation(action: PluginActionDescriptor) {
   return action.metadata?.danger_confirmation?.trim() || `provider-quota-reset:${action.plugin_id}:${action.action_id}`;
 }
 
-async function readResetError(resp: Response) {
+async function readResetError(resp: Response, action: PluginActionDescriptor) {
   const payload = await resp.clone().json().catch(() => null) as { code?: string; error?: { code?: string } } | null;
   const message = await readAdminError(resp, tx("重置用量窗口"));
   const code = payload?.error?.code || payload?.code;
-  const rendered = code === "openai_quota_reset_outcome_unknown"
+  const rendered = metadataList(action.metadata?.["quota_reset.unknown_outcome_codes"]).includes(code || "")
     ? `${message} ${tx("上游结果未知。请保留当前弹窗并直接重试，系统会复用同一个幂等键和重置次数。")}`
     : message;
   return new ResetRequestError(rendered, code || "unknown");
 }
 
-function resetErrorIsFinal(code: string) {
-  return new Set([
+function resetErrorIsFinal(code: string, action: PluginActionDescriptor) {
+  const genericFinalCodes = new Set([
     "quota_reset_available_count_changed",
     "quota_reset_credit_unavailable",
     "quota_reset_ineligible",
@@ -367,16 +367,18 @@ function resetErrorIsFinal(code: string) {
     "quota_reset_operation_mismatch",
     "provider_resource_inactive",
     "provider_resource_quota_reset_unsupported",
-    "openai_quota_reset_forbidden",
-  ]).has(code);
+  ]);
+  return genericFinalCodes.has(code) || metadataList(action.metadata?.["quota_reset.final_error_codes"]).includes(code);
 }
 
 function resetConfirmationStorageKey(resourceID: string) {
   return `tokenhub.provider-quota-reset.${resourceID}`;
 }
 
-function legacyResetConfirmationStorageKey(resourceID: string) {
-  return `tokenhub.codex-quota-reset.${resourceID}`;
+function legacyResetConfirmationStorageKeys(resourceID: string, action: PluginActionDescriptor | undefined) {
+  return metadataList(action?.metadata?.["quota_reset.legacy_storage_key_prefixes"])
+    .filter((prefix) => storageKeyPrefixIsSafe(prefix))
+    .map((prefix) => `${prefix}${resourceID}`);
 }
 
 function storeResetConfirmation(resourceID: string, confirmation: ResetConfirmation) {
@@ -389,20 +391,21 @@ function storeResetConfirmation(resourceID: string, confirmation: ResetConfirmat
   }
 }
 
-function clearStoredResetConfirmation(resourceID: string) {
+function clearStoredResetConfirmation(resourceID: string, action: PluginActionDescriptor | undefined) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(resetConfirmationStorageKey(resourceID));
-    window.localStorage.removeItem(legacyResetConfirmationStorageKey(resourceID));
+    for (const key of resetConfirmationStorageKeys(resourceID, action)) {
+      window.localStorage.removeItem(key);
+    }
   } catch {
     // The server-side operation record remains the source of truth.
   }
 }
 
-function readStoredResetConfirmation(resourceID: string): ResetConfirmation | null {
+function readStoredResetConfirmation(resourceID: string, action: PluginActionDescriptor | undefined): ResetConfirmation | null {
   if (typeof window === "undefined") return null;
   try {
-    for (const key of [resetConfirmationStorageKey(resourceID), legacyResetConfirmationStorageKey(resourceID)]) {
+    for (const key of resetConfirmationStorageKeys(resourceID, action)) {
       const value = JSON.parse(window.localStorage.getItem(key) || "null") as Partial<ResetConfirmation> | null;
       if (!value || typeof value.availableCount !== "number" || !Number.isFinite(value.availableCount) || typeof value.creditID !== "string" || !value.creditID || typeof value.idempotencyKey !== "string" || !value.idempotencyKey) continue;
       return { availableCount: value.availableCount, creditID: value.creditID, expiresAt: value.expiresAt, idempotencyKey: value.idempotencyKey, attempted: Boolean(value.attempted) };
@@ -411,6 +414,21 @@ function readStoredResetConfirmation(resourceID: string): ResetConfirmation | nu
   } catch {
     return null;
   }
+}
+
+function resetConfirmationStorageKeys(resourceID: string, action: PluginActionDescriptor | undefined) {
+  return [resetConfirmationStorageKey(resourceID), ...legacyResetConfirmationStorageKeys(resourceID, action)];
+}
+
+function metadataList(value: string | undefined) {
+  return (value || "")
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function storageKeyPrefixIsSafe(prefix: string) {
+  return prefix.startsWith("tokenhub.") && prefix.endsWith(".") && prefix.length <= 128;
 }
 
 function validPendingOperation(value: ProviderResetCredits["pending_operation"]): value is NonNullable<ProviderResetCredits["pending_operation"]> {

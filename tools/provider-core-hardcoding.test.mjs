@@ -26,6 +26,8 @@ describe("provider-specific core hardcoding gate", () => {
       const mode = anthropicAuthTypeBearer;
       const normalized = normalizeOpenAICompatibleBaseURL("dmxapi", "https://www.dmxapi.cn");
       const oauth = "/api/admin/provider-account-oauth/openai/generate-auth-url";
+      const legacyQuotaReset = "tokenhub.codex-quota-reset.";
+      const openAIQuotaReset = "openai_quota_reset_forbidden";
     `, "backend/internal/server/gateway_http.go");
 
     assert.deepEqual(violations.map((violation) => violation.rule), [
@@ -37,6 +39,8 @@ describe("provider-specific core hardcoding gate", () => {
       "provider-specific catalog URL literal",
       "provider-specific catalog URL literal",
       "provider-specific frontend OAuth endpoint",
+      "provider-specific frontend quota reset compatibility",
+      "provider-specific frontend quota reset compatibility",
     ]);
   });
 
@@ -235,6 +239,16 @@ describe("provider-specific core hardcoding gate", () => {
       "OpenAIQuotaWindow",
     ];
     assert.deepEqual(forbidden.filter((item) => sources.some((source) => source.includes(item))), []);
+  });
+
+  it("keeps provider quota reset UI compatibility metadata-driven", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/views/provider-account-quota-reset.tsx"), "utf8");
+    const forbidden = [
+      "tokenhub.codex-quota-reset.",
+      "openai_quota_reset_outcome_unknown",
+      "openai_quota_reset_forbidden",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
 
   it("keeps cache locality free of Codex-compatible session hint parsing", () => {

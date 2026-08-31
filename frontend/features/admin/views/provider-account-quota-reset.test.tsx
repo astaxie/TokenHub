@@ -45,7 +45,13 @@ const pluginActions: PluginActionDescriptor[] = [
     kind: "mutate",
     capability: "quota.reset",
     subject: "openai_codex",
-    metadata: { danger_confirmation: "plugin-danger-confirmation", provider_resource_type: "openai_subscription" },
+    metadata: {
+      danger_confirmation: "plugin-danger-confirmation",
+      provider_resource_type: "openai_subscription",
+      "quota_reset.legacy_storage_key_prefixes": "tokenhub.codex-quota-reset.",
+      "quota_reset.final_error_codes": "openai_quota_reset_forbidden",
+      "quota_reset.unknown_outcome_codes": "openai_quota_reset_outcome_unknown",
+    },
   },
 ];
 
@@ -189,5 +195,64 @@ describe("ProviderAccountQuotaReset", () => {
     expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body)).danger_confirmation).toBe(
       "provider-quota-reset:tokenhub.provider.openai-codex:openai_codex.quota.reset",
     );
+  });
+
+  it("recovers and clears legacy reset state only when declared by plugin metadata", async () => {
+    const user = userEvent.setup();
+    const stored: Record<string, string> = {
+      "tokenhub.codex-quota-reset.rsrc_codex": JSON.stringify({
+        availableCount: 1,
+        creditID: "credit-legacy",
+        expiresAt: "2099-01-01T00:00:00Z",
+        idempotencyKey: "legacy-operation-id",
+        attempted: false,
+      }),
+    };
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => stored[key] ?? null,
+        setItem: (key: string, value: string) => {
+          stored[key] = value;
+        },
+        removeItem: (key: string) => {
+          delete stored[key];
+        },
+      },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: {
+          available_count: 1,
+          credits: [{ id: "credit-legacy", status: "available", expires_at: "2099-01-01T00:00:00Z" }],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { code: "already_redeemed", windows_reset: 1 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { available_count: 0, credits: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderAccountQuotaReset
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        pluginActions={pluginActions}
+        providerType="openai_codex"
+        quotaBusy={false}
+        resource={resource}
+        onRefreshQuota={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "确认重置用量窗口" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body)).idempotency_key).toBe("legacy-operation-id");
+    expect(stored["tokenhub.codex-quota-reset.rsrc_codex"]).toBeUndefined();
+    expect(stored["tokenhub.provider-quota-reset.rsrc_codex"]).toBeUndefined();
   });
 });

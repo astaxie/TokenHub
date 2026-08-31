@@ -24,6 +24,7 @@ export const GENERIC_CORE_SURFACES = [
   "frontend/features/admin/domain/provider-headers.ts",
   "frontend/features/admin/resources/provider-model-config.tsx",
   "frontend/features/admin/views/provider-editor.tsx",
+  "frontend/features/admin/views/provider-account-quota-reset.tsx",
   "frontend/features/admin/views/provider-plugin-form-sections.tsx",
   "frontend/features/admin/views/provider-plugin-panels.tsx",
 ];
@@ -52,6 +53,10 @@ export const PROVIDER_CORE_PATTERNS = [
   {
     name: "provider-specific frontend OAuth endpoint",
     pattern: /(["'`])\/api\/admin\/provider-account-oauth\/openai\/(?:generate-auth-url|exchange-code)\1/g,
+  },
+  {
+    name: "provider-specific frontend quota reset compatibility",
+    pattern: /(["'`])(?:tokenhub\.codex-quota-reset\.|openai_quota_reset_[^"'`]*)\1/g,
   },
 ];
 

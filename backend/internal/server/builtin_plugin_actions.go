@@ -188,8 +188,11 @@ func registerBuiltinPluginActions(server *Server) {
 		Capability: "quota.reset",
 		Subject:    ProviderOpenAICodex,
 		Metadata: map[string]string{
-			"provider_resource_type": ProviderResourceOpenAISubscription,
-			"danger_confirmation":    openAIAccountQuotaResetDangerValue,
+			"provider_resource_type":                  ProviderResourceOpenAISubscription,
+			"danger_confirmation":                     openAIAccountQuotaResetDangerValue,
+			"quota_reset.legacy_storage_key_prefixes": "tokenhub.codex-quota-reset.",
+			"quota_reset.final_error_codes":           "openai_quota_reset_forbidden",
+			"quota_reset.unknown_outcome_codes":       "openai_quota_reset_outcome_unknown",
 		},
 		InputSchema: map[string]any{
 			"type":     "object",
