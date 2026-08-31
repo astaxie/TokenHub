@@ -7,7 +7,7 @@ import { identityProviderDefaultGrantLabel, identityProviderIconLabel, identityP
 import { tx } from "../i18n/runtime";
 import { defaultFormValues } from "../resources/payloads";
 import { apiKeyConfig } from "../resources/project-key-config";
-import { identityProviderTemplateByKey, identityProviderTemplateHelp, identityProviderTemplates, inferIdentityProviderTemplateKey, loginIdentityProviderIconConfig, updateIdentityProviderFormValue } from "../shared/auth";
+import { identityProviderTemplateByKey, identityProviderTemplateHelp, identityProviderTemplatesFromData, inferIdentityProviderTemplateKey, loginIdentityProviderIconConfig, updateIdentityProviderFormValue } from "../shared/auth";
 import { FieldInput } from "../shared/ui";
 import { DetailField } from "./audit";
 
@@ -34,8 +34,9 @@ export function IdentityProviderEditModal({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [templateConfirmed, setTemplateConfirmed] = useState(!creating);
-  const templateKey = inferIdentityProviderTemplateKey(values);
-  const template = identityProviderTemplateByKey(templateKey);
+  const identityProviderTemplates = useMemo(() => identityProviderTemplatesFromData(data), [data]);
+  const templateKey = inferIdentityProviderTemplateKey(values, identityProviderTemplates);
+  const template = identityProviderTemplateByKey(templateKey, identityProviderTemplates);
   const platformClientSecretRequired = template.key === "dingtalk" || template.key === "feishu" || template.key === "wecom";
   const clientIDLabel = template.key === "dingtalk" ? "App Key" : template.key === "feishu" ? "App ID" : template.key === "wecom" ? "Corp ID" : "Client ID";
   const clientSecretLabel = template.key === "wecom" ? "Corp Secret" : template.key === "dingtalk" || template.key === "feishu" ? "App Secret" : "Client Secret";
@@ -75,7 +76,7 @@ export function IdentityProviderEditModal({
   }
 
   function update(key: string, value: string) {
-    setValues((prev) => updateIdentityProviderFormValue(prev, key, value));
+    setValues((prev) => updateIdentityProviderFormValue(prev, key, value, identityProviderTemplates));
   }
 
   function fieldConfig(key: string, override?: Partial<FieldConfig>) {

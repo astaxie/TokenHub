@@ -13,7 +13,7 @@ import { apiKeyStatusAction, APIKeyDownloadMenu, APIKeyStatusSwitch } from "../r
 import { identityProviderConfig, roleConfig, systemSettingConfig } from "../resources/settings-config";
 import { usePagination } from "../shared/pagination";
 import { FieldInput, StatusPill } from "../shared/ui";
-import { identityProviderInitialFormValues } from "../shared/auth";
+import { identityProviderInitialFormValues, identityProviderTemplatesFromData } from "../shared/auth";
 import { CrudView } from "./crud-projects";
 import { IdentityProviderEditModal } from "./modals";
 import { ModelCreateModal } from "./model-create-modal";
@@ -489,7 +489,7 @@ export function EditModal<T>({
     ...(state.initialValues ?? {}),
   };
   const [values, setValues] = useState<Record<string, string>>(
-    state.config.view === "identity-providers" ? identityProviderInitialFormValues(initial, !state.item) : initial,
+    state.config.view === "identity-providers" ? identityProviderInitialFormValues(initial, !state.item, identityProviderTemplatesFromData(data)) : initial,
   );
   const [proxyTestProviderID, setProxyTestProviderID] = useState(data.providers.find((provider) => provider.status === "active")?.id ?? data.providers[0]?.id ?? "");
   const [proxyTestState, setProxyTestState] = useState<{ status: "idle" | "testing" | "success" | "error"; message?: string }>({ status: "idle" });

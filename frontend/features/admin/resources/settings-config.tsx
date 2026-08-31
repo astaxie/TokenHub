@@ -11,7 +11,7 @@ import { apiKeyConfig, projectConfig, projectMemberConfig } from "./project-key-
 import { modelConfig, providerConfig, routeConfig } from "./provider-model-config";
 import { routingPolicyConfig } from "./routing-policy-config";
 import { StatusPill } from "../shared/ui";
-import { identityProviderIconOptions, identityProviderInitialFormValues, identityProviderTemplateOptions } from "../shared/auth";
+import { identityProviderIconOptions, identityProviderInitialFormValues, identityProviderTemplateOptionsFromData } from "../shared/auth";
 
 let cachedResourceConfigs: Partial<Record<ViewKey, ResourceConfig<any>>> | undefined;
 
@@ -214,7 +214,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
 
 export function identityProviderConfig(): ResourceConfig<AdminResource> {
   const fields: FieldConfig[] = [
-    { key: "provider_template", label: "身份源模板", type: "select", options: identityProviderTemplateOptions },
+    { key: "provider_template", label: "身份源模板", type: "select", optionsFromData: identityProviderTemplateOptionsFromData },
     { key: "provider_type", label: "协议", type: "select", options: ["oidc", "oauth2", "saml", "ldap"], required: true },
     { key: "icon_key", label: "登录图标", type: "select", options: identityProviderIconOptions, help: "auto 会根据名称、Issuer URL 和类型自动选择登录页图标。" },
     { key: "login_label", label: "登录按钮名称", placeholder: "Google", help: "留空时按图标、Issuer 或身份源名称自动推断。" },
