@@ -1,13 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { adminConsoleSIMSelectionPreference, adminConsoleShellState, adminConsoleSIMSelectionStorageKey, readAdminConsoleSIMSelectionPreference, saveAdminConsoleSIMSelectionPreference } from "./admin-console";
 import { Sidebar } from "./navigation-ui";
 
 describe("Sidebar", () => {
-  it("renders plugin nav section contributions for admins", async () => {
-    const user = userEvent.setup();
+  it("keeps plugin nav section contributions out of the sidebar", () => {
     const onSelectPluginPage = vi.fn();
     const data = emptyData();
     data.pluginUI = [{
@@ -34,9 +32,10 @@ describe("Sidebar", () => {
       />,
     );
 
-    expect(screen.getByText("插件扩展")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Plugin Ecosystem" }));
-    expect(onSelectPluginPage).toHaveBeenCalledWith("tokenhub.admin.plugin-ecosystem:ecosystem-page");
+    expect(screen.getByText("插件管理")).toBeInTheDocument();
+    expect(screen.queryByText("插件扩展")).not.toBeInTheDocument();
+    expect(screen.queryByText("Plugin Ecosystem")).not.toBeInTheDocument();
+    expect(onSelectPluginPage).not.toHaveBeenCalled();
   });
 
   it("hides plugin nav section contributions from non-admin users", () => {

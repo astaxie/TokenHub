@@ -1,8 +1,7 @@
-import { AlertCircle, Check, ChevronDown, ChevronRight, LogOut, Moon, PanelLeftClose, PanelLeftOpen, Puzzle, Search, Sun, X } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronRight, LogOut, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { appRole, canAccessView, filterNavItemByAccess, isNavItemActive, isNavParentItem, navGroupsForUser, normalizeSearchText, readRecentViews, roleScopeDescription, standaloneViewMeta, topQuickActionsForUser, topSearchItemsForUser, topSearchResults } from "../core/navigation";
+import { appRole, filterNavItemByAccess, isNavItemActive, isNavParentItem, navGroupsForUser, normalizeSearchText, readRecentViews, roleScopeDescription, standaloneViewMeta, topQuickActionsForUser, topSearchItemsForUser, topSearchResults } from "../core/navigation";
 import { type AdminUser, type AppData, type NavItem, type ViewKey } from "../core/types";
-import { adminUIPluginPages } from "../domain/admin-ui-registry";
 import { formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
 import { roleLabel, userInitial } from "../domain/labels";
 import { LanguageSelect } from "../i18n/language-switcher";
@@ -14,9 +13,7 @@ export function Sidebar({
   onSelect,
   user,
   data,
-  activePluginPageKey,
   onLogout,
-  onSelectPluginPage,
   collapsed,
   onToggleCollapse,
   openGroups,
@@ -37,9 +34,7 @@ export function Sidebar({
   const visibleGroups = navGroupsForUser(user)
     .map((group) => ({ ...group, items: group.items.map((item) => filterNavItemByAccess(item, user)).filter((item): item is NavItem => Boolean(item)) }))
     .filter((group) => group.items.length > 0);
-  const pluginPages = canAccessView(user, "plugin-pages") ? adminUIPluginPages(data.pluginUI) : [];
-  const selectedPluginPageKey = activePluginPageKey || pluginPages[0]?.key || "";
-  const pluginGroupOpen = collapsed || openGroups["插件扩展"] !== false;
+  void data;
   return (
     <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
       <div className="brand">
@@ -144,35 +139,6 @@ export function Sidebar({
             </div>
           );
         })}
-        {pluginPages.length > 0 ? (
-          <div className={pluginGroupOpen ? "nav-group" : "nav-group closed"} key="plugin-pages">
-            <button
-              aria-expanded={pluginGroupOpen}
-              className={pluginGroupOpen ? "nav-title" : "nav-title closed"}
-              onClick={() => onToggleGroup("插件扩展")}
-              type="button"
-            >
-              <span>{tx("插件扩展")}</span>
-              <ChevronDown className="nav-chevron" size={14} />
-            </button>
-            {pluginGroupOpen ? (
-              <div className="nav">
-                {pluginPages.map((page) => (
-                  <button
-                    className={activeView === "plugin-pages" && selectedPluginPageKey === page.key ? "nav-item active" : "nav-item"}
-                    key={page.key}
-                    onClick={() => onSelectPluginPage(page.key)}
-                    title={collapsed ? page.title : undefined}
-                    type="button"
-                  >
-                    <Puzzle size={17} />
-                    <span>{page.title}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </div>
       <div className="sidebar-account">
         <div className="account-avatar">{userInitial(user)}</div>

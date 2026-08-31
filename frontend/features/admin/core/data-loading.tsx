@@ -175,6 +175,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.pluginActions = true;
       plan.pluginBackgroundJobs = true;
       plan.overview = view === "plugin-pages";
+      addResourceDependency(plan, "settings");
       break;
     case "models":
       plan.overview = true;

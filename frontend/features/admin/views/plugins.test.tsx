@@ -4,10 +4,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type PluginCapabilityDescriptor } from "../core/types";
 import { emptyData } from "../domain/catalog";
+import { pluginMarketplaceWebsiteURL } from "../domain/plugin-management";
 import { PluginsView } from "./plugins";
 
 describe("PluginsView", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -44,6 +46,29 @@ describe("PluginsView", () => {
     expect(screen.getByRole("link", { name: /下载/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi/1.2.3.zip");
   });
 
+  it("renders repeated capability tags without duplicate key warnings", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.catalog",
+      name: "Provider Catalog",
+      version: "built-in",
+      source: "built_in",
+      status: "enabled",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [
+        { kind: "provider_catalog", name: "model_category", value: "{\"key\":\"chat\"}" },
+        { kind: "provider_catalog", name: "model_category", value: "{\"key\":\"embedding\"}" },
+      ],
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(screen.getAllByText("model_category")).toHaveLength(2);
+    expect(consoleError.mock.calls.some((call) => String(call[0]).includes("Encountered two children with the same key"))).toBe(false);
+  });
+
   it("renders gateway hook subjects", () => {
     const data = emptyData();
     data.pluginChain.hooks = [{
@@ -60,6 +85,7 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "链路注入" }));
 
     expect(screen.getByText("适用对象")).toBeInTheDocument();
     expect(screen.getByText("kimi_subscription")).toBeInTheDocument();
@@ -214,6 +240,7 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "插件市场" }));
     const installButtons = screen.getAllByRole("button", { name: "安装插件" });
     fireEvent.click(installButtons[installButtons.length - 1]);
 
@@ -253,6 +280,7 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "动作任务" }));
 
     expect(screen.getByText("后台任务清单")).toBeInTheDocument();
     expect(screen.getAllByText("quota.refresh")).toHaveLength(2);
@@ -294,6 +322,7 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "动作任务" }));
     fireEvent.change(screen.getByLabelText(/resource_id/), { target: { value: "rsrc_1" } });
     fireEvent.click(screen.getByRole("button", { name: "运行任务" }));
 
@@ -334,6 +363,7 @@ describe("PluginsView", () => {
     ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "界面与 SIM" }));
 
     expect(screen.getByText("SIM 与主题贡献")).toBeInTheDocument();
     expect(screen.getAllByText("Enterprise Theme").length).toBeGreaterThan(0);
@@ -366,6 +396,7 @@ describe("PluginsView", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("tab", { name: "界面与 SIM" }));
     fireEvent.change(screen.getByLabelText("SIM 插件"), { target: { value: "tokenhub.sim.enterprise" } });
     fireEvent.change(screen.getByLabelText("主题 Token"), { target: { value: "tokenhub.sim.enterprise:theme_tokens:enterprise-light" } });
     fireEvent.change(screen.getByLabelText("布局预设"), { target: { value: "tokenhub.sim.enterprise:shell_layout:enterprise-shell" } });
@@ -390,6 +421,7 @@ describe("PluginsView", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("tab", { name: "界面与 SIM" }));
     expect(screen.getByText("SIM 选择面板")).toBeInTheDocument();
     expect(pluginStyles()).toContain(".plugin-action-field select");
     expect(pluginStyles()).toContain(".plugin-action-runner .stacked-cell");
@@ -414,20 +446,42 @@ describe("PluginsView", () => {
 
     const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
+    expect(screen.getByRole("link", { name: "插件扩展" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
     expect(container.querySelector('[data-plugin-manager-section="install"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="registry"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="marketplace"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="chain-hooks"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="ui-contributions"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="sim-contributions"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="sim-selection"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="actions"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="background-jobs"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="marketplace"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="chain-hooks"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="ui-contributions"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="sim-contributions"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="sim-selection"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="actions"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="background-jobs"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-control="lifecycle"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-control="distribution"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-control="delete"]')).toBeInTheDocument();
+    expect(pluginStyles()).toContain(".plugins-view .metric-grid");
+    expect(pluginStyles()).toContain(".plugins-view .metric-card");
+    expect(pluginStyles()).toContain(".plugin-manager-topbar");
     expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-section="install"] .plugin-action-runner');
     expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-control="lifecycle"] .compact-button');
+  });
+
+  it("uses the configured plugin marketplace website URL", () => {
+    const data = emptyData();
+    data.resources.settings = [{
+      id: "cfg_gateway",
+      kind: "settings",
+      name: "Gateway",
+      status: "active",
+      fields: { plugin_marketplace_url: "https://plugins.example/custom" },
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(screen.getByRole("link", { name: "插件扩展" })).toHaveAttribute("href", "https://plugins.example/custom");
+    expect(pluginMarketplaceWebsiteURL(emptyData())).toBe("https://plugins.betokenhub.com");
+    data.resources.settings[0].fields = { plugin_marketplace_url: "javascript:alert(1)" };
+    expect(pluginMarketplaceWebsiteURL(data)).toBe("https://plugins.betokenhub.com");
   });
 });
 

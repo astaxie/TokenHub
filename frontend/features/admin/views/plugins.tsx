@@ -2,6 +2,7 @@ import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointer
 import { type FormEvent, type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
+import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { pluginMarketplaceDisplay, type PluginMarketplaceDisplayState } from "../domain/plugin-marketplace";
 import { type PluginPermissionDiffPreviewPayload } from "../domain/plugin-permission-diff";
@@ -68,6 +69,7 @@ export function PluginsView({
   const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
   const [pluginPermissionPreviews, setPluginPermissionPreviews] = useState<Record<string, PluginPermissionDiffPreviewDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
+  const [activeTab, setActiveTab] = useState<PluginManagerTabKey>("registry");
   const simRegistry = useMemo(() => simRegistryFromPlugins(plugins), [plugins]);
   const simSelection = useMemo(
     () => resolveSIMSelection({ plugins, preference: simSelectionPreference, themeMode: theme }),
@@ -94,6 +96,7 @@ export function PluginsView({
     item,
     display: pluginMarketplaceDisplay(item, { locale: languageLocale() }),
   }));
+  const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
@@ -475,6 +478,27 @@ export function PluginsView({
 
   return (
     <div className="plugins-view">
+      <div className="plugin-manager-topbar">
+        <div className="plugin-manager-tabs settings-tabs" role="tablist" aria-label={tx("插件管理模块")}>
+          {pluginManagerTabs.map((tab) => (
+            <button
+              aria-selected={activeTab === tab.key}
+              className={activeTab === tab.key ? "settings-tab active" : "settings-tab"}
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              role="tab"
+              type="button"
+            >
+              {tx(tab.label)}
+            </button>
+          ))}
+        </div>
+        <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
+          <ExternalLink size={14} />
+          <span>{tx("插件扩展")}</span>
+        </a>
+      </div>
+
       <div className="metric-grid">
         <PluginMetric icon={<PlugZap size={18} />} label={tx("已注册插件")} value={plugins.length} />
         <PluginMetric icon={<Boxes size={18} />} label={tx("Provider 能力")} value={providerCapabilities} />
@@ -486,6 +510,8 @@ export function PluginsView({
         <PluginMetric icon={<Clock3 size={18} />} label={tx("后台任务")} value={backgroundJobs.length} />
       </div>
 
+      {activeTab === "registry" ? (
+        <>
       <section className="section" data-plugin-manager-section="install">
         <div className="section-header">
           <h2>{tx("安装插件包")}</h2>
@@ -627,7 +653,10 @@ export function PluginsView({
           )}
         </div>
       </section>
+        </>
+      ) : null}
 
+      {activeTab === "marketplace" ? (
       <section className="section" data-plugin-manager-section="marketplace">
         <div className="section-header">
           <h2>{tx("插件市场")}</h2>
@@ -697,7 +726,9 @@ export function PluginsView({
           )}
         </div>
       </section>
+      ) : null}
 
+      {activeTab === "chain" ? (
       <section className="section" data-plugin-manager-section="chain-hooks">
         <div className="section-header">
           <h2>{tx("链路注入计划")}</h2>
@@ -742,7 +773,10 @@ export function PluginsView({
           )}
         </div>
       </section>
+      ) : null}
 
+      {activeTab === "ui" ? (
+        <>
       <section className="section" data-plugin-manager-section="ui-contributions">
         <div className="section-header">
           <h2>{tx("界面贡献清单")}</h2>
@@ -927,7 +961,11 @@ export function PluginsView({
           )}
         </div>
       </section>
+        </>
+      ) : null}
 
+      {activeTab === "actions" ? (
+        <>
       <section className="section" data-plugin-manager-section="actions">
         <div className="section-header">
           <h2>{tx("动作清单")}</h2>
@@ -1039,6 +1077,8 @@ export function PluginsView({
           )}
         </div>
       </section>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1077,8 +1117,8 @@ function CapabilityList({ plugin }: { plugin: PluginDescriptor }) {
   const remaining = plugin.capabilities.length - visible.length;
   return (
     <div className="tag-list">
-      {visible.map((capability) => (
-        <span className="tag" key={`${capability.kind}:${capability.subject ?? ""}:${capability.name}`}>
+      {visible.map((capability, index) => (
+        <span className="tag" key={`${plugin.id}:${index}:${capability.kind}:${capability.subject ?? ""}:${capability.name}:${capability.value ?? ""}`}>
           {capability.subject ? `${capability.subject}:` : ""}{capability.name}
         </span>
       ))}

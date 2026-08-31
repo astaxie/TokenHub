@@ -76,7 +76,6 @@ export const adminNavGroups: NavGroup[] = [
     title: "AI 资源",
     items: [
       { view: "providers", label: "Provider 渠道", icon: Server },
-      { view: "plugins", label: "插件管理", icon: Puzzle },
       { view: "models", label: "模型目录", icon: Boxes },
       { view: "routes", label: "路由策略", icon: Gauge },
       { view: "playground", label: "模型演练场", icon: Send },
@@ -119,6 +118,7 @@ export const adminNavGroups: NavGroup[] = [
       { view: "database-status", label: "数据库状态", icon: Database },
       { view: "announcements", label: "公告通知", icon: Bell },
       { view: "settings", label: "系统设置", icon: Settings },
+      { view: "plugins", label: "插件管理", icon: Puzzle },
     ],
   },
 ];

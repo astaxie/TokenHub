@@ -276,6 +276,7 @@ func seedDefaultOrgResources(store Store) error {
 			"default_timeout":             "120s",
 			"audit_retention":             "180d",
 			"dashboard_timezone":          "UTC",
+			"plugin_marketplace_url":      "https://plugins.betokenhub.com",
 			"api_key_prefix":              DefaultAPIKeyPrefix,
 			"api_key_random_length":       DefaultAPIKeyRandomLength,
 			syntheticDNSEnabledField:      false,
