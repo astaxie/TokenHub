@@ -81,7 +81,7 @@ type openAIAccountQuotaResetOperation struct {
 	UpstreamStatus         int
 }
 
-func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
+func (s *Server) serveAdminProviderResourceQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	details, supported, err := s.executeProviderResourceQuotaResetCreditsAction(r.Context(), user, resourceID)
 	if !supported {
 		var openAIDetails openAIAccountQuotaResetCredits
@@ -98,7 +98,7 @@ func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter,
 	writeJSON(w, http.StatusOK, details)
 }
 
-func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
+func (s *Server) serveAdminProviderResourceQuotaReset(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	if strings.TrimSpace(r.Header.Get(openAIAccountQuotaResetDangerHeader)) != s.providerResourceQuotaResetDangerConfirmation(resourceID) {
 		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, "quota_reset_danger_confirmation_required")
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "quota_reset_danger_confirmation_required", "The dangerous operation confirmation header is required"))

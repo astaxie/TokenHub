@@ -104,15 +104,15 @@ func (s *Server) handleAdminProviderResourceActionRoute(w http.ResponseWriter, r
 }
 
 func (s *Server) handleAdminProviderResourceQuotaGet(w http.ResponseWriter, r *http.Request) {
-	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminOpenAIAccountQuota)
+	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminProviderResourceQuota)
 }
 
 func (s *Server) handleAdminProviderResourceQuotaResetCreditsGet(w http.ResponseWriter, r *http.Request) {
-	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminOpenAIAccountQuotaResetCredits)
+	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminProviderResourceQuotaResetCredits)
 }
 
 func (s *Server) handleAdminProviderResourceQuotaResetPost(w http.ResponseWriter, r *http.Request) {
-	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminOpenAIAccountQuotaReset)
+	s.handleAdminProviderResourceActionRoute(w, r, s.serveAdminProviderResourceQuotaReset)
 }
 
 func (s *Server) handleAdminProviderResourceHealthPost(w http.ResponseWriter, r *http.Request) {
@@ -299,7 +299,7 @@ func (s *Server) serveAdminProviderResourceRefreshToken(w http.ResponseWriter, r
 	writeJSON(w, http.StatusOK, result.Data)
 }
 
-func (s *Server) serveAdminOpenAIAccountQuota(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
+func (s *Server) serveAdminProviderResourceQuota(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	result, err := s.executeProviderResourceQuotaAction(r.Context(), user, resourceID, r.URL.Query().Get("refresh") == "true")
 	if err != nil {
 		writeError(w, r, err)

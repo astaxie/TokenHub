@@ -853,7 +853,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		s.serveAdminOpenAIAccountQuotaResetCredits(w, r, user, parts[0])
+		s.serveAdminProviderResourceQuotaResetCredits(w, r, user, parts[0])
 		return
 	}
 	if parts[1] == "quota/reset" {
@@ -861,7 +861,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 			jsonMethodNotAllowed(http.MethodPost)(w, r)
 			return
 		}
-		s.serveAdminOpenAIAccountQuotaReset(w, r, user, parts[0])
+		s.serveAdminProviderResourceQuotaReset(w, r, user, parts[0])
 		return
 	}
 	if parts[1] == "quota" {
@@ -869,7 +869,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		s.serveAdminOpenAIAccountQuota(w, r, user, parts[0])
+		s.serveAdminProviderResourceQuota(w, r, user, parts[0])
 		return
 	}
 	if r.Method != http.MethodPost {

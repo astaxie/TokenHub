@@ -244,6 +244,14 @@ describe("provider-specific core hardcoding gate", () => {
     assert.equal(source.includes("providerCredentialRefreshProfileOpenAIAccountOAuth"), false);
   });
 
+  it("keeps OpenAI-named quota handlers outside generic admin routing", () => {
+    const sources = [
+      "backend/internal/server/admin_providers_http.go",
+      "backend/internal/server/admin_provider_resources_routing.go",
+    ].map((path) => readFileSync(join(REPOSITORY_ROOT, path), "utf8").replaceAll(/\s+/g, " "));
+    assert.deepEqual(sources.filter((source) => /serveAdminOpenAIAccountQuota/.test(source)), []);
+  });
+
   it("keeps OpenAI ID token claim parsing outside store credential orchestration", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_resource_credentials.go"), "utf8");
     const forbidden = [
