@@ -121,6 +121,12 @@ describe("provider-specific core hardcoding gate", () => {
     assert.equal(source.includes(': "openai_compatible"'), false);
   });
 
+  it("keeps custom provider catalog model helpers from defaulting to OpenAI-compatible", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/admin_providers_http.go"), "utf8");
+    assert.equal(source.includes("func customProviderCatalogFromModels("), false);
+    assert.equal(source.includes("customProviderCatalogFromModelsWithType(input, category, ProviderOpenAICompatible)"), false);
+  });
+
   it("keeps project key download templates out of the generic project key resource surface", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/resources/project-key-config.tsx"), "utf8");
     const forbidden = [

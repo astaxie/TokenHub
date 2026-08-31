@@ -348,7 +348,7 @@ func codexProviderCatalogFromModels(models []ProviderCatalogModel) ProviderCatal
 	for index := range candidates {
 		candidates[index].Category = "codex"
 	}
-	entry := customProviderCatalogFromModels(candidates, "codex")
+	entry := customProviderCatalogFromModelsWithType(candidates, "codex", ProviderOpenAICodex)
 	entry.ID = codexProviderCatalogID
 	entry.Name = "OpenAI Codex"
 	entry.DisplayName = "OpenAI Codex"

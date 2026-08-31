@@ -122,6 +122,21 @@ func TestProviderCatalogServiceUsesPluginDefaultCatalogProviderType(t *testing.T
 	}
 }
 
+func TestProviderCatalogEntryWithSubmittedModelsUsesExplicitProviderType(t *testing.T) {
+	catalog := providerCatalogEntryWithSubmittedModels(
+		ProviderCatalogEntry{ID: "custom"},
+		[]ProviderCatalogModel{{ID: "model-a", DisplayName: "Model A"}},
+		"custom",
+		"anthropic",
+	)
+	if catalog.Type != "anthropic" {
+		t.Fatalf("submitted model catalog type = %q, want explicit provider type", catalog.Type)
+	}
+	if catalog.ID != "custom" {
+		t.Fatalf("submitted model catalog ID = %q, want preserved catalog ID", catalog.ID)
+	}
+}
+
 func TestProviderCatalogServiceUsesPluginModelCategoryDefinitions(t *testing.T) {
 	categoryCapability, err := json.Marshal(AdapterModelCategory{
 		Key:               "acme",

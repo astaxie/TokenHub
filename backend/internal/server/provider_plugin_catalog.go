@@ -496,8 +496,8 @@ func (model pluginProviderCatalogModel) providerCatalogModelWithCategories(model
 	}, true
 }
 
-func providerCatalogEntryWithSubmittedModels(entry ProviderCatalogEntry, models []ProviderCatalogModel, category string) ProviderCatalogEntry {
-	catalog := customProviderCatalogFromModels(models, category)
+func providerCatalogEntryWithSubmittedModels(entry ProviderCatalogEntry, models []ProviderCatalogModel, category string, providerType string) ProviderCatalogEntry {
+	catalog := customProviderCatalogFromModelsWithType(models, category, providerType)
 	catalog.ID = firstNonEmpty(entry.ID, catalog.ID)
 	catalog.Name = firstNonEmpty(entry.Name, entry.DisplayName, catalog.Name)
 	catalog.DisplayName = firstNonEmpty(entry.DisplayName, catalog.DisplayName, catalog.Name)

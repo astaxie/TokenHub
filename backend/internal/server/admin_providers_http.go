@@ -271,7 +271,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		}
 		_, pluginOK := s.pluginProviderCatalogEntry(catalogID)
 		if pluginOK && len(req.CustomModels) > 0 {
-			catalog = providerCatalogEntryWithSubmittedModels(entry, req.CustomModels, req.ModelCategory)
+			catalog = providerCatalogEntryWithSubmittedModels(entry, req.CustomModels, req.ModelCategory, entry.Type)
 		} else if pluginOK && len(req.SelectedModels) > 0 && len(entry.Models) == 0 {
 			catalog = s.providerCatalogEntryWithSelectedStandardModels(entry, req.SelectedModels, req.ModelCategory)
 		} else {
@@ -471,10 +471,6 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 	entry.Models = models
 	entry.ModelsCount = len(models)
 	return entry
-}
-
-func customProviderCatalogFromModels(input []ProviderCatalogModel, category string) ProviderCatalogEntry {
-	return customProviderCatalogFromModelsWithType(input, category, ProviderOpenAICompatible)
 }
 
 func customProviderCatalogFromModelsWithType(input []ProviderCatalogModel, category string, providerType string) ProviderCatalogEntry {
