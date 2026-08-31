@@ -138,4 +138,15 @@ describe("provider-specific core hardcoding gate", () => {
     ];
     assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
+
+  it("keeps provider quota reset action results provider-neutral", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/admin_provider_resources_routing.go"), "utf8");
+    const forbidden = [
+      "openAIAccountQuotaResetCreditsFromActionData",
+      "openAIAccountQuotaResetResultFromActionData",
+      "(openAIAccountQuotaResetCredits, bool, error)",
+      "(openAIAccountQuotaResetResult, bool, error)",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
 });

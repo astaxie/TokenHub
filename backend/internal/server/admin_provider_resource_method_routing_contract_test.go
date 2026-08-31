@@ -533,8 +533,9 @@ func TestAdminProviderResourceQuotaResetRoutesUsePluginActions(t *testing.T) {
 			t.Fatalf("unexpected quota reset payload: %+v", payload)
 		}
 		return pluginmeta.ActionResult{Data: map[string]any{
-			"code":          "plugin_reset",
-			"windows_reset": 4,
+			"status":       "queued",
+			"operation_id": "plugin-reset-operation",
+			"message":      "reset accepted",
 		}}, nil
 	})); err != nil {
 		t.Fatalf("register quota reset action: %v", err)
@@ -573,7 +574,7 @@ func TestAdminProviderResourceQuotaResetRoutesUsePluginActions(t *testing.T) {
 	if reset.Code != http.StatusOK {
 		t.Fatalf("POST plugin quota reset: expected 200, got %d: %s", reset.Code, reset.Body.String())
 	}
-	if resetCalls != 1 || !strings.Contains(reset.Body.String(), `"code":"plugin_reset"`) || !strings.Contains(reset.Body.String(), `"windows_reset":4`) {
+	if resetCalls != 1 || !strings.Contains(reset.Body.String(), `"status":"queued"`) || !strings.Contains(reset.Body.String(), `"operation_id":"plugin-reset-operation"`) {
 		t.Fatalf("quota reset route did not use action: calls=%d body=%s", resetCalls, reset.Body.String())
 	}
 	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota_reset_credits", "provider_resource", resource.ID)

@@ -203,8 +203,11 @@ func registerBuiltinPluginActions(server *Server) {
 				"danger_confirmation":      map[string]any{"type": "string"},
 			},
 		},
-		OutputSchema: actionObjectSchema([]string{"code", "windows_reset"}, map[string]string{
+		OutputSchema: actionObjectSchema(nil, map[string]string{
 			"code":          "string",
+			"status":        "string",
+			"operation_id":  "string",
+			"message":       "string",
 			"windows_reset": "integer",
 		}),
 	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {

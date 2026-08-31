@@ -331,43 +331,43 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	return result, nil
 }
 
-func (s *Server) executeProviderResourceQuotaResetCreditsAction(ctx context.Context, user AdminUser, resourceID string) (openAIAccountQuotaResetCredits, bool, error) {
+func (s *Server) executeProviderResourceQuotaResetCreditsAction(ctx context.Context, user AdminUser, resourceID string) (providerQuotaResetCredits, bool, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
-		return openAIAccountQuotaResetCredits{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+		return providerQuotaResetCredits{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
 	}
 	provider, ok := s.providerByID(resource.ProviderID)
 	if !ok {
-		return openAIAccountQuotaResetCredits{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+		return providerQuotaResetCredits{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityQuota, "quota.reset_credits.read", map[string]any{
 		"resource_id": resourceID,
 	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
-		return openAIAccountQuotaResetCredits{}, true, err
+		return providerQuotaResetCredits{}, true, err
 	}
 	if !handled {
-		return openAIAccountQuotaResetCredits{}, false, nil
+		return providerQuotaResetCredits{}, false, nil
 	}
-	credits, ok := openAIAccountQuotaResetCreditsFromActionData(result.Data)
+	credits, ok := providerQuotaResetCreditsFromActionData(result.Data)
 	if !ok {
-		return openAIAccountQuotaResetCredits{}, true, NewHTTPError(http.StatusInternalServerError, "provider_quota_reset_credits_invalid_result", "Provider quota reset credits returned an invalid result")
+		return providerQuotaResetCredits{}, true, NewHTTPError(http.StatusInternalServerError, "provider_quota_reset_credits_invalid_result", "Provider quota reset credits returned an invalid result")
 	}
 	return credits, true, nil
 }
 
-func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, user AdminUser, resourceID string, req openAIAccountQuotaResetRequest) (openAIAccountQuotaResetResult, bool, error) {
+func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, user AdminUser, resourceID string, req openAIAccountQuotaResetRequest) (providerQuotaResetResult, bool, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
-		return openAIAccountQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
+		return providerQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
 	}
 	provider, ok := s.providerByID(resource.ProviderID)
 	if !ok {
-		return openAIAccountQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+		return providerQuotaResetResult{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
 	action, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityQuota, "quota.reset", resource.ResourceType)
 	if !ok {
-		return openAIAccountQuotaResetResult{}, false, nil
+		return providerQuotaResetResult{}, false, nil
 	}
 	result, err := s.executeEncodedPluginAction(ctx, user, action.PluginID, action.ActionID, map[string]any{
 		"resource_id":              resourceID,
@@ -378,11 +378,11 @@ func (s *Server) executeProviderResourceQuotaResetAction(ctx context.Context, us
 		"danger_confirmation":      providerQuotaResetDangerConfirmation(action),
 	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
 	if err != nil {
-		return openAIAccountQuotaResetResult{}, true, err
+		return providerQuotaResetResult{}, true, err
 	}
-	reset, ok := openAIAccountQuotaResetResultFromActionData(result.Data)
+	reset, ok := providerQuotaResetResultFromActionData(result.Data)
 	if !ok {
-		return openAIAccountQuotaResetResult{}, true, NewHTTPError(http.StatusInternalServerError, "provider_quota_reset_invalid_result", "Provider quota reset returned an invalid result")
+		return providerQuotaResetResult{}, true, NewHTTPError(http.StatusInternalServerError, "provider_quota_reset_invalid_result", "Provider quota reset returned an invalid result")
 	}
 	return reset, true, nil
 }
@@ -440,36 +440,6 @@ func (s *Server) executeProviderResourceProbeAction(ctx context.Context, user Ad
 		return nil, true, NewHTTPError(http.StatusInternalServerError, "provider_probe_invalid_result", "Provider probe returned an invalid result")
 	}
 	return probe, true, nil
-}
-
-func openAIAccountQuotaResetCreditsFromActionData(data any) (openAIAccountQuotaResetCredits, bool) {
-	if result, ok := data.(openAIAccountQuotaResetCredits); ok {
-		return result, true
-	}
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return openAIAccountQuotaResetCredits{}, false
-	}
-	var result openAIAccountQuotaResetCredits
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return openAIAccountQuotaResetCredits{}, false
-	}
-	return result, result.FetchedAt > 0
-}
-
-func openAIAccountQuotaResetResultFromActionData(data any) (openAIAccountQuotaResetResult, bool) {
-	if result, ok := data.(openAIAccountQuotaResetResult); ok {
-		return result, true
-	}
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return openAIAccountQuotaResetResult{}, false
-	}
-	var result openAIAccountQuotaResetResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return openAIAccountQuotaResetResult{}, false
-	}
-	return result, strings.TrimSpace(result.Code) != ""
 }
 
 func providerImageCapabilityResultFromActionData(data any) (providerImageCapabilityResult, bool) {

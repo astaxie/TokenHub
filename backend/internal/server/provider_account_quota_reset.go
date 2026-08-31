@@ -84,7 +84,9 @@ type openAIAccountQuotaResetOperation struct {
 func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
 	details, supported, err := s.executeProviderResourceQuotaResetCreditsAction(r.Context(), user, resourceID)
 	if !supported {
-		details, err = s.queryOpenAIAccountQuotaResetCredits(r.Context(), resourceID)
+		var openAIDetails openAIAccountQuotaResetCredits
+		openAIDetails, err = s.queryOpenAIAccountQuotaResetCredits(r.Context(), resourceID)
+		details = providerQuotaResetCreditsFromOpenAI(openAIDetails)
 	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
@@ -115,7 +117,9 @@ func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *htt
 	}
 	result, supported, err := s.executeProviderResourceQuotaResetAction(r.Context(), user, resourceID, req)
 	if !supported {
-		result, err = s.resetOpenAIAccountQuota(r.Context(), resourceID, req)
+		var openAIResult openAIAccountQuotaResetResult
+		openAIResult, err = s.resetOpenAIAccountQuota(r.Context(), resourceID, req)
+		result = providerQuotaResetResultFromOpenAI(openAIResult)
 	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
@@ -123,10 +127,7 @@ func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *htt
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "reset_quota", "provider_resource", resourceID, "", map[string]any{
-		"code":          result.Code,
-		"windows_reset": result.WindowsReset,
-	})
+	s.recordAdminAudit(r, user, "reset_quota", "provider_resource", resourceID, "", providerQuotaResetResultAudit(result))
 	writeJSON(w, http.StatusOK, result)
 }
 
