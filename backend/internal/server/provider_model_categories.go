@@ -19,25 +19,6 @@ type providerModelCategoryDefinition struct {
 
 func fallbackProviderModelCategoryDefinitions() []providerModelCategoryDefinition {
 	return []providerModelCategoryDefinition{
-		{Key: "codex", Label: "OpenAI Codex", Order: 10, Aliases: []string{"codex"}, FamilyPrefixes: []string{"codex"}},
-		{Key: "openai", Label: "OpenAI", Order: 20, Aliases: []string{"gpt", "openai", "o1", "o3", "o4"}, FamilyPrefixes: []string{"gpt"}, CanonicalPrefixes: []string{"gpt"}},
-		{Key: "claude", Label: "Claude", Order: 30, Aliases: []string{"anthropic", "claude"}, FamilyPrefixes: []string{"claude"}, CanonicalPrefixes: []string{"claude"}},
-		{Key: "deepseek", Label: "DeepSeek", Order: 40, Aliases: []string{"deepseek"}, FamilyPrefixes: []string{"deepseek"}, CanonicalPrefixes: []string{"deepseek"}},
-		{Key: "gemini", Label: "Gemini", Order: 50, Aliases: []string{"gemini", "google", "google/"}, FamilyPrefixes: []string{"gemini"}, CanonicalPrefixes: []string{"gemini"}},
-		{Key: "qwen", Label: "Qwen", Order: 60, Aliases: []string{"alibaba", "dashscope", "qwen"}, FamilyPrefixes: []string{"qwen"}, CanonicalPrefixes: []string{"qwen"}},
-		{Key: "glm", Label: "GLM", Order: 70, Aliases: []string{"glm", "zhipu"}, FamilyPrefixes: []string{"glm"}, CanonicalPrefixes: []string{"glm"}},
-		{Key: "kimi", Label: "Kimi", Order: 80, Aliases: []string{"kimi", "moonshot"}, FamilyPrefixes: []string{"kimi"}},
-		{Key: "doubao", Label: "Doubao", Order: 90, Aliases: []string{"doubao", "volcengine"}, FamilyPrefixes: []string{"doubao"}},
-		{Key: "ernie", Label: "ERNIE", Order: 100, Aliases: []string{"ernie"}},
-		{Key: "baichuan", Label: "Baichuan", Order: 110, Aliases: []string{"baichuan"}},
-		{Key: "minimax", Label: "MiniMax", Order: 120, Aliases: []string{"hailuo", "minimax"}},
-		{Key: "stepfun", Label: "StepFun", Order: 130, Aliases: []string{"step-", "stepaudio"}},
-		{Key: "wanx", Label: "WanX", Order: 140, Aliases: []string{"wanx"}},
-		{Key: "grok", Label: "Grok", Order: 150, Aliases: []string{"grok", "xai", "xai/"}},
-		{Key: "paddlepaddle", Label: "PaddlePaddle", Order: 160, Aliases: []string{"paddleocr"}},
-		{Key: "microsoft", Label: "Microsoft", Order: 170, Aliases: []string{"phi-"}},
-		{Key: "llama", Label: "Llama", Order: 180, Aliases: []string{"llama", "meta", "meta/"}, FamilyPrefixes: []string{"llama"}},
-		{Key: "mistral", Label: "Mistral", Order: 190, Aliases: []string{"mistral"}, FamilyPrefixes: []string{"mistral"}},
 		{Key: "custom", Label: "自定义", Order: 1000, Aliases: []string{"custom"}, FamilyPrefixes: []string{"custom"}, CanonicalPrefixes: []string{"custom"}},
 	}
 }
@@ -96,7 +77,7 @@ func providerModelCategoryDefinitionsForKeys(keys []string) []providerModelCateg
 
 func standardModelCategorySet() map[string]bool {
 	categories := map[string]bool{}
-	for _, definition := range fallbackProviderModelCategoryDefinitions() {
+	for _, definition := range defaultProviderModelCategoryDefinitions() {
 		if key := strings.ToLower(strings.TrimSpace(definition.Key)); key != "" {
 			categories[key] = true
 		}
@@ -334,5 +315,13 @@ func providerCategoryDefinitionsOrFallback(definitions []providerModelCategoryDe
 	if len(definitions) > 0 {
 		return normalizeProviderModelCategoryDefinitions(definitions)
 	}
-	return normalizeProviderModelCategoryDefinitions(fallbackProviderModelCategoryDefinitions())
+	return defaultProviderModelCategoryDefinitions()
+}
+
+func defaultProviderModelCategoryDefinitions() []providerModelCategoryDefinition {
+	definitions := builtinProviderModelCategoryDefinitions()
+	if len(definitions) == 0 {
+		definitions = fallbackProviderModelCategoryDefinitions()
+	}
+	return normalizeProviderModelCategoryDefinitions(definitions)
 }

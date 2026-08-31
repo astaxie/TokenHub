@@ -104,6 +104,34 @@ func TestBuiltinProviderPluginPackagesMirrorRegisteredBackgroundJobs(t *testing.
 	}
 }
 
+func TestBuiltinProviderCatalogCategoryPluginExposesModelCategories(t *testing.T) {
+	server := New(NewMemoryStore())
+	descriptor, ok := server.pluginRegistry.Describe("tokenhub.provider-catalog.model-categories")
+	if !ok {
+		t.Fatal("built-in provider model category plugin descriptor is missing")
+	}
+	if descriptor.Source != pluginmeta.SourceBuiltIn {
+		t.Fatalf("category plugin source = %q, want built_in", descriptor.Source)
+	}
+
+	categories := providerModelCategoryDefinitionsFromPlugin(descriptor)
+	byKey := map[string]providerModelCategoryDefinition{}
+	for _, category := range categories {
+		byKey[category.Key] = category
+	}
+	for _, key := range []string{"openai", "claude", "gemini", "kimi", "qwen", "mistral", "custom"} {
+		if _, ok := byKey[key]; !ok {
+			t.Fatalf("built-in category %q is missing from plugin descriptor: %+v", key, categories)
+		}
+	}
+	if byKey["openai"].CanonicalPrefixes[0] != "gpt" {
+		t.Fatalf("OpenAI category canonical prefixes = %+v", byKey["openai"].CanonicalPrefixes)
+	}
+	if byKey["kimi"].Aliases[0] != "kimi" {
+		t.Fatalf("Kimi category aliases = %+v", byKey["kimi"].Aliases)
+	}
+}
+
 func TestBuiltinOpenAICodexReferencePluginDescriptor(t *testing.T) {
 	server := New(NewMemoryStore())
 	descriptor, ok := server.pluginRegistry.Describe("tokenhub.provider.openai-codex")

@@ -102,6 +102,22 @@ describe("provider-specific core hardcoding gate", () => {
     assert.equal(source.includes("https://api.openai.com/v1"), false);
   });
 
+  it("keeps provider model category defaults outside generic category helpers", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_model_categories.go"), "utf8");
+    const forbidden = [
+      /"codex"/,
+      /"openai"/,
+      /"claude"/,
+      /"anthropic"/,
+      /"deepseek"/,
+      /"gemini"/,
+      /"qwen"/,
+      /"kimi"/,
+      /"mistral"/,
+    ];
+    assert.deepEqual(forbidden.filter((pattern) => pattern.test(source)).map(String), []);
+  });
+
   it("keeps provider adapter startup migration orchestration provider-neutral", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_adapter_migration.go"), "utf8");
     assert.equal(/\b(?:OpenAI|Codex|ProviderOpenAI)\b/.test(source), false);
