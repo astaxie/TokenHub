@@ -28,7 +28,7 @@ func addOpenAIAccountRefreshProvider(store *GormStore, name string) Provider {
 		Status:  StatusActive,
 		Healthy: true,
 		Options: map[string]string{
-			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+			providerCredentialRefreshProfileOption: openAIAccountOAuthRefreshProfile,
 		},
 	})
 }
@@ -36,7 +36,7 @@ func addOpenAIAccountRefreshProvider(store *GormStore, name string) Provider {
 func configureOpenAIAccountRefreshHandlerForTest(store *GormStore) {
 	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
 		ProviderType:        ProviderOpenAICodex,
-		Profile:             providerCredentialRefreshProfileOpenAIAccountOAuth,
+		Profile:             openAIAccountOAuthRefreshProfile,
 		RefreshLead:         openAIAccountOAuthRefreshLead,
 		AuthenticationEqual: openAIAccountAuthenticationEqual,
 		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {

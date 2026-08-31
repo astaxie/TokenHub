@@ -22,14 +22,15 @@ import (
 )
 
 const (
-	openAIAccountOAuthClientID     = "app_EMoamEEZ73f0CkXaXp7hrann"
-	openAIAccountOAuthAuthorize    = "https://auth.openai.com/oauth/authorize"
-	openAIAccountOAuthTokenURL     = "https://auth.openai.com/oauth/token"
-	openAIAccountOAuthRedirectURI  = "http://localhost:1455/auth/callback"
-	openAIAccountOAuthScopes       = "openid profile email offline_access"
-	openAIAccountOAuthRefreshScope = "openid profile email"
-	openAIAccountOAuthSessionTTL   = 30 * time.Minute
-	openAIAccountOAuthRefreshLead  = 5 * time.Minute
+	openAIAccountOAuthClientID       = "app_EMoamEEZ73f0CkXaXp7hrann"
+	openAIAccountOAuthAuthorize      = "https://auth.openai.com/oauth/authorize"
+	openAIAccountOAuthTokenURL       = "https://auth.openai.com/oauth/token"
+	openAIAccountOAuthRedirectURI    = "http://localhost:1455/auth/callback"
+	openAIAccountOAuthScopes         = "openid profile email offline_access"
+	openAIAccountOAuthRefreshScope   = "openid profile email"
+	openAIAccountOAuthRefreshProfile = "openai_account_oauth"
+	openAIAccountOAuthSessionTTL     = 30 * time.Minute
+	openAIAccountOAuthRefreshLead    = 5 * time.Minute
 )
 
 var openAIAccountOAuthTokenEndpoint = openAIAccountOAuthTokenURL
@@ -471,7 +472,7 @@ func (a *CodexSubscriptionAdapter) ProviderResourceCredentialRefreshHandlers() [
 	}
 	return []providerResourceCredentialRefreshRegistration{{
 		ProviderType:        ProviderOpenAICodex,
-		Profile:             providerCredentialRefreshProfileOpenAIAccountOAuth,
+		Profile:             openAIAccountOAuthRefreshProfile,
 		RefreshLead:         openAIAccountOAuthRefreshLead,
 		AuthenticationEqual: openAIAccountAuthenticationEqual,
 		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {

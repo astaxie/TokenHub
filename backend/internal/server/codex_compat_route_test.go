@@ -28,7 +28,7 @@ func (a *codexBridgeTestAdapter) ProviderResourceCredentialRefreshHandlers() []p
 	}
 	return []providerResourceCredentialRefreshRegistration{{
 		ProviderType:        a.providerType,
-		Profile:             providerCredentialRefreshProfileOpenAIAccountOAuth,
+		Profile:             openAIAccountOAuthRefreshProfile,
 		RefreshLead:         openAIAccountOAuthRefreshLead,
 		AuthenticationEqual: openAIAccountAuthenticationEqual,
 		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
@@ -56,7 +56,7 @@ func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType 
 	if providerType != ProviderOpenAICodex {
 		providerOptions[providerRouteRequiresResourceOption] = "true"
 		providerOptions[providerCredentialsScopeOption] = providerCredentialsScopeResource
-		providerOptions[providerCredentialRefreshProfileOption] = providerCredentialRefreshProfileOpenAIAccountOAuth
+		providerOptions[providerCredentialRefreshProfileOption] = openAIAccountOAuthRefreshProfile
 	}
 	provider := store.AddProvider(Provider{
 		ID: "prv_codex_bridge_route", Name: "Codex Bridge", Type: providerType,
@@ -99,7 +99,7 @@ func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType 
 		descriptor.Capabilities = append(descriptor.Capabilities,
 			pluginmeta.CapabilityDescriptor{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerRouteRequiresResourceOption, Subject: providerType, Value: "true"},
 			pluginmeta.CapabilityDescriptor{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialsScopeOption, Subject: providerType, Value: providerCredentialsScopeResource},
-			pluginmeta.CapabilityDescriptor{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialRefreshProfileOption, Subject: providerType, Value: providerCredentialRefreshProfileOpenAIAccountOAuth},
+			pluginmeta.CapabilityDescriptor{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialRefreshProfileOption, Subject: providerType, Value: openAIAccountOAuthRefreshProfile},
 			pluginmeta.CapabilityDescriptor{Kind: "provider_resource_type", Name: ProviderResourceOpenAISubscription, Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
 				Type:      ProviderResourceOpenAISubscription,
 				AuthModes: []string{"oauth"},

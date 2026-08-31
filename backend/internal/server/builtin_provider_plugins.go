@@ -130,7 +130,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		apiKeyRequired:                   boolPointer(false),
 		routeProtocols:                   []string{providerRouteProtocolCodexResponses, providerRouteProtocolResponses},
 		credentialsScope:                 providerCredentialsScopeResource,
-		credentialRefreshProfile:         providerCredentialRefreshProfileOpenAIAccountOAuth,
+		credentialRefreshProfile:         openAIAccountOAuthRefreshProfile,
 		routeRequiresResource:            true,
 		sessionAffinityKind:              AffinityKindCodexSession,
 		sessionAffinityIdentifierProfile: sessionAffinityIdentifierProfileCompatibility,

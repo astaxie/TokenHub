@@ -238,6 +238,12 @@ describe("provider-specific core hardcoding gate", () => {
     assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
 
+  it("keeps provider-specific credential refresh profiles outside generic provider policy", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_policy.go"), "utf8");
+    assert.equal(source.includes("openai_account_oauth"), false);
+    assert.equal(source.includes("providerCredentialRefreshProfileOpenAIAccountOAuth"), false);
+  });
+
   it("keeps OpenAI ID token claim parsing outside store credential orchestration", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_resource_credentials.go"), "utf8");
     const forbidden = [

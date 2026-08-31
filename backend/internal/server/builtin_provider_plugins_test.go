@@ -196,8 +196,8 @@ func TestBuiltinOpenAICodexReferencePluginDescriptor(t *testing.T) {
 	if codex.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
 		t.Fatalf("OpenAI Codex credentials scope = %q, want resource", codex.ProviderPolicy.CredentialsScope)
 	}
-	if codex.ProviderPolicy.CredentialRefreshProfile != providerCredentialRefreshProfileOpenAIAccountOAuth {
-		t.Fatalf("OpenAI Codex credential refresh profile = %q, want %q", codex.ProviderPolicy.CredentialRefreshProfile, providerCredentialRefreshProfileOpenAIAccountOAuth)
+	if codex.ProviderPolicy.CredentialRefreshProfile != openAIAccountOAuthRefreshProfile {
+		t.Fatalf("OpenAI Codex credential refresh profile = %q, want %q", codex.ProviderPolicy.CredentialRefreshProfile, openAIAccountOAuthRefreshProfile)
 	}
 	if codex.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
 		t.Fatalf("OpenAI Codex session affinity kind = %q, want %q", codex.ProviderPolicy.SessionAffinityKind, AffinityKindCodexSession)
@@ -236,7 +236,7 @@ func TestBuiltinOpenAICodexReferencePluginDescriptor(t *testing.T) {
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerAPIKeyRequiredOption, Subject: ProviderOpenAICodex, Value: "false"},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerRouteRequiresResourceOption, Subject: ProviderOpenAICodex, Value: "true"},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialsScopeOption, Subject: ProviderOpenAICodex, Value: providerCredentialsScopeResource},
-		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialRefreshProfileOption, Subject: ProviderOpenAICodex, Value: providerCredentialRefreshProfileOpenAIAccountOAuth},
+		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialRefreshProfileOption, Subject: ProviderOpenAICodex, Value: openAIAccountOAuthRefreshProfile},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "session_affinity_kind", Subject: ProviderOpenAICodex, Value: AffinityKindCodexSession},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "session_affinity_identifier_profile", Subject: ProviderOpenAICodex, Value: sessionAffinityIdentifierProfileCompatibility},
 		{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "supports_custom_headers", Subject: ProviderOpenAICodex, Value: "false"},

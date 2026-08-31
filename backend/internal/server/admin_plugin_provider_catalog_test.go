@@ -422,7 +422,7 @@ func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 		Capabilities: []pluginmeta.CapabilityDescriptor{
 			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
 			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
-			{Kind: "provider_policy", Name: providerCredentialRefreshProfileOption, Subject: providerType, Value: providerCredentialRefreshProfileOpenAIAccountOAuth},
+			{Kind: "provider_policy", Name: providerCredentialRefreshProfileOption, Subject: providerType, Value: openAIAccountOAuthRefreshProfile},
 			{Kind: "provider_resource_type", Name: "policy_subscription_account", Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
 				Type:        "policy_subscription_account",
 				DisplayName: "Policy Subscription Account",
@@ -457,7 +457,7 @@ func TestAdminCreatePluginProviderPersistsRouteResourcePolicy(t *testing.T) {
 	if payload.Provider.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource {
 		t.Fatalf("provider credentials scope options = %+v", payload.Provider.Options)
 	}
-	if payload.Provider.Options[providerCredentialRefreshProfileOption] != providerCredentialRefreshProfileOpenAIAccountOAuth {
+	if payload.Provider.Options[providerCredentialRefreshProfileOption] != openAIAccountOAuthRefreshProfile {
 		t.Fatalf("provider credential refresh profile options = %+v", payload.Provider.Options)
 	}
 	if payload.Provider.BaseURL != "https://policy-subscription.example/v1" {

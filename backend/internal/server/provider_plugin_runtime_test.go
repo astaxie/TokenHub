@@ -105,7 +105,7 @@ func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T)
 	if _, ok := store.providerCredentialRefreshRegistration(Provider{
 		Type: ProviderOpenAICodex,
 		Options: map[string]string{
-			providerCredentialRefreshProfileOption: providerCredentialRefreshProfileOpenAIAccountOAuth,
+			providerCredentialRefreshProfileOption: openAIAccountOAuthRefreshProfile,
 		},
 	}); !ok {
 		t.Fatal("Codex subscription native credential refresh handler was not configured")
