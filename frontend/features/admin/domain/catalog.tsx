@@ -1,4 +1,4 @@
-import { type AdminResource, type AppData, type Model, notificationChannelTypes, type Provider, type ProviderCatalogEntry, type ProviderCatalogModel, type Summary, type ViewKey } from "../core/types";
+import { type AdminResource, type AppData, type Model, notificationChannelDefaultType, notificationChannelTemplates, notificationChannelTypes, type Provider, type ProviderCatalogEntry, type ProviderCatalogModel, type Summary, type ViewKey } from "../core/types";
 import { providerRoutesFor, stringifyValue } from "./entities";
 import { formatMoney } from "./formatting";
 import { compactList } from "./labels";
@@ -210,10 +210,10 @@ export function notificationChannelTabs(data: AppData) {
     const type = notificationChannelType(item);
     counts.set(type, (counts.get(type) ?? 0) + 1);
   }
-  return notificationChannelTypes.map((type) => ({
-    key: type,
-    label: notificationChannelLabel(type),
-    count: counts.get(type) ?? 0,
+  return notificationChannelTemplates.map((template) => ({
+    key: template.type,
+    label: template.label,
+    count: counts.get(template.type) ?? 0,
   }));
 }
 
@@ -252,47 +252,15 @@ export function normalizeNotificationChannelType(type: string) {
 }
 
 export function notificationChannelLabel(type: string) {
-  const labels: Record<string, string> = {
-    webhook: "Webhook",
-    feishu: "飞书",
-    dingtalk: "钉钉",
-    wecom: "企业微信",
-    slack: "Slack",
-    discord: "Discord",
-    telegram: "Telegram",
-    whatsapp: "WhatsApp",
-    email: "邮件",
-  };
-  return tx(labels[normalizeNotificationChannelType(type)] ?? type);
+  return tx(notificationChannelTemplate(type)?.label ?? type);
 }
 
 export function notificationChannelDescription(type: string) {
-  const descriptions: Record<string, string> = {
-    webhook: "通用 Webhook 告警通知",
-    feishu: "飞书机器人告警通知",
-    dingtalk: "钉钉机器人告警通知",
-    wecom: "企业微信机器人告警通知",
-    slack: "Slack Incoming Webhook 告警通知",
-    discord: "Discord Webhook 告警通知",
-    telegram: "Telegram Bot 告警通知",
-    whatsapp: "WhatsApp Cloud API 告警通知",
-    email: "SMTP 邮件告警通知",
-  };
-  return descriptions[normalizeNotificationChannelType(type)] ?? "告警通知渠道";
+  return notificationChannelTemplate(type)?.description ?? "告警通知渠道";
 }
 
 export function notificationChannelURLPlaceholder(type: string) {
-  const urls: Record<string, string> = {
-    webhook: "http://localhost:8081/tokenhub-alert",
-    feishu: "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    dingtalk: "https://oapi.dingtalk.com/robot/send?access_token=xxxxxxxx",
-    wecom: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    slack: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
-    discord: "https://discord.com/api/webhooks/000000000000000000/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    telegram: "Telegram Bot Token + Chat ID",
-    whatsapp: "WhatsApp Phone Number ID + Access Token",
-  };
-  return urls[normalizeNotificationChannelType(type)] ?? urls.webhook;
+  return notificationChannelTemplate(type)?.urlPlaceholder ?? notificationChannelTemplates.find((template) => template.type === notificationChannelDefaultType)?.urlPlaceholder ?? "http://localhost:8081/tokenhub-alert";
 }
 
 export function notificationChannelTargetSummary(item: AdminResource) {
@@ -321,6 +289,11 @@ export function notificationCredentialSummary(item: AdminResource) {
     return stringifyValue(item.fields?.access_token || item.fields?.whatsapp_access_token || item.fields?.secret) ? "Access Token 已配置" : "Access Token 未配置";
   }
   return stringifyValue(item.fields?.secret) ? "已配置" : "未配置";
+}
+
+function notificationChannelTemplate(type: string) {
+  const normalized = normalizeNotificationChannelType(type);
+  return notificationChannelTemplates.find((template) => template.type === normalized);
 }
 
 export function maskWebhookURL(url: string) {

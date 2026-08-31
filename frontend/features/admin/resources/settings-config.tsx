@@ -1,4 +1,4 @@
-import { type AdminResource, type FieldConfig, notificationChannelTypes, type ResourceConfig, type SQLiteBackup, type ViewKey } from "../core/types";
+import { type AdminResource, type FieldConfig, notificationChannelTemplates, type ResourceConfig, type SQLiteBackup, type ViewKey } from "../core/types";
 import { notificationChannelLabel, notificationChannelTargetSummary, notificationChannelType, notificationChannelUsesEmail, notificationChannelUsesIncomingWebhook, notificationChannelUsesTelegram, notificationChannelUsesWhatsApp, notificationCredentialSummary } from "../domain/catalog";
 import { apiKeyOwnerSelectOptions, costCenterLabel, costCenterSelectOptions, oauthDefaultProjectRoleOptions, ownerUserLabel, projectMemberProjectSelectOptions, stringifyValue, teamMemberCount, teamSelectOptions, userSelectOptions } from "../domain/entities";
 import { formatBytes, formatNumber, formatTime } from "../domain/formatting";
@@ -360,7 +360,7 @@ export function sqliteBackupConfig(): ResourceConfig<SQLiteBackup> {
 
 export function notificationChannelConfig(): ResourceConfig<AdminResource> {
   const fields: FieldConfig[] = [
-    { key: "type", label: "渠道类型", type: "select", options: notificationChannelTypes, required: true },
+    { key: "type", label: "渠道类型", type: "select", optionsFromData: () => notificationChannelTemplates.map((template) => ({ value: template.type, label: template.label })), required: true },
     { key: "webhook_url", label: "Webhook URL", required: true, visible: notificationChannelUsesIncomingWebhook },
     { key: "secret", label: "签名密钥", type: "password", help: "可选预留。当前按普通机器人 Webhook 发送，留空不影响通知。", visible: notificationChannelUsesIncomingWebhook },
     { key: "telegram_bot_token", label: "Telegram Bot Token", type: "password", required: true, help: "编辑时留空表示不修改。", visible: notificationChannelUsesTelegram },

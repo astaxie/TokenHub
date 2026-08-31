@@ -1324,7 +1324,7 @@ export const routeViews = Object.fromEntries(
   Object.entries(viewRoutes).map(([view, route]) => [route.replace(/^\//, ""), view]),
 ) as Record<string, ViewKey>;
 
-export const notificationChannelTypes = ["webhook", "slack", "discord", "telegram", "whatsapp", "feishu", "dingtalk", "wecom", "email"];
+export { notificationChannelDefaultType, notificationChannelTemplates, notificationChannelTypes, type NotificationChannelTemplate, type NotificationChannelTemplateOwner } from "./notification-channel-templates";
 
 export type NavLeafItem = {
   view: ViewKey;

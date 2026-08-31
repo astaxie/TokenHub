@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdapterDescriptor, type AdminResource, type AdminUIContribution, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, type GatewayChainPlan, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginBackgroundJobRunRecord, type PluginDescriptor, type PluginMarketplacePlugin, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { notificationChannelDefaultType, notificationChannelTypes, type AdapterDescriptor, type AdminResource, type AdminUIContribution, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, type GatewayChainPlan, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginBackgroundJobRunRecord, type PluginDescriptor, type PluginMarketplacePlugin, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
@@ -122,7 +122,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setNotice("");
       setError("");
       setIssuedKey("");
-      setModelCategoryFilter(view === "notification-channels" ? "webhook" : "all");
+      setModelCategoryFilter(view === "notification-channels" ? notificationChannelDefaultType : "all");
     }
     if (view === "routes") setRouteModelQuery(options.routeModelQuery ?? "");
     setActivePluginPageKey(view === "plugin-pages" ? options.pluginPageKey ?? activePluginPageKey : "");
@@ -302,7 +302,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 
   useEffect(() => {
     if (activeView === "notification-channels" && !notificationChannelTypes.includes(modelCategoryFilter)) {
-      setModelCategoryFilter("webhook");
+      setModelCategoryFilter(notificationChannelDefaultType);
     }
   }, [activeView, modelCategoryFilter]);
 
@@ -323,7 +323,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (readOAuthLoginResult()) return;
     setNotice("");
     setError("");
-    setModelCategoryFilter(routeView === "notification-channels" ? "webhook" : "all");
+    setModelCategoryFilter(routeView === "notification-channels" ? notificationChannelDefaultType : "all");
     setActiveView(routeView);
     setActivePluginPageKey(routeView === "plugin-pages" ? pluginPageKeyFromLocation() : "");
   }, [routeView]);
