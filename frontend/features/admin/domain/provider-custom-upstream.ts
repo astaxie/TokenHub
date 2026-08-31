@@ -7,16 +7,14 @@ type ProviderAuthModeOption = {
   defaultCatalogProviderType?: boolean;
 };
 
-const legacyProviderTypeFallback = "openai_compatible";
 const providerModelsPreviewCapability = "models.preview";
 export const providerAuthModeField = "provider_auth_mode";
 export const legacyProviderAuthModeField = "anthropic_auth_type";
 
 export function defaultProviderTypeValue(providerTypeOptions: ProviderAuthModeOption[] = []) {
   return providerTypeOptions.find((option) => option.defaultCatalogProviderType)?.value ??
-    providerTypeOptions.find((option) => option.value === legacyProviderTypeFallback)?.value ??
     providerTypeOptions[0]?.value ??
-    legacyProviderTypeFallback;
+    "";
 }
 
 export function providerTypeValue(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {

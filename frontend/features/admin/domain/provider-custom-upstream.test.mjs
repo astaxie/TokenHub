@@ -119,7 +119,7 @@ test("plugin provider discovery follows descriptor auth modes", () => {
   });
 });
 
-test("provider type defaults prefer plugin metadata before the legacy fallback", () => {
+test("provider type defaults use plugin metadata without synthesizing the legacy fallback", () => {
   const pluginOnlyProviderTypes = [{ value: "native_subscription", label: "Native Subscription", supportsCustomHeaders: false }];
   const pluginDefaultProviderTypes = [
     { value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true },
@@ -128,8 +128,20 @@ test("provider type defaults prefer plugin metadata before the legacy fallback",
 
   assert.equal(defaultProviderTypeValue(pluginOnlyProviderTypes), "native_subscription");
   assert.equal(defaultProviderTypeValue(pluginDefaultProviderTypes), "native_subscription");
+  assert.equal(defaultProviderTypeValue([]), "");
+  assert.equal(providerTypeValue({}), "");
   assert.equal(providerTypeValue({}, pluginOnlyProviderTypes), "native_subscription");
   assert.equal(providerTypeValue({ type: "explicit_provider" }, pluginOnlyProviderTypes), "explicit_provider");
+  assert.deepEqual(customUpstreamDiscoveryPayload({}, "", "chat"), {
+    provider_id: "",
+    name: undefined,
+    type: "",
+    base_url: undefined,
+    api_key: undefined,
+    provider_auth_mode: "",
+    anthropic_auth_type: "",
+    model_category: "chat",
+  });
   assert.deepEqual(customUpstreamDiscoveryPayload({}, "", "chat", {}, pluginOnlyProviderTypes), {
     provider_id: "",
     name: undefined,

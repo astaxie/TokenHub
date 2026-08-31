@@ -26,6 +26,10 @@ describe("Provider model catalog error localization", () => {
 });
 
 describe("Provider form defaults", () => {
+  it("does not synthesize a legacy OpenAI-compatible provider type", () => {
+    expect(defaultFormValues(providerConfig(), emptyData()).type).toBe("");
+  });
+
   it("prefers plugin provider types over the legacy OpenAI-compatible fallback", () => {
     const data = emptyData();
     data.providerAdapters = [{
