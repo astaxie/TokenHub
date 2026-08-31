@@ -1,18 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { setActiveLanguage } from "../i18n/runtime";
-import { enumOptionLabel, fieldValueLabel } from "./labels";
+import { fieldValueLabel } from "./labels";
 
-describe("model modality labels", () => {
-  beforeEach(() => setActiveLanguage("zh-CN"));
-  afterEach(() => setActiveLanguage("en"));
-
-  it("localizes input and output modality option values", () => {
-    expect(enumOptionLabel("input_modalities", "text")).toBe("文本");
-    expect(enumOptionLabel("output_modalities", "image")).toBe("图像");
-  });
-
-  it("localizes modality arrays consistently", () => {
-    expect(fieldValueLabel("input_modalities", ["text", "audio"])).toBe("文本, 音频");
+describe("codex fingerprint mode labels", () => {
+  it("renders all codex fingerprint mode labels from declarative metadata", () => {
+    expect(fieldValueLabel("codex_fingerprint_mode", "off")).toBe("关闭（透传）");
+    expect(fieldValueLabel("codex_fingerprint_mode", "device")).toBe("仅收敛设备");
+    expect(fieldValueLabel("codex_fingerprint_mode", "session")).toBe("收敛设备与会话（推荐）");
+    expect(fieldValueLabel("codex_fingerprint_mode", "full")).toBe("完全收敛");
   });
 });

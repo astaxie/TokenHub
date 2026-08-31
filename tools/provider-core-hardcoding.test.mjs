@@ -121,6 +121,18 @@ describe("provider-specific core hardcoding gate", () => {
     assert.equal(source.includes(': "openai_compatible"'), false);
   });
 
+  it("keeps project key download templates out of the generic project key resource surface", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/resources/project-key-config.tsx"), "utf8");
+    const forbidden = [
+      "Codex CLI 配置",
+      "环境变量模板",
+      "替换 Key 占位符",
+      "-codex-config.toml",
+      ".env ·",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
+
   it("keeps provider model category defaults outside generic category helpers", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_model_categories.go"), "utf8");
     const forbidden = [

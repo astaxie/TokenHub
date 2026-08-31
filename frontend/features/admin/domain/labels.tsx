@@ -3,6 +3,7 @@ import { fieldSummary, projectName, stringifyValue, teamLabel } from "./entities
 import { routeStrategyLabel } from "./formatting";
 import { displayText, tx } from "../i18n/runtime";
 import { identityProviderTemplateLabel, normalizedIdentityProviderIconKey } from "../shared/auth";
+import { codexFingerprintModeLabel } from "../core/project-key-download-templates";
 import { providerCatalogEntriesFromPluginCapabilities } from "./provider-plugin-catalog";
 
 export function compactList(value: unknown) {
@@ -202,14 +203,7 @@ export function fieldValueLabel(fieldKey: string, value: unknown): string {
   if (normalizedKey === "status" || normalizedKey.includes("status")) return enumValueLabel(text);
   if (normalizedKey === "strategy") return routeStrategyLabel(text);
   if (normalizedKey === "system_prompt_transform_policy" || normalizedKey === "claude_code_attribution_policy") return enumValueLabel(text);
-  if (normalizedKey === "codex_fingerprint_mode") {
-    return tx({
-      off: "关闭（透传）",
-      device: "仅收敛设备",
-      session: "收敛设备与会话（推荐）",
-      full: "完全收敛",
-    }[text.toLowerCase()] ?? text);
-  }
+  if (normalizedKey === "codex_fingerprint_mode") return tx(codexFingerprintModeLabel(text));
   if (normalizedKey === "trigger") return approvalTriggerLabel(text);
   if (normalizedKey === "dataset") return reportDatasetLabel(text);
   if (normalizedKey === "reasoning_effort_unsupported") {

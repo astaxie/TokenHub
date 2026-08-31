@@ -24,6 +24,7 @@ export const GENERIC_CORE_SURFACES = [
   "frontend/features/admin/domain/provider-resource-types.ts",
   "frontend/features/admin/domain/provider-headers.ts",
   "frontend/features/admin/resources/payloads.tsx",
+  "frontend/features/admin/resources/project-key-config.tsx",
   "frontend/features/admin/resources/provider-model-config.tsx",
   "frontend/features/admin/views/provider-editor.tsx",
   "frontend/features/admin/views/provider-account-quota-reset.tsx",
