@@ -482,8 +482,8 @@ export function modelConfig(): ResourceConfig<Model> {
     description: "维护客户端调用的统一模型名、能力和对外价格；不同 Provider 线路共享同一套对外定价。",
     createLabel: "新增模型",
     columns: [
-      { key: "name", label: "对外模型", render: (item) => <ModelNameCell model={item} /> },
-      { key: "category", label: "模型类型", render: (item) => modelCategoryLabel(modelCategory(item)) },
+      { key: "name", label: "对外模型", render: (item, ctx) => <ModelNameCell model={item} data={ctx} /> },
+      { key: "category", label: "模型类型", render: (item, ctx) => modelCategoryLabel(modelCategory(item, ctx), ctx) },
       { key: "capabilities", label: "能力", render: (item) => modelCapabilitySummary(item) },
       { key: "routes", label: "可用供应商", render: (item, ctx) => <ModelRouteProviders model={item} data={ctx} /> },
       { key: "route_count", label: "路由数", render: (item, ctx) => modelRoutesFor(item, ctx).length },

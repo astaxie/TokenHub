@@ -58,7 +58,7 @@ export function modelDirectorySearchText(model: Model, routes: ModelRoute[], dat
     model.id,
     model.family,
     model.modality,
-    modelCategory(model),
+    modelCategory(model, data),
     ...(model.capabilities ?? []),
     ...routes.flatMap((route) => [route.provider_model, route.provider_id, findProvider(data, route.provider_id)?.name]),
   ]

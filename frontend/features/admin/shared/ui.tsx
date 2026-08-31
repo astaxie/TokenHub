@@ -387,12 +387,13 @@ export function StatusPill({ status, label }: { status: string; label?: string }
   return <span className={`pill ${kind}`}>{label ? tx(label) : enumValueLabel(status)}</span>;
 }
 
-export function ModelNameCell({ model }: { model: Model }) {
+export function ModelNameCell({ model, data }: { model: Model; data?: Pick<AppData, "plugins" | "providerAdapters"> }) {
   const title = modelDisplayName(model.metadata, model.name);
+  const category = modelCategory(model, data);
   return (
     <div className="model-name-cell">
       <strong>{title}</strong>
-      <span>{title !== model.name ? `${model.name} · ` : ""}{modelCategoryLabel(modelCategory(model))} · {model.family || "-"} · {model.modality || "chat"} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}</span>
+      <span>{title !== model.name ? `${model.name} · ` : ""}{modelCategoryLabel(category, data)} · {model.family || "-"} · {model.modality || "chat"} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}</span>
     </div>
   );
 }

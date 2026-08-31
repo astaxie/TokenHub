@@ -19,6 +19,7 @@ export const GENERIC_CORE_SURFACES = [
   "backend/internal/server/provider_route_bridge.go",
   "frontend/features/admin/domain/provider-account-catalog.ts",
   "frontend/features/admin/domain/catalog.tsx",
+  "frontend/features/admin/domain/model-categories.ts",
   "frontend/features/admin/domain/provider-resource-types.ts",
   "frontend/features/admin/resources/provider-model-config.tsx",
   "frontend/features/admin/views/provider-editor.tsx",

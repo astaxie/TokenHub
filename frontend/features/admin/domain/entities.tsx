@@ -127,10 +127,10 @@ export function modelSelectOptions(data: AppData) {
   return data.models
     .filter((model) => modelIsInDirectory(model, data))
     .slice()
-    .sort((left, right) => modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name))
+    .sort((left, right) => modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name))
     .map((model) => ({
       value: model.name,
-      label: `${model.name} / ${modelCategoryLabel(modelCategory(model))}${model.status !== "active" ? ` / ${enumValueLabel(model.status)}` : ""}`,
+      label: `${model.name} / ${modelCategoryLabel(modelCategory(model, data), data)}${model.status !== "active" ? ` / ${enumValueLabel(model.status)}` : ""}`,
     }));
 }
 
@@ -529,7 +529,7 @@ export function filterRouteModels(data: AppData, category: string, scope: "confi
     .filter((model) => {
       const routes = modelRoutesFor(model, data);
       if (scope === "configured" && routes.length === 0) return false;
-      if (category !== "all" && modelCategory(model) !== category) return false;
+      if (category !== "all" && modelCategory(model, data) !== category) return false;
       if (!normalizedQuery) return true;
       return routeModelSearchText(model, routes, data).includes(normalizedQuery);
     })
@@ -537,7 +537,7 @@ export function filterRouteModels(data: AppData, category: string, scope: "confi
       const leftRoutes = modelRoutesFor(left, data).length;
       const rightRoutes = modelRoutesFor(right, data).length;
       if (leftRoutes !== rightRoutes) return rightRoutes - leftRoutes;
-      return modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name);
+      return modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name);
     });
 }
 
@@ -553,7 +553,7 @@ export function routeModelSearchText(model: Model, routes: ModelRoute[], data: A
       provider?.base_url,
     ];
   });
-  return [model.name, model.id, model.family, model.modality, model.category, ...routeText]
+  return [model.name, model.id, model.family, model.modality, model.category, modelCategory(model, data), ...routeText]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();

@@ -34,17 +34,17 @@ export function ModelCreateModal({
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const templates = useMemo(() => referenceModelTemplates(data.models), [data.models]);
   const filteredTemplates = useMemo(
-    () => filterReferenceModelTemplates(data.models, query, category),
-    [category, data.models, query],
+    () => filterReferenceModelTemplates(data.models, query, category, (model) => modelCategory(model, data)),
+    [category, data, query],
   );
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
     for (const model of templates) {
-      const key = modelCategory(model);
+      const key = modelCategory(model, data);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return Array.from(counts.entries()).sort((left, right) => left[0].localeCompare(right[0]));
-  }, [templates]);
+  }, [data, templates]);
   const selectedModel = templates.find((model) => model.name === selectedTemplate);
   const hasInitialRoute = initialModelRoutes(values.initial_provider_models).length > 0;
 
@@ -124,7 +124,7 @@ export function ModelCreateModal({
                 <label className="search-box"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tx("搜索模型名称、系列或能力")} /></label>
                 <select aria-label={tx("模型分类")} value={category} onChange={(event) => setCategory(event.target.value)}>
                   <option value="all">{tx("全部分类")}</option>
-                  {categories.map(([key, count]) => <option key={key} value={key}>{tx(modelCategoryLabel(key))} ({count})</option>)}
+                  {categories.map(([key, count]) => <option key={key} value={key}>{tx(modelCategoryLabel(key, data))} ({count})</option>)}
                 </select>
               </div>
             </div>
@@ -140,11 +140,12 @@ export function ModelCreateModal({
                 <div className="model-directory-empty compact"><Boxes size={24} /><strong>{tx("没有匹配的目录模型")}</strong></div>
               ) : filteredTemplates.map((model) => {
                 const selected = selectedTemplate === model.name;
-                const modelCategoryKey = modelCategory(model);
+                const modelCategoryKey = modelCategory(model, data);
+                const modelCategoryText = modelCategoryLabel(modelCategoryKey, data);
                 return (
                   <button className={`model-create-template ${selected ? "selected" : ""}`} key={model.name} onClick={() => selectTemplate(model)} type="button">
-                    <ModelBrandIcon category={modelCategoryKey} label={modelCategoryLabel(modelCategoryKey)} compact />
-                    <span><strong>{model.name}</strong><small>{model.family || modelCategoryLabel(modelCategoryKey)} · {model.modality || "chat"}</small></span>
+                    <ModelBrandIcon category={modelCategoryKey} label={modelCategoryText} data={data} compact />
+                    <span><strong>{model.name}</strong><small>{model.family || modelCategoryText} · {model.modality || "chat"}</small></span>
                     <span className="model-create-template-metrics"><b>{compactNumber(model.context_window || 0)} ctx</b><small>{priceMetric(model.input_price_usd_per_1m)} / {priceMetric(model.output_price_usd_per_1m)}</small></span>
                     {selected ? <CircleCheck size={18} /> : <ChevronRight size={18} />}
                   </button>
@@ -155,7 +156,7 @@ export function ModelCreateModal({
         ) : (
           <div className="model-create-config-step">
             <section className="model-create-selection-summary">
-              <div>{selectedModel ? <ModelBrandIcon category={modelCategory(selectedModel)} label={selectedModel.name} /> : <span className="model-create-custom-icon"><SlidersHorizontal size={18} /></span>}</div>
+              <div>{selectedModel ? <ModelBrandIcon category={modelCategory(selectedModel, data)} label={selectedModel.name} data={data} /> : <span className="model-create-custom-icon"><SlidersHorizontal size={18} /></span>}</div>
               <div><span>{tx(selectedModel ? "已选择目录模型" : "自定义模型")}</span><strong>{selectedModel?.name || values.name || tx("尚未命名")}</strong><small>{tx("模型名可以作为对外别名调整；能力和价格不会随 Provider 线路变化。")}</small></div>
               <button className="secondary-button" onClick={() => setStep(0)} type="button">{tx("重新选择")}</button>
             </section>

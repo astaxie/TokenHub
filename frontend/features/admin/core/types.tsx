@@ -300,6 +300,7 @@ export type AdapterModelCategory = {
   aliases?: string[];
   family_prefixes?: string[];
   canonical_prefixes?: string[];
+  icon_src?: string;
 };
 
 export type AdapterModelDiscoveryPolicy = {

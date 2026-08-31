@@ -219,6 +219,8 @@ function ExternalModelsTable({ data, models, readOnly, busy, onOpenRoutes, onEdi
             const customAlias = isCustomModelAlias(model, routes);
             const title = modelDisplayName(model.metadata, model.name);
             const subtitle = modelDirectorySubtitle(model.name, title, !readOnly ? tx(customAlias ? "自定义别名" : "同名 1:1") : "");
+            const category = modelCategory(model, data);
+            const categoryLabel = modelCategoryLabel(category, data);
             const capabilities = model.capabilities ?? [];
             const supportedParameters = model.supported_parameters ?? [];
             const facts = modelMetadataFacts(model.metadata, capabilities, supportedParameters);
@@ -226,7 +228,7 @@ function ExternalModelsTable({ data, models, readOnly, busy, onOpenRoutes, onEdi
               <tr key={model.name}>
                 <td>
                   <div className="directory-model-name">
-                    <ModelBrandIcon category={modelCategory(model)} label={modelCategoryLabel(modelCategory(model))} />
+                    <ModelBrandIcon category={category} label={categoryLabel} data={data} />
                     <div><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</div>
                   </div>
                 </td>

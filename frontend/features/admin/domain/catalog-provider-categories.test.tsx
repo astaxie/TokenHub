@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { canonicalModelNameForUI, catalogModelCategoryOptions, emptyData, modelCategory, modelCategoryInitial, modelCategoryLabel, modelCategoryTabs, providerCategories, providerEntrySupportsCategory } from "./catalog";
-import type { Provider } from "../core/types";
+import { filterExternalModels } from "./model-directory";
+import type { Model, Provider } from "../core/types";
+import { modelCategoryDefinitionsFromData, modelCategoryIconSourceFromDefinitions } from "./model-categories";
 
 describe("providerCategories", () => {
   it("uses account provider catalog metadata for plugin account resources", () => {
@@ -82,6 +84,34 @@ describe("providerCategories", () => {
     expect(providerCategories(provider, data)).toEqual(["custom"]);
   });
 
+  it("does not infer provider-specific categories from model names or icons", () => {
+    const data = emptyData();
+    const model: Model = {
+      id: "mdl_gpt",
+      name: "gpt-4o",
+      family: "gpt",
+      modality: "chat",
+      status: "active",
+    };
+    data.models = [model];
+    data.providerCatalog = [{
+      id: "opaque",
+      name: "Opaque",
+      display_name: "Opaque",
+      type: "opaque_provider",
+      categories: ["gemini"],
+      category_counts: { gemini: 1 },
+      models_count: 1,
+      source: "plugin",
+      models: [{ id: "claude-3", name: "claude-3", display_name: "Claude 3" }],
+    }];
+
+    expect(modelCategory(model, data)).toBe("custom");
+    expect(modelCategoryLabel("gemini", data)).toBe("gemini");
+    expect(catalogModelCategoryOptions(data.providerCatalog, data)).toEqual([{ key: "gemini", label: "gemini", count: 1 }]);
+    expect(modelCategoryIconSourceFromDefinitions("gemini", modelCategoryDefinitionsFromData(data))).toBe("");
+  });
+
   it("derives category initials from labels without provider-specific branches", () => {
     expect(modelCategoryInitial("opaque", "Acme")).toBe("A");
     expect(modelCategoryInitial("opaque", "")).toBe("O");
@@ -127,6 +157,7 @@ describe("providerCategories", () => {
           order: 25,
           aliases: ["opaque"],
           canonical_prefixes: ["opaque"],
+          icon_src: "/model-icons/acme.svg",
         }],
       },
     }];
@@ -135,6 +166,8 @@ describe("providerCategories", () => {
     expect(modelCategory(data.models[0], data)).toBe("acme");
     expect(modelCategoryLabel("acme", data)).toBe("Acme");
     expect(canonicalModelNameForUI("opaquev2", undefined, data)).toBe("opaque-v2");
+    expect(modelCategoryIconSourceFromDefinitions("acme", modelCategoryDefinitionsFromData(data))).toBe("/model-icons/acme.svg");
+    expect(filterExternalModels(data.models, data, "all", "acme", "")).toEqual(data.models);
     expect(catalogModelCategoryOptions(data.providerCatalog, data)[0]).toMatchObject({ key: "acme", label: "Acme", count: 1 });
     expect(providerEntrySupportsCategory(data.providerCatalog[0], "acme", data)).toBe(true);
     expect(modelCategoryTabs(data, "models")[1]).toMatchObject({ key: "acme", label: "Acme", count: 1 });

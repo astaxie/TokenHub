@@ -164,7 +164,7 @@ export function canonicalModelNameForUI(id: string, displayName?: string, data?:
 export function filterByModelCategory<T>(view: ViewKey | undefined, items: T[], category: string, data: AppData) {
   if (!view || category === "all") return items;
   if (view === "models") {
-    return items.filter((item) => modelCategory(item as Model) === category);
+    return items.filter((item) => modelCategory(item as Model, data) === category);
   }
   if (view === "providers") {
     return items.filter((item) => providerCategories(item as Provider, data).includes(category));

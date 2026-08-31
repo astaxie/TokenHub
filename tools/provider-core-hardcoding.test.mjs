@@ -118,6 +118,25 @@ describe("provider-specific core hardcoding gate", () => {
     assert.deepEqual(forbidden.filter((pattern) => pattern.test(source)).map(String), []);
   });
 
+  it("keeps provider model category defaults outside frontend category helpers", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/domain/model-categories.ts"), "utf8");
+    const forbidden = [
+      /"codex"/,
+      /"openai"/,
+      /"claude"/,
+      /"anthropic"/,
+      /"deepseek"/,
+      /"gemini"/,
+      /"qwen"/,
+      /"kimi"/,
+      /"mistral"/,
+      /OpenAI/,
+      /Claude/,
+      /Gemini/,
+    ];
+    assert.deepEqual(forbidden.filter((pattern) => pattern.test(source)).map(String), []);
+  });
+
   it("keeps standard model catalog loading free of name-based model inference", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/model_catalog_data.go"), "utf8");
     const forbidden = [

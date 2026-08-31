@@ -4,7 +4,7 @@ import { configuredPriceFormValue } from "./configured-pricing";
 import { modelDisplayName } from "./model-display-name";
 import { imageCapabilityCapableResources, modelHasImageCapability, routeImageCapabilityProfile, findProvider, findProviderResource, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
-import { preferredModelCategories } from "./model-categories";
+import { preferredModelCategories, preferredModelCategoriesFromData } from "./model-categories";
 
 export function initialView(): ViewKey {
   if (typeof window === "undefined") return "overview";
@@ -33,7 +33,7 @@ export function playgroundModels(data: AppData, sortByRoutes = data.routes.lengt
     .filter((model) => model.status === "active" && (model.modality === "" || model.modality === "chat"))
     .sort((a, b) => {
       const routeDiff = sortByRoutes ? activeRouteCount(b.name, data) - activeRouteCount(a.name, data) : 0;
-      return routeDiff || modelCategoryRank(a) - modelCategoryRank(b) || a.name.localeCompare(b.name);
+      return routeDiff || modelCategoryRank(a, data) - modelCategoryRank(b, data) || a.name.localeCompare(b.name);
     });
 }
 
@@ -276,13 +276,14 @@ export function keyWizardModelOptions(data: AppData) {
     model.status === "active" && modelHasImageCapability(data, model) && activeRouteCount(model.name, data) > 0,
   );
   return [...(routed.length > 0 ? routed : activeChatModels), ...imageCapabilityModels].sort((left, right) =>
-    modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name),
+    modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name),
   );
 }
 
-export function modelCategoryRank(model: Model) {
-  const index = preferredModelCategories.indexOf(modelCategory(model));
-  return index >= 0 ? index : preferredModelCategories.length;
+export function modelCategoryRank(model: Model, data?: Pick<AppData, "plugins" | "providerAdapters">) {
+  const definitions = data ? preferredModelCategoriesFromData(data) : preferredModelCategories;
+  const index = definitions.indexOf(modelCategory(model, data));
+  return index >= 0 ? index : definitions.length;
 }
 
 export function uniqueUIID(prefix: string) {
