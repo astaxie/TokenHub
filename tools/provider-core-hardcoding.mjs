@@ -10,6 +10,7 @@ export const GENERIC_CORE_SURFACES = [
   "backend/internal/server/gateway_http.go",
   "backend/internal/server/gateway_responses_execution.go",
   "backend/internal/server/gateway_routed_execution.go",
+  "backend/internal/server/model_catalog_data.go",
   "backend/internal/server/provider_adapter_migration.go",
   "backend/internal/server/provider_catalog.go",
   "backend/internal/server/provider_model_categories.go",

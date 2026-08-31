@@ -1,6 +1,8 @@
 package server
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -12,8 +14,9 @@ import (
 // into a ratchet: a newly inferred category cannot silently become Provider-only,
 // and an exception must be removed once its first standard template is added.
 var providerOnlyModelCategoryExceptions = map[string]string{
-	"baichuan":  "Provider aliases do not yet have a reviewed canonical template and client-facing price",
-	"microsoft": "Phi aliases span several Providers and do not yet have a reviewed canonical template and client-facing price",
+	"baichuan":     "Provider aliases do not yet have a reviewed canonical template and client-facing price",
+	"microsoft":    "Phi aliases span several Providers and do not yet have a reviewed canonical template and client-facing price",
+	"paddlepaddle": "PaddlePaddle aliases do not yet have a reviewed canonical template and client-facing price",
 }
 
 // Only list first-party catalogs whose compatible models are intentionally
@@ -49,6 +52,29 @@ func TestTrackedModelCatalogsDoNotDrift(t *testing.T) {
 			report.missingProviderModels,
 			report.mismatchedMirroredModels,
 		)
+	}
+}
+
+func TestDefaultModelCatalogRequiresExplicitModelMetadata(t *testing.T) {
+	catalogFile := filepath.Join(t.TempDir(), "model-catalog.yaml")
+	if err := os.WriteFile(catalogFile, []byte(`
+version: 1
+models:
+  - name: "opaque-chat"
+    category: "custom"
+    family: "opaque"
+    modality: "chat"
+    context_window: 128000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat"]
+`), 0o600); err != nil {
+		t.Fatalf("write catalog fixture: %v", err)
+	}
+
+	_, err := defaultModelCatalog(catalogFile)
+	if err == nil || !strings.Contains(err.Error(), "supported_parameters is required") {
+		t.Fatalf("default model catalog error = %v, want supported_parameters requirement", err)
 	}
 }
 
@@ -248,7 +274,7 @@ func findModelCatalogDriftWithPolicy(
 
 func mirroredModelMismatches(standard Model, provider ProviderCatalogModel) []string {
 	mismatches := []string{}
-	providerModality := inferCatalogModelModality(strings.Join([]string{provider.ID, provider.Name, provider.DisplayName}, " "))
+	providerModality := normalizeModelModality(provider.Type)
 	if providerModality != strings.ToLower(strings.TrimSpace(standard.Modality)) {
 		mismatches = append(mismatches, "modality")
 	}
@@ -302,7 +328,7 @@ func providerModelFitsStandardCatalog(
 	standardModalities map[string]bool,
 	standardOutputModalities map[string]bool,
 ) bool {
-	modality := inferCatalogModelModality(strings.Join([]string{model.ID, model.Name, model.DisplayName}, " "))
+	modality := normalizeModelModality(model.Type)
 	if !standardModalities[modality] {
 		return false
 	}

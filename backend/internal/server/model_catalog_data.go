@@ -50,7 +50,11 @@ func defaultModelCatalog(catalogFile string) ([]Model, error) {
 			continue
 		}
 		seen[strings.ToLower(name)] = true
-		models = append(models, buildCatalogModel(seed))
+		model, err := buildCatalogModel(seed)
+		if err != nil {
+			return nil, fmt.Errorf("build catalog model %q: %w", name, err)
+		}
+		models = append(models, model)
 	}
 	return models, nil
 }
@@ -71,37 +75,39 @@ func loadModelCatalogSeeds(catalogFile string) ([]modelCatalogSeed, error) {
 	return doc.Models, nil
 }
 
-func buildCatalogModel(seed modelCatalogSeed) Model {
+func buildCatalogModel(seed modelCatalogSeed) (Model, error) {
 	name := strings.TrimSpace(seed.Name)
 	category := strings.TrimSpace(seed.Category)
+	if category == "" {
+		return Model{}, fmt.Errorf("category is required")
+	}
 	modality := strings.TrimSpace(seed.Modality)
 	if modality == "" {
-		modality = inferCatalogModelModality(name)
+		return Model{}, fmt.Errorf("modality is required")
 	}
 	capabilities := seed.Capabilities
 	if len(capabilities) == 0 {
-		capabilities = standardModelCapabilities(name, modality)
+		return Model{}, fmt.Errorf("capabilities are required")
 	}
 	supportedParameters := seed.SupportedParameters
-	if len(supportedParameters) == 0 {
-		supportedParameters = standardModelSupportedParameters(capabilities)
+	if supportedParameters == nil {
+		return Model{}, fmt.Errorf("supported_parameters is required")
 	}
 	family := strings.TrimSpace(seed.Family)
 	if family == "" {
-		family = inferCatalogModelFamily(name, category)
+		return Model{}, fmt.Errorf("family is required")
 	}
 	contextWindow := seed.ContextWindow
-	if contextWindow == 0 {
-		contextWindow = inferCatalogContextWindow(name, modality)
+	if modality == "chat" && contextWindow == 0 {
+		return Model{}, fmt.Errorf("context_window is required for chat models")
 	}
 	inputPrice := seed.InputPriceUSDPer1M
-	subscriptionBilled := strings.EqualFold(strings.TrimSpace(seed.Metadata["billing_mode"]), "subscription")
-	if inputPrice == 0 && !subscriptionBilled {
-		inputPrice = catalogInputPrice(name, modality)
-	}
 	outputPrice := seed.OutputPriceUSDPer1M
-	if outputPrice == 0 && !subscriptionBilled {
-		outputPrice = catalogOutputPrice(name, modality)
+	if len(seed.InputModalities) == 0 {
+		return Model{}, fmt.Errorf("input_modalities are required")
+	}
+	if len(seed.OutputModalities) == 0 {
+		return Model{}, fmt.Errorf("output_modalities are required")
 	}
 	metadata := map[string]string{}
 	for key, value := range seed.Metadata {
@@ -144,7 +150,7 @@ func buildCatalogModel(seed modelCatalogSeed) Model {
 		PricingPeriods:         append([]ModelPricingPeriod(nil), seed.PricingPeriods...),
 		Status:                 StatusActive,
 		Metadata:               metadata,
-	}
+	}, nil
 }
 
 func catalogOptionalPrice(value *float64) float64 {
@@ -152,154 +158,4 @@ func catalogOptionalPrice(value *float64) float64 {
 		return 0
 	}
 	return *value
-}
-
-func inferCatalogModelFamily(name string, category string) string {
-	normalized := strings.ToLower(name)
-	if strings.Contains(normalized, "/") {
-		parts := strings.Split(normalized, "/")
-		normalized = parts[len(parts)-1]
-	}
-	for _, sep := range []string{"-", ":", "."} {
-		if index := strings.Index(normalized, sep); index > 0 {
-			return normalized[:index]
-		}
-	}
-	if category != "" {
-		return category
-	}
-	return normalized
-}
-
-func inferCatalogModelModality(name string) string {
-	normalized := strings.ToLower(name)
-	switch {
-	case strings.Contains(normalized, "embedding") || strings.Contains(normalized, "embed") || strings.Contains(normalized, "bge-"):
-		return "embedding"
-	case strings.Contains(normalized, "rerank"):
-		return "rerank"
-	case strings.Contains(normalized, "ocr"):
-		return "ocr"
-	case strings.Contains(normalized, "tts") || strings.Contains(normalized, "asr") || strings.Contains(normalized, "audio") || strings.Contains(normalized, "lyria"):
-		return "audio"
-	case strings.Contains(normalized, "veo") || strings.Contains(normalized, "sora") || strings.Contains(normalized, "i2v") || strings.Contains(normalized, "t2v") || strings.Contains(normalized, "seedance") || strings.Contains(normalized, "video"):
-		return "video"
-	case strings.Contains(normalized, "image") || strings.Contains(normalized, "imagen") || strings.Contains(normalized, "dall-e") || strings.Contains(normalized, "seedream") || strings.Contains(normalized, "cogview") || strings.Contains(normalized, "wanx") || strings.Contains(normalized, "gpt-image"):
-		return "image"
-	default:
-		return "chat"
-	}
-}
-
-func inferCatalogContextWindow(name string, modality string) int64 {
-	if modality != "chat" {
-		return 0
-	}
-	normalized := strings.ToLower(name)
-	switch {
-	case strings.Contains(normalized, "1m") || strings.Contains(normalized, "1048576"):
-		return 1048576
-	case strings.Contains(normalized, "256k"):
-		return 256000
-	case strings.Contains(normalized, "200k"):
-		return 200000
-	case strings.Contains(normalized, "128k"):
-		return 128000
-	case strings.Contains(normalized, "80k"):
-		return 80000
-	case strings.Contains(normalized, "32k"):
-		return 32000
-	case strings.Contains(normalized, "16k"):
-		return 16000
-	case strings.Contains(normalized, "8k"):
-		return 8000
-	case strings.Contains(normalized, "gpt-5") || strings.Contains(normalized, "gpt-4.1"):
-		return 400000
-	case strings.Contains(normalized, "gemini") || strings.Contains(normalized, "gemma"):
-		return 1048576
-	case strings.Contains(normalized, "claude"):
-		return 200000
-	default:
-		return 128000
-	}
-}
-
-func standardModelCapabilities(name string, modality string) []string {
-	normalized := strings.ToLower(name)
-	switch modality {
-	case "embedding":
-		return []string{"embedding"}
-	case "rerank":
-		return []string{"rerank"}
-	case "ocr":
-		return []string{"ocr", "vision"}
-	case "image":
-		if strings.Contains(normalized, "edit") {
-			return []string{"image", "image_edit"}
-		}
-		return []string{"image"}
-	case "video":
-		return []string{"video"}
-	case "audio":
-		if strings.Contains(normalized, "asr") {
-			return []string{"audio", "speech_to_text"}
-		}
-		if strings.Contains(normalized, "tts") {
-			return []string{"audio", "text_to_speech"}
-		}
-		return []string{"audio"}
-	default:
-		capabilities := []string{"chat"}
-		if strings.Contains(normalized, "vision") || strings.Contains(normalized, "vl") || strings.Contains(normalized, "multimodal") || strings.Contains(normalized, "image") || strings.Contains(normalized, "4v") || strings.Contains(normalized, "4.5v") || strings.Contains(normalized, "4.6v") {
-			capabilities = append(capabilities, "vision")
-		}
-		if strings.Contains(normalized, "think") || strings.Contains(normalized, "reasoning") || strings.Contains(normalized, "reasoner") || strings.Contains(normalized, "r1") || strings.Contains(normalized, "o1") || strings.Contains(normalized, "o3") || strings.Contains(normalized, "z1") {
-			capabilities = append(capabilities, "reasoning")
-		}
-		if strings.Contains(normalized, "coder") || strings.Contains(normalized, "codex") || strings.Contains(normalized, "code") {
-			capabilities = append(capabilities, "code")
-		}
-		return capabilities
-	}
-}
-
-func standardModelSupportedParameters(capabilities []string) []string {
-	params := []string{}
-	for _, capability := range capabilities {
-		switch capability {
-		case "chat":
-			params = append(params, "temperature")
-		case "reasoning":
-			params = append(params, "reasoning")
-		case "vision":
-			params = append(params, "image_input")
-		}
-	}
-	return params
-}
-
-func catalogInputPrice(name string, modality string) float64 {
-	if modality != "chat" {
-		return 0
-	}
-	normalized := strings.ToLower(name)
-	switch {
-	case strings.Contains(normalized, "gpt-5") || strings.Contains(normalized, "gpt-4") || strings.Contains(normalized, "claude-sonnet"):
-		return 1
-	case strings.Contains(normalized, "mini") || strings.Contains(normalized, "flash") || strings.Contains(normalized, "lite"):
-		return 0.3
-	default:
-		return 0
-	}
-}
-
-func catalogOutputPrice(name string, modality string) float64 {
-	if modality != "chat" {
-		return 0
-	}
-	input := catalogInputPrice(name, modality)
-	if input == 0 {
-		return 0
-	}
-	return input * 4
 }

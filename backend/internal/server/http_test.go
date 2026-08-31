@@ -607,9 +607,21 @@ version: 1
 models:
   - name: "test-chat-128k"
     category: "custom"
+    family: "test"
+    modality: "chat"
+    context_window: 128000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat"]
+    supported_parameters: ["temperature"]
   - name: "test-embedding"
     category: "custom"
+    family: "test"
     modality: "embedding"
+    input_modalities: ["text"]
+    output_modalities: ["embedding"]
+    capabilities: ["embedding"]
+    supported_parameters: []
     embedding_price_usd_per_1m: 0.01
 `)
 	if err := os.WriteFile(catalogPath, content, 0o644); err != nil {
@@ -643,10 +655,18 @@ models:
     context_window: 128000
     input_price_usd_per_1m: 1.5
     output_price_usd_per_1m: 6
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat"]
+    supported_parameters: ["temperature"]
   - name: factory-embedding
     category: openai
     family: factory
     modality: embedding
+    input_modalities: ["text"]
+    output_modalities: ["embedding"]
+    capabilities: ["embedding"]
+    supported_parameters: []
     embedding_price_usd_per_1m: 0.02
 `)
 	if err := os.WriteFile(catalogPath, content, 0o644); err != nil {

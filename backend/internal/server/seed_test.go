@@ -19,7 +19,7 @@ func TestRunStartupBootstrapReloadsCatalogOnEveryStart(t *testing.T) {
 	}
 	writeCatalog := func(category string) {
 		t.Helper()
-		content := []byte("version: 1\nmodels:\n  - name: startup-reloaded-model\n    category: " + category + "\n")
+		content := []byte("version: 1\nmodels:\n  - name: startup-reloaded-model\n    category: " + category + "\n    family: startup\n    modality: chat\n    context_window: 1000\n    input_modalities: [text]\n    output_modalities: [text]\n    capabilities: [chat]\n    supported_parameters: []\n")
 		if err := os.WriteFile(catalogPath, content, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +55,7 @@ func TestRunStartupBootstrapReloadsCatalogOnEveryStart(t *testing.T) {
 func TestBootstrapGeneratesRetrievableInitialAdminPassword(t *testing.T) {
 	store := NewMemoryStoreWithConfig(Config{SecretKey: strings.Repeat("s", 32)})
 	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
-	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: bootstrap-test-model\n"), 0o600); err != nil {
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: bootstrap-test-model\n    category: bootstrap\n    family: bootstrap\n    modality: chat\n    context_window: 1000\n    input_modalities: [text]\n    output_modalities: [text]\n    capabilities: [chat]\n    supported_parameters: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	config := Config{
@@ -99,7 +99,7 @@ func TestBootstrapGeneratesRetrievableInitialAdminPassword(t *testing.T) {
 func TestCreateAdminSessionDeletesGeneratedInitialAdminPassword(t *testing.T) {
 	store := NewMemoryStoreWithConfig(Config{SecretKey: strings.Repeat("s", 32)})
 	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
-	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: oauth-bootstrap-test-model\n"), 0o600); err != nil {
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: oauth-bootstrap-test-model\n    category: bootstrap\n    family: bootstrap\n    modality: chat\n    context_window: 1000\n    input_modalities: [text]\n    output_modalities: [text]\n    capabilities: [chat]\n    supported_parameters: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	config := Config{
@@ -130,7 +130,7 @@ func TestSeedDefaultModelCatalogReportsLegacyNameConflict(t *testing.T) {
 		Status:   StatusActive,
 	})
 	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
-	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: catalog-conflict-model\n    modality: chat\n"), 0o600); err != nil {
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: catalog-conflict-model\n    category: conflict\n    family: conflict\n    modality: chat\n    context_window: 1000\n    input_modalities: [text]\n    output_modalities: [text]\n    capabilities: [chat]\n    supported_parameters: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -196,7 +196,7 @@ func TestRunStartupBootstrapUpgradesV040DatabaseWithDisabledDefaultTeam(t *testi
 	}
 
 	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
-	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: startup-test-model\n"), 0o600); err != nil {
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: startup-test-model\n    category: startup\n    family: startup\n    modality: chat\n    context_window: 1000\n    input_modalities: [text]\n    output_modalities: [text]\n    capabilities: [chat]\n    supported_parameters: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	config := Config{
@@ -251,6 +251,10 @@ models:
     family: startup
     modality: chat
     context_window: 1000
+    input_modalities: [text]
+    output_modalities: [text]
+    capabilities: [chat]
+    supported_parameters: []
     input_price_usd_per_1m: 1
     cache_read_price_usd_per_1m: 0.1
     output_price_usd_per_1m: 2
@@ -276,6 +280,10 @@ models:
     family: startup
     modality: chat
     context_window: 2000
+    input_modalities: [text]
+    output_modalities: [text]
+    capabilities: [chat]
+    supported_parameters: []
     input_price_usd_per_1m: 10
     cache_read_price_usd_per_1m: 1
     output_price_usd_per_1m: 20
@@ -285,6 +293,10 @@ models:
     family: startup
     modality: chat
     context_window: 3000
+    input_modalities: [text]
+    output_modalities: [text]
+    capabilities: [chat]
+    supported_parameters: []
     input_price_usd_per_1m: 11
     cache_read_price_usd_per_1m: 1.1
     output_price_usd_per_1m: 22
