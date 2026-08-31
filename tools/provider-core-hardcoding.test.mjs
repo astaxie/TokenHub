@@ -111,6 +111,16 @@ describe("provider-specific core hardcoding gate", () => {
     assert.equal(source.includes("https://api.openai.com/v1"), false);
   });
 
+  it("keeps provider model config Base URL placeholders metadata-driven", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/resources/provider-model-config.tsx"), "utf8");
+    assert.equal(source.includes("https://api.openai.com/v1"), false);
+  });
+
+  it("keeps generic form defaults free of the legacy OpenAI-compatible fallback", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/resources/payloads.tsx"), "utf8");
+    assert.equal(source.includes(': "openai_compatible"'), false);
+  });
+
   it("keeps provider model category defaults outside generic category helpers", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_model_categories.go"), "utf8");
     const forbidden = [

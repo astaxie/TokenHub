@@ -521,7 +521,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "type") {
       values[field.key] = config.view === "providers"
         ? defaultProviderTypeValue(providerTypeOptionsFromData(data))
-        : "openai_compatible";
+        : "";
     }
     if (field.key === "auth_type") values[field.key] = providerResourceAPIKeyType;
     if (field.key === "scope") values[field.key] = "project";

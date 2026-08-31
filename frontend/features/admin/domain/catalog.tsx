@@ -143,7 +143,7 @@ export function buildCustomProviderCatalogEntry(category: string, standardModels
     id: "custom",
     name: "自定义渠道商",
     display_name: "自定义渠道商",
-    type: "openai_compatible",
+    type: "",
     categories: [normalizedCategory],
     category_counts: { [normalizedCategory]: 0 },
     models_count: 0,

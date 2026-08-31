@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { emptyData } from "../domain/catalog";
+import { notificationChannelConfig } from "./settings-config";
 import { defaultFormValues, readAdminError } from "./payloads";
 import { providerConfig } from "./provider-model-config";
 
@@ -40,5 +41,11 @@ describe("Provider form defaults", () => {
     }];
 
     expect(defaultFormValues(providerConfig(), data).type).toBe("kimi_subscription");
+  });
+});
+
+describe("Generic form defaults", () => {
+  it("does not synthesize a legacy OpenAI-compatible type for notification channels", () => {
+    expect(defaultFormValues(notificationChannelConfig(), emptyData()).type).toBe("");
   });
 });

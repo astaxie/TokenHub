@@ -85,7 +85,7 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "account_id", label: "账号 ID", autoComplete: "off", visible: accountResourceFieldVisible },
     { key: "organization_id", label: "组织 ID", autoComplete: "off", visible: accountResourceFieldVisible },
     { key: "plan_type", label: "计划类型", visible: accountResourceFieldVisible },
-    { key: "base_url", label: "Base URL", placeholder: "https://api.openai.com/v1" },
+    { key: "base_url", label: "Base URL", placeholder: "https://provider.example/v1" },
     { key: "group", label: "分组" },
     { key: "region", label: "地域", placeholder: "cn-east" },
     { key: "environment", label: "环境", placeholder: "prod" },
