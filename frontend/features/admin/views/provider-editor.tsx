@@ -14,6 +14,7 @@ import { providerCatalogModelIsSelectable } from "../domain/provider-model-selec
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceActionSelection, providerResourceDraftDefaults, providerResourceSelectionSupportsAction, runProviderResourcePluginAction } from "../resources/provider-model-config";
+import { providerTypeManagedHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ReviewItem } from "./modals";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 import { ProviderModelInventory } from "./provider-model-inventory";
@@ -64,7 +65,7 @@ export function ProviderUpsertModal({
   onAccountsChanged?: () => Promise<void>;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
-  setNotice: (value: string) => void; providerTypeOptions?: Array<{ value: string; label: string; supportsCustomHeaders: boolean; authModes?: string[]; routeProtocols?: string[] }>; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
+  setNotice: (value: string) => void; providerTypeOptions?: ProviderTypeOption[]; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
 }) {
   const providerTypeLabel = (type: string | undefined) => providerTypeLabelFromData({ plugins, providerCatalog: catalog, providerAdapters }, type);
   const modelCategoryData = useMemo(() => ({ plugins, providerAdapters }), [plugins, providerAdapters]);
@@ -940,7 +941,7 @@ export function ProviderUpsertModal({
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const headerError = providerHeaderFormError(values.custom_headers); if (headerError) { setError(tx(headerError)); return; }
+    const headerError = providerHeaderFormError(values.custom_headers, providerTypeManagedHeaders(providerTypeOptions ?? [], values.type)); if (headerError) { setError(tx(headerError)); return; }
     if (mode === "create" && createStep < lastCreateStep) {
       if (!validateCreateStep(createStep)) return;
       setCreateStep((current) => Math.min(current + 1, lastCreateStep));

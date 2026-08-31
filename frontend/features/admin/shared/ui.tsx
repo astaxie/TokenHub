@@ -426,6 +426,7 @@ export type ProviderTypeOption = {
   label: string;
   supportsCustomHeaders: boolean;
   apiKeyRequired?: boolean;
+  managedHeaders?: string[];
   authModes?: string[];
   routeProtocols?: string[];
   systemPromptTransformDefault?: string;
@@ -446,6 +447,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
   const labelByType = new Map<string, string>();
   const policyByType = new Map<string, boolean>();
   const apiKeyRequiredByType = new Map<string, boolean>();
+  const managedHeadersByType = new Map<string, Set<string>>();
   const authModesByType = new Map<string, Set<string>>();
   const routeProtocolsByType = new Map<string, Set<string>>();
   const systemPromptTransformDefaultByType = new Map<string, string>();
@@ -460,6 +462,9 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     if (pluginLabel) labelByType.set(adapter.type, pluginLabel);
     policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
     apiKeyRequiredByType.set(adapter.type, adapter.provider_policy?.api_key_required ?? true);
+    for (const header of adapter.provider_policy?.managed_headers ?? []) {
+      addProviderManagedHeader(managedHeadersByType, adapter.type, header);
+    }
     const systemPromptTransformDefault = adapter.provider_policy?.system_prompt_transform_default || adapter.provider_policy?.claude_code_attribution_default;
     if (systemPromptTransformDefault) {
       systemPromptTransformDefaultByType.set(adapter.type, systemPromptTransformDefault);
@@ -500,6 +505,12 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
         if (!providerType) continue;
         types.add(providerType);
         apiKeyRequiredByType.set(providerType, capability.value !== "false");
+      }
+      if (capability.kind === "provider_policy" && capability.name === "managed_header") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        addProviderManagedHeader(managedHeadersByType, providerType, capability.value);
       }
       if (capability.kind === "provider_policy" && capability.name === "route_protocol") {
         const providerType = String(capability.subject || "").trim();
@@ -569,6 +580,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
     label: providerTypeOptionLabel(value, labelByType),
     supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
     apiKeyRequired: apiKeyRequiredByType.get(value) ?? true,
+    managedHeaders: providerManagedHeaderList(managedHeadersByType.get(value)),
     authModes: providerAuthModeList(authModesByType.get(value)),
     routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
     systemPromptTransformDefault: systemPromptTransformDefaultByType.get(value),
@@ -623,6 +635,10 @@ export function providerTypeRequiresAPIKey(providerTypeOptions: ProviderTypeOpti
   return providerTypeOptions.find((option) => option.value === providerType)?.apiKeyRequired ?? true;
 }
 
+export function providerTypeManagedHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.managedHeaders ?? [];
+}
+
 export function providerTypeRouteProtocols(providerTypeOptions: ProviderTypeOption[], providerType: string) {
   return providerTypeOptions.find((option) => option.value === providerType)?.routeProtocols ?? [];
 }
@@ -642,6 +658,18 @@ export function providerTypeModelDiscovery(providerTypeOptions: ProviderTypeOpti
 
 function defaultProviderTypeSupportsCustomHeaders() {
   return true;
+}
+
+function addProviderManagedHeader(policies: Map<string, Set<string>>, providerType: string, rawValue: string | undefined) {
+  const value = String(rawValue || "").trim().toLowerCase();
+  if (!value) return;
+  const headers = policies.get(providerType) ?? new Set<string>();
+  headers.add(value);
+  policies.set(providerType, headers);
+}
+
+function providerManagedHeaderList(headers?: Set<string>) {
+  return Array.from(headers ?? []).sort();
 }
 
 function providerTypeModelDiscoveryFromAdapter(policy?: {

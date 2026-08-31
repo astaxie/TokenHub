@@ -21,6 +21,7 @@ export const GENERIC_CORE_SURFACES = [
   "frontend/features/admin/domain/catalog.tsx",
   "frontend/features/admin/domain/model-categories.ts",
   "frontend/features/admin/domain/provider-resource-types.ts",
+  "frontend/features/admin/domain/provider-headers.ts",
   "frontend/features/admin/resources/provider-model-config.tsx",
   "frontend/features/admin/views/provider-editor.tsx",
   "frontend/features/admin/views/provider-plugin-form-sections.tsx",

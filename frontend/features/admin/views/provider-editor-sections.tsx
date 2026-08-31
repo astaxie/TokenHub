@@ -5,7 +5,7 @@ import { providerAuthMode, providerAuthModeField } from "../domain/provider-cust
 import { providerReasoningFieldConfigs, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
 import { adminFetch, providerResourceSystemPromptTransformPolicyPayload, readAdminError } from "../resources/payloads";
-import { providerTypeAuthModes, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { providerTypeAuthModes, providerTypeManagedHeaders, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -59,6 +59,7 @@ export function ProviderConnectionFields({
       </div>
       <ProviderCustomHeaders
         disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
+        managedHeaders={providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type)}
         onChange={(value) => onUpdate("custom_headers", value)}
         validationErrors={validationErrors}
         value={values.custom_headers ?? "[]"}

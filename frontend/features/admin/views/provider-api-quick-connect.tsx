@@ -7,7 +7,7 @@ import { formatModelPrice } from "../domain/formatting";
 import { legacyProviderAuthModeField, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
 import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { providerTypeManagedHeaders, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 import { ProviderAuthModeField } from "./provider-editor-sections";
 
@@ -158,7 +158,7 @@ export function ProviderAPIQuickConnect({
   }
 
   async function testConnection() {
-    const headerError = providerHeaderFormError(values.custom_headers);
+    const headerError = providerHeaderFormError(values.custom_headers, providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type));
     if (headerError) { setConnectionTest({ status: "error", message: tx(headerError) }); return; }
     if (!connectionReady) {
       setConnectionTest({ status: "error", message: tx(apiKeyRequired ? "请填写 Base URL 和 API Key 后测试。" : "请填写 Base URL 后测试。") });
@@ -372,6 +372,7 @@ export function ProviderAPIQuickConnect({
           </div>
           <ProviderCustomHeaders
             disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
+            managedHeaders={providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type)}
             onChange={(value) => onUpdate("custom_headers", value)}
             value={values.custom_headers ?? "[]"}
           />

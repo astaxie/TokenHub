@@ -68,6 +68,7 @@ describe("provider-specific core hardcoding gate", () => {
     assert.ok(GENERIC_CORE_SURFACES.includes("backend/internal/server/provider_catalog.go"));
     assert.ok(frontendSources.includes("frontend/features/admin/views/provider-editor.tsx"));
     assert.ok(GENERIC_CORE_SURFACES.includes("frontend/features/admin/domain/catalog.tsx"));
+    assert.ok(GENERIC_CORE_SURFACES.includes("frontend/features/admin/domain/provider-headers.ts"));
     assert.equal(GENERIC_CORE_SURFACES.length < frontendSources.length, true);
   });
 
@@ -153,6 +154,18 @@ describe("provider-specific core hardcoding gate", () => {
 
   it("keeps provider-specific managed headers outside generic header core", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_headers.go"), "utf8");
+    const forbidden = [
+      "anthropic-version",
+      "anthropic-beta",
+      "openai-organization",
+      "openai-project",
+      "x-goog-api-key",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
+
+  it("keeps provider-specific managed headers outside frontend generic header core", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "frontend/features/admin/domain/provider-headers.ts"), "utf8");
     const forbidden = [
       "anthropic-version",
       "anthropic-beta",

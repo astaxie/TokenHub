@@ -5,7 +5,7 @@ import { effectiveProviderHeaderEntries, parseProviderHeaderEntries, providerHea
 import { isProviderAccountResourceForData } from "../domain/provider-resource-types";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerResourceToForm, providerResourceUpdatePayload, readAdminError } from "../resources/payloads";
-import { providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { providerTypeManagedHeaders, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -62,11 +62,12 @@ export function ProviderResourceReasoningSettings({
 
   async function save(resource: ProviderResource) {
     const draft = drafts[resource.id] ?? providerReasoningOverrideFormValues(resource.options, provider.options);
+    const managedHeaders = providerTypeManagedHeaders(providerTypeOptions, providerType);
     setBusyID(resource.id);
     setSavedID("");
     setErrors((current) => ({ ...current, [resource.id]: "" }));
     try {
-      const headerErrors = providerHeaderEntryErrors(effectiveProviderHeaderEntries(parseProviderHeaderEntries(providerHeadersFormValue(provider.headers, provider.sensitive_headers)), parseProviderHeaderEntries(draft.custom_headers)));
+      const headerErrors = providerHeaderEntryErrors(effectiveProviderHeaderEntries(parseProviderHeaderEntries(providerHeadersFormValue(provider.headers, provider.sensitive_headers)), parseProviderHeaderEntries(draft.custom_headers)), managedHeaders);
       if (headerErrors.length > 0) throw new Error(tx(headerErrors[0]));
       const payload = providerResourceUpdatePayload({ ...providerResourceToForm(resource, provider.options), ...draft });
       const response = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}`, {
@@ -94,6 +95,7 @@ export function ProviderResourceReasoningSettings({
 
   if (scopedResources.length === 0) return null;
   const showReasoning = providerTypeSupportsReasoningConfig(providerTypeOptions, providerType);
+  const managedHeaders = providerTypeManagedHeaders(providerTypeOptions, providerType);
   return (
     <section className="provider-quota-panel">
       <div className="wizard-panel-head">
@@ -141,6 +143,7 @@ export function ProviderResourceReasoningSettings({
               <ProviderCustomHeaders
                 disabled={!providerTypeSupportsCustomHeaders(providerTypeOptions, providerType)}
                 inheritedValue={providerHeadersFormValue(provider.headers, provider.sensitive_headers)}
+                managedHeaders={managedHeaders}
                 onChange={(value) => update(resource.id, "custom_headers", value)}
                 validationErrors={resource.header_validation_errors}
                 value={values.custom_headers ?? "[]"}

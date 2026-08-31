@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerTypeAuthModes, providerTypeModelDiscovery, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
+import { providerTypeAuthModes, providerTypeManagedHeaders, providerTypeModelDiscovery, providerTypeOptionsFromData, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeRouteProtocols, providerTypeSupportsCustomHeaders } from "./ui";
 import { emptyData } from "../domain/catalog";
 import { providerTypeLabel, providerTypeLabelFromData } from "../domain/labels";
 
@@ -160,10 +160,11 @@ describe("providerTypeOptionsFromData", () => {
       type: "native_subscription",
       capabilities: ["responses"],
       plugin_id: "tokenhub.provider.native-subscription",
-      provider_policy: {
-        auth_modes: ["x-api-key", "bearer"],
-        api_key_required: false,
-        system_prompt_transform_default: "preserve",
+        provider_policy: {
+          auth_modes: ["x-api-key", "bearer"],
+          api_key_required: false,
+          managed_headers: ["x-native-version"],
+          system_prompt_transform_default: "preserve",
         reasoning_configurable: false,
         default_base_url: "https://native.example/v1/",
         default_catalog_provider_type: true,
@@ -184,6 +185,7 @@ describe("providerTypeOptionsFromData", () => {
     expect(providerTypeAuthModes(options, "native_subscription")).toEqual(["bearer", "x-api-key"]);
     expect(providerTypePreferredAuthMode(options, "native_subscription")).toBe("x-api-key");
     expect(providerTypeRequiresAPIKey(options, "native_subscription")).toBe(false);
+    expect(providerTypeManagedHeaders(options, "native_subscription")).toEqual(["x-native-version"]);
     expect(providerTypeRequiresAPIKey(options, "openai_compatible")).toBe(true);
     expect(providerTypeRouteProtocols(options, "native_subscription")).toEqual(["native/responses"]);
     expect(options.find((option) => option.value === "native_subscription")?.apiKeyRequired).toBe(false);
@@ -246,6 +248,7 @@ describe("providerTypeOptionsFromData", () => {
         { kind: "provider", name: "responses", subject: "oauth_subscription" },
         { kind: "provider_policy", name: "supports_custom_headers", subject: "oauth_subscription", value: "false" },
         { kind: "provider_policy", name: "api_key_required", subject: "oauth_subscription", value: "false" },
+        { kind: "provider_policy", name: "managed_header", subject: "oauth_subscription", value: "x-oauth-version" },
         { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "oauth" },
         { kind: "provider_policy", name: "auth_mode", subject: "oauth_subscription", value: "personal_access_token" },
         { kind: "provider_policy", name: "route_protocol", subject: "oauth_subscription", value: "responses" },
@@ -265,6 +268,7 @@ describe("providerTypeOptionsFromData", () => {
 
     expect(providerTypeSupportsCustomHeaders(options, "oauth_subscription")).toBe(false);
     expect(providerTypeRequiresAPIKey(options, "oauth_subscription")).toBe(false);
+    expect(providerTypeManagedHeaders(options, "oauth_subscription")).toEqual(["x-oauth-version"]);
     expect(providerTypeAuthModes(options, "oauth_subscription")).toEqual(["oauth", "personal_access_token"]);
     expect(providerTypePreferredAuthMode(options, "oauth_subscription")).toBe("oauth");
     expect(providerTypeRouteProtocols(options, "oauth_subscription")).toEqual(["images/generations", "responses"]);
