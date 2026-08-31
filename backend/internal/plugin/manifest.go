@@ -76,6 +76,7 @@ type ManifestProvider struct {
 	AuthModeInvalidErrorCode         string                  `yaml:"auth_mode_invalid_error_code"`
 	AuthModeInvalidErrorMessage      string                  `yaml:"auth_mode_invalid_error_message"`
 	SupportsCustomHeaders            *bool                   `yaml:"supports_custom_headers"`
+	ManagedHeaders                   []string                `yaml:"managed_headers"`
 	APIKeyRequired                   *bool                   `yaml:"api_key_required"`
 	RouteRequiresResource            *bool                   `yaml:"route_requires_resource"`
 	StoreProbeFallback               *bool                   `yaml:"store_probe_fallback"`
@@ -599,6 +600,14 @@ func (m Manifest) Descriptor() Descriptor {
 				Name:    ProviderPolicySupportsCustomHeaders,
 				Subject: providerType,
 				Value:   fmt.Sprintf("%t", *m.Capabilities.Provider.SupportsCustomHeaders),
+			})
+		}
+		for _, header := range normalizeStrings(m.Capabilities.Provider.ManagedHeaders) {
+			descriptor.Capabilities = append(descriptor.Capabilities, CapabilityDescriptor{
+				Kind:    CapabilityKindProviderPolicy,
+				Name:    ProviderPolicyManagedHeader,
+				Subject: providerType,
+				Value:   strings.ToLower(header),
 			})
 		}
 		if m.Capabilities.Provider.APIKeyRequired != nil {

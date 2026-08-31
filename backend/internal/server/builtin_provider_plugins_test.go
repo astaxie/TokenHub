@@ -40,6 +40,34 @@ func TestBuiltinProviderPluginPackagesExposeProviderTypes(t *testing.T) {
 	}
 }
 
+func TestBuiltinProviderPluginsExposeManagedHeaderPolicies(t *testing.T) {
+	server := New(NewMemoryStore())
+	tests := []struct {
+		pluginID     string
+		providerType string
+		header       string
+	}{
+		{pluginID: "tokenhub.provider.openai-compatible", providerType: ProviderOpenAICompatible, header: "x-api-key"},
+		{pluginID: "tokenhub.provider.anthropic", providerType: ProviderAnthropic, header: "anthropic-version"},
+		{pluginID: "tokenhub.provider.gemini", providerType: ProviderGemini, header: "x-goog-api-key"},
+	}
+
+	for _, test := range tests {
+		descriptor, ok := server.pluginRegistry.Describe(test.pluginID)
+		if !ok {
+			t.Fatalf("built-in provider plugin %q is missing", test.pluginID)
+		}
+		if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{
+			Kind:    pluginmeta.CapabilityKindProviderPolicy,
+			Name:    pluginmeta.ProviderPolicyManagedHeader,
+			Subject: test.providerType,
+			Value:   test.header,
+		}) {
+			t.Fatalf("plugin %q does not expose managed header %q", test.pluginID, test.header)
+		}
+	}
+}
+
 func TestBuiltinProviderPluginPackagesMirrorRegisteredActions(t *testing.T) {
 	server := New(NewMemoryStore())
 	wantByPlugin := map[string][]builtinPluginCapabilityExpectation{}

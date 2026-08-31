@@ -155,6 +155,52 @@ func TestProviderHeaderValidationUsesPluginPolicyInsteadOfAdapterType(t *testing
 	}
 }
 
+func TestProviderManagedHeadersUsePluginPolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	const providerType = "managed_header_plugin"
+	descriptor := pluginmeta.BuiltInProvider("tokenhub.provider.managed-header", "Managed Header Provider", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities,
+		pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "supports_custom_headers",
+			Subject: providerType,
+			Value:   "true",
+		},
+		pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    pluginmeta.ProviderPolicyManagedHeader,
+			Subject: providerType,
+			Value:   "x-provider-auth",
+		},
+	)
+	descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{Type: providerType, Adapter: providerHeaderPolicyTestAdapter{}, Capabilities: []AdapterCapability{AdapterCapabilityChat}}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+
+	if err := validateProviderHeaderSupportWithRegistry(registry, providerType, map[string]string{"X-Tenant": "tenant-one"}); err != nil {
+		t.Fatalf("business header should be accepted: %v", err)
+	}
+	err := validateProviderHeaderSupportWithRegistry(registry, providerType, map[string]string{"X-Provider-Auth": "override"})
+	if AsHTTPError(err).Code != "provider_header_managed" {
+		t.Fatalf("managed header validation error = %v", err)
+	}
+}
+
+func TestAdminProviderHeadersRejectPluginManagedHeaders(t *testing.T) {
+	app := newTestServer()
+	response := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", map[string]any{
+		"name":     "Anthropic managed headers",
+		"type":     ProviderAnthropic,
+		"base_url": "https://provider.example",
+		"api_key":  "test-key",
+		"headers":  map[string]string{"Anthropic-Version": "2023-01-01"},
+	}, "")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body, `"code":"provider_header_managed"`) {
+		t.Fatalf("managed header = %d: %s", response.Code, response.Body)
+	}
+}
+
 func TestApplyProviderHeadersCannotOverrideSystemHeaders(t *testing.T) {
 	headers := http.Header{
 		"Authorization": []string{"Bearer system-key"},

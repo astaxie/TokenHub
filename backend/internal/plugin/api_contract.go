@@ -49,6 +49,7 @@ const (
 
 const (
 	ProviderPolicySupportsCustomHeaders            = "supports_custom_headers"
+	ProviderPolicyManagedHeader                    = "managed_header"
 	ProviderPolicyAPIKeyRequired                   = "api_key_required"
 	ProviderPolicyRouteRequiresResource            = "route_requires_resource"
 	ProviderPolicyStoreProbeFallback               = "store_probe_fallback"
@@ -338,6 +339,7 @@ func validCapabilityName(kind string, name string) bool {
 func validProviderPolicyCapabilityName(name string) bool {
 	switch name {
 	case ProviderPolicySupportsCustomHeaders,
+		ProviderPolicyManagedHeader,
 		ProviderPolicyAPIKeyRequired,
 		ProviderPolicyRouteRequiresResource,
 		ProviderPolicyStoreProbeFallback,

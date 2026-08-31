@@ -46,6 +46,8 @@ capabilities:
     auth_mode_invalid_error_code: provider_codex_auth_mode_invalid
     auth_mode_invalid_error_message: Codex authentication mode is not supported
     supports_custom_headers: false
+    managed_headers:
+      - x-codex-version
     api_key_required: false
     route_requires_resource: true
     credentials_scope: resource
@@ -133,14 +135,17 @@ permissions:
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
 	}
-	if len(descriptor.Capabilities) != 29 {
-		t.Fatalf("descriptor capabilities = %v, want 29 entries", descriptor.Capabilities)
+	if len(descriptor.Capabilities) != 30 {
+		t.Fatalf("descriptor capabilities = %v, want 30 entries", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_resource_type", Name: "openai_subscription", Subject: "openai_codex"}) {
 		t.Fatalf("descriptor is missing provider resource type capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "supports_custom_headers", Subject: "openai_codex", Value: "false"}) {
 		t.Fatalf("descriptor is missing provider policy capability: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "managed_header", Subject: "openai_codex", Value: "x-codex-version"}) {
+		t.Fatalf("descriptor is missing provider managed header capability: %+v", descriptor.Capabilities)
 	}
 	if !descriptorHasCapability(descriptor, CapabilityDescriptor{Kind: "provider_policy", Name: "api_key_required", Subject: "openai_codex", Value: "false"}) {
 		t.Fatalf("descriptor is missing provider API key policy capability: %+v", descriptor.Capabilities)
@@ -215,6 +220,9 @@ permissions:
 	}
 	if manifest.Capabilities.Provider.SupportsCustomHeaders == nil || *manifest.Capabilities.Provider.SupportsCustomHeaders {
 		t.Fatalf("provider custom header policy = %+v", manifest.Capabilities.Provider.SupportsCustomHeaders)
+	}
+	if len(manifest.Capabilities.Provider.ManagedHeaders) != 1 || manifest.Capabilities.Provider.ManagedHeaders[0] != "x-codex-version" {
+		t.Fatalf("provider managed headers = %+v", manifest.Capabilities.Provider.ManagedHeaders)
 	}
 	if manifest.Capabilities.Provider.APIKeyRequired == nil || *manifest.Capabilities.Provider.APIKeyRequired {
 		t.Fatalf("provider API key policy = %+v", manifest.Capabilities.Provider.APIKeyRequired)

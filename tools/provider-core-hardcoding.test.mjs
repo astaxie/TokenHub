@@ -132,6 +132,18 @@ describe("provider-specific core hardcoding gate", () => {
     assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
   });
 
+  it("keeps provider-specific managed headers outside generic header core", () => {
+    const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_headers.go"), "utf8");
+    const forbidden = [
+      "anthropic-version",
+      "anthropic-beta",
+      "openai-organization",
+      "openai-project",
+      "x-goog-api-key",
+    ];
+    assert.deepEqual(forbidden.filter((item) => source.includes(item)), []);
+  });
+
   it("keeps provider adapter startup migration orchestration provider-neutral", () => {
     const source = readFileSync(join(REPOSITORY_ROOT, "backend/internal/server/provider_adapter_migration.go"), "utf8");
     assert.equal(/\b(?:OpenAI|Codex|ProviderOpenAI)\b/.test(source), false);

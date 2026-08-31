@@ -14,16 +14,9 @@ const (
 	providerHeaderMask          = "••••••••"
 )
 
-var reservedProviderHeaders = map[string]bool{
+var coreReservedProviderHeaders = map[string]bool{
 	"authorization":               true,
-	"api-key":                     true,
-	"x-api-key":                   true,
-	"x-goog-api-key":              true,
-	"openai-organization":         true,
-	"openai-project":              true,
 	"x-tokenhub-upstream-account": true,
-	"anthropic-version":           true,
-	"anthropic-beta":              true,
 	"content-type":                true,
 	"content-length":              true,
 	"host":                        true,
@@ -65,7 +58,7 @@ func normalizeProviderHeaders(headers map[string]string) (map[string]string, err
 			return nil, NewHTTPError(http.StatusBadRequest, "provider_header_name_invalid", "Custom request header name is invalid")
 		}
 		lowerName := strings.ToLower(name)
-		if reservedProviderHeaders[lowerName] {
+		if coreReservedProviderHeaders[lowerName] {
 			return nil, NewHTTPError(http.StatusBadRequest, "provider_header_reserved", "Custom request header is managed by TokenHub and cannot be overridden")
 		}
 		canonicalName := http.CanonicalHeaderKey(name)
@@ -160,7 +153,7 @@ func mergeProviderSensitiveHeaders(
 
 func applyProviderHeaders(target http.Header, headers map[string]string) {
 	for name, value := range headers {
-		if reservedProviderHeaders[strings.ToLower(strings.TrimSpace(name))] {
+		if coreReservedProviderHeaders[strings.ToLower(strings.TrimSpace(name))] {
 			continue
 		}
 		target.Set(name, value)
@@ -420,9 +413,31 @@ func validateProviderHeaderSupportWithRegistry(registry *AdapterRegistry, provid
 		if !descriptor.ProviderPolicy.SupportsCustomHeaders {
 			return providerHeadersUnsupportedError()
 		}
+		if err := validateProviderManagedHeaders(descriptor.ProviderPolicy.ManagedHeaders, headers); err != nil {
+			return err
+		}
 		return nil
 	}
 	return validateProviderHeaderSupport(providerType, headers)
+}
+
+func validateProviderManagedHeaders(managedHeaders []string, headers map[string]string) error {
+	if len(managedHeaders) == 0 || len(headers) == 0 {
+		return nil
+	}
+	managed := map[string]bool{}
+	for _, name := range managedHeaders {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name != "" {
+			managed[name] = true
+		}
+	}
+	for rawName := range headers {
+		if managed[strings.ToLower(strings.TrimSpace(rawName))] {
+			return NewHTTPError(http.StatusBadRequest, "provider_header_managed", "Custom request header is managed by the Provider plugin and cannot be overridden")
+		}
+	}
+	return nil
 }
 
 func providerHeadersUnsupportedError() error {
@@ -529,7 +544,7 @@ func (s *GormStore) protectProviderHeaders(
 		if name == "" || len(name) > providerHeaderNameMaxBytes || !validHTTPHeaderName(name) {
 			return nil, nil, NewHTTPError(http.StatusBadRequest, "provider_header_name_invalid", "Custom request header name is invalid")
 		}
-		if reservedProviderHeaders[strings.ToLower(name)] {
+		if coreReservedProviderHeaders[strings.ToLower(name)] {
 			return nil, nil, NewHTTPError(http.StatusBadRequest, "provider_header_reserved", "Custom request header is managed by TokenHub and cannot be overridden")
 		}
 		canonicalName := http.CanonicalHeaderKey(name)

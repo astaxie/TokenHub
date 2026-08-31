@@ -143,6 +143,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !anthropic.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("Anthropic should support custom headers")
 	}
+	if !reflect.DeepEqual(anthropic.ProviderPolicy.ManagedHeaders, []string{"anthropic-beta", "anthropic-version", "api-key", "x-api-key"}) {
+		t.Fatalf("Anthropic managed headers = %v", anthropic.ProviderPolicy.ManagedHeaders)
+	}
 	if !reflect.DeepEqual(anthropic.ProviderPolicy.AuthModes, []string{anthropicAuthTypeBearer, anthropicAuthTypeAPIKey}) {
 		t.Fatalf("Anthropic auth modes = %v", anthropic.ProviderPolicy.AuthModes)
 	}
@@ -226,6 +229,9 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !compatible.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("OpenAI-compatible should support custom headers")
 	}
+	if !reflect.DeepEqual(compatible.ProviderPolicy.ManagedHeaders, []string{"api-key", "openai-organization", "openai-project", "x-api-key"}) {
+		t.Fatalf("OpenAI-compatible managed headers = %v", compatible.ProviderPolicy.ManagedHeaders)
+	}
 	if !compatible.ProviderPolicy.DefaultCatalogProviderType {
 		t.Fatal("OpenAI-compatible should declare itself as the default catalog provider type")
 	}
@@ -267,6 +273,9 @@ func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T
 	}
 	if !descriptor.ProviderPolicy.SupportsCustomHeaders {
 		t.Fatal("bare adapter registration should keep custom headers enabled by default")
+	}
+	if len(descriptor.ProviderPolicy.ManagedHeaders) != 0 {
+		t.Fatalf("bare adapter managed headers = %v, want none", descriptor.ProviderPolicy.ManagedHeaders)
 	}
 	if descriptor.ProviderPolicy.ErrorProfile != "" {
 		t.Fatalf("bare adapter error profile = %q, want generic", descriptor.ProviderPolicy.ErrorProfile)

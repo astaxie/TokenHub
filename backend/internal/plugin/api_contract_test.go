@@ -206,6 +206,26 @@ func TestRegistryAcceptsStoreProbeFallbackProviderPolicy(t *testing.T) {
 	}
 }
 
+func TestRegistryAcceptsManagedHeaderProviderPolicy(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(Descriptor{
+		ID:         "tokenhub.managed-header-provider",
+		Name:       "Managed Header Provider",
+		Version:    "1.0.0",
+		Kinds:      []Kind{KindProvider},
+		Placements: []Placement{PlacementGatewayChain},
+		Capabilities: []CapabilityDescriptor{{
+			Kind:    CapabilityKindProviderPolicy,
+			Name:    ProviderPolicyManagedHeader,
+			Subject: "managed_header_provider",
+			Value:   "x-provider-auth",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("descriptor with managed header policy should register: %v", err)
+	}
+}
+
 func TestRegistryAcceptsSessionAffinityIdentifierProfileProviderPolicy(t *testing.T) {
 	registry := NewRegistry()
 	err := registry.Register(Descriptor{

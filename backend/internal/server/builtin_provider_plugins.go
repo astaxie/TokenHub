@@ -11,6 +11,7 @@ type builtinProviderAdapter struct {
 	providerType                     string
 	adapter                          any
 	supportsCustomHeaders            *bool
+	managedHeaders                   []string
 	apiKeyRequired                   *bool
 	routeProtocols                   []string
 	credentialsScope                 string
@@ -60,6 +61,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		providerType:          ProviderOpenAI,
 		adapter:               adapters[ProviderOpenAI],
 		reasoningConfigurable: boolPointer(true),
+		managedHeaders:        []string{"api-key", "x-api-key", "openai-organization", "openai-project"},
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"openai",
 			"OpenAI",
@@ -84,6 +86,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		adapter:                    adapters[ProviderOpenAICompatible],
 		defaultCatalogProviderType: true,
 		reasoningConfigurable:      boolPointer(true),
+		managedHeaders:             []string{"api-key", "x-api-key", "openai-organization", "openai-project"},
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
@@ -175,6 +178,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		adapter:               adapters[ProviderAzureOpenAI],
 		supportsCustomHeaders: boolPointer(false),
 		reasoningConfigurable: boolPointer(true),
+		managedHeaders:        []string{"api-key", "x-api-key", "openai-organization", "openai-project"},
 		catalogEntry: builtinProviderPluginCatalogEntry(
 			"azure-openai",
 			"Azure OpenAI",
@@ -200,6 +204,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		authModeInvalidErrorCode:     "provider_anthropic_auth_type_invalid",
 		authModeInvalidErrorMessage:  "Anthropic authentication type must be x-api-key or bearer",
 		claudeCodeAttributionDefault: claudeCodeAttributionPreserve,
+		managedHeaders:               []string{"api-key", "x-api-key", "anthropic-version", "anthropic-beta"},
 		modelDiscovery: AdapterModelDiscoveryPolicy{
 			Path: "/v1/models",
 			Auth: providerModelDiscoveryAuthProviderAuthMode,
@@ -226,6 +231,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		providerType:   ProviderGemini,
 		adapter:        adapters[ProviderGemini],
 		routeProtocols: []string{"gemini"},
+		managedHeaders: []string{"x-goog-api-key"},
 		modelDiscovery: AdapterModelDiscoveryPolicy{
 			Auth:             "query_param",
 			APIKeyQueryParam: "key",
@@ -528,6 +534,15 @@ func builtinProviderDescriptor(pluginID string, name string, adapter builtinProv
 			Name:    "supports_custom_headers",
 			Subject: adapter.providerType,
 			Value:   boolString(*adapter.supportsCustomHeaders),
+		})
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	}
+	for _, header := range sortedUniqueStrings(adapter.managedHeaders) {
+		descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    pluginmeta.ProviderPolicyManagedHeader,
+			Subject: adapter.providerType,
+			Value:   strings.ToLower(header),
 		})
 		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
 	}

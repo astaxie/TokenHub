@@ -42,6 +42,7 @@ type AdapterProviderPolicy struct {
 	AuthModeInvalidErrorCode         string                      `json:"auth_mode_invalid_error_code,omitempty"`
 	AuthModeInvalidErrorMessage      string                      `json:"auth_mode_invalid_error_message,omitempty"`
 	SupportsCustomHeaders            bool                        `json:"supports_custom_headers"`
+	ManagedHeaders                   []string                    `json:"managed_headers,omitempty"`
 	APIKeyRequired                   bool                        `json:"api_key_required"`
 	RouteRequiresResource            bool                        `json:"route_requires_resource"`
 	StoreProbeFallback               bool                        `json:"store_probe_fallback"`
@@ -230,6 +231,7 @@ func (r *AdapterRegistry) withProviderPolicy(descriptor AdapterDescriptor) Adapt
 		AuthModeInvalidErrorCode:         adapterAuthModeInvalidErrorCode(r, descriptor.Type),
 		AuthModeInvalidErrorMessage:      adapterAuthModeInvalidErrorMessage(r, descriptor.Type),
 		SupportsCustomHeaders:            adapterSupportsProviderHeaders(r, descriptor.Type),
+		ManagedHeaders:                   adapterManagedHeaders(r, descriptor.Type),
 		APIKeyRequired:                   adapterAPIKeyRequired(r, descriptor.Type),
 		RouteRequiresResource:            adapterRequiresRouteResource(r, descriptor.Type),
 		StoreProbeFallback:               adapterStoreProbeFallback(r, descriptor.Type),
@@ -288,6 +290,18 @@ func adapterSupportsProviderHeaders(registry *AdapterRegistry, providerType stri
 		return value
 	}
 	return defaultProviderTypeSupportsHeaders(providerType)
+}
+
+func adapterManagedHeaders(registry *AdapterRegistry, providerType string) []string {
+	values := providerPolicyStringValues(registry, providerType, pluginmeta.ProviderPolicyManagedHeader)
+	managed := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value != "" {
+			managed = append(managed, value)
+		}
+	}
+	return sortedUniqueStrings(managed)
 }
 
 func adapterAPIKeyRequired(registry *AdapterRegistry, providerType string) bool {
