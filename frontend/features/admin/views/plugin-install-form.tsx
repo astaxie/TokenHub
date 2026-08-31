@@ -56,7 +56,7 @@ export function PluginInstallForm({
             </button>
           </div>
           {draft.source === "url" ? (
-            <label className="plugin-action-field">
+            <label className="plugin-action-field" key="plugin-install-url-source">
               <span>{tx("下载 URL")}</span>
               <input
                 onChange={(event) => {
@@ -69,7 +69,7 @@ export function PluginInstallForm({
               />
             </label>
           ) : (
-            <label className="plugin-action-field plugin-upload-field">
+            <label className="plugin-action-field plugin-upload-field" key="plugin-install-upload-source">
               <span>{tx("插件 ZIP 包")}</span>
               <input
                 accept=".zip,application/zip,application/x-zip-compressed"

@@ -182,6 +182,19 @@ describe("PluginsView", () => {
     await waitFor(() => expect(screen.getByText("tokenhub.local.upload · 插件安装完成，重启后生效")).toBeInTheDocument());
   });
 
+  it("switches plugin install sources without controlled input warnings", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={emptyData()} />);
+    fireEvent.change(screen.getByLabelText("下载 URL"), { target: { value: "https://plugins.example/kimi.zip" } });
+    fireEvent.click(screen.getByRole("tab", { name: "上传 ZIP" }));
+    fireEvent.click(screen.getByRole("tab", { name: "URL 安装" }));
+
+    const messages = consoleError.mock.calls.map((call) => String(call[0]));
+    expect(messages.some((message) => message.includes("A component is changing a controlled input to be uncontrolled"))).toBe(false);
+    expect(messages.some((message) => message.includes("A component is changing an uncontrolled input to be controlled"))).toBe(false);
+  });
+
   it("updates an installed plugin package through the admin endpoint", async () => {
     const data = emptyData();
     data.plugins = [{
