@@ -70,6 +70,86 @@ describe("PluginsView", () => {
     expect(consoleError.mock.calls.some((call) => String(call[0]).includes("Encountered two children with the same key"))).toBe(false);
   });
 
+  it("counts plugin categories instead of capability declarations in metrics", () => {
+    const data = emptyData();
+    data.plugins = [
+      {
+        id: "tokenhub.provider.kimi",
+        name: "Kimi Provider",
+        version: "1.0.0",
+        source: "built_in",
+        status: "enabled",
+        kinds: ["provider"],
+        placements: ["gateway_chain"],
+        capabilities: [
+          { kind: "provider", name: "chat" },
+          { kind: "provider", name: "chat_stream" },
+        ],
+      },
+      {
+        id: "tokenhub.chain.privacy",
+        name: "Privacy Chain",
+        version: "1.0.0",
+        source: "built_in",
+        status: "enabled",
+        kinds: ["extension"],
+        placements: ["gateway_chain"],
+        capabilities: [],
+      },
+      simPlugin("tokenhub.sim.enterprise", []),
+      {
+        id: "tokenhub.jobs",
+        name: "Quota Jobs",
+        version: "1.0.0",
+        source: "built_in",
+        status: "enabled",
+        kinds: ["extension"],
+        placements: ["background"],
+        capabilities: [],
+      },
+    ];
+    data.pluginChain.hooks = [
+      {
+        plugin_id: "tokenhub.chain.privacy",
+        hook_id: "privacy.pre",
+        stage: "privacy_pre",
+        priority: 100,
+        failure_policy: "fail_closed",
+        timeout_millis: 1000,
+        mandatory: true,
+      },
+      {
+        plugin_id: "tokenhub.chain.privacy",
+        hook_id: "privacy.post",
+        stage: "guardrail_post",
+        priority: 200,
+        failure_policy: "fail_closed",
+        timeout_millis: 1000,
+        mandatory: true,
+      },
+    ];
+    data.pluginBackgroundJobs = [
+      {
+        plugin_id: "tokenhub.jobs",
+        job_id: "quota.refresh",
+        schedule: "10m",
+        max_concurrency: 1,
+      },
+      {
+        plugin_id: "tokenhub.jobs",
+        job_id: "credentials.refresh",
+        schedule: "1m",
+        max_concurrency: 1,
+      },
+    ];
+
+    const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    const metrics = Array.from(container.querySelectorAll(".metric-card")).map((element) => element.textContent);
+
+    expect(metrics).toEqual(["已注册插件4", "Provider 插件1", "链路注入插件1", "界面模板插件1", "后台任务插件1"]);
+    expect(screen.queryByText("Provider 能力")).not.toBeInTheDocument();
+  });
+
   it("renders gateway hook subjects", () => {
     const data = emptyData();
     data.pluginChain.hooks = [{

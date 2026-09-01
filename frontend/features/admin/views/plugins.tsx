@@ -1,4 +1,4 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
@@ -59,12 +59,6 @@ export function PluginsView({
     [plugins, simSelectionPreference, theme],
   );
   const [simSelectionDraft, setSIMSelectionDraft] = useState<SIMSelectionPreference>(simSelection.preference);
-  const providerCapabilities = plugins.reduce(
-    (count, plugin) => count + (plugin.capabilities ?? []).filter((capability) => capability.kind === "provider").length,
-    0,
-  );
-  const gatewayPlugins = plugins.filter((plugin) => plugin.placements?.includes("gateway_chain")).length;
-  const uiPlugins = plugins.filter((plugin) => plugin.placements?.includes("presentation") || plugin.kinds?.includes("admin_ui") || plugin.kinds?.includes("sim")).length;
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const backgroundJobs = data.pluginBackgroundJobs;
@@ -77,6 +71,10 @@ export function PluginsView({
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
+  const providerPlugins = plugins.filter((plugin) => plugin.kinds?.includes("provider")).length;
+  const chainInjectionPlugins = new Set(data.pluginChain.hooks.map((hook) => hook.plugin_id)).size;
+  const uiTemplatePlugins = plugins.filter((plugin) => plugin.kinds?.includes("sim")).length;
+  const backgroundJobPlugins = new Set(backgroundJobs.map((job) => job.plugin_id)).size;
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
@@ -409,13 +407,10 @@ export function PluginsView({
 
       <div className="metric-grid">
         <PluginMetric icon={<PlugZap size={18} />} label={tx("已注册插件")} value={plugins.length} />
-        <PluginMetric icon={<Boxes size={18} />} label={tx("Provider 能力")} value={providerCapabilities} />
-        <PluginMetric icon={<Layers3 size={18} />} label={tx("链路插件")} value={gatewayPlugins} />
-        <PluginMetric icon={<ShieldCheck size={18} />} label={tx("界面插件")} value={uiPlugins} />
-        <PluginMetric icon={<Palette size={18} />} label={tx("主题贡献")} value={themeContributions.length} />
-        <PluginMetric icon={<PanelsTopLeft size={18} />} label={tx("布局预设")} value={layoutContributions.length} />
-        <PluginMetric icon={<MousePointerClick size={18} />} label={tx("插件动作")} value={pluginActions.length} />
-        <PluginMetric icon={<Clock3 size={18} />} label={tx("后台任务")} value={backgroundJobs.length} />
+        <PluginMetric icon={<Boxes size={18} />} label={tx("Provider 插件")} value={providerPlugins} />
+        <PluginMetric icon={<Layers3 size={18} />} label={tx("链路注入插件")} value={chainInjectionPlugins} />
+        <PluginMetric icon={<ShieldCheck size={18} />} label={tx("界面模板插件")} value={uiTemplatePlugins} />
+        <PluginMetric icon={<Clock3 size={18} />} label={tx("后台任务插件")} value={backgroundJobPlugins} />
       </div>
 
       {activeTab === "registry" ? (
