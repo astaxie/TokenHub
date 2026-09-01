@@ -45,8 +45,20 @@ type builtinProviderPluginCapability struct {
 	subject    string
 }
 
-func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]any) {
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.mock", "Mock Provider", builtinProviderAdapter{
+func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[string]any, runtimes ...pluginmeta.Runtime) error {
+	var runtime *pluginmeta.Runtime
+	if len(runtimes) > 0 {
+		runtime = &runtimes[0]
+	}
+	register := func(pluginID string, name string, adapter builtinProviderAdapter) error {
+		state, err := builtInProviderPluginState(runtime, pluginID)
+		if err != nil {
+			return err
+		}
+		registerBuiltinProviderPlugin(registry, pluginID, name, adapter, state)
+		return nil
+	}
+	if err := register("tokenhub.provider.mock", "Mock Provider", builtinProviderAdapter{
 		providerType:       ProviderMock,
 		adapter:            adapters[ProviderMock],
 		storeProbeFallback: true,
@@ -56,8 +68,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityResponses,
 			AdapterCapabilityEmbeddings,
 		},
-	})
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai", "OpenAI", builtinProviderAdapter{
+	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.openai", "OpenAI", builtinProviderAdapter{
 		providerType:          ProviderOpenAI,
 		adapter:               adapters[ProviderOpenAI],
 		reasoningConfigurable: boolPointer(true),
@@ -80,8 +94,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityProbe,
 			AdapterCapabilityImageGenerate,
 		},
-	})
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-compatible", "OpenAI-Compatible", builtinProviderAdapter{
+	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.openai-compatible", "OpenAI-Compatible", builtinProviderAdapter{
 		providerType:               ProviderOpenAICompatible,
 		adapter:                    adapters[ProviderOpenAICompatible],
 		defaultCatalogProviderType: true,
@@ -95,8 +111,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityEmbeddings,
 			AdapterCapabilityProbe,
 		},
-	})
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.kronk", "Kronk", builtinProviderAdapter{
+	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.kronk", "Kronk", builtinProviderAdapter{
 		providerType:   ProviderKronk,
 		adapter:        adapters[ProviderKronk],
 		apiKeyRequired: boolPointer(false),
@@ -122,8 +140,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityModels,
 			AdapterCapabilityProbe,
 		},
-	})
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
+	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.openai-codex", "OpenAI Codex Subscription", builtinProviderAdapter{
 		providerType:                     ProviderOpenAICodex,
 		adapter:                          adapters[ProviderOpenAICodex],
 		supportsCustomHeaders:            boolPointer(false),
@@ -172,8 +192,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityCompact,
 			AdapterCapabilityImageGenerate,
 		},
-	})
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.azure-openai", "Azure OpenAI", builtinProviderAdapter{
+	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.azure-openai", "Azure OpenAI", builtinProviderAdapter{
 		providerType:          ProviderAzureOpenAI,
 		adapter:               adapters[ProviderAzureOpenAI],
 		supportsCustomHeaders: boolPointer(false),
@@ -194,8 +216,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityEmbeddings,
 			AdapterCapabilityProbe,
 		},
-	})
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.anthropic", "Anthropic", builtinProviderAdapter{
+	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.anthropic", "Anthropic", builtinProviderAdapter{
 		providerType:                 ProviderAnthropic,
 		adapter:                      adapters[ProviderAnthropic],
 		routeProtocols:               []string{providerRouteProtocolAnthropic},
@@ -226,8 +250,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityChatStream,
 			AdapterCapabilityProbe,
 		},
-	})
-	registerBuiltinProviderPlugin(registry, "tokenhub.provider.gemini", "Gemini", builtinProviderAdapter{
+	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.gemini", "Gemini", builtinProviderAdapter{
 		providerType:   ProviderGemini,
 		adapter:        adapters[ProviderGemini],
 		routeProtocols: []string{"gemini"},
@@ -251,7 +277,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			AdapterCapabilityEmbeddings,
 			AdapterCapabilityProbe,
 		},
-	})
+	}); err != nil {
+		return err
+	}
 	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
 		adapter := builtinProviderAdapter{
 			providerType:          adapterType,
@@ -271,8 +299,11 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			adapter.preserveReasoningContent = boolPointer(true)
 			adapter.responsesModelAllowlist = []string{"deepseek-v4-flash", "deepseek-v4-pro"}
 		}
-		registerBuiltinProviderPlugin(registry, "tokenhub.provider."+adapterType, adapterType, adapter)
+		if err := register("tokenhub.provider."+adapterType, adapterType, adapter); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func registerBuiltinProviderCatalogPlugins(registry *pluginmeta.Registry) {
@@ -410,7 +441,9 @@ func builtinProviderPluginCatalogDefaultType() string {
 
 func builtinProviderPluginCatalogRegistry() *AdapterRegistry {
 	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
-	registerBuiltinProviderAdapters(registry, map[string]any{ProviderOpenAICodex: &CodexSubscriptionAdapter{}})
+	if err := registerBuiltinProviderAdapters(registry, map[string]any{ProviderOpenAICodex: &CodexSubscriptionAdapter{}}); err != nil {
+		panic(err)
+	}
 	registerBuiltinProviderCatalogPlugins(registry.plugins)
 	return registry
 }
@@ -506,13 +539,41 @@ func builtinProviderPluginCatalogEntryFromProviderCatalog(catalog ProviderCatalo
 	}
 }
 
-func registerBuiltinProviderPlugin(registry *AdapterRegistry, pluginID string, name string, adapter builtinProviderAdapter) {
+func builtInProviderPluginState(runtime *pluginmeta.Runtime, pluginID string) (pluginmeta.PackageState, error) {
+	state, err := pluginmeta.NormalizePackageState(pluginmeta.PackageState{Status: pluginmeta.StatusEnabled})
+	if err != nil {
+		return pluginmeta.PackageState{}, err
+	}
+	if runtime == nil {
+		return state, nil
+	}
+	if configured, ok, err := runtime.ReadBuiltInPackageState(pluginID); err != nil {
+		return pluginmeta.PackageState{}, err
+	} else if ok {
+		state = configured
+	}
+	return state, nil
+}
+
+func registerBuiltinProviderPlugin(registry *AdapterRegistry, pluginID string, name string, adapter builtinProviderAdapter, state pluginmeta.PackageState) {
+	state, err := pluginmeta.NormalizePackageState(state)
+	if err != nil {
+		panic(err)
+	}
+	descriptor := builtinProviderDescriptor(pluginID, name, adapter)
+	descriptor.Status = state.Status
+	if !state.Enabled() {
+		if err := registry.plugins.Register(descriptor); err != nil {
+			panic(err)
+		}
+		return
+	}
 	registrations := []AdapterRegistration{{
 		Type:         adapter.providerType,
 		Adapter:      adapter.adapter,
 		Capabilities: adapter.capabilities,
 	}}
-	if err := registry.RegisterPlugin(builtinProviderDescriptor(pluginID, name, adapter), registrations...); err != nil {
+	if err := registry.RegisterPlugin(descriptor, registrations...); err != nil {
 		panic(err)
 	}
 }

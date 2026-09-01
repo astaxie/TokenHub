@@ -112,6 +112,37 @@ permissions:
 	}
 }
 
+func TestBootstrapServerPluginsSkipsDisabledBuiltInProviderAdapter(t *testing.T) {
+	pluginDir := t.TempDir()
+	if _, err := pluginmeta.NewRuntime(pluginDir).UpdateBuiltInPackageState("tokenhub.provider.qwen", pluginmeta.PackageState{
+		Status: pluginmeta.StatusDisabled,
+		Reason: "operator disabled provider plugin",
+	}); err != nil {
+		t.Fatalf("write built-in provider state: %v", err)
+	}
+
+	bootstrap, err := bootstrapServerPlugins(NewMemoryStore(), Config{PluginDir: pluginDir}, map[string]any{
+		ProviderMock: MockAdapter{},
+		"qwen":       MockAdapter{},
+	})
+	if err != nil {
+		t.Fatalf("bootstrap plugins: %v", err)
+	}
+	descriptor, ok := bootstrap.pluginRegistry.Describe("tokenhub.provider.qwen")
+	if !ok {
+		t.Fatal("disabled built-in provider plugin descriptor was not registered")
+	}
+	if descriptor.Status != pluginmeta.StatusDisabled {
+		t.Fatalf("disabled built-in provider status = %q, want disabled", descriptor.Status)
+	}
+	if _, ok := bootstrap.adapterRegistry.Describe("qwen"); ok {
+		t.Fatal("disabled built-in provider adapter was registered")
+	}
+	if _, ok := bootstrap.adapterRegistry.Describe(ProviderMock); !ok {
+		t.Fatal("enabled built-in provider adapter was not registered")
+	}
+}
+
 func TestInstallServerPluginHandlersRegistersBuiltinActionAndBackgroundCallbacks(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token"})
 

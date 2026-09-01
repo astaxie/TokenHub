@@ -735,6 +735,50 @@ kinds:
 	}
 }
 
+func TestAdminPluginStatePatchWritesBuiltInProviderState(t *testing.T) {
+	pluginDir := t.TempDir()
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	response := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/plugins/tokenhub.provider.qwen/state", map[string]any{
+		"status": "disabled",
+		"reason": "operator disabled built-in provider",
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("PATCH built-in provider plugin state: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginStateResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Data.PluginID != "tokenhub.provider.qwen" || body.Data.Status != pluginmeta.StatusDisabled ||
+		!body.Data.RestartRequired || body.Data.AuditEvent != pluginmeta.PackageLifecycleDisabled || body.Data.Loadable {
+		t.Fatalf("state response = %+v, want disabled restart-required built-in provider", body.Data)
+	}
+	data, err := os.ReadFile(filepath.Join(pluginDir, ".built-in-state", "tokenhub.provider.qwen", "plugin.state.json"))
+	if err != nil {
+		t.Fatalf("read built-in package state: %v", err)
+	}
+	var state pluginmeta.PackageState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatalf("decode built-in package state: %v", err)
+	}
+	if state.Status != pluginmeta.StatusDisabled || state.Reason != "operator disabled built-in provider" ||
+		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleDisabled {
+		t.Fatalf("built-in package state = %+v, want disabled restart-required state file", state)
+	}
+	listResponse := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", listResponse.Code, listResponse.Body)
+	}
+	if !strings.Contains(listResponse.Body, `"id":"tokenhub.provider.qwen"`) ||
+		!strings.Contains(listResponse.Body, `"status":"disabled"`) ||
+		!strings.Contains(listResponse.Body, `"reason":"operator disabled built-in provider"`) {
+		t.Fatalf("GET /api/admin/plugins body = %s, want disabled built-in provider state", listResponse.Body)
+	}
+}
+
 func TestAdminPluginStatePatchRecordsEnabledLifecycleEvent(t *testing.T) {
 	pluginDir := t.TempDir()
 	localPluginDir := filepath.Join(pluginDir, "privacy")

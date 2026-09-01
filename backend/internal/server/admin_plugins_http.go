@@ -139,6 +139,16 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 	seen := map[string]bool{}
 	for _, descriptor := range descriptors {
 		pkg, ok := installed[descriptor.ID]
+		if !ok && descriptor.Source == pluginmeta.SourceBuiltIn && strings.TrimSpace(s.config.PluginDir) != "" {
+			state, found, err := pluginmeta.NewRuntime(s.config.PluginDir).ReadBuiltInPackageState(descriptor.ID)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				pkg.State = state
+				descriptor.Status = state.Status
+			}
+		}
 		response = append(response, adminPluginDescriptorForPackage(descriptor, pkg, ok))
 		seen[descriptor.ID] = true
 	}
@@ -163,6 +173,9 @@ func adminPluginDescriptorForPackage(descriptor pluginmeta.Descriptor, pkg plugi
 		state = pkg.State
 		compatibility = pkg.Manifest.TokenHub
 		manifestSchemaVersion = pkg.Manifest.SchemaVersion
+		descriptor.Status = state.Status
+	} else if strings.TrimSpace(string(pkg.State.Status)) != "" {
+		state = pkg.State
 		descriptor.Status = state.Status
 	} else if normalized, err := pluginmeta.NormalizePackageState(state); err == nil {
 		state = normalized
@@ -686,7 +699,7 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if !found {
-		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		s.handleAdminBuiltInPluginStatePatch(w, r, runtime, pluginID, payload.Status, payload.Reason)
 		return
 	}
 	state, err := adminPluginStatePatchState(current.State, payload.Status, payload.Reason)
@@ -719,6 +732,54 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		LastErrorCode:     pkg.State.LastErrorCode,
 		AuditEvent:        pkg.State.AuditEvent,
 		Loadable:          pkg.State.Loadable(),
+		Lifecycle:         plugin.Lifecycle,
+		Plugin:            &plugin,
+	}})
+}
+
+func (s *Server) handleAdminBuiltInPluginStatePatch(w http.ResponseWriter, r *http.Request, runtime pluginmeta.Runtime, pluginID string, status pluginmeta.Status, reason string) {
+	descriptor, ok := s.pluginRegistry.Describe(pluginID)
+	if !ok || descriptor.Source != pluginmeta.SourceBuiltIn {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	currentState := pluginmeta.PackageState{Status: descriptor.Status}
+	if state, found, err := runtime.ReadBuiltInPackageState(pluginID); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_state_update_failed", "Plugin state could not be inspected"))
+		return
+	} else if found {
+		currentState = state
+	}
+	currentState, err := pluginmeta.NormalizePackageState(currentState)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_state_update_failed", "Plugin state could not be inspected"))
+		return
+	}
+	state, err := adminPluginStatePatchState(currentState, status, reason)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_state", err.Error()))
+		return
+	}
+	state, err = runtime.UpdateBuiltInPackageState(pluginID, state)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_state_update_failed", "Plugin state could not be updated"))
+		return
+	}
+	descriptor.Status = state.Status
+	plugin := adminPluginDescriptorForPackage(descriptor, pluginmeta.Package{State: state}, false)
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginStateResponse{
+		PluginID:          descriptor.ID,
+		Status:            state.Status,
+		Reason:            state.Reason,
+		RestartRequired:   true,
+		Health:            state.Health,
+		Mandatory:         state.Mandatory,
+		RollbackAvailable: state.RollbackAvailable(),
+		RollbackVersion:   state.RollbackVersion,
+		RollbackTarget:    state.RollbackTarget,
+		LastErrorCode:     state.LastErrorCode,
+		AuditEvent:        state.AuditEvent,
+		Loadable:          state.Loadable(),
 		Lifecycle:         plugin.Lifecycle,
 		Plugin:            &plugin,
 	}})

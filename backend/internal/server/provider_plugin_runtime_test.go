@@ -91,7 +91,9 @@ func TestBuiltinProviderRuntimeBuildsAdaptersForPluginRegistration(t *testing.T)
 		t.Fatal("Codex subscription credential refresh callback was not configured")
 	}
 	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
-	registerBuiltinProviderAdapters(registry, runtime.adapters)
+	if err := registerBuiltinProviderAdapters(registry, runtime.adapters); err != nil {
+		t.Fatalf("register built-in provider adapters: %v", err)
+	}
 	if err := configureProviderCredentialIdentityProfileHandlers(store, registry); err != nil {
 		t.Fatalf("configure credential identity profile handlers: %v", err)
 	}

@@ -11,6 +11,7 @@ import (
 )
 
 const packageStateFileName = "plugin.state.json"
+const builtInPackageStateDirName = ".built-in-state"
 
 var ErrPackageNotFound = errors.New("plugin package not found")
 var ErrPackageRollbackUnavailable = errors.New("plugin package rollback is unavailable")
@@ -148,6 +149,56 @@ func (s PackageState) FailedStartup() bool {
 
 func (s PackageState) BuiltInFallbackAvailable() bool {
 	return s.RollbackTarget == PackageRollbackTargetBuiltIn
+}
+
+func (r Runtime) ReadBuiltInPackageState(pluginID string) (PackageState, bool, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" || strings.TrimSpace(r.Dir) == "" {
+		return PackageState{}, false, nil
+	}
+	root, err := filepath.Abs(r.Dir)
+	if err != nil {
+		return PackageState{}, false, err
+	}
+	data, err := os.ReadFile(filepath.Join(root, builtInPackageStateDirName, packageDirName(pluginID), packageStateFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return PackageState{}, false, nil
+		}
+		return PackageState{}, false, err
+	}
+	var state PackageState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return PackageState{}, false, err
+	}
+	state, err = NormalizePackageState(state)
+	if err != nil {
+		return PackageState{}, false, err
+	}
+	return state, true, nil
+}
+
+func (r Runtime) UpdateBuiltInPackageState(pluginID string, state PackageState) (PackageState, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return PackageState{}, ErrPackageNotFound
+	}
+	state, err := NormalizePackageState(state)
+	if err != nil {
+		return PackageState{}, err
+	}
+	root, err := r.prepareInstallRoot()
+	if err != nil {
+		return PackageState{}, err
+	}
+	dir := filepath.Join(root, builtInPackageStateDirName, packageDirName(pluginID))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return PackageState{}, err
+	}
+	if err := writePackageState(dir, state); err != nil {
+		return PackageState{}, err
+	}
+	return state, nil
 }
 
 func validPackageStatus(status Status) bool {

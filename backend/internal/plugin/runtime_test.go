@@ -910,6 +910,42 @@ kinds:
 	}
 }
 
+func TestRuntimeUpdateBuiltInPackageStateWritesHiddenState(t *testing.T) {
+	root := t.TempDir()
+	runtime := NewRuntime(root)
+
+	if _, found, err := runtime.ReadBuiltInPackageState("tokenhub.provider.qwen"); err != nil || found {
+		t.Fatalf("read missing built-in state found=%t err=%v, want missing without error", found, err)
+	}
+	updated, err := runtime.UpdateBuiltInPackageState("tokenhub.provider.qwen", PackageState{
+		Status: StatusDisabled,
+		Reason: "operator disabled provider plugin",
+	})
+	if err != nil {
+		t.Fatalf("update built-in package state: %v", err)
+	}
+	if updated.Status != StatusDisabled || updated.Reason != "operator disabled provider plugin" {
+		t.Fatalf("updated built-in state = %+v, want disabled state", updated)
+	}
+	state, found, err := runtime.ReadBuiltInPackageState("tokenhub.provider.qwen")
+	if err != nil {
+		t.Fatalf("read built-in package state: %v", err)
+	}
+	if !found || state.Status != StatusDisabled || state.Reason != "operator disabled provider plugin" {
+		t.Fatalf("read built-in state = %+v found=%t, want disabled state", state, found)
+	}
+	if _, err := os.Stat(filepath.Join(root, builtInPackageStateDirName, "tokenhub.provider.qwen", packageStateFileName)); err != nil {
+		t.Fatalf("stat built-in state file: %v", err)
+	}
+	packages, err := runtime.Discover()
+	if err != nil {
+		t.Fatalf("discover after built-in state update: %v", err)
+	}
+	if len(packages) != 0 {
+		t.Fatalf("discover loaded hidden built-in state directory as packages: %+v", packages)
+	}
+}
+
 func TestRuntimeRollbackPackageRestoresRollbackPackage(t *testing.T) {
 	root := t.TempDir()
 	runtime := NewRuntime(root)

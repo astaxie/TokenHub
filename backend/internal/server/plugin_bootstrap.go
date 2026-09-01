@@ -27,12 +27,15 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 	pluginBackgroundJobs := pluginmeta.NewBackgroundJobBroker()
 	pluginBackgroundRunner := pluginmeta.NewBackgroundJobRunner(pluginBackgroundJobs)
 	adapterRegistry := NewAdapterRegistryWithPlugins(pluginRegistry)
+	pluginRuntime := pluginmeta.NewRuntime(config.PluginDir)
 
-	registerBuiltinProviderAdapters(adapterRegistry, adapters)
+	if err := registerBuiltinProviderAdapters(adapterRegistry, adapters, pluginRuntime); err != nil {
+		return serverPluginBootstrap{}, fmt.Errorf("register built-in provider plugins: %w", err)
+	}
 	registerBuiltinProviderCatalogPlugins(pluginRegistry)
 	registerBuiltinGatewayChainPlugins(pluginRegistry, gatewayChain, gatewayHooks)
 	registerBuiltinAdminUIContributions(pluginRegistry, adminUI)
-	packages, err := pluginmeta.NewRuntime(config.PluginDir).LoadIntoWithActionsAndBackground(pluginRegistry, gatewayChain, adminUI, pluginActions, pluginBackgroundJobs, gatewayHooks)
+	packages, err := pluginRuntime.LoadIntoWithActionsAndBackground(pluginRegistry, gatewayChain, adminUI, pluginActions, pluginBackgroundJobs, gatewayHooks)
 	if err != nil {
 		return serverPluginBootstrap{}, fmt.Errorf("load TokenHub plugins: %w", err)
 	}
