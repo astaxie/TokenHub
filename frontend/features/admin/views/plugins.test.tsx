@@ -170,6 +170,35 @@ describe("PluginsView", () => {
     expect(screen.getByText("Qwen")).toBeInTheDocument();
   });
 
+  it("allows built-in provider plugins to be disabled from the provider tab", async () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.qwen",
+      name: "Qwen",
+      version: "built-in",
+      source: "built_in",
+      status: "enabled",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { plugin_id: "tokenhub.provider.qwen", status: "disabled", restart_required: false },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
+    fireEvent.click(screen.getByRole("button", { name: "禁用" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.qwen/state");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ status: "disabled" });
+    await waitFor(() => expect(screen.getByText("已禁用")).toBeInTheDocument());
+  });
+
   it("renders gateway hook subjects", () => {
     const data = emptyData();
     data.pluginChain.hooks = [{

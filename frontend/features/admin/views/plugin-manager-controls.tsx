@@ -28,6 +28,7 @@ export function PluginLifecycleControl({
   lifecycle,
   draft,
   rollbackDraft,
+  allowBuiltInUpdates = false,
   onRollback,
   onUpdate,
 }: {
@@ -35,13 +36,14 @@ export function PluginLifecycleControl({
   lifecycle: PluginManagerDisplayState;
   draft: PluginStateDraft;
   rollbackDraft: PluginRollbackDraft;
+  allowBuiltInUpdates?: boolean;
   onRollback: (plugin: PluginDescriptor) => void;
   onUpdate: (plugin: PluginDescriptor, status: string) => void;
 }) {
   const effectiveLifecycle = draft.status ? pluginManagerDisplayState({ plugin: { ...plugin, status: draft.status } }) : lifecycle;
   const status = effectiveLifecycle.status;
   const nextStatus = status === "disabled" ? "enabled" : "disabled";
-  const canUpdate = plugin.source !== "built_in" && !effectiveLifecycle.mandatory && (status === "enabled" || status === "disabled");
+  const canUpdate = (allowBuiltInUpdates || plugin.source !== "built_in") && !effectiveLifecycle.mandatory && (status === "enabled" || status === "disabled");
   return (
     <div className="stacked-cell" data-plugin-manager-control="lifecycle">
       <StatusPill status={effectiveLifecycle.pillStatus} label={tx(effectiveLifecycle.labelKey)} />

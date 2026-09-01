@@ -530,16 +530,17 @@ export function PluginsView({
                           <td>
                             <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
                           </td>
-                          <td>
-                            <PluginLifecycleControl
-                              draft={pluginStateDraft(plugin)}
-                              lifecycle={lifecycle}
-                              onRollback={rollbackPlugin}
-                              onUpdate={updatePluginState}
-                              plugin={plugin}
-                              rollbackDraft={pluginRollbackDraft(plugin)}
-                            />
-                          </td>
+                        <td>
+                          <PluginLifecycleControl
+                            allowBuiltInUpdates
+                            draft={pluginStateDraft(plugin)}
+                            lifecycle={lifecycle}
+                            onRollback={rollbackPlugin}
+                            onUpdate={updatePluginState}
+                            plugin={plugin}
+                            rollbackDraft={pluginRollbackDraft(plugin)}
+                          />
+                        </td>
                           <td>{plugin.kinds?.map(pluginKindLabel).join(", ") || "-"}</td>
                           <td>{plugin.placements?.map(pluginPlacementLabel).join(", ") || "-"}</td>
                           <td>
