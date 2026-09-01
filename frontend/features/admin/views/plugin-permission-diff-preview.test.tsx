@@ -15,6 +15,7 @@ describe("PluginsView permission diff preview", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={emptyData()} />);
+    fireEvent.click(screen.getByRole("button", { name: "安装本地插件" }));
     fireEvent.change(screen.getByLabelText("下载 URL"), { target: { value: "https://plugins.example/secret.zip?token=raw" } });
     fireEvent.change(screen.getByLabelText("SHA-256 校验"), {
       target: { value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },

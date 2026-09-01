@@ -128,6 +128,7 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "安装本地插件" }));
     fireEvent.change(screen.getByLabelText("下载 URL"), { target: { value: "https://plugins.example/kimi.zip" } });
     fireEvent.change(screen.getByLabelText("SHA-256 校验"), {
       target: { value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
@@ -158,6 +159,7 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "安装本地插件" }));
     fireEvent.click(screen.getByRole("tab", { name: "上传 ZIP" }));
     const file = new File(["plugin archive"], "tokenhub-local.zip", { type: "application/zip" });
     fireEvent.change(screen.getByLabelText("插件 ZIP 包"), { target: { files: [file] } });
@@ -186,6 +188,7 @@ describe("PluginsView", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={emptyData()} />);
+    fireEvent.click(screen.getByRole("button", { name: "安装本地插件" }));
     fireEvent.change(screen.getByLabelText("下载 URL"), { target: { value: "https://plugins.example/kimi.zip" } });
     fireEvent.click(screen.getByRole("tab", { name: "上传 ZIP" }));
     fireEvent.click(screen.getByRole("tab", { name: "URL 安装" }));
@@ -492,7 +495,8 @@ describe("PluginsView", () => {
     const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
     expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
-    expect(container.querySelector('[data-plugin-manager-section="install"]')).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "安装本地插件" })).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="install"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="registry"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="marketplace"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="chain-hooks"]')).not.toBeInTheDocument();
@@ -507,7 +511,9 @@ describe("PluginsView", () => {
     expect(pluginStyles()).toContain(".plugins-view .metric-grid");
     expect(pluginStyles()).toContain(".plugins-view .metric-card");
     expect(pluginStyles()).toContain(".plugin-manager-topbar");
-    expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-section="install"] .plugin-action-runner');
+    expect(pluginStyles()).toContain(".plugin-manager-actions");
+    expect(pluginStyles()).toContain(".plugin-install-modal");
+    expect(pluginStyles()).toContain(".plugin-install-modal .plugin-install-runner");
     expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-control="lifecycle"] .compact-button');
   });
 

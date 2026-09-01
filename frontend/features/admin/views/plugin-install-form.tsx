@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { tx } from "../i18n/runtime";
 import { PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
@@ -15,7 +15,48 @@ export type PluginInstallDraft = {
   result: string;
 };
 
-export function PluginInstallForm({
+export function PluginInstallDialog({
+  draft,
+  permissionPreviewDraft,
+  onClose,
+  onInstall,
+  onPermissionPreview,
+  setDraft,
+}: {
+  draft: PluginInstallDraft;
+  permissionPreviewDraft: PluginPermissionDiffPreviewDraft;
+  onClose: () => void;
+  onInstall: (event: FormEvent<HTMLFormElement>) => void;
+  onPermissionPreview: () => void;
+  setDraft: Dispatch<SetStateAction<PluginInstallDraft>>;
+}) {
+  return (
+    <div className="modal-backdrop plugin-install-backdrop" role="presentation">
+      <div aria-labelledby="plugin-install-title" aria-modal="true" className="modal plugin-install-modal" role="dialog">
+        <div className="modal-header">
+          <div>
+            <p className="eyebrow">{tx("插件管理")}</p>
+            <h2 id="plugin-install-title">{tx("安装插件包")}</h2>
+          </div>
+          <button aria-label={tx("关闭")} className="icon-button" onClick={onClose} type="button">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="plugin-install-modal-body">
+          <PluginInstallFields
+            draft={draft}
+            onInstall={onInstall}
+            onPermissionPreview={onPermissionPreview}
+            permissionPreviewDraft={permissionPreviewDraft}
+            setDraft={setDraft}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PluginInstallFields({
   draft,
   permissionPreviewDraft,
   onInstall,
@@ -29,106 +70,99 @@ export function PluginInstallForm({
   setDraft: Dispatch<SetStateAction<PluginInstallDraft>>;
 }) {
   return (
-    <section className="section" data-plugin-manager-section="install">
-      <div className="section-header">
-        <h2>{tx("安装插件包")}</h2>
+    <form className="plugin-action-runner plugin-install-runner" onSubmit={onInstall}>
+      <div className="plugin-install-source settings-tabs" role="tablist" aria-label={tx("安装方式")}>
+        <button
+          aria-selected={draft.source === "url"}
+          className={draft.source === "url" ? "settings-tab active" : "settings-tab"}
+          onClick={() => setDraft((current) => ({ ...current, source: "url", error: "" }))}
+          role="tab"
+          type="button"
+        >
+          {tx("URL 安装")}
+        </button>
+        <button
+          aria-selected={draft.source === "upload"}
+          className={draft.source === "upload" ? "settings-tab active" : "settings-tab"}
+          onClick={() => setDraft((current) => ({ ...current, source: "upload", error: "" }))}
+          role="tab"
+          type="button"
+        >
+          {tx("上传 ZIP")}
+        </button>
       </div>
-      <div className="section-body">
-        <form className="plugin-action-runner" onSubmit={onInstall}>
-          <div className="plugin-install-source settings-tabs" role="tablist" aria-label={tx("安装方式")}>
-            <button
-              aria-selected={draft.source === "url"}
-              className={draft.source === "url" ? "settings-tab active" : "settings-tab"}
-              onClick={() => setDraft((current) => ({ ...current, source: "url", error: "" }))}
-              role="tab"
-              type="button"
-            >
-              {tx("URL 安装")}
-            </button>
-            <button
-              aria-selected={draft.source === "upload"}
-              className={draft.source === "upload" ? "settings-tab active" : "settings-tab"}
-              onClick={() => setDraft((current) => ({ ...current, source: "upload", error: "" }))}
-              role="tab"
-              type="button"
-            >
-              {tx("上传 ZIP")}
-            </button>
-          </div>
-          {draft.source === "url" ? (
-            <label className="plugin-action-field" key="plugin-install-url-source">
-              <span>{tx("下载 URL")}</span>
-              <input
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setDraft((current) => ({ ...current, downloadURL: value }));
-                }}
-                required
-                type="url"
-                value={draft.downloadURL}
-              />
-            </label>
-          ) : (
-            <label className="plugin-action-field plugin-upload-field" key="plugin-install-upload-source">
-              <span>{tx("插件 ZIP 包")}</span>
-              <input
-                accept=".zip,application/zip,application/x-zip-compressed"
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0] ?? null;
-                  setDraft((current) => ({ ...current, packageFile: file, error: "" }));
-                }}
-                required
-                type="file"
-              />
-            </label>
-          )}
-          <label className="plugin-action-field">
-            <span>{tx("SHA-256 校验")}</span>
-            <input
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                setDraft((current) => ({ ...current, checksumSHA256: value }));
-              }}
-              required={draft.source === "url"}
-              value={draft.checksumSHA256}
-            />
-          </label>
-          <label className="plugin-action-field">
-            <span>{tx("允许替换")}</span>
-            <input
-              checked={draft.replace}
-              onChange={(event) => {
-                const checked = event.currentTarget.checked;
-                setDraft((current) => ({ ...current, replace: checked }));
-              }}
-              type="checkbox"
-            />
-          </label>
-          <label className="plugin-action-field">
-            <span>{tx("安装后启用")}</span>
-            <input
-              checked={draft.enable}
-              onChange={(event) => {
-                const checked = event.currentTarget.checked;
-                setDraft((current) => ({ ...current, enable: checked }));
-              }}
-              type="checkbox"
-            />
-          </label>
-          <button className="secondary-button plugin-action-button" disabled={draft.busy} type="submit">
-            <Download size={14} />
-            <span>{tx(draft.busy ? "安装中" : "安装插件")}</span>
-          </button>
-          <PluginPermissionDiffPreview
-            disabled={draft.source !== "url" || !draft.downloadURL.trim() || !draft.checksumSHA256.trim()}
-            draft={permissionPreviewDraft}
-            onPreview={onPermissionPreview}
+      {draft.source === "url" ? (
+        <label className="plugin-action-field" key="plugin-install-url-source">
+          <span>{tx("下载 URL")}</span>
+          <input
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setDraft((current) => ({ ...current, downloadURL: value }));
+            }}
+            required
+            type="url"
+            value={draft.downloadURL}
           />
-          {draft.error ? <p className="provider-quota-error">{draft.error}</p> : null}
-          {draft.result ? <p className="empty-state">{draft.result}</p> : null}
-        </form>
-      </div>
-    </section>
+        </label>
+      ) : (
+        <label className="plugin-action-field plugin-upload-field" key="plugin-install-upload-source">
+          <span>{tx("插件 ZIP 包")}</span>
+          <input
+            accept=".zip,application/zip,application/x-zip-compressed"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              setDraft((current) => ({ ...current, packageFile: file, error: "" }));
+            }}
+            required
+            type="file"
+          />
+        </label>
+      )}
+      <label className="plugin-action-field">
+        <span>{tx("SHA-256 校验")}</span>
+        <input
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setDraft((current) => ({ ...current, checksumSHA256: value }));
+          }}
+          required={draft.source === "url"}
+          value={draft.checksumSHA256}
+        />
+      </label>
+      <label className="plugin-action-field">
+        <span>{tx("允许替换")}</span>
+        <input
+          checked={draft.replace}
+          onChange={(event) => {
+            const checked = event.currentTarget.checked;
+            setDraft((current) => ({ ...current, replace: checked }));
+          }}
+          type="checkbox"
+        />
+      </label>
+      <label className="plugin-action-field">
+        <span>{tx("安装后启用")}</span>
+        <input
+          checked={draft.enable}
+          onChange={(event) => {
+            const checked = event.currentTarget.checked;
+            setDraft((current) => ({ ...current, enable: checked }));
+          }}
+          type="checkbox"
+        />
+      </label>
+      <button className="secondary-button plugin-action-button" disabled={draft.busy} type="submit">
+        <Download size={14} />
+        <span>{tx(draft.busy ? "安装中" : "安装插件")}</span>
+      </button>
+      <PluginPermissionDiffPreview
+        disabled={draft.source !== "url" || !draft.downloadURL.trim() || !draft.checksumSHA256.trim()}
+        draft={permissionPreviewDraft}
+        onPreview={onPermissionPreview}
+      />
+      {draft.error ? <p className="provider-quota-error">{draft.error}</p> : null}
+      {draft.result ? <p className="empty-state">{draft.result}</p> : null}
+    </form>
   );
 }
 

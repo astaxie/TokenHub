@@ -13,6 +13,8 @@
 
 .plugin-action-field input[type="text"],
 .plugin-action-field input[type="number"],
+.plugin-action-field input[type="url"],
+.plugin-action-field input:not([type]),
 .plugin-action-field select {
   width: 100%;
   min-height: 32px;
@@ -73,13 +75,35 @@
   min-width: 0;
 }
 
-.plugin-marketplace-link {
+.plugin-manager-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plugin-marketplace-link,
+.plugin-local-install-button {
   min-height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   white-space: nowrap;
+}
+
+.plugin-install-modal {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.plugin-install-modal .modal-header h2 {
+  margin: 0;
+}
+
+.plugin-install-modal-body {
+  padding: 16px 18px 18px;
 }
 
 .plugins-view .metric-grid {
@@ -132,22 +156,22 @@
   min-width: 0;
 }
 
-.plugins-view [data-plugin-manager-section="install"] .plugin-action-runner,
+.plugin-install-modal .plugin-install-runner,
 .plugins-view [data-plugin-manager-section="sim-selection"] .plugin-action-runner {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   align-items: end;
 }
 
-.plugins-view [data-plugin-manager-section="install"] .plugin-install-source {
+.plugin-install-modal .plugin-install-source {
   min-width: 220px;
   align-self: end;
 }
 
-.plugins-view [data-plugin-manager-section="install"] .plugin-upload-field {
+.plugin-install-modal .plugin-upload-field {
   min-width: min(100%, 280px);
 }
 
-.plugins-view [data-plugin-manager-section="install"] input[type="file"] {
+.plugin-install-modal input[type="file"] {
   min-height: 36px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -307,6 +331,15 @@
 
   .plugin-marketplace-link {
     width: 100%;
+  }
+
+  .plugin-manager-actions,
+  .plugin-local-install-button {
+    width: 100%;
+  }
+
+  .plugin-install-modal .plugin-install-runner {
+    grid-template-columns: 1fr;
   }
 
   .admin-ui-dashboard-card[data-dashboard-size="wide"] {

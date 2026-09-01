@@ -1,4 +1,4 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Save, ShieldCheck } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
 import { type FormEvent, type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
@@ -12,7 +12,7 @@ import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 import { PluginActionRunner, PluginBackgroundJobRunner } from "./plugin-action-runner";
-import { emptyInstallDraft, PluginInstallForm, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
+import { emptyInstallDraft, PluginInstallDialog, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
 import { PluginDeleteControl, PluginLifecycleControl, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
@@ -60,6 +60,7 @@ export function PluginsView({
   const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
   const [pluginPermissionPreviews, setPluginPermissionPreviews] = useState<Record<string, PluginPermissionDiffPreviewDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PluginManagerTabKey>("registry");
   const simRegistry = useMemo(() => simRegistryFromPlugins(plugins), [plugins]);
   const simSelection = useMemo(
@@ -479,11 +480,28 @@ export function PluginsView({
             </button>
           ))}
         </div>
-        <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
-          <ExternalLink size={14} />
-          <span>{tx("插件市场")}</span>
-        </a>
+        <div className="plugin-manager-actions">
+          <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
+            <ExternalLink size={14} />
+            <span>{tx("插件市场")}</span>
+          </a>
+          <button className="secondary-button plugin-local-install-button" onClick={() => setInstallDialogOpen(true)} type="button">
+            <Upload size={14} />
+            <span>{tx("安装本地插件")}</span>
+          </button>
+        </div>
       </div>
+
+      {installDialogOpen ? (
+        <PluginInstallDialog
+          draft={installDraft}
+          onClose={() => setInstallDialogOpen(false)}
+          onInstall={installPlugin}
+          onPermissionPreview={previewInstallPluginPermissions}
+          permissionPreviewDraft={installPermissionPreview}
+          setDraft={setInstallDraft}
+        />
+      ) : null}
 
       <div className="metric-grid">
         <PluginMetric icon={<PlugZap size={18} />} label={tx("已注册插件")} value={plugins.length} />
@@ -498,14 +516,6 @@ export function PluginsView({
 
       {activeTab === "registry" ? (
         <>
-      <PluginInstallForm
-        draft={installDraft}
-        onInstall={installPlugin}
-        onPermissionPreview={previewInstallPluginPermissions}
-        permissionPreviewDraft={installPermissionPreview}
-        setDraft={setInstallDraft}
-      />
-
       <section className="section" data-plugin-manager-section="registry">
         <div className="section-header">
           <h2>{tx("插件注册表")}</h2>
