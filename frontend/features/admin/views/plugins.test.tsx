@@ -467,7 +467,7 @@ describe("PluginsView", () => {
     expect(screen.getByText("route.detail.panel")).toBeInTheDocument();
   });
 
-  it("applies SIM selection changes through the shell preference callback", () => {
+  it("sets a whole UI template package through the shell preference callback", () => {
     const onPreferenceChange = vi.fn();
     const data = emptyData();
     data.plugins = [
@@ -492,10 +492,13 @@ describe("PluginsView", () => {
     );
 
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
-    fireEvent.change(screen.getByLabelText("界面模板插件"), { target: { value: "tokenhub.sim.enterprise" } });
-    fireEvent.change(screen.getByLabelText("主题 Token"), { target: { value: "tokenhub.sim.enterprise:theme_tokens:enterprise-light" } });
-    fireEvent.change(screen.getByLabelText("布局预设"), { target: { value: "tokenhub.sim.enterprise:shell_layout:enterprise-shell" } });
-    fireEvent.click(screen.getByRole("button", { name: "应用选择" }));
+    expect(screen.getByLabelText("界面模板列表")).toBeInTheDocument();
+    expect(screen.queryByLabelText("界面模板插件")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("主题 Token")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("布局预设")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /tokenhub\.sim\.enterprise/ }));
+    fireEvent.click(screen.getByRole("button", { name: "设为默认模板" }));
 
     expect(onPreferenceChange).toHaveBeenCalledWith({
       simPluginID: "tokenhub.sim.enterprise",
@@ -586,8 +589,9 @@ describe("PluginsView", () => {
     fireEvent.click(screen.getByRole("tab", { name: "UI Templates" }));
     fireEvent.click(screen.getByText("Developer Info"));
     expect(screen.getByText("Route Context")).toBeInTheDocument();
-    expect(screen.getByText("Enterprise Theme · Enterprise SIM")).toBeInTheDocument();
-    expect(screen.getByText("Operations Layout · Enterprise SIM")).toBeInTheDocument();
+    expect(screen.getAllByText("Enterprise SIM").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Enterprise Theme").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Operations Layout").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("tab", { name: "Background Jobs" }));
     expect(screen.getByText("Refresh Codex")).toBeInTheDocument();
 
@@ -598,8 +602,9 @@ describe("PluginsView", () => {
     fireEvent.click(screen.getByRole("tab", { name: "UI テンプレート" }));
     fireEvent.click(screen.getByText("開発者情報"));
     expect(screen.getByText("ルートコンテキスト")).toBeInTheDocument();
-    expect(screen.getByText("エンタープライズテーマ · エンタープライズ SIM")).toBeInTheDocument();
-    expect(screen.getByText("運用レイアウト · エンタープライズ SIM")).toBeInTheDocument();
+    expect(screen.getAllByText("エンタープライズ SIM").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("エンタープライズテーマ").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("運用レイアウト").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("tab", { name: "インストール済みプラグイン" }));
     expect(screen.getByText("Codex サブスクリプション")).toBeInTheDocument();
   });
@@ -663,6 +668,9 @@ describe("PluginsView", () => {
     expect(pluginStyles()).toContain(".plugin-install-panel");
     expect(pluginStyles()).toContain(".plugin-install-file-button");
     expect(pluginStyles()).toContain(".plugin-install-toggle");
+    expect(pluginStyles()).toContain(".sim-template-selection-panel");
+    expect(pluginStyles()).toContain(".sim-template-item");
+    expect(pluginStyles()).toContain(".sim-template-detail-panel");
     expect(pluginStyles()).toContain(".plugin-developer-details");
     expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-control="lifecycle"] .compact-button');
   });

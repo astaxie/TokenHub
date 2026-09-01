@@ -196,6 +196,107 @@
   padding: 12px 13px 13px;
 }
 
+.sim-template-selection-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(280px, 1.05fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.sim-template-list {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.sim-template-item {
+  min-width: 0;
+  min-height: 78px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sim-template-item:hover,
+.sim-template-item.active {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.sim-template-item-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sim-template-item-main strong,
+.sim-template-detail-title strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.sim-template-item-main span,
+.sim-template-detail-title span {
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.sim-template-detail-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+  background: var(--surface-2);
+}
+
+.sim-template-detail-title {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sim-template-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sim-template-detail-grid > div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: var(--surface);
+}
+
+.sim-template-detail-grid span {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.sim-template-detail-grid strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+
 .plugin-install-runner {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.95fr);
@@ -513,6 +614,11 @@
   }
 
   .plugin-install-runner {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-template-selection-panel,
+  .sim-template-detail-grid {
     grid-template-columns: 1fr;
   }
 

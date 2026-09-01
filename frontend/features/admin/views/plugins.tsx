@@ -1,5 +1,5 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
@@ -58,7 +58,7 @@ export function PluginsView({
     () => resolveSIMSelection({ plugins, preference: simSelectionPreference, themeMode: theme }),
     [plugins, simSelectionPreference, theme],
   );
-  const [simSelectionDraft, setSIMSelectionDraft] = useState<SIMSelectionPreference>(simSelection.preference);
+  const [selectedSIMPluginID, setSelectedSIMPluginID] = useState("");
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const backgroundJobs = data.pluginBackgroundJobs;
@@ -68,6 +68,7 @@ export function PluginsView({
   const simPlugins = useMemo(() => simSelectionPlugins(plugins, simRegistry, locale), [plugins, simRegistry, locale]);
   const themeOptions = useMemo(() => simSelectionThemeOptions(simRegistry.themeTokens, plugins, theme, locale), [simRegistry.themeTokens, plugins, theme, locale]);
   const layoutOptions = useMemo(() => simSelectionLayoutOptions(simRegistry.shellLayouts, plugins, locale), [simRegistry.shellLayouts, plugins, locale]);
+  const simTemplates = useMemo(() => simTemplateOptions(simPlugins, themeOptions, layoutOptions), [simPlugins, themeOptions, layoutOptions]);
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
@@ -76,23 +77,16 @@ export function PluginsView({
   const uiTemplatePlugins = plugins.filter((plugin) => plugin.kinds?.includes("sim")).length;
   const backgroundJobPlugins = new Set(backgroundJobs.map((job) => job.plugin_id)).size;
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
+  const selectedSIMTemplate =
+    simTemplates.find((template) => template.id === selectedSIMPluginID) ??
+    simTemplates.find((template) => template.id === simSelection.activeSIMPluginID) ??
+    simTemplates[0];
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginRollbackDraft = (plugin: PluginDescriptor) => pluginRollbackDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginPermissionPreviewDraft = (plugin: PluginDescriptor) => pluginPermissionPreviews[plugin.id] ?? emptyPermissionPreviewDraft();
   const backgroundJobDraft = (job: PluginBackgroundJobDescriptor) => backgroundJobDrafts[pluginBackgroundJobKey(job.plugin_id, job.job_id)] ?? emptyBackgroundJobDraft(job);
-
-  useEffect(() => {
-    setSIMSelectionDraft(simSelection.preference);
-  }, [
-    simSelection.preference,
-    simSelection.preference.layoutID,
-    simSelection.preference.layoutKey,
-    simSelection.preference.simPluginID,
-    simSelection.preference.themeID,
-    simSelection.preference.themeKey,
-  ]);
 
   function updateBackgroundJobValue(job: PluginBackgroundJobDescriptor, field: string, value: string | boolean) {
     const key = pluginBackgroundJobKey(job.plugin_id, job.job_id);
@@ -360,9 +354,16 @@ export function PluginsView({
     }
   }
 
-  function applySIMSelection(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    onSIMSelectionPreferenceChange?.(simSelectionDraft);
+  function setSIMTemplateDefault(pluginID: string) {
+    const nextTheme = preferredSIMTheme(themeOptions, pluginID, simSelection.preference.themeKey);
+    const nextLayout = preferredSIMLayout(layoutOptions, pluginID, simSelection.preference.layoutKey);
+    onSIMSelectionPreferenceChange?.({
+      simPluginID: pluginID,
+      themeKey: nextTheme?.key ?? "",
+      themeID: nextTheme?.id ?? "",
+      layoutKey: nextLayout?.key ?? "",
+      layoutID: nextLayout?.id ?? "",
+    });
   }
 
   return (
@@ -547,96 +548,79 @@ export function PluginsView({
           <h2>{tx("界面模板选择面板")}</h2>
         </div>
         <div className="section-body">
-          {simPlugins.length === 0 && themeOptions.length === 0 && layoutOptions.length === 0 ? (
+          {simTemplates.length === 0 ? (
             <p className="empty-state">{tx("暂无可选界面模板")}</p>
           ) : (
-            <form className="plugin-action-runner" onSubmit={applySIMSelection}>
-              <div className="stacked-cell">
-                <strong>{tx("当前生效")}</strong>
-                <span>
-                  {activeSIMPlugin ? localizedPluginName(activeSIMPlugin, locale) : tx("自动选择")} ·{" "}
-                  {simSelection.theme.capability ? localizedCapabilityTitle(simSelection.theme.capability, locale) : tx("自动选择")} ·{" "}
-                  {simSelection.layout.capability ? localizedCapabilityTitle(simSelection.layout.capability, locale) : tx("自动选择")}
-                </span>
+            <div className="sim-template-selection-panel">
+              <div className="sim-template-list" aria-label={tx("界面模板列表")}>
+                {simTemplates.map((template) => {
+                  const isSelected = selectedSIMTemplate?.id === template.id;
+                  const isActive = simSelection.activeSIMPluginID === template.id;
+                  return (
+                    <button
+                      key={template.id}
+                      aria-pressed={isSelected}
+                      className={isSelected ? "sim-template-item active" : "sim-template-item"}
+                      onClick={() => setSelectedSIMPluginID(template.id)}
+                      type="button"
+                    >
+                      <span className="sim-template-item-main">
+                        <strong>{template.name}</strong>
+                        <span>{template.id}{template.version ? ` · ${template.version}` : ""}</span>
+                      </span>
+                      <span className="tag-list">
+                        {isActive ? <span className="tag">{tx("当前默认")}</span> : null}
+                        <span className="tag">{template.theme?.title ?? tx("自动选择")}</span>
+                        <span className="tag">{template.layout?.title ?? tx("自动选择")}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
-              <label className="plugin-action-field">
-                <span>{tx("界面模板插件")}</span>
-                <select
-                  onChange={(event) => {
-                    const nextPluginID = event.currentTarget.value;
-                    setSIMSelectionDraft((draft) => {
-                      const nextTheme = preferredSIMTheme(themeOptions, nextPluginID, draft.themeKey);
-                      const nextLayout = preferredSIMLayout(layoutOptions, nextPluginID, draft.layoutKey);
-                      return {
-                        simPluginID: nextPluginID,
-                        themeKey: nextTheme?.key ?? "",
-                        themeID: nextTheme?.id ?? "",
-                        layoutKey: nextLayout?.key ?? "",
-                        layoutID: nextLayout?.id ?? "",
-                      };
-                    });
-                  }}
-                  value={simSelectionDraft.simPluginID}
-                >
-                  <option value="">{tx("自动选择")}</option>
-                  {simPlugins.map((plugin) => (
-                    <option key={plugin.id} value={plugin.id}>
-                      {plugin.name || plugin.id}{plugin.version ? ` · ${plugin.version}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {selectedSIMTemplate ? (
+                <aside className="sim-template-detail-panel">
+                  <div className="stacked-cell">
+                    <strong>{tx("默认模板")}</strong>
+                    <span>
+                      {activeSIMPlugin ? localizedPluginName(activeSIMPlugin, locale) : tx("自动选择")} ·{" "}
+                      {simSelection.theme.capability ? localizedCapabilityTitle(simSelection.theme.capability, locale) : tx("自动选择")} ·{" "}
+                      {simSelection.layout.capability ? localizedCapabilityTitle(simSelection.layout.capability, locale) : tx("自动选择")}
+                    </span>
+                  </div>
 
-              <label className="plugin-action-field">
-                <span>{tx("主题 Token")}</span>
-                <select
-                  onChange={(event) => {
-                    const nextTheme = themeOptions.find((option) => option.key === event.currentTarget.value);
-                    setSIMSelectionDraft((draft) => ({
-                      ...draft,
-                      themeKey: nextTheme?.key ?? "",
-                      themeID: nextTheme?.id ?? "",
-                    }));
-                  }}
-                  value={simSelectionDraft.themeKey}
-                >
-                  <option value="">{tx("自动选择")}</option>
-                  {themeOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.title} · {option.pluginName}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <div className="sim-template-detail-title">
+                    <strong>{selectedSIMTemplate.name}</strong>
+                    <span>{selectedSIMTemplate.id}</span>
+                  </div>
 
-              <label className="plugin-action-field">
-                <span>{tx("布局预设")}</span>
-                <select
-                  onChange={(event) => {
-                    const nextLayout = layoutOptions.find((option) => option.key === event.currentTarget.value);
-                    setSIMSelectionDraft((draft) => ({
-                      ...draft,
-                      layoutKey: nextLayout?.key ?? "",
-                      layoutID: nextLayout?.id ?? "",
-                    }));
-                  }}
-                  value={simSelectionDraft.layoutKey}
-                >
-                  <option value="">{tx("自动选择")}</option>
-                  {layoutOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.title} · {option.pluginName}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <div className="sim-template-detail-grid">
+                    <div>
+                      <span>{tx("版本")}</span>
+                      <strong>{selectedSIMTemplate.version || tx("未声明")}</strong>
+                    </div>
+                    <div>
+                      <span>{tx("主题")}</span>
+                      <strong>{selectedSIMTemplate.theme?.title ?? tx("自动选择")}</strong>
+                    </div>
+                    <div>
+                      <span>{tx("布局")}</span>
+                      <strong>{selectedSIMTemplate.layout?.title ?? tx("自动选择")}</strong>
+                    </div>
+                  </div>
 
-              <button className="secondary-button plugin-action-button" disabled={!onSIMSelectionPreferenceChange} type="submit">
-                <Save size={14} />
-                <span>{tx("应用选择")}</span>
-              </button>
-            </form>
+                  <button
+                    className="secondary-button plugin-action-button"
+                    disabled={!onSIMSelectionPreferenceChange || simSelection.activeSIMPluginID === selectedSIMTemplate.id}
+                    onClick={() => setSIMTemplateDefault(selectedSIMTemplate.id)}
+                    type="button"
+                  >
+                    <Save size={14} />
+                    <span>{simSelection.activeSIMPluginID === selectedSIMTemplate.id ? tx("当前默认") : tx("设为默认模板")}</span>
+                  </button>
+                </aside>
+              ) : null}
+            </div>
           )}
         </div>
       </section>
@@ -978,7 +962,18 @@ type SIMSelectionCapabilityOption = {
   pluginVersion: string;
 };
 
-function simSelectionPlugins(plugins: readonly PluginDescriptor[], registry: SIMRegistry, locale: string) {
+type SIMSelectionPluginOption = {
+  id: string;
+  name: string;
+  version: string;
+};
+
+type SIMTemplateOption = SIMSelectionPluginOption & {
+  theme?: SIMSelectionCapabilityOption;
+  layout?: SIMSelectionCapabilityOption;
+};
+
+function simSelectionPlugins(plugins: readonly PluginDescriptor[], registry: SIMRegistry, locale: string): SIMSelectionPluginOption[] {
   const capabilityPluginIDs = new Set([...registry.themeTokens, ...registry.shellLayouts].map((capability) => capability.pluginID));
   return plugins.flatMap((plugin) => {
     const hasSIMKind = plugin.kinds?.includes("sim");
@@ -990,6 +985,18 @@ function simSelectionPlugins(plugins: readonly PluginDescriptor[], registry: SIM
       version: plugin.version || "",
     }];
   });
+}
+
+function simTemplateOptions(
+  plugins: readonly SIMSelectionPluginOption[],
+  themeOptions: SIMSelectionCapabilityOption[],
+  layoutOptions: SIMSelectionCapabilityOption[],
+): SIMTemplateOption[] {
+  return plugins.map((plugin) => ({
+    ...plugin,
+    theme: preferredSIMTheme(themeOptions, plugin.id, ""),
+    layout: preferredSIMLayout(layoutOptions, plugin.id, ""),
+  }));
 }
 
 function simSelectionThemeOptions(themeTokens: readonly SIMThemeTokens[], plugins: readonly PluginDescriptor[], theme: "light" | "dark", locale: string) {
