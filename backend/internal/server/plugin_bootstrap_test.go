@@ -77,6 +77,22 @@ permissions:
 	if value := simCapabilityValueForTest(t, defaultTemplate, pluginmeta.SIMCapabilityDashboardComposition, "default-dashboard"); !simCapabilityPayloadBool(t, value, "default") {
 		t.Fatalf("default dashboard payload = %s, want default=true", value)
 	}
+	antDTemplate, ok := bootstrap.pluginRegistry.Describe("tokenhub.sim.antd")
+	if !ok {
+		t.Fatal("built-in Ant Design style interface template plugin was not registered")
+	}
+	if value := simCapabilityValueForTest(t, antDTemplate, pluginmeta.SIMCapabilityThemeTokens, "antd-light"); simCapabilityPayloadString(t, value, "mode") != "light" {
+		t.Fatalf("Ant Design light theme payload = %s, want mode=light", value)
+	}
+	if value := simCapabilityValueForTest(t, antDTemplate, pluginmeta.SIMCapabilityThemeTokens, "antd-dark"); simCapabilityPayloadString(t, value, "mode") != "dark" {
+		t.Fatalf("Ant Design dark theme payload = %s, want mode=dark", value)
+	}
+	if value := simCapabilityValueForTest(t, antDTemplate, pluginmeta.SIMCapabilityShellLayout, "antd-compact-sidebar"); simCapabilityPayloadString(t, value, "density") != "compact" {
+		t.Fatalf("Ant Design layout payload = %s, want density=compact", value)
+	}
+	if value := simCapabilityValueForTest(t, antDTemplate, pluginmeta.SIMCapabilityDashboardComposition, "antd-dashboard"); simCapabilityPayloadString(t, value, "layout") != "compact_grid" {
+		t.Fatalf("Ant Design dashboard payload = %s, want layout=compact_grid", value)
+	}
 	descriptor, ok := bootstrap.adapterRegistry.Describe(ProviderMock)
 	if !ok || descriptor.PluginID != "tokenhub.provider.mock" {
 		t.Fatalf("mock provider descriptor = %+v found=%t", descriptor, ok)
@@ -118,4 +134,14 @@ func simCapabilityPayloadBool(t *testing.T, value string, key string) bool {
 		t.Fatalf("decode SIM capability payload: %v", err)
 	}
 	return payload[key] == true
+}
+
+func simCapabilityPayloadString(t *testing.T, value string, key string) string {
+	t.Helper()
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(value), &payload); err != nil {
+		t.Fatalf("decode SIM capability payload: %v", err)
+	}
+	text, _ := payload[key].(string)
+	return text
 }
