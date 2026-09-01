@@ -95,7 +95,8 @@
 }
 
 .plugin-install-modal {
-  width: min(620px, calc(100vw - 32px));
+  width: min(820px, calc(100vw - 32px));
+  max-height: min(82vh, 760px);
 }
 
 .plugin-install-modal .modal-header h2 {
@@ -103,7 +104,8 @@
 }
 
 .plugin-install-modal-body {
-  padding: 16px 18px 18px;
+  padding: 18px 18px 18px;
+  overflow: auto;
 }
 
 .plugins-view .metric-grid {
@@ -156,28 +158,162 @@
   min-width: 0;
 }
 
-.plugin-install-modal .plugin-install-runner,
-.plugins-view [data-plugin-manager-section="sim-selection"] .plugin-action-runner {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  align-items: end;
+.plugin-install-runner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.95fr);
+  gap: 14px;
+  align-items: start;
 }
 
-.plugin-install-modal .plugin-install-source {
-  min-width: 220px;
-  align-self: end;
-}
-
-.plugin-install-modal .plugin-upload-field {
-  min-width: min(100%, 280px);
-}
-
-.plugin-install-modal input[type="file"] {
-  min-height: 36px;
+.plugin-install-panel {
+  min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
+  border-radius: 10px;
+  padding: 13px 14px 14px;
+  background: var(--surface-2);
+  display: grid;
+  gap: 12px;
+}
+
+.plugin-install-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plugin-install-panel-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.plugin-install-source-panel {
+  min-width: 0;
+}
+
+.plugin-install-source-panel .plugin-install-source {
+  min-width: 0;
+}
+
+.plugin-install-source-body {
+  min-width: 0;
+}
+
+.plugin-install-source-body .plugin-action-field {
+  gap: 6px;
+}
+
+.plugin-install-source-body input[type="url"] {
+  width: 100%;
+}
+
+.plugin-install-source-body input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.plugin-install-upload-row {
+  min-width: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.plugin-install-file-button {
+  min-height: 34px;
+  width: max-content;
+}
+
+.plugin-install-file-name {
+  min-width: 0;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-install-file-name.has-value {
+  color: var(--ink);
+}
+
+.plugin-install-preview-button {
+  min-height: 30px;
+  padding-inline: 10px;
+}
+
+.plugin-install-settings-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.plugin-install-checksum-field {
+  min-width: 0;
+}
+
+.plugin-install-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.plugin-install-toggle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--surface);
   color: var(--ink);
+  font-size: 13px;
+}
+
+.plugin-install-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.plugin-install-preview-panel {
+  grid-column: 1 / -1;
+  gap: 10px;
+}
+
+.plugin-install-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plugin-install-status {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.plugin-install-submit {
+  flex: 0 0 auto;
+  width: max-content;
 }
 
 .plugins-view [data-plugin-manager-section="actions"] .plugin-action-runner,
@@ -338,8 +474,27 @@
     width: 100%;
   }
 
-  .plugin-install-modal .plugin-install-runner {
+  .plugin-install-runner {
     grid-template-columns: 1fr;
+  }
+
+  .plugin-install-toggle-grid,
+  .plugin-install-upload-row {
+    grid-template-columns: 1fr;
+  }
+
+  .plugin-install-preview-panel,
+  .plugin-install-footer {
+    grid-column: 1;
+  }
+
+  .plugin-install-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .plugin-install-submit {
+    width: 100%;
   }
 
   .admin-ui-dashboard-card[data-dashboard-size="wide"] {

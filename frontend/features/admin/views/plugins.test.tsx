@@ -622,7 +622,10 @@ describe("PluginsView", () => {
     expect(pluginStyles()).toContain(".plugin-manager-topbar");
     expect(pluginStyles()).toContain(".plugin-manager-actions");
     expect(pluginStyles()).toContain(".plugin-install-modal");
-    expect(pluginStyles()).toContain(".plugin-install-modal .plugin-install-runner");
+    expect(pluginStyles()).toContain(".plugin-install-runner");
+    expect(pluginStyles()).toContain(".plugin-install-panel");
+    expect(pluginStyles()).toContain(".plugin-install-file-button");
+    expect(pluginStyles()).toContain(".plugin-install-toggle");
     expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-control="lifecycle"] .compact-button');
   });
 

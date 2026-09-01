@@ -21,24 +21,28 @@ export function PluginPermissionDiffPreview({
   disabled = false,
   draft,
   onPreview,
+  showAction = true,
 }: {
   disabled?: boolean;
   draft: PluginPermissionDiffPreviewDraft;
   onPreview: () => void;
+  showAction?: boolean;
 }) {
   const state = draft.preview ? pluginPermissionDiffDisplay(draft.preview) : null;
   return (
     <div className="plugin-permission-diff-preview" data-plugin-permission-diff-preview>
-      <button
-        className="secondary-button compact-button"
-        disabled={disabled || draft.busy}
-        onClick={onPreview}
-        title={tx("预览权限")}
-        type="button"
-      >
-        <ShieldCheck size={13} />
-        <span>{tx(draft.busy ? "预览中" : "预览权限")}</span>
-      </button>
+      {showAction ? (
+        <button
+          className="secondary-button compact-button"
+          disabled={disabled || draft.busy}
+          onClick={onPreview}
+          title={tx("预览权限")}
+          type="button"
+        >
+          <ShieldCheck size={13} />
+          <span>{tx(draft.busy ? "预览中" : "预览权限")}</span>
+        </button>
+      ) : null}
       {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
       {state ? <PermissionDiffResult state={state} /> : null}
     </div>
