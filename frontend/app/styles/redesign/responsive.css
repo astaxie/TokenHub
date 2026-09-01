@@ -97,7 +97,9 @@
   }
 
   .app-shell,
-  .app-shell.sidebar-collapsed {
+  .app-shell.sidebar-collapsed,
+  .app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"],
+  .app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"].sidebar-collapsed {
     grid-template-columns: 1fr;
   }
 

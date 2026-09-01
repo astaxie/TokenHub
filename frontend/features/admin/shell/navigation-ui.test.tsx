@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
@@ -181,4 +183,61 @@ describe("Sidebar", () => {
       layoutID: "selected-shell",
     });
   });
+
+  it("selects the knowledge sidebar SIM template and keeps its shell CSS scoped", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.sim.knowledge-sidebar",
+      name: "Knowledge Sidebar",
+      version: "built-in",
+      source: "built_in",
+      kinds: ["sim"],
+      placements: ["presentation"],
+      capabilities: [
+        {
+          kind: "sim",
+          name: "theme_tokens",
+          subject: "knowledge-sidebar-light",
+          value: JSON.stringify({
+            id: "knowledge-sidebar-light",
+            title: "Knowledge Sidebar Light",
+            mode: "light",
+            tokens: { accent: "#203f78", "accent-weak": "#eaf2ff" },
+          }),
+        },
+        {
+          kind: "sim",
+          name: "shell_layout",
+          subject: "knowledge-rounded-sidebar",
+          value: JSON.stringify({
+            id: "knowledge-rounded-sidebar",
+            title: "Knowledge Rounded Sidebar",
+            layout: { density: "comfortable" },
+          }),
+        },
+      ],
+    }];
+
+    const shellState = adminConsoleShellState(data, "light", {
+      simPluginID: "tokenhub.sim.knowledge-sidebar",
+    });
+
+    expect(shellState.simSelection.activeSIMPluginID).toBe("tokenhub.sim.knowledge-sidebar");
+    expect(shellState.shellPresentation.style).toMatchObject({
+      "--accent": "#203f78",
+      "--accent-weak": "#eaf2ff",
+    });
+    expect(shellState.shellPresentation.density).toBe("comfortable");
+    expect(templateStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-title');
+    expect(templateStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-item.active');
+    expect(responsiveStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"].sidebar-collapsed');
+  });
 });
+
+function templateStyles() {
+  return readFileSync(resolve("app/styles/redesign/templates.css"), "utf8");
+}
+
+function responsiveStyles() {
+  return readFileSync(resolve("app/styles/redesign/responsive.css"), "utf8");
+}

@@ -1,0 +1,118 @@
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] {
+  grid-template-columns: 292px minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"].sidebar-collapsed {
+  grid-template-columns: 82px minmax(0, 1fr);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .sidebar {
+  border-right-color: var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .brand {
+  min-height: 82px;
+  border-bottom: 0;
+  padding-inline: 24px 48px;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .sidebar-toggle {
+  right: 20px;
+  border-radius: 12px;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .sidebar-nav-scroll {
+  gap: 22px;
+  padding: 18px 28px 30px;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-group {
+  display: grid;
+  gap: 12px;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-title {
+  min-height: 48px;
+  border-radius: 18px;
+  padding: 0 22px;
+  justify-content: space-between;
+  color: var(--ink-2);
+  font-size: 17px;
+  font-weight: 780;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-group:has(.nav-item.active) > .nav-title {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-group:has(.nav-item.active) > .nav-title .nav-chevron {
+  color: color-mix(in srgb, var(--accent-ink) 72%, transparent);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav {
+  position: relative;
+  gap: 8px;
+  margin-left: 22px;
+  padding-left: 18px;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav::before {
+  content: "";
+  position: absolute;
+  inset: 6px auto 8px 0;
+  width: 1px;
+  background: var(--border);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-item {
+  min-height: 46px;
+  border-radius: 17px;
+  padding: 0 18px;
+  gap: 13px;
+  color: var(--ink-2);
+  font-size: 16px;
+  font-weight: 720;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-item svg {
+  color: currentColor;
+  stroke-width: 2.1;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-item:hover,
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-parent.active-parent {
+  background: var(--accent-weak-2);
+  color: var(--accent);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-item.active {
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-weight: 780;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-subnav {
+  gap: 8px;
+  padding-left: 0;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-child {
+  min-height: 46px;
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .topbar {
+  height: 68px;
+  border-bottom-color: var(--border);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .content-panel {
+  padding: 28px 34px 46px;
+}

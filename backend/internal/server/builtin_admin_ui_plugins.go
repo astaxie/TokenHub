@@ -5,6 +5,7 @@ import pluginmeta "tokenhub/backend/internal/plugin"
 func registerBuiltinAdminUIContributions(registry *pluginmeta.Registry, adminUI *pluginmeta.AdminUIRegistry) {
 	registerBuiltinDefaultSIMPlugin(registry)
 	registerBuiltinAntDSIMPlugin(registry)
+	registerBuiltinKnowledgeSidebarSIMPlugin(registry)
 
 	ecosystemContributions := []pluginmeta.AdminUIContribution{
 		{

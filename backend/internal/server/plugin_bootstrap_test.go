@@ -93,6 +93,19 @@ permissions:
 	if value := simCapabilityValueForTest(t, antDTemplate, pluginmeta.SIMCapabilityDashboardComposition, "antd-dashboard"); simCapabilityPayloadString(t, value, "layout") != "compact_grid" {
 		t.Fatalf("Ant Design dashboard payload = %s, want layout=compact_grid", value)
 	}
+	knowledgeTemplate, ok := bootstrap.pluginRegistry.Describe("tokenhub.sim.knowledge-sidebar")
+	if !ok {
+		t.Fatal("built-in knowledge sidebar interface template plugin was not registered")
+	}
+	if value := simCapabilityValueForTest(t, knowledgeTemplate, pluginmeta.SIMCapabilityThemeTokens, "knowledge-sidebar-light"); simCapabilityPayloadString(t, value, "mode") != "light" {
+		t.Fatalf("Knowledge sidebar light theme payload = %s, want mode=light", value)
+	}
+	if value := simCapabilityValueForTest(t, knowledgeTemplate, pluginmeta.SIMCapabilityShellLayout, "knowledge-rounded-sidebar"); simCapabilityPayloadString(t, value, "density") != "comfortable" {
+		t.Fatalf("Knowledge sidebar layout payload = %s, want density=comfortable", value)
+	}
+	if value := simCapabilityValueForTest(t, knowledgeTemplate, pluginmeta.SIMCapabilityDashboardComposition, "knowledge-dashboard"); simCapabilityPayloadString(t, value, "layout") != "grid" {
+		t.Fatalf("Knowledge sidebar dashboard payload = %s, want layout=grid", value)
+	}
 	descriptor, ok := bootstrap.adapterRegistry.Describe(ProviderMock)
 	if !ok || descriptor.PluginID != "tokenhub.provider.mock" {
 		t.Fatalf("mock provider descriptor = %+v found=%t", descriptor, ok)
