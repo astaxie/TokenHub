@@ -350,12 +350,9 @@ export type PluginMarketplaceScreenshot = {
   height?: number;
 };
 
-export type PluginMarketplaceLocalization = {
-  name?: string;
-  summary?: string;
-  description?: string;
-  release_notes?: string;
-};
+export type PluginMarketplaceLocalization = { name?: string; title?: string; summary?: string; description?: string; release_notes?: string };
+
+export type PluginLocalization = PluginMarketplaceLocalization;
 
 export type PluginMarketplaceCompatibilityBadge = {
   id?: string;
@@ -445,6 +442,7 @@ export type PluginDescriptor = {
   id: string;
   name: string;
   version: string;
+  localizations?: Record<string, PluginLocalization>;
   source: "built_in" | "marketplace" | "local_file" | string;
   status?: "enabled" | "disabled" | string;
   distribution?: PluginDistribution;
@@ -497,6 +495,7 @@ export type AdminUIContribution = {
   id: string;
   slot: string;
   title?: string;
+  localizations?: Record<string, PluginLocalization>;
   provider_types?: string[];
   resource_types?: string[];
   action?: string;
@@ -508,6 +507,7 @@ export type PluginActionDescriptor = {
   action_id: string;
   kind: "read" | "test" | "mutate" | "external_redirect" | "import_export" | string;
   title?: string;
+  localizations?: Record<string, PluginLocalization>;
   capability?: string;
   subject?: string;
   metadata?: Record<string, string>;
@@ -519,6 +519,7 @@ export type PluginBackgroundJobDescriptor = {
   plugin_id: string;
   job_id: string;
   title?: string;
+  localizations?: Record<string, PluginLocalization>;
   capability?: string;
   subject?: string;
   schedule: string;

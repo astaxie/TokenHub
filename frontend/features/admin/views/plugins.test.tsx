@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type PluginCapabilityDescriptor } from "../core/types";
 import { emptyData } from "../domain/catalog";
 import { pluginMarketplaceWebsiteURL } from "../domain/plugin-management";
+import { setActiveLanguage } from "../i18n/runtime";
 import { PluginsView } from "./plugins";
 
 describe("PluginsView", () => {
@@ -457,6 +458,114 @@ describe("PluginsView", () => {
       layoutKey: "tokenhub.sim.enterprise:shell_layout:enterprise-shell",
       layoutID: "enterprise-shell",
     });
+  });
+
+  it("localizes plugin metadata contributed by descriptors, UI contributions, actions, jobs, and SIM payloads", () => {
+    const data = emptyData();
+    data.plugins = [
+      {
+        id: "tokenhub.provider.codex",
+        name: "Codex 订阅",
+        version: "1.0.0",
+        localizations: {
+          "en-US": { name: "Codex Subscription" },
+          "ja-JP": { name: "Codex サブスクリプション" },
+        },
+        source: "marketplace",
+        status: "enabled",
+        kinds: ["provider"],
+        placements: ["gateway_chain"],
+        capabilities: [],
+      },
+      {
+        id: "tokenhub.sim.enterprise",
+        name: "企业 SIM",
+        version: "1.0.0",
+        localizations: {
+          "en-US": { name: "Enterprise SIM" },
+          "ja-JP": { name: "エンタープライズ SIM" },
+        },
+        source: "built_in",
+        status: "enabled",
+        kinds: ["sim"],
+        placements: ["presentation"],
+        capabilities: [
+          themeCapability("enterprise-light", {
+            title: "企业主题",
+            mode: "light",
+            localizations: {
+              "en-US": { title: "Enterprise Theme" },
+              "ja-JP": { title: "エンタープライズテーマ" },
+            },
+          }),
+          layoutCapability("enterprise-shell", {
+            title: "运维布局",
+            localizations: {
+              "en-US": { title: "Operations Layout" },
+              "ja-JP": { title: "運用レイアウト" },
+            },
+          }),
+        ],
+      },
+    ];
+    data.pluginUI = [{
+      plugin_id: "tokenhub.provider.codex",
+      id: "route-context",
+      slot: "route.detail.panel",
+      title: "路由上下文",
+      schema: {
+        localizations: {
+          "en-US": { title: "Route Context" },
+          "ja-JP": { title: "ルートコンテキスト" },
+        },
+      },
+    }];
+    data.pluginActions = [{
+      plugin_id: "tokenhub.provider.codex",
+      action_id: "codex.sync",
+      kind: "mutate",
+      title: "同步 Codex",
+      metadata: {
+        "title:en-US": "Sync Codex",
+        "title:ja-JP": "Codex を同期",
+      },
+    }];
+    data.pluginBackgroundJobs = [{
+      plugin_id: "tokenhub.provider.codex",
+      job_id: "codex.refresh",
+      title: "刷新 Codex",
+      localizations: {
+        "en-US": { title: "Refresh Codex" },
+        "ja-JP": { title: "Codex を更新" },
+      },
+      capability: "codex.refresh",
+      schedule: "10m",
+      max_concurrency: 1,
+    }];
+
+    setActiveLanguage("en");
+    const { rerender } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} theme="light" />);
+
+    expect(screen.getByText("Codex Subscription")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "UI and SIM" }));
+    expect(screen.getByText("Route Context")).toBeInTheDocument();
+    expect(screen.getByText("Enterprise Theme · Enterprise SIM")).toBeInTheDocument();
+    expect(screen.getByText("Operations Layout · Enterprise SIM")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Actions and Jobs" }));
+    expect(screen.getByText("Sync Codex")).toBeInTheDocument();
+    expect(screen.getByText("Refresh Codex")).toBeInTheDocument();
+
+    setActiveLanguage("ja");
+    rerender(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} theme="light" />);
+
+    expect(screen.getByText("Codex を同期")).toBeInTheDocument();
+    expect(screen.getByText("Codex を更新")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "UI と SIM" }));
+    expect(screen.getByText("ルートコンテキスト")).toBeInTheDocument();
+    expect(screen.getByText("エンタープライズテーマ · エンタープライズ SIM")).toBeInTheDocument();
+    expect(screen.getByText("運用レイアウト · エンタープライズ SIM")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "インストール済みプラグイン" }));
+    expect(screen.getByText("Codex サブスクリプション")).toBeInTheDocument();
   });
 
   it("keeps SIM selection controls on the shared plugin CSS surface", () => {

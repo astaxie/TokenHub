@@ -5,6 +5,7 @@ import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, plugin
 import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { pluginMarketplaceDisplay, type PluginMarketplaceDisplayState } from "../domain/plugin-marketplace";
+import { localizedCapabilityTitle, localizedContributionTitle, localizedPluginName } from "../domain/plugin-localization";
 import { type PluginPermissionDiffPreviewPayload } from "../domain/plugin-permission-diff";
 import { simRegistryFromPlugins, type SIMRegistry, type SIMShellLayout, type SIMThemeTokens } from "../domain/sim-registry";
 import { resolveSIMSelection, type SIMSelectionPreference } from "../domain/sim-selection";
@@ -77,16 +78,17 @@ export function PluginsView({
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const backgroundJobs = data.pluginBackgroundJobs;
+  const locale = languageLocale();
   const themeContributions = uiContributions.filter((contribution) => contribution.slot === "theme.tokens");
   const layoutContributions = uiContributions.filter((contribution) => contribution.slot === "layout.preset");
-  const simPlugins = useMemo(() => simSelectionPlugins(plugins, simRegistry), [plugins, simRegistry]);
-  const themeOptions = useMemo(() => simSelectionThemeOptions(simRegistry.themeTokens, theme), [simRegistry.themeTokens, theme]);
-  const layoutOptions = useMemo(() => simSelectionLayoutOptions(simRegistry.shellLayouts), [simRegistry.shellLayouts]);
+  const simPlugins = useMemo(() => simSelectionPlugins(plugins, simRegistry, locale), [plugins, simRegistry, locale]);
+  const themeOptions = useMemo(() => simSelectionThemeOptions(simRegistry.themeTokens, plugins, theme, locale), [simRegistry.themeTokens, plugins, theme, locale]);
+  const layoutOptions = useMemo(() => simSelectionLayoutOptions(simRegistry.shellLayouts, plugins, locale), [simRegistry.shellLayouts, plugins, locale]);
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const marketplaceEntries = data.pluginMarketplace.map((item) => ({
     item,
-    display: pluginMarketplaceDisplay(item, { locale: languageLocale() }),
+    display: pluginMarketplaceDisplay(item, { locale }),
   }));
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
@@ -740,7 +742,7 @@ export function PluginsView({
                       <td>{contribution.slot}</td>
                       <td>
                         <div className="stacked-cell">
-                          <strong>{contribution.title || contribution.id}</strong>
+                          <strong>{localizedContributionTitle(contribution, locale)}</strong>
                           <span>{contribution.id}</span>
                         </div>
                       </td>
@@ -784,7 +786,7 @@ export function PluginsView({
                       <td>{presentationContributionTypeLabel(contribution.slot)}</td>
                       <td>
                         <div className="stacked-cell">
-                          <strong>{contribution.title || contribution.id}</strong>
+                          <strong>{localizedContributionTitle(contribution, locale)}</strong>
                           <span>{contribution.id}</span>
                         </div>
                       </td>
@@ -813,9 +815,9 @@ export function PluginsView({
               <div className="stacked-cell">
                 <strong>{tx("当前生效")}</strong>
                 <span>
-                  {activeSIMPlugin ? activeSIMPlugin.name || activeSIMPlugin.id : tx("自动选择")} ·{" "}
-                  {simSelection.theme.capability ? simSelection.theme.capability.title : tx("自动选择")} ·{" "}
-                  {simSelection.layout.capability ? simSelection.layout.capability.title : tx("自动选择")}
+                  {activeSIMPlugin ? localizedPluginName(activeSIMPlugin, locale) : tx("自动选择")} ·{" "}
+                  {simSelection.theme.capability ? localizedCapabilityTitle(simSelection.theme.capability, locale) : tx("自动选择")} ·{" "}
+                  {simSelection.layout.capability ? localizedCapabilityTitle(simSelection.layout.capability, locale) : tx("自动选择")}
                 </span>
               </div>
 
@@ -931,7 +933,7 @@ export function PluginsView({
                       <td>{action.action_id}</td>
                       <td>{pluginActionKindLabel(action.kind)}</td>
                       <td>{action.capability || action.subject || "-"}</td>
-                      <td>{action.title || "-"}</td>
+                      <td>{localizedContributionTitle({ ...action, id: action.action_id }, locale) || "-"}</td>
                       <td>
                         <PluginActionRunner
                           action={action}
@@ -985,7 +987,7 @@ export function PluginsView({
                         <td>
                           <div className="stacked-cell">
                             <strong>{job.job_id}</strong>
-                            <span>{job.title || "-"}</span>
+                            <span>{localizedContributionTitle({ ...job, id: job.job_id }, locale) || "-"}</span>
                           </div>
                         </td>
                         <td>{job.schedule}</td>
@@ -1042,9 +1044,10 @@ function PluginMetric({ icon, label, value }: { icon: ReactNode; label: ReactNod
 }
 
 function PluginTitle({ plugin }: { plugin: PluginDescriptor }) {
+  const locale = languageLocale();
   return (
     <div className="stacked-cell">
-      <strong>{plugin.name || plugin.id}</strong>
+      <strong>{localizedPluginName(plugin, locale)}</strong>
       <span>{plugin.id} · {plugin.version || tx("内置")}</span>
     </div>
   );
@@ -1357,7 +1360,7 @@ type SIMSelectionCapabilityOption = {
   pluginVersion: string;
 };
 
-function simSelectionPlugins(plugins: readonly PluginDescriptor[], registry: SIMRegistry) {
+function simSelectionPlugins(plugins: readonly PluginDescriptor[], registry: SIMRegistry, locale: string) {
   const capabilityPluginIDs = new Set([...registry.themeTokens, ...registry.shellLayouts].map((capability) => capability.pluginID));
   return plugins.flatMap((plugin) => {
     const hasSIMKind = plugin.kinds?.includes("sim");
@@ -1365,34 +1368,40 @@ function simSelectionPlugins(plugins: readonly PluginDescriptor[], registry: SIM
     if (!hasSIMKind && !hasSIMCapability) return [];
     return [{
       id: plugin.id,
-      name: plugin.name || plugin.id,
+      name: localizedPluginName(plugin, locale),
       version: plugin.version || "",
     }];
   });
 }
 
-function simSelectionThemeOptions(themeTokens: readonly SIMThemeTokens[], theme: "light" | "dark") {
+function simSelectionThemeOptions(themeTokens: readonly SIMThemeTokens[], plugins: readonly PluginDescriptor[], theme: "light" | "dark", locale: string) {
+  const pluginNames = localizedPluginNameMap(plugins, locale);
   return themeTokens
     .filter((token) => token.payload.mode === "all" || token.payload.mode === theme)
     .map((token) => ({
       key: token.key,
       id: token.id,
-      title: token.title || token.id,
+      title: localizedCapabilityTitle(token, locale),
       pluginID: token.pluginID,
-      pluginName: token.pluginName || token.pluginID,
+      pluginName: pluginNames.get(token.pluginID) || token.pluginName || token.pluginID,
       pluginVersion: token.pluginVersion || "",
     }));
 }
 
-function simSelectionLayoutOptions(layouts: readonly SIMShellLayout[]) {
+function simSelectionLayoutOptions(layouts: readonly SIMShellLayout[], plugins: readonly PluginDescriptor[], locale: string) {
+  const pluginNames = localizedPluginNameMap(plugins, locale);
   return layouts.map((layout) => ({
     key: layout.key,
     id: layout.id,
-    title: layout.title || layout.id,
+    title: localizedCapabilityTitle(layout, locale),
     pluginID: layout.pluginID,
-    pluginName: layout.pluginName || layout.pluginID,
+    pluginName: pluginNames.get(layout.pluginID) || layout.pluginName || layout.pluginID,
     pluginVersion: layout.pluginVersion || "",
   }));
+}
+
+function localizedPluginNameMap(plugins: readonly PluginDescriptor[], locale: string) {
+  return new Map(plugins.map((plugin) => [plugin.id, localizedPluginName(plugin, locale)]));
 }
 
 function preferredSIMTheme(options: SIMSelectionCapabilityOption[], pluginID: string, currentKey: string) {
