@@ -150,6 +150,26 @@ describe("PluginsView", () => {
     expect(screen.queryByText("Provider 能力")).not.toBeInTheDocument();
   });
 
+  it("lists provider plugins in a dedicated provider tab", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.provider.qwen",
+      name: "Qwen",
+      version: "built-in",
+      source: "built_in",
+      status: "enabled",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
+
+    expect(screen.getByText("Provider 插件清单")).toBeInTheDocument();
+    expect(screen.getByText("Qwen")).toBeInTheDocument();
+  });
+
   it("renders gateway hook subjects", () => {
     const data = emptyData();
     data.pluginChain.hooks = [{

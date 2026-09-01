@@ -72,7 +72,8 @@ export function PluginsView({
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
-  const providerPlugins = plugins.filter((plugin) => plugin.kinds?.includes("provider")).length;
+  const providerPluginList = plugins.filter((plugin) => plugin.kinds?.includes("provider"));
+  const providerPlugins = providerPluginList.length;
   const chainInjectionPlugins = new Set(data.pluginChain.hooks.map((hook) => hook.plugin_id)).size;
   const uiTemplatePlugins = plugins.filter((plugin) => plugin.kinds?.includes("sim")).length;
   const backgroundJobPlugins = new Set(backgroundJobs.map((job) => job.plugin_id)).size;
@@ -491,7 +492,86 @@ export function PluginsView({
           )}
         </div>
       </section>
+
         </>
+      ) : null}
+
+      {activeTab === "provider" ? (
+        <section className="section" data-plugin-manager-section="provider">
+          <div className="section-header">
+            <h2>{tx("Provider 插件清单")}</h2>
+          </div>
+          <div className="section-body">
+            {providerPluginList.length === 0 ? (
+              <p className="empty-state">{tx("暂无 Provider 插件")}</p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{tx("插件")}</th>
+                      <th>{tx("来源")}</th>
+                      <th>{tx("状态")}</th>
+                      <th>{tx("类型")}</th>
+                      <th>{tx("运行位置")}</th>
+                      <th>{tx("分发")}</th>
+                      <th>{tx("能力")}</th>
+                      <th>{tx("操作")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerPluginList.map((plugin) => {
+                      const lifecycle = pluginManagerDisplayState({ plugin });
+                      return (
+                        <tr key={plugin.id}>
+                          <td>
+                            <PluginTitle plugin={plugin} />
+                          </td>
+                          <td>
+                            <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                          </td>
+                          <td>
+                            <PluginLifecycleControl
+                              draft={pluginStateDraft(plugin)}
+                              lifecycle={lifecycle}
+                              onRollback={rollbackPlugin}
+                              onUpdate={updatePluginState}
+                              plugin={plugin}
+                              rollbackDraft={pluginRollbackDraft(plugin)}
+                            />
+                          </td>
+                          <td>{plugin.kinds?.map(pluginKindLabel).join(", ") || "-"}</td>
+                          <td>{plugin.placements?.map(pluginPlacementLabel).join(", ") || "-"}</td>
+                          <td>
+                            <DistributionMetadata
+                              lifecycle={lifecycle}
+                              plugin={plugin}
+                              draft={pluginUpdateDraft(plugin)}
+                              onUpdate={updatePlugin}
+                              onPreview={(target) => previewPluginPermissions(target, "update")}
+                              previewDraft={pluginPermissionPreviewDraft(plugin)}
+                            />
+                          </td>
+                          <td>
+                            <CapabilityList plugin={plugin} />
+                          </td>
+                          <td>
+                            <PluginDeleteControl
+                              lifecycle={lifecycle}
+                              plugin={plugin}
+                              draft={pluginDeleteDraft(plugin)}
+                              onDelete={deletePlugin}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
       ) : null}
 
       {activeTab === "chain" ? (
