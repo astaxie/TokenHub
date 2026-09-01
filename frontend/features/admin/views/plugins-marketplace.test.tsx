@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { PluginsView } from "./plugins";
 
 describe("PluginsView marketplace view", () => {
-  it("renders marketplace metadata, compatibility badges, publisher data, screenshots, and release notes", () => {
+  it("renders marketplace access controls in the top bar", () => {
     const data = emptyData();
     data.pluginMarketplaceAvailable = true;
     data.pluginMarketplace = [{
@@ -62,25 +62,10 @@ describe("PluginsView marketplace view", () => {
     }];
 
     const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "插件市场" }));
-
-    expect(screen.getByText("管理 Codex 订阅")).toBeInTheDocument();
-    expect(screen.getByText("provider")).toBeInTheDocument();
-    expect(screen.getByText("subscription")).toBeInTheDocument();
-    expect(screen.getAllByText("需复核").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "Gateway" })).toHaveAttribute("href", "https://docs.example/gateway");
-    expect(screen.getByText("TokenHub")).toBeInTheDocument();
-    expect(screen.getByText("已验证")).toBeInTheDocument();
-    expect(screen.getByText("高危")).toBeInTheDocument();
-    expect(screen.getByAltText("Codex dashboard")).toHaveAttribute("src", "https://cdn.example/codex-thumb.png");
-    expect(container.querySelector('[data-plugin-marketplace-block="status"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-marketplace-block="compatibility-badges"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-marketplace-block="details"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-marketplace-block="categories"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-marketplace-block="publisher"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-marketplace-block="screenshots"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-marketplace-block="advisories"]')).toBeInTheDocument();
-    expect(container.querySelector(".plugin-marketplace-screenshot img")).not.toHaveAttribute("style");
+    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
+    expect(screen.getByRole("button", { name: "安装本地插件" })).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="status"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-marketplace-block="compatibility-badges"]')).not.toBeInTheDocument();
   });
 
   it("keeps marketplace presentation styles feature-scoped", () => {

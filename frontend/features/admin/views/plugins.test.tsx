@@ -284,7 +284,7 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "动作任务" }));
+    fireEvent.click(screen.getByRole("tab", { name: "后台任务" }));
 
     expect(screen.getByText("后台任务清单")).toBeInTheDocument();
     expect(screen.getAllByText("quota.refresh")).toHaveLength(2);
@@ -326,7 +326,7 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "动作任务" }));
+    fireEvent.click(screen.getByRole("tab", { name: "后台任务" }));
     fireEvent.change(screen.getByLabelText(/resource_id/), { target: { value: "rsrc_1" } });
     fireEvent.click(screen.getByRole("button", { name: "运行任务" }));
 
@@ -415,7 +415,7 @@ describe("PluginsView", () => {
     });
   });
 
-  it("localizes plugin metadata contributed by descriptors, UI contributions, actions, jobs, and SIM payloads", () => {
+  it("localizes plugin metadata contributed by descriptors, UI contributions, jobs, and SIM payloads", () => {
     const data = emptyData();
     data.plugins = [
       {
@@ -475,16 +475,6 @@ describe("PluginsView", () => {
         },
       },
     }];
-    data.pluginActions = [{
-      plugin_id: "tokenhub.provider.codex",
-      action_id: "codex.sync",
-      kind: "mutate",
-      title: "同步 Codex",
-      metadata: {
-        "title:en-US": "Sync Codex",
-        "title:ja-JP": "Codex を同期",
-      },
-    }];
     data.pluginBackgroundJobs = [{
       plugin_id: "tokenhub.provider.codex",
       job_id: "codex.refresh",
@@ -506,14 +496,12 @@ describe("PluginsView", () => {
     expect(screen.getByText("Route Context")).toBeInTheDocument();
     expect(screen.getByText("Enterprise Theme · Enterprise SIM")).toBeInTheDocument();
     expect(screen.getByText("Operations Layout · Enterprise SIM")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Actions and Jobs" }));
-    expect(screen.getByText("Sync Codex")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Background Jobs" }));
     expect(screen.getByText("Refresh Codex")).toBeInTheDocument();
 
     setActiveLanguage("ja");
     rerender(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} theme="light" />);
 
-    expect(screen.getByText("Codex を同期")).toBeInTheDocument();
     expect(screen.getByText("Codex を更新")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "UI テンプレート" }));
     expect(screen.getByText("ルートコンテキスト")).toBeInTheDocument();

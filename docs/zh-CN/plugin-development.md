@@ -1,57 +1,41 @@
-# TokenHub 插件开发指南
+# TokenHub 插件架构与开发指南
 
 Language: [English](../plugin-development.md) | 简体中文 | [日本語](../ja/plugin-development.md)
 
-这份文档说明当前 TokenHub 的插件模式，以及如何基于当前版本开发插件。它面向插件作者、平台工程师和运维人员，重点是“怎么做”，而不是只讲概念。
+这份文档说明当前 TokenHub 的插件方向，以及如何在这个方向上开发插件。它面向插件作者、平台工程师和运维人员。
 
-TokenHub 的插件设计原则很明确：
+TokenHub 会把 core 保持得很小：
 
-- Core 保持小、稳、可审计。
-- 变化快的能力交给 plugin。
-- built-in plugin 与 external plugin 共用同一套契约。
-- 管理端、Provider、Gateway 链路、后台任务、主题和 UI 贡献都通过显式的插件元数据接入。
+- core 负责鉴权、路由、计费、审计、兼容性和升级安全
+- 变化更快的部分交给 plugin
+- built-in plugin 与 external plugin 使用同一套契约
+- 界面模板、Provider、链路注入、后台任务和 Admin UI 贡献都通过显式的插件元数据接入
 
-## 1. 插件模式
+## 1. 插件家族
 
-TokenHub 把一个插件看成三个维度的组合：
+TokenHub 现在把插件分成几个清晰的家族。
 
-| 维度 | 回答的问题 | 示例 |
+| 家族 | 负责什么 | 示例 |
 | --- | --- | --- |
-| Kind | 这是哪一类插件 | `provider`、`admin_ui`、`sim`、`extension` |
-| Placement | 它运行在哪里 | `presentation`、`gateway_chain`、`background`、`management_action` |
-| Capability | 它能贡献什么 | `provider_types`、`actions`、`hooks`、`background_jobs`、`theme_tokens` |
+| 界面模板 | 整体外观、布局和模板包 | shell 主题、页面模板、仪表盘组合 |
+| Provider | 上游模型接入、鉴权、发现和配额 | Codex、Kimi、Gemini、Anthropic、OpenAI-compatible Provider |
+| 链路注入 | 用户请求到上游响应的整条链路 | 隐私控制、路由、缓存、上下文优化、trace 导出 |
+| 后台任务 | 定时或运维触发的任务 | 配额刷新、同步、清理、报表 |
 
-一个插件可以同时属于多个 kind，也可以同时声明多个 placement。
+Admin UI 贡献是一个能力面，不是顶层家族。它通常挂在 Provider、链路注入或后台任务插件上。
 
-例如：
+当前仓库里，兼容载荷里仍然使用内部名字 `sim`。对用户来说，可以直接理解成“界面模板”。
 
-- Codex 订阅插件既是 `provider`，也会贡献 `gateway_chain` 行为和 `management_action` 入口。
-- Trace exporter 通常是 `extension + gateway_chain`。
-- Heartbeat job 通常是 `extension + background`。
-- Shell 皮肤通常是 `sim + presentation`。
+一个插件可以跨多个家族，但每个家族都应该保持聚焦。例如：
 
-核心原则很简单：
+- Codex 订阅插件是 Provider 插件，同时也可以贡献 Admin UI、链路 Hook 和后台任务
+- trace exporter 通常是一个很窄的链路注入插件，主要做 `observe_only`
+- 配额同步 worker 通常是后台任务插件
+- 整体替换 shell 的插件通常是界面模板插件
 
-> Core 负责管道、鉴权、路由、审计和兼容性；插件负责变化和扩展。
-
-## 2. built-in plugin 与 external plugin
-
-TokenHub 对 built-in plugin 和 external plugin 使用同一套契约。
-
-| 类型 | 来源 | 常见用途 |
-| --- | --- | --- |
-| built-in plugin | 跟着 TokenHub 一起发布 | 核心 Provider 适配、基础管理端界面、核心 hook、默认主题 |
-| external plugin | 来自 marketplace 或私有仓库 | 第三方 Provider、企业扩展、合作方 UI 贡献 |
-
-两者的差别主要在分发方式和信任方式，不在能力形状。
-
-built-in plugin 通常默认可信，因为它随产品一起发布。external plugin 在激活前必须通过 manifest 校验、权限校验和签名/信任校验。
-
-## 3. manifest 结构
+## 2. Manifest 契约
 
 每个插件包都由 `plugin.yaml` 描述。
-
-最小结构如下：
 
 ```yaml
 schema_version: 1
@@ -82,31 +66,28 @@ distribution:
   license: Apache-2.0
 ```
 
-### 3.1 关键字段
+关键字段：
 
-- `schema_version`：manifest 语法版本。
-- `tokenhub.plugin_api`：插件 API 版本，当前是 `v1`。
-- `kinds`：`provider`、`admin_ui`、`sim`、`extension` 的一个或多个。
-- `placement`：`presentation`、`gateway_chain`、`background`、`management_action` 的一个或多个。
-- `entry.backend`：可执行入口；当前样例统一使用 `stdio-json-v1`。
-- `capabilities`：真正的能力声明。
-- `permissions`：最小权限声明。
-- `distribution`：仓库地址、主页、校验和、签名和许可证等元数据。
+- `schema_version`：manifest 版本
+- `tokenhub.plugin_api`：插件 API 版本
+- `kinds`：`provider`、`admin_ui`、`sim`、`extension` 之一或多个
+- `placement`：`presentation`、`gateway_chain`、`background`、`management_action` 之一或多个
+- `capabilities`：真正的能力面
+- `permissions`：最小权限声明
+- `distribution`：仓库地址、主页、校验和、签名和许可证元数据
 
-manifest 是第一道门。manifest 不对，其它都不应该启动。
+`management_action` 只是一个过渡能力面，主要给运维触发的操作使用。新的请求路径行为应该进入 `gateway_chain`，重复性任务应该进入 `background`。
 
-## 4. 运行时契约
+## 3. 运行时能力面
 
-TokenHub 在 Go SDK 里提供了四个标准入口：
+TokenHub 目前有三个核心运行时能力面，再加一个过渡兼容能力面。
 
 - `ServeProvider`
-- `ServeAction`
 - `ServeGatewayHook`
 - `ServeBackgroundJob`
+- `ServeAction` 仅用于兼容性的管理操作
 
-它们分别对应一类契约。
-
-### 4.1 Provider invocation
+### 3.1 Provider 调用
 
 Provider 插件会收到：
 
@@ -117,27 +98,11 @@ Provider 插件会收到：
 - request payload
 - credentials projection
 
-这意味着插件只看到投影后的数据，不会直接碰 core 内部细节。
+这样插件只会看到投影后的数据，不会直接碰 core 内部实现。
 
-### 4.2 Action invocation
+### 3.2 链路 Hook 调用
 
-Action 插件会收到：
-
-- plugin ID
-- action ID
-- actor
-- payload
-
-适合做：
-
-- OAuth start / exchange
-- probe
-- quota refresh
-- 自定义管理动作
-
-### 4.3 Gateway hook invocation
-
-Gateway hook 插件会收到：
+链路 Hook 插件会收到：
 
 - request ID
 - stage
@@ -146,16 +111,16 @@ Gateway hook 插件会收到：
 
 适合做：
 
-- privacy filter
-- context optimizer
-- route rank
-- cache lookup / write
-- request / response transform
-- trace export
+- 隐私控制
+- 路由候选生成和排序
+- cache lookup / cache write
+- 上下文优化
+- 请求和响应变换
+- trace 导出
 
-### 4.4 Background job invocation
+### 3.3 后台任务调用
 
-Background job 插件会收到：
+后台任务插件会收到：
 
 - plugin ID
 - job ID
@@ -165,373 +130,308 @@ Background job 插件会收到：
 
 适合做：
 
-- quota sync
+- 配额同步
 - heartbeat
 - refresh
 - cleanup
 - reporting
 
-## 5. 如何开发一个插件
+### 3.4 Admin UI 贡献
 
-推荐按这个顺序来：
+Admin UI 贡献不是一个独立运行时能力面。它是声明式的面板、tab、卡片和设置区块，仍然应该通过 Core 来执行。
 
-1. 先选 kind 和 placement。
-2. 再定义最小 capability。
-3. 写 manifest。
-4. 写 runtime handler。
-5. 加 contract tests。
-6. 本地运行验证。
-7. 发布到 marketplace。
-8. 安装后在 TokenHub 中验证。
+## 4. 如何开发插件
 
-### 5.1 先回答你在解决什么问题
+最安全的流程是：
 
-写代码前，先问：
+1. 先选家族
+2. 再定义最小能力集
+3. 写 manifest
+4. 实现运行时 handler 或 UI 贡献
+5. 添加 contract tests
+6. 本地运行
+7. 发布到 marketplace
+8. 安装后在 TokenHub 中验证
+
+写代码之前，先回答：
 
 - 这是 Provider 集成吗？
-- 这只是管理端 UI 贡献吗？
-- 这是 shell / theme 改造吗？
-- 这是 gateway-chain 扩展吗？
+- 这是界面模板还是 Admin UI 贡献？
+- 这是链路注入问题吗？
 - 这是后台任务吗？
-- 这是管理动作吗？
+- 这只是一个过渡性的管理操作吗？
 
-如果这个问题答不出来，插件边界就还不够清楚。
+如果答不出来，边界还是太模糊。
 
-### 5.2 先写最小 capability
+### 4.1 先从最小能力开始
 
-不要一开始就把所有能力都塞进来。
+不要一开始就把所有能力都塞进去。
 
-建议从最小版本开始：
+- Provider 插件：先做一个 provider type 和一个 resource / route contract
+- 链路注入插件：先做一个 hook stage
+- 后台任务插件：先做一个 job
+- 界面模板插件：先做一个 template、shell 或 layout 贡献
 
-- Provider plugin：先做 `provider_types` 和 `gateway`
-- Action plugin：先做一个 action ID
-- Hook plugin：先做一个 stage
-- Background plugin：先做一个 job
-- SIM plugin：先做一个 theme 或 layout 贡献
-
-### 5.3 写 handler
+### 4.2 实现 handler
 
 handler 应该尽量短：
 
 - 解析 invocation
-- 执行本插件的逻辑
+- 执行插件逻辑
 - 返回结构化结果
-- 不打印敏感信息
+- 不输出敏感信息
 
-### 5.4 写 contract tests
+### 4.3 添加 contract tests
 
-每类插件都应该有 contract tests。
+每个插件家族都应该有 contract tests。
 
 重点检查：
 
-- manifest 能不能解析
+- manifest 是否能解析
 - capability 是否完整
 - 输入输出结构是否正确
-- secret 是否不会泄露到 stdout
-- 失败路径是否符合预期
+- secret 是否会泄露
+- 失败行为是否符合预期
 
-### 5.5 跑本地 contract kit
+### 4.4 跑本地 contract kit
 
 marketplace 仓库里提供了本地 harness：
 
 ```bash
 go test ./...
 go run ./cmd/tokenhub-plugin-test provider --package ./samples/provider-kimi-go
-go run ./cmd/tokenhub-plugin-test action --package ./samples/action-echo-go
 go run ./cmd/tokenhub-plugin-test hook --package ./samples/hook-trace-go
 go run ./cmd/tokenhub-plugin-test background --package ./samples/background-heartbeat-go
 ```
 
-把 `--package` 换成你自己的插件目录即可。
+把 `--package` 换成你自己的插件目录。
 
-### 5.6 发布与安装
+## 5. 各家族怎么做
 
-发布时至少要带：
+### 5.1 Provider 插件
 
-- version
-- repository URL
-- homepage URL
-- checksum
-- signature
-- license
-- compatibility metadata
-
-安装完成后要验证：
-
-1. manifest 是否通过校验。
-2. 权限是否最小化。
-3. 重启后是否真正生效。
-
-## 6. 四类插件分别怎么开发
-
-### 6.1 Provider plugin
-
-Provider plugin 负责把 TokenHub 接到模型服务或订阅账号上。
+Provider 插件把 TokenHub 接到某个模型服务或订阅账户上。
 
 通常会声明：
 
 - `provider_types`
 - `provider_resource_types`
-- `provider.route_protocols`
+- provider policies
 - `provider.default_base_url`
 - `provider.model_discovery`
-- `provider.error_profile`
 - `provider.credentials_scope`
-- `provider.api_key_required`
-- `provider.supports_custom_headers`
 
 常见职责：
 
 - 协议转换
 - 模型发现
-- quota 或账号同步
+- 配额或账户同步
 - 凭证刷新
-- provider-specific 路由行为
-- provider-specific UI 元数据
+- provider 特有的路由行为
+- provider 特有的 UI 元数据
 
-如果是订阅型 provider，quota refresh 和 account sync 尽量放到 background job 或 action 里。
+订阅型 Provider 最好把配额刷新和账户同步放进后台任务里。
 
-### 6.2 Admin UI plugin
+### 5.2 链路注入插件
 
-Admin UI plugin 负责管理端配置和操作界面。
+链路注入插件负责塑造“用户请求到上游响应”的整条路径。
 
-常见内容：
+典型阶段包括：
 
-- provider form section
-- resource panel
-- dashboard card
-- route detail panel
-- settings panel
-- page template
+- `decode_normalize`
+- `admission`
+- `privacy_pre`
+- `guardrail_pre`
+- `cache_lookup`
+- `route_candidates`
+- `route_rank`
+- `provider_call`
+- `guardrail_post`
+- `usage_attribution`
+- `cache_write`
+- `settlement`
+- `trace_export`
+
+典型策略：
+
+- `fail_closed` 用于 admission、privacy、guardrail 和 routing
+- `fail_open` 用于 cache lookup 和 cache write
+- `skip_route` 用于 provider call 包装
+- `observe_only` 用于 settlement 和 trace export
+
+好的链路插件应该是确定性的、边界窄的，并且明确说明自己读什么、写什么。
+
+### 5.3 界面模板插件
+
+界面模板插件负责视觉识别和布局。
+
+典型贡献：
+
+- theme tokens
+- shell layout presets
+- navigation composition
+- dashboard composition
+- page templates
+
+界面模板插件只能影响 `presentation`。
+
+如果还需要后台行为，那它就不只是界面模板插件了。
+
+### 5.4 后台任务插件
+
+后台任务插件负责周期性或运维触发的工作。
+
+典型功能：
+
+- 配额刷新
+- heartbeat
+- 同步
+- 清理
+- 报告
+
+后台任务插件应该暴露很小的输入、可预测的重试，以及脱敏后的结果。
+
+### 5.5 Admin UI 贡献
+
+Admin UI 贡献是用来展示插件状态和运维控制的声明式面板、tab、卡片和路由区块。
 
 规则：
 
-- UI 可以由插件贡献。
-- 执行仍然必须经过 Core。
-- 插件不能绕过 RBAC。
-- 插件不能直接拿原始 admin 凭证。
+- 执行仍然通过 Core
+- 插件不能绕过 RBAC
+- 插件不能直接使用原始 admin 凭证
+- 插件管理的动作必须保持权限收敛并可审计
 
-推荐做法是声明式：
+## 6. 打包与分发
 
-1. 在 metadata 里描述 UI 贡献。
-2. 所有动作走 core-mediated endpoint。
-3. 数据整理放在 frontend domain helper。
-4. React view 尽量只负责渲染。
+TokenHub 对 built-in 和 external 插件使用同一种包形态。
 
-### 6.3 SIM plugin
-
-SIM plugin 负责视觉和布局。
-
-常见贡献：
-
-- theme tokens
-- logo / icon 资产
-- shell layout preset
-- navigation composition
-- dashboard composition
-- page template
-
-SIM plugin 只能影响 `presentation`。
-
-如果还需要后台行为，那它就不只是 SIM plugin 了。
-
-### 6.4 Extension plugin
-
-Extension plugin 提供横向能力。
-
-常见能力：
-
-- DLP
-- prompt firewall
-- semantic cache
-- context optimizer
-- model router
-- billing connector
-- notification channel
-- approval workflow
-- export / import
-- trace exporter
-
-Extension plugin 可以跑在多个 placement 上：
-
-- `gateway_chain`：请求路径逻辑
-- `background`：同步和周期任务
-- `management_action`：管理员触发动作
-- `presentation`：相关 UI
-
-尽量默认使用 `observe_only` 或 `read_only`。  
-需要 mutation 时，必须显式声明并收紧范围。
-
-## 7. 推荐的仓库结构
-
-当前 marketplace 仓库采用“一套 SDK + 多个 sample package”的结构。
-
-```text
-tokenhub-plugin-marketplace/
-  go.mod
-  sdk/go/tokenhubplugin/
-  contract-tests/
-    provider/
-    gateway-hook/
-    management-action/
-    background-job/
-    protocol/stdio-json-v1/
-  samples/
-    provider-mock-go/
-    provider-kimi-go/
-    provider-glm-go/
-    action-echo-go/
-    hook-trace-go/
-    background-heartbeat-go/
-  cmd/tokenhub-plugin-test/
-```
-
-最小可用 package 通常至少包含：
+典型包内容：
 
 - `plugin.yaml`
-- `main.go`
-- 一个 fixture 文件
-- 一组 contract tests
+- 一个运行入口
+- 可选资源
+- contract tests
 
-命名建议：
+分发元数据至少应包含：
 
-- `provider-xxx-go`
-- `action-xxx-go`
-- `hook-xxx-go`
-- `background-xxx-go`
+- 仓库地址
+- 主页地址
+- 下载地址
+- 校验和
+- 签名
+- 许可证
+- 兼容性元数据
 
-## 8. 版本与兼容性
+插件市场地址默认是 `https://plugins.betokenhub.com`。运维可以从这个 marketplace 或直接 ZIP URL 安装插件包，校验 checksum，然后重启后端使其生效。
 
-TokenHub 现在把版本拆成三种：
+## 7. 版本与兼容性
 
-| Version | 含义 |
+把版本看成三件事：
+
+| 版本 | 含义 |
 | --- | --- |
-| Core Version | TokenHub 产品版本 |
-| Plugin API Version | 插件协议和 envelope 契约版本 |
-| Plugin Package Version | 插件包自己的版本 |
+| Core version | TokenHub 产品版本 |
+| Plugin API version | 插件协议和 envelope 契约版本 |
+| Plugin package version | 插件包自己的版本 |
 
-兼容原则：
+兼容性规则：
 
-1. `plugin_api` 在同一个 major 内尽量只做 additive change。
-2. manifest schema 尽量保持向前兼容。
-3. 同一个 API major 内的 stage 名称应保持稳定。
-4. envelope 字段可以新增，但不能偷偷改变已有语义。
-5. 新的敏感权限必须重新审批。
-6. 新的 placement 或 capability 必须经过 Core 校验。
+1. plugin API 的变化应该在 major 内保持可增量兼容
+2. manifest schema 的变化应该尽量保持前向兼容
+3. stage 名称在同一个 API major 内要稳定
+4. envelope 可以增加字段，但已有语义不能悄悄改变
+5. 新的敏感权限需要重新批准
+6. 新的 placement 或 capability 需要 Core 校验
+7. `sim` 兼容别名可以在内部暂时保留，直到界面模板重命名完全结束
 
 迁移原则很简单：
 
 - 保留旧 provider ID
-- 保留旧路由
-- 保留旧资源和 quota
-- 保留旧 admin payload alias，直到新契约准备好
+- 保留旧 route
+- 保留旧 resource 和 quota
+- 在新契约准备好之前，保留旧 admin payload alias
 
-## 9. 安全与信任
-
-TokenHub 默认采用最小权限。
-
-插件不能：
-
-- 直接访问 core DB
-- 绕过 RBAC
-- 直接拿 raw admin token
-- 静默扩大权限
-- 重新定义 public `/v1` 端点
-
-插件必须说明：
-
-- 读什么
-- 写什么
-- 需要什么网络访问
-- 绑定哪个 stage / job / action
-- 是否需要重启
-
-marketplace 分发至少要带：
-
-- checksum
-- signature
-- key ID
-- repository URL
-- homepage URL
-- license
-- compatibility verdict
-- advisories
-- release notes
-
-## 10. 测试与发布流程
+## 8. 测试与发布流程
 
 推荐顺序：
 
 1. 本地单元测试
 2. manifest 解析测试
 3. contract tests
-4. package 级测试
+4. 包级测试
 5. TokenHub 集成测试
-6. marketplace / signature / compatibility 检查
+6. marketplace 和兼容性检查
 7. 安装与重启验证
 
-不同 kind 的测试重点：
+各家族重点关注：
 
-- Provider plugin：route protocols、discovery、credentials projection、response shape、secret redaction
-- Admin UI plugin：schema 解析、action 绑定、payload 脱敏，且不能直接调用任意 admin API
-- SIM plugin：theme selection、layout selection、template rendering、dashboard composition
-- Extension plugin：stage order、mutation limits、failure policy、retry / cancel、permission enforcement
+- Provider 插件：route protocol、发现、credentials projection、响应结构、secret 脱敏
+- 链路注入插件：阶段顺序、变更边界、失败策略、重试和取消行为、权限控制
+- 界面模板插件：主题选择、布局选择、模板渲染、仪表盘组合
+- 后台任务插件：调度、重试规则、并发、结果脱敏
+- Admin UI 贡献：schema 解析、动作绑定、payload 脱敏、不能任意调用 admin API
 
-## 11. 从内置能力迁移到插件的路径
+## 9. 从当前内置实现迁移
 
-最现实的迁移顺序是：
+实际迁移顺序建议如下：
 
-1. 先把当前 built-in descriptor / registry 统一成 plugin 视角。
-2. 再把 provider adapter、quota、OAuth、model discovery 外移到插件契约下。
-3. 再把 admin UI 的页面、表单、面板、按钮做成 declarative contribution。
-4. 再把 gateway enhancement 拆成显式 hooks。
-5. 再把后台周期任务变成 background plugins。
-6. 最后扩展 marketplace 给第三方作者使用。
+1. 把当前内置描述和注册表统一到插件视角
+2. 把 provider adapter、quota、OAuth 和模型发现移动到 provider 插件
+3. 把 gateway 增强拆成显式链路 Hook
+4. 把周期性任务移动到后台任务插件
+5. 把 admin 页面、面板和按钮改成声明式贡献
+6. 旧的动作面只保留成兼容桥，等 request path 全部拆出来再收口
+7. 扩大 marketplace，支持外部作者
 
-这样做的好处是：
+这样做的好处是每一步都可以独立发布，并且能通过 contract tests 验证。
 
-- 不会一次性打碎核心。
-- 老用户升级路径清楚。
-- 每一步都可以独立发布。
-- 每一步都能用 contract tests 锁回归。
-
-## 12. 一个简单的决策树
-
-开发前先问：
+## 10. 一个简单的判断树
 
 ```text
-它是不是连接模型或订阅账号？
-  -> Provider plugin
+它是把 TokenHub 接到某个模型或订阅账户上吗？
+  -> Provider 插件
 
-它是不是只改管理端页面、面板或外观？
-  -> Admin UI 或 SIM plugin
+它影响的是用户 token 请求到 provider 响应的路径吗？
+  -> 链路注入插件
 
-它是不是会影响用户 token 到 provider 响应的链路？
-  -> 带 gateway_chain placement 的 Extension plugin
+它只改变 admin 页面、面板、卡片或外观吗？
+  -> Admin UI 贡献 或 界面模板插件
 
-它是不是定时任务或启动后任务？
-  -> Background plugin
+它是定时运行或者启动后运行的吗？
+  -> 后台任务插件
 
-它是不是管理员触发的动作？
-  -> Management action capability
+它暴露的是运维触发动作吗？
+  -> 只有在暂时无法迁移到 hook 或 job 时才保留 transitional management_action
 ```
 
-然后再问：
+然后再问一句：
 
 ```text
-最小需要什么权限才安全？
+什么是这个插件最小的安全权限集？
 ```
 
-如果答不出来，就说明插件边界还需要收紧。
+如果答不上来，就继续缩小插件边界。
 
-## 13. 最后的一条原则
+## 11. 迁移清单
 
-写插件时，始终优先考虑：
+- [ ] 把当前内置模块映射成 Provider、链路注入、界面模板和后台任务包
+- [ ] 把 provider 特有的模型发现和配额逻辑抽进 provider 插件
+- [ ] 把请求路径逻辑抽成显式链路 Hook
+- [ ] 让 Admin UI 贡献保持声明式和权限收敛
+- [ ] 从主插件管理页移除旧的动作执行面
+- [ ] 在重命名完成前继续把 `sim` 当作内部兼容别名
+- [ ] 在 marketplace 仓库里发布外部插件样例
+- [ ] 每个插件家族在发布前都补齐 contract tests
+
+## 12. 最后一句原则
+
+做插件时，优先优化：
 
 1. 更小
 2. 更安全
 3. 更容易升级
-4. 更容易和 Core 分离
+4. 更容易与 Core 分离
 
-如果一个行为可以放进插件，就尽量留在插件里。  
-如果它必须留在 Core，就让 Core 只做最终裁决，并尽量保持实现路径稳定。
+如果某个行为可以放进 plugin，就把它留在 plugin 里。
+如果它必须留在 Core，就让 Core 做最后决定，并把实现路径保持稳定。

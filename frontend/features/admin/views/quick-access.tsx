@@ -458,7 +458,7 @@ function ModelOption({ data, model, selected, onSelect }: { data: AppData; model
         <small>{model.name}</small>
       </span>
       <span className="quick-access-model-tags">
-        {capabilities.map((capability) => <em key={capability}>{tx(capability)}</em>)}
+        {capabilities.map((capability, index) => <em key={`${capability}:${index}`}>{tx(capability)}</em>)}
       </span>
     </button>
   );

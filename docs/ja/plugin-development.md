@@ -1,57 +1,41 @@
-# TokenHub プラグイン開発ガイド
+# TokenHub プラグインアーキテクチャと開発ガイド
 
 Language: [English](../plugin-development.md) | [简体中文](../zh-CN/plugin-development.md) | 日本語
 
-このガイドは、現在の TokenHub のプラグインモデルと、その上でプラグインをどう開発するかを説明します。プラグイン作者、プラットフォームエンジニア、運用担当者向けに、概念よりも実践を重視してまとめています。
+このガイドは、現在の TokenHub のプラグイン方針と、その上でどう開発するかを説明します。プラグイン作者、プラットフォームエンジニア、運用担当者向けです。
 
-TokenHub のプラグイン設計は慎重です。
+TokenHub は core を小さく保ちます。
 
-- Core は小さく、監査しやすく、セキュリティ中心に保つ。
-- 変更の多い振る舞いは plugin に任せる。
-- built-in plugin と external plugin は同じ契約を使う。
-- 管理画面、Provider、Gateway hook、バックグラウンドジョブ、テーマ、UI 追加はすべて明示的なプラグインメタデータ経由で扱う。
+- core は認証、ルーティング、課金、監査、互換性、アップグレード安全性を担当する
+- 変化の速い部分は plugin に任せる
+- built-in plugin と external plugin は同じ契約を使う
+- UI テンプレート、Provider、チェーン注入、バックグラウンドジョブ、Admin UI 貢献はすべて明示的なメタデータから入る
 
-## 1. プラグインモデル
+## 1. プラグイン家族
 
-TokenHub ではプラグインを 3 つの軸で考えます。
+TokenHub はプラグインをいくつかの明確な家族に分けます。
 
-| 軸 | 答える質問 | 例 |
+| 家族 | 担当するもの | 例 |
 | --- | --- | --- |
-| Kind | どの種類のプラグインか | `provider`、`admin_ui`、`sim`、`extension` |
-| Placement | どこで動くか | `presentation`、`gateway_chain`、`background`、`management_action` |
-| Capability | 何を提供するか | `provider_types`、`actions`、`hooks`、`background_jobs`、`theme_tokens` |
+| UI テンプレート | シェル全体の見た目、レイアウト、テンプレートパッケージ | shell theme、page template、dashboard composition |
+| Provider | 上流モデル接続、認証、探索、quota | Codex、Kimi、Gemini、Anthropic、OpenAI-compatible Provider |
+| チェーン注入 | ユーザー要求から upstream 応答までの経路 | privacy control、routing、cache、context optimization、trace export |
+| バックグラウンドジョブ | 定期実行または運用者トリガーの作業 | quota refresh、sync、cleanup、reporting |
 
-1 つの plugin が複数の kind や placement をまたぐことは普通にあります。
+Admin UI 貢献は top-level family ではなく、能力面です。通常は Provider、チェーン注入、バックグラウンドジョブのどれかに付属します。
 
-例:
+現在の repository では、互換性 payload の中で内部名 `sim` がまだ使われています。ユーザー向けには「UI テンプレート」と読んでください。
 
-- Codex subscription plugin は `provider` であり、`gateway_chain` と `management_action` も提供します。
-- Trace exporter は通常 `extension + gateway_chain` です。
-- Heartbeat job は通常 `extension + background` です。
-- Shell theme は通常 `sim + presentation` です。
+1 つの plugin が複数の家族をまたぐことはありますが、各家族は小さく保つべきです。例:
 
-基本原則は単純です。
+- Codex subscription plugin は Provider plugin であり、Admin UI、chain hook、background job も提供できる
+- trace exporter は通常、`observe_only` の narrow なチェーン注入 plugin です
+- quota sync worker は通常、バックグラウンドジョブ plugin です
+- shell replacement は通常、UI テンプレート plugin です
 
-> Core はパイプライン、認証、ルーティング、監査、互換性を担当し、plugin は変化する振る舞いを担当する。
-
-## 2. built-in plugin と external plugin
-
-TokenHub は built-in plugin と external plugin に同じ契約を使います。
-
-| 種別 | 出どころ | 主な用途 |
-| --- | --- | --- |
-| built-in plugin | TokenHub 本体に同梱 | Core provider adapter、基本管理画面、core hook、標準テーマ |
-| external plugin | marketplace や private repo から導入 | サードパーティ Provider、企業向け拡張、パートナー UI 追加 |
-
-違いは主に配布方法と信頼方法であり、能力の形ではありません。
-
-built-in plugin は製品同梱なので通常は既定で信頼されます。external plugin は有効化前に manifest 検証、権限検証、署名/信頼検証を通過する必要があります。
-
-## 3. manifest 形式
+## 2. Manifest 契約
 
 各 plugin package は `plugin.yaml` で記述します。
-
-最小構成は次のとおりです。
 
 ```yaml
 schema_version: 1
@@ -82,33 +66,30 @@ distribution:
   license: Apache-2.0
 ```
 
-### 3.1 重要フィールド
+重要フィールド:
 
-- `schema_version`: manifest スキーマの版。
-- `tokenhub.plugin_api`: plugin API の版。現在は `v1`。
-- `kinds`: `provider`、`admin_ui`、`sim`、`extension` のいずれか 1 つ以上。
-- `placement`: `presentation`、`gateway_chain`、`background`、`management_action` のいずれか 1 つ以上。
-- `entry.backend`: 実行エントリーポイント。現在のサンプルは `stdio-json-v1` を使います。
-- `capabilities`: 実際の機能宣言。
-- `permissions`: 最小権限の宣言。
-- `distribution`: repository URL、homepage URL、checksum、signature、license などのメタデータ。
+- `schema_version`: manifest version
+- `tokenhub.plugin_api`: plugin API version
+- `kinds`: `provider`、`admin_ui`、`sim`、`extension` のいずれか 1 つ以上
+- `placement`: `presentation`、`gateway_chain`、`background`、`management_action` のいずれか 1 つ以上
+- `capabilities`: 実際の能力面
+- `permissions`: least privilege の宣言
+- `distribution`: repository URL、homepage URL、checksum、signature、license metadata
 
-manifest は最初のゲートです。manifest が正しくなければ、それ以外は動かしません。
+`management_action` は運用者トリガーの操作のための過渡的な面です。新しい request-path の振る舞いは `gateway_chain` へ、繰り返し処理は `background` へ移すべきです。
 
-## 4. 実行時契約
+## 3. Runtime 面
 
-TokenHub の Go SDK は 4 つの標準入口を提供します。
+TokenHub には 3 つの core runtime 面と、1 つの過渡的な互換面があります。
 
 - `ServeProvider`
-- `ServeAction`
 - `ServeGatewayHook`
 - `ServeBackgroundJob`
+- `ServeAction` は互換性のための管理操作のみ
 
-それぞれ 1 つの契約種別に対応します。
+### 3.1 Provider invocation
 
-### 4.1 Provider invocation
-
-Provider plugin が受け取るのは次の情報です。
+Provider plugin が受け取るもの:
 
 - operation
 - provider projection
@@ -117,27 +98,11 @@ Provider plugin が受け取るのは次の情報です。
 - request payload
 - credentials projection
 
-つまり plugin は投影済みデータだけを見て、Core の内部実装には直接触れません。
+これにより plugin は投影済みデータだけを扱い、core の内部実装には触れません。
 
-### 4.2 Action invocation
+### 3.2 Gateway hook invocation
 
-Action plugin が受け取るのは次の情報です。
-
-- plugin ID
-- action ID
-- actor
-- payload
-
-用途:
-
-- OAuth start / exchange
-- probe
-- quota refresh
-- カスタム管理操作
-
-### 4.3 Gateway hook invocation
-
-Gateway hook plugin が受け取るのは次の情報です。
+Gateway hook plugin が受け取るもの:
 
 - request ID
 - stage
@@ -146,16 +111,16 @@ Gateway hook plugin が受け取るのは次の情報です。
 
 用途:
 
-- privacy filter
-- context optimizer
-- route rank
-- cache lookup / write
+- privacy control
+- route candidate generation and ranking
+- cache lookup / cache write
+- context optimization
 - request / response transform
 - trace export
 
-### 4.4 Background job invocation
+### 3.3 Background job invocation
 
-Background job plugin が受け取るのは次の情報です。
+Background job plugin が受け取るもの:
 
 - plugin ID
 - job ID
@@ -171,362 +136,302 @@ Background job plugin が受け取るのは次の情報です。
 - cleanup
 - reporting
 
-## 5. プラグインの作り方
+### 3.4 Admin UI 貢献
 
-おすすめの順序は次のとおりです。
+Admin UI 貢献は独立した runtime 面ではありません。宣言的な panel、tab、card、settings section として描画され、実行は引き続き Core 経由で行います。
 
-1. kind と placement を先に決める。
-2. 最小限の capability を決める。
-3. manifest を書く。
-4. runtime handler を実装する。
-5. contract tests を追加する。
-6. ローカルで実行する。
-7. marketplace へ公開する。
-8. TokenHub にインストールして確認する。
+## 4. プラグインの作り方
 
-### 5.1 まず解く問題を明確にする
+安全な進め方は次の順序です。
 
-コードを書く前に次を確認します。
+1. まず家族を決める
+2. 最小の capability を決める
+3. manifest を書く
+4. runtime handler または UI 貢献を実装する
+5. contract tests を追加する
+6. ローカルで実行する
+7. marketplace に公開する
+8. TokenHub にインストールして確認する
+
+コードを書く前に次を答えます。
 
 - これは Provider 連携か？
-- これは管理画面 UI の追加だけか？
-- これは shell / theme の変更か？
-- これは gateway-chain 拡張か？
+- これは UI テンプレートか Admin UI 貢献か？
+- これは chain injection の問題か？
 - これはバックグラウンドジョブか？
-- これは management action か？
+- これは一時的な管理操作か？
 
-これに答えられないなら、plugin の境界がまだ曖昧です。
+答えられないなら、境界がまだ曖昧です。
 
-### 5.2 まず最小 capability だけを書く
+### 4.1 まず最小から始める
 
-最初から全部は入れません。
+最初から全部入れないでください。
 
-例:
+- Provider plugin: 1 つの provider type と 1 つの resource / route contract から始める
+- チェーン注入 plugin: 1 つの hook stage から始める
+- バックグラウンドジョブ plugin: 1 つの job から始める
+- UI テンプレート plugin: 1 つの template、shell、layout 貢献から始める
 
-- Provider plugin: `provider_types` と `gateway`
-- Action plugin: 1 つの action ID
-- Hook plugin: 1 つの stage
-- Background plugin: 1 つの job
-- SIM plugin: 1 つの theme または layout 追加
-
-### 5.3 handler を実装する
+### 4.2 handler を実装する
 
 handler は短く保ちます。
 
 - invocation を解析する
-- plugin の処理を行う
+- plugin の処理を実行する
 - 構造化結果を返す
 - secret を出力しない
 
-### 5.4 contract tests を追加する
+### 4.3 contract tests を追加する
 
-すべての plugin 種別で contract test を用意すべきです。
+すべての plugin family で contract tests が必要です。
 
 確認項目:
 
 - manifest が解析できるか
 - capability が揃っているか
 - 入出力の形が正しいか
-- secret が stdout に漏れないか
+- secret が漏れないか
 - failure の振る舞いが想定どおりか
 
-### 5.5 ローカル contract kit を実行する
+### 4.4 ローカル contract kit を実行する
 
 marketplace repository にはローカル harness があります。
 
 ```bash
 go test ./...
 go run ./cmd/tokenhub-plugin-test provider --package ./samples/provider-kimi-go
-go run ./cmd/tokenhub-plugin-test action --package ./samples/action-echo-go
 go run ./cmd/tokenhub-plugin-test hook --package ./samples/hook-trace-go
 go run ./cmd/tokenhub-plugin-test background --package ./samples/background-heartbeat-go
 ```
 
 `--package` は自分の plugin ディレクトリに置き換えてください。
 
-### 5.6 公開とインストール
+## 5. 各家族の作り方
 
-公開時には最低でも次を含めます。
+### 5.1 Provider plugin
 
-- version
-- repository URL
-- homepage URL
-- checksum
-- signature
-- license
-- compatibility metadata
-
-インストール後は次を確認します。
-
-1. manifest が検証を通ること。
-2. 権限が最小であること。
-3. 再起動後に本当に有効になること。
-
-## 6. plugin 種別ごとの作り方
-
-### 6.1 Provider plugin
-
-Provider plugin は TokenHub をモデルサービスや subscription account に接続します。
+Provider plugin は TokenHub を model service や subscription account に接続します。
 
 通常は次を宣言します。
 
 - `provider_types`
 - `provider_resource_types`
-- `provider.route_protocols`
+- provider policies
 - `provider.default_base_url`
 - `provider.model_discovery`
-- `provider.error_profile`
 - `provider.credentials_scope`
-- `provider.api_key_required`
-- `provider.supports_custom_headers`
 
 主な責務:
 
 - protocol translation
 - model discovery
-- quota / account sync
+- quota または account sync
 - credential refresh
-- provider-specific route behavior
-- provider-specific UI metadata
+- provider 固有の route 振る舞い
+- provider 固有の UI metadata
 
-subscription 型 provider では、quota refresh と account sync はできるだけ background job か action に分けます。
+subscription 型 Provider では、quota refresh と account sync を background job に寄せるのが理想です。
 
-### 6.2 Admin UI plugin
+### 5.2 チェーン注入 plugin
 
-Admin UI plugin は管理画面の設定・操作領域を提供します。
+チェーン注入 plugin は、ユーザー要求から upstream 応答までの経路を形作ります。
+
+典型的な stage:
+
+- `decode_normalize`
+- `admission`
+- `privacy_pre`
+- `guardrail_pre`
+- `cache_lookup`
+- `route_candidates`
+- `route_rank`
+- `provider_call`
+- `guardrail_post`
+- `usage_attribution`
+- `cache_write`
+- `settlement`
+- `trace_export`
+
+典型的な policy:
+
+- `fail_closed` は admission、privacy、guardrail、routing に使う
+- `fail_open` は cache lookup と cache write に使う
+- `skip_route` は provider call wrapper に使う
+- `observe_only` は settlement と trace export に使う
+
+良い chain plugin は deterministic で、境界が狭く、読むものと書くものを明確にします。
+
+### 5.3 UI テンプレート plugin
+
+UI テンプレート plugin は見た目と layout を担当します。
+
+典型的な貢献:
+
+- theme tokens
+- shell layout presets
+- navigation composition
+- dashboard composition
+- page templates
+
+UI テンプレート plugin は `presentation` のみに影響すべきです。
+
+バックエンド挙動も必要なら、それはもはや UI テンプレート plugin だけではありません。
+
+### 5.4 バックグラウンドジョブ plugin
+
+バックグラウンドジョブ plugin は定期作業や運用者トリガーの作業を扱います。
 
 典型例:
 
-- provider form section
-- resource panel
-- dashboard card
-- route detail panel
-- settings panel
-- page template
+- quota refresh
+- heartbeat
+- sync
+- cleanup
+- reporting
+
+バックグラウンドジョブ plugin は、小さい input、予測可能な retry、脱敏済み result を持つべきです。
+
+### 5.5 Admin UI 貢献
+
+Admin UI 貢献は plugin の状態や運用操作を見せる declarative な panel、tab、card、route section です。
 
 ルール:
 
-- UI は plugin から提供できる。
-- ただし実行は必ず Core を通す。
-- plugin は RBAC を迂回しない。
-- plugin は raw admin credential を直接使わない。
+- 実行は常に Core を通す
+- plugin は RBAC を迂回してはいけない
+- plugin は raw admin credential を直接使ってはいけない
+- plugin 管理の操作は権限を絞り、監査可能であること
 
-推奨パターンは declarative です。
+## 6. パッケージ化と配布
 
-1. metadata で UI contribution を記述する。
-2. action は core-mediated endpoint に通す。
-3. データ整形は frontend domain helper に寄せる。
-4. React view はできるだけ表示だけにする。
+TokenHub は built-in と external plugin に同じ package 形を使います。
 
-### 6.3 SIM plugin
-
-SIM plugin は見た目とレイアウトを担当します。
-
-典型的な contribution:
-
-- theme tokens
-- logo / icon assets
-- shell layout preset
-- navigation composition
-- dashboard composition
-- page template
-
-SIM plugin は `presentation` のみに影響させるべきです。
-
-バックエンド挙動も必要なら、それは SIM だけではありません。
-
-### 6.4 Extension plugin
-
-Extension plugin は横断的な能力を提供します。
-
-典型例:
-
-- DLP
-- prompt firewall
-- semantic cache
-- context optimizer
-- model router
-- billing connector
-- notification channel
-- approval workflow
-- export / import
-- trace exporter
-
-Extension plugin は複数の placement で動けます。
-
-- `gateway_chain`: request path のロジック
-- `background`: 同期や定期ジョブ
-- `management_action`: 運用者トリガーの操作
-- `presentation`: 関連 UI
-
-可能な限り `observe_only` または `read_only` を既定にしてください。  
-mutation は明示的かつ限定的にします。
-
-## 7. 推奨リポジトリ構成
-
-現在の marketplace repository は「1 つの SDK + 複数の sample package」の形です。
-
-```text
-tokenhub-plugin-marketplace/
-  go.mod
-  sdk/go/tokenhubplugin/
-  contract-tests/
-    provider/
-    gateway-hook/
-    management-action/
-    background-job/
-    protocol/stdio-json-v1/
-  samples/
-    provider-mock-go/
-    provider-kimi-go/
-    provider-glm-go/
-    action-echo-go/
-    hook-trace-go/
-    background-heartbeat-go/
-  cmd/tokenhub-plugin-test/
-```
-
-最小の実用 package には通常次が含まれます。
+典型的な package 内容:
 
 - `plugin.yaml`
-- `main.go`
-- 1 つの fixture file
-- 1 つの contract test set
+- 1 つの runtime entrypoint
+- 任意の assets
+- contract tests
 
-命名のおすすめ:
+distribution metadata には少なくとも次を含めます。
 
-- `provider-xxx-go`
-- `action-xxx-go`
-- `hook-xxx-go`
-- `background-xxx-go`
+- repository URL
+- homepage URL
+- download URL
+- checksum
+- signature
+- license
+- compatibility metadata
 
-## 8. バージョンと互換性
+plugin marketplace の URL は既定で `https://plugins.betokenhub.com` です。運用者は marketplace あるいは直接の ZIP URL から package を導入し、checksum を確認し、backend を再起動して有効化します。
 
-TokenHub は現在、バージョンを 3 つに分けています。
+## 7. バージョンと互換性
+
+versioning は 3 つに分けて考えます。
 
 | Version | 意味 |
 | --- | --- |
-| Core Version | TokenHub 製品の版 |
-| Plugin API Version | plugin protocol と envelope contract の版 |
-| Plugin Package Version | plugin package 自身の版 |
+| Core version | TokenHub 製品の version |
+| Plugin API version | plugin protocol と envelope 契約の version |
+| Plugin package version | plugin package 自身の version |
 
-互換性のルール:
+互換性ルール:
 
-1. `plugin_api` は同一 major 内で additive にする。
-2. manifest schema はできるだけ forward compatible にする。
-3. 同じ API major 内の stage 名は安定させる。
-4. envelope field は追加できるが、既存の意味を黙って変えない。
-5. 新しい sensitive permission は再承認が必要。
-6. 新しい placement や capability は Core の検証を通す。
+1. plugin API の変更は major 内で additive にする
+2. manifest schema の変更はできるだけ forward compatible にする
+3. stage 名は同じ API major 内で安定させる
+4. envelope は field を増やせるが、既存の意味は黙って変えない
+5. 新しい sensitive permission は再承認が必要
+6. 新しい placement や capability は Core で検証する
+7. `sim` の互換 alias は、UI テンプレートの rename が終わるまで内部に残してよい
 
 移行の原則は単純です。
 
-- 旧 provider ID を残す
-- 旧 route を残す
-- 旧 resource と quota を残す
-- 新 contract が整うまで旧 admin payload alias を残す
+- 古い provider ID を維持する
+- 古い route を維持する
+- 古い resource と quota を維持する
+- 新しい契約が整うまで古い admin payload alias を維持する
 
-## 9. セキュリティと信頼
+## 8. テストとリリース
 
-TokenHub は最小権限を前提にします。
+推奨順序:
 
-plugin は次をしてはいけません。
+1. local unit tests
+2. manifest parsing tests
+3. contract tests
+4. package-level tests
+5. TokenHub integration tests
+6. marketplace / compatibility checks
+7. install と restart の検証
 
-- core DB へ直接アクセスする
-- RBAC を迂回する
-- raw admin token を直接使う
-- 権限を黙って広げる
-- public `/v1` endpoint を再定義する
+家族ごとの重点:
 
-plugin は次を明示する必要があります。
+- Provider plugin: route protocol、discovery、credentials projection、response shape、secret redaction
+- チェーン注入 plugin: stage 順序、mutation 上限、failure policy、retry / cancel の挙動、permission enforcement
+- UI テンプレート plugin: theme selection、layout selection、template rendering、dashboard composition
+- バックグラウンドジョブ plugin: schedule、retry ルール、concurrency、result sanitization
+- Admin UI 貢献: schema parsing、action binding、payload redaction、任意の admin API を呼ばないこと
 
-- 何を読むか
-- 何を書くか
-- どんな network access が必要か
-- どの stage / job / action に結びつくか
-- restart が必要かどうか
+## 9. 現在の built-in からの移行
 
-marketplace distribution には少なくとも次を含めます。
+実際の移行順序は次のとおりです。
 
-- checksum
-- signature
-- key ID
-- repository URL
-- homepage URL
-- license
-- compatibility verdict
-- advisories
-- release notes
+1. 現在の built-in descriptor と registry を plugin 視点にそろえる
+2. provider adapter、quota、OAuth、model discovery を provider plugin の下へ移す
+3. gateway の拡張を明示的な chain hook に分解する
+4. 定期処理を background plugin にする
+5. admin page、panel、button を declarative contribution にする
+6. 旧 action 面は、request path を切り出すまでの互換 bridge としてだけ残す
+7. marketplace を広げて外部作者を受け入れる
 
-## 10. テストと公開フロー
+このやり方なら、各段階を独立に出せて、contract tests でも検証できます。
 
-おすすめの順序は次のとおりです。
-
-1. ローカル unit test
-2. manifest 解析テスト
-3. contract test
-4. package level test
-5. TokenHub integration test
-6. marketplace / signature / compatibility 確認
-7. install と restart の確認
-
-kind ごとの重点:
-
-- Provider plugin: route protocols、discovery、credentials projection、response shape、secret redaction
-- Admin UI plugin: schema 解析、action binding、payload redaction を行い、任意の admin API を直接呼ばないこと
-- SIM plugin: theme selection、layout selection、template rendering、dashboard composition
-- Extension plugin: stage order、mutation limit、failure policy、retry / cancel、permission enforcement
-
-## 11. built-in から plugin への移行経路
-
-現実的な移行順序は次のとおりです。
-
-1. 現在の built-in descriptor / registry を plugin という見方にそろえる。
-2. provider adapter、quota、OAuth、model discovery を plugin contract の下に移す。
-3. 管理画面のページ、panel、button を declarative contribution にする。
-4. gateway enhancement を明示的な hooks に分割する。
-5. 定期ジョブを background plugin にする。
-6. marketplace を拡張して third-party author に開く。
-
-この方法なら、各ステップを独立に公開でき、contract test で回帰も防げます。
-
-## 12. 簡単な判断ツリー
-
-開発前に次を確認してください。
+## 10. 簡単な判断ツリー
 
 ```text
-モデルや subscription account に接続するか？
+それは TokenHub を model service や subscription account に接続するか？
   -> Provider plugin
 
-管理画面のページ、panel、外観だけを変えるか？
-  -> Admin UI または SIM plugin
+それは user token request から provider response までの path に影響するか？
+  -> チェーン注入 plugin
 
-ユーザー token から provider response までの経路に影響するか？
-  -> gateway_chain placement を持つ Extension plugin
+それは admin page、panel、card、外観だけを変えるか？
+  -> Admin UI 貢献 または UI テンプレート plugin
 
-定期ジョブか、起動後のジョブか？
-  -> Background plugin
+それは定期実行か、起動後実行か？
+  -> バックグラウンドジョブ plugin
 
-運用者が起動する action か？
-  -> Management action capability
+それは運用者トリガーの action を公開するか？
+  -> hook か job に移せない間だけ transitional management_action を使う
 ```
 
-次にこう問います。
+次に自分へ問いかけます。
 
 ```text
-安全にするための最小権限は何か？
+この plugin を安全にする最小権限セットは何か？
 ```
 
-これに答えられないなら、plugin boundary をもう少し小さくします。
+答えられないなら、さらに boundary を小さくします。
 
-## 13. 最後の原則
+## 11. 移行チェックリスト
 
-plugin を作るときは、常に次を優先してください。
+- [ ] 現在の built-in module を Provider、チェーン注入、UI テンプレート、バックグラウンドジョブ package に割り当てる
+- [ ] provider 固有の model discovery と quota ロジックを provider plugin に切り出す
+- [ ] request-path ロジックを明示的な chain hook に移す
+- [ ] Admin UI 貢献を declarative かつ permission-scoped に保つ
+- [ ] main plugin manager から古い action execution surface を外す
+- [ ] rename が終わるまで `sim` を内部互換 alias として残す
+- [ ] external plugin の sample を marketplace repo で公開する
+- [ ] release 前にすべての plugin family で contract tests を揃える
 
-1. より小さく
-2. より安全に
-3. よりアップグレードしやすく
-4. Core からより分離しやすく
+## 12. 最後の原則
 
-ある振る舞いを plugin に置けるなら、できるだけ plugin に置く。  
-Core に残す必要があるなら、Core は最終判断だけを行い、実装経路はできるだけ安定させてください。
+plugin を作るときは、次を優先します。
+
+1. 小さいこと
+2. 安全であること
+3. アップグレードしやすいこと
+4. Core から分離しやすいこと
+
+ある挙動が plugin に置けるなら、plugin に置く。
+Core に残すしかないなら、最後の判断は Core が行い、実装経路は安定させます。

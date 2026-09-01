@@ -1,55 +1,41 @@
-# TokenHub Plugin Development Guide
+# TokenHub Plugin Architecture and Development Guide
 
 Language: English | [简体中文](zh-CN/plugin-development.md) | [日本語](ja/plugin-development.md)
 
-This guide explains the current TokenHub plugin model and how to develop plugins against it. It is written for plugin authors, platform engineers, and operators who need a practical starting point rather than a theoretical proposal.
+This guide describes the current TokenHub plugin direction and how to build against it. It is written for plugin authors, platform engineers, and operators.
 
-TokenHub's plugin design is intentionally conservative:
+TokenHub keeps the core small:
 
-- Core stays small, auditable, and security-focused.
-- Plugins own the behavior that changes often.
-- Built-in plugins and external plugins use the same contract.
-- Administration, provider integrations, gateway hooks, background jobs, themes, and UI contributions all flow through explicit plugin metadata.
+- the core owns auth, routing, billing, auditing, compatibility, and upgrade safety
+- plugins own the parts that change more often
+- built-in plugins and external plugins use the same contract
+- UI templates, provider integrations, chain injection, background jobs, and admin UI contributions all come from explicit plugin metadata
 
-## 1. The Plugin Model
+## 1. Plugin Families
 
-TokenHub treats a plugin as a package with three separate axes:
+TokenHub now organizes plugins into a few clear families.
 
-| Axis | Question it answers | Examples |
+| Family | What it owns | Examples |
 | --- | --- | --- |
-| Kind | What sort of plugin is this? | `provider`, `admin_ui`, `sim`, `extension` |
-| Placement | Where does it run? | `presentation`, `gateway_chain`, `background`, `management_action` |
-| Capability | What can it contribute? | `provider_types`, `actions`, `hooks`, `background_jobs`, `theme_tokens` |
+| UI template | Whole-shell look, layout, and template package | shell theme, page template, dashboard composition |
+| Provider | Upstream model access, auth, discovery, and quotas | Codex, Kimi, Gemini, Anthropic, OpenAI-compatible providers |
+| Chain injection | Request-to-upstream pipeline behavior | privacy filters, routing, cache, context optimization, trace export |
+| Background job | Scheduled or operator-triggered work | quota refresh, sync, cleanup, reporting |
 
-A plugin can span more than one kind or placement. For example:
+Admin UI contributions are a capability surface, not a top-level family. They are usually attached to Provider, Chain injection, or Background job plugins.
 
-- A Codex subscription plugin is a `provider` that also contributes `gateway_chain` behavior and `management_action` entries.
-- A trace exporter is usually an `extension` with `gateway_chain` placement.
-- A heartbeat job is usually an `extension` with `background` placement.
-- A shell skin is usually a `sim` plugin with `presentation` placement.
+The current repository still uses the internal kind name `sim` in compatibility payloads. In user-facing language, read that as `UI template`.
 
-The core rule is simple:
+A single plugin may span more than one family, but each family should stay focused. For example:
 
-> Core owns the pipeline, auth, routing, auditing, and compatibility. Plugins own the variable behavior.
+- a Codex subscription plugin is a Provider plugin that also contributes admin UI, chain hooks, and background jobs
+- a trace exporter is usually a Chain injection plugin with a narrow `observe_only` hook
+- a quota sync worker is usually a Background job plugin
+- a shell replacement is usually a UI template plugin
 
-## 2. Built-In vs External Plugins
-
-TokenHub uses one contract for both built-in and external plugins.
-
-| Type | Source | Typical use |
-| --- | --- | --- |
-| Built-in plugin | Shipped with TokenHub | Core provider adapters, base admin surfaces, core hooks, default themes |
-| External plugin | Installed from a marketplace or private repo | Third-party providers, enterprise extensions, partner UI contributions |
-
-The difference is distribution and trust, not capability shape.
-
-Built-in plugins are normally trusted by default because they ship with the product. External plugins must pass manifest validation, permission checks, and signature/trust checks before they become active.
-
-## 3. Manifest Shape
+## 2. Manifest Contract
 
 Every plugin package is described by `plugin.yaml`.
-
-Minimal shape:
 
 ```yaml
 schema_version: 1
@@ -80,33 +66,30 @@ distribution:
   license: Apache-2.0
 ```
 
-### 3.1 Important Fields
+Important fields:
 
-- `schema_version`: manifest schema version.
-- `tokenhub.plugin_api`: plugin API version. Current value is `v1`.
-- `kinds`: one or more of `provider`, `admin_ui`, `sim`, `extension`.
-- `placement`: one or more of `presentation`, `gateway_chain`, `background`, `management_action`.
-- `entry.backend`: the executable entrypoint. Current samples use `stdio-json-v1`.
-- `capabilities`: the actual feature declaration surface.
-- `permissions`: the least-privilege declaration surface.
-- `distribution`: repository URL, homepage URL, checksum, signature, and license metadata.
+- `schema_version`: manifest schema version
+- `tokenhub.plugin_api`: plugin API version
+- `kinds`: one or more of `provider`, `admin_ui`, `sim`, `extension`
+- `placement`: one or more of `presentation`, `gateway_chain`, `background`, `management_action`
+- `capabilities`: the actual feature surface
+- `permissions`: the least-privilege declaration surface
+- `distribution`: repository URL, homepage URL, checksum, signature, and license metadata
 
-The manifest is the first gate. If the manifest is wrong, nothing else should run.
+`management_action` is a transitional surface for operator-only actions. New request-path behavior should move into `gateway_chain`, and recurring work should move into `background`.
 
-## 4. Runtime Contracts
+## 3. Runtime Surfaces
 
-TokenHub provides four standard runtime entrypoints in the Go SDK:
+TokenHub uses three core runtime surfaces, plus one transitional compatibility surface.
 
 - `ServeProvider`
-- `ServeAction`
 - `ServeGatewayHook`
 - `ServeBackgroundJob`
+- `ServeAction` for compatibility-only admin operations
 
-Each one wraps a single contract kind.
+### 3.1 Provider invocation
 
-### 4.1 Provider invocation
-
-Provider plugins receive a provider invocation with:
+Provider plugins receive:
 
 - operation
 - provider projection
@@ -115,25 +98,9 @@ Provider plugins receive a provider invocation with:
 - request payload
 - credentials projection
 
-That means the plugin sees only projected data, not raw core internals.
+This keeps provider plugins on projected data, not raw core internals.
 
-### 4.2 Action invocation
-
-Action plugins receive:
-
-- plugin ID
-- action ID
-- actor
-- payload
-
-This is the right surface for:
-
-- OAuth start/exchange
-- probe
-- quota refresh
-- custom admin operations
-
-### 4.3 Gateway hook invocation
+### 3.2 Gateway hook invocation
 
 Gateway hook plugins receive:
 
@@ -144,14 +111,14 @@ Gateway hook plugins receive:
 
 This is the right surface for:
 
-- privacy filters
-- context optimizers
-- route ranking
-- cache lookup/write
+- privacy controls
+- route candidate generation and ranking
+- cache lookup and cache write
+- context optimization
 - request and response transforms
 - trace export
 
-### 4.4 Background job invocation
+### 3.3 Background job invocation
 
 Background job plugins receive:
 
@@ -169,45 +136,43 @@ This is the right surface for:
 - cleanup
 - reporting
 
-## 5. How to Build a Plugin
+### 3.4 Admin UI contributions
 
-The most reliable workflow is:
+Admin UI contributions are not a separate runtime surface. They are declarative entries that render into panels, tabs, cards, and setting sections, and they should still route execution through Core.
 
-1. Pick the kind and placement first.
+## 4. How to Build a Plugin
+
+The safest workflow is:
+
+1. Pick the family first.
 2. Define the smallest useful capability set.
 3. Write the manifest.
-4. Implement the runtime handler.
+4. Implement the runtime handler or UI contribution.
 5. Add contract tests.
 6. Run the package locally.
 7. Publish to the marketplace.
 8. Install and verify inside TokenHub.
 
-### 5.1 Start from the question you are solving
-
 Before writing code, answer:
 
-- Is this a provider integration?
-- Is this only an admin UI contribution?
-- Is this a shell/theme change?
-- Is this a gateway-chain extension?
-- Is this a background job?
-- Is this a management action?
+- Is this a Provider integration?
+- Is this a UI template or admin UI contribution?
+- Is this a chain-injection concern?
+- Is this a Background job?
+- Is this only a transitional admin action?
 
-If you cannot answer that, the plugin boundary is still too blurry.
+If you cannot answer that, the boundary is still too blurry.
 
-### 5.2 Write the smallest capability first
+### 4.1 Start small
 
 Do not start with the full wish list.
 
-Examples:
+- Provider plugin: start with one provider type and one resource or route contract
+- Chain injection plugin: start with one hook stage
+- Background job plugin: start with one job
+- UI template plugin: start with one template, shell, or layout contribution
 
-- Provider plugin: start with `provider_types` and `gateway`.
-- Action plugin: start with one action ID.
-- Hook plugin: start with one stage.
-- Background plugin: start with one job.
-- SIM plugin: start with one theme or layout contribution.
-
-### 5.3 Implement the handler
+### 4.2 Implement the handler
 
 Keep the handler small:
 
@@ -216,9 +181,9 @@ Keep the handler small:
 - return structured output
 - avoid printing secrets
 
-### 5.4 Add contract tests
+### 4.3 Add contract tests
 
-Every plugin type should have contract tests.
+Every plugin family should have contract tests.
 
 Good tests check:
 
@@ -228,55 +193,33 @@ Good tests check:
 - secret redaction
 - failure behavior
 
-### 5.5 Run the local contract kit
+### 4.4 Run the local contract kit
 
 The marketplace repo includes a local harness:
 
 ```bash
 go test ./...
 go run ./cmd/tokenhub-plugin-test provider --package ./samples/provider-kimi-go
-go run ./cmd/tokenhub-plugin-test action --package ./samples/action-echo-go
 go run ./cmd/tokenhub-plugin-test hook --package ./samples/hook-trace-go
 go run ./cmd/tokenhub-plugin-test background --package ./samples/background-heartbeat-go
 ```
 
 Replace `--package` with your plugin directory.
 
-### 5.6 Publish and install
+## 5. Build Each Family
 
-When you are ready to publish, include:
-
-- version
-- repository URL
-- homepage URL
-- checksum
-- signature
-- license
-- compatibility metadata
-
-After installation, verify:
-
-1. the manifest passes validation,
-2. the permission set is minimal,
-3. the plugin becomes active after restart.
-
-## 6. How to Build Each Plugin Kind
-
-### 6.1 Provider plugins
+### 5.1 Provider plugins
 
 Provider plugins connect TokenHub to a model service or subscription account.
 
-Usually they declare:
+They usually declare:
 
 - `provider_types`
 - `provider_resource_types`
-- `provider.route_protocols`
+- provider policies
 - `provider.default_base_url`
 - `provider.model_discovery`
-- `provider.error_profile`
 - `provider.credentials_scope`
-- `provider.api_key_required`
-- `provider.supports_custom_headers`
 
 Common responsibilities:
 
@@ -287,175 +230,129 @@ Common responsibilities:
 - provider-specific route behavior
 - provider-specific UI metadata
 
-For subscription-style providers, keep quota refresh and account sync in background jobs or actions where possible.
+For subscription-style providers, keep quota refresh and account sync in background jobs when possible.
 
-### 6.2 Admin UI plugins
+### 5.2 Chain injection plugins
 
-Admin UI plugins contribute configuration and operational surfaces.
+Chain injection plugins shape the request path from the user token request to the upstream response.
 
-Typical content:
+Typical stages include:
 
-- provider form sections
-- resource panels
-- dashboard cards
-- route detail panels
-- settings panels
-- page templates
+- `decode_normalize`
+- `admission`
+- `privacy_pre`
+- `guardrail_pre`
+- `cache_lookup`
+- `route_candidates`
+- `route_rank`
+- `provider_call`
+- `guardrail_post`
+- `usage_attribution`
+- `cache_write`
+- `settlement`
+- `trace_export`
 
-Rules:
+Typical policies:
 
-- UI may be contributed by plugins.
-- Execution must still pass through Core.
-- Plugins must not bypass RBAC.
-- Plugins must not directly use raw admin credentials.
+- `fail_closed` for admission, privacy, guardrails, and routing
+- `fail_open` for cache lookup and cache write
+- `skip_route` for provider call wrappers
+- `observe_only` for settlement and trace export
 
-The preferred pattern is declarative:
+Good chain plugins are deterministic, narrow, and explicit about what they read and write.
 
-1. Describe the UI contribution in metadata.
-2. Route actions through a core-mediated endpoint.
-3. Keep data shaping in frontend domain helpers.
-4. Keep React views mostly presentational.
+### 5.3 UI template plugins
 
-### 6.3 SIM plugins
-
-SIM plugins are for visual identity and layout.
+UI template plugins are for visual identity and layout.
 
 Typical contributions:
 
 - theme tokens
-- logo or icon assets
 - shell layout presets
 - navigation composition
 - dashboard composition
 - page templates
 
-SIM plugins should only affect `presentation`.
+UI template plugins should only affect `presentation`.
 
-If the change also needs backend behavior, it is not only a SIM plugin anymore.
+If the change also needs backend behavior, it is no longer only a UI template plugin.
 
-### 6.4 Extension plugins
+### 5.4 Background job plugins
 
-Extension plugins provide horizontal capabilities.
+Background job plugins handle recurring or operator-triggered work.
 
 Typical features:
 
-- DLP
-- prompt firewall
-- semantic cache
-- context optimizer
-- model router
-- billing connector
-- notification channel
-- approval workflow
-- export/import
-- trace export
+- quota refresh
+- heartbeat
+- sync
+- cleanup
+- reporting
 
-Extension plugins can run in multiple placements:
+Background job plugins should expose small inputs, predictable retries, and sanitized results.
 
-- `gateway_chain` for request-path logic
-- `background` for sync and recurring jobs
-- `management_action` for operator-triggered actions
-- `presentation` for related UI surfaces
+### 5.5 Admin UI contributions
 
-Use `observe_only` or `read_only` defaults whenever possible. Mutation should be explicit and narrow.
+Admin UI contributions are the declarative panels, tabs, cards, and route sections used to surface plugin state and operator controls.
 
-## 7. Recommended Repository Layout
+Rules:
 
-The current marketplace repo uses one SDK and multiple sample packages.
+- execution still passes through Core
+- plugins must not bypass RBAC
+- plugins must not directly use raw admin credentials
+- plugin-managed actions should stay permission-scoped and auditable
 
-```text
-tokenhub-plugin-marketplace/
-  go.mod
-  sdk/go/tokenhubplugin/
-  contract-tests/
-    provider/
-    gateway-hook/
-    management-action/
-    background-job/
-    protocol/stdio-json-v1/
-  samples/
-    provider-mock-go/
-    provider-kimi-go/
-    provider-glm-go/
-    action-echo-go/
-    hook-trace-go/
-    background-heartbeat-go/
-  cmd/tokenhub-plugin-test/
-```
+## 6. Packaging and Distribution
 
-The smallest practical package usually contains:
+TokenHub uses one package shape for built-in and external plugins.
+
+Typical package contents:
 
 - `plugin.yaml`
-- `main.go`
-- one fixture file
-- one contract test set
+- one runtime entrypoint
+- optional assets
+- contract tests
 
-Naming convention:
+Distribution metadata should include:
 
-- `provider-xxx-go`
-- `action-xxx-go`
-- `hook-xxx-go`
-- `background-xxx-go`
+- repository URL
+- homepage URL
+- download URL
+- checksum
+- signature
+- license
+- compatibility metadata
 
-## 8. Versioning and Compatibility
+The plugin marketplace URL defaults to `https://plugins.betokenhub.com`. Operators can install a package from that marketplace or from a direct ZIP URL, validate the checksum, and restart the backend to activate it.
 
-TokenHub currently treats versioning as three separate concepts:
+## 7. Versioning and Compatibility
+
+Treat versioning as three separate concerns:
 
 | Version | Meaning |
 | --- | --- |
-| Core Version | TokenHub product version |
-| Plugin API Version | Plugin protocol and envelope contract version |
-| Plugin Package Version | The plugin package's own version |
+| Core version | TokenHub product version |
+| Plugin API version | Plugin protocol and envelope contract version |
+| Plugin package version | The plugin package's own version |
 
 Compatibility rules:
 
-1. `plugin_api` changes should be additive within a major version.
-2. Manifest schema changes should remain forward compatible when possible.
-3. Stage names should stay stable inside the same API major.
-4. Envelope fields may be added, but existing semantics should not change silently.
-5. New sensitive permissions require re-approval.
-6. New placements or capabilities require Core validation.
+1. plugin API changes should be additive within a major version
+2. manifest schema changes should stay forward compatible when possible
+3. stage names should stay stable inside the same API major
+4. envelope fields may be added, but existing semantics should not change silently
+5. new sensitive permissions require re-approval
+6. new placements or capabilities require Core validation
+7. the `sim` compatibility alias may remain internally until the UI template rename is complete
 
 The migration principle is simple:
 
-- preserve old provider IDs,
-- preserve old routes,
-- preserve old resources and quotas,
-- preserve old admin payload aliases until the new contract is ready.
+- preserve old provider IDs
+- preserve old routes
+- preserve old resources and quotas
+- preserve old admin payload aliases until the new contract is ready
 
-## 9. Security and Trust
-
-TokenHub assumes least privilege by default.
-
-Plugins must not:
-
-- access core DB directly
-- bypass RBAC
-- take raw admin tokens
-- silently expand privileges
-- redefine public `/v1` endpoints
-
-Plugins must declare:
-
-- what they read
-- what they write
-- what network access they need
-- what stage/job/action they bind to
-- whether restart is required
-
-For marketplace distribution, include at least:
-
-- checksum
-- signature
-- key ID
-- repository URL
-- homepage URL
-- license
-- compatibility verdict
-- advisories
-- release notes
-
-## 10. Testing and Release Flow
+## 8. Testing and Release Flow
 
 Recommended order:
 
@@ -464,48 +361,48 @@ Recommended order:
 3. Contract tests
 4. Package-level tests
 5. TokenHub integration tests
-6. Marketplace/signature/compatibility checks
+6. Marketplace and compatibility checks
 7. Install and restart validation
 
-What to emphasize by kind:
+What to emphasize by family:
 
-- Provider plugin: route protocols, discovery, credentials projection, response shape, secret redaction.
-- Admin UI plugin: schema parsing, action binding, payload redaction, no arbitrary admin API calls.
-- SIM plugin: theme selection, layout selection, template rendering, dashboard composition.
-- Extension plugin: stage order, mutation limits, failure policy, retry/cancel behavior, permission enforcement.
+- Provider plugin: route protocols, discovery, credentials projection, response shape, secret redaction
+- Chain injection plugin: stage order, mutation limits, failure policy, retry and cancel behavior, permission enforcement
+- UI template plugin: theme selection, layout selection, template rendering, dashboard composition
+- Background job plugin: schedules, retry rules, concurrency, result sanitization
+- Admin UI contribution: schema parsing, action binding, payload redaction, no arbitrary admin API calls
 
-## 11. Migration Path From Built-Ins
+## 9. Migration From the Current Built-Ins
 
 The practical migration order is:
 
 1. Normalize current built-in descriptors and registries to the plugin worldview.
-2. Move provider adapters, quota, OAuth, and model discovery behind plugin contracts.
-3. Turn admin pages, panels, and buttons into declarative contributions.
-4. Split gateway enhancements into explicit hooks.
-5. Turn recurring jobs into background plugins.
-6. Expand the marketplace for external authors.
+2. Move provider adapters, quota, OAuth, and model discovery behind provider plugins.
+3. Split gateway enhancements into explicit chain hooks.
+4. Turn recurring jobs into background plugins.
+5. Turn admin pages, panels, and buttons into declarative contributions.
+6. Keep the old action surface only as a compatibility bridge while the request path is extracted.
+7. Expand the marketplace for external authors.
 
-This approach keeps upgrades safe because every step can be released independently and validated with contract tests.
+This approach keeps upgrades safe because each step can ship independently and be validated with contract tests.
 
-## 12. A Simple Decision Tree
-
-Ask these questions:
+## 10. A Simple Decision Tree
 
 ```text
 Does it connect TokenHub to a model or subscription account?
   -> Provider plugin
 
-Does it only change admin pages, panels, or shell appearance?
-  -> Admin UI or SIM plugin
-
 Does it affect the path from user token request to provider response?
-  -> Extension plugin with gateway_chain placement
+  -> Chain injection plugin
+
+Does it only change admin pages, panels, cards, or shell appearance?
+  -> Admin UI contribution or UI template plugin
 
 Does it run on a schedule or after startup?
-  -> Background plugin
+  -> Background job plugin
 
 Does it expose an operator-triggered action?
-  -> Management action capability
+  -> Transitional management_action capability only if it cannot yet move into a hook or job
 ```
 
 Then ask:
@@ -516,14 +413,25 @@ What is the smallest permission set that makes this safe?
 
 If you cannot answer that, shrink the plugin boundary again.
 
-## 13. Final Rule of Thumb
+## 11. Migration Checklist
+
+- [ ] Map the current built-in modules to Provider, chain, UI template, and Background job packages.
+- [ ] Extract provider-specific model discovery and quota logic into provider plugins.
+- [ ] Move request-path logic into explicit chain hooks.
+- [ ] Keep admin UI contributions declarative and permission-scoped.
+- [ ] Remove the old action-runner surface from the main plugin manager.
+- [ ] Keep `sim` as an internal compatibility alias until the rename is complete.
+- [ ] Publish external plugin samples in the marketplace repo.
+- [ ] Add contract tests for every plugin family before release.
+
+## 12. Final Rule of Thumb
 
 When you build a plugin, optimize for:
 
-1. smaller,
-2. safer,
-3. easier to upgrade,
-4. easier to separate from Core.
+1. smaller
+2. safer
+3. easier to upgrade
+4. easier to separate from Core
 
-If a behavior can live in a plugin, keep it there.  
-If it must stay in Core, let Core make the final decision and keep the implementation path as stable as possible.
+If a behavior can live in a plugin, keep it there.
+If it must stay in Core, let Core make the final decision and keep the implementation path stable.

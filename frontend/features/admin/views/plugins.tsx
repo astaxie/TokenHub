@@ -1,7 +1,7 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
-import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
+import { type ApiContext, type AppData, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
+import { pluginActionInputDefaults, pluginActionKey, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { localizedCapabilityTitle, localizedContributionTitle, localizedPluginName } from "../domain/plugin-localization";
@@ -11,17 +11,10 @@ import { resolveSIMSelection, type SIMSelectionPreference } from "../domain/sim-
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
-import { PluginActionRunner, PluginBackgroundJobRunner } from "./plugin-action-runner";
+import { PluginBackgroundJobRunner } from "./plugin-action-runner";
 import { emptyInstallDraft, PluginInstallDialog, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
 import { PluginDeleteControl, PluginLifecycleControl, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
-
-type ActionDraft = {
-  values: Record<string, string | boolean>;
-  busy: boolean;
-  error: string;
-  result: string;
-};
 
 type PluginUpdateDraft = {
   busy: boolean;
@@ -50,7 +43,6 @@ export function PluginsView({
   theme?: "light" | "dark";
 }) {
   const plugins = data.plugins;
-  const [actionDrafts, setActionDrafts] = useState<Record<string, ActionDraft>>({});
   const [pluginStateDrafts, setPluginStateDrafts] = useState<Record<string, PluginStateDraft>>({});
   const [pluginUpdateDrafts, setPluginUpdateDrafts] = useState<Record<string, PluginUpdateDraft>>({});
   const [pluginDeleteDrafts, setPluginDeleteDrafts] = useState<Record<string, PluginDeleteDraft>>({});
@@ -86,7 +78,6 @@ export function PluginsView({
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
-  const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
@@ -104,41 +95,6 @@ export function PluginsView({
     simSelection.preference.themeID,
     simSelection.preference.themeKey,
   ]);
-
-  function updateActionValue(action: PluginActionDescriptor, field: string, value: string | boolean) {
-    const key = pluginActionKey(action.plugin_id, action.action_id);
-    setActionDrafts((drafts) => ({
-      ...drafts,
-      [key]: {
-        ...emptyActionDraft(action),
-        ...drafts[key],
-        values: { ...(drafts[key]?.values ?? pluginActionInputDefaults(action)), [field]: value },
-        error: "",
-      },
-    }));
-  }
-
-  async function executeAction(action: PluginActionDescriptor, event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const key = pluginActionKey(action.plugin_id, action.action_id);
-    const draft = actionDraft(action);
-    setActionDrafts((drafts) => ({ ...drafts, [key]: { ...draft, busy: true, error: "", result: "" } }));
-    try {
-      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
-        method: "POST",
-        body: JSON.stringify(pluginActionPayload(action, draft.values)),
-      });
-      if (!response.ok) throw new Error(await readAdminError(response, tx("执行插件动作")));
-      const payload = await response.json();
-      setActionDrafts((drafts) => ({ ...drafts, [key]: { ...draft, busy: false, error: "", result: JSON.stringify(redactPluginActionResult(payload), null, 2) } }));
-    } catch (reason) {
-      if (isAuthExpiredError(reason)) return;
-      setActionDrafts((drafts) => ({
-        ...drafts,
-        [key]: { ...draft, busy: false, error: reason instanceof Error ? reason.message : tx("执行插件动作失败"), result: "" },
-      }));
-    }
-  }
 
   function updateBackgroundJobValue(job: PluginBackgroundJobDescriptor, field: string, value: string | boolean) {
     const key = pluginBackgroundJobKey(job.plugin_id, job.job_id);
@@ -778,59 +734,8 @@ export function PluginsView({
         </>
       ) : null}
 
-      {activeTab === "actions" ? (
-        <>
-      <section className="section" data-plugin-manager-section="actions">
-        <div className="section-header">
-          <h2>{tx("动作清单")}</h2>
-        </div>
-        <div className="section-body">
-          {pluginActions.length === 0 ? (
-            <p className="empty-state">{tx("暂无插件动作")}</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{tx("插件")}</th>
-                    <th>{tx("动作 ID")}</th>
-                    <th>{tx("动作类型")}</th>
-                    <th>{tx("能力标识")}</th>
-                    <th>{tx("标题")}</th>
-                    <th>{tx("执行")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pluginActions.map((action) => (
-                    <tr key={`${action.plugin_id}:${action.action_id}`}>
-                      <td>{action.plugin_id}</td>
-                      <td>{action.action_id}</td>
-                      <td>{pluginActionKindLabel(action.kind)}</td>
-                      <td>{action.capability || action.subject || "-"}</td>
-                      <td>{localizedContributionTitle({ ...action, id: action.action_id }, locale) || "-"}</td>
-                      <td>
-                        <PluginActionRunner
-                          action={action}
-                          draft={actionDraft(action)}
-                          labels={{
-                            submit: tx("执行"),
-                            submitting: tx("执行中"),
-                            unsupportedSchema: tx("暂不支持复杂输入 Schema"),
-                          }}
-                          onChange={updateActionValue}
-                          onSubmit={executeAction}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="section" data-plugin-manager-section="background-jobs">
+      {activeTab === "jobs" ? (
+        <section className="section" data-plugin-manager-section="background-jobs">
         <div className="section-header">
           <h2>{tx("后台任务清单")}</h2>
         </div>
@@ -891,7 +796,6 @@ export function PluginsView({
           )}
         </div>
       </section>
-        </>
       ) : null}
     </div>
   );
@@ -1009,11 +913,6 @@ function shortChecksum(value: string) {
   return value.length > 16 ? `${value.slice(0, 12)}...${value.slice(-4)}` : value;
 }
 
-function statusPillStatus(tone: string) {
-  if (tone === "warn") return "pending";
-  return tone;
-}
-
 function pluginKindLabel(kind: string) {
   if (kind === "provider") return tx("Provider");
   if (kind === "admin_ui") return tx("Admin UI");
@@ -1028,15 +927,6 @@ function pluginPlacementLabel(placement: string) {
   if (placement === "background") return tx("Background");
   if (placement === "management_action") return tx("Management Action");
   return placement;
-}
-
-function pluginActionKindLabel(kind: string) {
-  if (kind === "read") return tx("读取");
-  if (kind === "test") return tx("测试");
-  if (kind === "mutate") return tx("变更");
-  if (kind === "external_redirect") return tx("外部跳转");
-  if (kind === "import_export") return tx("导入导出");
-  return kind;
 }
 
 function presentationContributionTypeLabel(slot: string) {
@@ -1146,10 +1036,6 @@ function preferredSIMLayout(options: SIMSelectionCapabilityOption[], pluginID: s
   return options.find((option) => option.key === currentKey && option.pluginID === pluginID) ??
     options.find((option) => option.pluginID === pluginID && option.id) ??
     options.find((option) => option.pluginID === pluginID);
-}
-
-function emptyActionDraft(action: PluginActionDescriptor): ActionDraft {
-  return { values: pluginActionInputDefaults(action), busy: false, error: "", result: "" };
 }
 
 function emptyBackgroundJobDraft(job: PluginBackgroundJobDescriptor): PluginBackgroundJobDraft {

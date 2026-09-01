@@ -1601,7 +1601,7 @@ export function ProviderUpsertModal({
                       {existingRouteModels.has(model.canonical_name || canonicalModelNameForUI(model.id, model.display_name, modelCategoryData)) ? ` · ${tx("已有路由")}` : ""}
                     </small>
                     <div className="capability-row">
-                      {modelCapabilities(model).map((capability) => <em key={capability}>{capability}</em>)}
+                      {modelCapabilities(model).map((capability, index) => <em key={`${capability}:${index}`}>{capability}</em>)}
                     </div>
                   </div>
                 </label>;
