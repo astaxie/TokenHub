@@ -1,10 +1,9 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, MousePointerClick, Palette, PanelsTopLeft, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
-import { type FormEvent, type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
-import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor, type PluginMarketplacePlugin } from "../core/types";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ApiContext, type AppData, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
-import { pluginMarketplaceDisplay, type PluginMarketplaceDisplayState } from "../domain/plugin-marketplace";
 import { localizedCapabilityTitle, localizedContributionTitle, localizedPluginName } from "../domain/plugin-localization";
 import { type PluginPermissionDiffPreviewPayload } from "../domain/plugin-permission-diff";
 import { simRegistryFromPlugins, type SIMRegistry, type SIMShellLayout, type SIMThemeTokens } from "../domain/sim-registry";
@@ -57,7 +56,6 @@ export function PluginsView({
   const [pluginDeleteDrafts, setPluginDeleteDrafts] = useState<Record<string, PluginDeleteDraft>>({});
   const [pluginRollbackDrafts, setPluginRollbackDrafts] = useState<Record<string, PluginRollbackDraft>>({});
   const [backgroundJobDrafts, setBackgroundJobDrafts] = useState<Record<string, PluginBackgroundJobDraft>>({});
-  const [marketplaceDrafts, setMarketplaceDrafts] = useState<Record<string, PluginInstallDraft>>({});
   const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
   const [pluginPermissionPreviews, setPluginPermissionPreviews] = useState<Record<string, PluginPermissionDiffPreviewDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
@@ -86,10 +84,6 @@ export function PluginsView({
   const layoutOptions = useMemo(() => simSelectionLayoutOptions(simRegistry.shellLayouts, plugins, locale), [simRegistry.shellLayouts, plugins, locale]);
   const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
-  const marketplaceEntries = data.pluginMarketplace.map((item) => ({
-    item,
-    display: pluginMarketplaceDisplay(item, { locale }),
-  }));
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
   const actionDraft = (action: PluginActionDescriptor) => actionDrafts[pluginActionKey(action.plugin_id, action.action_id)] ?? emptyActionDraft(action);
@@ -97,7 +91,6 @@ export function PluginsView({
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginRollbackDraft = (plugin: PluginDescriptor) => pluginRollbackDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
-  const marketplaceInstallDraft = (plugin: PluginDescriptor) => marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
   const pluginPermissionPreviewDraft = (plugin: PluginDescriptor) => pluginPermissionPreviews[plugin.id] ?? emptyPermissionPreviewDraft();
   const backgroundJobDraft = (job: PluginBackgroundJobDescriptor) => backgroundJobDrafts[pluginBackgroundJobKey(job.plugin_id, job.job_id)] ?? emptyBackgroundJobDraft(job);
 
@@ -413,53 +406,6 @@ export function PluginsView({
     }
   }
 
-  async function installMarketplacePlugin(item: PluginMarketplacePlugin) {
-    const plugin = item.plugin;
-    const distribution = plugin.distribution;
-    const draft = marketplaceDrafts[plugin.id] ?? emptyInstallDraft();
-    setMarketplaceDrafts((drafts) => ({
-      ...drafts,
-      [plugin.id]: { ...draft, busy: true, error: "", result: "" },
-    }));
-    try {
-      if (!distribution?.download_url || !distribution.checksum_sha256) {
-        throw new Error(tx("无下载来源"));
-      }
-      const response = await adminFetch(api, "/api/admin/plugins/install", {
-        method: "POST",
-        body: JSON.stringify({
-          download_url: distribution.download_url,
-          checksum_sha256: distribution.checksum_sha256,
-          replace: false,
-          enable: false,
-        }),
-      });
-      if (!response.ok) throw new Error(await readAdminError(response, tx("安装插件")));
-      const payload = await response.json() as { data?: { plugin?: { id?: string }; restart_required?: boolean } };
-      const pluginID = payload.data?.plugin?.id ?? plugin.id;
-      setMarketplaceDrafts((drafts) => ({
-        ...drafts,
-        [plugin.id]: {
-          ...draft,
-          busy: false,
-          error: "",
-          result: `${pluginID} · ${payload.data?.restart_required ? tx("插件安装完成，重启后生效") : tx("插件安装完成")}`,
-        },
-      }));
-    } catch (reason) {
-      if (isAuthExpiredError(reason)) return;
-      setMarketplaceDrafts((drafts) => ({
-        ...drafts,
-        [plugin.id]: {
-          ...draft,
-          busy: false,
-          error: reason instanceof Error ? reason.message : tx("安装插件失败"),
-          result: "",
-        },
-      }));
-    }
-  }
-
   function applySIMSelection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSIMSelectionPreferenceChange?.(simSelectionDraft);
@@ -596,78 +542,6 @@ export function PluginsView({
         </>
       ) : null}
 
-      {activeTab === "marketplace" ? (
-      <section className="section" data-plugin-manager-section="marketplace">
-        <div className="section-header">
-          <h2>{tx("插件市场")}</h2>
-        </div>
-        <div className="section-body">
-          {data.pluginMarketplaceSourceURL ? (
-            <p className="muted">
-              {tx("市场")} <a href={data.pluginMarketplaceSourceURL} rel="noreferrer" target="_blank">{data.pluginMarketplaceSourceURL}</a>
-            </p>
-          ) : null}
-          {data.pluginMarketplaceError ? <p className="provider-quota-error">{data.pluginMarketplaceError}</p> : null}
-          {!data.pluginMarketplaceAvailable ? (
-            <p className="empty-state">{tx("暂无插件")}</p>
-          ) : data.pluginMarketplace.length === 0 ? (
-            <p className="empty-state">{tx("暂无插件")}</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{tx("插件")}</th>
-                    <th>{tx("状态")}</th>
-                    <th>{tx("分发")}</th>
-                    <th>{tx("安装")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {marketplaceEntries.map(({ item, display }) => (
-                    <Fragment key={item.plugin.id}>
-                      <tr>
-                        <td>
-                          <PluginTitle plugin={item.plugin} />
-                        </td>
-                        <td>
-                          <MarketplaceStatusCell item={item} display={display} />
-                        </td>
-                        <td>
-                          <DistributionMetadata
-                            plugin={item.plugin}
-                            draft={marketplaceInstallDraft(item.plugin)}
-                            onUpdate={updatePlugin}
-                            showUpdate={false}
-                          />
-                        </td>
-                        <td>
-                          <MarketplaceInstallControl
-                            item={item}
-                            draft={marketplaceInstallDraft(item.plugin)}
-                            updateDraft={pluginUpdateDraft(item.plugin)}
-                            onInstall={installMarketplacePlugin}
-                            onUpdate={updatePlugin}
-                            onPreview={(target) => previewPluginPermissions(target, item.installed ? "update" : "install")}
-                            previewDraft={pluginPermissionPreviewDraft(item.plugin)}
-                          />
-                        </td>
-                      </tr>
-                      <tr>
-                        <td colSpan={4}>
-                          <MarketplaceDetails display={display} />
-                        </td>
-                      </tr>
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-      ) : null}
-
       {activeTab === "chain" ? (
       <section className="section" data-plugin-manager-section="chain-hooks">
         <div className="section-header">
@@ -760,13 +634,13 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section" data-plugin-manager-section="sim-contributions">
+      <section className="section" data-plugin-manager-section="template-contributions">
         <div className="section-header">
-          <h2>{tx("SIM 与主题贡献")}</h2>
+          <h2>{tx("界面模板与主题贡献")}</h2>
         </div>
         <div className="section-body">
           {themeContributions.length === 0 && layoutContributions.length === 0 ? (
-            <p className="empty-state">{tx("暂无 SIM 贡献")}</p>
+            <p className="empty-state">{tx("暂无界面模板贡献")}</p>
           ) : (
             <div className="table-wrap">
               <table>
@@ -803,13 +677,13 @@ export function PluginsView({
         </div>
       </section>
 
-      <section className="section" data-plugin-manager-section="sim-selection">
+      <section className="section" data-plugin-manager-section="template-selection">
         <div className="section-header">
-          <h2>{tx("SIM 选择面板")}</h2>
+          <h2>{tx("界面模板选择面板")}</h2>
         </div>
         <div className="section-body">
           {simPlugins.length === 0 && themeOptions.length === 0 && layoutOptions.length === 0 ? (
-            <p className="empty-state">{tx("暂无可选 SIM")}</p>
+            <p className="empty-state">{tx("暂无可选界面模板")}</p>
           ) : (
             <form className="plugin-action-runner" onSubmit={applySIMSelection}>
               <div className="stacked-cell">
@@ -822,7 +696,7 @@ export function PluginsView({
               </div>
 
               <label className="plugin-action-field">
-                <span>{tx("SIM 插件")}</span>
+                <span>{tx("界面模板插件")}</span>
                 <select
                   onChange={(event) => {
                     const nextPluginID = event.currentTarget.value;
@@ -1131,148 +1005,6 @@ function DistributionMetadata({
   );
 }
 
-function MarketplaceStatusCell({
-  item,
-  display,
-}: {
-  item: PluginMarketplacePlugin;
-  display: PluginMarketplaceDisplayState;
-}) {
-  return (
-    <div className="stacked-cell plugin-marketplace-status" data-plugin-marketplace-block="status">
-      <StatusPill status={item.installed ? "enabled" : "disabled"} label={item.installed ? tx("已安装") : tx("未安装")} />
-      {item.installed_version ? <span>{tx("已安装版本")} {item.installed_version}</span> : null}
-      {item.update_available ? <span>{tx("更新可用")}</span> : null}
-      <StatusPill status={statusPillStatus(display.compatibility.tone)} label={tx(display.compatibility.labelKey)} />
-      {display.compatibility.reasonCode ? <span>{display.compatibility.reasonCode}</span> : null}
-      {display.compatibility.badges.length > 0 ? (
-        <div className="tag-list plugin-marketplace-badges" data-plugin-marketplace-block="compatibility-badges">
-          {display.compatibility.badges.map((badge) => (
-            <a className="tag" href={badge.url || undefined} key={`${display.id}:${badge.id}`} rel="noreferrer" target="_blank">
-              <StatusPill status={statusPillStatus(badge.tone)} label={badge.label} />
-            </a>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function MarketplaceDetails({ display }: { display: PluginMarketplaceDisplayState }) {
-  return (
-    <div className="stacked-cell plugin-marketplace-details" data-plugin-marketplace-block="details">
-      {display.summary ? <span className="plugin-marketplace-summary">{display.summary}</span> : null}
-      {display.categories.length > 0 ? (
-        <div className="tag-list plugin-marketplace-categories" data-plugin-marketplace-block="categories">
-          {display.categories.map((category) => (
-            <span className="tag" key={`${display.id}:${category}`}>{category}</span>
-          ))}
-        </div>
-      ) : null}
-      <div className="tag-list plugin-marketplace-publisher" data-plugin-marketplace-block="publisher">
-        <StatusPill status={display.publisher.verified ? "ok" : "pending"} label={tx(display.publisher.verificationLabelKey)} />
-        <span className="tag">{display.publisher.name}</span>
-        <StatusPill status={statusPillStatus(display.trust.tone)} label={tx(display.trust.labelKey)} />
-        {display.latestReleaseNote ? <span className="tag">{display.latestReleaseNote.version || display.latestReleaseNote.title}</span> : null}
-      </div>
-      {display.latestReleaseNote?.notes ? <span className="plugin-marketplace-release-note">{display.latestReleaseNote.notes}</span> : null}
-      {display.screenshots.length > 0 ? (
-        <div className="plugin-marketplace-screenshots" data-plugin-marketplace-block="screenshots">
-          {display.screenshots.slice(0, 3).map((screenshot) => (
-            <a className="plugin-marketplace-screenshot" href={screenshot.url} key={`${display.id}:${screenshot.url}`} rel="noreferrer" target="_blank" title={screenshot.caption || screenshot.alt}>
-              <img
-                alt={screenshot.alt}
-                height={54}
-                src={screenshot.thumbnailURL}
-                width={96}
-              />
-            </a>
-          ))}
-        </div>
-      ) : null}
-      {display.advisories.length > 0 ? (
-        <div className="tag-list plugin-marketplace-advisories" data-plugin-marketplace-block="advisories">
-          {display.advisories.map((advisory) => (
-            <a className="tag" href={advisory.url || undefined} key={`${display.id}:${advisory.id}`} rel="noreferrer" target="_blank">
-              <StatusPill status={advisory.tone} label={tx(advisory.labelKey)} />
-              <span>{advisory.title}</span>
-            </a>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function MarketplaceInstallControl({
-  item,
-  draft,
-  updateDraft,
-  previewDraft,
-  onInstall,
-  onUpdate,
-  onPreview,
-}: {
-  item: PluginMarketplacePlugin;
-  draft: PluginInstallDraft;
-  updateDraft: PluginUpdateDraft;
-  previewDraft: PluginPermissionDiffPreviewDraft;
-  onInstall: (item: PluginMarketplacePlugin) => void;
-  onUpdate: (plugin: PluginDescriptor) => void;
-  onPreview: (plugin: PluginDescriptor) => void;
-}) {
-  if (item.installed && !item.update_available) {
-    return (
-      <div className="stacked-cell">
-        <StatusPill status="enabled" label={tx("已安装")} />
-        {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
-      </div>
-    );
-  }
-  if (item.installed && item.update_available) {
-    return (
-      <div className="stacked-cell">
-        <button
-          className="secondary-button compact-button"
-          disabled={updateDraft.busy}
-          onClick={() => onUpdate(item.plugin)}
-          type="button"
-        >
-          <Download size={13} />
-          <span>{tx(updateDraft.busy ? "更新中" : "更新")}</span>
-        </button>
-        <PluginPermissionDiffPreview
-          disabled={updateDraft.busy}
-          draft={previewDraft}
-          onPreview={() => onPreview(item.plugin)}
-        />
-        {updateDraft.error ? <span className="provider-quota-error">{updateDraft.error}</span> : null}
-        {updateDraft.result ? <span>{updateDraft.result}</span> : null}
-      </div>
-    );
-  }
-  return (
-    <div className="stacked-cell">
-      <button
-        className="secondary-button compact-button"
-        disabled={draft.busy}
-        onClick={() => onInstall(item)}
-        type="button"
-      >
-        <Download size={13} />
-        <span>{tx(draft.busy ? "安装中" : "安装插件")}</span>
-      </button>
-      <PluginPermissionDiffPreview
-        disabled={draft.busy}
-        draft={previewDraft}
-        onPreview={() => onPreview(item.plugin)}
-      />
-      {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
-      {draft.result ? <span>{draft.result}</span> : null}
-    </div>
-  );
-}
-
 function shortChecksum(value: string) {
   return value.length > 16 ? `${value.slice(0, 12)}...${value.slice(-4)}` : value;
 }
@@ -1285,7 +1017,7 @@ function statusPillStatus(tone: string) {
 function pluginKindLabel(kind: string) {
   if (kind === "provider") return tx("Provider");
   if (kind === "admin_ui") return tx("Admin UI");
-  if (kind === "sim") return tx("SIM");
+  if (kind === "sim") return tx("界面模板");
   if (kind === "extension") return tx("Extension");
   return kind;
 }

@@ -261,51 +261,6 @@ describe("PluginsView", () => {
     await waitFor(() => expect(screen.getByText("tokenhub.local-privacy · 插件卸载完成，重启后生效")).toBeInTheDocument());
   });
 
-  it("installs a marketplace plugin from its distribution metadata", async () => {
-    const data = emptyData();
-    data.pluginMarketplaceAvailable = true;
-    data.pluginMarketplaceSourceURL = "https://plugins.example/index.json";
-    data.pluginMarketplace = [{
-      plugin: {
-        id: "tokenhub.marketplace.kimi",
-        name: "Marketplace Kimi",
-        version: "1.0.0",
-        source: "marketplace",
-        status: "enabled",
-        kinds: ["provider"],
-        placements: ["gateway_chain"],
-        capabilities: [],
-        distribution: {
-          download_url: "https://plugins.example/kimi.zip",
-          checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-        },
-      },
-      installed: false,
-      update_available: false,
-    }];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      data: { plugin: { id: "tokenhub.marketplace.kimi" }, restart_required: true },
-    }), { status: 201, headers: { "content-type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "插件市场" }));
-    const installButtons = screen.getAllByRole("button", { name: "安装插件" });
-    fireEvent.click(installButtons[installButtons.length - 1]);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:8080/api/admin/plugins/install");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual({
-      download_url: "https://plugins.example/kimi.zip",
-      checksum_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      replace: false,
-      enable: false,
-    });
-    await waitFor(() => expect(screen.getByText("tokenhub.marketplace.kimi · 插件安装完成，重启后生效")).toBeInTheDocument());
-  });
-
   it("renders background job descriptors", () => {
     const data = emptyData();
     data.pluginBackgroundJobs = [{
@@ -412,9 +367,9 @@ describe("PluginsView", () => {
     ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "界面与 SIM" }));
+    fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
 
-    expect(screen.getByText("SIM 与主题贡献")).toBeInTheDocument();
+    expect(screen.getByText("界面模板与主题贡献")).toBeInTheDocument();
     expect(screen.getAllByText("Enterprise Theme").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Ops Layout").length).toBeGreaterThan(0);
     expect(screen.getByText("深色")).toBeInTheDocument();
@@ -445,8 +400,8 @@ describe("PluginsView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "界面与 SIM" }));
-    fireEvent.change(screen.getByLabelText("SIM 插件"), { target: { value: "tokenhub.sim.enterprise" } });
+    fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
+    fireEvent.change(screen.getByLabelText("界面模板插件"), { target: { value: "tokenhub.sim.enterprise" } });
     fireEvent.change(screen.getByLabelText("主题 Token"), { target: { value: "tokenhub.sim.enterprise:theme_tokens:enterprise-light" } });
     fireEvent.change(screen.getByLabelText("布局预设"), { target: { value: "tokenhub.sim.enterprise:shell_layout:enterprise-shell" } });
     fireEvent.click(screen.getByRole("button", { name: "应用选择" }));
@@ -547,7 +502,7 @@ describe("PluginsView", () => {
     const { rerender } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} theme="light" />);
 
     expect(screen.getByText("Codex Subscription")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "UI and SIM" }));
+    fireEvent.click(screen.getByRole("tab", { name: "UI Templates" }));
     expect(screen.getByText("Route Context")).toBeInTheDocument();
     expect(screen.getByText("Enterprise Theme · Enterprise SIM")).toBeInTheDocument();
     expect(screen.getByText("Operations Layout · Enterprise SIM")).toBeInTheDocument();
@@ -560,7 +515,7 @@ describe("PluginsView", () => {
 
     expect(screen.getByText("Codex を同期")).toBeInTheDocument();
     expect(screen.getByText("Codex を更新")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "UI と SIM" }));
+    fireEvent.click(screen.getByRole("tab", { name: "UI テンプレート" }));
     expect(screen.getByText("ルートコンテキスト")).toBeInTheDocument();
     expect(screen.getByText("エンタープライズテーマ · エンタープライズ SIM")).toBeInTheDocument();
     expect(screen.getByText("運用レイアウト · エンタープライズ SIM")).toBeInTheDocument();
@@ -568,7 +523,7 @@ describe("PluginsView", () => {
     expect(screen.getByText("Codex サブスクリプション")).toBeInTheDocument();
   });
 
-  it("keeps SIM selection controls on the shared plugin CSS surface", () => {
+  it("keeps interface template selection controls on the shared plugin CSS surface", () => {
     render(
       <PluginsView
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
@@ -578,8 +533,8 @@ describe("PluginsView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "界面与 SIM" }));
-    expect(screen.getByText("SIM 选择面板")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
+    expect(screen.getByText("界面模板选择面板")).toBeInTheDocument();
     expect(pluginStyles()).toContain(".plugin-action-field select");
     expect(pluginStyles()).toContain(".plugin-action-runner .stacked-cell");
   });
@@ -610,8 +565,8 @@ describe("PluginsView", () => {
     expect(container.querySelector('[data-plugin-manager-section="marketplace"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="chain-hooks"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="ui-contributions"]')).not.toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="sim-contributions"]')).not.toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-manager-section="sim-selection"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="template-contributions"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-manager-section="template-selection"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="actions"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-section="background-jobs"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-control="lifecycle"]')).toBeInTheDocument();

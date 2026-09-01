@@ -1,14 +1,13 @@
 import { type AppData } from "../core/types";
 
-export type PluginManagerTabKey = "registry" | "marketplace" | "chain" | "ui" | "actions";
+export type PluginManagerTabKey = "registry" | "chain" | "ui" | "actions";
 
 export const defaultPluginMarketplaceWebsiteURL = "https://plugins.betokenhub.com";
 
 export const pluginManagerTabs: Array<{ key: PluginManagerTabKey; label: string }> = [
   { key: "registry", label: "已安装插件" },
-  { key: "marketplace", label: "插件市场" },
   { key: "chain", label: "链路注入" },
-  { key: "ui", label: "界面与 SIM" },
+  { key: "ui", label: "界面模板" },
   { key: "actions", label: "动作任务" },
 ];
 
