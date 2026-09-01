@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -55,6 +56,27 @@ permissions:
 	if !gatewayHookExists(bootstrap.gatewayChain.Hooks(pluginmeta.StageTraceExport), "tokenhub.local-bootstrap-trace", "export") {
 		t.Fatalf("trace export hooks = %+v", bootstrap.gatewayChain.Hooks(pluginmeta.StageTraceExport))
 	}
+	defaultTemplate, ok := bootstrap.pluginRegistry.Describe("tokenhub.sim.default")
+	if !ok {
+		t.Fatal("built-in default interface template plugin was not registered")
+	}
+	if !descriptorHasPluginCapability(defaultTemplate, pluginmeta.CapabilityDescriptor{
+		Kind:    pluginmeta.CapabilityKindSIM,
+		Name:    pluginmeta.SIMCapabilityShellLayout,
+		Subject: "default-sidebar",
+		Value:   simCapabilityValueForTest(t, defaultTemplate, pluginmeta.SIMCapabilityShellLayout, "default-sidebar"),
+	}) {
+		t.Fatalf("default template plugin is missing shell layout capability: %+v", defaultTemplate.Capabilities)
+	}
+	if value := simCapabilityValueForTest(t, defaultTemplate, pluginmeta.SIMCapabilityThemeTokens, "default-light"); !simCapabilityPayloadBool(t, value, "default") {
+		t.Fatalf("default light theme payload = %s, want default=true", value)
+	}
+	if value := simCapabilityValueForTest(t, defaultTemplate, pluginmeta.SIMCapabilityThemeTokens, "default-dark"); !simCapabilityPayloadBool(t, value, "default") {
+		t.Fatalf("default dark theme payload = %s, want default=true", value)
+	}
+	if value := simCapabilityValueForTest(t, defaultTemplate, pluginmeta.SIMCapabilityDashboardComposition, "default-dashboard"); !simCapabilityPayloadBool(t, value, "default") {
+		t.Fatalf("default dashboard payload = %s, want default=true", value)
+	}
 	descriptor, ok := bootstrap.adapterRegistry.Describe(ProviderMock)
 	if !ok || descriptor.PluginID != "tokenhub.provider.mock" {
 		t.Fatalf("mock provider descriptor = %+v found=%t", descriptor, ok)
@@ -73,4 +95,27 @@ func TestInstallServerPluginHandlersRegistersBuiltinActionAndBackgroundCallbacks
 	if server.credentialRefresh.pluginRefresh == nil || server.credentialRefresh.pluginJob == nil {
 		t.Fatal("credential refresh plugin callbacks were not installed")
 	}
+}
+
+func simCapabilityValueForTest(t *testing.T, descriptor pluginmeta.Descriptor, name string, subject string) string {
+	t.Helper()
+	for _, capability := range descriptor.Capabilities {
+		if capability.Kind == pluginmeta.CapabilityKindSIM && capability.Name == name && capability.Subject == subject {
+			if capability.Value == "" {
+				t.Fatalf("SIM capability %s/%s has empty value", name, subject)
+			}
+			return capability.Value
+		}
+	}
+	t.Fatalf("SIM capability %s/%s is missing from %+v", name, subject, descriptor.Capabilities)
+	return ""
+}
+
+func simCapabilityPayloadBool(t *testing.T, value string, key string) bool {
+	t.Helper()
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(value), &payload); err != nil {
+		t.Fatalf("decode SIM capability payload: %v", err)
+	}
+	return payload[key] == true
 }
