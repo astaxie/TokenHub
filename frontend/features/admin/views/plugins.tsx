@@ -542,92 +542,6 @@ export function PluginsView({
 
       {activeTab === "ui" ? (
         <>
-      <section className="section" data-plugin-manager-section="ui-contributions">
-        <div className="section-header">
-          <h2>{tx("界面贡献清单")}</h2>
-        </div>
-        <div className="section-body">
-          {uiContributions.length === 0 ? (
-            <p className="empty-state">{tx("暂无界面贡献")}</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{tx("插槽")}</th>
-                    <th>{tx("贡献")}</th>
-                    <th>{tx("插件")}</th>
-                    <th>{tx("Provider 类型")}</th>
-                    <th>{tx("动作")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {uiContributions.map((contribution) => (
-                    <tr key={`${contribution.plugin_id}:${contribution.slot}:${contribution.id}`}>
-                      <td>{contribution.slot}</td>
-                      <td>
-                        <div className="stacked-cell">
-                          <strong>{localizedContributionTitle(contribution, locale)}</strong>
-                          <span>{contribution.id}</span>
-                        </div>
-                      </td>
-                      <td>{contribution.plugin_id}</td>
-                      <td>{contribution.provider_types?.join(", ") || "-"}</td>
-                      <td>
-                        <ContributionAction action={contribution.action} registered={pluginActionKeys.has(pluginActionKey(contribution.plugin_id, contribution.action))} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="section" data-plugin-manager-section="template-contributions">
-        <div className="section-header">
-          <h2>{tx("界面模板与主题贡献")}</h2>
-        </div>
-        <div className="section-body">
-          {themeContributions.length === 0 && layoutContributions.length === 0 ? (
-            <p className="empty-state">{tx("暂无界面模板贡献")}</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{tx("类型")}</th>
-                    <th>{tx("贡献")}</th>
-                    <th>{tx("插件")}</th>
-                    <th>{tx("模式")}</th>
-                    <th>{tx("Token")}</th>
-                    <th>{tx("布局密度")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...themeContributions, ...layoutContributions].map((contribution) => (
-                    <tr key={`${contribution.plugin_id}:${contribution.slot}:${contribution.id}`}>
-                      <td>{presentationContributionTypeLabel(contribution.slot)}</td>
-                      <td>
-                        <div className="stacked-cell">
-                          <strong>{localizedContributionTitle(contribution, locale)}</strong>
-                          <span>{contribution.id}</span>
-                        </div>
-                      </td>
-                      <td>{contribution.plugin_id}</td>
-                      <td>{themeModeLabel(contribution.schema?.mode)}</td>
-                      <td>{themeTokenCount(contribution.schema?.tokens)}</td>
-                      <td>{layoutDensityLabel(contribution.schema?.preset)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-
       <section className="section" data-plugin-manager-section="template-selection">
         <div className="section-header">
           <h2>{tx("界面模板选择面板")}</h2>
@@ -726,6 +640,93 @@ export function PluginsView({
           )}
         </div>
       </section>
+
+      <section className="section" data-plugin-manager-section="template-contributions">
+        <div className="section-header">
+          <h2>{tx("界面模板与主题贡献")}</h2>
+        </div>
+        <div className="section-body">
+          {themeContributions.length === 0 && layoutContributions.length === 0 ? (
+            <p className="empty-state">{tx("暂无界面模板贡献")}</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{tx("类型")}</th>
+                    <th>{tx("贡献")}</th>
+                    <th>{tx("插件")}</th>
+                    <th>{tx("模式")}</th>
+                    <th>{tx("Token")}</th>
+                    <th>{tx("布局密度")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...themeContributions, ...layoutContributions].map((contribution) => (
+                    <tr key={`${contribution.plugin_id}:${contribution.slot}:${contribution.id}`}>
+                      <td>{presentationContributionTypeLabel(contribution.slot)}</td>
+                      <td>
+                        <div className="stacked-cell">
+                          <strong>{localizedContributionTitle(contribution, locale)}</strong>
+                          <span>{contribution.id}</span>
+                        </div>
+                      </td>
+                      <td>{contribution.plugin_id}</td>
+                      <td>{themeModeLabel(contribution.schema?.mode)}</td>
+                      <td>{themeTokenCount(contribution.schema?.tokens)}</td>
+                      <td>{layoutDensityLabel(contribution.schema?.preset)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <details className="plugin-developer-details" data-plugin-manager-section="ui-contributions">
+        <summary>
+          <span>{tx("开发者信息")}</span>
+          <strong>{tx("UI 插槽注册")}</strong>
+        </summary>
+        <div className="plugin-developer-details-body">
+          {uiContributions.length === 0 ? (
+            <p className="empty-state">{tx("暂无 UI 插槽注册")}</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{tx("插槽")}</th>
+                    <th>{tx("贡献")}</th>
+                    <th>{tx("插件")}</th>
+                    <th>{tx("Provider 类型")}</th>
+                    <th>{tx("动作")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uiContributions.map((contribution) => (
+                    <tr key={`${contribution.plugin_id}:${contribution.slot}:${contribution.id}`}>
+                      <td>{contribution.slot}</td>
+                      <td>
+                        <div className="stacked-cell">
+                          <strong>{localizedContributionTitle(contribution, locale)}</strong>
+                          <span>{contribution.id}</span>
+                        </div>
+                      </td>
+                      <td>{contribution.plugin_id}</td>
+                      <td>{contribution.provider_types?.join(", ") || "-"}</td>
+                      <td>
+                        <ContributionAction action={contribution.action} registered={pluginActionKeys.has(pluginActionKey(contribution.plugin_id, contribution.action))} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </details>
         </>
       ) : null}
 

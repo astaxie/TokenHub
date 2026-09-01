@@ -158,6 +158,44 @@
   min-width: 0;
 }
 
+.plugin-developer-details {
+  min-width: 0;
+  margin-top: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.plugin-developer-details summary {
+  min-height: 42px;
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--ink);
+  list-style-position: inside;
+}
+
+.plugin-developer-details summary span {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.plugin-developer-details summary strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.plugin-developer-details-body {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding: 12px 13px 13px;
+}
+
 .plugin-install-runner {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.95fr);

@@ -423,6 +423,12 @@ describe("PluginsView", () => {
     const data = emptyData();
     data.pluginUI = [
       {
+        plugin_id: "tokenhub.provider.codex",
+        id: "route-context",
+        slot: "route.detail.panel",
+        title: "Route Context",
+      },
+      {
         plugin_id: "tokenhub.sim.enterprise",
         id: "enterprise-theme",
         slot: "theme.tokens",
@@ -450,10 +456,15 @@ describe("PluginsView", () => {
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
 
     expect(screen.getByText("界面模板与主题贡献")).toBeInTheDocument();
+    expect(screen.queryByText("界面贡献清单")).not.toBeInTheDocument();
+    expect(screen.getByText("UI 插槽注册")).toBeInTheDocument();
+    expect(screen.getByText("开发者信息").closest("details")).not.toHaveAttribute("open");
     expect(screen.getAllByText("Enterprise Theme").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Ops Layout").length).toBeGreaterThan(0);
     expect(screen.getByText("深色")).toBeInTheDocument();
     expect(screen.getByText("紧凑")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("开发者信息"));
+    expect(screen.getByText("route.detail.panel")).toBeInTheDocument();
   });
 
   it("applies SIM selection changes through the shell preference callback", () => {
@@ -573,6 +584,7 @@ describe("PluginsView", () => {
 
     expect(screen.getByText("Codex Subscription")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "UI Templates" }));
+    fireEvent.click(screen.getByText("Developer Info"));
     expect(screen.getByText("Route Context")).toBeInTheDocument();
     expect(screen.getByText("Enterprise Theme · Enterprise SIM")).toBeInTheDocument();
     expect(screen.getByText("Operations Layout · Enterprise SIM")).toBeInTheDocument();
@@ -584,6 +596,7 @@ describe("PluginsView", () => {
 
     expect(screen.getByText("Codex を更新")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "UI テンプレート" }));
+    fireEvent.click(screen.getByText("開発者情報"));
     expect(screen.getByText("ルートコンテキスト")).toBeInTheDocument();
     expect(screen.getByText("エンタープライズテーマ · エンタープライズ SIM")).toBeInTheDocument();
     expect(screen.getByText("運用レイアウト · エンタープライズ SIM")).toBeInTheDocument();
@@ -605,6 +618,7 @@ describe("PluginsView", () => {
     expect(screen.getByText("界面模板选择面板")).toBeInTheDocument();
     expect(pluginStyles()).toContain(".plugin-action-field select");
     expect(pluginStyles()).toContain(".plugin-action-runner .stacked-cell");
+    expect(pluginStyles()).toContain(".plugin-developer-details summary");
   });
 
   it("renders stable Plugin Manager hooks for feature-scoped CSS", () => {
@@ -649,6 +663,7 @@ describe("PluginsView", () => {
     expect(pluginStyles()).toContain(".plugin-install-panel");
     expect(pluginStyles()).toContain(".plugin-install-file-button");
     expect(pluginStyles()).toContain(".plugin-install-toggle");
+    expect(pluginStyles()).toContain(".plugin-developer-details");
     expect(pluginStyles()).toContain('.plugins-view [data-plugin-manager-control="lifecycle"] .compact-button');
   });
 
