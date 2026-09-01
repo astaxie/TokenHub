@@ -199,26 +199,58 @@ describe("PluginsView", () => {
     await waitFor(() => expect(screen.getByText("已禁用")).toBeInTheDocument());
   });
 
-  it("renders gateway hook subjects", () => {
+  it("lists gateway injection plugins instead of raw hook rows", () => {
     const data = emptyData();
-    data.pluginChain.hooks = [{
-      plugin_id: "tokenhub.provider.kimi",
-      hook_id: "kimi-provider-call",
-      stage: "provider_call",
-      priority: 1000,
-      subject: "kimi_subscription",
-      failure_policy: "skip_route",
-      timeout_millis: 5000,
-      mandatory: false,
-      reads: ["provider_request"],
-      writes: ["provider_response", "usage"],
+    data.plugins = [{
+      id: "tokenhub.chain.privacy",
+      name: "Privacy Chain",
+      version: "1.0.0",
+      source: "marketplace",
+      status: "enabled",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
     }];
+    data.pluginChain.hooks = [
+      {
+        plugin_id: "tokenhub.chain.privacy",
+        hook_id: "privacy-pre",
+        stage: "privacy_pre",
+        priority: 1000,
+        subject: "chat",
+        failure_policy: "fail_closed",
+        timeout_millis: 5000,
+        mandatory: true,
+        reads: ["request_body"],
+        writes: ["request_body", "audit"],
+      },
+      {
+        plugin_id: "tokenhub.chain.privacy",
+        hook_id: "privacy-cache",
+        stage: "cache_lookup",
+        priority: 1200,
+        subject: "responses",
+        failure_policy: "fail_open",
+        timeout_millis: 5000,
+        mandatory: false,
+        reads: ["request_body"],
+        writes: ["cache_value"],
+      },
+    ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
     fireEvent.click(screen.getByRole("tab", { name: "链路注入" }));
 
+    expect(screen.getByText("链路注入插件清单")).toBeInTheDocument();
+    expect(screen.getByText("Privacy Chain")).toBeInTheDocument();
+    expect(screen.getByText("注入点")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("强制 1 · 可选 1")).toBeInTheDocument();
+    expect(screen.queryByText("privacy-pre")).not.toBeInTheDocument();
+    expect(screen.queryByText("privacy-cache")).not.toBeInTheDocument();
     expect(screen.getByText("适用对象")).toBeInTheDocument();
-    expect(screen.getByText("kimi_subscription")).toBeInTheDocument();
+    expect(screen.getByText("chat")).toBeInTheDocument();
+    expect(screen.getByText("responses")).toBeInTheDocument();
   });
 
   it("updates local plugin state through the admin endpoint", async () => {

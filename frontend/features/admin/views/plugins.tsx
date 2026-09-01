@@ -1,6 +1,6 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
-import { type ApiContext, type AppData, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
+import { type ApiContext, type AppData, type GatewayHookDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
 import { pluginActionInputDefaults, pluginActionKey, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
 import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
@@ -74,7 +74,8 @@ export function PluginsView({
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
   const providerPluginList = plugins.filter((plugin) => plugin.kinds?.includes("provider"));
   const providerPlugins = providerPluginList.length;
-  const chainInjectionPlugins = new Set(data.pluginChain.hooks.map((hook) => hook.plugin_id)).size;
+  const chainPluginList = useMemo(() => chainPluginSummaries(plugins, data.pluginChain.hooks, locale), [plugins, data.pluginChain.hooks, locale]);
+  const chainInjectionPlugins = chainPluginList.length;
   const uiTemplatePlugins = plugins.filter((plugin) => plugin.kinds?.includes("sim")).length;
   const backgroundJobPlugins = new Set(backgroundJobs.map((job) => job.plugin_id)).size;
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
@@ -576,50 +577,95 @@ export function PluginsView({
       ) : null}
 
       {activeTab === "chain" ? (
-      <section className="section" data-plugin-manager-section="chain-hooks">
-        <div className="section-header">
-          <h2>{tx("链路注入计划")}</h2>
-        </div>
-        <div className="section-body">
-          {data.pluginChain.hooks.length === 0 ? (
-            <p className="empty-state">{tx("暂无链路 Hook")}</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{tx("阶段")}</th>
-                    <th>{tx("Hook")}</th>
-                    <th>{tx("插件")}</th>
-                    <th>{tx("适用对象")}</th>
-                    <th>{tx("策略")}</th>
-                    <th>{tx("读")}</th>
-                    <th>{tx("写")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.pluginChain.hooks.map((hook) => (
-                    <tr key={`${hook.plugin_id}:${hook.hook_id}`}>
-                      <td>{hook.stage}</td>
-                      <td>
-                        <div className="stacked-cell">
-                          <strong>{hook.hook_id}</strong>
-                          <span>{mandatoryLabel(hook.mandatory)} · {hook.priority}</span>
-                        </div>
-                      </td>
-                      <td>{hook.plugin_id}</td>
-                      <td>{hook.subject || tx("未声明")}</td>
-                      <td>{hook.failure_policy}</td>
-                      <td>{hook.reads?.join(", ") || "-"}</td>
-                      <td>{hook.writes?.join(", ") || "-"}</td>
+        <section className="section" data-plugin-manager-section="chain-plugins">
+          <div className="section-header">
+            <h2>{tx("链路注入插件清单")}</h2>
+          </div>
+          <div className="section-body">
+            {chainPluginList.length === 0 ? (
+              <p className="empty-state">{tx("暂无链路注入插件")}</p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{tx("插件")}</th>
+                      <th>{tx("来源")}</th>
+                      <th>{tx("状态")}</th>
+                      <th>{tx("注入点")}</th>
+                      <th>{tx("注入阶段")}</th>
+                      <th>{tx("适用对象")}</th>
+                      <th>{tx("失败策略")}</th>
+                      <th>{tx("读写数据")}</th>
+                      <th>{tx("操作")}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
+                  </thead>
+                  <tbody>
+                    {chainPluginList.map((item) => {
+                      const plugin = item.plugin;
+                      const lifecycle = plugin ? pluginManagerDisplayState({ plugin }) : undefined;
+                      return (
+                        <tr key={item.pluginID}>
+                          <td>{plugin ? <PluginTitle plugin={plugin} /> : <span>{item.pluginID}</span>}</td>
+                          <td>
+                            {plugin ? (
+                              <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                            ) : (
+                              <span className="muted">{tx("未声明")}</span>
+                            )}
+                          </td>
+                          <td>
+                            {plugin && lifecycle ? (
+                              <PluginLifecycleControl
+                                draft={pluginStateDraft(plugin)}
+                                lifecycle={lifecycle}
+                                onRollback={rollbackPlugin}
+                                onUpdate={updatePluginState}
+                                plugin={plugin}
+                                rollbackDraft={pluginRollbackDraft(plugin)}
+                              />
+                            ) : (
+                              <span className="muted">-</span>
+                            )}
+                          </td>
+                          <td>
+                            <div className="stacked-cell">
+                              <strong>{item.hooks.length}</strong>
+                              <span>
+                                {tx("强制")} {item.mandatoryHooks} · {tx("可选")} {item.hooks.length - item.mandatoryHooks}
+                              </span>
+                            </div>
+                          </td>
+                          <td><TagList values={item.stages} /></td>
+                          <td><TagList values={item.subjects} emptyLabel={tx("未声明")} /></td>
+                          <td><TagList values={item.failurePolicies} /></td>
+                          <td>
+                            <div className="stacked-cell">
+                              <span>{tx("读")} {item.reads.join(", ") || "-"}</span>
+                              <span>{tx("写")} {item.writes.join(", ") || "-"}</span>
+                            </div>
+                          </td>
+                          <td>
+                            {plugin && lifecycle ? (
+                              <PluginDeleteControl
+                                lifecycle={lifecycle}
+                                plugin={plugin}
+                                draft={pluginDeleteDraft(plugin)}
+                                onDelete={deletePlugin}
+                              />
+                            ) : (
+                              <span className="muted">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
       ) : null}
 
       {activeTab === "ui" ? (
@@ -907,6 +953,15 @@ function CapabilityList({ plugin }: { plugin: PluginDescriptor }) {
   );
 }
 
+function TagList({ values, emptyLabel = "-" }: { values: string[]; emptyLabel?: string }) {
+  if (values.length === 0) return <span className="muted">{emptyLabel}</span>;
+  return (
+    <div className="tag-list">
+      {values.map((value) => <span className="tag" key={value}>{value}</span>)}
+    </div>
+  );
+}
+
 function DistributionMetadata({
   plugin,
   lifecycle,
@@ -1133,6 +1188,51 @@ function pluginSourceLabel(source: string) {
   return source;
 }
 
-function mandatoryLabel(mandatory: boolean) {
-  return mandatory ? tx("强制") : tx("可选");
+type ChainPluginSummary = {
+  pluginID: string;
+  plugin?: PluginDescriptor;
+  hooks: GatewayHookDescriptor[];
+  stages: string[];
+  subjects: string[];
+  failurePolicies: string[];
+  reads: string[];
+  writes: string[];
+  mandatoryHooks: number;
+};
+
+function chainPluginSummaries(plugins: PluginDescriptor[], hooks: GatewayHookDescriptor[], locale: string): ChainPluginSummary[] {
+  const pluginsByID = new Map(plugins.map((plugin) => [plugin.id, plugin]));
+  const summaries = new Map<string, ChainPluginSummary>();
+  hooks.forEach((hook) => {
+    const pluginID = hook.plugin_id.trim();
+    if (!pluginID) return;
+    const current = summaries.get(pluginID) ?? {
+      pluginID,
+      plugin: pluginsByID.get(pluginID),
+      hooks: [],
+      stages: [],
+      subjects: [],
+      failurePolicies: [],
+      reads: [],
+      writes: [],
+      mandatoryHooks: 0,
+    };
+    current.hooks.push(hook);
+    current.stages = uniqueStrings([...current.stages, hook.stage]);
+    current.subjects = uniqueStrings([...current.subjects, hook.subject ?? ""]);
+    current.failurePolicies = uniqueStrings([...current.failurePolicies, hook.failure_policy]);
+    current.reads = uniqueStrings([...current.reads, ...(hook.reads ?? [])]);
+    current.writes = uniqueStrings([...current.writes, ...(hook.writes ?? [])]);
+    current.mandatoryHooks += hook.mandatory ? 1 : 0;
+    summaries.set(pluginID, current);
+  });
+  return Array.from(summaries.values()).sort((first, second) => {
+    const firstName = first.plugin ? localizedPluginName(first.plugin, locale) : first.pluginID;
+    const secondName = second.plugin ? localizedPluginName(second.plugin, locale) : second.pluginID;
+    return firstName.localeCompare(secondName, locale);
+  });
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort();
 }
