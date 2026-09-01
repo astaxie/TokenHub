@@ -179,5 +179,6 @@ SQLite は単一接続と 5 秒の `busy_timeout` を使用し、バックエン
 - [デプロイ](deployment.md)：デプロイ形態、環境変数、リバースプロキシ、ヘルスチェック。
 - [PostgreSQL 設定ガイド](../postgresql-setup.md)：PostgreSQL の設定、運用、移行。
 - [管理者ガイド](administrator-guide.md)：Provider、ルート、アクセス制御、監査、コスト統制。
+- [プラグイン開発ガイド](plugin-development.md)：プラグイン家族、manifest 契約、runtime 面、移行チェックリスト。
 - [利用者ガイド](user-guide.md)：Project API Key とモデル API 呼び出し。
 - [チームリーダーガイド](team-leader-guide.md)：チーム、Project、メンバー、コスト配賦。

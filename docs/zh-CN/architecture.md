@@ -184,5 +184,6 @@ SQLite 使用单连接和 5 秒 `busy_timeout`，适合单实例；不得让多�
 - [部署](deployment.md)：三种部署形态、环境变量、反向代理和健康检查。
 - [PostgreSQL 设置指南](../postgresql-setup.md)：PostgreSQL 配置、运维和迁移。
 - [管理员指南](administrator-guide.md)：Provider、路由、访问控制、审计和成本治理。
+- [插件开发指南](plugin-development.md)：插件家族、manifest 契约、运行时能力面和迁移清单。
 - [普通用户指南](user-guide.md)：项目 API Key 与模型 API 调用方式。
 - [团队负责人指南](team-leader-guide.md)：团队、项目、成员和成本归因管理。

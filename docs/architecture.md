@@ -179,5 +179,6 @@ The deployment has no Redis, message broker, or service mesh dependency. Synchro
 - [Deployment](deployment.md): deployment modes, environment variables, reverse proxying, and health checks.
 - [PostgreSQL Setup Guide](postgresql-setup.md): PostgreSQL configuration, operations, and migration.
 - [Administrator Guide](administrator-guide.md): providers, routes, access control, audit, and cost governance.
+- [Plugin Development Guide](plugin-development.md): plugin families, manifest contracts, runtime surfaces, and migration checklist.
 - [User Guide](user-guide.md): project API keys and model API calls.
 - [Team Leader Guide](team-leader-guide.md): teams, projects, members, and cost attribution.
