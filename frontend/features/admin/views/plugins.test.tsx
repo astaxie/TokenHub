@@ -422,21 +422,42 @@ describe("PluginsView", () => {
     await waitFor(() => expect(screen.getByText("tokenhub.local-privacy · 插件卸载完成，重启后生效")).toBeInTheDocument());
   });
 
-  it("renders background job descriptors", () => {
+  it("lists background job plugins instead of raw job rows", () => {
     const data = emptyData();
-    data.pluginBackgroundJobs = [{
-      plugin_id: "tokenhub.jobs",
-      job_id: "quota.refresh",
-      title: "Refresh quota",
-      capability: "quota.refresh",
-      subject: "openai_codex",
-      schedule: "*/10 * * * *",
-      max_concurrency: 1,
-      retry: { max_attempts: 2, backoff_millis: 1000 },
+    data.plugins = [{
+      id: "tokenhub.provider.openai-codex",
+      name: "OpenAI Codex Subscription",
+      version: "built-in",
+      source: "built_in",
+      status: "enabled",
+      kinds: ["provider"],
+      placements: ["gateway_chain", "background"],
+      capabilities: [],
     }];
+    data.pluginBackgroundJobs = [
+      {
+        plugin_id: "tokenhub.provider.openai-codex",
+        job_id: "openai_codex.credentials.refresh_due",
+        title: "Refresh credentials",
+        capability: "credentials.refresh_due",
+        subject: "openai_codex",
+        schedule: "1m",
+        max_concurrency: 1,
+      },
+      {
+        plugin_id: "tokenhub.provider.openai-codex",
+        job_id: "openai_codex.quota.refresh_due",
+        title: "Refresh quota",
+        capability: "quota.refresh_due",
+        subject: "openai_codex",
+        schedule: "10m",
+        max_concurrency: 1,
+        retry: { max_attempts: 2, backoff_millis: 1000 },
+      },
+    ];
     data.pluginBackgroundRuns = [{
-      plugin_id: "tokenhub.jobs",
-      job_id: "quota.refresh",
+      plugin_id: "tokenhub.provider.openai-codex",
+      job_id: "openai_codex.quota.refresh_due",
       trigger: "schedule",
       status: "succeeded",
       attempts: 1,
@@ -447,57 +468,19 @@ describe("PluginsView", () => {
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
     fireEvent.click(screen.getByRole("tab", { name: "后台任务" }));
 
-    expect(screen.getByText("后台任务清单")).toBeInTheDocument();
-    expect(screen.getAllByText("quota.refresh")).toHaveLength(2);
-    expect(screen.getByText("*/10 * * * *")).toBeInTheDocument();
+    expect(screen.getByText("后台任务插件清单")).toBeInTheDocument();
+    expect(screen.getAllByText("OpenAI Codex Subscription")).toHaveLength(1);
+    expect(screen.getByText("任务数量")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("1m")).toBeInTheDocument();
+    expect(screen.getByText("10m")).toBeInTheDocument();
+    expect(screen.getByText("credentials.refresh_due")).toBeInTheDocument();
+    expect(screen.getByText("quota.refresh_due")).toBeInTheDocument();
     expect(screen.getByText("成功 / 1")).toBeInTheDocument();
     expect(screen.getByText("2 / 1000ms")).toBeInTheDocument();
-  });
-
-  it("runs plugin background jobs through the admin endpoint", async () => {
-    const data = emptyData();
-    data.pluginBackgroundJobs = [{
-      plugin_id: "tokenhub.jobs",
-      job_id: "quota.refresh",
-      title: "Refresh quota",
-      capability: "quota.refresh",
-      subject: "openai_codex",
-      schedule: "*/10 * * * *",
-      max_concurrency: 1,
-      input_schema: {
-        type: "object",
-        required: ["resource_id"],
-        properties: {
-          resource_id: { type: "string" },
-        },
-      },
-    }];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      data: {
-        plugin_id: "tokenhub.jobs",
-        job_id: "quota.refresh",
-        trigger: "manual",
-        status: "succeeded",
-        attempts: 1,
-        started_at: "2026-08-26T10:00:00Z",
-        completed_at: "2026-08-26T10:00:01Z",
-        result: { data: { resource_id: "rsrc_1", access_token: "[redacted]" } },
-      },
-    }), { status: 200, headers: { "content-type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "后台任务" }));
-    fireEvent.change(screen.getByLabelText(/resource_id/), { target: { value: "rsrc_1" } });
-    fireEvent.click(screen.getByRole("button", { name: "运行任务" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.jobs/background-jobs/quota.refresh/run");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual({ resource_id: "rsrc_1" });
-    await waitFor(() => expect(screen.getByText(/\"status\": \"succeeded\"/)).toBeInTheDocument());
-    expect(screen.getByText(/\"access_token\": \"\[redacted\]\"/)).toBeInTheDocument();
+    expect(screen.queryByText("openai_codex.credentials.refresh_due")).not.toBeInTheDocument();
+    expect(screen.queryByText("openai_codex.quota.refresh_due")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "运行任务" })).not.toBeInTheDocument();
   });
 
   it("renders SIM theme and layout contributions", () => {
@@ -590,7 +573,7 @@ describe("PluginsView", () => {
     });
   });
 
-  it("localizes plugin metadata contributed by descriptors, UI contributions, jobs, and SIM payloads", () => {
+  it("localizes plugin metadata contributed by descriptors, UI contributions, background job summaries, and SIM payloads", () => {
     const data = emptyData();
     data.plugins = [
       {
@@ -674,12 +657,15 @@ describe("PluginsView", () => {
     expect(screen.getAllByText("Enterprise Theme").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Operations Layout").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("tab", { name: "Background Jobs" }));
-    expect(screen.getByText("Refresh Codex")).toBeInTheDocument();
+    expect(screen.getByText("Background Job Plugin List")).toBeInTheDocument();
+    expect(screen.getByText("Codex Subscription")).toBeInTheDocument();
+    expect(screen.getByText("codex.refresh")).toBeInTheDocument();
 
     setActiveLanguage("ja");
     rerender(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} theme="light" />);
 
-    expect(screen.getByText("Codex を更新")).toBeInTheDocument();
+    expect(screen.getByText("バックグラウンドジョブプラグイン一覧")).toBeInTheDocument();
+    expect(screen.getByText("Codex サブスクリプション")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "UI テンプレート" }));
     fireEvent.click(screen.getByText("開発者情報"));
     expect(screen.getByText("ルートコンテキスト")).toBeInTheDocument();

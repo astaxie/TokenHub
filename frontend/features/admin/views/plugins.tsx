@@ -1,7 +1,7 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type GatewayHookDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
-import { pluginActionInputDefaults, pluginActionKey, pluginBackgroundJobKey, pluginBackgroundJobPayload, redactPluginActionResult } from "../domain/plugin-actions";
+import { pluginActionKey, pluginBackgroundJobKey } from "../domain/plugin-actions";
 import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { localizedCapabilityTitle, localizedContributionTitle, localizedPluginName } from "../domain/plugin-localization";
@@ -11,19 +11,11 @@ import { resolveSIMSelection, type SIMSelectionPreference } from "../domain/sim-
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
-import { PluginBackgroundJobRunner } from "./plugin-action-runner";
 import { emptyInstallDraft, PluginInstallDialog, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
 import { PluginDeleteControl, PluginLifecycleControl, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
 type PluginUpdateDraft = {
-  busy: boolean;
-  error: string;
-  result: string;
-};
-
-type PluginBackgroundJobDraft = {
-  values: Record<string, string | boolean>;
   busy: boolean;
   error: string;
   result: string;
@@ -47,7 +39,6 @@ export function PluginsView({
   const [pluginUpdateDrafts, setPluginUpdateDrafts] = useState<Record<string, PluginUpdateDraft>>({});
   const [pluginDeleteDrafts, setPluginDeleteDrafts] = useState<Record<string, PluginDeleteDraft>>({});
   const [pluginRollbackDrafts, setPluginRollbackDrafts] = useState<Record<string, PluginRollbackDraft>>({});
-  const [backgroundJobDrafts, setBackgroundJobDrafts] = useState<Record<string, PluginBackgroundJobDraft>>({});
   const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
   const [pluginPermissionPreviews, setPluginPermissionPreviews] = useState<Record<string, PluginPermissionDiffPreviewDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
@@ -69,7 +60,8 @@ export function PluginsView({
   const themeOptions = useMemo(() => simSelectionThemeOptions(simRegistry.themeTokens, plugins, theme, locale), [simRegistry.themeTokens, plugins, theme, locale]);
   const layoutOptions = useMemo(() => simSelectionLayoutOptions(simRegistry.shellLayouts, plugins, locale), [simRegistry.shellLayouts, plugins, locale]);
   const simTemplates = useMemo(() => simTemplateOptions(simPlugins, themeOptions, layoutOptions), [simPlugins, themeOptions, layoutOptions]);
-  const backgroundRuns = new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run]));
+  const backgroundRuns = useMemo(() => new Map(data.pluginBackgroundRuns.map((run) => [pluginBackgroundJobKey(run.plugin_id, run.job_id), run])), [data.pluginBackgroundRuns]);
+  const backgroundJobPluginList = useMemo(() => backgroundJobPluginSummaries(plugins, backgroundJobs, backgroundRuns, locale), [plugins, backgroundJobs, backgroundRuns, locale]);
   const pluginActionKeys = new Set(pluginActions.map((action) => pluginActionKey(action.plugin_id, action.action_id)));
   const marketplaceWebsiteURL = pluginMarketplaceWebsiteURL(data);
   const providerPluginList = plugins.filter((plugin) => plugin.kinds?.includes("provider"));
@@ -77,7 +69,7 @@ export function PluginsView({
   const chainPluginList = useMemo(() => chainPluginSummaries(plugins, data.pluginChain.hooks, locale), [plugins, data.pluginChain.hooks, locale]);
   const chainInjectionPlugins = chainPluginList.length;
   const uiTemplatePlugins = plugins.filter((plugin) => plugin.kinds?.includes("sim")).length;
-  const backgroundJobPlugins = new Set(backgroundJobs.map((job) => job.plugin_id)).size;
+  const backgroundJobPlugins = backgroundJobPluginList.length;
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
   const selectedSIMTemplate =
     simTemplates.find((template) => template.id === selectedSIMPluginID) ??
@@ -88,45 +80,6 @@ export function PluginsView({
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginRollbackDraft = (plugin: PluginDescriptor) => pluginRollbackDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginPermissionPreviewDraft = (plugin: PluginDescriptor) => pluginPermissionPreviews[plugin.id] ?? emptyPermissionPreviewDraft();
-  const backgroundJobDraft = (job: PluginBackgroundJobDescriptor) => backgroundJobDrafts[pluginBackgroundJobKey(job.plugin_id, job.job_id)] ?? emptyBackgroundJobDraft(job);
-
-  function updateBackgroundJobValue(job: PluginBackgroundJobDescriptor, field: string, value: string | boolean) {
-    const key = pluginBackgroundJobKey(job.plugin_id, job.job_id);
-    setBackgroundJobDrafts((drafts) => ({
-      ...drafts,
-      [key]: {
-        ...emptyBackgroundJobDraft(job),
-        ...drafts[key],
-        values: { ...(drafts[key]?.values ?? pluginActionInputDefaults(job)), [field]: value },
-        error: "",
-      },
-    }));
-  }
-
-  async function runBackgroundJob(job: PluginBackgroundJobDescriptor, event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const key = pluginBackgroundJobKey(job.plugin_id, job.job_id);
-    const draft = backgroundJobDraft(job);
-    setBackgroundJobDrafts((drafts) => ({ ...drafts, [key]: { ...draft, busy: true, error: "", result: "" } }));
-    try {
-      const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(job.plugin_id)}/background-jobs/${encodeURIComponent(job.job_id)}/run`, {
-        method: "POST",
-        body: JSON.stringify(pluginBackgroundJobPayload(job, draft.values)),
-      });
-      if (!response.ok) throw new Error(await readAdminError(response, tx("运行后台任务")));
-      const payload = await response.json();
-      setBackgroundJobDrafts((drafts) => ({
-        ...drafts,
-        [key]: { ...draft, busy: false, error: "", result: JSON.stringify(redactPluginActionResult(payload), null, 2) },
-      }));
-    } catch (reason) {
-      if (isAuthExpiredError(reason)) return;
-      setBackgroundJobDrafts((drafts) => ({
-        ...drafts,
-        [key]: { ...draft, busy: false, error: reason instanceof Error ? reason.message : tx("运行后台任务失败"), result: "" },
-      }));
-    }
-  }
 
   async function updatePluginState(plugin: PluginDescriptor, status: string) {
     const current = pluginStateDraft(plugin);
@@ -843,66 +796,84 @@ export function PluginsView({
 
       {activeTab === "jobs" ? (
         <section className="section" data-plugin-manager-section="background-jobs">
-        <div className="section-header">
-          <h2>{tx("后台任务清单")}</h2>
-        </div>
-        <div className="section-body">
-          {backgroundJobs.length === 0 ? (
-            <p className="empty-state">{tx("暂无后台任务")}</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{tx("插件")}</th>
-                    <th>{tx("任务 ID")}</th>
-                    <th>{tx("调度")}</th>
-                    <th>{tx("能力标识")}</th>
-                    <th>{tx("最大并发")}</th>
-                    <th>{tx("最近运行")}</th>
-                    <th>{tx("重试")}</th>
-                    <th>{tx("操作")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {backgroundJobs.map((job) => {
-                    const run = backgroundRuns.get(pluginBackgroundJobKey(job.plugin_id, job.job_id));
-                    return (
-                      <tr key={`${job.plugin_id}:${job.job_id}`}>
-                        <td>{job.plugin_id}</td>
-                        <td>
-                          <div className="stacked-cell">
-                            <strong>{job.job_id}</strong>
-                            <span>{localizedContributionTitle({ ...job, id: job.job_id }, locale) || "-"}</span>
-                          </div>
-                        </td>
-                        <td>{job.schedule}</td>
-                        <td>{job.capability || job.subject || "-"}</td>
-                        <td>{job.max_concurrency}</td>
-                        <td>{backgroundJobRunLabel(run)}</td>
-                        <td>{backgroundJobRetryLabel(job.retry)}</td>
-                        <td>
-                          <PluginBackgroundJobRunner
-                            draft={backgroundJobDraft(job)}
-                            job={job}
-                            labels={{
-                              submit: tx("运行任务"),
-                              submitting: tx("运行中"),
-                              unsupportedSchema: tx("暂不支持复杂输入 Schema"),
-                            }}
-                            onChange={updateBackgroundJobValue}
-                            onSubmit={runBackgroundJob}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
+          <div className="section-header">
+            <h2>{tx("后台任务插件清单")}</h2>
+          </div>
+          <div className="section-body">
+            {backgroundJobPluginList.length === 0 ? (
+              <p className="empty-state">{tx("暂无后台任务插件")}</p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{tx("插件")}</th>
+                      <th>{tx("来源")}</th>
+                      <th>{tx("状态")}</th>
+                      <th>{tx("任务数量")}</th>
+                      <th>{tx("调度")}</th>
+                      <th>{tx("能力标识")}</th>
+                      <th>{tx("最大并发")}</th>
+                      <th>{tx("最近运行")}</th>
+                      <th>{tx("重试")}</th>
+                      <th>{tx("操作")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backgroundJobPluginList.map((item) => {
+                      const plugin = item.plugin;
+                      const lifecycle = plugin ? pluginManagerDisplayState({ plugin }) : undefined;
+                      return (
+                        <tr key={item.pluginID}>
+                          <td>{plugin ? <PluginTitle plugin={plugin} /> : <span>{item.pluginID}</span>}</td>
+                          <td>
+                            {plugin ? (
+                              <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                            ) : (
+                              <span className="muted">{tx("未声明")}</span>
+                            )}
+                          </td>
+                          <td>
+                            {plugin && lifecycle ? (
+                              <PluginLifecycleControl
+                                draft={pluginStateDraft(plugin)}
+                                lifecycle={lifecycle}
+                                onRollback={rollbackPlugin}
+                                onUpdate={updatePluginState}
+                                plugin={plugin}
+                                rollbackDraft={pluginRollbackDraft(plugin)}
+                              />
+                            ) : (
+                              <span className="muted">-</span>
+                            )}
+                          </td>
+                          <td><strong>{item.jobs.length}</strong></td>
+                          <td><TagList values={item.schedules} /></td>
+                          <td><TagList values={item.capabilities} /></td>
+                          <td>{item.maxConcurrency}</td>
+                          <td><TagList values={item.recentRuns} emptyLabel={tx("未运行")} /></td>
+                          <td><TagList values={item.retries} /></td>
+                          <td>
+                            {plugin && lifecycle ? (
+                              <PluginDeleteControl
+                                lifecycle={lifecycle}
+                                plugin={plugin}
+                                draft={pluginDeleteDraft(plugin)}
+                                onDelete={deletePlugin}
+                              />
+                            ) : (
+                              <span className="muted">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
       ) : null}
     </div>
   );
@@ -1177,10 +1148,6 @@ function preferredSIMLayout(options: SIMSelectionCapabilityOption[], pluginID: s
     options.find((option) => option.pluginID === pluginID);
 }
 
-function emptyBackgroundJobDraft(job: PluginBackgroundJobDescriptor): PluginBackgroundJobDraft {
-  return { values: pluginActionInputDefaults(job), busy: false, error: "", result: "" };
-}
-
 function pluginSourceLabel(source: string) {
   if (source === "built_in") return tx("内置");
   if (source === "marketplace") return tx("插件市场");
@@ -1198,6 +1165,22 @@ type ChainPluginSummary = {
   reads: string[];
   writes: string[];
   mandatoryHooks: number;
+};
+
+type BackgroundJobPluginSummary = {
+  pluginID: string;
+  plugin?: PluginDescriptor;
+  jobs: PluginBackgroundJobDescriptor[];
+  schedules: string[];
+  capabilities: string[];
+  retries: string[];
+  recentRuns: string[];
+  maxConcurrency: number;
+};
+
+type BackgroundJobRunSummary = {
+  status: string;
+  attempts: number;
 };
 
 function chainPluginSummaries(plugins: PluginDescriptor[], hooks: GatewayHookDescriptor[], locale: string): ChainPluginSummary[] {
@@ -1224,6 +1207,44 @@ function chainPluginSummaries(plugins: PluginDescriptor[], hooks: GatewayHookDes
     current.reads = uniqueStrings([...current.reads, ...(hook.reads ?? [])]);
     current.writes = uniqueStrings([...current.writes, ...(hook.writes ?? [])]);
     current.mandatoryHooks += hook.mandatory ? 1 : 0;
+    summaries.set(pluginID, current);
+  });
+  return Array.from(summaries.values()).sort((first, second) => {
+    const firstName = first.plugin ? localizedPluginName(first.plugin, locale) : first.pluginID;
+    const secondName = second.plugin ? localizedPluginName(second.plugin, locale) : second.pluginID;
+    return firstName.localeCompare(secondName, locale);
+  });
+}
+
+function backgroundJobPluginSummaries(
+  plugins: PluginDescriptor[],
+  jobs: PluginBackgroundJobDescriptor[],
+  runs: Map<string, BackgroundJobRunSummary>,
+  locale: string,
+): BackgroundJobPluginSummary[] {
+  const pluginsByID = new Map(plugins.map((plugin) => [plugin.id, plugin]));
+  const summaries = new Map<string, BackgroundJobPluginSummary>();
+  jobs.forEach((job) => {
+    const pluginID = job.plugin_id.trim();
+    if (!pluginID) return;
+    const current = summaries.get(pluginID) ?? {
+      pluginID,
+      plugin: pluginsByID.get(pluginID),
+      jobs: [],
+      schedules: [],
+      capabilities: [],
+      retries: [],
+      recentRuns: [],
+      maxConcurrency: 0,
+    };
+    current.jobs.push(job);
+    current.schedules = uniqueStrings([...current.schedules, job.schedule]);
+    current.capabilities = uniqueStrings([...current.capabilities, job.capability ?? job.subject ?? ""]);
+    const retry = backgroundJobRetryLabel(job.retry);
+    current.retries = uniqueStrings([...current.retries, retry === "-" ? "" : retry]);
+    const run = runs.get(pluginBackgroundJobKey(job.plugin_id, job.job_id));
+    current.recentRuns = uniqueStrings([...current.recentRuns, run ? backgroundJobRunLabel(run) : ""]);
+    current.maxConcurrency = Math.max(current.maxConcurrency, job.max_concurrency || 0);
     summaries.set(pluginID, current);
   });
   return Array.from(summaries.values()).sort((first, second) => {
