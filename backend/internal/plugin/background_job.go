@@ -309,6 +309,13 @@ func NewBackgroundJobRunner(broker *BackgroundJobBroker) *BackgroundJobRunner {
 	return runner
 }
 
+func (r *BackgroundJobRunner) SetBroker(broker *BackgroundJobBroker) {
+	if r == nil {
+		return
+	}
+	r.broker = broker
+}
+
 func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
 	if r == nil || r.broker == nil {
 		return BackgroundJobRunRecord{}, fmt.Errorf("plugin background job runner is not configured")

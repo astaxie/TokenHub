@@ -30,6 +30,7 @@ type Server struct {
 	pluginBackgroundJobs    *pluginmeta.BackgroundJobBroker
 	pluginBackgroundRunner  *pluginmeta.BackgroundJobRunner
 	adapterRegistry         *AdapterRegistry
+	builtinProviderAdapters map[string]any
 	integrations            *IntegrationService
 	providerCatalog         *providerCatalogService
 	billing                 *billing.Service
@@ -175,6 +176,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		pluginBackgroundJobs:    pluginBootstrap.pluginBackgroundJobs,
 		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
 		adapterRegistry:         pluginBootstrap.adapterRegistry,
+		builtinProviderAdapters: providerRuntime.adapters,
 		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
 		providerCatalog:         providerCatalog,
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),

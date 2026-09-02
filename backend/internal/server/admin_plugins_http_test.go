@@ -49,11 +49,11 @@ func TestAdminPluginInstallPostDownloadsAndInstallsPackage(t *testing.T) {
 	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
 		t.Fatalf("decode install response: %v", err)
 	}
-	if body.Data.Plugin.ID != "tokenhub.marketplace.kimi" || body.Data.Plugin.Status != pluginmeta.StatusDisabled || !body.Data.RestartRequired {
-		t.Fatalf("install response = %+v, want disabled plugin requiring restart", body.Data)
+	if body.Data.Plugin.ID != "tokenhub.marketplace.kimi" || body.Data.Plugin.Status != pluginmeta.StatusDisabled || body.Data.RestartRequired {
+		t.Fatalf("install response = %+v, want disabled plugin without restart", body.Data)
 	}
-	if !body.Data.Plugin.Lifecycle.RestartRequired || body.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleInstalled {
-		t.Fatalf("install lifecycle = %+v, want installed restart-required event", body.Data.Plugin.Lifecycle)
+	if body.Data.Plugin.Lifecycle.RestartRequired || body.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleInstalled {
+		t.Fatalf("install lifecycle = %+v, want installed event without restart", body.Data.Plugin.Lifecycle)
 	}
 	stateData, err := os.ReadFile(filepath.Join(pluginDir, "tokenhub.marketplace.kimi", "plugin.state.json"))
 	if err != nil {
@@ -64,7 +64,7 @@ func TestAdminPluginInstallPostDownloadsAndInstallsPackage(t *testing.T) {
 		t.Fatalf("decode installed package state: %v", err)
 	}
 	if state.Status != pluginmeta.StatusDisabled || state.Reason != "installed from marketplace" ||
-		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleInstalled {
+		state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleInstalled {
 		t.Fatalf("installed package state = %+v", state)
 	}
 }
@@ -108,8 +108,8 @@ func TestAdminPluginInstallPostUploadsAndInstallsPackage(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode upload install response: %v", err)
 	}
-	if body.Data.Plugin.ID != "tokenhub.uploaded.kimi" || body.Data.Plugin.Status != pluginmeta.StatusEnabled || !body.Data.RestartRequired {
-		t.Fatalf("upload install response = %+v, want enabled uploaded plugin requiring restart", body.Data)
+	if body.Data.Plugin.ID != "tokenhub.uploaded.kimi" || body.Data.Plugin.Status != pluginmeta.StatusEnabled || body.Data.RestartRequired {
+		t.Fatalf("upload install response = %+v, want enabled uploaded plugin without restart", body.Data)
 	}
 }
 
@@ -195,8 +195,8 @@ func TestAdminPluginInstallPostVerifiesSignedMarketplaceArtifact(t *testing.T) {
 	if err := json.Unmarshal(stateData, &state); err != nil {
 		t.Fatalf("decode signed installed package state: %v", err)
 	}
-	if state.Status != pluginmeta.StatusEnabled || !state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleInstalled {
-		t.Fatalf("signed installed package state = %+v, want enabled installed restart-required state", state)
+	if state.Status != pluginmeta.StatusEnabled || state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleInstalled {
+		t.Fatalf("signed installed package state = %+v, want enabled installed state", state)
 	}
 }
 
@@ -424,11 +424,11 @@ kinds:
 	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
 		t.Fatalf("decode update response: %v", err)
 	}
-	if body.Data.Plugin.Version != "1.1.0" || body.Data.Plugin.Status != pluginmeta.StatusDisabled || !body.Data.RestartRequired || !body.Data.Replaced {
-		t.Fatalf("update response = %+v, want replaced disabled updated package", body.Data)
+	if body.Data.Plugin.Version != "1.1.0" || body.Data.Plugin.Status != pluginmeta.StatusDisabled || body.Data.RestartRequired || !body.Data.Replaced {
+		t.Fatalf("update response = %+v, want replaced disabled updated package without restart", body.Data)
 	}
-	if !body.Data.Plugin.Lifecycle.RestartRequired || body.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecyclePendingRestart {
-		t.Fatalf("update lifecycle = %+v, want pending restart event", body.Data.Plugin.Lifecycle)
+	if body.Data.Plugin.Lifecycle.RestartRequired || body.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleDisabled {
+		t.Fatalf("update lifecycle = %+v, want disabled event without restart", body.Data.Plugin.Lifecycle)
 	}
 	if !body.Data.Plugin.Lifecycle.RollbackAvailable || body.Data.Plugin.Lifecycle.RollbackVersion != "1.0.0" {
 		t.Fatalf("update lifecycle = %+v, want rollback to previous version", body.Data.Plugin.Lifecycle)
@@ -443,7 +443,7 @@ kinds:
 		t.Fatalf("decode updated package state: %v", err)
 	}
 	if state.Status != pluginmeta.StatusDisabled || state.Reason != "operator disabled" ||
-		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecyclePendingRestart {
+		state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleDisabled {
 		t.Fatalf("updated package state = %+v", state)
 	}
 	if _, err := os.Stat(localPluginDir); !os.IsNotExist(err) {
@@ -514,8 +514,8 @@ kinds:
 		t.Fatalf("decode rollback response: %v", err)
 	}
 	if rollbackBody.Data.Plugin.Version != "1.0.0" || rollbackBody.Data.RollbackVersion != "1.0.0" ||
-		!rollbackBody.Data.RestartRequired || rollbackBody.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleRollbackStarted {
-		t.Fatalf("rollback response = %+v, want restored previous version with rollback-started lifecycle", rollbackBody.Data)
+		rollbackBody.Data.RestartRequired || rollbackBody.Data.Plugin.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleRollbackStarted {
+		t.Fatalf("rollback response = %+v, want restored previous version without restart", rollbackBody.Data)
 	}
 	if rollbackBody.Data.Plugin.RollbackAvailable || rollbackBody.Data.Plugin.RollbackVersion != "" {
 		t.Fatalf("rollback response retained rollback availability: %+v", rollbackBody.Data.Plugin.Lifecycle)
@@ -626,8 +626,8 @@ kinds:
 	if err := json.Unmarshal(stateData, &state); err != nil {
 		t.Fatalf("decode signed updated package state: %v", err)
 	}
-	if state.Status != pluginmeta.StatusEnabled || !state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecyclePendingRestart {
-		t.Fatalf("signed updated package state = %+v, want enabled pending restart state", state)
+	if state.Status != pluginmeta.StatusEnabled || state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleEnabled {
+		t.Fatalf("signed updated package state = %+v, want enabled state", state)
 	}
 }
 
@@ -692,8 +692,29 @@ tokenhub:
   plugin_api: v1
 kinds:
   - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: mask
+      stage: privacy_pre
+      priority: 2300
+      failure_policy: fail_closed
+      reads:
+        - request_body
+      writes:
+        - request_body
+permissions:
+  data:
+    read:
+      - request_body
+    write:
+      - request_body
 `)
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	if !gatewayHookExists(server.gatewayChain.Hooks(pluginmeta.StagePrivacyPre), "tokenhub.local-privacy", "mask") {
+		t.Fatal("local privacy hook was not activated before disable")
+	}
 
 	response := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/plugins/tokenhub.local-privacy/state", map[string]any{
 		"status": "disabled",
@@ -708,11 +729,14 @@ kinds:
 	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Data.PluginID != "tokenhub.local-privacy" || body.Data.Status != pluginmeta.StatusDisabled || !body.Data.RestartRequired {
-		t.Fatalf("state response = %+v, want disabled restart-required response", body.Data)
+	if body.Data.PluginID != "tokenhub.local-privacy" || body.Data.Status != pluginmeta.StatusDisabled || body.Data.RestartRequired {
+		t.Fatalf("state response = %+v, want disabled response without restart", body.Data)
 	}
 	if body.Data.AuditEvent != pluginmeta.PackageLifecycleDisabled || body.Data.Lifecycle.AuditEvent != pluginmeta.PackageLifecycleDisabled {
 		t.Fatalf("state response = %+v, want disabled audit event", body.Data)
+	}
+	if gatewayHookExists(server.gatewayChain.Hooks(pluginmeta.StagePrivacyPre), "tokenhub.local-privacy", "mask") {
+		t.Fatal("disabled local privacy hook was still registered after hot reload")
 	}
 	data, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
 	if err != nil {
@@ -723,15 +747,15 @@ kinds:
 		t.Fatalf("decode package state: %v", err)
 	}
 	if state.Status != pluginmeta.StatusDisabled || state.Reason != "disable before upgrade" ||
-		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleDisabled {
-		t.Fatalf("package state = %+v, want disabled restart-required state file", state)
+		state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleDisabled {
+		t.Fatalf("package state = %+v, want disabled state file without restart", state)
 	}
 	listResponse := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", listResponse.Code, listResponse.Body)
 	}
-	if !strings.Contains(listResponse.Body, `"audit_event":"disabled"`) || !strings.Contains(listResponse.Body, `"restart_required":true`) {
-		t.Fatalf("GET /api/admin/plugins body = %s, want disabled restart-required lifecycle", listResponse.Body)
+	if !strings.Contains(listResponse.Body, `"audit_event":"disabled"`) || !strings.Contains(listResponse.Body, `"restart_required":false`) {
+		t.Fatalf("GET /api/admin/plugins body = %s, want disabled lifecycle without restart", listResponse.Body)
 	}
 }
 
@@ -753,8 +777,11 @@ func TestAdminPluginStatePatchWritesBuiltInProviderState(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if body.Data.PluginID != "tokenhub.provider.qwen" || body.Data.Status != pluginmeta.StatusDisabled ||
-		!body.Data.RestartRequired || body.Data.AuditEvent != pluginmeta.PackageLifecycleDisabled || body.Data.Loadable {
-		t.Fatalf("state response = %+v, want disabled restart-required built-in provider", body.Data)
+		body.Data.RestartRequired || body.Data.AuditEvent != pluginmeta.PackageLifecycleDisabled || body.Data.Loadable {
+		t.Fatalf("state response = %+v, want disabled built-in provider without restart", body.Data)
+	}
+	if _, ok := server.adapterRegistry.Describe("qwen"); ok {
+		t.Fatal("disabled built-in provider adapter was still registered after hot reload")
 	}
 	data, err := os.ReadFile(filepath.Join(pluginDir, ".built-in-state", "tokenhub.provider.qwen", "plugin.state.json"))
 	if err != nil {
@@ -765,8 +792,8 @@ func TestAdminPluginStatePatchWritesBuiltInProviderState(t *testing.T) {
 		t.Fatalf("decode built-in package state: %v", err)
 	}
 	if state.Status != pluginmeta.StatusDisabled || state.Reason != "operator disabled built-in provider" ||
-		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleDisabled {
-		t.Fatalf("built-in package state = %+v, want disabled restart-required state file", state)
+		state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleDisabled {
+		t.Fatalf("built-in package state = %+v, want disabled state file without restart", state)
 	}
 	listResponse := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
 	if listResponse.Code != http.StatusOK {
@@ -810,9 +837,9 @@ kinds:
 	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Data.Status != pluginmeta.StatusEnabled || !body.Data.RestartRequired ||
+	if body.Data.Status != pluginmeta.StatusEnabled || body.Data.RestartRequired ||
 		body.Data.AuditEvent != pluginmeta.PackageLifecycleEnabled || !body.Data.Loadable {
-		t.Fatalf("state response = %+v, want enabled restart-required lifecycle", body.Data)
+		t.Fatalf("state response = %+v, want enabled lifecycle without restart", body.Data)
 	}
 	data, err := os.ReadFile(filepath.Join(localPluginDir, "plugin.state.json"))
 	if err != nil {
@@ -823,8 +850,8 @@ kinds:
 		t.Fatalf("decode package state: %v", err)
 	}
 	if state.Status != pluginmeta.StatusEnabled || state.Reason != "operator enabled after review" ||
-		!state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleEnabled {
-		t.Fatalf("package state = %+v, want enabled restart-required state file", state)
+		state.RestartRequired || state.AuditEvent != pluginmeta.PackageLifecycleEnabled {
+		t.Fatalf("package state = %+v, want enabled state file without restart", state)
 	}
 }
 
@@ -1039,8 +1066,11 @@ kinds:
 	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Data.PluginID != "tokenhub.local-privacy" || !body.Data.RestartRequired {
-		t.Fatalf("delete response = %+v, want restart-required uninstall response", body.Data)
+	if body.Data.PluginID != "tokenhub.local-privacy" || body.Data.RestartRequired {
+		t.Fatalf("delete response = %+v, want uninstall response without restart", body.Data)
+	}
+	if _, ok := server.pluginRegistry.Describe("tokenhub.local-privacy"); ok {
+		t.Fatal("deleted plugin was still registered after hot reload")
 	}
 	if _, err := os.Stat(localPluginDir); !os.IsNotExist(err) {
 		t.Fatalf("plugin package still exists after delete: %v", err)
