@@ -42,6 +42,10 @@ describe("PluginsView", () => {
     expect(screen.getByText("已禁用")).toBeInTheDocument();
     expect(screen.getByText("许可证 Apache-2.0")).toBeInTheDocument();
     expect(screen.getByText("SHA-256 0123456789ab...cdef")).toBeInTheDocument();
+    const titleCell = screen.getByText("Kimi Provider").closest(".plugin-title-cell");
+    expect(titleCell).not.toBeNull();
+    expect(titleCell?.textContent).toContain("tokenhub.provider.kimi");
+    expect(titleCell?.textContent).toContain("1.2.3");
     expect(screen.getByRole("link", { name: "市场" })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi");
     expect(screen.getByRole("link", { name: /仓库/ })).toHaveAttribute("href", "https://github.com/tokenhub/kimi-provider");
     expect(screen.getByRole("link", { name: /下载/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi/1.2.3.zip");
@@ -691,6 +695,9 @@ describe("PluginsView", () => {
     expect(pluginStyles()).toContain(".plugin-action-field select");
     expect(pluginStyles()).toContain(".plugin-action-runner .stacked-cell");
     expect(pluginStyles()).toContain(".plugin-developer-details summary");
+    expect(pluginStyles()).toContain(".plugin-title-cell");
+    expect(pluginStyles()).toContain(".plugin-title-id");
+    expect(pluginStyles()).toContain(".plugin-title-version");
   });
 
   it("renders stable Plugin Manager hooks for feature-scoped CSS", () => {

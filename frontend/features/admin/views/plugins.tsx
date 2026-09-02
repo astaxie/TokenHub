@@ -902,9 +902,12 @@ function PluginMetric({ icon, label, value }: { icon: ReactNode; label: ReactNod
 function PluginTitle({ plugin }: { plugin: PluginDescriptor }) {
   const locale = languageLocale();
   return (
-    <div className="stacked-cell">
-      <strong>{localizedPluginName(plugin, locale)}</strong>
-      <span>{plugin.id} · {plugin.version || tx("内置")}</span>
+    <div className="plugin-title-cell">
+      <strong className="plugin-title-name">{localizedPluginName(plugin, locale)}</strong>
+      <div className="plugin-title-meta">
+        <span className="plugin-title-id" title={plugin.id}>{plugin.id}</span>
+        <span className="plugin-title-version">{plugin.version || tx("内置")}</span>
+      </div>
     </div>
   );
 }
